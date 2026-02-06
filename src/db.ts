@@ -78,6 +78,15 @@ export function initDatabase(): void {
     /* column already exists */
   }
 
+  // Add requires_trigger column if it doesn't exist (migration for existing DBs)
+  try {
+    db.exec(
+      `ALTER TABLE registered_groups ADD COLUMN requires_trigger INTEGER DEFAULT 1`,
+    );
+  } catch {
+    /* column already exists */
+  }
+
   // State tables (replacing JSON files)
   db.exec(`
     CREATE TABLE IF NOT EXISTS router_state (
@@ -94,7 +103,8 @@ export function initDatabase(): void {
       folder TEXT NOT NULL UNIQUE,
       trigger_pattern TEXT NOT NULL,
       added_at TEXT NOT NULL,
-      container_config TEXT
+      container_config TEXT,
+      requires_trigger INTEGER DEFAULT 1
     );
   `);
 
@@ -460,6 +470,7 @@ export function getRegisteredGroup(
         trigger_pattern: string;
         added_at: string;
         container_config: string | null;
+        requires_trigger: number | null;
       }
     | undefined;
   if (!row) return undefined;
@@ -472,6 +483,7 @@ export function getRegisteredGroup(
     containerConfig: row.container_config
       ? JSON.parse(row.container_config)
       : undefined,
+    requiresTrigger: row.requires_trigger === null ? undefined : row.requires_trigger === 1,
   };
 }
 
@@ -480,8 +492,8 @@ export function setRegisteredGroup(
   group: RegisteredGroup,
 ): void {
   db.prepare(
-    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, container_config)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     jid,
     group.name,
@@ -489,6 +501,7 @@ export function setRegisteredGroup(
     group.trigger,
     group.added_at,
     group.containerConfig ? JSON.stringify(group.containerConfig) : null,
+    group.requiresTrigger === undefined ? 1 : group.requiresTrigger ? 1 : 0,
   );
 }
 
@@ -502,6 +515,7 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
     trigger_pattern: string;
     added_at: string;
     container_config: string | null;
+    requires_trigger: number | null;
   }>;
   const result: Record<string, RegisteredGroup> = {};
   for (const row of rows) {
@@ -513,6 +527,7 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
       containerConfig: row.container_config
         ? JSON.parse(row.container_config)
         : undefined,
+      requiresTrigger: row.requires_trigger === null ? undefined : row.requires_trigger === 1,
     };
   }
   return result;

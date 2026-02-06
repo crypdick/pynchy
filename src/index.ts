@@ -209,8 +209,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   if (missedMessages.length === 0) return true;
 
-  // For non-main groups, check if any message has the trigger
-  if (!isMainGroup) {
+  // For non-main groups, check if trigger is required and present
+  if (!isMainGroup && group.requiresTrigger !== false) {
     const hasTrigger = missedMessages.some((m) =>
       TRIGGER_PATTERN.test(m.content.trim()),
     );

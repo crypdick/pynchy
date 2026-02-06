@@ -16,6 +16,7 @@ Single Node.js process that connects to WhatsApp, routes messages to Claude Agen
 | `src/task-scheduler.ts` | Runs scheduled tasks |
 | `src/db.ts` | SQLite operations |
 | `groups/{name}/CLAUDE.md` | Per-group memory (isolated) |
+| `container/skills/agent-browser.md` | Browser automation tool (available to all agents via Bash) |
 
 ## Skills
 

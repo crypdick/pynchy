@@ -141,39 +141,39 @@ fi
 
 **USER ACTION REQUIRED**
 
-Run the authentication script:
+**IMPORTANT:** Run this command in the **foreground**. The QR code is multi-line ASCII art that must be displayed in full. Do NOT run in background or truncate the output.
+
+Tell the user:
+> A QR code will appear below. On your phone:
+> 1. Open WhatsApp
+> 2. Tap **Settings → Linked Devices → Link a Device**
+> 3. Scan the QR code
+
+Run with a long Bash tool timeout (120000ms) so the user has time to scan. Do NOT use the `timeout` shell command (it's not available on macOS).
 
 ```bash
 npm run auth
 ```
 
-Tell the user:
-> A QR code will appear. On your phone:
-> 1. Open WhatsApp
-> 2. Tap **Settings → Linked Devices → Link a Device**
-> 3. Scan the QR code
-
 Wait for the script to output "Successfully authenticated" then continue.
 
 If it says "Already authenticated", skip to the next step.
 
-## 6. Configure Assistant Name
+## 6. Configure Assistant Name and Main Channel
+
+This step configures three things at once: the trigger word, the main channel type, and the main channel selection.
+
+### 6a. Ask for trigger word
 
 Ask the user:
 > What trigger word do you want to use? (default: `Andy`)
 >
-> Messages starting with `@TriggerWord` will be sent to Claude.
+> In group chats, messages starting with `@TriggerWord` will be sent to Claude.
+> In your main channel (and optionally solo chats), no prefix is needed — all messages are processed.
 
-If they choose something other than `Andy`, update it in these places:
-1. `groups/CLAUDE.md` - Change "# Andy" and "You are Andy" to the new name
-2. `groups/main/CLAUDE.md` - Same changes at the top
-3. `data/registered_groups.json` - Use `@NewName` as the trigger when registering groups
+Store their choice for use in the steps below.
 
-Store their choice - you'll use it when creating the registered_groups.json and when telling them how to test.
-
-## 7. Understand the Security Model
-
-Before registering your main channel, you need to understand an important security concept.
+### 6b. Explain security model and ask about main channel type
 
 **Use the AskUserQuestion tool** to present this:
 
@@ -207,51 +207,73 @@ If they choose option 3, ask a follow-up:
 > 1. Yes, I understand and want to proceed
 > 2. No, let me use a personal chat or solo group instead
 
-## 8. Register Main Channel
+### 6c. Register the main channel
 
-Ask the user:
-> Do you want to use your **personal chat** (message yourself) or a **WhatsApp group** as your main control channel?
-
-For personal chat:
-> Send any message to yourself in WhatsApp (the "Message Yourself" chat). Tell me when done.
-
-For group:
-> Send any message in the WhatsApp group you want to use as your main channel. Tell me when done.
-
-After user confirms, start the app briefly to capture the message:
+First build, then start the app briefly to connect to WhatsApp and sync group metadata. Use the Bash tool's timeout parameter (15000ms) — do NOT use the `timeout` shell command (it's not available on macOS). The app will be killed when the timeout fires, which is expected.
 
 ```bash
-timeout 10 npm run dev || true
+npm run build
 ```
 
-Then find the JID from the database:
-
+Then run briefly (set Bash tool timeout to 15000ms):
 ```bash
-# For personal chat (ends with @s.whatsapp.net)
-sqlite3 store/messages.db "SELECT DISTINCT chat_jid FROM messages WHERE chat_jid LIKE '%@s.whatsapp.net' ORDER BY timestamp DESC LIMIT 5"
-
-# For group (ends with @g.us)
-sqlite3 store/messages.db "SELECT DISTINCT chat_jid FROM messages WHERE chat_jid LIKE '%@g.us' ORDER BY timestamp DESC LIMIT 5"
+npm run dev
 ```
 
-Create/update `data/registered_groups.json` using the JID from above and the assistant name from step 5:
+**For personal chat** (they chose option 1):
+
+Personal chats are NOT synced to the database on startup — only groups are. Instead, ask the user for their phone number (with country code, no + or spaces, e.g. `14155551234`), then construct the JID as `{number}@s.whatsapp.net`.
+
+**For group** (they chose option 2 or 3):
+
+Groups are synced on startup via `groupFetchAllParticipating`. Query the database for recent groups:
+```bash
+sqlite3 store/messages.db "SELECT jid, name FROM chats WHERE jid LIKE '%@g.us' AND jid != '__group_sync__' ORDER BY last_message_time DESC LIMIT 40"
+```
+
+Show only the **10 most recent** group names to the user and ask them to pick one. If they say their group isn't in the list, show the next batch from the results you already have. If they tell you the group name directly, look it up:
+```bash
+sqlite3 store/messages.db "SELECT jid, name FROM chats WHERE name LIKE '%GROUP_NAME%' AND jid LIKE '%@g.us'"
+```
+
+### 6d. Write the configuration
+
+Once you have the JID, configure it. Use the assistant name from step 6a.
+
+For personal chats (solo, no prefix needed), set `requiresTrigger` to `false`:
+
 ```json
 {
   "JID_HERE": {
     "name": "main",
     "folder": "main",
     "trigger": "@ASSISTANT_NAME",
-    "added_at": "CURRENT_ISO_TIMESTAMP"
+    "added_at": "CURRENT_ISO_TIMESTAMP",
+    "requiresTrigger": false
   }
 }
 ```
+
+For groups, keep `requiresTrigger` as `true` (default).
+
+Write to the database directly by creating a temporary registration script, or write `data/registered_groups.json` which will be auto-migrated on first run:
+
+```bash
+mkdir -p data
+```
+
+Then write `data/registered_groups.json` with the correct JID, trigger, and timestamp.
+
+If the user chose a name other than `Andy`, also update:
+1. `groups/global/CLAUDE.md` - Change "# Andy" and "You are Andy" to the new name
+2. `groups/main/CLAUDE.md` - Same changes at the top
 
 Ensure the groups folder exists:
 ```bash
 mkdir -p groups/main/logs
 ```
 
-## 9. Configure External Directory Access (Mount Allowlist)
+## 7. Configure External Directory Access (Mount Allowlist)
 
 Ask the user:
 > Do you want the agent to be able to access any directories **outside** the NanoClaw project?
@@ -278,7 +300,7 @@ Skip to the next step.
 
 If **yes**, ask follow-up questions:
 
-### 9a. Collect Directory Paths
+### 7a. Collect Directory Paths
 
 Ask the user:
 > Which directories do you want to allow access to?
@@ -295,14 +317,14 @@ For each directory they provide, ask:
 > Read-write is needed for: code changes, creating files, git commits
 > Read-only is safer for: reference docs, config examples, templates
 
-### 9b. Configure Non-Main Group Access
+### 7b. Configure Non-Main Group Access
 
 Ask the user:
 > Should **non-main groups** (other WhatsApp chats you add later) be restricted to **read-only** access even if read-write is allowed for the directory?
 >
 > Recommended: **Yes** - this prevents other groups from modifying files even if you grant them access to a directory.
 
-### 9c. Create the Allowlist
+### 7c. Create the Allowlist
 
 Create the allowlist file based on their answers:
 
@@ -358,7 +380,7 @@ Tell the user:
 > }
 > ```
 
-## 10. Configure launchd Service
+## 8. Configure launchd Service
 
 Generate the plist file with correct paths automatically:
 
@@ -418,10 +440,12 @@ Verify it's running:
 launchctl list | grep nanoclaw
 ```
 
-## 11. Test
+## 9. Test
 
 Tell the user (using the assistant name they configured):
 > Send `@ASSISTANT_NAME hello` in your registered chat.
+>
+> **Tip:** In your main channel, you don't need the `@` prefix — just send `hello` and the agent will respond.
 
 Check the logs:
 ```bash
@@ -442,7 +466,9 @@ The user should receive a response in WhatsApp.
 
 **No response to messages**:
 - Verify the trigger pattern matches (e.g., `@AssistantName` at start of message)
-- Check that the chat JID is in `data/registered_groups.json`
+- Main channel doesn't require a prefix — all messages are processed
+- Personal/solo chats with `requiresTrigger: false` also don't need a prefix
+- Check that the chat JID is in the database: `sqlite3 store/messages.db "SELECT * FROM registered_groups"`
 - Check `logs/nanoclaw.log` for errors
 
 **WhatsApp disconnected**:
