@@ -22,7 +22,6 @@ Single source of truth for all pynchy work items.
 *Approved ideas. No plan yet.*
 
 - [Provider-agnostic agents](1-approved/provider-agnostic-agents.md) — Generic agent interface so people can swap in other LLMs
-- [Tailscale integration](1-approved/tailscale-integration.md) — Remote access, deploys, health checks, CLI interaction
 - [X integration port](1-approved/x-integration-port.md) — Port the archived TypeScript X/Twitter skill to Python plugins
 - [Periodic agents](1-approved/periodic-agents.md) — Background agents for security sweeps, code quality, SDK updates, etc.
 - [Project ideas](1-approved/project-ideas.md) — Standalone integration ideas (calendar, voice, Cloudflare, AWS, etc.)
