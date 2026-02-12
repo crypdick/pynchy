@@ -5,6 +5,7 @@ Port of src/types.ts — interfaces become dataclasses, Channel becomes Protocol
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Literal, Protocol, runtime_checkable
 
@@ -135,5 +136,5 @@ class Channel(Protocol):
 
 
 # Callback types
-OnInboundMessage = callable  # (chat_jid: str, message: NewMessage) -> None
-OnChatMetadata = callable  # (chat_jid: str, timestamp: str, name?: str) -> None
+OnInboundMessage = Callable[[str, NewMessage], None]
+OnChatMetadata = Callable[[str, str, str | None], None]

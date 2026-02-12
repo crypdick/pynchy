@@ -163,7 +163,7 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
 
     try:
         container_input = ContainerInput(
-            prompt=f"[SCHEDULED TASK] {task.prompt}",
+            prompt=task.prompt,
             group_folder=task.group_folder,
             chat_jid=task.chat_jid,
             is_main=_is_main,
