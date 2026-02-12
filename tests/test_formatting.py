@@ -99,6 +99,19 @@ class TestTriggerPattern:
     def test_matches_with_leading_whitespace_after_trim(self):
         assert TRIGGER_PATTERN.search("@pynchy hey".strip())
 
+    def test_matches_ghost_alias(self):
+        assert TRIGGER_PATTERN.search("@ghost hello")
+
+    def test_matches_ghost_alias_case_insensitively(self):
+        assert TRIGGER_PATTERN.search("@Ghost hello")
+        assert TRIGGER_PATTERN.search("@GHOST hello")
+
+    def test_ghost_alias_does_not_match_partial(self):
+        assert not TRIGGER_PATTERN.search("@ghostly hello")
+
+    def test_ghost_alias_does_not_match_when_not_at_start(self):
+        assert not TRIGGER_PATTERN.search("hello @ghost")
+
 
 # --- stripInternalTags ---
 

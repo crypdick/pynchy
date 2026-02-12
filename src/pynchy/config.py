@@ -44,8 +44,12 @@ def _escape_regex(s: str) -> str:
     return re.escape(s)
 
 
+# Additional trigger aliases (case insensitive, matched alongside ASSISTANT_NAME)
+TRIGGER_ALIASES: list[str] = [s for s in os.environ.get("TRIGGER_ALIASES", "ghost").split(",") if s.strip()]
+
+_trigger_names = [_escape_regex(ASSISTANT_NAME)] + [_escape_regex(a.strip()) for a in TRIGGER_ALIASES]
 TRIGGER_PATTERN: re.Pattern[str] = re.compile(
-    rf"^@{_escape_regex(ASSISTANT_NAME)}\b", re.IGNORECASE
+    rf"^@({'|'.join(_trigger_names)})\b", re.IGNORECASE
 )
 
 
