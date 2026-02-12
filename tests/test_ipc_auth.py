@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from nanoclawpy.db import (
+from pynchy.db import (
     _init_test_database,
     create_task,
     get_all_tasks,
@@ -18,8 +18,8 @@ from nanoclawpy.db import (
     get_task_by_id,
     set_registered_group,
 )
-from nanoclawpy.ipc import process_task_ipc
-from nanoclawpy.types import RegisteredGroup
+from pynchy.ipc import process_task_ipc
+from pynchy.types import RegisteredGroup
 
 MAIN_GROUP = RegisteredGroup(
     name="Main",

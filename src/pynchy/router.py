@@ -8,10 +8,10 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from nanoclawpy.config import ASSISTANT_NAME
+from pynchy.config import ASSISTANT_NAME
 
 if TYPE_CHECKING:
-    from nanoclawpy.types import Channel, NewMessage
+    from pynchy.types import Channel, NewMessage
 
 _INTERNAL_TAG_RE = re.compile(r"<internal>[\s\S]*?</internal>")
 

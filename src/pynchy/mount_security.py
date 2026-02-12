@@ -11,9 +11,9 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from nanoclawpy.config import MOUNT_ALLOWLIST_PATH
-from nanoclawpy.logger import logger
-from nanoclawpy.types import AdditionalMount, AllowedRoot, MountAllowlist
+from pynchy.config import MOUNT_ALLOWLIST_PATH
+from pynchy.logger import logger
+from pynchy.types import AdditionalMount, AllowedRoot, MountAllowlist
 
 # Cache — only reloads on process restart
 _cached_allowlist: MountAllowlist | None = None

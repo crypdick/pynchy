@@ -1,10 +1,10 @@
-"""Shared test fixtures for NanoClawPy."""
+"""Shared test fixtures for Pynchy."""
 
 from __future__ import annotations
 
 import pytest
 
-from nanoclawpy.types import NewMessage
+from pynchy.types import NewMessage
 
 
 @pytest.fixture

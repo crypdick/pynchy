@@ -1,1 +1,0 @@
-"""NanoClawPy — Personal Claude assistant."""

@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from nanoclawpy.config import ASSISTANT_NAME, TRIGGER_PATTERN
-from nanoclawpy.router import escape_xml, format_messages, format_outbound, strip_internal_tags
-from nanoclawpy.types import NewMessage
+from pynchy.config import ASSISTANT_NAME, TRIGGER_PATTERN
+from pynchy.router import escape_xml, format_messages, format_outbound, strip_internal_tags
+from pynchy.types import NewMessage
 
 # --- escapeXml ---
 

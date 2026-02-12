@@ -12,23 +12,23 @@ from typing import Any, Awaitable, Callable, Protocol
 
 from croniter import croniter
 
-from nanoclawpy.config import (
+from pynchy.config import (
     GROUPS_DIR,
     IDLE_TIMEOUT,
     MAIN_GROUP_FOLDER,
     SCHEDULER_POLL_INTERVAL,
     TIMEZONE,
 )
-from nanoclawpy.db import (
+from pynchy.db import (
     get_all_tasks,
     get_due_tasks,
     get_task_by_id,
     log_task_run,
     update_task_after_run,
 )
-from nanoclawpy.group_queue import GroupQueue
-from nanoclawpy.logger import logger
-from nanoclawpy.types import RegisteredGroup, ScheduledTask, TaskRunLog
+from pynchy.group_queue import GroupQueue
+from pynchy.logger import logger
+from pynchy.types import RegisteredGroup, ScheduledTask, TaskRunLog
 
 
 class SchedulerDependencies(Protocol):

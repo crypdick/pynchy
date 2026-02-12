@@ -378,49 +378,6 @@ wheels = [
 ]
 
 [[package]]
-name = "nanoclawpy"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "aiosqlite" },
-    { name = "croniter" },
-    { name = "mcp" },
-    { name = "neonize" },
-    { name = "pydantic" },
-    { name = "qrcode" },
-    { name = "structlog" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "freezegun" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-mock" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiosqlite", specifier = ">=0.22.1" },
-    { name = "croniter", specifier = ">=6.0.0" },
-    { name = "mcp", specifier = ">=1.26.0" },
-    { name = "neonize", specifier = ">=0.3.14.post0" },
-    { name = "pydantic", specifier = ">=2.12.5" },
-    { name = "qrcode", specifier = ">=8.2" },
-    { name = "structlog", specifier = ">=25.5.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "freezegun", specifier = ">=1.5.5" },
-    { name = "pytest", specifier = ">=9.0.2" },
-    { name = "pytest-asyncio", specifier = ">=1.3.0" },
-    { name = "pytest-mock", specifier = ">=3.15.1" },
-    { name = "ruff", specifier = ">=0.15.0" },
-]
-
-[[package]]
 name = "neonize"
 version = "0.3.14.post0"
 source = { registry = "https://pypi.org/simple" }
@@ -662,6 +619,49 @@ wheels = [
 [package.optional-dependencies]
 crypto = [
     { name = "cryptography" },
+]
+
+[[package]]
+name = "pynchy"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "aiosqlite" },
+    { name = "croniter" },
+    { name = "mcp" },
+    { name = "neonize" },
+    { name = "pydantic" },
+    { name = "qrcode" },
+    { name = "structlog" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "freezegun" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-mock" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiosqlite", specifier = ">=0.22.1" },
+    { name = "croniter", specifier = ">=6.0.0" },
+    { name = "mcp", specifier = ">=1.26.0" },
+    { name = "neonize", specifier = ">=0.3.14.post0" },
+    { name = "pydantic", specifier = ">=2.12.5" },
+    { name = "qrcode", specifier = ">=8.2" },
+    { name = "structlog", specifier = ">=25.5.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "freezegun", specifier = ">=1.5.5" },
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-asyncio", specifier = ">=1.3.0" },
+    { name = "pytest-mock", specifier = ">=3.15.1" },
+    { name = "ruff", specifier = ">=0.15.0" },
 ]
 
 [[package]]
