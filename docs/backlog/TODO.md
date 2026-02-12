@@ -38,6 +38,7 @@ Single source of truth for all pynchy work items.
 - [Plugin system](3-ready/plugin-system.md) — Plugin architecture for extending pynchy with modular capabilities
 - [Security hardening](3-ready/security-hardening.md) — Security improvements and hardening measures
 - when the host container starts, send a system message to the whatsapp channel
+- allow user to execute cmds, bypassing the llm. `!ls`, `!echo hi`, will run without llm approval. the llm will see in the history that the user ran a cmd and the cmd output. this type of user input does not initiate a conversation turn for the llm though-- the user needs to follow up with a non-command message in order to trigger the llm (at which point it'll see the tool usage in its history) 
 
 ### 4 - In Progress
 *Being implemented.*

@@ -1,20 +1,24 @@
-"""Embedded HTTP server for health checks and remote deploys.
+"""Embedded HTTP server for health checks, remote deploys, and TUI API.
 
-Exposes /health (GET) and /deploy (POST) endpoints, bound to 0.0.0.0
-on DEPLOY_PORT. Access is controlled by Tailscale ACLs and the machine firewall.
+Exposes endpoints on 0.0.0.0:DEPLOY_PORT. Access is controlled by
+Tailscale ACLs and the machine firewall.
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
 import subprocess
 import time
-from typing import Protocol
+from collections.abc import Callable, Coroutine
+from typing import Any, Protocol
 
 from aiohttp import web
 
 from pynchy.config import ASSISTANT_NAME, DEPLOY_PORT, PROJECT_ROOT
 from pynchy.deploy import finalize_deploy
 from pynchy.logger import logger
+from pynchy.types import NewMessage
 
 _start_time = time.monotonic()
 
@@ -42,11 +46,26 @@ class HttpDeps(Protocol):
 
     def channels_connected(self) -> bool: ...
 
+    # --- TUI API deps ---
+
+    def get_groups(self) -> list[dict[str, Any]]: ...
+
+    async def get_messages(self, jid: str, limit: int) -> list[NewMessage]: ...
+
+    async def send_user_message(self, jid: str, content: str) -> None: ...
+
+    def subscribe_events(
+        self, callback: Callable[[dict[str, Any]], Coroutine[Any, Any, None]]
+    ) -> Callable[[], None]: ...
+
+
+# ------------------------------------------------------------------
+# Existing endpoints
+# ------------------------------------------------------------------
+
 
 async def _handle_health(request: web.Request) -> web.Response:
     deps: HttpDeps = request.app["deps"]
-    # TODO: include agents_busy flag (are any containers running?) so callers
-    # can decide whether it's safe to restart the service.
     return web.json_response(
         {
             "status": "ok",
@@ -118,12 +137,100 @@ async def _handle_deploy(request: web.Request) -> web.Response:
     return web.json_response({"status": "restarting", "sha": new_sha, "previous_sha": old_sha})
 
 
+# ------------------------------------------------------------------
+# TUI API endpoints
+# ------------------------------------------------------------------
+
+
+async def _handle_api_groups(request: web.Request) -> web.Response:
+    """Return registered groups."""
+    deps: HttpDeps = request.app["deps"]
+    return web.json_response(deps.get_groups())
+
+
+async def _handle_api_messages(request: web.Request) -> web.Response:
+    """Return chat history for a group."""
+    deps: HttpDeps = request.app["deps"]
+    jid = request.query.get("jid", "")
+    if not jid:
+        return web.json_response({"error": "jid parameter required"}, status=400)
+    limit = int(request.query.get("limit", "50"))
+    messages = await deps.get_messages(jid, limit)
+    return web.json_response(
+        [
+            {
+                "sender_name": m.sender_name,
+                "content": m.content,
+                "timestamp": m.timestamp,
+                "is_from_me": m.is_from_me,
+            }
+            for m in messages
+        ]
+    )
+
+
+async def _handle_api_send(request: web.Request) -> web.Response:
+    """Send a message from the TUI client."""
+    deps: HttpDeps = request.app["deps"]
+    body = await request.json()
+    jid = body.get("jid", "")
+    content = body.get("content", "")
+    if not jid or not content:
+        return web.json_response({"error": "jid and content required"}, status=400)
+    await deps.send_user_message(jid, content)
+    return web.json_response({"status": "ok"})
+
+
+async def _handle_api_events(request: web.Request) -> web.StreamResponse:
+    """SSE stream for real-time events (messages, agent activity)."""
+    deps: HttpDeps = request.app["deps"]
+
+    response = web.StreamResponse(
+        status=200,
+        reason="OK",
+        headers={
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
+    await response.prepare(request)
+
+    queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+    async def on_event(event: dict[str, Any]) -> None:
+        await queue.put(event)
+
+    unsubscribe = deps.subscribe_events(on_event)
+
+    try:
+        while True:
+            event = await queue.get()
+            data = json.dumps(event)
+            await response.write(f"data: {data}\n\n".encode())
+    except (asyncio.CancelledError, ConnectionResetError):
+        pass
+    finally:
+        unsubscribe()
+
+    return response
+
+
+# ------------------------------------------------------------------
+# Server setup
+# ------------------------------------------------------------------
+
+
 async def start_http_server(deps: HttpDeps) -> web.AppRunner:
     """Create, start, and return the HTTP server runner."""
     app = web.Application()
     app["deps"] = deps
     app.router.add_get("/health", _handle_health)
     app.router.add_post("/deploy", _handle_deploy)
+    app.router.add_get("/api/groups", _handle_api_groups)
+    app.router.add_get("/api/messages", _handle_api_messages)
+    app.router.add_post("/api/send", _handle_api_send)
+    app.router.add_get("/api/events", _handle_api_events)
 
     runner = web.AppRunner(app)
     await runner.setup()
