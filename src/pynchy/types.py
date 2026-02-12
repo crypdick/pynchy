@@ -36,6 +36,13 @@ class ContainerConfig:
     additional_mounts: list[AdditionalMount] = field(default_factory=list)
     timeout: float | None = None  # Seconds (default: 300)
 
+    @classmethod
+    def from_dict(cls, raw: dict) -> ContainerConfig:
+        return cls(
+            additional_mounts=[AdditionalMount(**m) for m in raw.get("additional_mounts", [])],
+            timeout=raw.get("timeout"),
+        )
+
 
 @dataclass
 class RegisteredGroup:

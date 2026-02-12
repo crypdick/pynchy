@@ -10,10 +10,9 @@ import json
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Protocol
+from zoneinfo import ZoneInfo
 
 from croniter import croniter
-
-from zoneinfo import ZoneInfo
 
 from pynchy.config import (
     ASSISTANT_NAME,
@@ -24,7 +23,7 @@ from pynchy.config import (
 )
 from pynchy.db import create_task, delete_task, get_task_by_id, update_task
 from pynchy.logger import logger
-from pynchy.types import RegisteredGroup
+from pynchy.types import ContainerConfig, RegisteredGroup
 
 
 class IpcDeps(Protocol):
@@ -352,7 +351,9 @@ async def process_task_ipc(
                         folder=folder,
                         trigger=trigger,
                         added_at=datetime.now(UTC).isoformat(),
-                        container_config=data.get("containerConfig"),
+                        container_config=ContainerConfig.from_dict(data["containerConfig"])
+                        if data.get("containerConfig")
+                        else None,
                     ),
                 )
             else:
