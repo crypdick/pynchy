@@ -78,26 +78,26 @@ class TestFormatMessages:
 
 class TestTriggerPattern:
     def test_matches_at_name_at_start(self):
-        assert TRIGGER_PATTERN.search("@Andy hello")
+        assert TRIGGER_PATTERN.search("@pynchy hello")
 
     def test_matches_case_insensitively(self):
-        assert TRIGGER_PATTERN.search("@andy hello")
-        assert TRIGGER_PATTERN.search("@ANDY hello")
+        assert TRIGGER_PATTERN.search("@Pynchy hello")
+        assert TRIGGER_PATTERN.search("@PYNCHY hello")
 
     def test_does_not_match_when_not_at_start(self):
-        assert not TRIGGER_PATTERN.search("hello @Andy")
+        assert not TRIGGER_PATTERN.search("hello @pynchy")
 
     def test_does_not_match_partial_name(self):
-        assert not TRIGGER_PATTERN.search("@Andrew hello")
+        assert not TRIGGER_PATTERN.search("@pynchybot hello")
 
     def test_matches_with_word_boundary_before_apostrophe(self):
-        assert TRIGGER_PATTERN.search("@Andy's thing")
+        assert TRIGGER_PATTERN.search("@pynchy's thing")
 
     def test_matches_name_alone(self):
-        assert TRIGGER_PATTERN.search("@Andy")
+        assert TRIGGER_PATTERN.search("@pynchy")
 
     def test_matches_with_leading_whitespace_after_trim(self):
-        assert TRIGGER_PATTERN.search("@Andy hey".strip())
+        assert TRIGGER_PATTERN.search("@pynchy hey".strip())
 
 
 # --- stripInternalTags ---
@@ -189,7 +189,7 @@ class TestTriggerGating:
         assert not self._should_process(False, True, msgs)
 
     def test_non_main_processes_when_trigger_present(self, make_msg):
-        msgs = [make_msg(content="@Andy do something")]
+        msgs = [make_msg(content="@pynchy do something")]
         assert self._should_process(False, True, msgs)
 
     def test_non_main_with_requires_trigger_false_always_processes(self, make_msg):

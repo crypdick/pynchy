@@ -1,7 +1,7 @@
 """Mount security — validates additional mounts against an allowlist.
 
 Port of src/mount-security.ts.
-Allowlist location: ~/.config/nanoclaw/mount-allowlist.json
+Allowlist location: ~/.config/pynchy/mount-allowlist.json
 """
 
 from __future__ import annotations

@@ -9,7 +9,7 @@ import os
 import re
 from pathlib import Path
 
-ASSISTANT_NAME: str = os.environ.get("ASSISTANT_NAME", "Andy")
+ASSISTANT_NAME: str = os.environ.get("ASSISTANT_NAME", "pynchy")
 
 # Intervals in seconds (TS uses milliseconds)
 POLL_INTERVAL: float = 2.0
@@ -20,20 +20,24 @@ IPC_POLL_INTERVAL: float = 1.0
 PROJECT_ROOT: Path = Path.cwd()
 HOME_DIR: Path = Path(os.environ.get("HOME", "/Users/user"))
 
-MOUNT_ALLOWLIST_PATH: Path = HOME_DIR / ".config" / "nanoclaw" / "mount-allowlist.json"
+MOUNT_ALLOWLIST_PATH: Path = HOME_DIR / ".config" / "pynchy" / "mount-allowlist.json"
 STORE_DIR: Path = (PROJECT_ROOT / "store").resolve()
 GROUPS_DIR: Path = (PROJECT_ROOT / "groups").resolve()
 DATA_DIR: Path = (PROJECT_ROOT / "data").resolve()
 MAIN_GROUP_FOLDER: str = "main"
 
 # Container settings (time values converted from ms to seconds)
-CONTAINER_IMAGE: str = os.environ.get("CONTAINER_IMAGE", "nanoclaw-agent:latest")
+CONTAINER_IMAGE: str = os.environ.get("CONTAINER_IMAGE", "pynchy-agent:latest")
 CONTAINER_TIMEOUT: float = int(os.environ.get("CONTAINER_TIMEOUT", "1800000")) / 1000
 CONTAINER_MAX_OUTPUT_SIZE: int = int(
     os.environ.get("CONTAINER_MAX_OUTPUT_SIZE", "10485760")
 )  # 10MB
 IDLE_TIMEOUT: float = int(os.environ.get("IDLE_TIMEOUT", "1800000")) / 1000  # 30min
 MAX_CONCURRENT_CONTAINERS: int = max(1, int(os.environ.get("MAX_CONCURRENT_CONTAINERS", "5")))
+
+# Sentinel markers for robust output parsing (must match agent-runner)
+OUTPUT_START_MARKER = "---PYNCHY_OUTPUT_START---"
+OUTPUT_END_MARKER = "---PYNCHY_OUTPUT_END---"
 
 
 def _escape_regex(s: str) -> str:

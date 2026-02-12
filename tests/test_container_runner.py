@@ -1,0 +1,496 @@
+"""Tests for the container runner.
+
+Port of src/container-runner.test.ts — uses FakeProcess to simulate subprocess behavior.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import json
+from pathlib import Path
+from typing import Any
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from pynchy.config import OUTPUT_END_MARKER, OUTPUT_START_MARKER
+from pynchy.container_runner import (
+    _build_container_args,
+    _build_volume_mounts,
+    _input_to_dict,
+    _parse_container_output,
+    _parse_final_output,
+    run_container_agent,
+    write_groups_snapshot,
+    write_tasks_snapshot,
+)
+from pynchy.types import (
+    ContainerInput,
+    RegisteredGroup,
+    VolumeMount,
+)
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+TEST_GROUP = RegisteredGroup(
+    name="Test Group",
+    folder="test-group",
+    trigger="@pynchy",
+    added_at="2024-01-01T00:00:00.000Z",
+)
+
+TEST_INPUT = ContainerInput(
+    prompt="Hello",
+    group_folder="test-group",
+    chat_jid="test@g.us",
+    is_main=False,
+)
+
+
+def _marker_wrap(output: dict[str, Any]) -> bytes:
+    """Wrap a dict as sentinel-marked output bytes."""
+    payload = f"{OUTPUT_START_MARKER}\n{json.dumps(output)}\n{OUTPUT_END_MARKER}\n"
+    return payload.encode()
+
+
+class FakeProcess:
+    """Simulates asyncio.subprocess.Process for testing."""
+
+    def __init__(self) -> None:
+        self.stdin = FakeStdin()
+        self.stdout = asyncio.StreamReader()
+        self.stderr = asyncio.StreamReader()
+        self._returncode: int | None = None
+        self._wait_event = asyncio.Event()
+        self.pid = 12345
+        self._killed = False
+
+    def emit_stdout(self, data: bytes) -> None:
+        self.stdout.feed_data(data)
+
+    def emit_stderr(self, data: bytes) -> None:
+        self.stderr.feed_data(data)
+
+    def close(self, code: int = 0) -> None:
+        """Simulate process exit."""
+        self._returncode = code
+        self.stdout.feed_eof()
+        self.stderr.feed_eof()
+        self._wait_event.set()
+
+    async def wait(self) -> int:
+        await self._wait_event.wait()
+        return self._returncode  # type: ignore[return-value]
+
+    def kill(self) -> None:
+        self._killed = True
+
+    @property
+    def returncode(self) -> int | None:
+        return self._returncode
+
+
+class FakeStdin:
+    """Minimal stdin mock that accepts writes and close."""
+
+    def __init__(self) -> None:
+        self.data = b""
+        self.closed = False
+
+    def write(self, data: bytes) -> None:
+        self.data += data
+
+    def close(self) -> None:
+        self.closed = True
+
+
+# ---------------------------------------------------------------------------
+# Unit tests — pure helpers
+# ---------------------------------------------------------------------------
+
+
+class TestInputSerialization:
+    def test_basic_fields_camel_case(self):
+        inp = ContainerInput(
+            prompt="hi",
+            group_folder="my-group",
+            chat_jid="chat@g.us",
+            is_main=True,
+        )
+        d = _input_to_dict(inp)
+        assert d == {
+            "prompt": "hi",
+            "groupFolder": "my-group",
+            "chatJid": "chat@g.us",
+            "isMain": True,
+        }
+
+    def test_optional_fields_included_when_set(self):
+        inp = ContainerInput(
+            prompt="hi",
+            group_folder="g",
+            chat_jid="c",
+            is_main=False,
+            session_id="sess-1",
+            is_scheduled_task=True,
+        )
+        d = _input_to_dict(inp)
+        assert d["sessionId"] == "sess-1"
+        assert d["isScheduledTask"] is True
+
+    def test_optional_fields_omitted_when_default(self):
+        inp = ContainerInput(prompt="hi", group_folder="g", chat_jid="c", is_main=False)
+        d = _input_to_dict(inp)
+        assert "sessionId" not in d
+        assert "isScheduledTask" not in d
+
+
+class TestOutputParsing:
+    def test_parses_camel_case_json(self):
+        out = _parse_container_output(
+            json.dumps({
+                "status": "success",
+                "result": "done",
+                "newSessionId": "s1",
+            })
+        )
+        assert out.status == "success"
+        assert out.result == "done"
+        assert out.new_session_id == "s1"
+
+    def test_parses_error_output(self):
+        out = _parse_container_output(json.dumps({"status": "error", "error": "boom"}))
+        assert out.status == "error"
+        assert out.error == "boom"
+        assert out.result is None
+
+
+class TestContainerArgs:
+    def test_readonly_uses_mount_flag(self):
+        mounts = [VolumeMount("/host/path", "/container/path", readonly=True)]
+        args = _build_container_args(mounts, "test-container")
+        assert "--mount" in args
+        assert any("readonly" in a for a in args)
+        assert "-v" not in args[args.index("--mount") :]  # no -v after --mount for this mount
+
+    def test_readwrite_uses_v_flag(self):
+        mounts = [VolumeMount("/host/path", "/container/path", readonly=False)]
+        args = _build_container_args(mounts, "test-container")
+        assert "-v" in args
+        assert "/host/path:/container/path" in args
+
+    def test_includes_name_and_image(self):
+        args = _build_container_args([], "my-container")
+        assert args[:5] == ["run", "-i", "--rm", "--name", "my-container"]
+        # Last arg is the image
+        assert args[-1].endswith("-agent:latest")
+
+
+class TestLegacyParsing:
+    def test_extracts_between_markers(self):
+        stdout = f"noise\n{OUTPUT_START_MARKER}\n" + json.dumps({
+            "status": "success",
+            "result": "hello",
+        }) + f"\n{OUTPUT_END_MARKER}\nmore noise"
+        result = _parse_final_output(stdout, "test", "", 100)
+        assert result.status == "success"
+        assert result.result == "hello"
+
+    def test_returns_error_on_invalid_json(self):
+        result = _parse_final_output("not json at all", "test", "", 100)
+        assert result.status == "error"
+        assert "Failed to parse" in (result.error or "")
+
+
+# ---------------------------------------------------------------------------
+# Mount building tests (require tmp dirs)
+# ---------------------------------------------------------------------------
+
+
+class TestMountBuilding:
+    def test_main_group_has_project_mount(self, tmp_path: Path):
+        with (
+            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
+            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+        ):
+            (tmp_path / "groups" / "main").mkdir(parents=True)
+            group = RegisteredGroup(
+                name="Main", folder="main", trigger="always", added_at="2024-01-01"
+            )
+            mounts = _build_volume_mounts(group, is_main=True)
+
+            paths = [m.container_path for m in mounts]
+            assert "/workspace/project" in paths
+            assert "/workspace/group" in paths
+            # Main should NOT have /workspace/global
+            assert "/workspace/global" not in paths
+
+    def test_nonmain_group_has_global_mount_when_exists(self, tmp_path: Path):
+        with (
+            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
+            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+        ):
+            (tmp_path / "groups" / "other").mkdir(parents=True)
+            (tmp_path / "groups" / "global").mkdir(parents=True)
+            group = RegisteredGroup(
+                name="Other", folder="other", trigger="@pynchy", added_at="2024-01-01"
+            )
+            mounts = _build_volume_mounts(group, is_main=False)
+
+            paths = [m.container_path for m in mounts]
+            # Non-main should NOT have /workspace/project
+            assert "/workspace/project" not in paths
+            assert "/workspace/group" in paths
+            assert "/workspace/global" in paths
+            # Global mount should be readonly
+            global_mount = next(m for m in mounts if m.container_path == "/workspace/global")
+            assert global_mount.readonly is True
+
+
+# ---------------------------------------------------------------------------
+# Integration tests — run_container_agent with FakeProcess
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def fake_proc():
+    """Must be async so StreamReader is created on the test's event loop."""
+    return FakeProcess()
+
+
+def _patch_subprocess(fake_proc: FakeProcess):
+    """Patch asyncio.create_subprocess_exec to return our fake process."""
+
+    async def _fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
+        return fake_proc
+
+    return patch("pynchy.container_runner.asyncio.create_subprocess_exec", _fake_create)
+
+
+@contextlib.contextmanager
+def _patch_dirs(tmp_path: Path):
+    """Patch directory constants to use tmp_path."""
+    with (
+        patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+        patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
+        patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+    ):
+        yield
+
+
+class TestRunContainerAgent:
+    async def test_normal_exit_with_streaming_output(
+        self, fake_proc: FakeProcess, tmp_path: Path
+    ):
+        on_output = AsyncMock()
+
+        with _patch_subprocess(fake_proc), _patch_dirs(tmp_path):
+            # Schedule output + close after a tiny delay
+            async def _driver():
+                await asyncio.sleep(0.01)
+                fake_proc.emit_stdout(_marker_wrap({
+                    "status": "success",
+                    "result": "Here is my response",
+                    "newSessionId": "session-123",
+                }))
+                await asyncio.sleep(0.01)
+                fake_proc.close(0)
+
+            driver = asyncio.create_task(_driver())
+            result = await run_container_agent(
+                TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None, on_output=on_output
+            )
+            await driver
+
+        assert result.status == "success"
+        assert result.new_session_id == "session-123"
+        on_output.assert_called_once()
+        call_arg = on_output.call_args[0][0]
+        assert call_arg.result == "Here is my response"
+
+    async def test_nonzero_exit_is_error(
+        self, fake_proc: FakeProcess, tmp_path: Path
+    ):
+        with _patch_subprocess(fake_proc), _patch_dirs(tmp_path):
+
+            async def _driver():
+                await asyncio.sleep(0.01)
+                fake_proc.emit_stderr(b"something went wrong\n")
+                await asyncio.sleep(0.01)
+                fake_proc.close(1)
+
+            driver = asyncio.create_task(_driver())
+            result = await run_container_agent(
+                TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None
+            )
+            await driver
+
+        assert result.status == "error"
+        assert "code 1" in (result.error or "")
+        assert "something went wrong" in (result.error or "")
+
+    async def test_legacy_mode_parses_stdout(
+        self, fake_proc: FakeProcess, tmp_path: Path
+    ):
+        """Without on_output, final output is parsed from accumulated stdout."""
+        with _patch_subprocess(fake_proc), _patch_dirs(tmp_path):
+
+            async def _driver():
+                await asyncio.sleep(0.01)
+                fake_proc.emit_stdout(_marker_wrap({
+                    "status": "success",
+                    "result": "legacy result",
+                }))
+                await asyncio.sleep(0.01)
+                fake_proc.close(0)
+
+            driver = asyncio.create_task(_driver())
+            # No on_output → legacy mode
+            result = await run_container_agent(
+                TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None
+            )
+            await driver
+
+        assert result.status == "success"
+        assert result.result == "legacy result"
+
+    async def test_timeout_with_short_timeout(
+        self, fake_proc: FakeProcess, tmp_path: Path
+    ):
+        """Test real timeout behavior with very short timeout values."""
+        async def _fake_stop(proc: Any, name: str) -> None:
+            if hasattr(proc, "close"):
+                proc.close(137)
+
+        with (
+            _patch_subprocess(fake_proc),
+            _patch_dirs(tmp_path),
+            # IDLE_TIMEOUT=-29.9 so max(0.1, -29.9+30.0)=max(0.1, 0.1)=0.1s
+            patch("pynchy.container_runner.IDLE_TIMEOUT", -29.9),
+            patch("pynchy.container_runner.CONTAINER_TIMEOUT", 0.1),
+            patch("pynchy.container_runner._graceful_stop", _fake_stop),
+        ):
+            # Don't emit any output — let it timeout
+            result = await run_container_agent(
+                TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None, on_output=AsyncMock()
+            )
+
+        assert result.status == "error"
+        assert "timed out" in (result.error or "")
+
+    async def test_timeout_after_output_with_short_timeout(
+        self, fake_proc: FakeProcess, tmp_path: Path
+    ):
+        """Timeout after streaming output should be idle cleanup (success)."""
+        on_output = AsyncMock()
+
+        async def _fake_stop(proc: Any, name: str) -> None:
+            if hasattr(proc, "close"):
+                proc.close(137)
+
+        with (
+            _patch_subprocess(fake_proc),
+            _patch_dirs(tmp_path),
+            patch("pynchy.container_runner.IDLE_TIMEOUT", -29.9),
+            patch("pynchy.container_runner.CONTAINER_TIMEOUT", 0.1),
+            patch("pynchy.container_runner._graceful_stop", _fake_stop),
+        ):
+
+            async def _driver():
+                await asyncio.sleep(0.01)
+                fake_proc.emit_stdout(_marker_wrap({
+                    "status": "success",
+                    "result": "response",
+                    "newSessionId": "s-99",
+                }))
+                # Don't close — let timeout fire after the short period
+
+            driver = asyncio.create_task(_driver())
+            result = await run_container_agent(
+                TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None, on_output=on_output
+            )
+            await driver
+
+        # Had streaming output → idle cleanup → success
+        assert result.status == "success"
+        assert result.new_session_id == "s-99"
+
+    async def test_stdout_truncation(
+        self, fake_proc: FakeProcess, tmp_path: Path
+    ):
+        """Exceeding CONTAINER_MAX_OUTPUT_SIZE doesn't crash."""
+        with (
+            _patch_subprocess(fake_proc),
+            _patch_dirs(tmp_path),
+            patch("pynchy.container_runner.CONTAINER_MAX_OUTPUT_SIZE", 100),
+        ):
+
+            async def _driver():
+                await asyncio.sleep(0.01)
+                # Emit more than 100 bytes
+                fake_proc.emit_stdout(b"x" * 200)
+                await asyncio.sleep(0.01)
+                fake_proc.close(0)
+
+            driver = asyncio.create_task(_driver())
+            # Should not crash
+            result = await run_container_agent(
+                TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None
+            )
+            await driver
+
+        # No markers found, fallback parse fails → error
+        assert result.status == "error"
+
+
+# ---------------------------------------------------------------------------
+# Snapshot tests
+# ---------------------------------------------------------------------------
+
+
+class TestTasksSnapshot:
+    def test_main_sees_all_tasks(self, tmp_path: Path):
+        with patch("pynchy.container_runner.DATA_DIR", tmp_path):
+            tasks = [
+                {"groupFolder": "main", "id": "t1"},
+                {"groupFolder": "other", "id": "t2"},
+            ]
+            write_tasks_snapshot("main", True, tasks)
+            result = json.loads((tmp_path / "ipc" / "main" / "current_tasks.json").read_text())
+            assert len(result) == 2
+
+    def test_nonmain_sees_only_own_tasks(self, tmp_path: Path):
+        with patch("pynchy.container_runner.DATA_DIR", tmp_path):
+            tasks = [
+                {"groupFolder": "main", "id": "t1"},
+                {"groupFolder": "other", "id": "t2"},
+            ]
+            write_tasks_snapshot("other", False, tasks)
+            result = json.loads((tmp_path / "ipc" / "other" / "current_tasks.json").read_text())
+            assert len(result) == 1
+            assert result[0]["id"] == "t2"
+
+
+class TestGroupsSnapshot:
+    def test_main_sees_all_groups(self, tmp_path: Path):
+        with patch("pynchy.container_runner.DATA_DIR", tmp_path):
+            groups = [{"jid": "a@g.us"}, {"jid": "b@g.us"}]
+            write_groups_snapshot("main", True, groups, {"a@g.us", "b@g.us"})
+            result = json.loads(
+                (tmp_path / "ipc" / "main" / "available_groups.json").read_text()
+            )
+            assert len(result["groups"]) == 2
+
+    def test_nonmain_sees_no_groups(self, tmp_path: Path):
+        with patch("pynchy.container_runner.DATA_DIR", tmp_path):
+            groups = [{"jid": "a@g.us"}]
+            write_groups_snapshot("other", False, groups, {"a@g.us"})
+            result = json.loads(
+                (tmp_path / "ipc" / "other" / "available_groups.json").read_text()
+            )
+            assert len(result["groups"]) == 0
