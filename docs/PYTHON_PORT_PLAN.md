@@ -1,12 +1,12 @@
-# NanoClaw → NanoClawPy: Python Port Roadmap
+# Pynchy: Python Port Roadmap
 
-> **What this is:** A design doc and checklist for porting the NanoClaw TypeScript codebase to Python. Future agents should treat this as a living guide — check off completed work, update notes, and hand off to the next agent. If something here doesn't make sense when you're actually writing code, trust your judgement. This was written before any Python code existed, so there will be surprises.
+> **What this is:** A design doc and checklist for porting the Pynchy TypeScript codebase to Python. Future agents should treat this as a living guide — check off completed work, update notes, and hand off to the next agent. If something here doesn't make sense when you're actually writing code, trust your judgement. This was written before any Python code existed, so there will be surprises.
 
 ---
 
 ## The Big Picture
 
-NanoClaw is a ~5K-line TypeScript/Node.js app that connects to WhatsApp, routes messages to Claude agents running in isolated Linux containers (Apple Container on macOS), and manages scheduling, IPC, and per-group memory. The Python port should mirror the module structure closely.
+Pynchy is a ~5K-line TypeScript/Node.js app that connects to WhatsApp, routes messages to Claude agents running in isolated Linux containers (Apple Container on macOS), and manages scheduling, IPC, and per-group memory. The Python port should mirror the module structure closely.
 
 **Two separate codebases live in this repo:**
 1. **Host process** (`src/`) — the orchestrator that runs on the user's Mac
@@ -149,17 +149,17 @@ Phases are ordered by dependency. Check the box when complete and add a brief no
 > Note: Scheduler loop and _run_task implemented. Container runner integration is a stub pending Phase 6.
 
 ### Phase 9: WhatsApp Channel (neonize)
-- [ ] **channels/whatsapp.py** — `WhatsAppChannel` class implementing `Channel` protocol.
-- [ ] **auth/whatsapp.py** — QR code auth flow using neonize.
-- [ ] Message receive: filter own messages, store to DB, notify metadata for discovery.
-- [ ] Message send: queue when disconnected, flush on reconnect.
-- [ ] Group sync: fetch metadata periodically (24h cache).
-- [ ] Reconnection: handle disconnects gracefully.
+- [x] **channels/whatsapp.py** — `WhatsAppChannel` class implementing `Channel` protocol.
+- [x] **auth/whatsapp.py** — QR code auth flow using neonize.
+- [x] Message receive: filter own messages, store to DB, notify metadata for discovery.
+- [x] Message send: queue when disconnected, flush on reconnect.
+- [x] Group sync: fetch metadata periodically (24h cache).
+- [x] Reconnection: handle disconnects gracefully.
 
-> **Warning:** neonize's API is fundamentally different from baileys. This is NOT a 1:1 port. Study neonize's docs and examples before starting. Key unknowns: LID-to-phone JID translation, QR callback mechanism, reconnection behavior, group metadata API surface. Auth state is not portable from baileys — users will need to re-authenticate.
+> Note: neonize's API differs substantially from baileys. Key differences: auth is SQLite-based (not file-based), reconnection is handled internally by whatsmeow (no manual retry logic needed), JIDs are protobuf objects (Jid2String() for conversion), events are separate typed classes. Uses NewAClient for asyncio integration. ChatPresence enum names are prefixed (CHAT_PRESENCE_COMPOSING, not COMPOSING). is_logged_in is async on NewAClient.
 
 ### Phase 10: Main Orchestrator
-- [ ] **app.py** — `NanoClawApp` class (replaces module-level globals from `index.ts`).
+- [ ] **app.py** — `PynchyApp` class (replaces module-level globals from `index.ts`).
 - [ ] State: `last_timestamp`, `sessions`, `registered_groups`, `last_agent_timestamp`, `queue`, `whatsapp`
 - [ ] `run()`: init DB → load state → connect WhatsApp → start scheduler + IPC + message loop
 - [ ] Message loop (2s poll): fetch new messages → check triggers → dispatch to queue
@@ -167,7 +167,7 @@ Phases are ordered by dependency. Check the box when complete and add a brief no
 - [ ] Crash recovery: `recover_pending_messages()` on startup
 - [ ] Shutdown: SIGTERM/SIGINT → `queue.shutdown()` → `whatsapp.disconnect()` → exit
 - [ ] `ensure_container_system_running()`: check Apple Container, kill orphans
-- [ ] **`__main__.py`**: `asyncio.run(NanoClawApp().run())`
+- [ ] **`__main__.py`**: `asyncio.run(PynchyApp().run())`
 - [ ] Port tests from `routing.test.ts`
 
 ### Phase 11: Container Agent Runner (Python)
@@ -227,7 +227,7 @@ Phase 11 (container agent runner) is independent — build in parallel with ever
 
 These are ideas that are explicitly **not part of the Python port** but worth tracking for later.
 
-- **Agent-side async task dispatch.** Agents running inside containers should be able to fire off tasks in separate sandboxed environments (e.g., a browser task, a code execution job) and get results back asynchronously. Think of it as a skill that lets the agent say "run this in a fresh sandbox and give me the result." This could be built as an MCP tool available to the agent runner, backed by something like OpenSandbox, Docker, or a lightweight job queue. The NanoClaw host harness itself should keep using containers directly — this is about giving agents *inside* those containers the ability to fan out work.
+- **Agent-side async task dispatch.** Agents running inside containers should be able to fire off tasks in separate sandboxed environments (e.g., a browser task, a code execution job) and get results back asynchronously. Think of it as a skill that lets the agent say "run this in a fresh sandbox and give me the result." This could be built as an MCP tool available to the agent runner, backed by something like OpenSandbox, Docker, or a lightweight job queue. The Pynchy host harness itself should keep using containers directly — this is about giving agents *inside* those containers the ability to fan out work.
 
 
 ---
@@ -244,7 +244,7 @@ These are ideas that are explicitly **not part of the Python port** but worth tr
 
 5. **The WhatsApp channel is the wild card.** neonize is the best Python option but it's not baileys. Expect to spend time reading neonize source code and examples. The `Channel` protocol interface is your safety net — as long as `WhatsAppChannel` implements it correctly, the rest of the system doesn't care how it works internally.
 
-6. **The container agent runner is a separate world.** It runs inside a Linux VM, has its own dependencies, and communicates only via stdin/stdout JSON and IPC files. You can develop and test it independently. The sentinel markers (`---NANOCLAW_OUTPUT_START---` / `---NANOCLAW_OUTPUT_END---`) are the contract between host and container.
+6. **The container agent runner is a separate world.** It runs inside a Linux VM, has its own dependencies, and communicates only via stdin/stdout JSON and IPC files. You can develop and test it independently. The sentinel markers (`---PYNCHY_OUTPUT_START---` / `---PYNCHY_OUTPUT_END---`) are the contract between host and container.
 
 7. **Don't over-abstract.** The TypeScript codebase is deliberately simple. Resist the urge to add extra layers, base classes, or frameworks. If the TS version does something in 20 lines, the Python should too.
 

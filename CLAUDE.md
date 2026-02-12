@@ -1,6 +1,6 @@
 # Pynchy
 
-Personal Claude assistant (Python port of NanoClaw). See [README.md](README.md) for philosophy and setup. See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for architecture decisions.
+Personal Claude assistant. See [README.md](README.md) for philosophy and setup. See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for architecture decisions.
 
 ## Quick Context
 
@@ -44,8 +44,8 @@ uvx pre-commit run --all-files  # Run pre-commit hooks
 
 Service management:
 ```bash
-launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
-launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
+launchctl load ~/Library/LaunchAgents/com.pynchy.plist
+launchctl unload ~/Library/LaunchAgents/com.pynchy.plist
 ```
 
 ## Container Build Cache
@@ -57,4 +57,4 @@ container builder stop && container builder rm && container builder start
 ./container/build.sh
 ```
 
-Always verify after rebuild: `container run -i --rm --entrypoint wc nanoclaw-agent:latest -l /app/src/index.ts`
+Always verify after rebuild: `container run -i --rm --entrypoint wc pynchy-agent:latest -l /app/src/index.ts`

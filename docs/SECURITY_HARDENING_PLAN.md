@@ -1,8 +1,8 @@
-# NanoClawPy: Architecture Design — Port + Security Isolation
+# Pynchy: Architecture Design — Port + Security Isolation
 
 ## Context
 
-We want to port NanoClaw from TypeScript to Python and then add a security isolation layer for multi-workspace agents with scoped privileges (banking, passwords, email, calendar, etc.).
+We want to port Pynchy from TypeScript to Python and then add a security isolation layer for multi-workspace agents with scoped privileges (banking, passwords, email, calendar, etc.).
 
 Two separate efforts:
 
@@ -49,7 +49,7 @@ The "policy check" tier uses a simple rules engine (not an LLM): e.g., "create_e
 
 ### How This Extends the Existing Pattern
 
-Current NanoClaw already works this way for messaging:
+Current Pynchy already works this way for messaging:
 
 1. Agent calls `send_message` MCP tool
 2. MCP server writes IPC file to `/workspace/ipc/output/`
