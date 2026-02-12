@@ -6,22 +6,16 @@
   <em>Pynchy</em> — Personal Claude assistant that runs securely in containers.
 </p>
 
-<p align="center">
-  <a href="https://discord.gg/VGWXrf8x"><img src="https://img.shields.io/discord/1470188214710046894?label=Discord&logo=discord&v=2" alt="Discord"></a>
-</p>
+> **Python port of [NanoClaw](https://github.com/qwibitai/nanoclaw).** Huge thanks to [@gavrielc](https://github.com/gavrielc) for creating the original project — Pynchy wouldn't exist without it. This port rewrites the codebase in Python while keeping the same philosophy and architecture.
 
-**New:** First AI assistant to support [Agent Swarms](https://code.claude.com/docs/en/agent-teams). Spin up teams of agents that collaborate in your chat.
+## Why This Exists
 
-## Why I Built This
-
-[OpenClaw](https://github.com/openclaw/openclaw) is an impressive project with a great vision. But I can't sleep well running software I don't understand with access to my life. OpenClaw has 52+ modules, 8 config management files, 45+ dependencies, and abstractions for 15 channel providers. Security is application-level (allowlists, pairing codes) rather than OS isolation. Everything runs in one Node process with shared memory.
-
-Pynchy gives you the same core functionality in a codebase you can understand in 8 minutes. One process. A handful of files. Agents run in actual Linux containers with filesystem isolation, not behind permission checks.
+Pynchy gives you a personal AI assistant in a codebase you can understand in 8 minutes. One process. A handful of files. Agents run in actual Linux containers with filesystem isolation, not behind permission checks.
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/gavrielc/pynchy.git
+git clone https://github.com/crypdick/pynchy.git
 cd pynchy
 claude
 ```
@@ -30,9 +24,9 @@ Then run `/setup`. Claude Code handles everything: dependencies, authentication,
 
 ## Philosophy
 
-**Small enough to understand.** One process, a few source files. No microservices, no message queues, no abstraction layers. Have Claude Code walk you through it.
+**Small enough to understand.** One Python process, a few source files. No microservices, no message queues, no abstraction layers. Have Claude Code walk you through it.
 
-**Secure by isolation.** Agents run in Linux containers (Apple Container on macOS, or Docker). They can only see what's explicitly mounted. Bash access is safe because commands run inside the container, not on your host.
+**Secure by isolation.** Agents run in Linux containers (Docker, or Apple Container on macOS). They can only see what's explicitly mounted. Bash access is safe because commands run inside the container, not on your host.
 
 **Built for one user.** This isn't a framework. It's working software that fits my exact needs. You fork it and have Claude Code make it match your exact needs.
 
@@ -51,8 +45,8 @@ Then run `/setup`. Claude Code handles everything: dependencies, authentication,
 - **Main channel** - Your private channel (self-chat) for admin control; every other group is completely isolated
 - **Scheduled tasks** - Recurring jobs that run Claude and can message you back
 - **Web access** - Search and fetch content
-- **Container isolation** - Agents sandboxed in Apple Container (macOS) or Docker (macOS/Linux)
-- **Agent Swarms** - Spin up teams of specialized agents that collaborate on complex tasks (first personal AI assistant to support this)
+- **Container isolation** - Agents sandboxed in Docker (macOS/Linux) or Apple Container (macOS, untested)
+- **Agent Swarms** - Spin up teams of specialized agents that collaborate on complex tasks
 - **Optional integrations** - Add Gmail (`/add-gmail`) and more via skills
 
 ## Usage
@@ -111,27 +105,28 @@ Skills we'd love to see:
 ## Requirements
 
 - macOS or Linux
-- Node.js 20+
+- Python 3.13+
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
 - [Claude Code](https://claude.ai/download)
-- [Apple Container](https://github.com/apple/container) (macOS) or [Docker](https://docker.com/products/docker-desktop) (macOS/Linux)
+- [Docker](https://docker.com/products/docker-desktop) (macOS/Linux) or [Apple Container](https://github.com/apple/container) (macOS, untested)
 
 ## Architecture
 
 ```
-WhatsApp (baileys) --> SQLite --> Polling loop --> Container (Claude Agent SDK) --> Response
+WhatsApp (neonize) --> SQLite --> Polling loop --> Container (Claude Agent SDK) --> Response
 ```
 
-Single Node.js process. Agents execute in isolated Linux containers with mounted directories. Per-group message queue with concurrency control. IPC via filesystem.
+Single Python process. Agents execute in isolated Linux containers with mounted directories. Per-group message queue with concurrency control. IPC via filesystem.
 
 Key files:
-- `src/index.ts` - Orchestrator: state, message loop, agent invocation
-- `src/channels/whatsapp.ts` - WhatsApp connection, auth, send/receive
-- `src/ipc.ts` - IPC watcher and task processing
-- `src/router.ts` - Message formatting and outbound routing
-- `src/group-queue.ts` - Per-group queue with global concurrency limit
-- `src/container-runner.ts` - Spawns streaming agent containers
-- `src/task-scheduler.ts` - Runs scheduled tasks
-- `src/db.ts` - SQLite operations (messages, groups, sessions, state)
+- `src/pynchy/app.py` - Orchestrator: state, message loop, agent invocation
+- `src/pynchy/channels/` - WhatsApp connection, auth, send/receive
+- `src/pynchy/ipc.py` - IPC watcher and task processing
+- `src/pynchy/router.py` - Message formatting and outbound routing
+- `src/pynchy/group_queue.py` - Per-group queue with global concurrency limit
+- `src/pynchy/container_runner.py` - Spawns streaming agent containers
+- `src/pynchy/task_scheduler.py` - Runs scheduled tasks
+- `src/pynchy/db.py` - SQLite operations (async, aiosqlite)
 - `groups/*/CLAUDE.md` - Per-group memory
 
 ## FAQ
@@ -142,11 +137,11 @@ Because I use WhatsApp. Fork it and run a skill to change it. That's the whole p
 
 **Why Apple Container instead of Docker?**
 
-On macOS, Apple Container is lightweight, fast, and optimized for Apple silicon. But Docker is also fully supported—during `/setup`, you can choose which runtime to use. On Linux, Docker is used automatically.
+Docker is the default and tested runtime. Apple Container support exists but is untested in the Python port. On macOS, Apple Container is lightweight and optimized for Apple silicon—during `/setup`, you can choose which runtime to use.
 
 **Can I run this on Linux?**
 
-Yes. Run `/setup` and it will automatically configure Docker as the container runtime. Thanks to [@dotsetgreg](https://github.com/dotsetgreg) for contributing the `/convert-to-docker` skill.
+Yes. Run `/setup` and it will automatically configure Docker as the container runtime.
 
 **Is this secure?**
 
@@ -171,10 +166,6 @@ Security fixes, bug fixes, and clear improvements to the base configuration. Tha
 Everything else (new capabilities, OS compatibility, hardware support, enhancements) should be contributed as skills.
 
 This keeps the base system minimal and lets every user customize their installation without inheriting features they don't want.
-
-## Community
-
-Questions? Ideas? [Join the Discord](https://discord.gg/VGWXrf8x).
 
 ## License
 
