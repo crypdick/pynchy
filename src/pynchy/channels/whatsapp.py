@@ -143,7 +143,10 @@ class WhatsAppChannel:
 
         @self._client.event(MessageEv)
         async def on_message(_client: NewAClient, message: MessageEv) -> None:
-            await self._handle_message(message)
+            try:
+                await self._handle_message(message)
+            except Exception:
+                logger.exception("Unhandled error in message handler")
 
     async def _handle_message(self, message: MessageEv) -> None:
         """Process an incoming WhatsApp message."""
@@ -152,20 +155,33 @@ class WhatsAppChannel:
 
         # Get chat JID as string
         raw_jid = Jid2String(source.Chat)
+        logger.debug(
+            "MessageEv received",
+            raw_jid=raw_jid,
+            is_from_me=source.IsFromMe,
+            sender=Jid2String(source.Sender),
+        )
         if not raw_jid or raw_jid == "status@broadcast":
             return
 
         # Translate LID JID to phone JID if applicable
         chat_jid = self._translate_jid(raw_jid, source.Chat)
 
-        timestamp = datetime.fromtimestamp(info.Timestamp, tz=UTC).isoformat()
+        ts = info.Timestamp
+        if ts > 1e10:  # milliseconds → seconds
+            ts = ts / 1000
+        timestamp = datetime.fromtimestamp(ts, tz=UTC).isoformat()
 
         # Always notify about chat metadata for group discovery
-        self._on_chat_metadata(chat_jid, timestamp)
+        try:
+            self._on_chat_metadata(chat_jid, timestamp)
+        except Exception:
+            logger.exception("Failed to store chat metadata")
 
         # Only deliver full message for registered groups
         groups = self._registered_groups()
         if chat_jid not in groups:
+            logger.debug("Message from unregistered group, ignoring", chat_jid=chat_jid)
             return
 
         # Extract text content from various message types
@@ -182,17 +198,23 @@ class WhatsAppChannel:
         sender_jid = Jid2String(source.Sender)
         sender_name = info.Pushname or source.Sender.User or sender_jid.split("@")[0]
 
-        self._on_message(
-            chat_jid,
-            NewMessage(
-                id=info.ID,
-                chat_jid=chat_jid,
-                sender=sender_jid,
-                sender_name=sender_name,
-                content=content,
-                timestamp=timestamp,
-                is_from_me=source.IsFromMe,
-            ),
+        new_msg = NewMessage(
+            id=info.ID,
+            chat_jid=chat_jid,
+            sender=sender_jid,
+            sender_name=sender_name,
+            content=content,
+            timestamp=timestamp,
+            is_from_me=source.IsFromMe,
+        )
+        try:
+            self._on_message(chat_jid, new_msg)
+        except Exception:
+            logger.exception("Failed to store message")
+        logger.debug(
+            "Message processed",
+            chat_jid=chat_jid,
+            content=content[:100] if content else "<empty>",
         )
 
     def _translate_jid(self, jid_str: str, jid: JID) -> str:
