@@ -9,6 +9,16 @@ Input protocol:
 
 Stdout protocol:
   Each result is wrapped in OUTPUT_START_MARKER / OUTPUT_END_MARKER pairs.
+
+Known SDK differences from TypeScript:
+  - No resumeSessionAt: Python SDK only supports resume by session_id, not by
+    a specific message UUID within a session. Follow-up queries re-enter the
+    session from the end, not from a specific assistant turn.
+  - No mid-query message injection: TS uses a MessageStream (push-based
+    AsyncIterable) to pipe IPC messages into an active query. The Python SDK's
+    client.query()+receive_response() pattern processes messages between query
+    rounds instead. Follow-up messages are queued and handled in the next loop
+    iteration rather than injected live.
 """
 
 from __future__ import annotations

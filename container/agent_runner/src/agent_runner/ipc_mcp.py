@@ -16,7 +16,7 @@ from pathlib import Path
 from croniter import croniter
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import TextContent, Tool
+from mcp.types import CallToolResult, TextContent, Tool
 
 IPC_DIR = Path("/workspace/ipc")
 MESSAGES_DIR = IPC_DIR / "messages"
@@ -80,39 +80,71 @@ async def list_tools() -> list[Tool]:
                 "Schedule a recurring or one-time task. The task will run as a full agent "
                 "with access to all tools.\n\n"
                 "CONTEXT MODE - Choose based on task type:\n"
-                '• "group": Task runs in the group\'s conversation context, with access to '
-                "chat history.\n"
-                '• "isolated": Task runs in a fresh session with no conversation history.\n\n'
+                "\u2022 \"group\": Task runs in the group's conversation context, with access to "
+                "chat history. Use for tasks that need context about ongoing discussions, "
+                "user preferences, or recent interactions.\n"
+                "\u2022 \"isolated\": Task runs in a fresh session with no conversation history. "
+                "Use for independent tasks that don't need prior context. When using isolated "
+                "mode, include all necessary context in the prompt itself.\n\n"
+                "If unsure which mode to use, you can ask the user. Examples:\n"
+                "- \"Remind me about our discussion\" \u2192 group (needs conversation context)\n"
+                "- \"Check the weather every morning\" \u2192 isolated (self-contained task)\n"
+                "- \"Follow up on my request\" \u2192 group (needs to know what was requested)\n"
+                "- \"Generate a daily report\" \u2192 isolated (just needs instructions in prompt)\n\n"
+                "MESSAGING BEHAVIOR - The task agent's output is sent to the user or group. "
+                "It can also use send_message for immediate delivery, or wrap output in "
+                "<internal> tags to suppress it. Include guidance in the prompt about whether "
+                "the agent should:\n"
+                "\u2022 Always send a message (e.g., reminders, daily briefings)\n"
+                "\u2022 Only send a message when there's something to report (e.g., \"notify me if...\")\n"
+                "\u2022 Never send a message (background maintenance tasks)\n\n"
                 "SCHEDULE VALUE FORMAT (all times are LOCAL timezone):\n"
-                '• cron: Standard cron expression (e.g., "0 9 * * *" for daily at 9am)\n'
-                '• interval: Milliseconds between runs (e.g., "300000" for 5 minutes)\n'
-                '• once: Local time WITHOUT "Z" suffix (e.g., "2026-02-01T15:30:00")'
+                "\u2022 cron: Standard cron expression (e.g., \"*/5 * * * *\" for every 5 minutes, "
+                "\"0 9 * * *\" for daily at 9am LOCAL time)\n"
+                "\u2022 interval: Milliseconds between runs (e.g., \"300000\" for 5 minutes, "
+                "\"3600000\" for 1 hour)\n"
+                "\u2022 once: Local time WITHOUT \"Z\" suffix (e.g., \"2026-02-01T15:30:00\"). "
+                "Do NOT use UTC/Z suffix."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "prompt": {
                         "type": "string",
-                        "description": "What the agent should do when the task runs.",
+                        "description": (
+                            "What the agent should do when the task runs. "
+                            "For isolated mode, include all necessary context here."
+                        ),
                     },
                     "schedule_type": {
                         "type": "string",
                         "enum": ["cron", "interval", "once"],
-                        "description": "Schedule type.",
+                        "description": (
+                            "cron=recurring at specific times, "
+                            "interval=recurring every N ms, "
+                            "once=run once at specific time"
+                        ),
                     },
                     "schedule_value": {
                         "type": "string",
-                        "description": "Schedule value.",
+                        "description": (
+                            'cron: "*/5 * * * *" | interval: milliseconds like '
+                            '"300000" | once: local timestamp like '
+                            '"2026-02-01T15:30:00" (no Z suffix!)'
+                        ),
                     },
                     "context_mode": {
                         "type": "string",
                         "enum": ["group", "isolated"],
                         "default": "group",
-                        "description": "group=runs with chat history, isolated=fresh session.",
+                        "description": (
+                            "group=runs with chat history and memory, "
+                            "isolated=fresh session (include context in prompt)"
+                        ),
                     },
                     "target_group_jid": {
                         "type": "string",
-                        "description": "(Main group only) JID of the group to schedule for.",
+                        "description": "(Main group only) JID of the group to schedule the task for. Defaults to the current group.",
                     },
                 },
                 "required": ["prompt", "schedule_type", "schedule_value"],
@@ -228,11 +260,14 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 try:
                     croniter(schedule_value)
                 except (ValueError, KeyError):
-                    return [TextContent(
-                        type="text",
-                        text=f'Invalid cron: "{schedule_value}". '
-                        'Use format like "0 9 * * *" (daily 9am).',
-                    )]
+                    return CallToolResult(
+                        content=[TextContent(
+                            type="text",
+                            text=f'Invalid cron: "{schedule_value}". '
+                            'Use format like "0 9 * * *" (daily 9am) or "*/5 * * * *" (every 5 min).',
+                        )],
+                        isError=True,
+                    )
 
             elif schedule_type == "interval":
                 try:
@@ -240,22 +275,28 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     if ms <= 0:
                         raise ValueError
                 except (ValueError, TypeError):
-                    return [TextContent(
-                        type="text",
-                        text=f'Invalid interval: "{schedule_value}". '
-                        'Must be positive milliseconds (e.g., "300000").',
-                    )]
+                    return CallToolResult(
+                        content=[TextContent(
+                            type="text",
+                            text=f'Invalid interval: "{schedule_value}". '
+                            'Must be positive milliseconds (e.g., "300000" for 5 min).',
+                        )],
+                        isError=True,
+                    )
 
             elif schedule_type == "once":
                 from datetime import datetime
                 try:
                     datetime.fromisoformat(schedule_value)
                 except (ValueError, TypeError):
-                    return [TextContent(
-                        type="text",
-                        text=f'Invalid timestamp: "{schedule_value}". '
-                        'Use ISO 8601 format like "2026-02-01T15:30:00".',
-                    )]
+                    return CallToolResult(
+                        content=[TextContent(
+                            type="text",
+                            text=f'Invalid timestamp: "{schedule_value}". '
+                            'Use ISO 8601 format like "2026-02-01T15:30:00".',
+                        )],
+                        isError=True,
+                    )
 
             # Non-main groups can only schedule for themselves
             target_jid = (
@@ -351,10 +392,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
         case "register_group":
             if not is_main:
-                return [TextContent(
-                    type="text",
-                    text="Only the main group can register new groups.",
-                )]
+                return CallToolResult(
+                    content=[TextContent(
+                        type="text",
+                        text="Only the main group can register new groups.",
+                    )],
+                    isError=True,
+                )
 
             data = {
                 "type": "register_group",
