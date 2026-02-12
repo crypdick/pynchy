@@ -22,6 +22,7 @@ Single Python process that connects to WhatsApp, routes messages to Claude Agent
 | `src/pynchy/logger.py` | Structured logging (structlog) |
 | `groups/{name}/CLAUDE.md` | Per-group memory (isolated) |
 | `container/skills/agent-browser.md` | Browser automation tool (available to all agents via Bash) |
+| `docs/backlog/TODO.md` | Work item index — one-line items linking to plan files in status folders |
 
 ## Skills
 
