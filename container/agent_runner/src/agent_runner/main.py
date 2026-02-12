@@ -361,6 +361,7 @@ async def main() -> None:
             "Read", "Write", "Edit", "Glob", "Grep",
             "WebSearch", "WebFetch",
             "Task", "TaskOutput", "TaskStop",
+            "TeamCreate", "TeamDelete", "SendMessage",
             "TodoWrite", "ToolSearch", "Skill",
             "NotebookEdit",
             "mcp__pynchy__*",

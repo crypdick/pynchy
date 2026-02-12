@@ -315,7 +315,8 @@ class GroupQueue:
 
         active_containers: list[str] = []
         for _jid, state in self._groups.items():
-            if state.process and state.container_name:
+            proc_alive = getattr(state.process, "returncode", None) is None
+            if state.process and state.container_name and proc_alive:
                 active_containers.append(state.container_name)
 
         logger.info(

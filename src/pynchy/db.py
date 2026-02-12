@@ -7,6 +7,7 @@ Module-level connection, initialized by init_database().
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 
@@ -519,19 +520,7 @@ async def set_registered_group(jid: str, group: RegisteredGroup) -> None:
             group.folder,
             group.trigger,
             group.added_at,
-            json.dumps(
-                {
-                    "additional_mounts": [
-                        {
-                            "host_path": m.host_path,
-                            "container_path": m.container_path,
-                            "readonly": m.readonly,
-                        }
-                        for m in group.container_config.additional_mounts
-                    ],
-                    "timeout": group.container_config.timeout,
-                }
-            )
+            json.dumps(asdict(group.container_config))
             if group.container_config
             else None,
             1 if group.requires_trigger is None else (1 if group.requires_trigger else 0),
