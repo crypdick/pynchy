@@ -78,9 +78,9 @@ Phases are ordered by dependency. Check the box when complete and add a brief no
 - [x] Create `__init__.py`, `__main__.py` stubs
 - [x] Set up `pytest` with `conftest.py`, `ruff` for linting
 - [x] Update `.gitignore` for Python (`.venv/`, `__pycache__/`, `*.pyc`, `dist/`)
-- [x] Verify: `pip install -e .` works, `python -m pynchy` runs and exits cleanly
+- [x] Verify: `uv sync` works, `uv run python -m pynchy` runs and exits cleanly
 
-> Note: Used `hatchling` as build backend for src-layout support. `uv sync` instead of `pip install -e .`.
+> Note: Used `hatchling` as build backend for src-layout support. Use `uv sync` for deps, `uv run` to execute.
 
 ### Phase 1: Types, Config, Logger
 - [x] **types.py** — Port interfaces to dataclasses. Use `Protocol` for `Channel` interface.
@@ -189,7 +189,7 @@ Phases are ordered by dependency. Check the box when complete and add a brief no
 - [ ] Multi-group concurrency: multiple groups, verify queue limits
 - [ ] Graceful shutdown: SIGTERM handling
 - [ ] Crash recovery: kill mid-processing, restart, verify `recover_pending_messages()`
-- [ ] Update CLAUDE.md for Python commands (`pip install -e .`, `python -m pynchy`, `pytest`)
+- [x] Update CLAUDE.md for Python commands (`uv run python -m pynchy`, `uv run pytest`)
 - [ ] Update launchd plist for Python entrypoint
 
 ---
