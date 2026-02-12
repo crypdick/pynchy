@@ -1,7 +1,7 @@
 [project]
 name = "nanoclawpy"
 version = "0.1.0"
-description = "Add your description here"
+description = "Personal Claude assistant — Python port"
 readme = "README.md"
 requires-python = ">=3.13"
 # Do not edit these dependencies manually. Use `uv add` instead.
@@ -23,3 +23,22 @@ dev = [
     "pytest-mock>=3.15.1",
     "ruff>=0.15.0",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nanoclawpy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

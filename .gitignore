@@ -30,3 +30,13 @@ groups/global/*
 .vscode/
 
 agents-sdk-docs
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+.ruff_cache/
+.pytest_cache/
