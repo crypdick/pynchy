@@ -222,20 +222,22 @@ These are ideas that are explicitly **not part of the Python port** but worth tr
 
 ## Notes for Future Agents
 
-1. **Read the TypeScript first.** Before porting any module, read the original TS file completely. The code is well-written and the patterns are intentional.
+1. **Read the design docs first.** Before writing any code, read all the docs in `docs/`: `REQUIREMENTS.md` (philosophy and architecture decisions), `SPEC.md` (full technical specification), `SDK_DEEP_DIVE.md` (how the Claude Agent SDK works), `SECURITY.md` (trust model and security boundaries), and `DEBUG_CHECKLIST.md` (known issues). Skip `SECURITY_HARDENING_PLAN.md` — that's a post-port follow-up project, not part of the Python port. These docs define the spirit of the codebase. If your code doesn't match the philosophy described in `REQUIREMENTS.md`, it's wrong even if the tests pass.
 
-2. **Port tests alongside code.** Each phase has corresponding test files. Don't skip them — they catch real bugs and serve as the validation gate before moving on.
+2. **Read the TypeScript before porting.** Before porting any module, read the original TS file completely. The code is well-written and the patterns are intentional.
 
-3. **Keep this doc updated.** Check off phases as you complete them. If you diverge from the plan, add a brief note so the next agent knows what happened. Don't add verbose implementation details — keep it scannable.
+3. **Port tests alongside code.** Each phase has corresponding test files. Don't skip them — they catch real bugs and serve as the validation gate before moving on.
 
-4. **The WhatsApp channel is the wild card.** neonize is the best Python option but it's not baileys. Expect to spend time reading neonize source code and examples. The `Channel` protocol interface is your safety net — as long as `WhatsAppChannel` implements it correctly, the rest of the system doesn't care how it works internally.
+4. **Keep this doc updated.** Check off phases as you complete them. If you diverge from the plan, add a brief note so the next agent knows what happened. Don't add verbose implementation details — keep it scannable.
 
-5. **The container agent runner is a separate world.** It runs inside a Linux VM, has its own dependencies, and communicates only via stdin/stdout JSON and IPC files. You can develop and test it independently. The sentinel markers (`---NANOCLAW_OUTPUT_START---` / `---NANOCLAW_OUTPUT_END---`) are the contract between host and container.
+5. **The WhatsApp channel is the wild card.** neonize is the best Python option but it's not baileys. Expect to spend time reading neonize source code and examples. The `Channel` protocol interface is your safety net — as long as `WhatsAppChannel` implements it correctly, the rest of the system doesn't care how it works internally.
 
-6. **Don't over-abstract.** The TypeScript codebase is deliberately simple. Resist the urge to add extra layers, base classes, or frameworks. If the TS version does something in 20 lines, the Python should too.
+6. **The container agent runner is a separate world.** It runs inside a Linux VM, has its own dependencies, and communicates only via stdin/stdout JSON and IPC files. You can develop and test it independently. The sentinel markers (`---NANOCLAW_OUTPUT_START---` / `---NANOCLAW_OUTPUT_END---`) are the contract between host and container.
 
-7. **asyncio is the concurrency model.** Every polling loop, every subprocess interaction, every DB call goes through asyncio. There are no threads except inside aiosqlite (which handles that for you).
+7. **Don't over-abstract.** The TypeScript codebase is deliberately simple. Resist the urge to add extra layers, base classes, or frameworks. If the TS version does something in 20 lines, the Python should too.
 
-8. **Time units: seconds, not milliseconds.** The TS uses ms everywhere. Python should use seconds (float). Convert once in `config.py` and never think about it again.
+8. **asyncio is the concurrency model.** Every polling loop, every subprocess interaction, every DB call goes through asyncio. There are no threads except inside aiosqlite (which handles that for you).
 
-9. **Trust your judgement.** This roadmap was written before any Python code existed. If something doesn't make sense when you're implementing it, adapt. The goal is a working Python port, not blind adherence to this document.
+9. **Time units: seconds, not milliseconds.** The TS uses ms everywhere. Python should use seconds (float). Convert once in `config.py` and never think about it again.
+
+10. **Trust your judgement.** This roadmap was written before any Python code existed. If something doesn't make sense when you're implementing it, adapt. The goal is a working Python port, not blind adherence to this document.
