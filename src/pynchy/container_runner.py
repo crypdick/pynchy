@@ -85,14 +85,43 @@ def _sync_skills(session_dir: Path) -> None:
 
 
 def _read_oauth_token() -> str | None:
-    """Read the OAuth access token from Claude Code's credentials file."""
+    """Read the OAuth access token from Claude Code's credentials.
+
+    Checks (in order):
+    1. Legacy ~/.claude/.credentials.json file
+    2. macOS keychain (service "Claude Code-credentials")
+    """
+    # 1. Legacy JSON file
     creds_file = Path.home() / ".claude" / ".credentials.json"
-    if not creds_file.exists():
-        return None
+    if creds_file.exists():
+        try:
+            data = json.loads(creds_file.read_text())
+            token = data.get("claudeAiOauth", {}).get("accessToken")
+            if token:
+                return token
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # 2. macOS keychain
+    return _read_oauth_from_keychain()
+
+
+def _read_oauth_from_keychain() -> str | None:
+    """Read OAuth token from the macOS keychain."""
+    import subprocess
+
     try:
-        data = json.loads(creds_file.read_text())
+        result = subprocess.run(
+            ["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return None
+        data = json.loads(result.stdout.strip())
         return data.get("claudeAiOauth", {}).get("accessToken")
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
 
 
@@ -101,7 +130,7 @@ def _write_env_file() -> Path | None:
 
     Sources (in priority order):
     1. .env file in project root (explicit ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN)
-    2. Claude Code's OAuth token from ~/.claude/.credentials.json (auto-refreshed)
+    2. Claude Code's OAuth token (~/.claude/.credentials.json → macOS keychain)
     """
     env_dir = DATA_DIR / "env"
     env_dir.mkdir(parents=True, exist_ok=True)

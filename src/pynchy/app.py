@@ -812,7 +812,7 @@ class PynchyApp:
                 return ""
 
             def channels_connected(self) -> bool:
-                return any(hasattr(c, "connected") and c.connected for c in app.channels)
+                return any(c.is_connected() for c in app.channels)
 
             # --- TUI API deps ---
 

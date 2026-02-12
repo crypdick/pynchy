@@ -470,8 +470,11 @@ class TestReadOauthToken:
         with patch("pynchy.container_runner.Path.home", return_value=tmp_path):
             assert _read_oauth_token() == "test-token-123"
 
-    def test_returns_none_when_no_file(self, tmp_path: Path):
-        with patch("pynchy.container_runner.Path.home", return_value=tmp_path):
+    def test_returns_none_when_no_file_and_no_keychain(self, tmp_path: Path):
+        with (
+            patch("pynchy.container_runner.Path.home", return_value=tmp_path),
+            patch("pynchy.container_runner._read_oauth_from_keychain", return_value=None),
+        ):
             assert _read_oauth_token() is None
 
 
@@ -518,6 +521,7 @@ class TestWriteEnvFile:
             patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
             patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
             patch("pynchy.container_runner.Path.home", return_value=tmp_path),
+            patch("pynchy.container_runner._read_oauth_from_keychain", return_value=None),
         ):
             assert _write_env_file() is None
 
