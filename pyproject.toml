@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 # Do not edit these dependencies manually. Use `uv add` instead.
 dependencies = [
+    "aiohttp>=3.13.3",
     "aiosqlite>=0.22.1",
     "croniter>=6.0.0",
     "mcp>=1.26.0",

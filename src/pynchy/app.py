@@ -19,6 +19,7 @@ from pynchy.config import (
     CONTAINER_IMAGE,
     CONTEXT_RESET_PATTERN,
     DATA_DIR,
+    DEPLOY_PORT,
     GROUPS_DIR,
     IDLE_TIMEOUT,
     MAIN_GROUP_FOLDER,
@@ -48,6 +49,7 @@ from pynchy.db import (
     store_message,
 )
 from pynchy.group_queue import GroupQueue
+from pynchy.http_server import start_http_server
 from pynchy.ipc import start_ipc_watcher
 from pynchy.logger import logger
 from pynchy.router import format_messages, format_outbound
@@ -68,6 +70,7 @@ class PynchyApp:
         self.queue: GroupQueue = GroupQueue()
         self.channels: list[Channel] = []
         self._shutting_down: bool = False
+        self._http_runner: Any | None = None
 
     # ------------------------------------------------------------------
     # State persistence
@@ -604,6 +607,34 @@ class PynchyApp:
         return None
 
     # ------------------------------------------------------------------
+    # Tailscale
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _check_tailscale() -> None:
+        """Log a warning if Tailscale is not connected. Non-fatal."""
+        try:
+            result = subprocess.run(
+                ["tailscale", "status", "--json"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode != 0:
+                logger.warning("Tailscale not connected (non-fatal)", stderr=result.stderr.strip())
+                return
+            status = json.loads(result.stdout)
+            backend = status.get("BackendState", "")
+            if backend != "Running":
+                logger.warning("Tailscale backend not running", state=backend)
+            else:
+                logger.info("Tailscale connected", state=backend)
+        except FileNotFoundError:
+            logger.warning("Tailscale CLI not found (non-fatal)")
+        except Exception as exc:
+            logger.warning("Tailscale check failed (non-fatal)", err=str(exc))
+
+    # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
@@ -616,6 +647,8 @@ class PynchyApp:
             os._exit(1)
         self._shutting_down = True
         logger.info("Shutdown signal received", signal=sig_name)
+        if self._http_runner:
+            await self._http_runner.cleanup()
         await self.queue.shutdown(10.0)
         for channel in self.channels:
             await channel.disconnect()
@@ -669,6 +702,12 @@ class PynchyApp:
         asyncio.create_task(start_scheduler_loop(self._make_scheduler_deps()))
         asyncio.create_task(start_ipc_watcher(self._make_ipc_deps()))
         self.queue.set_process_messages_fn(self._process_group_messages)
+
+        # HTTP server for remote health checks and deploys
+        self._check_tailscale()
+        self._http_runner = await start_http_server(self._make_http_deps())
+        logger.info("HTTP deploy endpoint ready", port=DEPLOY_PORT)
+
         await self._recover_pending_messages()
         await self._check_deploy_continuation()
         await self._start_message_loop()
@@ -703,6 +742,27 @@ class PynchyApp:
                     text = format_outbound(channel, raw_text)
                     if text:
                         await channel.send_message(jid, text)
+
+        return _Deps()
+
+    def _make_http_deps(self) -> Any:
+        """Create the dependency object for the HTTP server."""
+        app = self
+
+        class _Deps:
+            async def send_message(self, jid: str, text: str) -> None:
+                channel = app._find_channel(jid)
+                if channel:
+                    await channel.send_message(jid, text)
+
+            def main_chat_jid(self) -> str:
+                for jid, group in app.registered_groups.items():
+                    if group.folder == MAIN_GROUP_FOLDER:
+                        return jid
+                return ""
+
+            def channels_connected(self) -> bool:
+                return any(hasattr(c, "connected") and c.connected for c in app.channels)
 
         return _Deps()
 
