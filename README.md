@@ -54,7 +54,7 @@ uv run pynchy                                # Run
 - **Main channel** - Your private channel (self-chat) for admin control; every other group is completely isolated
 - **Scheduled tasks** - Recurring jobs that run Claude and can message you back
 - **Web access** - Search and fetch content
-- **Container isolation** - Agents sandboxed in Docker (macOS/Linux) or Apple Container (macOS, untested)
+- **Container isolation** - Agents sandboxed in Apple Container (macOS) or Docker (macOS/Linux)
 - **Agent Swarms** - Spin up teams of specialized agents that collaborate on complex tasks
 - **Optional integrations** - Add Gmail (`/add-gmail`) and more via skills
 
@@ -117,7 +117,16 @@ Skills we'd love to see:
 - Python 3.13+
 - [uv](https://docs.astral.sh/uv/) (Python package manager)
 - [Claude Code](https://claude.ai/download)
-- [Docker](https://docker.com/products/docker-desktop) (macOS/Linux) or [Apple Container](https://github.com/apple/container) (macOS, untested)
+- [Apple Container](https://github.com/apple/container) (macOS, preferred) or [Docker](https://docker.com/products/docker-desktop) (macOS/Linux)
+
+### macOS system dependencies
+
+```bash
+brew install libmagic              # Required by neonize (WhatsApp) for MIME detection
+brew install container             # Apple Container (recommended) — or install Docker Desktop
+```
+
+If Apple Container is not installed, pynchy falls back to Docker automatically.
 
 ## Architecture
 
@@ -146,7 +155,7 @@ Because I use WhatsApp. Fork it and run a skill to change it. That's the whole p
 
 **Why Apple Container instead of Docker?**
 
-Docker is the default and tested runtime. Apple Container support exists but is untested in the Python port. On macOS, Apple Container is lightweight and optimized for Apple silicon—during `/setup`, you can choose which runtime to use.
+On macOS, Apple Container is the preferred runtime — it's lightweight and optimized for Apple silicon, running Linux containers in minimal VMs via Apple's Virtualization framework. Docker works too and is used as a fallback if Apple Container isn't installed. On Linux, Docker is the only option.
 
 **Can I run this on Linux?**
 
