@@ -60,19 +60,19 @@ uv run pynchy                                # Run
 
 ## Usage
 
-Talk to your assistant with the trigger word (default: `@Andy`):
+Talk to your assistant with the trigger word (default: `@Pynchy`):
 
 ```
-@Andy send an overview of the sales pipeline every weekday morning at 9am (has access to my Obsidian vault folder)
-@Andy review the git history for the past week each Friday and update the README if there's drift
-@Andy every Monday at 8am, compile news on AI developments from Hacker News and TechCrunch and message me a briefing
+@Pynchy send an overview of the sales pipeline every weekday morning at 9am (has access to my Obsidian vault folder)
+@Pynchy review the git history for the past week each Friday and update the README if there's drift
+@Pynchy every Monday at 8am, compile news on AI developments from Hacker News and TechCrunch and message me a briefing
 ```
 
 From the main channel (your self-chat), you can manage groups and tasks:
 ```
-@Andy list all scheduled tasks across groups
-@Andy pause the Monday briefing task
-@Andy join the Family Chat group
+@Pynchy list all scheduled tasks across groups
+@Pynchy pause the Monday briefing task
+@Pynchy join the Family Chat group
 ```
 
 ## Customizing
