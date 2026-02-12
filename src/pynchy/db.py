@@ -527,9 +527,7 @@ async def set_registered_group(jid: str, group: RegisteredGroup) -> None:
             group.folder,
             group.trigger,
             group.added_at,
-            json.dumps(asdict(group.container_config))
-            if group.container_config
-            else None,
+            json.dumps(asdict(group.container_config)) if group.container_config else None,
             1 if group.requires_trigger is None else (1 if group.requires_trigger else 0),
         ),
     )

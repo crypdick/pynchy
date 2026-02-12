@@ -365,9 +365,7 @@ async def process_task_ipc(
             reset_dir = DATA_DIR / "ipc" / group_folder
             reset_dir.mkdir(parents=True, exist_ok=True)
             reset_file = reset_dir / "reset_prompt.json"
-            reset_file.write_text(
-                json.dumps({"message": message, "chatJid": chat_jid})
-            )
+            reset_file.write_text(json.dumps({"message": message, "chatJid": chat_jid}))
 
             deps.enqueue_message_check(chat_jid)
             logger.info(
