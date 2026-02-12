@@ -7,8 +7,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import signal
 import subprocess
 import uuid
 from datetime import UTC, datetime
@@ -26,6 +24,7 @@ from pynchy.config import (
     TIMEZONE,
 )
 from pynchy.db import create_task, delete_task, get_task_by_id, update_task
+from pynchy.deploy import finalize_deploy
 from pynchy.logger import logger
 from pynchy.types import ContainerConfig, RegisteredGroup
 
@@ -456,32 +455,15 @@ async def _handle_deploy(
                 "rebuild_container requested but build.sh not found",
             )
 
-    # 2. Write continuation file
-    continuation = {
-        "chat_jid": chat_jid,
-        "session_id": session_id,
-        "resume_prompt": resume_prompt,
-        "commit_sha": head_sha,
-        "previous_commit_sha": head_sha,
-    }
-    continuation_path = DATA_DIR / "deploy_continuation.json"
-    continuation_path.write_text(json.dumps(continuation, indent=2))
-
-    # 3. Notify user
-    short_sha = head_sha[:8] if head_sha else "unknown"
-    await deps.send_message(
-        chat_jid,
-        f"{ASSISTANT_NAME}: Deploying {short_sha}... restarting now.",
+    # 2. Write continuation, notify WhatsApp, and SIGTERM
+    await finalize_deploy(
+        send_message=deps.send_message,
+        chat_jid=chat_jid,
+        commit_sha=head_sha,
+        previous_sha=head_sha,
+        session_id=session_id,
+        resume_prompt=resume_prompt,
     )
-
-    logger.info(
-        "Deploy: restarting service",
-        head_sha=head_sha,
-        rebuild=rebuild_container,
-    )
-
-    # 4. SIGTERM self — triggers existing graceful shutdown
-    os.kill(os.getpid(), signal.SIGTERM)
 
 
 async def _deploy_error(
