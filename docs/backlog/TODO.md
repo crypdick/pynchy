@@ -26,7 +26,6 @@ Single source of truth for all pynchy work items.
 - [X integration port](1-approved/x-integration-port.md) — Port the archived TypeScript X/Twitter skill to Python plugins
 - [Periodic agents](1-approved/periodic-agents.md) — Background agents for security sweeps, code quality, SDK updates, etc.
 - [Project ideas](1-approved/project-ideas.md) — Standalone integration ideas (calendar, voice, Cloudflare, AWS, etc.)
-- [Context reset](1-approved/context-reset.md) — Magic words to start a fresh Claude session, clearing conversation history
 - [Small improvements](1-approved/small-improvements.md) — Distinct system messages, dossier logging, ruff hooks, slack-tools check
 
 ### 2 - Planning
