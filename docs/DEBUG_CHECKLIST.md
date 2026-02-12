@@ -44,7 +44,7 @@ ls -la data/sessions/<group>/.claude/debug/
 # Each .txt file = one CLI subprocess. Multiple = concurrent queries.
 
 # Check parentUuid branching in transcript
-python3 -c "
+uv run python -c "
 import json, sys
 lines = open('data/sessions/<group>/.claude/projects/-workspace-group/<session>.jsonl').read().strip().split('\n')
 for i, line in enumerate(lines):
