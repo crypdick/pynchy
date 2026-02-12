@@ -17,6 +17,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from neonize.aioze import client as neonize_client
+from neonize.aioze import events as neonize_events
 from neonize.aioze.client import NewAClient
 from neonize.events import (
     ConnectedEv,
@@ -69,6 +71,12 @@ class WhatsAppChannel:
         self._group_sync_task: asyncio.Task[None] | None = None
         self._idle_task: asyncio.Task[None] | None = None
         self._first_connect: asyncio.Event = asyncio.Event()
+
+        # Neonize creates its own event loop at import time. Patch both modules
+        # so events and tasks land on our running loop.
+        loop = asyncio.get_running_loop()
+        neonize_events.event_global_loop = loop
+        neonize_client.event_global_loop = loop
 
         # Auth stored in SQLite — neonize manages this internally
         auth_db = str(STORE_DIR / "neonize.db")
