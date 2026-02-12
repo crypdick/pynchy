@@ -10,9 +10,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import io
 import sys
 from pathlib import Path
 
+import qrcode
+from neonize.aioze import client as neonize_client
+from neonize.aioze import events as neonize_events
 from neonize.aioze.client import NewAClient
 from neonize.events import ConnectedEv, ConnectFailureEv, LoggedOutEv, PairStatusEv
 
@@ -21,6 +25,14 @@ STORE_DIR = (Path.cwd() / "store").resolve()
 
 
 async def authenticate() -> None:
+    # Neonize creates its own event loop at import time. Both the events module
+    # and client module hold their own reference (from `from .events import
+    # event_global_loop`), so we must patch both for events and tasks to land
+    # on our running loop.
+    loop = asyncio.get_running_loop()
+    neonize_events.event_global_loop = loop
+    neonize_client.event_global_loop = loop
+
     auth_db = str(STORE_DIR / "neonize.db")
     STORE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -38,11 +50,17 @@ async def authenticate() -> None:
     print("  2. Tap Settings \u2192 Linked Devices \u2192 Link a Device")
     print("  3. Point your camera at the QR code below\n")
 
-    # neonize displays the QR code automatically via segno
-    # We just need to handle connection events
-
     done = asyncio.Event()
     exit_code = 0
+
+    @client.event.qr
+    async def on_qr(_client: NewAClient, qr_data: bytes) -> None:
+        qr = qrcode.QRCode(border=1)
+        qr.add_data(qr_data)
+        qr.make()
+        buf = io.StringIO()
+        qr.print_ascii(out=buf, invert=True)
+        print(buf.getvalue(), flush=True)
 
     @client.event(ConnectedEv)
     async def on_connected(_client: NewAClient, _ev: ConnectedEv) -> None:
