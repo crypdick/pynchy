@@ -8,22 +8,17 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from nanoclawpy.config import ASSISTANT_NAME
+from pynchy.config import ASSISTANT_NAME
 
 if TYPE_CHECKING:
-    from nanoclawpy.types import Channel, NewMessage
+    from pynchy.types import Channel, NewMessage
 
 _INTERNAL_TAG_RE = re.compile(r"<internal>[\s\S]*?</internal>")
 
 
 def escape_xml(s: str) -> str:
     """Escape XML special characters."""
-    return (
-        s.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
 def format_messages(messages: list[NewMessage]) -> str:
@@ -51,9 +46,7 @@ def format_outbound(channel: Channel, raw_text: str) -> str:
     return f"{prefix}{text}"
 
 
-async def route_outbound(
-    channels: list[Channel], jid: str, text: str
-) -> None:
+async def route_outbound(channels: list[Channel], jid: str, text: str) -> None:
     """Find the appropriate connected channel and send a message."""
     channel = next((c for c in channels if c.owns_jid(jid) and c.is_connected()), None)
     if channel is None:

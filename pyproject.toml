@@ -1,5 +1,5 @@
 [project]
-name = "nanoclawpy"
+name = "pynchy"
 version = "0.1.0"
 description = "Personal Claude assistant — Python port"
 readme = "README.md"
@@ -18,6 +18,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "freezegun>=1.5.5",
+    "pre-commit>=4.5.1",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
     "pytest-mock>=3.15.1",
@@ -29,7 +30,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/nanoclawpy"]
+packages = ["src/pynchy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

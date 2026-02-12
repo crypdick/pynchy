@@ -1,4 +1,4 @@
-"""Data models for NanoClawPy.
+"""Data models for Pynchy.
 
 Port of src/types.ts — interfaces become dataclasses, Channel becomes Protocol.
 """
