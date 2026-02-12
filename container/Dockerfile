@@ -3,7 +3,7 @@
 
 FROM python:3.13-slim
 
-# Install system dependencies for Chromium + Node.js
+# Install system dependencies for Chromium + common tools
 RUN apt-get update && apt-get install -y \
     chromium \
     fonts-liberation \
@@ -23,12 +23,17 @@ RUN apt-get update && apt-get install -y \
     libxshmfence1 \
     curl \
     git \
+    ripgrep \
+    jq \
+    procps \
+    gpg \
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    > /etc/apt/sources.list.d/github-cli.list \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get update && apt-get install -y gh nodejs \
     && rm -rf /var/lib/apt/lists/*
-
-# Install Node.js (needed for agent-browser and claude-code)
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get install -y nodejs && \
-    rm -rf /var/lib/apt/lists/*
 
 # Set Chromium path for agent-browser
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
