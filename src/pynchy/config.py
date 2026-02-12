@@ -33,6 +33,7 @@ CONTAINER_MAX_OUTPUT_SIZE: int = int(
     os.environ.get("CONTAINER_MAX_OUTPUT_SIZE", "10485760")
 )  # 10MB
 IDLE_TIMEOUT: float = int(os.environ.get("IDLE_TIMEOUT", "1800000")) / 1000  # 30min
+DEPLOY_PORT: int = int(os.environ.get("DEPLOY_PORT", "8484"))
 try:
     MAX_CONCURRENT_CONTAINERS: int = max(1, int(os.environ.get("MAX_CONCURRENT_CONTAINERS", "5")))
 except ValueError:
@@ -55,9 +56,7 @@ TRIGGER_ALIASES: list[str] = [
 _trigger_names = [_escape_regex(ASSISTANT_NAME)] + [
     _escape_regex(a.strip()) for a in TRIGGER_ALIASES
 ]
-TRIGGER_PATTERN: re.Pattern[str] = re.compile(
-    rf"^@({'|'.join(_trigger_names)})\b", re.IGNORECASE
-)
+TRIGGER_PATTERN: re.Pattern[str] = re.compile(rf"^@({'|'.join(_trigger_names)})\b", re.IGNORECASE)
 
 # Magic words to reset conversation context (voice-friendly variants)
 CONTEXT_RESET_PATTERN: re.Pattern[str] = re.compile(
