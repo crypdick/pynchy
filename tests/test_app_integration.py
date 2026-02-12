@@ -145,6 +145,14 @@ async def app(tmp_path: Path):
 # ---------------------------------------------------------------------------
 
 
+class TestAppImports:
+    """Verify lazy imports in app.run() resolve correctly."""
+
+    def test_whatsapp_channel_import(self):
+        """The WhatsApp channel import in app.run() must resolve."""
+        from pynchy.channels.whatsapp import WhatsAppChannel  # noqa: F401
+
+
 class TestProcessGroupMessages:
     """Test the message processing pipeline (trigger → agent → output)."""
 

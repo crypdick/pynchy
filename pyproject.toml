@@ -15,6 +15,9 @@ dependencies = [
     "structlog>=25.5.0",
 ]
 
+[project.scripts]
+pynchy = "pynchy.__main__:main"
+
 [dependency-groups]
 dev = [
     "freezegun>=1.5.5",

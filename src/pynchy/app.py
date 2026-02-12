@@ -453,7 +453,7 @@ class PynchyApp:
             )
 
         # Create and connect WhatsApp channel
-        from pynchy.whatsapp import WhatsAppChannel
+        from pynchy.channels.whatsapp import WhatsAppChannel
 
         whatsapp = WhatsAppChannel(
             on_message=lambda _jid, msg: asyncio.ensure_future(store_message(msg)),
