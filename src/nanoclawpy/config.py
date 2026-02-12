@@ -47,4 +47,15 @@ TRIGGER_PATTERN: re.Pattern[str] = re.compile(
 )
 
 # Timezone for scheduled tasks — uses system timezone by default
-TIMEZONE: str = os.environ.get("TZ", "UTC")
+def _detect_timezone() -> str:
+    if tz := os.environ.get("TZ"):
+        return tz
+    try:
+        import time
+
+        return time.tzname[0] or "UTC"
+    except Exception:
+        return "UTC"
+
+
+TIMEZONE: str = _detect_timezone()

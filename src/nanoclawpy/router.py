@@ -54,9 +54,9 @@ def format_outbound(channel: Channel, raw_text: str) -> str:
 async def route_outbound(
     channels: list[Channel], jid: str, text: str
 ) -> None:
-    """Find the appropriate channel and send a message."""
-    channel = find_channel(channels, jid)
-    if channel is None or not channel.is_connected():
+    """Find the appropriate connected channel and send a message."""
+    channel = next((c for c in channels if c.owns_jid(jid) and c.is_connected()), None)
+    if channel is None:
         raise RuntimeError(f"No channel for JID: {jid}")
     await channel.send_message(jid, text)
 

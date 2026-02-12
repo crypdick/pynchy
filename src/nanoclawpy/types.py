@@ -89,7 +89,6 @@ class TaskRunLog:
 @runtime_checkable
 class Channel(Protocol):
     name: str
-    prefix_assistant_name: bool  # WhatsApp: True, Telegram bots: False
 
     async def connect(self) -> None: ...
 
@@ -101,7 +100,13 @@ class Channel(Protocol):
 
     async def disconnect(self) -> None: ...
 
-    async def set_typing(self, jid: str, is_typing: bool) -> None: ...
+    # Optional: typing indicator. Channels that support it implement it.
+    # set_typing is NOT part of the protocol — check with hasattr at call sites.
+
+    # Whether to prefix outbound messages with the assistant name.
+    # Telegram bots already display their name, so they return false.
+    # WhatsApp returns true. Default true if not implemented.
+    # prefix_assistant_name is NOT part of the protocol — use getattr with default.
 
 
 # Callback types
