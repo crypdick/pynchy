@@ -6,17 +6,14 @@ on DEPLOY_PORT. Access is controlled by Tailscale ACLs and the machine firewall.
 
 from __future__ import annotations
 
-import asyncio
-import json
-import os
-import signal
 import subprocess
 import time
 from typing import Protocol
 
 from aiohttp import web
 
-from pynchy.config import ASSISTANT_NAME, DATA_DIR, DEPLOY_PORT, PROJECT_ROOT
+from pynchy.config import ASSISTANT_NAME, DEPLOY_PORT, PROJECT_ROOT
+from pynchy.deploy import finalize_deploy
 from pynchy.logger import logger
 
 _start_time = time.monotonic()
@@ -48,6 +45,8 @@ class HttpDeps(Protocol):
 
 async def _handle_health(request: web.Request) -> web.Response:
     deps: HttpDeps = request.app["deps"]
+    # TODO: include agents_busy flag (are any containers running?) so callers
+    # can decide whether it's safe to restart the service.
     return web.json_response(
         {
             "status": "ok",
@@ -106,40 +105,17 @@ async def _handle_deploy(request: web.Request) -> web.Response:
             status=422,
         )
 
-    # 3. Write deploy continuation
+    # 3. Write continuation, notify WhatsApp, and schedule SIGTERM
     chat_jid = deps.main_chat_jid()
-    continuation = {
-        "chat_jid": chat_jid,
-        "session_id": "",
-        "resume_prompt": "Deploy complete. Verifying service health.",
-        "commit_sha": new_sha,
-        "previous_commit_sha": old_sha,
-    }
-    continuation_path = DATA_DIR / "deploy_continuation.json"
-    continuation_path.parent.mkdir(parents=True, exist_ok=True)
-    continuation_path.write_text(json.dumps(continuation, indent=2))
+    await finalize_deploy(
+        send_message=deps.send_message,
+        chat_jid=chat_jid,
+        commit_sha=new_sha,
+        previous_sha=old_sha,
+        sigterm_delay=0.5,  # let the HTTP response flush first
+    )
 
-    # 4. Respond before restarting
-    body = {
-        "status": "restarting",
-        "sha": new_sha,
-        "previous_sha": old_sha,
-    }
-
-    # 5. Notify WhatsApp
-    if chat_jid:
-        await deps.send_message(
-            chat_jid,
-            f"{ASSISTANT_NAME}: Deploying {new_sha[:8]}... restarting now.",
-        )
-
-    logger.info("Deploy: restarting service", old_sha=old_sha, new_sha=new_sha)
-
-    # 6. Schedule SIGTERM after a short delay so the response is sent first
-    loop = asyncio.get_running_loop()
-    loop.call_later(0.5, os.kill, os.getpid(), signal.SIGTERM)
-
-    return web.json_response(body)
+    return web.json_response({"status": "restarting", "sha": new_sha, "previous_sha": old_sha})
 
 
 async def start_http_server(deps: HttpDeps) -> web.AppRunner:
