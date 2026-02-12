@@ -7,6 +7,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import signal
+import subprocess
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -19,6 +22,7 @@ from pynchy.config import (
     DATA_DIR,
     IPC_POLL_INTERVAL,
     MAIN_GROUP_FOLDER,
+    PROJECT_ROOT,
     TIMEZONE,
 )
 from pynchy.db import create_task, delete_task, get_task_by_id, update_task
@@ -330,6 +334,15 @@ async def process_task_ipc(
                     source_group=source_group,
                 )
 
+        case "deploy":
+            if not is_main:
+                logger.warning(
+                    "Unauthorized deploy attempt",
+                    source_group=source_group,
+                )
+                return
+            await _handle_deploy(data, source_group, deps)
+
         case "register_group":
             if not is_main:
                 logger.warning(
@@ -364,3 +377,91 @@ async def process_task_ipc(
 
         case _:
             logger.warning("Unknown IPC task type", type=data.get("type"))
+
+
+async def _handle_deploy(
+    data: dict[str, Any],
+    source_group: str,
+    deps: IpcDeps,
+) -> None:
+    """Handle a deploy request from the main group agent.
+
+    The agent is responsible for git add/commit before calling deploy.
+    This handler reads the current HEAD (for rollback), optionally rebuilds
+    the container, writes a continuation file, and SIGTERMs the process.
+    """
+    rebuild_container = data.get("rebuildContainer", False)
+    resume_prompt = data.get(
+        "resumePrompt",
+        "Deploy complete. Verifying service health.",
+    )
+    head_sha = data.get("headSha", "")
+    session_id = data.get("sessionId", "")
+    chat_jid = data.get("chatJid", "")
+
+    if not chat_jid:
+        logger.error("Deploy request missing chatJid")
+        return
+
+    # 1. Optional container rebuild
+    if rebuild_container:
+        build_script = PROJECT_ROOT / "container" / "build.sh"
+        if build_script.exists():
+            logger.info("Rebuilding container image...")
+            result = subprocess.run(
+                [str(build_script)],
+                cwd=str(PROJECT_ROOT / "container"),
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                await _deploy_error(
+                    deps,
+                    chat_jid,
+                    f"Container rebuild failed: {result.stderr[-500:]}",
+                )
+                return
+        else:
+            logger.warning(
+                "rebuild_container requested but build.sh not found",
+            )
+
+    # 2. Write continuation file
+    continuation = {
+        "chat_jid": chat_jid,
+        "session_id": session_id,
+        "resume_prompt": resume_prompt,
+        "commit_sha": head_sha,
+        "previous_commit_sha": head_sha,
+    }
+    continuation_path = DATA_DIR / "deploy_continuation.json"
+    continuation_path.write_text(json.dumps(continuation, indent=2))
+
+    # 3. Notify user
+    short_sha = head_sha[:8] if head_sha else "unknown"
+    await deps.send_message(
+        chat_jid,
+        f"{ASSISTANT_NAME}: Deploying {short_sha}... restarting now.",
+    )
+
+    logger.info(
+        "Deploy: restarting service",
+        head_sha=head_sha,
+        rebuild=rebuild_container,
+    )
+
+    # 4. SIGTERM self — triggers existing graceful shutdown
+    os.kill(os.getpid(), signal.SIGTERM)
+
+
+async def _deploy_error(
+    deps: IpcDeps,
+    chat_jid: str,
+    message: str,
+) -> None:
+    """Send a deploy error message back to the main group."""
+    logger.error("Deploy failed", error=message)
+    await deps.send_message(
+        chat_jid,
+        f"{ASSISTANT_NAME}: Deploy failed: {message}",
+    )

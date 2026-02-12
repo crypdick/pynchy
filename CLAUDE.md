@@ -38,8 +38,9 @@ Run commands directly—don't tell the user to run them.
 ```bash
 uv run pynchy            # Run the app
 uv run pytest tests/     # Run tests
-uv run ruff check src/   # Lint
-uvx pre-commit run --all-files  # Run pre-commit hooks
+uv run ruff check --fix src/ container/agent_runner/src/  # Lint + autofix
+uv run ruff format src/ container/agent_runner/src/       # Format
+uvx pre-commit run --all-files  # Run all pre-commit hooks
 ./container/build.sh     # Rebuild agent container
 ```
 

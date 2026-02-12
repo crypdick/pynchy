@@ -211,3 +211,34 @@ When scheduling tasks for other groups, use the `target_group_jid` parameter wit
 - `schedule_task(prompt: "...", schedule_type: "cron", schedule_value: "0 9 * * 1", target_group_jid: "120363336345536173@g.us")`
 
 The task will run in that group's context with access to their files and memory.
+
+---
+
+## Self-Deploy
+
+You can edit your own source code at `/workspace/project/` and deploy changes to the running service.
+
+### Available Tool
+
+`deploy_changes` — optionally rebuilds the container image, restarts the service, and resumes your conversation automatically. You handle git yourself before calling this.
+
+Parameters:
+- `rebuild_container` (default: false): Set true if you changed files under `container/`
+- `resume_prompt` (default: "Deploy complete. Verifying service health."): Prompt injected after restart to resume your session
+
+### Workflow
+
+1. Make changes to files under `/workspace/project/`
+2. Run tests: `uv run pytest tests/`
+3. Run linter: `uv run ruff check src/`
+4. Commit: `git add -A && git commit -m "descriptive message"`
+5. Deploy: call `deploy_changes`
+
+### Safety Rules
+
+- *Always* run tests and lint before deploying
+- Make small, focused changes — one logical change per deploy
+- Write descriptive commit messages
+- If you changed anything under `container/`, set `rebuild_container: true`
+- After restart, verify the service is healthy before reporting success
+- If the deploy causes a startup crash, the service auto-rolls back to the previous commit and resumes your session with rollback info

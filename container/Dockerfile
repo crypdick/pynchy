@@ -3,6 +3,9 @@
 
 FROM python:3.13-slim
 
+# Install uv (available to all containers for running Python tools)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
 # Install system dependencies for Chromium + common tools
 RUN apt-get update && apt-get install -y \
     chromium \
