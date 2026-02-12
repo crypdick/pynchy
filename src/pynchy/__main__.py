@@ -1,9 +1,10 @@
 """Entry point for `python -m pynchy` / `uv run pynchy`.
 
 Subcommands:
-    pynchy          Run the app (default)
-    pynchy auth     Authenticate with WhatsApp
-    pynchy build    Build the container image
+    pynchy              Run the service (default)
+    pynchy --tui        Attach TUI client to a running instance
+    pynchy auth         Authenticate with WhatsApp
+    pynchy build        Build the container image
 """
 
 from __future__ import annotations
@@ -13,12 +14,20 @@ import asyncio
 import subprocess
 import sys
 
+_DEFAULT_HOST = "localhost:8484"
+
 
 def _run() -> None:
     from pynchy.app import PynchyApp
 
     app = PynchyApp()
     asyncio.run(app.run())
+
+
+def _tui(host: str) -> None:
+    from pynchy.tui import run_tui
+
+    run_tui(host)
 
 
 def _auth() -> None:
@@ -51,6 +60,14 @@ def main() -> None:
         prog="pynchy",
         description="Personal Claude assistant on WhatsApp",
     )
+    parser.add_argument(
+        "--tui", action="store_true", help="Attach TUI client to a running pynchy instance"
+    )
+    parser.add_argument(
+        "--host",
+        default=_DEFAULT_HOST,
+        help=f"Host:port of the pynchy server (default: {_DEFAULT_HOST})",
+    )
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("auth", help="Authenticate with WhatsApp")
     sub.add_parser("build", help="Build the container image")
@@ -63,7 +80,10 @@ def main() -> None:
         case "build":
             _build()
         case _:
-            _run()
+            if args.tui:
+                _tui(host=args.host)
+            else:
+                _run()
 
 
 if __name__ == "__main__":

@@ -31,7 +31,7 @@ from neonize.events import (
 from neonize.proto.Neonize_pb2 import JID
 from neonize.utils.jid import Jid2String
 
-from pynchy.config import STORE_DIR
+from pynchy.config import ASSISTANT_NAME, STORE_DIR
 from pynchy.db import get_last_group_sync, set_last_group_sync, update_chat_name
 from pynchy.logger import logger
 from pynchy.types import NewMessage, RegisteredGroup
@@ -193,6 +193,10 @@ class WhatsAppChannel:
             or msg.videoMessage.caption
             or ""
         )
+
+        # Skip echoed bot responses — these are stored by the broadcast path in app.py
+        if source.IsFromMe and content.startswith(f"{ASSISTANT_NAME}:"):
+            return
 
         # Sender JID
         sender_jid = Jid2String(source.Sender)

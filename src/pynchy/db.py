@@ -307,6 +307,35 @@ async def get_messages_since(
     ]
 
 
+async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
+    """Get recent messages for a chat, including bot responses. Newest last."""
+    db = _get_db()
+    cursor = await db.execute(
+        """
+        SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me
+        FROM messages
+        WHERE chat_jid = ?
+        ORDER BY timestamp DESC
+        LIMIT ?
+        """,
+        (chat_jid, limit),
+    )
+    rows = await cursor.fetchall()
+
+    return [
+        NewMessage(
+            id=row["id"],
+            chat_jid=row["chat_jid"],
+            sender=row["sender"],
+            sender_name=row["sender_name"],
+            content=row["content"],
+            timestamp=row["timestamp"],
+            is_from_me=bool(row["is_from_me"]),
+        )
+        for row in reversed(rows)
+    ]
+
+
 # --- Scheduled tasks ---
 
 

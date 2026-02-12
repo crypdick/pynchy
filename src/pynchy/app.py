@@ -47,7 +47,9 @@ from pynchy.db import (
     set_session,
     store_chat_metadata,
     store_message,
+    store_message_direct,
 )
+from pynchy.event_bus import AgentActivityEvent, EventBus, MessageEvent
 from pynchy.group_queue import GroupQueue
 from pynchy.http_server import start_http_server
 from pynchy.ipc import start_ipc_watcher
@@ -69,6 +71,7 @@ class PynchyApp:
         self.message_loop_running: bool = False
         self.queue: GroupQueue = GroupQueue()
         self.channels: list[Channel] = []
+        self.event_bus: EventBus = EventBus()
         self._shutting_down: bool = False
         self._http_runner: Any | None = None
 
@@ -211,11 +214,11 @@ class PynchyApp:
             self.queue.close_stdin(chat_jid)
             self.last_agent_timestamp[chat_jid] = missed_messages[-1].timestamp
             await self._save_state()
-            channel = self._find_channel(chat_jid)
-            if channel:
-                await channel.send_message(
-                    chat_jid, "Context reset. Next message starts a fresh session."
-                )
+            reset_text = "Context reset. Next message starts a fresh session."
+            for ch in self.channels:
+                if ch.is_connected():
+                    with contextlib.suppress(Exception):
+                        await ch.send_message(chat_jid, reset_text)
             logger.info("Context reset", group=group.name)
             return True
 
@@ -245,10 +248,12 @@ class PynchyApp:
                 lambda: self.queue.close_stdin(chat_jid),
             )
 
-        # Set typing indicator on the appropriate channel
-        channel = self._find_channel(chat_jid)
-        if channel and hasattr(channel, "set_typing"):
-            await channel.set_typing(chat_jid, True)
+        # Set typing indicator on all channels that support it
+        for ch in self.channels:
+            if ch.is_connected() and hasattr(ch, "set_typing"):
+                await ch.set_typing(chat_jid, True)
+
+        self.event_bus.emit(AgentActivityEvent(chat_jid=chat_jid, active=True))
 
         had_error = False
         output_sent_to_user = False
@@ -261,8 +266,36 @@ class PynchyApp:
 
                 text = strip_internal_tags(raw)
                 logger.info("Agent output", group=group.name, text=raw[:200])
-                if text and channel:
-                    await channel.send_message(chat_jid, f"{ASSISTANT_NAME}: {text}")
+                if text:
+                    formatted = f"{ASSISTANT_NAME}: {text}"
+                    # Store bot response in SQLite (source of truth)
+                    ts = datetime.now(UTC).isoformat()
+                    await store_message_direct(
+                        id=f"bot-{int(datetime.now(UTC).timestamp() * 1000)}",
+                        chat_jid=chat_jid,
+                        sender="bot",
+                        sender_name=ASSISTANT_NAME,
+                        content=formatted,
+                        timestamp=ts,
+                        is_from_me=True,
+                    )
+                    # Broadcast to all connected channels
+                    for ch in self.channels:
+                        if ch.is_connected():
+                            try:
+                                await ch.send_message(chat_jid, formatted)
+                            except Exception as exc:
+                                logger.warning("Channel send failed", channel=ch.name, err=str(exc))
+                    # Emit for real-time TUI updates
+                    self.event_bus.emit(
+                        MessageEvent(
+                            chat_jid=chat_jid,
+                            sender_name=ASSISTANT_NAME,
+                            content=formatted,
+                            timestamp=ts,
+                            is_bot=True,
+                        )
+                    )
                     output_sent_to_user = True
                 # Only reset idle timer on actual results, not session-update markers
                 reset_idle_timer()
@@ -272,8 +305,10 @@ class PynchyApp:
 
         agent_result = await self._run_agent(group, prompt, chat_jid, on_output)
 
-        if channel and hasattr(channel, "set_typing"):
-            await channel.set_typing(chat_jid, False)
+        for ch in self.channels:
+            if ch.is_connected() and hasattr(ch, "set_typing"):
+                await ch.set_typing(chat_jid, False)
+        self.event_bus.emit(AgentActivityEvent(chat_jid=chat_jid, active=False))
         if idle_handle is not None:
             idle_handle.cancel()
 
@@ -606,6 +641,19 @@ class PynchyApp:
                 return c
         return None
 
+    async def _on_inbound(self, _jid: str, msg: NewMessage) -> None:
+        """Handle inbound message from any channel — store, emit, and enqueue."""
+        await store_message(msg)
+        self.event_bus.emit(
+            MessageEvent(
+                chat_jid=msg.chat_jid,
+                sender_name=msg.sender_name,
+                content=msg.content,
+                timestamp=msg.timestamp,
+                is_bot=False,
+            )
+        )
+
     # ------------------------------------------------------------------
     # Tailscale
     # ------------------------------------------------------------------
@@ -681,7 +729,7 @@ class PynchyApp:
         from pynchy.channels.whatsapp import WhatsAppChannel
 
         whatsapp = WhatsAppChannel(
-            on_message=lambda _jid, msg: asyncio.ensure_future(store_message(msg)),
+            on_message=lambda jid, msg: asyncio.ensure_future(self._on_inbound(jid, msg)),
             on_chat_metadata=lambda jid, ts: asyncio.ensure_future(store_chat_metadata(jid, ts)),
             registered_groups=lambda: self.registered_groups,
         )
@@ -703,10 +751,10 @@ class PynchyApp:
         asyncio.create_task(start_ipc_watcher(self._make_ipc_deps()))
         self.queue.set_process_messages_fn(self._process_group_messages)
 
-        # HTTP server for remote health checks and deploys
+        # HTTP server for remote health checks, deploys, and TUI API
         self._check_tailscale()
         self._http_runner = await start_http_server(self._make_http_deps())
-        logger.info("HTTP deploy endpoint ready", port=DEPLOY_PORT)
+        logger.info("HTTP server ready", port=DEPLOY_PORT)
 
         await self._recover_pending_messages()
         await self._check_deploy_continuation()
@@ -737,11 +785,12 @@ class PynchyApp:
                 app.queue.register_process(group_jid, proc, container_name, group_folder)
 
             async def send_message(self, jid: str, raw_text: str) -> None:
-                channel = app._find_channel(jid)
-                if channel:
-                    text = format_outbound(channel, raw_text)
-                    if text:
-                        await channel.send_message(jid, text)
+                for ch in app.channels:
+                    if ch.is_connected():
+                        text = format_outbound(ch, raw_text)
+                        if text:
+                            with contextlib.suppress(Exception):
+                                await ch.send_message(jid, text)
 
         return _Deps()
 
@@ -751,9 +800,10 @@ class PynchyApp:
 
         class _Deps:
             async def send_message(self, jid: str, text: str) -> None:
-                channel = app._find_channel(jid)
-                if channel:
-                    await channel.send_message(jid, text)
+                for ch in app.channels:
+                    if ch.is_connected():
+                        with contextlib.suppress(Exception):
+                            await ch.send_message(jid, text)
 
             def main_chat_jid(self) -> str:
                 for jid, group in app.registered_groups.items():
@@ -764,6 +814,76 @@ class PynchyApp:
             def channels_connected(self) -> bool:
                 return any(hasattr(c, "connected") and c.connected for c in app.channels)
 
+            # --- TUI API deps ---
+
+            def get_groups(self) -> list[dict[str, Any]]:
+                return [
+                    {"jid": jid, "name": g.name, "folder": g.folder}
+                    for jid, g in app.registered_groups.items()
+                ]
+
+            async def get_messages(self, jid: str, limit: int) -> list[NewMessage]:
+                from pynchy.db import get_chat_history
+
+                return await get_chat_history(jid, limit)
+
+            async def send_user_message(self, jid: str, content: str) -> None:
+                msg = NewMessage(
+                    id=f"tui-{int(datetime.now(UTC).timestamp() * 1000)}",
+                    chat_jid=jid,
+                    sender="tui-user",
+                    sender_name="You",
+                    content=content,
+                    timestamp=datetime.now(UTC).isoformat(),
+                    is_from_me=False,
+                )
+                await store_message(msg)
+                app.event_bus.emit(
+                    MessageEvent(
+                        chat_jid=jid,
+                        sender_name="You",
+                        content=content,
+                        timestamp=msg.timestamp,
+                        is_bot=False,
+                    )
+                )
+                app.queue.enqueue_message_check(jid)
+
+            def subscribe_events(self, callback: Any) -> Any:
+                from pynchy.event_bus import AgentActivityEvent, MessageEvent
+
+                unsubs = []
+
+                async def on_msg(event: MessageEvent) -> None:
+                    await callback(
+                        {
+                            "type": "message",
+                            "chat_jid": event.chat_jid,
+                            "sender_name": event.sender_name,
+                            "content": event.content,
+                            "timestamp": event.timestamp,
+                            "is_bot": event.is_bot,
+                        }
+                    )
+
+                async def on_activity(event: AgentActivityEvent) -> None:
+                    await callback(
+                        {
+                            "type": "agent_activity",
+                            "chat_jid": event.chat_jid,
+                            "active": event.active,
+                        }
+                    )
+
+                unsubs.append(app.event_bus.subscribe(MessageEvent, on_msg))
+                unsubs.append(app.event_bus.subscribe(AgentActivityEvent, on_activity))
+
+                def unsubscribe() -> None:
+                    for unsub in unsubs:
+                        unsub()
+
+                return unsubscribe
+
         return _Deps()
 
     def _make_ipc_deps(self) -> Any:
@@ -772,9 +892,10 @@ class PynchyApp:
 
         class _Deps:
             async def send_message(self, jid: str, text: str) -> None:
-                channel = app._find_channel(jid)
-                if channel:
-                    await channel.send_message(jid, text)
+                for ch in app.channels:
+                    if ch.is_connected():
+                        with contextlib.suppress(Exception):
+                            await ch.send_message(jid, text)
 
             def registered_groups(self) -> dict[str, RegisteredGroup]:
                 return app.registered_groups

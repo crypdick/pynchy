@@ -14,6 +14,7 @@ dependencies = [
     "pydantic>=2.12.5",
     "qrcode>=8.2",
     "structlog>=25.5.0",
+    "textual>=7.5.0",
 ]
 
 [project.scripts]
