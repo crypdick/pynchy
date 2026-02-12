@@ -73,18 +73,22 @@ Time units: TypeScript uses milliseconds everywhere. Python should use **seconds
 Phases are ordered by dependency. Check the box when complete and add a brief note if the implementation diverged from the plan.
 
 ### Phase 0: Project Scaffolding
-- [ ] Create `pyproject.toml` with deps: `neonize`, `aiosqlite`, `croniter`, `structlog`, `qrcode`, `pydantic`, `mcp`
-- [ ] Create directory structure (see Module Map above)
-- [ ] Create `__init__.py`, `__main__.py` stubs
-- [ ] Set up `pytest` with `conftest.py`, `ruff` for linting
-- [ ] Update `.gitignore` for Python (`.venv/`, `__pycache__/`, `*.pyc`, `dist/`)
-- [ ] Verify: `pip install -e .` works, `python -m nanoclawpy` runs and exits cleanly
+- [x] Create `pyproject.toml` with deps: `neonize`, `aiosqlite`, `croniter`, `structlog`, `qrcode`, `pydantic`, `mcp`
+- [x] Create directory structure (see Module Map above)
+- [x] Create `__init__.py`, `__main__.py` stubs
+- [x] Set up `pytest` with `conftest.py`, `ruff` for linting
+- [x] Update `.gitignore` for Python (`.venv/`, `__pycache__/`, `*.pyc`, `dist/`)
+- [x] Verify: `pip install -e .` works, `python -m nanoclawpy` runs and exits cleanly
+
+> Note: Used `hatchling` as build backend for src-layout support. `uv sync` instead of `pip install -e .`.
 
 ### Phase 1: Types, Config, Logger
-- [ ] **types.py** — Port interfaces to dataclasses. Use `Protocol` for `Channel` interface.
-- [ ] **config.py** — Use `pathlib.Path` for all paths. Store intervals in seconds, not ms.
-- [ ] **logger.py** — `structlog` singleton. Wire up `sys.excepthook` for uncaught exceptions.
-- [ ] Port trigger pattern tests from `formatting.test.ts`
+- [x] **types.py** — Port interfaces to dataclasses. Use `Protocol` for `Channel` interface.
+- [x] **config.py** — Use `pathlib.Path` for all paths. Store intervals in seconds, not ms.
+- [x] **logger.py** — `structlog` singleton. Wire up `sys.excepthook` for uncaught exceptions.
+- [x] Port trigger pattern tests from `formatting.test.ts`
+
+> Note: router.py also ported in this phase (was simple and needed for tests). 34 tests passing.
 
 ### Phase 2: Database Layer
 - [ ] **db.py** — All ~30 functions become `async def` using `aiosqlite`. Same schema as TS version.
@@ -93,8 +97,8 @@ Phases are ordered by dependency. Check the box when complete and add a brief no
 - [ ] Port all tests from `db.test.ts` using in-memory SQLite.
 
 ### Phase 3: Router & Message Formatting
-- [ ] **router.py** — `escape_xml()`, `format_messages()`, `strip_internal_tags()`, `format_outbound()`, `route_outbound()`, `find_channel()`
-- [ ] Port all tests from `formatting.test.ts`
+- [x] **router.py** — `escape_xml()`, `format_messages()`, `strip_internal_tags()`, `format_outbound()`, `route_outbound()`, `find_channel()`
+- [x] Port all tests from `formatting.test.ts`
 
 ### Phase 4: Mount Security
 - [ ] **mount_security.py** — Pure logic, no async needed. Use `pathlib` and `os.path.realpath()`.
