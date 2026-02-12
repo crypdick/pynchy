@@ -1,0 +1,237 @@
+# NanoClaw → NanoClawPy: Python Port Roadmap
+
+> **What this is:** A design doc and checklist for porting the NanoClaw TypeScript codebase to Python. Future agents should treat this as a living guide — check off completed work, update notes, and hand off to the next agent. If something here doesn't make sense when you're actually writing code, trust your judgement. This was written before any Python code existed, so there will be surprises.
+
+---
+
+## The Big Picture
+
+NanoClaw is a ~5K-line TypeScript/Node.js app that connects to WhatsApp, routes messages to Claude agents running in isolated Linux containers (Apple Container on macOS), and manages scheduling, IPC, and per-group memory. The Python port should mirror the module structure closely.
+
+**Two separate codebases live in this repo:**
+1. **Host process** (`src/`) — the orchestrator that runs on the user's Mac
+2. **Agent runner** (`container/agent-runner/`) — runs inside containers, talks to Claude Agent SDK
+
+They communicate via stdin/stdout JSON and file-based IPC. Both are being ported to Python.
+
+---
+
+## Module Map (TypeScript → Python)
+
+| TypeScript Source | Python Target | Purpose | Complexity |
+|---|---|---|---|
+| `src/types.ts` | `src/nanoclawpy/types.py` | Data models | Low |
+| `src/config.ts` | `src/nanoclawpy/config.py` | Env vars, constants, paths | Low |
+| `src/logger.ts` | `src/nanoclawpy/logger.py` | Structured logging | Low |
+| `src/db.ts` | `src/nanoclawpy/db.py` | SQLite layer (~30 functions) | Medium |
+| `src/router.ts` | `src/nanoclawpy/router.py` | Message formatting, XML, routing | Low |
+| `src/mount-security.ts` | `src/nanoclawpy/mount_security.py` | Mount validation vs allowlist | Low |
+| `src/group-queue.ts` | `src/nanoclawpy/group_queue.py` | Per-group concurrency + global limits | High |
+| `src/container-runner.ts` | `src/nanoclawpy/container_runner.py` | Spawn containers, parse streaming output | High |
+| `src/ipc.ts` | `src/nanoclawpy/ipc.py` | File-based IPC watcher | Medium |
+| `src/task-scheduler.ts` | `src/nanoclawpy/task_scheduler.py` | Cron/interval task execution | Medium |
+| `src/channels/whatsapp.ts` | `src/nanoclawpy/channels/whatsapp.py` | WhatsApp via neonize | High |
+| `src/whatsapp-auth.ts` | `src/nanoclawpy/auth/whatsapp.py` | WhatsApp QR auth | Medium |
+| `src/index.ts` | `src/nanoclawpy/app.py` + `__main__.py` | Main orchestrator | Medium |
+| `container/agent-runner/src/index.ts` | `container/agent_runner/src/agent_runner/main.py` | Agent entrypoint (Claude SDK) | High |
+| `container/agent-runner/src/ipc-mcp-stdio.ts` | `container/agent_runner/src/agent_runner/ipc_mcp.py` | MCP server for agent IPC | Medium |
+
+## Dependency Map
+
+| Node.js Package | Python Equivalent | Notes |
+|---|---|---|
+| `@whiskeysockets/baileys` | `neonize` | Go-based (whatsmeow) with Python bindings. API is fundamentally different — not a 1:1 port. |
+| `better-sqlite3` | `aiosqlite` | Async wrapper over stdlib `sqlite3`. Needed because sync SQLite blocks asyncio. |
+| `cron-parser` | `croniter` | Standard cron parsing. API differs slightly but semantics match. |
+| `pino` / `pino-pretty` | `structlog` | Or stdlib `logging`. Structlog is closer to pino's structured JSON style. |
+| `qrcode-terminal` | `qrcode` | For WhatsApp auth QR display. |
+| `zod` | `pydantic` | Runtime validation. Use sparingly — dataclasses are fine for simple models. |
+| `vitest` | `pytest` + `pytest-asyncio` | Plus `pytest-mock` and `freezegun` for time-dependent tests. |
+| `@anthropic-ai/claude-agent-sdk` | `claude-code-sdk` | Python agent SDK. Verify API parity before implementing. |
+| `@modelcontextprotocol/sdk` | `mcp` | Python MCP SDK package. |
+
+## Concurrency Translation
+
+The whole host process is async. Node.js event loop → Python `asyncio`.
+
+| TypeScript Pattern | Python Equivalent |
+|---|---|
+| `setInterval(fn, ms)` | `asyncio.create_task` + `asyncio.sleep(s)` loop |
+| `setTimeout(fn, ms)` | `asyncio.get_event_loop().call_later(s, fn)` or task + sleep |
+| Spawning subprocesses | `asyncio.create_subprocess_exec('container', *args)` |
+| `Promise<T>` | `Coroutine` / `await` |
+| `new Promise(resolve => ...)` | `asyncio.Future` or `asyncio.Event` |
+| Stream `.on('data', cb)` | `async for chunk in proc.stdout` |
+| `clearTimeout(timer)` | `task.cancel()` |
+
+Time units: TypeScript uses milliseconds everywhere. Python should use **seconds** (float). Convert at the boundary in `config.py`.
+
+---
+
+## Implementation Phases
+
+Phases are ordered by dependency. Check the box when complete and add a brief note if the implementation diverged from the plan.
+
+### Phase 0: Project Scaffolding
+- [ ] Create `pyproject.toml` with deps: `neonize`, `aiosqlite`, `croniter`, `structlog`, `qrcode`, `pydantic`, `mcp`
+- [ ] Create directory structure (see Module Map above)
+- [ ] Create `__init__.py`, `__main__.py` stubs
+- [ ] Set up `pytest` with `conftest.py`, `ruff` for linting
+- [ ] Update `.gitignore` for Python (`.venv/`, `__pycache__/`, `*.pyc`, `dist/`)
+- [ ] Verify: `pip install -e .` works, `python -m nanoclawpy` runs and exits cleanly
+
+### Phase 1: Types, Config, Logger
+- [ ] **types.py** — Port interfaces to dataclasses. Use `Protocol` for `Channel` interface.
+- [ ] **config.py** — Use `pathlib.Path` for all paths. Store intervals in seconds, not ms.
+- [ ] **logger.py** — `structlog` singleton. Wire up `sys.excepthook` for uncaught exceptions.
+- [ ] Port trigger pattern tests from `formatting.test.ts`
+
+### Phase 2: Database Layer
+- [ ] **db.py** — All ~30 functions become `async def` using `aiosqlite`. Same schema as TS version.
+- [ ] Module-level `_db` connection, initialized by `init_database()`, with `_init_test_database()` for tests.
+- [ ] `aiosqlite.Row` row factory for dict-like access.
+- [ ] Port all tests from `db.test.ts` using in-memory SQLite.
+
+### Phase 3: Router & Message Formatting
+- [ ] **router.py** — `escape_xml()`, `format_messages()`, `strip_internal_tags()`, `format_outbound()`, `route_outbound()`, `find_channel()`
+- [ ] Port all tests from `formatting.test.ts`
+
+### Phase 4: Mount Security
+- [ ] **mount_security.py** — Pure logic, no async needed. Use `pathlib` and `os.path.realpath()`.
+- [ ] `load_mount_allowlist()`, `validate_mount()`, `validate_additional_mounts()`, `generate_allowlist_template()`
+- [ ] Write tests for allowed/blocked paths, blocked patterns, readonly enforcement.
+
+### Phase 5: Group Queue
+- [ ] **group_queue.py** — `GroupQueue` class with asyncio-based concurrency control.
+- [ ] State per group: `active`, `pending_messages`, `pending_tasks`, `process`, `retry_count`
+- [ ] Global: `active_count`, `waiting_groups` queue, `MAX_CONCURRENT_CONTAINERS` limit
+- [ ] Retry with exponential backoff (5s → 10s → 20s... capped at 5 retries)
+- [ ] `enqueue_message_check()`, `enqueue_task()`, `register_process()`, `send_message()`, `close_stdin()`, `shutdown()`
+- [ ] Port all tests from `group-queue.test.ts`. Mock `asyncio.sleep` instead of fake timers.
+
+### Phase 6: Container Runner
+- [ ] **container_runner.py** — `run_container_agent()` as the main entry point.
+- [ ] Mount building: `_build_volume_mounts()` with `Path.mkdir(parents=True, exist_ok=True)`
+- [ ] Process spawn: `asyncio.create_subprocess_exec` with `stdin=PIPE, stdout=PIPE, stderr=PIPE`
+- [ ] Streaming stdout parser: accumulate buffer, extract between `OUTPUT_START` / `OUTPUT_END` sentinel markers
+- [ ] Timeout: `asyncio.wait_for()` with activity-based reset. Timeout after output = success (idle cleanup). Timeout before output = error.
+- [ ] Skills sync, env file writing, log file writing
+- [ ] `write_tasks_snapshot()`, `write_groups_snapshot()`
+- [ ] Port tests from `container-runner.test.ts`. Mock subprocess.
+
+### Phase 7: IPC Watcher
+- [ ] **ipc.py** — `start_ipc_watcher()` as async polling loop (1s interval).
+- [ ] `process_task_ipc()` with `match/case` for command dispatch (Python 3.10+).
+- [ ] Authorization: non-main groups can only operate on themselves.
+- [ ] Atomic file processing: read → execute → delete. Move failures to `errors/` dir.
+- [ ] Port all tests from `ipc-auth.test.ts` (largest test file — 594 lines).
+
+### Phase 8: Task Scheduler
+- [ ] **task_scheduler.py** — `start_scheduler_loop()` as async polling loop (60s interval).
+- [ ] `croniter` for cron, simple arithmetic for interval, `datetime.fromisoformat()` for once.
+- [ ] Context modes: `group` (shared session) vs `isolated` (fresh session).
+- [ ] `update_task_after_run()`: calculate next_run, log to `task_run_logs`.
+
+### Phase 9: WhatsApp Channel (neonize)
+- [ ] **channels/whatsapp.py** — `WhatsAppChannel` class implementing `Channel` protocol.
+- [ ] **auth/whatsapp.py** — QR code auth flow using neonize.
+- [ ] Message receive: filter own messages, store to DB, notify metadata for discovery.
+- [ ] Message send: queue when disconnected, flush on reconnect.
+- [ ] Group sync: fetch metadata periodically (24h cache).
+- [ ] Reconnection: handle disconnects gracefully.
+
+> **Warning:** neonize's API is fundamentally different from baileys. This is NOT a 1:1 port. Study neonize's docs and examples before starting. Key unknowns: LID-to-phone JID translation, QR callback mechanism, reconnection behavior, group metadata API surface. Auth state is not portable from baileys — users will need to re-authenticate.
+
+### Phase 10: Main Orchestrator
+- [ ] **app.py** — `NanoClawApp` class (replaces module-level globals from `index.ts`).
+- [ ] State: `last_timestamp`, `sessions`, `registered_groups`, `last_agent_timestamp`, `queue`, `whatsapp`
+- [ ] `run()`: init DB → load state → connect WhatsApp → start scheduler + IPC + message loop
+- [ ] Message loop (2s poll): fetch new messages → check triggers → dispatch to queue
+- [ ] `process_group_messages()`: format XML → advance cursor → run container → rollback on error before output
+- [ ] Crash recovery: `recover_pending_messages()` on startup
+- [ ] Shutdown: SIGTERM/SIGINT → `queue.shutdown()` → `whatsapp.disconnect()` → exit
+- [ ] `ensure_container_system_running()`: check Apple Container, kill orphans
+- [ ] **`__main__.py`**: `asyncio.run(NanoClawApp().run())`
+- [ ] Port tests from `routing.test.ts`
+
+### Phase 11: Container Agent Runner (Python)
+> This phase can be developed **in parallel** with Phases 2-10.
+
+- [ ] **container/agent_runner/** — Separate Python package with its own `pyproject.toml`
+- [ ] **main.py** — Read JSON from stdin, run `query()` via Python Claude Agent SDK (`claude-code-sdk`), write sentinel-wrapped JSON to stdout.
+- [ ] `MessageStream`: async generator using `asyncio.Queue` (replaces the TS `AsyncIterable` class).
+- [ ] IPC polling during query: drain `/workspace/ipc/input/*.json`, detect `_close` sentinel.
+- [ ] Pre-compact hook: archive transcript to `conversations/` as markdown.
+- [ ] Session resume: pass `session_id` and `resume_at` to SDK.
+- [ ] **ipc_mcp.py** — MCP server using Python `mcp` package. Tools: `send_message`, `schedule_task`, `list_tasks`, `pause_task`, `resume_task`, `cancel_task`, `register_group`.
+- [ ] Atomic IPC file writes: temp file → `os.rename()`.
+- [ ] **Dockerfile** — Python 3.12 base. Still needs Node.js for `agent-browser` and `claude-code` CLI (dual-runtime container, this is pragmatic).
+- [ ] **build.sh** — Update for Python container.
+
+### Phase 12: Integration Testing & Polish
+- [ ] End-to-end: start app → mock WhatsApp → send message → verify container spawns → output returns
+- [ ] IPC round-trip: agent writes task file → host processes it
+- [ ] Scheduler: create cron task → advance time → verify execution
+- [ ] Multi-group concurrency: multiple groups, verify queue limits
+- [ ] Graceful shutdown: SIGTERM handling
+- [ ] Crash recovery: kill mid-processing, restart, verify `recover_pending_messages()`
+- [ ] Update CLAUDE.md for Python commands (`pip install -e .`, `python -m nanoclawpy`, `pytest`)
+- [ ] Update launchd plist for Python entrypoint
+
+---
+
+## Critical Paths & Parallelism
+
+```
+Phase 0 → 1 → 2 → 5 → 6 → 8 → 10 → 12
+              ├→ 3 → 7 ──────────↗
+              ├→ 4 ───────────────↗
+              └→ 9 ───────────────↗
+
+Phase 11 (container agent runner) is independent — build in parallel with everything.
+```
+
+**Critical path:** 0 → 1 → 2 → 5 → 6 → 10 → 12
+
+---
+
+## Known Risks
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| **neonize API mismatch** — fundamentally different from baileys | High | Build narrow adapter. Accept this module won't be 1:1. Research LID handling and reconnection early. |
+| **Container runner streaming** — asyncio subprocess buffering differs from Node streams | High | Port tests first. Use `asyncio.StreamReader` carefully. Test all 3 timeout scenarios (no output, mid-output, post-output). |
+| **Group queue state machine** — intricate concurrency with retries and drain cascading | Medium | Port tests first (TDD). Single-threaded asyncio shouldn't need locks if `await` points are managed. |
+| **Claude Agent SDK Python** — different package, potentially different API surface | Medium | Build a minimal test script calling `query()` with all options before attempting full port. Check: resume, hooks, MCP server config, permission mode. |
+| **aiosqlite performance** — adds thread overhead vs sync better-sqlite3 | Low | Operations are small. Won't matter in practice. |
+
+---
+
+## Out of Scope / Future Roadmap
+
+These are ideas that are explicitly **not part of the Python port** but worth tracking for later.
+
+- **Agent-side async task dispatch.** Agents running inside containers should be able to fire off tasks in separate sandboxed environments (e.g., a browser task, a code execution job) and get results back asynchronously. Think of it as a skill that lets the agent say "run this in a fresh sandbox and give me the result." This could be built as an MCP tool available to the agent runner, backed by something like OpenSandbox, Docker, or a lightweight job queue. The NanoClaw host harness itself should keep using containers directly — this is about giving agents *inside* those containers the ability to fan out work.
+
+
+---
+
+## Notes for Future Agents
+
+1. **Read the TypeScript first.** Before porting any module, read the original TS file completely. The code is well-written and the patterns are intentional.
+
+2. **Port tests alongside code.** Each phase has corresponding test files. Don't skip them — they catch real bugs and serve as the validation gate before moving on.
+
+3. **Keep this doc updated.** Check off phases as you complete them. If you diverge from the plan, add a brief note so the next agent knows what happened. Don't add verbose implementation details — keep it scannable.
+
+4. **The WhatsApp channel is the wild card.** neonize is the best Python option but it's not baileys. Expect to spend time reading neonize source code and examples. The `Channel` protocol interface is your safety net — as long as `WhatsAppChannel` implements it correctly, the rest of the system doesn't care how it works internally.
+
+5. **The container agent runner is a separate world.** It runs inside a Linux VM, has its own dependencies, and communicates only via stdin/stdout JSON and IPC files. You can develop and test it independently. The sentinel markers (`---NANOCLAW_OUTPUT_START---` / `---NANOCLAW_OUTPUT_END---`) are the contract between host and container.
+
+6. **Don't over-abstract.** The TypeScript codebase is deliberately simple. Resist the urge to add extra layers, base classes, or frameworks. If the TS version does something in 20 lines, the Python should too.
+
+7. **asyncio is the concurrency model.** Every polling loop, every subprocess interaction, every DB call goes through asyncio. There are no threads except inside aiosqlite (which handles that for you).
+
+8. **Time units: seconds, not milliseconds.** The TS uses ms everywhere. Python should use seconds (float). Convert once in `config.py` and never think about it again.
+
+9. **Trust your judgement.** This roadmap was written before any Python code existed. If something doesn't make sense when you're implementing it, adapt. The goal is a working Python port, not blind adherence to this document.
