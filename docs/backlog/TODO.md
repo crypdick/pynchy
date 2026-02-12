@@ -26,7 +26,7 @@ Single source of truth for all pynchy work items.
 - [X integration port](1-approved/x-integration-port.md) — Port the archived TypeScript X/Twitter skill to Python plugins
 - [Periodic agents](1-approved/periodic-agents.md) — Background agents for security sweeps, code quality, SDK updates, etc.
 - [Project ideas](1-approved/project-ideas.md) — Standalone integration ideas (calendar, voice, Cloudflare, AWS, etc.)
-- [Small improvements](1-approved/small-improvements.md) — Distinct system messages, dossier logging, ruff hooks, slack-tools check
+- [Small improvements](1-approved/small-improvements.md) — Distinct system messages, external pull & restart, dossier logging, ruff hooks, slack-tools check
 
 ### 2 - Planning
 *Draft plan exists. Awaiting human sign-off.*
@@ -38,6 +38,7 @@ Single source of truth for all pynchy work items.
 
 - [Plugin system](3-ready/plugin-system.md) — Plugin architecture for extending pynchy with modular capabilities
 - [Security hardening](3-ready/security-hardening.md) — Security improvements and hardening measures
+- when the host container starts, send a system message to the whatsapp channel
 
 ### 4 - In Progress
 *Being implemented.*
