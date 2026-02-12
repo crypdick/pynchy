@@ -37,27 +37,27 @@ from pynchy.types import ContainerInput, ContainerOutput, RegisteredGroup, Volum
 
 
 def _input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
-    """Convert ContainerInput to camelCase dict for the TS agent-runner."""
+    """Convert ContainerInput to dict for the Python agent-runner."""
     d: dict[str, Any] = {
         "prompt": input_data.prompt,
-        "groupFolder": input_data.group_folder,
-        "chatJid": input_data.chat_jid,
-        "isMain": input_data.is_main,
+        "group_folder": input_data.group_folder,
+        "chat_jid": input_data.chat_jid,
+        "is_main": input_data.is_main,
     }
     if input_data.session_id is not None:
-        d["sessionId"] = input_data.session_id
+        d["session_id"] = input_data.session_id
     if input_data.is_scheduled_task:
-        d["isScheduledTask"] = True
+        d["is_scheduled_task"] = True
     return d
 
 
 def _parse_container_output(json_str: str) -> ContainerOutput:
-    """Parse camelCase JSON from agent-runner into ContainerOutput."""
+    """Parse JSON from the Python agent-runner into ContainerOutput."""
     data = json.loads(json_str)
     return ContainerOutput(
         status=data["status"],
         result=data.get("result"),
-        new_session_id=data.get("newSessionId"),
+        new_session_id=data.get("new_session_id"),
         error=data.get("error"),
     )
 
@@ -148,7 +148,7 @@ def _build_volume_mounts(group: RegisteredGroup, is_main: bool) -> list[VolumeMo
     session_dir.mkdir(parents=True, exist_ok=True)
     _write_settings_json(session_dir)
     _sync_skills(session_dir)
-    mounts.append(VolumeMount(str(session_dir), "/home/node/.claude", readonly=False))
+    mounts.append(VolumeMount(str(session_dir), "/home/agent/.claude", readonly=False))
 
     # Per-group IPC namespace
     group_ipc_dir = DATA_DIR / "ipc" / group.folder
@@ -161,8 +161,8 @@ def _build_volume_mounts(group: RegisteredGroup, is_main: bool) -> list[VolumeMo
     if env_dir is not None:
         mounts.append(VolumeMount(str(env_dir), "/workspace/env-dir", readonly=True))
 
-    # Agent-runner source (read-only, recompiled on container startup)
-    agent_runner_src = PROJECT_ROOT / "container" / "agent-runner" / "src"
+    # Agent-runner source (read-only, Python source for container)
+    agent_runner_src = PROJECT_ROOT / "container" / "agent_runner" / "src"
     mounts.append(VolumeMount(str(agent_runner_src), "/app/src", readonly=True))
 
     # Additional mounts validated against external allowlist
@@ -187,10 +187,12 @@ def _build_container_args(mounts: list[VolumeMount], container_name: str) -> lis
     args = ["run", "-i", "--rm", "--name", container_name]
     for m in mounts:
         if m.readonly:
-            args.extend([
-                "--mount",
-                f"type=bind,source={m.host_path},target={m.container_path},readonly",
-            ])
+            args.extend(
+                [
+                    "--mount",
+                    f"type=bind,source={m.host_path},target={m.container_path},readonly",
+                ]
+            )
         else:
             args.extend(["-v", f"{m.host_path}:{m.container_path}"])
     args.append(CONTAINER_IMAGE)
@@ -206,7 +208,9 @@ async def _graceful_stop(proc: asyncio.subprocess.Process, container_name: str) 
     """Stop container gracefully with 15s timeout, fallback to kill."""
     try:
         stop_proc = await asyncio.create_subprocess_exec(
-            "container", "stop", container_name,
+            "container",
+            "stop",
+            container_name,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
@@ -278,37 +282,39 @@ def _write_run_log(
     ]
 
     if is_verbose or is_error:
-        lines.extend([
-            "=== Input ===",
-            json.dumps(_input_to_dict(input_data), indent=2),
-            "",
-            "=== Container Args ===",
-            " ".join(container_args),
-            "",
-            "=== Mounts ===",
-            "\n".join(
-                f"{m.host_path} -> {m.container_path}{' (ro)' if m.readonly else ''}"
-                for m in mounts
-            ),
-            "",
-            f"=== Stderr{' (TRUNCATED)' if stderr_truncated else ''} ===",
-            stderr,
-            "",
-            f"=== Stdout{' (TRUNCATED)' if stdout_truncated else ''} ===",
-            stdout,
-        ])
+        lines.extend(
+            [
+                "=== Input ===",
+                json.dumps(_input_to_dict(input_data), indent=2),
+                "",
+                "=== Container Args ===",
+                " ".join(container_args),
+                "",
+                "=== Mounts ===",
+                "\n".join(
+                    f"{m.host_path} -> {m.container_path}{' (ro)' if m.readonly else ''}"
+                    for m in mounts
+                ),
+                "",
+                f"=== Stderr{' (TRUNCATED)' if stderr_truncated else ''} ===",
+                stderr,
+                "",
+                f"=== Stdout{' (TRUNCATED)' if stdout_truncated else ''} ===",
+                stdout,
+            ]
+        )
     else:
-        lines.extend([
-            "=== Input Summary ===",
-            f"Prompt length: {len(input_data.prompt)} chars",
-            f"Session ID: {input_data.session_id or 'new'}",
-            "",
-            "=== Mounts ===",
-            "\n".join(
-                f"{m.container_path}{' (ro)' if m.readonly else ''}" for m in mounts
-            ),
-            "",
-        ])
+        lines.extend(
+            [
+                "=== Input Summary ===",
+                f"Prompt length: {len(input_data.prompt)} chars",
+                f"Session ID: {input_data.session_id or 'new'}",
+                "",
+                "=== Mounts ===",
+                "\n".join(f"{m.container_path}{' (ro)' if m.readonly else ''}" for m in mounts),
+                "",
+            ]
+        )
 
     log_file.write_text("\n".join(lines))
 
@@ -396,7 +402,8 @@ async def run_container_agent(
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     proc = await asyncio.create_subprocess_exec(
-        "container", *container_args,
+        "container",
+        *container_args,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -421,7 +428,8 @@ async def run_container_agent(
 
     # --- Timeout management ---
     config_timeout = (
-        group.container_config.timeout if group.container_config and group.container_config.timeout
+        group.container_config.timeout
+        if group.container_config and group.container_config.timeout
         else CONTAINER_TIMEOUT
     )
     # Grace period: hard timeout must be at least IDLE_TIMEOUT + 30s
@@ -481,9 +489,7 @@ async def run_container_agent(
                     if end_idx == -1:
                         break  # Incomplete pair, wait for more data
 
-                    json_str = parse_buffer[
-                        start_idx + len(OUTPUT_START_MARKER) : end_idx
-                    ].strip()
+                    json_str = parse_buffer[start_idx + len(OUTPUT_START_MARKER) : end_idx].strip()
                     parse_buffer = parse_buffer[end_idx + len(OUTPUT_END_MARKER) :]
 
                     try:

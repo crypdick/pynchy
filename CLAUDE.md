@@ -57,4 +57,4 @@ container builder stop && container builder rm && container builder start
 ./container/build.sh
 ```
 
-Always verify after rebuild: `container run -i --rm --entrypoint wc pynchy-agent:latest -l /app/src/index.ts`
+Always verify after rebuild: `container run -i --rm --entrypoint python pynchy-agent:latest -c "import agent_runner; print('OK')"`
