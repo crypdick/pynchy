@@ -8,16 +8,20 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 from typing import Any, Protocol
+from zoneinfo import ZoneInfo
 
 from croniter import croniter
 
 from pynchy.config import (
     GROUPS_DIR,
+    IDLE_TIMEOUT,
     MAIN_GROUP_FOLDER,
     SCHEDULER_POLL_INTERVAL,
+    TIMEZONE,
 )
-from pynchy.container_runner import run_container_agent
+from pynchy.container_runner import run_container_agent, write_tasks_snapshot
 from pynchy.db import (
+    get_all_tasks,
     get_due_tasks,
     get_task_by_id,
     log_task_run,
@@ -25,7 +29,7 @@ from pynchy.db import (
 )
 from pynchy.group_queue import GroupQueue
 from pynchy.logger import logger
-from pynchy.types import ContainerInput, RegisteredGroup, ScheduledTask, TaskRunLog
+from pynchy.types import ContainerInput, ContainerOutput, RegisteredGroup, ScheduledTask, TaskRunLog
 
 
 class SchedulerDependencies(Protocol):
@@ -113,12 +117,49 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
         return
 
     _is_main = task.group_folder == MAIN_GROUP_FOLDER
+
+    # Write tasks snapshot so the container can read current task state
+    all_tasks = await get_all_tasks()
+    write_tasks_snapshot(
+        task.group_folder,
+        _is_main,
+        [
+            {
+                "id": t.id,
+                "groupFolder": t.group_folder,
+                "prompt": t.prompt,
+                "schedule_type": t.schedule_type,
+                "schedule_value": t.schedule_value,
+                "status": t.status,
+                "next_run": t.next_run,
+            }
+            for t in all_tasks
+        ],
+    )
+
     result: str | None = None
     error: str | None = None
 
     # For group context mode, use the group's current session
     sessions = deps.get_sessions()
     _session_id = sessions.get(task.group_folder) if task.context_mode == "group" else None
+
+    # Idle timer: close container stdin after IDLE_TIMEOUT of no output,
+    # so the container exits instead of hanging at waitForIpcMessage.
+    idle_handle: asyncio.TimerHandle | None = None
+    loop = asyncio.get_running_loop()
+
+    def _reset_idle_timer() -> None:
+        nonlocal idle_handle
+        if idle_handle is not None:
+            idle_handle.cancel()
+        idle_handle = loop.call_later(
+            IDLE_TIMEOUT,
+            lambda: (
+                logger.debug("Scheduled task idle timeout, closing container stdin", task_id=task.id),
+                deps.queue.close_stdin(task.chat_jid),
+            ),
+        )
 
     try:
         container_input = ContainerInput(
@@ -130,19 +171,36 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
             is_scheduled_task=True,
         )
 
+        async def _on_streamed_output(streamed: ContainerOutput) -> None:
+            nonlocal result, error
+            if streamed.result:
+                result = streamed.result
+                await deps.send_message(task.chat_jid, streamed.result)
+                _reset_idle_timer()
+            if streamed.status == "error":
+                error = streamed.error or "Unknown error"
+
         output = await run_container_agent(
             group=group,
             input_data=container_input,
             on_process=lambda proc, name: deps.on_process(
                 task.chat_jid, proc, name, task.group_folder
             ),
+            on_output=_on_streamed_output,
         )
 
-        if output.status == "success":
-            result = output.result
-        else:
+        if idle_handle is not None:
+            idle_handle.cancel()
+
+        if output.status == "error":
             error = output.error or "Unknown error"
+        elif output.result:
+            result = output.result
+
+        logger.info("Task completed", task_id=task.id, duration_ms=(datetime.now(UTC) - start_time).total_seconds() * 1000)
     except Exception as exc:
+        if idle_handle is not None:
+            idle_handle.cancel()
         error = str(exc)
         logger.error("Task failed", task_id=task.id, error=error)
 
@@ -162,8 +220,9 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
     # Calculate next run
     next_run: str | None = None
     if task.schedule_type == "cron":
-        cron = croniter(task.schedule_value)
-        next_run = datetime.fromtimestamp(cron.get_next(float), tz=UTC).isoformat()
+        tz = ZoneInfo(TIMEZONE)
+        cron = croniter(task.schedule_value, datetime.now(tz))
+        next_run = cron.get_next(datetime).isoformat()
     elif task.schedule_type == "interval":
         ms = int(task.schedule_value)
         next_run = datetime.fromtimestamp(

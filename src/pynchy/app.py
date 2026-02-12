@@ -216,7 +216,7 @@ class PynchyApp:
         async def on_output(result: ContainerOutput) -> None:
             nonlocal had_error, output_sent_to_user
             if result.result:
-                raw = result.result
+                raw = result.result if isinstance(result.result, str) else json.dumps(result.result)
                 from pynchy.router import strip_internal_tags
 
                 text = strip_internal_tags(raw)

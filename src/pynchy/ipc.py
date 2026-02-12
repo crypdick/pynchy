@@ -13,11 +13,14 @@ from typing import Any, Protocol
 
 from croniter import croniter
 
+from zoneinfo import ZoneInfo
+
 from pynchy.config import (
     ASSISTANT_NAME,
     DATA_DIR,
     IPC_POLL_INTERVAL,
     MAIN_GROUP_FOLDER,
+    TIMEZONE,
 )
 from pynchy.db import create_task, delete_task, get_task_by_id, update_task
 from pynchy.logger import logger
@@ -198,8 +201,9 @@ async def process_task_ipc(
             next_run: str | None = None
             if schedule_type == "cron":
                 try:
-                    cron = croniter(schedule_value)
-                    next_run = datetime.fromtimestamp(cron.get_next(float), tz=UTC).isoformat()
+                    tz = ZoneInfo(TIMEZONE)
+                    cron = croniter(schedule_value, datetime.now(tz))
+                    next_run = cron.get_next(datetime).isoformat()
                 except (ValueError, KeyError):
                     logger.warning(
                         "Invalid cron expression",
