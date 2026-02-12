@@ -14,7 +14,7 @@ from typing import Any
 import aiosqlite
 
 from pynchy.config import DATA_DIR, STORE_DIR
-from pynchy.types import NewMessage, RegisteredGroup, ScheduledTask, TaskRunLog
+from pynchy.types import ContainerConfig, NewMessage, RegisteredGroup, ScheduledTask, TaskRunLog
 
 _db: aiosqlite.Connection | None = None
 
@@ -538,12 +538,13 @@ async def get_all_registered_groups() -> dict[str, RegisteredGroup]:
     for row in rows:
         entry = _row_to_registered_group(row)
         jid = entry.pop("jid")
+        raw_cc = entry.get("container_config")
         result[jid] = RegisteredGroup(
             name=entry["name"],
             folder=entry["folder"],
             trigger=entry["trigger"],
             added_at=entry["added_at"],
-            container_config=entry.get("container_config"),
+            container_config=ContainerConfig.from_dict(raw_cc) if raw_cc else None,
             requires_trigger=entry.get("requires_trigger"),
         )
     return result

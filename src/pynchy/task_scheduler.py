@@ -156,7 +156,7 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
         idle_handle = loop.call_later(
             IDLE_TIMEOUT,
             lambda: (
-                logger.debug("Scheduled task idle timeout, closing container stdin", task_id=task.id),
+                logger.debug("Scheduled task idle timeout, closing stdin", task_id=task.id),
                 deps.queue.close_stdin(task.chat_jid),
             ),
         )
@@ -197,7 +197,8 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
         elif output.result:
             result = output.result
 
-        logger.info("Task completed", task_id=task.id, duration_ms=(datetime.now(UTC) - start_time).total_seconds() * 1000)
+        elapsed_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
+        logger.info("Task completed", task_id=task.id, duration_ms=elapsed_ms)
     except Exception as exc:
         if idle_handle is not None:
             idle_handle.cancel()

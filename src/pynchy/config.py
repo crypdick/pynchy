@@ -33,7 +33,10 @@ CONTAINER_MAX_OUTPUT_SIZE: int = int(
     os.environ.get("CONTAINER_MAX_OUTPUT_SIZE", "10485760")
 )  # 10MB
 IDLE_TIMEOUT: float = int(os.environ.get("IDLE_TIMEOUT", "1800000")) / 1000  # 30min
-MAX_CONCURRENT_CONTAINERS: int = max(1, int(os.environ.get("MAX_CONCURRENT_CONTAINERS", "5")))
+try:
+    MAX_CONCURRENT_CONTAINERS: int = max(1, int(os.environ.get("MAX_CONCURRENT_CONTAINERS", "5")))
+except ValueError:
+    MAX_CONCURRENT_CONTAINERS: int = 5
 
 # Sentinel markers for robust output parsing (must match agent-runner)
 OUTPUT_START_MARKER = "---PYNCHY_OUTPUT_START---"
@@ -45,9 +48,13 @@ def _escape_regex(s: str) -> str:
 
 
 # Additional trigger aliases (case insensitive, matched alongside ASSISTANT_NAME)
-TRIGGER_ALIASES: list[str] = [s for s in os.environ.get("TRIGGER_ALIASES", "ghost").split(",") if s.strip()]
+TRIGGER_ALIASES: list[str] = [
+    s for s in os.environ.get("TRIGGER_ALIASES", "ghost").split(",") if s.strip()
+]
 
-_trigger_names = [_escape_regex(ASSISTANT_NAME)] + [_escape_regex(a.strip()) for a in TRIGGER_ALIASES]
+_trigger_names = [_escape_regex(ASSISTANT_NAME)] + [
+    _escape_regex(a.strip()) for a in TRIGGER_ALIASES
+]
 TRIGGER_PATTERN: re.Pattern[str] = re.compile(
     rf"^@({'|'.join(_trigger_names)})\b", re.IGNORECASE
 )

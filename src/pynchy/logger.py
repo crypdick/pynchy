@@ -16,8 +16,12 @@ def _setup_logging() -> structlog.stdlib.BoundLogger:
     level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
 
+    # Configure stdlib root logger first so structlog's filter_by_level works
+    logging.basicConfig(level=level, format="%(message)s", stream=sys.stderr)
+
     structlog.configure(
         processors=[
+            structlog.stdlib.filter_by_level,
             structlog.contextvars.merge_contextvars,
             structlog.stdlib.add_log_level,
             structlog.dev.set_exc_info,
@@ -28,12 +32,9 @@ def _setup_logging() -> structlog.stdlib.BoundLogger:
         ],
         wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
+        logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
-
-    # Set stdlib logging level so structlog respects it
-    logging.basicConfig(level=level, format="%(message)s", stream=sys.stderr)
 
     return structlog.get_logger()
 
