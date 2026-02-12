@@ -1,9 +1,9 @@
-# NanoClaw Agent Container
-# Runs Claude Agent SDK in isolated Linux VM with browser automation
+# Pynchy Agent Container
+# Runs Claude Agent SDK (Python) in isolated Linux VM with browser automation
 
-FROM node:22-slim
+FROM python:3.13-slim
 
-# Install system dependencies for Chromium
+# Install system dependencies for Chromium + Node.js
 RUN apt-get update && apt-get install -y \
     chromium \
     fonts-liberation \
@@ -25,6 +25,11 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Node.js (needed for agent-browser and claude-code)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
 # Set Chromium path for agent-browser
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
@@ -35,32 +40,24 @@ RUN npm install -g agent-browser @anthropic-ai/claude-code
 # Create app directory
 WORKDIR /app
 
-# Copy package files first for better caching
-COPY agent-runner/package*.json ./
-
-# Install dependencies
-RUN npm install
-
-# Copy source code
-COPY agent-runner/ ./
-
-# Build TypeScript
-RUN npm run build
+# Copy Python agent runner and install
+COPY agent_runner/ /app/
+RUN pip install --no-cache-dir /app/
 
 # Create workspace directories
 RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/messages /workspace/ipc/tasks /workspace/ipc/input
 
 # Create entrypoint script
-# Sources env from mounted /workspace/env-dir/env if it exists (workaround for Apple Container -i bug)
+# Sources env from mounted /workspace/env-dir/env if it exists
 # Stdin is buffered to /tmp then piped (Apple Container requires EOF to flush stdin pipe)
-# Follow-up messages arrive via IPC files in /workspace/ipc/input/
-RUN printf '#!/bin/bash\nset -e\n[ -f /workspace/env-dir/env ] && export $(cat /workspace/env-dir/env | xargs)\ncd /app && npx tsc --outDir /tmp/dist 2>&1 >&2\nln -s /app/node_modules /tmp/dist/node_modules\nchmod -R a-w /tmp/dist\ncat > /tmp/input.json\nnode /tmp/dist/index.js < /tmp/input.json\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+RUN printf '#!/bin/bash\nset -e\n[ -f /workspace/env-dir/env ] && export $(cat /workspace/env-dir/env | xargs)\ncat > /tmp/input.json\npython -m agent_runner < /tmp/input.json\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
-# Set ownership to node user (non-root) for writable directories
-RUN chown -R node:node /workspace
+# Create non-root user for security
+RUN useradd -m -s /bin/bash agent
+RUN chown -R agent:agent /workspace
 
-# Switch to non-root user (required for --dangerously-skip-permissions)
-USER node
+# Switch to non-root user
+USER agent
 
 # Set working directory to group workspace
 WORKDIR /workspace/group

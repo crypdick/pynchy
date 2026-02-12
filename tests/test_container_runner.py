@@ -113,7 +113,7 @@ class FakeStdin:
 
 
 class TestInputSerialization:
-    def test_basic_fields_camel_case(self):
+    def test_basic_fields_snake_case(self):
         inp = ContainerInput(
             prompt="hi",
             group_folder="my-group",
@@ -123,9 +123,9 @@ class TestInputSerialization:
         d = _input_to_dict(inp)
         assert d == {
             "prompt": "hi",
-            "groupFolder": "my-group",
-            "chatJid": "chat@g.us",
-            "isMain": True,
+            "group_folder": "my-group",
+            "chat_jid": "chat@g.us",
+            "is_main": True,
         }
 
     def test_optional_fields_included_when_set(self):
@@ -138,24 +138,26 @@ class TestInputSerialization:
             is_scheduled_task=True,
         )
         d = _input_to_dict(inp)
-        assert d["sessionId"] == "sess-1"
-        assert d["isScheduledTask"] is True
+        assert d["session_id"] == "sess-1"
+        assert d["is_scheduled_task"] is True
 
     def test_optional_fields_omitted_when_default(self):
         inp = ContainerInput(prompt="hi", group_folder="g", chat_jid="c", is_main=False)
         d = _input_to_dict(inp)
-        assert "sessionId" not in d
-        assert "isScheduledTask" not in d
+        assert "session_id" not in d
+        assert "is_scheduled_task" not in d
 
 
 class TestOutputParsing:
-    def test_parses_camel_case_json(self):
+    def test_parses_snake_case_json(self):
         out = _parse_container_output(
-            json.dumps({
-                "status": "success",
-                "result": "done",
-                "newSessionId": "s1",
-            })
+            json.dumps(
+                {
+                    "status": "success",
+                    "result": "done",
+                    "new_session_id": "s1",
+                }
+            )
         )
         assert out.status == "success"
         assert out.result == "done"
@@ -191,10 +193,16 @@ class TestContainerArgs:
 
 class TestLegacyParsing:
     def test_extracts_between_markers(self):
-        stdout = f"noise\n{OUTPUT_START_MARKER}\n" + json.dumps({
-            "status": "success",
-            "result": "hello",
-        }) + f"\n{OUTPUT_END_MARKER}\nmore noise"
+        stdout = (
+            f"noise\n{OUTPUT_START_MARKER}\n"
+            + json.dumps(
+                {
+                    "status": "success",
+                    "result": "hello",
+                }
+            )
+            + f"\n{OUTPUT_END_MARKER}\nmore noise"
+        )
         result = _parse_final_output(stdout, "test", "", 100)
         assert result.status == "success"
         assert result.result == "hello"
@@ -284,20 +292,22 @@ def _patch_dirs(tmp_path: Path):
 
 
 class TestRunContainerAgent:
-    async def test_normal_exit_with_streaming_output(
-        self, fake_proc: FakeProcess, tmp_path: Path
-    ):
+    async def test_normal_exit_with_streaming_output(self, fake_proc: FakeProcess, tmp_path: Path):
         on_output = AsyncMock()
 
         with _patch_subprocess(fake_proc), _patch_dirs(tmp_path):
             # Schedule output + close after a tiny delay
             async def _driver():
                 await asyncio.sleep(0.01)
-                fake_proc.emit_stdout(_marker_wrap({
-                    "status": "success",
-                    "result": "Here is my response",
-                    "newSessionId": "session-123",
-                }))
+                fake_proc.emit_stdout(
+                    _marker_wrap(
+                        {
+                            "status": "success",
+                            "result": "Here is my response",
+                            "new_session_id": "session-123",
+                        }
+                    )
+                )
                 await asyncio.sleep(0.01)
                 fake_proc.close(0)
 
@@ -313,9 +323,7 @@ class TestRunContainerAgent:
         call_arg = on_output.call_args[0][0]
         assert call_arg.result == "Here is my response"
 
-    async def test_nonzero_exit_is_error(
-        self, fake_proc: FakeProcess, tmp_path: Path
-    ):
+    async def test_nonzero_exit_is_error(self, fake_proc: FakeProcess, tmp_path: Path):
         with _patch_subprocess(fake_proc), _patch_dirs(tmp_path):
 
             async def _driver():
@@ -325,44 +333,41 @@ class TestRunContainerAgent:
                 fake_proc.close(1)
 
             driver = asyncio.create_task(_driver())
-            result = await run_container_agent(
-                TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None
-            )
+            result = await run_container_agent(TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None)
             await driver
 
         assert result.status == "error"
         assert "code 1" in (result.error or "")
         assert "something went wrong" in (result.error or "")
 
-    async def test_legacy_mode_parses_stdout(
-        self, fake_proc: FakeProcess, tmp_path: Path
-    ):
+    async def test_legacy_mode_parses_stdout(self, fake_proc: FakeProcess, tmp_path: Path):
         """Without on_output, final output is parsed from accumulated stdout."""
         with _patch_subprocess(fake_proc), _patch_dirs(tmp_path):
 
             async def _driver():
                 await asyncio.sleep(0.01)
-                fake_proc.emit_stdout(_marker_wrap({
-                    "status": "success",
-                    "result": "legacy result",
-                }))
+                fake_proc.emit_stdout(
+                    _marker_wrap(
+                        {
+                            "status": "success",
+                            "result": "legacy result",
+                        }
+                    )
+                )
                 await asyncio.sleep(0.01)
                 fake_proc.close(0)
 
             driver = asyncio.create_task(_driver())
             # No on_output → legacy mode
-            result = await run_container_agent(
-                TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None
-            )
+            result = await run_container_agent(TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None)
             await driver
 
         assert result.status == "success"
         assert result.result == "legacy result"
 
-    async def test_timeout_with_short_timeout(
-        self, fake_proc: FakeProcess, tmp_path: Path
-    ):
+    async def test_timeout_with_short_timeout(self, fake_proc: FakeProcess, tmp_path: Path):
         """Test real timeout behavior with very short timeout values."""
+
         async def _fake_stop(proc: Any, name: str) -> None:
             if hasattr(proc, "close"):
                 proc.close(137)
@@ -403,11 +408,15 @@ class TestRunContainerAgent:
 
             async def _driver():
                 await asyncio.sleep(0.01)
-                fake_proc.emit_stdout(_marker_wrap({
-                    "status": "success",
-                    "result": "response",
-                    "newSessionId": "s-99",
-                }))
+                fake_proc.emit_stdout(
+                    _marker_wrap(
+                        {
+                            "status": "success",
+                            "result": "response",
+                            "new_session_id": "s-99",
+                        }
+                    )
+                )
                 # Don't close — let timeout fire after the short period
 
             driver = asyncio.create_task(_driver())
@@ -420,9 +429,7 @@ class TestRunContainerAgent:
         assert result.status == "success"
         assert result.new_session_id == "s-99"
 
-    async def test_stdout_truncation(
-        self, fake_proc: FakeProcess, tmp_path: Path
-    ):
+    async def test_stdout_truncation(self, fake_proc: FakeProcess, tmp_path: Path):
         """Exceeding CONTAINER_MAX_OUTPUT_SIZE doesn't crash."""
         with (
             _patch_subprocess(fake_proc),
@@ -439,9 +446,7 @@ class TestRunContainerAgent:
 
             driver = asyncio.create_task(_driver())
             # Should not crash
-            result = await run_container_agent(
-                TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None
-            )
+            result = await run_container_agent(TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None)
             await driver
 
         # No markers found, fallback parse fails → error
@@ -481,16 +486,12 @@ class TestGroupsSnapshot:
         with patch("pynchy.container_runner.DATA_DIR", tmp_path):
             groups = [{"jid": "a@g.us"}, {"jid": "b@g.us"}]
             write_groups_snapshot("main", True, groups, {"a@g.us", "b@g.us"})
-            result = json.loads(
-                (tmp_path / "ipc" / "main" / "available_groups.json").read_text()
-            )
+            result = json.loads((tmp_path / "ipc" / "main" / "available_groups.json").read_text())
             assert len(result["groups"]) == 2
 
     def test_nonmain_sees_no_groups(self, tmp_path: Path):
         with patch("pynchy.container_runner.DATA_DIR", tmp_path):
             groups = [{"jid": "a@g.us"}]
             write_groups_snapshot("other", False, groups, {"a@g.us"})
-            result = json.loads(
-                (tmp_path / "ipc" / "other" / "available_groups.json").read_text()
-            )
+            result = json.loads((tmp_path / "ipc" / "other" / "available_groups.json").read_text())
             assert len(result["groups"]) == 0

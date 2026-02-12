@@ -35,7 +35,7 @@ class IpcDeps(Protocol):
 
     async def sync_group_metadata(self, force: bool) -> None: ...
 
-    def get_available_groups(self) -> list[Any]: ...
+    async def get_available_groups(self) -> list[Any]: ...
 
     def write_groups_snapshot(
         self,
@@ -314,7 +314,7 @@ async def process_task_ipc(
                     source_group=source_group,
                 )
                 await deps.sync_group_metadata(True)
-                available_groups = deps.get_available_groups()
+                available_groups = await deps.get_available_groups()
                 deps.write_groups_snapshot(
                     source_group,
                     True,
