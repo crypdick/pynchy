@@ -10,10 +10,12 @@ import contextlib
 import json
 import signal
 import subprocess
+from datetime import UTC, datetime
 from typing import Any
 
 from pynchy.config import (
     ASSISTANT_NAME,
+    CONTAINER_IMAGE,
     GROUPS_DIR,
     IDLE_TIMEOUT,
     MAIN_GROUP_FOLDER,
@@ -43,8 +45,8 @@ from pynchy.db import (
 from pynchy.group_queue import GroupQueue
 from pynchy.ipc import start_ipc_watcher
 from pynchy.logger import logger
-from pynchy.runtime import get_runtime
 from pynchy.router import format_messages, format_outbound
+from pynchy.runtime import get_runtime
 from pynchy.task_scheduler import start_scheduler_loop
 from pynchy.types import Channel, ContainerInput, ContainerOutput, NewMessage, RegisteredGroup
 
@@ -60,6 +62,7 @@ class PynchyApp:
         self.message_loop_running: bool = False
         self.queue: GroupQueue = GroupQueue()
         self.channels: list[Channel] = []
+        self._shutting_down: bool = False
 
     # ------------------------------------------------------------------
     # State persistence
@@ -123,6 +126,35 @@ class PynchyApp:
             for c in chats
             if c["jid"] != "__group_sync__" and c["jid"].endswith("@g.us")
         ]
+
+    # ------------------------------------------------------------------
+    # First-run setup
+    # ------------------------------------------------------------------
+
+    async def _setup_main_group(self, whatsapp: Any) -> None:
+        """Create a new WhatsApp group and register it as the main channel.
+
+        Called on first run when no groups are registered. Creates a private
+        group so the user has a dedicated space to talk to the agent.
+        """
+        group_name = ASSISTANT_NAME.title()
+        logger.info("No groups registered. Creating WhatsApp group...", name=group_name)
+
+        jid = await whatsapp.create_group(group_name)
+
+        group = RegisteredGroup(
+            name=group_name,
+            folder=MAIN_GROUP_FOLDER,
+            trigger=f"@{ASSISTANT_NAME}",
+            added_at=datetime.now(UTC).isoformat(),
+            requires_trigger=False,
+        )
+        await self._register_group(jid, group)
+        logger.info(
+            "Main channel created! Open the group in WhatsApp to start chatting.",
+            group=group_name,
+            jid=jid,
+        )
 
     # ------------------------------------------------------------------
     # Message processing
@@ -315,7 +347,7 @@ class PynchyApp:
 
         logger.info(f"Pynchy running (trigger: @{ASSISTANT_NAME})")
 
-        while True:
+        while not self._shutting_down:
             try:
                 jids = list(self.registered_groups.keys())
                 messages, new_timestamp = await get_new_messages(
@@ -399,6 +431,30 @@ class PynchyApp:
         runtime = get_runtime()
         runtime.ensure_running()
 
+        # Auto-build container image if missing
+        result = subprocess.run(
+            [runtime.cli, "image", "inspect", CONTAINER_IMAGE],
+            capture_output=True,
+        )
+        if result.returncode != 0:
+            from pynchy.config import PROJECT_ROOT
+
+            container_dir = PROJECT_ROOT / "container"
+            if not (container_dir / "Dockerfile").exists():
+                raise RuntimeError(
+                    f"Container image '{CONTAINER_IMAGE}' not found and "
+                    f"no Dockerfile at {container_dir / 'Dockerfile'}"
+                )
+            logger.info("Container image not found, building...", image=CONTAINER_IMAGE)
+            build = subprocess.run(
+                [runtime.cli, "build", "-t", CONTAINER_IMAGE, "."],
+                cwd=str(container_dir),
+            )
+            if build.returncode != 0:
+                raise RuntimeError(
+                    f"Failed to build container image '{CONTAINER_IMAGE}'"
+                )
+
         # Kill orphaned containers from previous runs
         orphans = runtime.list_running_containers("pynchy-")
         for name in orphans:
@@ -430,7 +486,13 @@ class PynchyApp:
     # ------------------------------------------------------------------
 
     async def _shutdown(self, sig_name: str) -> None:
-        """Graceful shutdown handler."""
+        """Graceful shutdown handler. Second signal force-exits."""
+        if self._shutting_down:
+            logger.info("Force shutdown")
+            import os
+
+            os._exit(1)
+        self._shutting_down = True
         logger.info("Shutdown signal received", signal=sig_name)
         await self.queue.shutdown(10.0)
         for channel in self.channels:
@@ -464,6 +526,10 @@ class PynchyApp:
         )
         self.channels.append(whatsapp)
         await whatsapp.connect()
+
+        # First-run: create a private group and register as main channel
+        if not self.registered_groups:
+            await self._setup_main_group(whatsapp)
 
         # Start subsystems
         asyncio.create_task(

@@ -1,15 +1,69 @@
-"""Entry point for `python -m pynchy`."""
+"""Entry point for `python -m pynchy` / `uv run pynchy`.
+
+Subcommands:
+    pynchy          Run the app (default)
+    pynchy auth     Authenticate with WhatsApp
+    pynchy build    Build the container image
+"""
 
 from __future__ import annotations
 
+import argparse
 import asyncio
+import subprocess
+import sys
 
-from pynchy.app import PynchyApp
+
+def _run() -> None:
+    from pynchy.app import PynchyApp
+
+    app = PynchyApp()
+    asyncio.run(app.run())
+
+
+def _auth() -> None:
+    from pynchy.auth.whatsapp import main as auth_main
+
+    auth_main()
+
+
+def _build() -> None:
+    from pynchy.config import CONTAINER_IMAGE, PROJECT_ROOT
+    from pynchy.runtime import get_runtime
+
+    runtime = get_runtime()
+    container_dir = PROJECT_ROOT / "container"
+
+    if not (container_dir / "Dockerfile").exists():
+        print(f"Error: No Dockerfile at {container_dir / 'Dockerfile'}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Building {CONTAINER_IMAGE} with {runtime.cli}...")
+    result = subprocess.run(
+        [runtime.cli, "build", "-t", CONTAINER_IMAGE, "."],
+        cwd=str(container_dir),
+    )
+    sys.exit(result.returncode)
 
 
 def main() -> None:
-    app = PynchyApp()
-    asyncio.run(app.run())
+    parser = argparse.ArgumentParser(
+        prog="pynchy",
+        description="Personal Claude assistant on WhatsApp",
+    )
+    sub = parser.add_subparsers(dest="command")
+    sub.add_parser("auth", help="Authenticate with WhatsApp")
+    sub.add_parser("build", help="Build the container image")
+
+    args = parser.parse_args()
+
+    match args.command:
+        case "auth":
+            _auth()
+        case "build":
+            _build()
+        case _:
+            _run()
 
 
 if __name__ == "__main__":

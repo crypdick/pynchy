@@ -93,17 +93,18 @@ class WhatsAppChannel:
             self._connected = True
             logger.info("Connected to WhatsApp")
 
-            # Build LID → phone mapping for self-chat translation
+            # Build LID → phone mapping for self-chat translation.
+            # client.me is a Device protobuf with .JID and .LID sub-fields.
             if self._client.me:
-                me = self._client.me
-                phone_user = me.User
-                lid_user = getattr(me, "LID", None)
-                if lid_user and hasattr(lid_user, "User") and lid_user.User:
-                    self._lid_to_phone[lid_user.User] = f"{phone_user}@s.whatsapp.net"
+                device = self._client.me
+                jid = getattr(device, "JID", None)
+                lid = getattr(device, "LID", None)
+                if jid and lid and lid.User:
+                    self._lid_to_phone[lid.User] = f"{jid.User}@s.whatsapp.net"
                     logger.debug(
                         "LID to phone mapping set",
-                        lid_user=lid_user.User,
-                        phone_user=phone_user,
+                        lid_user=lid.User,
+                        phone_user=jid.User,
                     )
 
             # Flush queued messages
@@ -259,6 +260,11 @@ class WhatsAppChannel:
 
     def owns_jid(self, jid: str) -> bool:
         return jid.endswith("@g.us") or jid.endswith("@s.whatsapp.net")
+
+    async def create_group(self, name: str) -> str:
+        """Create a new WhatsApp group and return its JID."""
+        group_info = await self._client.create_group(name)
+        return Jid2String(group_info.JID)
 
     async def disconnect(self) -> None:
         self._connected = False
