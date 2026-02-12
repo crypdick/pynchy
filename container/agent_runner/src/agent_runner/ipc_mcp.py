@@ -257,6 +257,36 @@ async def list_tools() -> list[Tool]:
         ),
     ]
 
+    tools.append(
+        Tool(
+            name="reset_context",
+            description=(
+                "Reset your conversation context and start a fresh "
+                "session. Use this when your context has grown large "
+                "and you want to continue with a clean slate. You "
+                "can pass a message to your future self — e.g. a "
+                "plan, summary, or instructions — which becomes the "
+                "initial prompt of the new session.\n\n"
+                "After calling this tool, the current session ends "
+                "immediately. Do NOT attempt further work after "
+                "calling it."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": (
+                            "Message for your next session. Include "
+                            "all context needed to continue the task."
+                        ),
+                    },
+                },
+                "required": ["message"],
+            },
+        ),
+    )
+
     if is_main:
         tools.append(
             Tool(
@@ -525,6 +555,23 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolR
                     ),
                 )
             ]
+
+        case "reset_context":
+            data = {
+                "type": "reset_context",
+                "message": arguments["message"],
+                "chatJid": chat_jid,
+                "groupFolder": group_folder,
+                "timestamp": _now_iso(),
+            }
+            write_ipc_file(TASKS_DIR, data)
+
+            # Write close sentinel and exit immediately — no point
+            # returning a response to an LLM that's about to be killed.
+            close_sentinel = Path("/workspace/ipc/input/_close")
+            close_sentinel.parent.mkdir(parents=True, exist_ok=True)
+            close_sentinel.write_text("")
+            os._exit(0)
 
         case "deploy_changes":
             if not is_main:

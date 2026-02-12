@@ -59,6 +59,12 @@ TRIGGER_PATTERN: re.Pattern[str] = re.compile(
     rf"^@({'|'.join(_trigger_names)})\b", re.IGNORECASE
 )
 
+# Magic words to reset conversation context (voice-friendly variants)
+CONTEXT_RESET_PATTERN: re.Pattern[str] = re.compile(
+    r"^\s*(?:(?:reset|restart)\s+(?:context|session)|(?:context|session)\s+(?:reset|restart))\s*$",
+    re.IGNORECASE,
+)
+
 
 # Timezone for scheduled tasks — uses system IANA timezone by default.
 # TS equivalent: Intl.DateTimeFormat().resolvedOptions().timeZone

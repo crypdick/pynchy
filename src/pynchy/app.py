@@ -17,6 +17,7 @@ from typing import Any
 from pynchy.config import (
     ASSISTANT_NAME,
     CONTAINER_IMAGE,
+    CONTEXT_RESET_PATTERN,
     DATA_DIR,
     GROUPS_DIR,
     IDLE_TIMEOUT,
@@ -31,6 +32,7 @@ from pynchy.container_runner import (
     write_tasks_snapshot,
 )
 from pynchy.db import (
+    clear_session,
     get_all_chats,
     get_all_registered_groups,
     get_all_sessions,
@@ -169,6 +171,23 @@ class PynchyApp:
         if not group:
             return True
 
+        # Check for agent-initiated context reset prompt
+        reset_file = DATA_DIR / "ipc" / group.folder / "reset_prompt.json"
+        if reset_file.exists():
+            try:
+                reset_data = json.loads(reset_file.read_text())
+                reset_file.unlink()
+            except Exception:
+                reset_file.unlink(missing_ok=True)
+                return True
+
+            prompt = reset_data.get("message", "")
+            if prompt:
+                logger.info("Processing reset handoff", group=group.name)
+                result = await self._run_agent(group, prompt, chat_jid)
+                return result != "error"
+            return True
+
         is_main_group = group.folder == MAIN_GROUP_FOLDER
         since_timestamp = self.last_agent_timestamp.get(chat_jid, "")
         missed_messages = await get_messages_since(chat_jid, since_timestamp, ASSISTANT_NAME)
@@ -181,6 +200,21 @@ class PynchyApp:
             has_trigger = any(TRIGGER_PATTERN.search(m.content.strip()) for m in missed_messages)
             if not has_trigger:
                 return True
+
+        # Check if the last message is a context reset command
+        if CONTEXT_RESET_PATTERN.match(missed_messages[-1].content.strip()):
+            self.sessions.pop(group.folder, None)
+            await clear_session(group.folder)
+            self.queue.close_stdin(chat_jid)
+            self.last_agent_timestamp[chat_jid] = missed_messages[-1].timestamp
+            await self._save_state()
+            channel = self._find_channel(chat_jid)
+            if channel:
+                await channel.send_message(
+                    chat_jid, "Context reset. Next message starts a fresh session."
+                )
+            logger.info("Context reset", group=group.name)
+            return True
 
         prompt = format_messages(missed_messages)
 
@@ -704,5 +738,12 @@ class PynchyApp:
                 registered_jids: set[str],
             ) -> None:
                 write_groups_snapshot(group_folder, is_main, available_groups, registered_jids)
+
+            async def clear_session(self, group_folder: str) -> None:
+                app.sessions.pop(group_folder, None)
+                await clear_session(group_folder)
+
+            def enqueue_message_check(self, group_jid: str) -> None:
+                app.queue.enqueue_message_check(group_jid)
 
         return _Deps()
