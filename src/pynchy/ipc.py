@@ -7,11 +7,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import uuid
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Awaitable, Callable, Protocol
+from datetime import UTC, datetime
+from typing import Any, Protocol
 
 from croniter import croniter
 
@@ -20,7 +18,6 @@ from pynchy.config import (
     DATA_DIR,
     IPC_POLL_INTERVAL,
     MAIN_GROUP_FOLDER,
-    TIMEZONE,
 )
 from pynchy.db import create_task, delete_task, get_task_by_id, update_task
 from pynchy.logger import logger
@@ -66,9 +63,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
     async def process_ipc_files() -> None:
         try:
             group_folders = [
-                f.name
-                for f in ipc_base_dir.iterdir()
-                if f.is_dir() and f.name != "errors"
+                f.name for f in ipc_base_dir.iterdir() if f.is_dir() and f.name != "errors"
             ]
         except Exception as exc:
             logger.error("Error reading IPC base directory", err=str(exc))
@@ -85,9 +80,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
             # Process messages
             try:
                 if messages_dir.exists():
-                    message_files = sorted(
-                        f for f in messages_dir.iterdir() if f.suffix == ".json"
-                    )
+                    message_files = sorted(f for f in messages_dir.iterdir() if f.suffix == ".json")
                     for file_path in message_files:
                         try:
                             data = json.loads(file_path.read_text())
@@ -98,8 +91,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
                             ):
                                 target_group = registered_groups.get(data["chatJid"])
                                 if is_main or (
-                                    target_group
-                                    and target_group.folder == source_group
+                                    target_group and target_group.folder == source_group
                                 ):
                                     await deps.send_message(
                                         data["chatJid"],
@@ -126,9 +118,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
                             )
                             error_dir = ipc_base_dir / "errors"
                             error_dir.mkdir(parents=True, exist_ok=True)
-                            file_path.rename(
-                                error_dir / f"{source_group}-{file_path.name}"
-                            )
+                            file_path.rename(error_dir / f"{source_group}-{file_path.name}")
             except Exception as exc:
                 logger.error(
                     "Error reading IPC messages directory",
@@ -139,15 +129,11 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
             # Process tasks
             try:
                 if tasks_dir.exists():
-                    task_files = sorted(
-                        f for f in tasks_dir.iterdir() if f.suffix == ".json"
-                    )
+                    task_files = sorted(f for f in tasks_dir.iterdir() if f.suffix == ".json")
                     for file_path in task_files:
                         try:
                             data = json.loads(file_path.read_text())
-                            await process_task_ipc(
-                                data, source_group, is_main, deps
-                            )
+                            await process_task_ipc(data, source_group, is_main, deps)
                             file_path.unlink()
                         except Exception as exc:
                             logger.error(
@@ -158,9 +144,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
                             )
                             error_dir = ipc_base_dir / "errors"
                             error_dir.mkdir(parents=True, exist_ok=True)
-                            file_path.rename(
-                                error_dir / f"{source_group}-{file_path.name}"
-                            )
+                            file_path.rename(error_dir / f"{source_group}-{file_path.name}")
             except Exception as exc:
                 logger.error(
                     "Error reading IPC tasks directory",
@@ -215,9 +199,7 @@ async def process_task_ipc(
             if schedule_type == "cron":
                 try:
                     cron = croniter(schedule_value)
-                    next_run = datetime.fromtimestamp(
-                        cron.get_next(float), tz=timezone.utc
-                    ).isoformat()
+                    next_run = datetime.fromtimestamp(cron.get_next(float), tz=UTC).isoformat()
                 except (ValueError, KeyError):
                     logger.warning(
                         "Invalid cron expression",
@@ -230,25 +212,21 @@ async def process_task_ipc(
                     if ms <= 0:
                         raise ValueError("Interval must be positive")
                 except (ValueError, TypeError):
-                    logger.warning(
-                        "Invalid interval", schedule_value=schedule_value
-                    )
+                    logger.warning("Invalid interval", schedule_value=schedule_value)
                     return
                 next_run = datetime.fromtimestamp(
-                    datetime.now(timezone.utc).timestamp() + ms / 1000,
-                    tz=timezone.utc,
+                    datetime.now(UTC).timestamp() + ms / 1000,
+                    tz=UTC,
                 ).isoformat()
             elif schedule_type == "once":
                 try:
                     scheduled = datetime.fromisoformat(schedule_value)
                     next_run = scheduled.isoformat()
                 except (ValueError, TypeError):
-                    logger.warning(
-                        "Invalid timestamp", schedule_value=schedule_value
-                    )
+                    logger.warning("Invalid timestamp", schedule_value=schedule_value)
                     return
 
-            task_id = f"task-{int(datetime.now(timezone.utc).timestamp() * 1000)}-{uuid.uuid4().hex[:8]}"
+            task_id = f"task-{int(datetime.now(UTC).timestamp() * 1000)}-{uuid.uuid4().hex[:8]}"
             context_mode = data.get("context_mode")
             if context_mode not in ("group", "isolated"):
                 context_mode = "isolated"
@@ -264,7 +242,7 @@ async def process_task_ipc(
                     "context_mode": context_mode,
                     "next_run": next_run,
                     "status": "active",
-                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "created_at": datetime.now(UTC).isoformat(),
                 }
             )
             logger.info(
@@ -369,7 +347,7 @@ async def process_task_ipc(
                         name=name,
                         folder=folder,
                         trigger=trigger,
-                        added_at=datetime.now(timezone.utc).isoformat(),
+                        added_at=datetime.now(UTC).isoformat(),
                         container_config=data.get("containerConfig"),
                     ),
                 )

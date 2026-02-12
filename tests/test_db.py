@@ -65,9 +65,7 @@ class TestStoreMessage:
             )
         )
 
-        messages = await get_messages_since(
-            "group@g.us", "2024-01-01T00:00:00.000Z", "BotName"
-        )
+        messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z", "BotName")
         assert len(messages) == 1
         assert messages[0].id == "msg-1"
         assert messages[0].sender == "123@s.whatsapp.net"
@@ -87,9 +85,7 @@ class TestStoreMessage:
             )
         )
 
-        messages = await get_messages_since(
-            "group@g.us", "2024-01-01T00:00:00.000Z", "BotName"
-        )
+        messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z", "BotName")
         assert len(messages) == 1
         assert messages[0].content == ""
 
@@ -107,9 +103,7 @@ class TestStoreMessage:
             )
         )
 
-        messages = await get_messages_since(
-            "group@g.us", "2024-01-01T00:00:00.000Z", "BotName"
-        )
+        messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z", "BotName")
         assert len(messages) == 1
 
     async def test_upserts_on_duplicate_id_chat_jid(self):
@@ -135,9 +129,7 @@ class TestStoreMessage:
             )
         )
 
-        messages = await get_messages_since(
-            "group@g.us", "2024-01-01T00:00:00.000Z", "BotName"
-        )
+        messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z", "BotName")
         assert len(messages) == 1
         assert messages[0].content == "updated"
 
@@ -168,17 +160,13 @@ class TestGetMessagesSince:
             )
 
     async def test_returns_messages_after_timestamp(self):
-        msgs = await get_messages_since(
-            "group@g.us", "2024-01-01T00:00:02.000Z", "Andy"
-        )
+        msgs = await get_messages_since("group@g.us", "2024-01-01T00:00:02.000Z", "Andy")
         # Excludes m1, m2 (before/at timestamp), m3 (bot message)
         assert len(msgs) == 1
         assert msgs[0].content == "third"
 
     async def test_excludes_assistant_messages(self):
-        msgs = await get_messages_since(
-            "group@g.us", "2024-01-01T00:00:00.000Z", "Andy"
-        )
+        msgs = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z", "Andy")
         bot_msgs = [m for m in msgs if m.content.startswith("Andy:")]
         assert len(bot_msgs) == 0
 
@@ -250,17 +238,13 @@ class TestStoreChatMetadata:
         assert chats[0]["name"] == "group@g.us"
 
     async def test_stores_chat_with_explicit_name(self):
-        await store_chat_metadata(
-            "group@g.us", "2024-01-01T00:00:00.000Z", "My Group"
-        )
+        await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z", "My Group")
         chats = await get_all_chats()
         assert chats[0]["name"] == "My Group"
 
     async def test_updates_name_on_subsequent_call(self):
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
-        await store_chat_metadata(
-            "group@g.us", "2024-01-01T00:00:01.000Z", "Updated Name"
-        )
+        await store_chat_metadata("group@g.us", "2024-01-01T00:00:01.000Z", "Updated Name")
         chats = await get_all_chats()
         assert len(chats) == 1
         assert chats[0]["name"] == "Updated Name"

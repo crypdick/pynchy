@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from pathlib import Path
 
 from pynchy.config import MOUNT_ALLOWLIST_PATH
 from pynchy.logger import logger
@@ -91,9 +90,7 @@ def load_mount_allowlist() -> MountAllowlist | None:
         ]
 
         # Merge with default blocked patterns
-        merged_blocked = list(
-            dict.fromkeys(DEFAULT_BLOCKED_PATTERNS + data["blockedPatterns"])
-        )
+        merged_blocked = list(dict.fromkeys(DEFAULT_BLOCKED_PATTERNS + data["blockedPatterns"]))
 
         allowlist = MountAllowlist(
             allowed_roots=allowed_roots,
@@ -152,9 +149,7 @@ def _matches_blocked_pattern(real_path: str, blocked_patterns: list[str]) -> str
     return None
 
 
-def _find_allowed_root(
-    real_path: str, allowed_roots: list[AllowedRoot]
-) -> AllowedRoot | None:
+def _find_allowed_root(real_path: str, allowed_roots: list[AllowedRoot]) -> AllowedRoot | None:
     """Check if a real path is under an allowed root."""
     for root in allowed_roots:
         expanded_root = _expand_path(root.path)
@@ -179,9 +174,7 @@ def _is_valid_container_path(container_path: str) -> bool:
         return False
     if container_path.startswith("/"):
         return False
-    if not container_path or container_path.strip() == "":
-        return False
-    return True
+    return bool(container_path and container_path.strip() != "")
 
 
 @dataclass
@@ -209,7 +202,10 @@ def validate_mount(mount: AdditionalMount, is_main: bool) -> MountValidationResu
     if not _is_valid_container_path(container_path):
         return MountValidationResult(
             allowed=False,
-            reason=f'Invalid container path: "{container_path}" - must be relative, non-empty, and not contain ".."',
+            reason=(
+                f'Invalid container path: "{container_path}"'
+                ' - must be relative, non-empty, and not contain ".."'
+            ),
         )
 
     expanded_path = _expand_path(mount.host_path)
@@ -257,7 +253,7 @@ def validate_mount(mount: AdditionalMount, is_main: bool) -> MountValidationResu
         else:
             effective_readonly = False
 
-    desc = f' ({allowed_root.description})' if allowed_root.description else ""
+    desc = f" ({allowed_root.description})" if allowed_root.description else ""
     return MountValidationResult(
         allowed=True,
         reason=f'Allowed under root "{allowed_root.path}"{desc}',

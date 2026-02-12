@@ -33,9 +33,7 @@ CONTAINER_MAX_OUTPUT_SIZE: int = int(
     os.environ.get("CONTAINER_MAX_OUTPUT_SIZE", "10485760")
 )  # 10MB
 IDLE_TIMEOUT: float = int(os.environ.get("IDLE_TIMEOUT", "1800000")) / 1000  # 30min
-MAX_CONCURRENT_CONTAINERS: int = max(
-    1, int(os.environ.get("MAX_CONCURRENT_CONTAINERS", "5"))
-)
+MAX_CONCURRENT_CONTAINERS: int = max(1, int(os.environ.get("MAX_CONCURRENT_CONTAINERS", "5")))
 
 
 def _escape_regex(s: str) -> str:
@@ -45,6 +43,7 @@ def _escape_regex(s: str) -> str:
 TRIGGER_PATTERN: re.Pattern[str] = re.compile(
     rf"^@{_escape_regex(ASSISTANT_NAME)}\b", re.IGNORECASE
 )
+
 
 # Timezone for scheduled tasks — uses system timezone by default
 def _detect_timezone() -> str:
