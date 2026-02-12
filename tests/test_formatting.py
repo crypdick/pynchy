@@ -114,9 +114,7 @@ class TestStripInternalTags:
         )
 
     def test_strips_multiple_internal_tag_blocks(self):
-        assert (
-            strip_internal_tags("<internal>a</internal>hello<internal>b</internal>") == "hello"
-        )
+        assert strip_internal_tags("<internal>a</internal>hello<internal>b</internal>") == "hello"
 
     def test_returns_empty_when_only_internal_tags(self):
         assert strip_internal_tags("<internal>only this</internal>") == ""
@@ -161,9 +159,7 @@ class TestTriggerGating:
     """Replicates the trigger gating logic from the orchestrator."""
 
     @staticmethod
-    def _should_require_trigger(
-        is_main_group: bool, requires_trigger: bool | None
-    ) -> bool:
+    def _should_require_trigger(is_main_group: bool, requires_trigger: bool | None) -> bool:
         return not is_main_group and requires_trigger is not False
 
     @staticmethod

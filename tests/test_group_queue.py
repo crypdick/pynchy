@@ -182,8 +182,10 @@ class TestGroupQueueRetry:
     """Test retry behavior with shorter timeouts."""
 
     async def test_retries_with_backoff(self):
-        with patch("pynchy.group_queue.MAX_CONCURRENT_CONTAINERS", 2), \
-             patch("pynchy.group_queue.BASE_RETRY_SECONDS", 0.1):
+        with (
+            patch("pynchy.group_queue.MAX_CONCURRENT_CONTAINERS", 2),
+            patch("pynchy.group_queue.BASE_RETRY_SECONDS", 0.1),
+        ):
             queue = GroupQueue()
             call_count = 0
 
@@ -208,8 +210,10 @@ class TestGroupQueueRetry:
             assert call_count == 3
 
     async def test_stops_retrying_after_max_retries(self):
-        with patch("pynchy.group_queue.MAX_CONCURRENT_CONTAINERS", 2), \
-             patch("pynchy.group_queue.BASE_RETRY_SECONDS", 0.01):
+        with (
+            patch("pynchy.group_queue.MAX_CONCURRENT_CONTAINERS", 2),
+            patch("pynchy.group_queue.BASE_RETRY_SECONDS", 0.01),
+        ):
             queue = GroupQueue()
             call_count = 0
 

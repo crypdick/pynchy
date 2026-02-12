@@ -14,8 +14,9 @@ import asyncio
 import json
 import random
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from pynchy.config import DATA_DIR, MAX_CONCURRENT_CONTAINERS
 from pynchy.logger import logger
@@ -55,9 +56,7 @@ class GroupQueue:
             self._groups[group_jid] = GroupState()
         return self._groups[group_jid]
 
-    def set_process_messages_fn(
-        self, fn: Callable[[str], Awaitable[bool]]
-    ) -> None:
+    def set_process_messages_fn(self, fn: Callable[[str], Awaitable[bool]]) -> None:
         self._process_messages_fn = fn
 
     def enqueue_message_check(self, group_jid: str) -> None:
@@ -88,9 +87,7 @@ class GroupQueue:
         self._active_count += 1
         asyncio.ensure_future(self._run_for_group(group_jid, "messages"))
 
-    def enqueue_task(
-        self, group_jid: str, task_id: str, fn: Callable[[], Awaitable[None]]
-    ) -> None:
+    def enqueue_task(self, group_jid: str, task_id: str, fn: Callable[[], Awaitable[None]]) -> None:
         if self._shutting_down:
             return
 
@@ -298,10 +295,7 @@ class GroupQueue:
         self._drain_waiting()
 
     def _drain_waiting(self) -> None:
-        while (
-            self._waiting_groups
-            and self._active_count < MAX_CONCURRENT_CONTAINERS
-        ):
+        while self._waiting_groups and self._active_count < MAX_CONCURRENT_CONTAINERS:
             next_jid = self._waiting_groups.pop(0)
             state = self._get_group(next_jid)
 
@@ -320,7 +314,7 @@ class GroupQueue:
         self._shutting_down = True
 
         active_containers: list[str] = []
-        for jid, state in self._groups.items():
+        for _jid, state in self._groups.items():
             if state.process and state.container_name:
                 active_containers.append(state.container_name)
 

@@ -6,21 +6,17 @@ Port of src/task-scheduler.ts — async polling loop using asyncio.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Awaitable, Callable, Protocol
+from datetime import UTC, datetime
+from typing import Any, Protocol
 
 from croniter import croniter
 
 from pynchy.config import (
     GROUPS_DIR,
-    IDLE_TIMEOUT,
     MAIN_GROUP_FOLDER,
     SCHEDULER_POLL_INTERVAL,
-    TIMEZONE,
 )
 from pynchy.db import (
-    get_all_tasks,
     get_due_tasks,
     get_task_by_id,
     log_task_run,
@@ -88,18 +84,14 @@ async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
 
 async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
     """Execute a single scheduled task."""
-    start_time = datetime.now(timezone.utc)
+    start_time = datetime.now(UTC)
     group_dir = GROUPS_DIR / task.group_folder
     group_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.info(
-        "Running scheduled task", task_id=task.id, group=task.group_folder
-    )
+    logger.info("Running scheduled task", task_id=task.id, group=task.group_folder)
 
     groups = deps.registered_groups()
-    group = next(
-        (g for g in groups.values() if g.folder == task.group_folder), None
-    )
+    group = next((g for g in groups.values() if g.folder == task.group_folder), None)
 
     if not group:
         logger.error(
@@ -110,8 +102,8 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
         await log_task_run(
             TaskRunLog(
                 task_id=task.id,
-                run_at=datetime.now(timezone.utc).isoformat(),
-                duration_ms=(datetime.now(timezone.utc) - start_time).total_seconds() * 1000,
+                run_at=datetime.now(UTC).isoformat(),
+                duration_ms=(datetime.now(UTC) - start_time).total_seconds() * 1000,
                 status="error",
                 result=None,
                 error=f"Group not found: {task.group_folder}",
@@ -119,13 +111,13 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
         )
         return
 
-    is_main = task.group_folder == MAIN_GROUP_FOLDER
+    _is_main = task.group_folder == MAIN_GROUP_FOLDER
     result: str | None = None
     error: str | None = None
 
     # For group context mode, use the group's current session
     sessions = deps.get_sessions()
-    session_id = sessions.get(task.group_folder) if task.context_mode == "group" else None
+    _session_id = sessions.get(task.group_folder) if task.context_mode == "group" else None
 
     try:
         # In the full implementation, this would call run_container_agent()
@@ -133,18 +125,18 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
         logger.info(
             "Task completed",
             task_id=task.id,
-            duration_ms=(datetime.now(timezone.utc) - start_time).total_seconds() * 1000,
+            duration_ms=(datetime.now(UTC) - start_time).total_seconds() * 1000,
         )
     except Exception as exc:
         error = str(exc)
         logger.error("Task failed", task_id=task.id, error=error)
 
-    duration_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+    duration_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
 
     await log_task_run(
         TaskRunLog(
             task_id=task.id,
-            run_at=datetime.now(timezone.utc).isoformat(),
+            run_at=datetime.now(UTC).isoformat(),
             duration_ms=duration_ms,
             status="error" if error else "success",
             result=result,
@@ -156,20 +148,14 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
     next_run: str | None = None
     if task.schedule_type == "cron":
         cron = croniter(task.schedule_value)
-        next_run = datetime.fromtimestamp(
-            cron.get_next(float), tz=timezone.utc
-        ).isoformat()
+        next_run = datetime.fromtimestamp(cron.get_next(float), tz=UTC).isoformat()
     elif task.schedule_type == "interval":
         ms = int(task.schedule_value)
         next_run = datetime.fromtimestamp(
-            datetime.now(timezone.utc).timestamp() + ms / 1000,
-            tz=timezone.utc,
+            datetime.now(UTC).timestamp() + ms / 1000,
+            tz=UTC,
         ).isoformat()
     # 'once' tasks have no next run
 
-    result_summary = (
-        f"Error: {error}"
-        if error
-        else (result[:200] if result else "Completed")
-    )
+    result_summary = f"Error: {error}" if error else (result[:200] if result else "Completed")
     await update_task_after_run(task.id, next_run, result_summary)

@@ -105,7 +105,7 @@ if (parallelApiKey) {
     }
   };
   mcpServers['parallel-task'] = {
-    type: 'http',  // REQUIRED: Must specify type for HTTP MCP servers  
+    type: 'http',  // REQUIRED: Must specify type for HTTP MCP servers
     url: 'https://task-mcp.parallel.ai/mcp',
     headers: {
       'Authorization': `Bearer ${parallelApiKey}`

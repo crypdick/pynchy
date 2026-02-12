@@ -5,7 +5,6 @@ Port of src/ipc-auth.test.ts.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 import pytest
@@ -14,7 +13,6 @@ from pynchy.db import (
     _init_test_database,
     create_task,
     get_all_tasks,
-    get_registered_group,
     get_task_by_id,
     set_registered_group,
 )
@@ -206,9 +204,7 @@ class TestPauseTaskAuth:
         )
 
     async def test_main_can_pause_any_task(self, deps):
-        await process_task_ipc(
-            {"type": "pause_task", "taskId": "task-other"}, "main", True, deps
-        )
+        await process_task_ipc({"type": "pause_task", "taskId": "task-other"}, "main", True, deps)
         task = await get_task_by_id("task-other")
         assert task is not None
         assert task.status == "paused"
@@ -258,9 +254,7 @@ class TestResumeTaskAuth:
         )
 
     async def test_main_can_resume_any_task(self, deps):
-        await process_task_ipc(
-            {"type": "resume_task", "taskId": "task-paused"}, "main", True, deps
-        )
+        await process_task_ipc({"type": "resume_task", "taskId": "task-paused"}, "main", True, deps)
         task = await get_task_by_id("task-paused")
         assert task is not None
         assert task.status == "active"
@@ -389,9 +383,7 @@ class TestRegisterGroupAuth:
 class TestRefreshGroupsAuth:
     async def test_non_main_cannot_trigger_refresh(self, deps):
         # Should be silently blocked
-        await process_task_ipc(
-            {"type": "refresh_groups"}, "other-group", False, deps
-        )
+        await process_task_ipc({"type": "refresh_groups"}, "other-group", False, deps)
 
 
 # --- IPC message authorization ---
@@ -406,9 +398,7 @@ class TestIpcMessageAuth:
         registered_groups: dict[str, RegisteredGroup],
     ) -> bool:
         target_group = registered_groups.get(target_chat_jid)
-        return is_main or (
-            target_group is not None and target_group.folder == source_group
-        )
+        return is_main or (target_group is not None and target_group.folder == source_group)
 
     def test_main_can_send_to_any_group(self, deps):
         groups = deps.registered_groups()
@@ -417,24 +407,16 @@ class TestIpcMessageAuth:
 
     def test_non_main_can_send_to_own_chat(self, deps):
         groups = deps.registered_groups()
-        assert self.is_message_authorized(
-            "other-group", False, "other@g.us", groups
-        )
+        assert self.is_message_authorized("other-group", False, "other@g.us", groups)
 
     def test_non_main_cannot_send_to_other_chat(self, deps):
         groups = deps.registered_groups()
-        assert not self.is_message_authorized(
-            "other-group", False, "main@g.us", groups
-        )
-        assert not self.is_message_authorized(
-            "other-group", False, "third@g.us", groups
-        )
+        assert not self.is_message_authorized("other-group", False, "main@g.us", groups)
+        assert not self.is_message_authorized("other-group", False, "third@g.us", groups)
 
     def test_non_main_cannot_send_to_unregistered(self, deps):
         groups = deps.registered_groups()
-        assert not self.is_message_authorized(
-            "other-group", False, "unknown@g.us", groups
-        )
+        assert not self.is_message_authorized("other-group", False, "unknown@g.us", groups)
 
     def test_main_can_send_to_unregistered(self, deps):
         groups = deps.registered_groups()

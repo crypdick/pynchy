@@ -7,14 +7,12 @@ Module-level connection, initialized by init_database().
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 from typing import Any
 
 import aiosqlite
 
 from pynchy.config import DATA_DIR, STORE_DIR
-from pynchy.logger import logger
 from pynchy.types import NewMessage, RegisteredGroup, ScheduledTask, TaskRunLog
 
 _db: aiosqlite.Connection | None = None
@@ -130,9 +128,7 @@ async def _init_test_database() -> None:
 # --- Chat metadata ---
 
 
-async def store_chat_metadata(
-    chat_jid: str, timestamp: str, name: str | None = None
-) -> None:
+async def store_chat_metadata(chat_jid: str, timestamp: str, name: str | None = None) -> None:
     """Store chat metadata only (no message content)."""
     db = _get_db()
     if name:
@@ -160,7 +156,7 @@ async def store_chat_metadata(
 async def update_chat_name(chat_jid: str, name: str) -> None:
     """Update chat name without changing timestamp for existing chats."""
     db = _get_db()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.execute(
         """
         INSERT INTO chats (jid, name, last_message_time) VALUES (?, ?, ?)
@@ -184,9 +180,7 @@ async def get_all_chats() -> list[dict[str, str]]:
 async def get_last_group_sync() -> str | None:
     """Get timestamp of last group metadata sync."""
     db = _get_db()
-    cursor = await db.execute(
-        "SELECT last_message_time FROM chats WHERE jid = '__group_sync__'"
-    )
+    cursor = await db.execute("SELECT last_message_time FROM chats WHERE jid = '__group_sync__'")
     row = await cursor.fetchone()
     return row["last_message_time"] if row else None
 
@@ -194,9 +188,10 @@ async def get_last_group_sync() -> str | None:
 async def set_last_group_sync() -> None:
     """Record that group metadata was synced."""
     db = _get_db()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.execute(
-        "INSERT OR REPLACE INTO chats (jid, name, last_message_time) VALUES ('__group_sync__', '__group_sync__', ?)",
+        "INSERT OR REPLACE INTO chats (jid, name, last_message_time) "
+        "VALUES ('__group_sync__', '__group_sync__', ?)",
         (now,),
     )
     await db.commit()
@@ -209,7 +204,9 @@ async def store_message(msg: NewMessage) -> None:
     """Store a message with full content."""
     db = _get_db()
     await db.execute(
-        "INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT OR REPLACE INTO messages "
+        "(id, chat_jid, sender, sender_name, content, timestamp, is_from_me) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (
             msg.id,
             msg.chat_jid,
@@ -236,7 +233,9 @@ async def store_message_direct(
     """Store a message directly (for non-WhatsApp channels)."""
     db = _get_db()
     await db.execute(
-        "INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT OR REPLACE INTO messages "
+        "(id, chat_jid, sender, sender_name, content, timestamp, is_from_me) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (id, chat_jid, sender, sender_name, content, timestamp, 1 if is_from_me else 0),
     )
     await db.commit()
@@ -315,7 +314,9 @@ async def create_task(task: dict[str, Any]) -> None:
     db = _get_db()
     await db.execute(
         """
-        INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, next_run, status, created_at)
+        INSERT INTO scheduled_tasks
+            (id, group_folder, chat_jid, prompt, schedule_type,
+             schedule_value, context_mode, next_run, status, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
@@ -358,9 +359,7 @@ async def get_tasks_for_group(group_folder: str) -> list[ScheduledTask]:
 async def get_all_tasks() -> list[ScheduledTask]:
     """Get all tasks, ordered by creation date."""
     db = _get_db()
-    cursor = await db.execute(
-        "SELECT * FROM scheduled_tasks ORDER BY created_at DESC"
-    )
+    cursor = await db.execute("SELECT * FROM scheduled_tasks ORDER BY created_at DESC")
     rows = await cursor.fetchall()
     return [_row_to_task(row) for row in rows]
 
@@ -399,7 +398,7 @@ async def delete_task(task_id: str) -> None:
 async def get_due_tasks() -> list[ScheduledTask]:
     """Get all active tasks that are due to run."""
     db = _get_db()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     cursor = await db.execute(
         """
         SELECT * FROM scheduled_tasks
@@ -412,16 +411,15 @@ async def get_due_tasks() -> list[ScheduledTask]:
     return [_row_to_task(row) for row in rows]
 
 
-async def update_task_after_run(
-    task_id: str, next_run: str | None, last_result: str
-) -> None:
+async def update_task_after_run(task_id: str, next_run: str | None, last_result: str) -> None:
     """Update a task after it has been run."""
     db = _get_db()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.execute(
         """
         UPDATE scheduled_tasks
-        SET next_run = ?, last_run = ?, last_result = ?, status = CASE WHEN ? IS NULL THEN 'completed' ELSE status END
+        SET next_run = ?, last_run = ?, last_result = ?,
+            status = CASE WHEN ? IS NULL THEN 'completed' ELSE status END
         WHERE id = ?
         """,
         (next_run, now, last_result, next_run, task_id),
@@ -448,9 +446,7 @@ async def log_task_run(log: TaskRunLog) -> None:
 async def get_router_state(key: str) -> str | None:
     """Get a router state value."""
     db = _get_db()
-    cursor = await db.execute(
-        "SELECT value FROM router_state WHERE key = ?", (key,)
-    )
+    cursor = await db.execute("SELECT value FROM router_state WHERE key = ?", (key,))
     row = await cursor.fetchone()
     return row["value"] if row else None
 
@@ -502,9 +498,7 @@ async def get_all_sessions() -> dict[str, str]:
 async def get_registered_group(jid: str) -> dict[str, Any] | None:
     """Get a registered group by JID. Returns dict with jid + RegisteredGroup fields."""
     db = _get_db()
-    cursor = await db.execute(
-        "SELECT * FROM registered_groups WHERE jid = ?", (jid,)
-    )
+    cursor = await db.execute("SELECT * FROM registered_groups WHERE jid = ?", (jid,))
     row = await cursor.fetchone()
     if row is None:
         return None
@@ -515,7 +509,9 @@ async def set_registered_group(jid: str, group: RegisteredGroup) -> None:
     """Register or update a group."""
     db = _get_db()
     await db.execute(
-        """INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger)
+        """INSERT OR REPLACE INTO registered_groups
+            (jid, name, folder, trigger_pattern, added_at,
+             container_config, requires_trigger)
          VALUES (?, ?, ?, ?, ?, ?, ?)""",
         (
             jid,
@@ -523,7 +519,21 @@ async def set_registered_group(jid: str, group: RegisteredGroup) -> None:
             group.folder,
             group.trigger,
             group.added_at,
-            json.dumps({"additional_mounts": [{"host_path": m.host_path, "container_path": m.container_path, "readonly": m.readonly} for m in group.container_config.additional_mounts], "timeout": group.container_config.timeout}) if group.container_config else None,
+            json.dumps(
+                {
+                    "additional_mounts": [
+                        {
+                            "host_path": m.host_path,
+                            "container_path": m.container_path,
+                            "readonly": m.readonly,
+                        }
+                        for m in group.container_config.additional_mounts
+                    ],
+                    "timeout": group.container_config.timeout,
+                }
+            )
+            if group.container_config
+            else None,
             1 if group.requires_trigger is None else (1 if group.requires_trigger else 0),
         ),
     )
@@ -624,11 +634,7 @@ def _row_to_registered_group(row: aiosqlite.Row) -> dict[str, Any]:
     if row["container_config"]:
         container_config = json.loads(row["container_config"])
 
-    requires_trigger: bool | None
-    if row["requires_trigger"] is None:
-        requires_trigger = None
-    else:
-        requires_trigger = row["requires_trigger"] == 1
+    requires_trigger = None if row["requires_trigger"] is None else row["requires_trigger"] == 1
 
     return {
         "jid": row["jid"],
