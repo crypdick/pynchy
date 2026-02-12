@@ -51,6 +51,10 @@ class IpcDeps(Protocol):
         registered_jids: set[str],
     ) -> None: ...
 
+    async def clear_session(self, group_folder: str) -> None: ...
+
+    def enqueue_message_check(self, group_jid: str) -> None: ...
+
 
 _ipc_watcher_running = False
 
@@ -342,6 +346,34 @@ async def process_task_ipc(
                 )
                 return
             await _handle_deploy(data, source_group, deps)
+
+        case "reset_context":
+            chat_jid = data.get("chatJid", "")
+            message = data.get("message", "")
+            group_folder = data.get("groupFolder", source_group)
+
+            if not chat_jid or not message:
+                logger.warning(
+                    "Invalid reset_context request",
+                    source_group=source_group,
+                )
+                return
+
+            await deps.clear_session(group_folder)
+
+            # Write reset prompt for _process_group_messages to pick up
+            reset_dir = DATA_DIR / "ipc" / group_folder
+            reset_dir.mkdir(parents=True, exist_ok=True)
+            reset_file = reset_dir / "reset_prompt.json"
+            reset_file.write_text(
+                json.dumps({"message": message, "chatJid": chat_jid})
+            )
+
+            deps.enqueue_message_check(chat_jid)
+            logger.info(
+                "Context reset via agent tool",
+                group=group_folder,
+            )
 
         case "register_group":
             if not is_main:

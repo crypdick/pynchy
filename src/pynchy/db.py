@@ -485,6 +485,13 @@ async def set_session(group_folder: str, session_id: str) -> None:
     await db.commit()
 
 
+async def clear_session(group_folder: str) -> None:
+    """Delete the session for a group, forcing a fresh session on next run."""
+    db = _get_db()
+    await db.execute("DELETE FROM sessions WHERE group_folder = ?", (group_folder,))
+    await db.commit()
+
+
 async def get_all_sessions() -> dict[str, str]:
     """Get all sessions as a dict of group_folder -> session_id."""
     db = _get_db()
