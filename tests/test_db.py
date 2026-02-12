@@ -144,7 +144,7 @@ class TestGetMessagesSince:
         msgs = [
             ("m1", "first", "2024-01-01T00:00:01.000Z", "Alice"),
             ("m2", "second", "2024-01-01T00:00:02.000Z", "Bob"),
-            ("m3", "Andy: bot reply", "2024-01-01T00:00:03.000Z", "Bot"),
+            ("m3", "pynchy: bot reply", "2024-01-01T00:00:03.000Z", "Bot"),
             ("m4", "third", "2024-01-01T00:00:04.000Z", "Carol"),
         ]
         for id_, content, ts, sender in msgs:
@@ -160,18 +160,18 @@ class TestGetMessagesSince:
             )
 
     async def test_returns_messages_after_timestamp(self):
-        msgs = await get_messages_since("group@g.us", "2024-01-01T00:00:02.000Z", "Andy")
+        msgs = await get_messages_since("group@g.us", "2024-01-01T00:00:02.000Z", "pynchy")
         # Excludes m1, m2 (before/at timestamp), m3 (bot message)
         assert len(msgs) == 1
         assert msgs[0].content == "third"
 
     async def test_excludes_assistant_messages(self):
-        msgs = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z", "Andy")
-        bot_msgs = [m for m in msgs if m.content.startswith("Andy:")]
+        msgs = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z", "pynchy")
+        bot_msgs = [m for m in msgs if m.content.startswith("pynchy:")]
         assert len(bot_msgs) == 0
 
     async def test_returns_all_messages_when_empty_timestamp(self):
-        msgs = await get_messages_since("group@g.us", "", "Andy")
+        msgs = await get_messages_since("group@g.us", "", "pynchy")
         # 3 user messages (bot message excluded)
         assert len(msgs) == 3
 
@@ -187,7 +187,7 @@ class TestGetNewMessages:
         msgs = [
             ("a1", "group1@g.us", "g1 msg1", "2024-01-01T00:00:01.000Z"),
             ("a2", "group2@g.us", "g2 msg1", "2024-01-01T00:00:02.000Z"),
-            ("a3", "group1@g.us", "Andy: reply", "2024-01-01T00:00:03.000Z"),
+            ("a3", "group1@g.us", "pynchy: reply", "2024-01-01T00:00:03.000Z"),
             ("a4", "group1@g.us", "g1 msg2", "2024-01-01T00:00:04.000Z"),
         ]
         for id_, chat, content, ts in msgs:
@@ -206,7 +206,7 @@ class TestGetNewMessages:
         messages, new_ts = await get_new_messages(
             ["group1@g.us", "group2@g.us"],
             "2024-01-01T00:00:00.000Z",
-            "Andy",
+            "pynchy",
         )
         assert len(messages) == 3
         assert new_ts == "2024-01-01T00:00:04.000Z"
@@ -215,13 +215,13 @@ class TestGetNewMessages:
         messages, _ = await get_new_messages(
             ["group1@g.us", "group2@g.us"],
             "2024-01-01T00:00:02.000Z",
-            "Andy",
+            "pynchy",
         )
         assert len(messages) == 1
         assert messages[0].content == "g1 msg2"
 
     async def test_returns_empty_for_no_groups(self):
-        messages, new_ts = await get_new_messages([], "", "Andy")
+        messages, new_ts = await get_new_messages([], "", "pynchy")
         assert len(messages) == 0
         assert new_ts == ""
 

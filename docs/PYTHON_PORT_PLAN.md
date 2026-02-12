@@ -120,14 +120,16 @@ Phases are ordered by dependency. Check the box when complete and add a brief no
 > Note: Key difference from TS: asyncio.ensure_future doesn't run the coroutine synchronously to its first await (unlike JS promises). Fixed by eagerly setting state.active and bumping active_count in the synchronous caller. 8 tests passing.
 
 ### Phase 6: Container Runner
-- [ ] **container_runner.py** — `run_container_agent()` as the main entry point.
-- [ ] Mount building: `_build_volume_mounts()` with `Path.mkdir(parents=True, exist_ok=True)`
-- [ ] Process spawn: `asyncio.create_subprocess_exec` with `stdin=PIPE, stdout=PIPE, stderr=PIPE`
-- [ ] Streaming stdout parser: accumulate buffer, extract between `OUTPUT_START` / `OUTPUT_END` sentinel markers
-- [ ] Timeout: `asyncio.wait_for()` with activity-based reset. Timeout after output = success (idle cleanup). Timeout before output = error.
-- [ ] Skills sync, env file writing, log file writing
-- [ ] `write_tasks_snapshot()`, `write_groups_snapshot()`
-- [ ] Port tests from `container-runner.test.ts`. Mock subprocess.
+- [x] **container_runner.py** — `run_container_agent()` as the main entry point.
+- [x] Mount building: `_build_volume_mounts()` with `Path.mkdir(parents=True, exist_ok=True)`
+- [x] Process spawn: `asyncio.create_subprocess_exec` with `stdin=PIPE, stdout=PIPE, stderr=PIPE`
+- [x] Streaming stdout parser: accumulate buffer, extract between `OUTPUT_START` / `OUTPUT_END` sentinel markers
+- [x] Timeout: `loop.call_later()` with activity-based reset. Timeout after output = success (idle cleanup). Timeout before output = error.
+- [x] Skills sync, env file writing, log file writing
+- [x] `write_tasks_snapshot()`, `write_groups_snapshot()`
+- [x] Port tests from `container-runner.test.ts`. FakeProcess with asyncio.StreamReader.
+
+> Note: 22 container runner tests. Used `asyncio.StreamReader.feed_data()/feed_eof()` for FakeProcess instead of Node PassThrough. Timeout tests use negative IDLE_TIMEOUT values to avoid 30s grace period wait. Task scheduler stub wired to real `run_container_agent()`.
 
 ### Phase 7: IPC Watcher
 - [x] **ipc.py** — `start_ipc_watcher()` as async polling loop (1s interval).

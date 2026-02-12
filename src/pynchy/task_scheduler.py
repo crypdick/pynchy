@@ -16,6 +16,7 @@ from pynchy.config import (
     MAIN_GROUP_FOLDER,
     SCHEDULER_POLL_INTERVAL,
 )
+from pynchy.container_runner import run_container_agent
 from pynchy.db import (
     get_due_tasks,
     get_task_by_id,
@@ -24,7 +25,7 @@ from pynchy.db import (
 )
 from pynchy.group_queue import GroupQueue
 from pynchy.logger import logger
-from pynchy.types import RegisteredGroup, ScheduledTask, TaskRunLog
+from pynchy.types import ContainerInput, RegisteredGroup, ScheduledTask, TaskRunLog
 
 
 class SchedulerDependencies(Protocol):
@@ -120,13 +121,27 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
     _session_id = sessions.get(task.group_folder) if task.context_mode == "group" else None
 
     try:
-        # In the full implementation, this would call run_container_agent()
-        # For now, log that the task would be run
-        logger.info(
-            "Task completed",
-            task_id=task.id,
-            duration_ms=(datetime.now(UTC) - start_time).total_seconds() * 1000,
+        container_input = ContainerInput(
+            prompt=f"[SCHEDULED TASK] {task.prompt}",
+            group_folder=task.group_folder,
+            chat_jid=task.chat_jid,
+            is_main=_is_main,
+            session_id=_session_id,
+            is_scheduled_task=True,
         )
+
+        output = await run_container_agent(
+            group=group,
+            input_data=container_input,
+            on_process=lambda proc, name: deps.on_process(
+                task.chat_jid, proc, name, task.group_folder
+            ),
+        )
+
+        if output.status == "success":
+            result = output.result
+        else:
+            error = output.error or "Unknown error"
     except Exception as exc:
         error = str(exc)
         logger.error("Task failed", task_id=task.id, error=error)

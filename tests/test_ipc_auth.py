@@ -29,14 +29,14 @@ MAIN_GROUP = RegisteredGroup(
 OTHER_GROUP = RegisteredGroup(
     name="Other",
     folder="other-group",
-    trigger="@Andy",
+    trigger="@pynchy",
     added_at="2024-01-01T00:00:00.000Z",
 )
 
 THIRD_GROUP = RegisteredGroup(
     name="Third",
     folder="third-group",
-    trigger="@Andy",
+    trigger="@pynchy",
     added_at="2024-01-01T00:00:00.000Z",
 )
 
@@ -367,7 +367,7 @@ class TestRegisterGroupAuth:
                 "jid": "new@g.us",
                 "name": "New Group",
                 "folder": "new-group",
-                "trigger": "@Andy",
+                "trigger": "@pynchy",
             },
             "other-group",
             False,
@@ -617,7 +617,7 @@ class TestRegisterGroupSuccess:
                 "jid": "new@g.us",
                 "name": "New Group",
                 "folder": "new-group",
-                "trigger": "@Andy",
+                "trigger": "@pynchy",
             },
             "main",
             True,
@@ -628,7 +628,7 @@ class TestRegisterGroupSuccess:
         assert group is not None
         assert group.name == "New Group"
         assert group.folder == "new-group"
-        assert group.trigger == "@Andy"
+        assert group.trigger == "@pynchy"
 
     async def test_rejects_missing_fields(self, deps):
         await process_task_ipc(

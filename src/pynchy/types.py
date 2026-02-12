@@ -83,6 +83,31 @@ class TaskRunLog:
     error: str | None = None
 
 
+@dataclass
+class ContainerInput:
+    prompt: str
+    group_folder: str
+    chat_jid: str
+    is_main: bool
+    session_id: str | None = None
+    is_scheduled_task: bool = False
+
+
+@dataclass
+class ContainerOutput:
+    status: Literal["success", "error"]
+    result: str | None = None
+    new_session_id: str | None = None
+    error: str | None = None
+
+
+@dataclass
+class VolumeMount:
+    host_path: str
+    container_path: str
+    readonly: bool = False
+
+
 # --- Channel abstraction ---
 
 
