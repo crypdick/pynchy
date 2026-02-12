@@ -428,13 +428,17 @@ async def run_container_agent(
     logs_dir = GROUPS_DIR / group.folder / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
 
-    proc = await asyncio.create_subprocess_exec(
-        get_runtime().cli,
-        *container_args,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            get_runtime().cli,
+            *container_args,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as exc:
+        logger.error("Failed to spawn container", error=str(exc), container=container_name)
+        return ContainerOutput(status="error", result=None, error=f"Spawn failed: {exc}")
 
     on_process(proc, container_name)
 

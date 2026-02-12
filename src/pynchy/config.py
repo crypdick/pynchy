@@ -49,16 +49,20 @@ TRIGGER_PATTERN: re.Pattern[str] = re.compile(
 )
 
 
-# Timezone for scheduled tasks — uses system timezone by default
+# Timezone for scheduled tasks — uses system IANA timezone by default.
+# TS equivalent: Intl.DateTimeFormat().resolvedOptions().timeZone
 def _detect_timezone() -> str:
     if tz := os.environ.get("TZ"):
         return tz
+    # Read /etc/localtime symlink → IANA name (works on Linux and macOS)
     try:
-        import time
-
-        return time.tzname[0] or "UTC"
-    except Exception:
-        return "UTC"
+        link = os.readlink("/etc/localtime")
+        parts = link.split("zoneinfo/")
+        if len(parts) > 1:
+            return parts[1]
+    except OSError:
+        pass
+    return "UTC"
 
 
 TIMEZONE: str = _detect_timezone()
