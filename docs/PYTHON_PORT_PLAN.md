@@ -166,7 +166,7 @@ Phases are ordered by dependency. Check the box when complete and add a brief no
 - [x] `process_group_messages()`: format XML → advance cursor → run container → rollback on error before output
 - [x] Crash recovery: `recover_pending_messages()` on startup
 - [x] Shutdown: SIGTERM/SIGINT → `queue.shutdown()` → `whatsapp.disconnect()` → exit
-- [x] `ensure_container_system_running()`: check Apple Container, kill orphans
+- [x] `ensure_container_system_running()`: runtime-agnostic via `ContainerRuntime` abstraction, kill orphans
 - [x] **`__main__.py`**: `asyncio.run(PynchyApp().run())`
 - [x] Port tests from `routing.test.ts`
 
@@ -199,7 +199,7 @@ Phases are ordered by dependency. Check the box when complete and add a brief no
 - [x] Mount security tests: 30 tests covering allowlist, blocked patterns, readonly enforcement
 - [ ] Update launchd plist for Python entrypoint
 
-> Note: 172 total tests passing. Integration tests cover message processing pipeline (trigger detection, container spawn, output routing, cursor rollback on error), state persistence round-trips, and crash recovery. Mount security tests fill the gap deferred from Phase 4. Launchd plist update is a deployment-time task.
+> Note: 183 total tests passing (11 runtime abstraction tests added). Integration tests cover message processing pipeline (trigger detection, container spawn, output routing, cursor rollback on error), state persistence round-trips, and crash recovery. Mount security tests fill the gap deferred from Phase 4. Launchd plist update is a deployment-time task.
 
 ---
 

@@ -29,6 +29,7 @@ from pynchy.config import (
 )
 from pynchy.logger import logger
 from pynchy.mount_security import validate_additional_mounts
+from pynchy.runtime import get_runtime
 from pynchy.types import ContainerInput, ContainerOutput, RegisteredGroup, VolumeMount
 
 # ---------------------------------------------------------------------------
@@ -208,7 +209,7 @@ async def _graceful_stop(proc: asyncio.subprocess.Process, container_name: str) 
     """Stop container gracefully with 15s timeout, fallback to kill."""
     try:
         stop_proc = await asyncio.create_subprocess_exec(
-            "container",
+            get_runtime().cli,
             "stop",
             container_name,
             stdout=asyncio.subprocess.DEVNULL,
@@ -402,7 +403,7 @@ async def run_container_agent(
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     proc = await asyncio.create_subprocess_exec(
-        "container",
+        get_runtime().cli,
         *container_args,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,

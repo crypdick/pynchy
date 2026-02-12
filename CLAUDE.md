@@ -4,7 +4,7 @@ Personal Claude assistant. See [README.md](README.md) for philosophy and setup. 
 
 ## Quick Context
 
-Single Python process that connects to WhatsApp, routes messages to Claude Agent SDK running in Apple Container (Linux VMs). Each group has isolated filesystem and memory.
+Single Python process that connects to WhatsApp, routes messages to Claude Agent SDK running in containers (Apple Container on macOS, Docker on Linux). Each group has isolated filesystem and memory.
 
 ## Key Files
 
@@ -15,6 +15,7 @@ Single Python process that connects to WhatsApp, routes messages to Claude Agent
 | `src/pynchy/router.py` | Message formatting and outbound routing |
 | `src/pynchy/config.py` | Trigger pattern, paths, intervals |
 | `src/pynchy/group_queue.py` | Per-group queue with global concurrency limit |
+| `src/pynchy/runtime.py` | Container runtime detection (Apple Container / Docker) |
 | `src/pynchy/mount_security.py` | Mount path validation and allowlist |
 | `src/pynchy/task_scheduler.py` | Runs scheduled tasks |
 | `src/pynchy/types.py` | Data models (dataclasses) |
