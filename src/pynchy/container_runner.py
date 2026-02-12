@@ -84,23 +84,49 @@ def _sync_skills(session_dir: Path) -> None:
                 shutil.copy2(f, dst_dir / f.name)
 
 
-def _write_env_file() -> Path | None:
-    """Filter .env to allowed vars, write to data/env/env. Returns env dir or None."""
-    env_dir = DATA_DIR / "env"
-    env_dir.mkdir(parents=True, exist_ok=True)
-    env_file = PROJECT_ROOT / ".env"
-    if not env_file.exists():
+def _read_oauth_token() -> str | None:
+    """Read the OAuth access token from Claude Code's credentials file."""
+    creds_file = Path.home() / ".claude" / ".credentials.json"
+    if not creds_file.exists():
+        return None
+    try:
+        data = json.loads(creds_file.read_text())
+        return data.get("claudeAiOauth", {}).get("accessToken")
+    except (json.JSONDecodeError, OSError):
         return None
 
-    content = env_file.read_text()
-    allowed_vars = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]
-    filtered = [
-        line
-        for line in content.splitlines()
-        if line.strip()
-        and not line.strip().startswith("#")
-        and any(line.strip().startswith(f"{v}=") for v in allowed_vars)
-    ]
+
+def _write_env_file() -> Path | None:
+    """Write credential env vars for the container. Returns env dir or None.
+
+    Sources (in priority order):
+    1. .env file in project root (explicit ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN)
+    2. Claude Code's OAuth token from ~/.claude/.credentials.json (auto-refreshed)
+    """
+    env_dir = DATA_DIR / "env"
+    env_dir.mkdir(parents=True, exist_ok=True)
+
+    # Try .env file first
+    filtered: list[str] = []
+    env_file = PROJECT_ROOT / ".env"
+    if env_file.exists():
+        content = env_file.read_text()
+        allowed_vars = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]
+        filtered = [
+            line
+            for line in content.splitlines()
+            if line.strip()
+            and not line.strip().startswith("#")
+            and any(line.strip().startswith(f"{v}=") for v in allowed_vars)
+        ]
+
+    # Fallback: read OAuth token from Claude Code credentials
+    if not filtered:
+        token = _read_oauth_token()
+        if token:
+            filtered = [f"CLAUDE_CODE_OAUTH_TOKEN={token}"]
+            logger.debug("Using OAuth token from Claude Code credentials")
+
     if not filtered:
         return None
 

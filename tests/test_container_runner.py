@@ -21,6 +21,8 @@ from pynchy.container_runner import (
     _input_to_dict,
     _parse_container_output,
     _parse_final_output,
+    _read_oauth_token,
+    _write_env_file,
     run_container_agent,
     write_groups_snapshot,
     write_tasks_snapshot,
@@ -451,6 +453,73 @@ class TestRunContainerAgent:
 
         # No markers found, fallback parse fails → error
         assert result.status == "error"
+
+
+# ---------------------------------------------------------------------------
+# Credential / env file tests
+# ---------------------------------------------------------------------------
+
+
+class TestReadOauthToken:
+    def test_reads_token_from_credentials_file(self, tmp_path: Path):
+        creds = tmp_path / ".claude" / ".credentials.json"
+        creds.parent.mkdir(parents=True)
+        creds.write_text(json.dumps({
+            "claudeAiOauth": {"accessToken": "test-token-123"}
+        }))
+        with patch("pynchy.container_runner.Path.home", return_value=tmp_path):
+            assert _read_oauth_token() == "test-token-123"
+
+    def test_returns_none_when_no_file(self, tmp_path: Path):
+        with patch("pynchy.container_runner.Path.home", return_value=tmp_path):
+            assert _read_oauth_token() is None
+
+
+class TestWriteEnvFile:
+    def test_prefers_dotenv_over_oauth(self, tmp_path: Path):
+        """Explicit .env file takes priority over OAuth credentials."""
+        env_file = tmp_path / ".env"
+        env_file.write_text("ANTHROPIC_API_KEY=sk-ant-test\n")
+        creds = tmp_path / ".claude" / ".credentials.json"
+        creds.parent.mkdir(parents=True)
+        creds.write_text(json.dumps({
+            "claudeAiOauth": {"accessToken": "oauth-token"}
+        }))
+        with (
+            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            patch("pynchy.container_runner.Path.home", return_value=tmp_path),
+        ):
+            env_dir = _write_env_file()
+            assert env_dir is not None
+            content = (env_dir / "env").read_text()
+            assert "ANTHROPIC_API_KEY=sk-ant-test" in content
+            assert "oauth-token" not in content
+
+    def test_falls_back_to_oauth_token(self, tmp_path: Path):
+        """No .env file → reads OAuth token from credentials."""
+        creds = tmp_path / ".claude" / ".credentials.json"
+        creds.parent.mkdir(parents=True)
+        creds.write_text(json.dumps({
+            "claudeAiOauth": {"accessToken": "my-oauth-token"}
+        }))
+        with (
+            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            patch("pynchy.container_runner.Path.home", return_value=tmp_path),
+        ):
+            env_dir = _write_env_file()
+            assert env_dir is not None
+            content = (env_dir / "env").read_text()
+            assert "CLAUDE_CODE_OAUTH_TOKEN=my-oauth-token" in content
+
+    def test_returns_none_when_no_credentials(self, tmp_path: Path):
+        with (
+            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            patch("pynchy.container_runner.Path.home", return_value=tmp_path),
+        ):
+            assert _write_env_file() is None
 
 
 # ---------------------------------------------------------------------------
