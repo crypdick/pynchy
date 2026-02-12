@@ -10,10 +10,13 @@ working on the feature where it left off. I want to be able to do this over What
 
 - [ ] assess dossier for logging
 - [ ] check whether any features from slack-tools should be migrated
-- [ ] make sure all typescript stuff has been migrated. add a 'differences from typescript implementation' for substantial differences
+- [x] make sure all typescript stuff has been migrated. add a 'differences from typescript implementation' for substantial differences
+  > Done: Full audit confirmed 100% test parity (105/105 TS tests ported) + ~95 new Python-only tests. All modules faithfully ported. TS source deleted.
+- [ ] port x-integration skill from TypeScript to Python (archived at `docs/archive/x-integration-skill-ts/`)
 - [x] make the container runtime detection more robust for Linux vs macOS. Currently hardcoded to Apple Container (`container` CLI) — should detect platform and support Docker on Linux (different CLI args, no `container system start`, different orphan cleanup)
   > Done: `src/pynchy/runtime.py` — frozen `ContainerRuntime` dataclass with lazy singleton. Detects via `CONTAINER_RUNTIME` env var → platform → `shutil.which()`. Apple Container uses `system status`/`start` + array JSON listing. Docker uses `docker info` + newline-delimited JSON. `container_runner.py` and `app.py` delegate to runtime. `build.sh` has matching shell detection.
 - [ ] make the repo less dependent on claude sdk. define a generic interface for agents and let people install plugins for other LLMs. for example, open-code: https://opencode.ai/docs/
+- [ ] integration with tailscale: have pynchy setup its own tailscale service. this enables me to use claude code web to also author the pynchy repo, and remotely trigger a deploy + health check. it could also enable CI/CD to manage the service. this should be part of the deploy process. for now, let's assume that there is only one pynchy deployment at a time. the pynchy deployment would then be interactable via cli cmds, not just via whatsapp. maybe one ux is that when we run 'uv run pynchy' it actually runs it remotely over tailscale..? something to consider. or maybe that should be its own separate uv run pynchy-remote entrypoint..?
 
 # Periodic agents
 - [ ] sweep through the repo, check for security concerns
