@@ -91,9 +91,49 @@ class ContainerRuntime:
             )
             logger.debug("Docker daemon is running")
         except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+            if sys.platform == "darwin":
+                self._start_docker_desktop(exc)
+            else:
+                raise RuntimeError(
+                    "Docker is required but not running. "
+                    "Start with: sudo systemctl start docker"
+                ) from exc
+
+    def _start_docker_desktop(self, original_exc: Exception) -> None:
+        """Attempt to launch Docker Desktop on macOS and wait for the daemon."""
+        logger.info("Docker not running, attempting to start Docker Desktop...")
+        try:
+            subprocess.run(
+                ["open", "-a", "Docker"],
+                capture_output=True,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError) as exc:
             raise RuntimeError(
-                "Docker is required but not running. Start with: sudo systemctl start docker"
+                "Docker Desktop is required but could not be started. "
+                "Install from https://www.docker.com/products/docker-desktop/"
             ) from exc
+
+        import time
+
+        for i in range(30):
+            try:
+                subprocess.run(
+                    ["docker", "info"],
+                    capture_output=True,
+                    check=True,
+                )
+                logger.info("Docker Desktop started successfully")
+                return
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                if i % 5 == 0:
+                    logger.info("Waiting for Docker Desktop to start...")
+                time.sleep(2)
+
+        raise RuntimeError(
+            "Docker Desktop was launched but the daemon did not become ready "
+            "within 60s. Check Docker Desktop for errors."
+        ) from original_exc
 
     def _list_docker(self, prefix: str) -> list[str]:
         result = subprocess.run(
@@ -126,6 +166,14 @@ def detect_runtime() -> ContainerRuntime:
     # macOS prefers Apple Container if available
     if sys.platform == "darwin" and shutil.which("container"):
         return ContainerRuntime(name="apple", cli="container")
+
+    if sys.platform == "darwin" and shutil.which("docker"):
+        logger.info(
+            "Apple Container not found, falling back to Docker. "
+            "For better macOS integration, install Apple Container: "
+            "https://developer.apple.com/documentation/apple-containers"
+        )
+        return ContainerRuntime(name="docker", cli="docker")
 
     if shutil.which("docker"):
         return ContainerRuntime(name="docker", cli="docker")
