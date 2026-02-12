@@ -59,4 +59,3 @@ export const config = {
   // Args to ignore when launching Chrome
   chromeIgnoreDefaultArgs: ['--enable-automation'],
 };
-

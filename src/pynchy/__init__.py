@@ -1,0 +1,1 @@
+"""Pynchy — Personal Claude assistant."""

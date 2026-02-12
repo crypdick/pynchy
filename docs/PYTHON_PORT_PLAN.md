@@ -20,19 +20,19 @@ They communicate via stdin/stdout JSON and file-based IPC. Both are being ported
 
 | TypeScript Source | Python Target | Purpose | Complexity |
 |---|---|---|---|
-| `src/types.ts` | `src/nanoclawpy/types.py` | Data models | Low |
-| `src/config.ts` | `src/nanoclawpy/config.py` | Env vars, constants, paths | Low |
-| `src/logger.ts` | `src/nanoclawpy/logger.py` | Structured logging | Low |
-| `src/db.ts` | `src/nanoclawpy/db.py` | SQLite layer (~30 functions) | Medium |
-| `src/router.ts` | `src/nanoclawpy/router.py` | Message formatting, XML, routing | Low |
-| `src/mount-security.ts` | `src/nanoclawpy/mount_security.py` | Mount validation vs allowlist | Low |
-| `src/group-queue.ts` | `src/nanoclawpy/group_queue.py` | Per-group concurrency + global limits | High |
-| `src/container-runner.ts` | `src/nanoclawpy/container_runner.py` | Spawn containers, parse streaming output | High |
-| `src/ipc.ts` | `src/nanoclawpy/ipc.py` | File-based IPC watcher | Medium |
-| `src/task-scheduler.ts` | `src/nanoclawpy/task_scheduler.py` | Cron/interval task execution | Medium |
-| `src/channels/whatsapp.ts` | `src/nanoclawpy/channels/whatsapp.py` | WhatsApp via neonize | High |
-| `src/whatsapp-auth.ts` | `src/nanoclawpy/auth/whatsapp.py` | WhatsApp QR auth | Medium |
-| `src/index.ts` | `src/nanoclawpy/app.py` + `__main__.py` | Main orchestrator | Medium |
+| `src/types.ts` | `src/pynchy/types.py` | Data models | Low |
+| `src/config.ts` | `src/pynchy/config.py` | Env vars, constants, paths | Low |
+| `src/logger.ts` | `src/pynchy/logger.py` | Structured logging | Low |
+| `src/db.ts` | `src/pynchy/db.py` | SQLite layer (~30 functions) | Medium |
+| `src/router.ts` | `src/pynchy/router.py` | Message formatting, XML, routing | Low |
+| `src/mount-security.ts` | `src/pynchy/mount_security.py` | Mount validation vs allowlist | Low |
+| `src/group-queue.ts` | `src/pynchy/group_queue.py` | Per-group concurrency + global limits | High |
+| `src/container-runner.ts` | `src/pynchy/container_runner.py` | Spawn containers, parse streaming output | High |
+| `src/ipc.ts` | `src/pynchy/ipc.py` | File-based IPC watcher | Medium |
+| `src/task-scheduler.ts` | `src/pynchy/task_scheduler.py` | Cron/interval task execution | Medium |
+| `src/channels/whatsapp.ts` | `src/pynchy/channels/whatsapp.py` | WhatsApp via neonize | High |
+| `src/whatsapp-auth.ts` | `src/pynchy/auth/whatsapp.py` | WhatsApp QR auth | Medium |
+| `src/index.ts` | `src/pynchy/app.py` + `__main__.py` | Main orchestrator | Medium |
 | `container/agent-runner/src/index.ts` | `container/agent_runner/src/agent_runner/main.py` | Agent entrypoint (Claude SDK) | High |
 | `container/agent-runner/src/ipc-mcp-stdio.ts` | `container/agent_runner/src/agent_runner/ipc_mcp.py` | MCP server for agent IPC | Medium |
 
@@ -78,9 +78,9 @@ Phases are ordered by dependency. Check the box when complete and add a brief no
 - [x] Create `__init__.py`, `__main__.py` stubs
 - [x] Set up `pytest` with `conftest.py`, `ruff` for linting
 - [x] Update `.gitignore` for Python (`.venv/`, `__pycache__/`, `*.pyc`, `dist/`)
-- [x] Verify: `pip install -e .` works, `python -m nanoclawpy` runs and exits cleanly
+- [x] Verify: `uv sync` works, `uv run python -m pynchy` runs and exits cleanly
 
-> Note: Used `hatchling` as build backend for src-layout support. `uv sync` instead of `pip install -e .`.
+> Note: Used `hatchling` as build backend for src-layout support. Use `uv sync` for deps, `uv run` to execute.
 
 ### Phase 1: Types, Config, Logger
 - [x] **types.py** — Port interfaces to dataclasses. Use `Protocol` for `Channel` interface.
@@ -91,27 +91,33 @@ Phases are ordered by dependency. Check the box when complete and add a brief no
 > Note: router.py also ported in this phase (was simple and needed for tests). 34 tests passing.
 
 ### Phase 2: Database Layer
-- [ ] **db.py** — All ~30 functions become `async def` using `aiosqlite`. Same schema as TS version.
-- [ ] Module-level `_db` connection, initialized by `init_database()`, with `_init_test_database()` for tests.
-- [ ] `aiosqlite.Row` row factory for dict-like access.
-- [ ] Port all tests from `db.test.ts` using in-memory SQLite.
+- [x] **db.py** — All ~30 functions become `async def` using `aiosqlite`. Same schema as TS version.
+- [x] Module-level `_db` connection, initialized by `init_database()`, with `_init_test_database()` for tests.
+- [x] `aiosqlite.Row` row factory for dict-like access.
+- [x] Port all tests from `db.test.ts` using in-memory SQLite.
+
+> Note: 17 DB tests passing. All functions async. JSON migration ported.
 
 ### Phase 3: Router & Message Formatting
 - [x] **router.py** — `escape_xml()`, `format_messages()`, `strip_internal_tags()`, `format_outbound()`, `route_outbound()`, `find_channel()`
 - [x] Port all tests from `formatting.test.ts`
 
 ### Phase 4: Mount Security
-- [ ] **mount_security.py** — Pure logic, no async needed. Use `pathlib` and `os.path.realpath()`.
-- [ ] `load_mount_allowlist()`, `validate_mount()`, `validate_additional_mounts()`, `generate_allowlist_template()`
+- [x] **mount_security.py** — Pure logic, no async needed. Use `pathlib` and `os.path.realpath()`.
+- [x] `load_mount_allowlist()`, `validate_mount()`, `validate_additional_mounts()`, `generate_allowlist_template()`
 - [ ] Write tests for allowed/blocked paths, blocked patterns, readonly enforcement.
 
+> Note: Implementation complete. Tests deferred — no TS test file exists for mount-security. Should be written for Phase 12.
+
 ### Phase 5: Group Queue
-- [ ] **group_queue.py** — `GroupQueue` class with asyncio-based concurrency control.
-- [ ] State per group: `active`, `pending_messages`, `pending_tasks`, `process`, `retry_count`
-- [ ] Global: `active_count`, `waiting_groups` queue, `MAX_CONCURRENT_CONTAINERS` limit
-- [ ] Retry with exponential backoff (5s → 10s → 20s... capped at 5 retries)
-- [ ] `enqueue_message_check()`, `enqueue_task()`, `register_process()`, `send_message()`, `close_stdin()`, `shutdown()`
-- [ ] Port all tests from `group-queue.test.ts`. Mock `asyncio.sleep` instead of fake timers.
+- [x] **group_queue.py** — `GroupQueue` class with asyncio-based concurrency control.
+- [x] State per group: `active`, `pending_messages`, `pending_tasks`, `process`, `retry_count`
+- [x] Global: `active_count`, `waiting_groups` queue, `MAX_CONCURRENT_CONTAINERS` limit
+- [x] Retry with exponential backoff (5s → 10s → 20s... capped at 5 retries)
+- [x] `enqueue_message_check()`, `enqueue_task()`, `register_process()`, `send_message()`, `close_stdin()`, `shutdown()`
+- [x] Port all tests from `group-queue.test.ts`. Mock `asyncio.sleep` instead of fake timers.
+
+> Note: Key difference from TS: asyncio.ensure_future doesn't run the coroutine synchronously to its first await (unlike JS promises). Fixed by eagerly setting state.active and bumping active_count in the synchronous caller. 8 tests passing.
 
 ### Phase 6: Container Runner
 - [ ] **container_runner.py** — `run_container_agent()` as the main entry point.
@@ -124,17 +130,21 @@ Phases are ordered by dependency. Check the box when complete and add a brief no
 - [ ] Port tests from `container-runner.test.ts`. Mock subprocess.
 
 ### Phase 7: IPC Watcher
-- [ ] **ipc.py** — `start_ipc_watcher()` as async polling loop (1s interval).
-- [ ] `process_task_ipc()` with `match/case` for command dispatch (Python 3.10+).
-- [ ] Authorization: non-main groups can only operate on themselves.
-- [ ] Atomic file processing: read → execute → delete. Move failures to `errors/` dir.
-- [ ] Port all tests from `ipc-auth.test.ts` (largest test file — 594 lines).
+- [x] **ipc.py** — `start_ipc_watcher()` as async polling loop (1s interval).
+- [x] `process_task_ipc()` with `match/case` for command dispatch (Python 3.10+).
+- [x] Authorization: non-main groups can only operate on themselves.
+- [x] Atomic file processing: read → execute → delete. Move failures to `errors/` dir.
+- [x] Port all tests from `ipc-auth.test.ts` (largest test file — 594 lines).
+
+> Note: 32 IPC auth tests passing. All authorization patterns, schedule types, and context_mode logic ported.
 
 ### Phase 8: Task Scheduler
-- [ ] **task_scheduler.py** — `start_scheduler_loop()` as async polling loop (60s interval).
-- [ ] `croniter` for cron, simple arithmetic for interval, `datetime.fromisoformat()` for once.
-- [ ] Context modes: `group` (shared session) vs `isolated` (fresh session).
-- [ ] `update_task_after_run()`: calculate next_run, log to `task_run_logs`.
+- [x] **task_scheduler.py** — `start_scheduler_loop()` as async polling loop (60s interval).
+- [x] `croniter` for cron, simple arithmetic for interval, `datetime.fromisoformat()` for once.
+- [x] Context modes: `group` (shared session) vs `isolated` (fresh session).
+- [x] `update_task_after_run()`: calculate next_run, log to `task_run_logs`.
+
+> Note: Scheduler loop and _run_task implemented. Container runner integration is a stub pending Phase 6.
 
 ### Phase 9: WhatsApp Channel (neonize)
 - [ ] **channels/whatsapp.py** — `WhatsAppChannel` class implementing `Channel` protocol.
@@ -179,7 +189,7 @@ Phases are ordered by dependency. Check the box when complete and add a brief no
 - [ ] Multi-group concurrency: multiple groups, verify queue limits
 - [ ] Graceful shutdown: SIGTERM handling
 - [ ] Crash recovery: kill mid-processing, restart, verify `recover_pending_messages()`
-- [ ] Update CLAUDE.md for Python commands (`pip install -e .`, `python -m nanoclawpy`, `pytest`)
+- [x] Update CLAUDE.md for Python commands (`uv run python -m pynchy`, `uv run pytest`)
 - [ ] Update launchd plist for Python entrypoint
 
 ---
