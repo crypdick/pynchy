@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="assets/nanoclaw-logo.png" alt="NanoClaw" width="400">
+  <img src="assets/pynchy.png" alt="Pynchy" width="400">
 </p>
 
 <p align="center">
-  My personal Claude assistant that runs securely in containers. Lightweight and built to be understood and customized for your own needs.
+  <em>Pynchy</em> — the Python port of NanoClaw. Personal Claude assistant that runs securely in containers.
 </p>
 
 <p align="center">

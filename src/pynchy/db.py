@@ -13,9 +13,9 @@ from typing import Any
 
 import aiosqlite
 
-from nanoclawpy.config import DATA_DIR, STORE_DIR
-from nanoclawpy.logger import logger
-from nanoclawpy.types import NewMessage, RegisteredGroup, ScheduledTask, TaskRunLog
+from pynchy.config import DATA_DIR, STORE_DIR
+from pynchy.logger import logger
+from pynchy.types import NewMessage, RegisteredGroup, ScheduledTask, TaskRunLog
 
 _db: aiosqlite.Connection | None = None
 

@@ -17,8 +17,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
-from nanoclawpy.config import DATA_DIR, MAX_CONCURRENT_CONTAINERS
-from nanoclawpy.logger import logger
+from pynchy.config import DATA_DIR, MAX_CONCURRENT_CONTAINERS
+from pynchy.logger import logger
 
 MAX_RETRIES = 5
 BASE_RETRY_SECONDS = 5.0

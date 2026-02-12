@@ -10,12 +10,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from nanoclawpy.group_queue import GroupQueue
+from pynchy.group_queue import GroupQueue
 
 
 @pytest.fixture
 def queue():
-    with patch("nanoclawpy.group_queue.MAX_CONCURRENT_CONTAINERS", 2):
+    with patch("pynchy.group_queue.MAX_CONCURRENT_CONTAINERS", 2):
         yield GroupQueue()
 
 
@@ -128,7 +128,7 @@ class TestGroupQueue:
         # First retry after ~5s (BASE_RETRY_SECONDS * 2^0)
         # We use shorter sleeps in test by patching, but let's just verify
         # the retry happened. We'll wait for the first retry.
-        with patch("nanoclawpy.group_queue.BASE_RETRY_SECONDS", 0.05):
+        with patch("pynchy.group_queue.BASE_RETRY_SECONDS", 0.05):
             # Reset and re-test with shorter timeouts
             pass
 
@@ -182,8 +182,8 @@ class TestGroupQueueRetry:
     """Test retry behavior with shorter timeouts."""
 
     async def test_retries_with_backoff(self):
-        with patch("nanoclawpy.group_queue.MAX_CONCURRENT_CONTAINERS", 2), \
-             patch("nanoclawpy.group_queue.BASE_RETRY_SECONDS", 0.1):
+        with patch("pynchy.group_queue.MAX_CONCURRENT_CONTAINERS", 2), \
+             patch("pynchy.group_queue.BASE_RETRY_SECONDS", 0.1):
             queue = GroupQueue()
             call_count = 0
 
@@ -208,8 +208,8 @@ class TestGroupQueueRetry:
             assert call_count == 3
 
     async def test_stops_retrying_after_max_retries(self):
-        with patch("nanoclawpy.group_queue.MAX_CONCURRENT_CONTAINERS", 2), \
-             patch("nanoclawpy.group_queue.BASE_RETRY_SECONDS", 0.01):
+        with patch("pynchy.group_queue.MAX_CONCURRENT_CONTAINERS", 2), \
+             patch("pynchy.group_queue.BASE_RETRY_SECONDS", 0.01):
             queue = GroupQueue()
             call_count = 0
 

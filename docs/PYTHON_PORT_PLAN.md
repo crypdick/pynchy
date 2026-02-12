@@ -20,19 +20,19 @@ They communicate via stdin/stdout JSON and file-based IPC. Both are being ported
 
 | TypeScript Source | Python Target | Purpose | Complexity |
 |---|---|---|---|
-| `src/types.ts` | `src/nanoclawpy/types.py` | Data models | Low |
-| `src/config.ts` | `src/nanoclawpy/config.py` | Env vars, constants, paths | Low |
-| `src/logger.ts` | `src/nanoclawpy/logger.py` | Structured logging | Low |
-| `src/db.ts` | `src/nanoclawpy/db.py` | SQLite layer (~30 functions) | Medium |
-| `src/router.ts` | `src/nanoclawpy/router.py` | Message formatting, XML, routing | Low |
-| `src/mount-security.ts` | `src/nanoclawpy/mount_security.py` | Mount validation vs allowlist | Low |
-| `src/group-queue.ts` | `src/nanoclawpy/group_queue.py` | Per-group concurrency + global limits | High |
-| `src/container-runner.ts` | `src/nanoclawpy/container_runner.py` | Spawn containers, parse streaming output | High |
-| `src/ipc.ts` | `src/nanoclawpy/ipc.py` | File-based IPC watcher | Medium |
-| `src/task-scheduler.ts` | `src/nanoclawpy/task_scheduler.py` | Cron/interval task execution | Medium |
-| `src/channels/whatsapp.ts` | `src/nanoclawpy/channels/whatsapp.py` | WhatsApp via neonize | High |
-| `src/whatsapp-auth.ts` | `src/nanoclawpy/auth/whatsapp.py` | WhatsApp QR auth | Medium |
-| `src/index.ts` | `src/nanoclawpy/app.py` + `__main__.py` | Main orchestrator | Medium |
+| `src/types.ts` | `src/pynchy/types.py` | Data models | Low |
+| `src/config.ts` | `src/pynchy/config.py` | Env vars, constants, paths | Low |
+| `src/logger.ts` | `src/pynchy/logger.py` | Structured logging | Low |
+| `src/db.ts` | `src/pynchy/db.py` | SQLite layer (~30 functions) | Medium |
+| `src/router.ts` | `src/pynchy/router.py` | Message formatting, XML, routing | Low |
+| `src/mount-security.ts` | `src/pynchy/mount_security.py` | Mount validation vs allowlist | Low |
+| `src/group-queue.ts` | `src/pynchy/group_queue.py` | Per-group concurrency + global limits | High |
+| `src/container-runner.ts` | `src/pynchy/container_runner.py` | Spawn containers, parse streaming output | High |
+| `src/ipc.ts` | `src/pynchy/ipc.py` | File-based IPC watcher | Medium |
+| `src/task-scheduler.ts` | `src/pynchy/task_scheduler.py` | Cron/interval task execution | Medium |
+| `src/channels/whatsapp.ts` | `src/pynchy/channels/whatsapp.py` | WhatsApp via neonize | High |
+| `src/whatsapp-auth.ts` | `src/pynchy/auth/whatsapp.py` | WhatsApp QR auth | Medium |
+| `src/index.ts` | `src/pynchy/app.py` + `__main__.py` | Main orchestrator | Medium |
 | `container/agent-runner/src/index.ts` | `container/agent_runner/src/agent_runner/main.py` | Agent entrypoint (Claude SDK) | High |
 | `container/agent-runner/src/ipc-mcp-stdio.ts` | `container/agent_runner/src/agent_runner/ipc_mcp.py` | MCP server for agent IPC | Medium |
 
@@ -78,7 +78,7 @@ Phases are ordered by dependency. Check the box when complete and add a brief no
 - [x] Create `__init__.py`, `__main__.py` stubs
 - [x] Set up `pytest` with `conftest.py`, `ruff` for linting
 - [x] Update `.gitignore` for Python (`.venv/`, `__pycache__/`, `*.pyc`, `dist/`)
-- [x] Verify: `pip install -e .` works, `python -m nanoclawpy` runs and exits cleanly
+- [x] Verify: `pip install -e .` works, `python -m pynchy` runs and exits cleanly
 
 > Note: Used `hatchling` as build backend for src-layout support. `uv sync` instead of `pip install -e .`.
 
@@ -189,7 +189,7 @@ Phases are ordered by dependency. Check the box when complete and add a brief no
 - [ ] Multi-group concurrency: multiple groups, verify queue limits
 - [ ] Graceful shutdown: SIGTERM handling
 - [ ] Crash recovery: kill mid-processing, restart, verify `recover_pending_messages()`
-- [ ] Update CLAUDE.md for Python commands (`pip install -e .`, `python -m nanoclawpy`, `pytest`)
+- [ ] Update CLAUDE.md for Python commands (`pip install -e .`, `python -m pynchy`, `pytest`)
 - [ ] Update launchd plist for Python entrypoint
 
 ---

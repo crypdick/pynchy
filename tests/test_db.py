@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from nanoclawpy.db import (
+from pynchy.db import (
     _init_test_database,
     create_task,
     delete_task,
@@ -19,7 +19,7 @@ from nanoclawpy.db import (
     store_message,
     update_task,
 )
-from nanoclawpy.types import NewMessage
+from pynchy.types import NewMessage
 
 
 @pytest.fixture(autouse=True)

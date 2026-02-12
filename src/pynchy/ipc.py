@@ -15,16 +15,16 @@ from typing import Any, Awaitable, Callable, Protocol
 
 from croniter import croniter
 
-from nanoclawpy.config import (
+from pynchy.config import (
     ASSISTANT_NAME,
     DATA_DIR,
     IPC_POLL_INTERVAL,
     MAIN_GROUP_FOLDER,
     TIMEZONE,
 )
-from nanoclawpy.db import create_task, delete_task, get_task_by_id, update_task
-from nanoclawpy.logger import logger
-from nanoclawpy.types import RegisteredGroup
+from pynchy.db import create_task, delete_task, get_task_by_id, update_task
+from pynchy.logger import logger
+from pynchy.types import RegisteredGroup
 
 
 class IpcDeps(Protocol):
