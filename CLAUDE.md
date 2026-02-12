@@ -36,7 +36,7 @@ Single Python process that connects to WhatsApp, routes messages to Claude Agent
 Run commands directly—don't tell the user to run them.
 
 ```bash
-uv run python -m pynchy  # Run the app
+uv run pynchy            # Run the app
 uv run pytest tests/     # Run tests
 uv run ruff check src/   # Lint
 uvx pre-commit run --all-files  # Run pre-commit hooks

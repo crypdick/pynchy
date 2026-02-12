@@ -33,3 +33,5 @@ working on the feature where it left off. I want to be able to do this over What
 - ability to make voice announcements to my home speakers
 - cloudflare mcp
 - host has a skill for creating new repos. it creates a new github app password granting the workspace access to just that repo.
+- aws / boto3 + terraform mcp
+- 

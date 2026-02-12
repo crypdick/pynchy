@@ -22,6 +22,15 @@ claude
 
 Then run `/setup`. Claude Code handles everything: dependencies, authentication, container setup, service configuration.
 
+### Manual Setup
+
+```bash
+uv sync                                      # Install dependencies
+./container/build.sh                         # Build the agent container image
+uv run python -m pynchy.auth.whatsapp        # Authenticate WhatsApp (scan QR code)
+uv run pynchy                                # Run
+```
+
 ## Philosophy
 
 **Small enough to understand.** One Python process, a few source files. No microservices, no message queues, no abstraction layers. Have Claude Code walk you through it.

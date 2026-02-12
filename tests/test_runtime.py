@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from unittest.mock import patch
+
+import pytest
 
 import pynchy.runtime as runtime_mod
 from pynchy.runtime import ContainerRuntime, detect_runtime
