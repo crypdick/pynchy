@@ -43,6 +43,7 @@ from pynchy.db import (
 from pynchy.group_queue import GroupQueue
 from pynchy.ipc import start_ipc_watcher
 from pynchy.logger import logger
+from pynchy.runtime import get_runtime
 from pynchy.router import format_messages, format_outbound
 from pynchy.task_scheduler import start_scheduler_loop
 from pynchy.types import Channel, ContainerInput, ContainerOutput, NewMessage, RegisteredGroup
@@ -394,58 +395,24 @@ class PynchyApp:
     # ------------------------------------------------------------------
 
     def _ensure_container_system_running(self) -> None:
-        """Check Apple Container is running, start if needed, kill orphans."""
-        try:
-            subprocess.run(
-                ["container", "system", "status"],
-                capture_output=True,
-                check=True,
-            )
-            logger.debug("Apple Container system already running")
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            logger.info("Starting Apple Container system...")
-            try:
-                subprocess.run(
-                    ["container", "system", "start"],
-                    capture_output=True,
-                    check=True,
-                    timeout=30,
-                )
-                logger.info("Apple Container system started")
-            except Exception as exc:
-                logger.error("Failed to start Apple Container system", err=str(exc))
-                raise RuntimeError(
-                    "Apple Container system is required but failed to start"
-                ) from exc
+        """Verify container runtime is available and stop orphaned containers."""
+        runtime = get_runtime()
+        runtime.ensure_running()
 
         # Kill orphaned containers from previous runs
-        try:
-            result = subprocess.run(
-                ["container", "ls", "--format", "json"],
-                capture_output=True,
-                text=True,
-            )
-            containers = json.loads(result.stdout or "[]")
-            orphans = [
-                c["configuration"]["id"]
-                for c in containers
-                if c.get("status") == "running"
-                and c.get("configuration", {}).get("id", "").startswith("pynchy-")
-            ]
-            for name in orphans:
-                with contextlib.suppress(Exception):
-                    subprocess.run(
-                        ["container", "stop", name],
-                        capture_output=True,
-                    )
-            if orphans:
-                logger.info(
-                    "Stopped orphaned containers",
-                    count=len(orphans),
-                    names=orphans,
+        orphans = runtime.list_running_containers("pynchy-")
+        for name in orphans:
+            with contextlib.suppress(Exception):
+                subprocess.run(
+                    [runtime.cli, "stop", name],
+                    capture_output=True,
                 )
-        except Exception as exc:
-            logger.warning("Failed to clean up orphaned containers", err=str(exc))
+        if orphans:
+            logger.info(
+                "Stopped orphaned containers",
+                count=len(orphans),
+                names=orphans,
+            )
 
     # ------------------------------------------------------------------
     # Helpers
