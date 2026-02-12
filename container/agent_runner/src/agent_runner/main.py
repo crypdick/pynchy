@@ -24,8 +24,8 @@ Known SDK differences from TypeScript:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
-import os
 import re
 import sys
 from datetime import datetime
@@ -112,10 +112,8 @@ def log(message: str) -> None:
 def should_close() -> bool:
     """Check for _close sentinel."""
     if IPC_INPUT_CLOSE_SENTINEL.exists():
-        try:
+        with contextlib.suppress(OSError):
             IPC_INPUT_CLOSE_SENTINEL.unlink()
-        except OSError:
-            pass
         return True
     return False
 
@@ -135,10 +133,8 @@ def drain_ipc_input() -> list[str]:
                     messages.append(data["text"])
             except Exception as exc:
                 log(f"Failed to process input file {file_path.name}: {exc}")
-                try:
+                with contextlib.suppress(OSError):
                     file_path.unlink()
-                except OSError:
-                    pass
         return messages
     except Exception as exc:
         log(f"IPC drain error: {exc}")
@@ -209,10 +205,7 @@ def parse_transcript(content: str) -> list[dict[str, str]]:
             entry = json.loads(line)
             if entry.get("type") == "user" and entry.get("message", {}).get("content"):
                 raw = entry["message"]["content"]
-                if isinstance(raw, str):
-                    text = raw
-                else:
-                    text = "".join(c.get("text", "") for c in raw)
+                text = raw if isinstance(raw, str) else "".join(c.get("text", "") for c in raw)
                 if text:
                     messages.append({"role": "user", "content": text})
             elif entry.get("type") == "assistant" and entry.get("message", {}).get("content"):
@@ -230,9 +223,7 @@ def parse_transcript(content: str) -> list[dict[str, str]]:
     return messages
 
 
-def format_transcript_markdown(
-    messages: list[dict[str, str]], title: str | None = None
-) -> str:
+def format_transcript_markdown(messages: list[dict[str, str]], title: str | None = None) -> str:
     """Format parsed messages as markdown."""
     now = datetime.now()
     formatted_date = now.strftime("%b %d, %I:%M %p")
@@ -312,18 +303,18 @@ async def main() -> None:
         container_input = ContainerInput(json.loads(stdin_data))
         log(f"Received input for group: {container_input.group_folder}")
     except Exception as exc:
-        write_output(ContainerOutput(
-            status="error",
-            error=f"Failed to parse input: {exc}",
-        ))
+        write_output(
+            ContainerOutput(
+                status="error",
+                error=f"Failed to parse input: {exc}",
+            )
+        )
         sys.exit(1)
 
     # Clean up stale _close sentinel
     IPC_INPUT_DIR.mkdir(parents=True, exist_ok=True)
-    try:
+    with contextlib.suppress(OSError):
         IPC_INPUT_CLOSE_SENTINEL.unlink()
-    except OSError:
-        pass
 
     # Build initial prompt (drain any pending IPC messages too)
     prompt = container_input.prompt
@@ -358,11 +349,22 @@ async def main() -> None:
         system_prompt=system_prompt,
         allowed_tools=[
             "Bash",
-            "Read", "Write", "Edit", "Glob", "Grep",
-            "WebSearch", "WebFetch",
-            "Task", "TaskOutput", "TaskStop",
-            "TeamCreate", "TeamDelete", "SendMessage",
-            "TodoWrite", "ToolSearch", "Skill",
+            "Read",
+            "Write",
+            "Edit",
+            "Glob",
+            "Grep",
+            "WebSearch",
+            "WebFetch",
+            "Task",
+            "TaskOutput",
+            "TaskStop",
+            "TeamCreate",
+            "TeamDelete",
+            "SendMessage",
+            "TodoWrite",
+            "ToolSearch",
+            "Skill",
             "NotebookEdit",
             "mcp__pynchy__*",
         ],
@@ -375,7 +377,8 @@ async def main() -> None:
                 "env": {
                     "PYNCHY_CHAT_JID": container_input.chat_jid,
                     "PYNCHY_GROUP_FOLDER": container_input.group_folder,
-                    "PYNCHY_IS_MAIN": "1" if container_input.is_main else "0",
+                    "PYNCHY_IS_MAIN": ("1" if container_input.is_main else "0"),
+                    "PYNCHY_SESSION_ID": (container_input.session_id or ""),
                 },
             },
         },
@@ -407,12 +410,15 @@ async def main() -> None:
                         closed_during_query = True
 
                     # Track session ID from init message
-                    if isinstance(message, SystemMessage):
-                        if message.subtype == "init" and hasattr(message, "data"):
-                            sid = message.data.get("session_id")
-                            if sid:
-                                new_session_id = sid
-                                log(f"Session initialized: {new_session_id}")
+                    if (
+                        isinstance(message, SystemMessage)
+                        and message.subtype == "init"
+                        and hasattr(message, "data")
+                    ):
+                        sid = message.data.get("session_id")
+                        if sid:
+                            new_session_id = sid
+                            log(f"Session initialized: {new_session_id}")
 
                     # Emit results
                     if isinstance(message, ResultMessage):
@@ -423,11 +429,13 @@ async def main() -> None:
                             f"subtype={message.subtype}"
                             f"{f' text={text_result[:200]}' if text_result else ''}"
                         )
-                        write_output(ContainerOutput(
-                            status="success",
-                            result=text_result,
-                            new_session_id=new_session_id,
-                        ))
+                        write_output(
+                            ContainerOutput(
+                                status="success",
+                                result=text_result,
+                                new_session_id=new_session_id,
+                            )
+                        )
 
                 if new_session_id:
                     session_id = new_session_id
@@ -444,11 +452,13 @@ async def main() -> None:
                     break
 
                 # Emit session update so host can track it
-                write_output(ContainerOutput(
-                    status="success",
-                    result=None,
-                    new_session_id=session_id,
-                ))
+                write_output(
+                    ContainerOutput(
+                        status="success",
+                        result=None,
+                        new_session_id=session_id,
+                    )
+                )
 
                 log("Query ended, waiting for next IPC message...")
 
@@ -463,9 +473,11 @@ async def main() -> None:
     except Exception as exc:
         error_message = str(exc)
         log(f"Agent error: {error_message}")
-        write_output(ContainerOutput(
-            status="error",
-            new_session_id=session_id,
-            error=error_message,
-        ))
+        write_output(
+            ContainerOutput(
+                status="error",
+                new_session_id=session_id,
+                error=error_message,
+            )
+        )
         sys.exit(1)

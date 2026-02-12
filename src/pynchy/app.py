@@ -11,15 +11,18 @@ import json
 import signal
 import subprocess
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from pynchy.config import (
     ASSISTANT_NAME,
     CONTAINER_IMAGE,
+    DATA_DIR,
     GROUPS_DIR,
     IDLE_TIMEOUT,
     MAIN_GROUP_FOLDER,
     POLL_INTERVAL,
+    PROJECT_ROOT,
     TRIGGER_PATTERN,
 )
 from pynchy.container_runner import (
@@ -376,8 +379,7 @@ class PynchyApp:
 
                         if needs_trigger:
                             has_trigger = any(
-                                TRIGGER_PATTERN.search(m.content.strip())
-                                for m in group_messages
+                                TRIGGER_PATTERN.search(m.content.strip()) for m in group_messages
                             )
                             if not has_trigger:
                                 continue
@@ -397,9 +399,7 @@ class PynchyApp:
                                 chat_jid=chat_jid,
                                 count=len(messages_to_send),
                             )
-                            self.last_agent_timestamp[chat_jid] = messages_to_send[
-                                -1
-                            ].timestamp
+                            self.last_agent_timestamp[chat_jid] = messages_to_send[-1].timestamp
                             await self._save_state()
                         else:
                             self.queue.enqueue_message_check(chat_jid)
@@ -421,6 +421,96 @@ class PynchyApp:
                     pending_count=len(pending),
                 )
                 self.queue.enqueue_message_check(chat_jid)
+
+    # ------------------------------------------------------------------
+    # Deploy rollback
+    # ------------------------------------------------------------------
+
+    async def _auto_rollback(self, continuation_path: Path, exc: Exception) -> None:
+        """Roll back to the previous commit if startup fails after a deploy."""
+        try:
+            continuation = json.loads(continuation_path.read_text())
+        except Exception:
+            logger.error("Failed to read continuation for rollback")
+            return
+
+        previous_sha = continuation.get("previous_commit_sha", "")
+        if not previous_sha:
+            logger.warning("No previous_commit_sha in continuation, cannot rollback")
+            return
+
+        logger.warning(
+            "Startup failed after deploy, rolling back",
+            previous_sha=previous_sha,
+            error=str(exc),
+        )
+
+        result = subprocess.run(
+            ["git", "reset", "--hard", previous_sha],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            logger.error("Rollback git reset failed", stderr=result.stderr)
+            return
+
+        # Rewrite continuation with rollback info (clear previous_commit_sha to prevent loops)
+        error_short = str(exc)[:200]
+        continuation["resume_prompt"] = (
+            f"ROLLBACK: Startup failed ({error_short}). Rolled back to {previous_sha[:8]}."
+        )
+        continuation["previous_commit_sha"] = ""
+        continuation_path.write_text(json.dumps(continuation, indent=2))
+
+        logger.info("Rollback complete, exiting for service restart")
+        import sys
+
+        sys.exit(1)
+
+    # ------------------------------------------------------------------
+    # Deploy continuation
+    # ------------------------------------------------------------------
+
+    async def _check_deploy_continuation(self) -> None:
+        """Check for a deploy continuation file and inject a resume message."""
+        continuation_path = DATA_DIR / "deploy_continuation.json"
+        if not continuation_path.exists():
+            return
+
+        try:
+            continuation = json.loads(continuation_path.read_text())
+            continuation_path.unlink()
+        except Exception as exc:
+            logger.error("Failed to read deploy continuation", err=str(exc))
+            return
+
+        chat_jid = continuation.get("chat_jid", "")
+        resume_prompt = continuation.get("resume_prompt", "Deploy complete.")
+        commit_sha = continuation.get("commit_sha", "unknown")
+
+        if not chat_jid:
+            logger.warning("Deploy continuation missing chat_jid, skipping")
+            return
+
+        logger.info(
+            "Deploy continuation found, injecting resume message",
+            commit_sha=commit_sha,
+            chat_jid=chat_jid,
+        )
+
+        # Inject a synthetic message to resume the agent session
+        synthetic_msg = NewMessage(
+            id=f"deploy-{commit_sha[:8]}-{int(datetime.now(UTC).timestamp() * 1000)}",
+            chat_jid=chat_jid,
+            sender="system",
+            sender_name="system",
+            content=f"[DEPLOY COMPLETE — {commit_sha[:8]}] {resume_prompt}",
+            timestamp=datetime.now(UTC).isoformat(),
+            is_from_me=False,
+        )
+        await store_message(synthetic_msg)
+        self.queue.enqueue_message_check(chat_jid)
 
     # ------------------------------------------------------------------
     # Container system
@@ -451,9 +541,7 @@ class PynchyApp:
                 cwd=str(container_dir),
             )
             if build.returncode != 0:
-                raise RuntimeError(
-                    f"Failed to build container image '{CONTAINER_IMAGE}'"
-                )
+                raise RuntimeError(f"Failed to build container image '{CONTAINER_IMAGE}'")
 
         # Kill orphaned containers from previous runs
         orphans = runtime.list_running_containers("pynchy-")
@@ -500,10 +588,18 @@ class PynchyApp:
 
     async def run(self) -> None:
         """Main entry point — startup sequence."""
-        self._ensure_container_system_running()
-        await init_database()
-        logger.info("Database initialized")
-        await self._load_state()
+        continuation_path = DATA_DIR / "deploy_continuation.json"
+
+        try:
+            self._ensure_container_system_running()
+            await init_database()
+            logger.info("Database initialized")
+            await self._load_state()
+        except Exception as exc:
+            # Auto-rollback if we crash during startup after a deploy
+            if continuation_path.exists():
+                await self._auto_rollback(continuation_path, exc)
+            raise
 
         loop = asyncio.get_running_loop()
 
@@ -519,27 +615,28 @@ class PynchyApp:
 
         whatsapp = WhatsAppChannel(
             on_message=lambda _jid, msg: asyncio.ensure_future(store_message(msg)),
-            on_chat_metadata=lambda jid, ts: asyncio.ensure_future(
-                store_chat_metadata(jid, ts)
-            ),
+            on_chat_metadata=lambda jid, ts: asyncio.ensure_future(store_chat_metadata(jid, ts)),
             registered_groups=lambda: self.registered_groups,
         )
         self.channels.append(whatsapp)
-        await whatsapp.connect()
+
+        try:
+            await whatsapp.connect()
+        except Exception as exc:
+            if continuation_path.exists():
+                await self._auto_rollback(continuation_path, exc)
+            raise
 
         # First-run: create a private group and register as main channel
         if not self.registered_groups:
             await self._setup_main_group(whatsapp)
 
         # Start subsystems
-        asyncio.create_task(
-            start_scheduler_loop(self._make_scheduler_deps())
-        )
-        asyncio.create_task(
-            start_ipc_watcher(self._make_ipc_deps())
-        )
+        asyncio.create_task(start_scheduler_loop(self._make_scheduler_deps()))
+        asyncio.create_task(start_ipc_watcher(self._make_ipc_deps()))
         self.queue.set_process_messages_fn(self._process_group_messages)
         await self._recover_pending_messages()
+        await self._check_deploy_continuation()
         await self._start_message_loop()
 
     # ------------------------------------------------------------------
