@@ -7,9 +7,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import filecmp
 import json
+import shutil
 import signal
 import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -52,7 +55,7 @@ from pynchy.db import (
 )
 from pynchy.event_bus import AgentActivityEvent, ChatClearedEvent, EventBus, MessageEvent
 from pynchy.group_queue import GroupQueue
-from pynchy.http_server import start_http_server
+from pynchy.http_server import _get_head_commit_message, _get_head_sha, start_http_server
 from pynchy.ipc import start_ipc_watcher
 from pynchy.logger import logger
 from pynchy.router import format_messages, format_outbound, format_system_message, parse_system_tag
@@ -495,7 +498,10 @@ class PynchyApp:
         if not main_jid:
             return
 
-        text = format_system_message(f"{ASSISTANT_NAME} online")
+        sha = _get_head_sha()[:8]
+        commit_msg = _get_head_commit_message(50)
+        label = f"{sha} {commit_msg}".strip() if commit_msg else sha
+        text = format_system_message(f"{ASSISTANT_NAME} online — {label}")
         for ch in self.channels:
             if ch.is_connected():
                 with contextlib.suppress(Exception):
@@ -663,9 +669,7 @@ class PynchyApp:
         self.event_bus.emit(ChatClearedEvent(chat_jid=chat_jid))
 
         # Store and send the confirmation (timestamp > cleared_at)
-        reset_text = format_system_message(
-            "Context reset. Next message starts a fresh session."
-        )
+        reset_text = format_system_message("🗑️")
         ts = datetime.now(UTC).isoformat()
         await store_message_direct(
             id=f"system-{int(datetime.now(UTC).timestamp() * 1000)}",
@@ -739,6 +743,57 @@ class PynchyApp:
             logger.warning("Tailscale check failed (non-fatal)", err=str(exc))
 
     # ------------------------------------------------------------------
+    # Service installation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _install_service() -> None:
+        """Install the platform service file so the process auto-restarts on exit."""
+        if sys.platform == "darwin":
+            src = PROJECT_ROOT / "launchd" / "com.pynchy.plist"
+            dest = Path.home() / "Library" / "LaunchAgents" / "com.pynchy.plist"
+            if not src.exists():
+                logger.warning("launchd plist not found in repo, skipping service install")
+                return
+            if dest.exists() and filecmp.cmp(str(src), str(dest), shallow=False):
+                return  # already up to date
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+            logger.info("Installed launchd plist", dest=str(dest))
+        elif sys.platform == "linux":
+            uv_path = shutil.which("uv")
+            if not uv_path:
+                logger.warning("uv not found in PATH, skipping systemd service install")
+                return
+            home = Path.home()
+            # TODO: Uninstall cleanup — need a way to systemctl --user disable + rm
+            # this service when the user wants to remove pynchy.
+            unit = f"""\
+[Unit]
+Description=Pynchy personal assistant
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={PROJECT_ROOT}
+ExecStart={uv_path} run pynchy
+Restart=always
+RestartSec=10
+Environment=HOME={home}
+Environment=PATH={home}/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target
+"""
+            dest = home / ".config" / "systemd" / "user" / "pynchy.service"
+            if dest.exists() and dest.read_text() == unit:
+                return  # already up to date
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(unit)
+            logger.info("Installed systemd user service", dest=str(dest))
+
+    # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
@@ -762,6 +817,7 @@ class PynchyApp:
         continuation_path = DATA_DIR / "deploy_continuation.json"
 
         try:
+            self._install_service()
             self._ensure_container_system_running()
             await init_database()
             logger.info("Database initialized")

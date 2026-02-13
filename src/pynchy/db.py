@@ -295,12 +295,13 @@ async def get_new_messages(
 async def get_messages_since(
     chat_jid: str, since_timestamp: str, bot_prefix: str
 ) -> list[NewMessage]:
-    """Get messages for a specific chat since a timestamp, excluding bot messages."""
+    """Get messages for a specific chat since a timestamp, excluding bot and system messages."""
     db = _get_db()
     sql = """
         SELECT id, chat_jid, sender, sender_name, content, timestamp
         FROM messages
         WHERE chat_jid = ? AND timestamp > ? AND content NOT LIKE ?
+              AND content NOT LIKE '[system]%'
         ORDER BY timestamp
     """
     cursor = await db.execute(sql, (chat_jid, since_timestamp, f"{bot_prefix}:%"))

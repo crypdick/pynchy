@@ -37,6 +37,23 @@ def _get_head_sha() -> str:
         return "unknown"
 
 
+def _get_head_commit_message(max_length: int = 72) -> str:
+    """Return the subject line of the HEAD commit, truncated if needed."""
+    try:
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%s"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        msg = result.stdout.strip() if result.returncode == 0 else ""
+        if len(msg) > max_length:
+            return msg[: max_length - 1] + "…"
+        return msg
+    except Exception:
+        return ""
+
+
 class HttpDeps(Protocol):
     """Dependencies injected by app.py."""
 
@@ -71,6 +88,7 @@ async def _handle_health(request: web.Request) -> web.Response:
             "status": "ok",
             "uptime_seconds": round(time.monotonic() - _start_time),
             "head_sha": _get_head_sha(),
+            "head_commit": _get_head_commit_message(),
             "channels_connected": deps.channels_connected(),
         }
     )
@@ -80,7 +98,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
     deps: HttpDeps = request.app["deps"]
     old_sha = _get_head_sha()
 
-    # 1. git pull --ff-only
+    # 1. Try git pull --ff-only (non-fatal — allows restart without new commits)
     pull = subprocess.run(
         ["git", "pull", "--ff-only"],
         cwd=str(PROJECT_ROOT),
@@ -88,41 +106,35 @@ async def _handle_deploy(request: web.Request) -> web.Response:
         text=True,
     )
     if pull.returncode != 0:
-        msg = f"git pull --ff-only failed: {pull.stderr.strip()}"
-        logger.error("Deploy failed", error=msg)
-        chat_jid = deps.main_chat_jid()
-        if chat_jid:
-            await deps.send_message(
-                chat_jid,
-                f"{ASSISTANT_NAME}: Deploy failed — {msg}",
-            )
-        return web.json_response({"error": msg}, status=409)
+        logger.warning("git pull failed, restarting with current code", stderr=pull.stderr.strip())
 
     new_sha = _get_head_sha()
+    has_new_code = new_sha != old_sha
 
-    # 2. Validate import
-    validate = subprocess.run(
-        ["python", "-c", "import pynchy"],
-        cwd=str(PROJECT_ROOT),
-        capture_output=True,
-        text=True,
-    )
-    if validate.returncode != 0:
-        err = validate.stderr.strip()[-300:]
-        logger.error("Deploy validation failed, rolling back", error=err)
-        subprocess.run(
-            ["git", "reset", "--hard", old_sha],
+    # 2. Validate import (only when new code was pulled)
+    if has_new_code:
+        validate = subprocess.run(
+            ["python", "-c", "import pynchy"],
             cwd=str(PROJECT_ROOT),
             capture_output=True,
+            text=True,
         )
-        chat_jid = deps.main_chat_jid()
-        if chat_jid:
-            msg = f"Deploy failed — import validation error, rolled back to {old_sha[:8]}."
-            await deps.send_message(chat_jid, f"{ASSISTANT_NAME}: {msg}")
-        return web.json_response(
-            {"error": "import validation failed", "rolled_back_to": old_sha},
-            status=422,
-        )
+        if validate.returncode != 0:
+            err = validate.stderr.strip()[-300:]
+            logger.error("Deploy validation failed, rolling back", error=err)
+            subprocess.run(
+                ["git", "reset", "--hard", old_sha],
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+            )
+            chat_jid = deps.main_chat_jid()
+            if chat_jid:
+                msg = f"Deploy failed — import validation error, rolled back to {old_sha[:8]}."
+                await deps.send_message(chat_jid, f"{ASSISTANT_NAME}: {msg}")
+            return web.json_response(
+                {"error": "import validation failed", "rolled_back_to": old_sha},
+                status=422,
+            )
 
     # 3. Write continuation, notify WhatsApp, and schedule SIGTERM
     chat_jid = deps.main_chat_jid()
@@ -134,7 +146,12 @@ async def _handle_deploy(request: web.Request) -> web.Response:
         sigterm_delay=0.5,  # let the HTTP response flush first
     )
 
-    return web.json_response({"status": "restarting", "sha": new_sha, "previous_sha": old_sha})
+    return web.json_response({
+        "status": "restarting",
+        "sha": new_sha,
+        "commit": _get_head_commit_message(),
+        "previous_sha": old_sha,
+    })
 
 
 # ------------------------------------------------------------------

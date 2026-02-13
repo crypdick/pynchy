@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- TODO: Uninstall cleanup — need a way to launchctl unload + rm this from
+     ~/Library/LaunchAgents/ when the user wants to remove pynchy. Consider an
+     uninstall command or /setup teardown flow. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.pynchy</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/rdecal/.local/bin/uv</string>
+        <string>run</string>
+        <string>pynchy</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/rdecal/src/PERSONAL/pynchy</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/rdecal/.local/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>/Users/rdecal</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/Users/rdecal/src/PERSONAL/pynchy/logs/pynchy.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/rdecal/src/PERSONAL/pynchy/logs/pynchy.error.log</string>
+</dict>
+</plist>
