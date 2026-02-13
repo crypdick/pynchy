@@ -69,7 +69,7 @@ from pynchy.http_server import (
 )
 from pynchy.ipc import start_ipc_watcher
 from pynchy.logger import logger
-from pynchy.router import format_messages, format_outbound, parse_host_tag
+from pynchy.router import format_messages, format_outbound, format_tool_preview, parse_host_tag
 from pynchy.runtime import get_runtime
 from pynchy.task_scheduler import start_scheduler_loop
 from pynchy.types import Channel, ContainerInput, ContainerOutput, NewMessage, RegisteredGroup
@@ -505,6 +505,35 @@ class PynchyApp:
             await self._broadcast_host_message(chat_jid, error_msg)
             logger.error("Direct command error", group=group.name, error=str(exc))
 
+    async def _broadcast_trace(
+        self,
+        chat_jid: str,
+        trace_type: str,
+        data: dict[str, Any],
+        channel_text: str,
+        *,
+        db_id_prefix: str,
+        db_sender: str,
+    ) -> None:
+        """Store a trace event, send to channels, and emit to EventBus."""
+        ts = datetime.now(UTC).isoformat()
+        await store_message_direct(
+            id=_next_trace_id(db_id_prefix),
+            chat_jid=chat_jid,
+            sender=db_sender,
+            sender_name=db_sender,
+            content=json.dumps(data),
+            timestamp=ts,
+            is_from_me=True,
+        )
+        for ch in self.channels:
+            if ch.is_connected():
+                with contextlib.suppress(Exception):
+                    await ch.send_message(chat_jid, channel_text)
+        self.event_bus.emit(
+            AgentTraceEvent(chat_jid=chat_jid, trace_type=trace_type, data=data)
+        )
+
     async def _handle_streamed_output(
         self, chat_jid: str, group: RegisteredGroup, result: ContainerOutput
     ) -> bool:
@@ -519,121 +548,54 @@ class PynchyApp:
 
         # --- Trace events: persist to DB + broadcast ---
         if result.type == "thinking":
-            await store_message_direct(
-                id=_next_trace_id("think"),
-                chat_jid=chat_jid,
-                sender="thinking",
-                sender_name="thinking",
-                content=json.dumps({"thinking": result.thinking or ""}),
-                timestamp=ts,
-                is_from_me=True,
-            )
-            trace_text = "\U0001f4ad thinking..."
-            for ch in self.channels:
-                if ch.is_connected():
-                    with contextlib.suppress(Exception):
-                        await ch.send_message(chat_jid, trace_text)
-            self.event_bus.emit(
-                AgentTraceEvent(
-                    chat_jid=chat_jid,
-                    trace_type="thinking",
-                    data={"thinking": result.thinking or ""},
-                )
+            await self._broadcast_trace(
+                chat_jid,
+                "thinking",
+                {"thinking": result.thinking or ""},
+                "\U0001f4ad thinking...",
+                db_id_prefix="think",
+                db_sender="thinking",
             )
             return False
         if result.type == "tool_use":
-            await store_message_direct(
-                id=_next_trace_id("tool"),
-                chat_jid=chat_jid,
-                sender="tool_use",
-                sender_name="tool_use",
-                content=json.dumps(
-                    {
-                        "tool_name": result.tool_name or "",
-                        "tool_input": result.tool_input or {},
-                    }
-                ),
-                timestamp=ts,
-                is_from_me=True,
-            )
-            trace_text = f"\U0001f527 {result.tool_name or 'tool'}"
-            for ch in self.channels:
-                if ch.is_connected():
-                    with contextlib.suppress(Exception):
-                        await ch.send_message(chat_jid, trace_text)
-            self.event_bus.emit(
-                AgentTraceEvent(
-                    chat_jid=chat_jid,
-                    trace_type="tool_use",
-                    data={
-                        "tool_name": result.tool_name or "",
-                        "tool_input": result.tool_input or {},
-                    },
-                )
+            tool_name = result.tool_name or "tool"
+            tool_input = result.tool_input or {}
+            data = {"tool_name": tool_name, "tool_input": tool_input}
+            preview = format_tool_preview(tool_name, tool_input)
+            await self._broadcast_trace(
+                chat_jid,
+                "tool_use",
+                data,
+                f"\U0001f527 {preview}",
+                db_id_prefix="tool",
+                db_sender="tool_use",
             )
             return False
         if result.type == "tool_result":
-            await store_message_direct(
-                id=_next_trace_id("toolr"),
-                chat_jid=chat_jid,
-                sender="tool_result",
-                sender_name="tool_result",
-                content=json.dumps(
-                    {
-                        "tool_use_id": result.tool_result_id or "",
-                        "content": result.tool_result_content or "",
-                        "is_error": result.tool_result_is_error or False,
-                    }
-                ),
-                timestamp=ts,
-                is_from_me=True,
-            )
-            trace_text = "\U0001f4cb tool result"
-            for ch in self.channels:
-                if ch.is_connected():
-                    with contextlib.suppress(Exception):
-                        await ch.send_message(chat_jid, trace_text)
-            self.event_bus.emit(
-                AgentTraceEvent(
-                    chat_jid=chat_jid,
-                    trace_type="tool_result",
-                    data={
-                        "tool_use_id": result.tool_result_id or "",
-                        "content": result.tool_result_content or "",
-                        "is_error": result.tool_result_is_error or False,
-                    },
-                )
+            await self._broadcast_trace(
+                chat_jid,
+                "tool_result",
+                {
+                    "tool_use_id": result.tool_result_id or "",
+                    "content": result.tool_result_content or "",
+                    "is_error": result.tool_result_is_error or False,
+                },
+                "\U0001f4cb tool result",
+                db_id_prefix="toolr",
+                db_sender="tool_result",
             )
             return False
         if result.type == "system":
-            await store_message_direct(
-                id=_next_trace_id("sys"),
-                chat_jid=chat_jid,
-                sender="system",
-                sender_name="system",
-                content=json.dumps(
-                    {
-                        "subtype": result.system_subtype or "",
-                        "data": result.system_data or {},
-                    }
-                ),
-                timestamp=ts,
-                is_from_me=True,
-            )
-            trace_text = f"\u2699\ufe0f system: {result.system_subtype or 'unknown'}"
-            for ch in self.channels:
-                if ch.is_connected():
-                    with contextlib.suppress(Exception):
-                        await ch.send_message(chat_jid, trace_text)
-            self.event_bus.emit(
-                AgentTraceEvent(
-                    chat_jid=chat_jid,
-                    trace_type="system",
-                    data={
-                        "subtype": result.system_subtype or "",
-                        "data": result.system_data or {},
-                    },
-                )
+            await self._broadcast_trace(
+                chat_jid,
+                "system",
+                {
+                    "subtype": result.system_subtype or "",
+                    "data": result.system_data or {},
+                },
+                f"\u2699\ufe0f system: {result.system_subtype or 'unknown'}",
+                db_id_prefix="sys",
+                db_sender="system",
             )
             return False
         if result.type == "text":
