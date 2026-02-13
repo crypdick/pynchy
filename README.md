@@ -27,9 +27,13 @@ Then run `/setup`. Claude Code handles everything: dependencies, authentication,
 ```bash
 uv sync                                      # Install dependencies
 ./container/build.sh                         # Build the agent container image
-uv run python -m pynchy.auth.whatsapp        # Authenticate WhatsApp (scan QR code)
+uv run pynchy auth                           # Authenticate WhatsApp (scan QR code)
 uv run pynchy                                # Run
 ```
+
+### Headless Server
+
+See [docs/SETUP.md](docs/SETUP.md) for a full step-by-step guide to deploying on a Linux server with systemd, Tailscale, and remote TUI access.
 
 ## Philosophy
 
