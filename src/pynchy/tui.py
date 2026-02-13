@@ -287,7 +287,7 @@ def _sanitize(jid: str) -> str:
 
 def _render_message(log: ChatLog, sender: str, content: str, timestamp: str) -> None:
     try:
-        dt = datetime.fromisoformat(timestamp)
+        dt = datetime.fromisoformat(timestamp).astimezone()
         time_str = dt.strftime("%H:%M")
     except (ValueError, TypeError):
         time_str = "??:??"
