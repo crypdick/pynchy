@@ -95,8 +95,7 @@ class ContainerRuntime:
                 self._start_docker_desktop(exc)
             else:
                 raise RuntimeError(
-                    "Docker is required but not running. "
-                    "Start with: sudo systemctl start docker"
+                    "Docker is required but not running. Start with: sudo systemctl start docker"
                 ) from exc
 
     def _start_docker_desktop(self, original_exc: Exception) -> None:
