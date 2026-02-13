@@ -1,78 +1,99 @@
-# System Message Logging
+# Transparent Token Stream
 
-Log actual LLM system messages (the system prompt role) to the database, now that "host" messages have their own distinct sender.
+Log the full LLM context to the database so the chat history faithfully represents what the model saw.
 
 ## Design Principle
 
-**Transparent token stream**: the chat history should be a faithful representation of the LLM context. A user reading the conversation should be able to reconstruct exactly what the model saw — system prompts, user messages, assistant responses, tool calls, and host notifications. Nothing hidden.
+The user should be able to reconstruct the exact LLM context by reading the chat conversation. Every message type is stored and shown. Nothing hidden.
+
+Two key sender types from the harness:
+- **`host`**: shown to the **user only** — the LLM never sees these (boot, deploy, errors)
+- **`system`**: shown to **both** the LLM and the user — a real conversation turn that signals "the harness is talking, not the user"
 
 Documented in `docs/REQUIREMENTS.md` under "Transparent Token Stream".
 
 ## Context
 
-We renamed pynchy's internal "system" messages to "host" messages (`sender='host'`, `[host]` prefix, `<host>` tags). This frees up the "system" namespace for its standard LLM meaning: the system prompt that shapes the agent's behavior.
+The Claude Agent SDK message types ([docs](https://platform.claude.com/docs/en/agent-sdk/python#message-types)):
 
-Currently, system prompts are not logged anywhere persistent. Logging them would enable:
-- Debugging agent behavior by reviewing what system prompt it received
-- Auditing prompt changes over time
-- Correlating agent outputs with the instructions it was given
+```python
+Message = UserMessage | AssistantMessage | SystemMessage | ResultMessage | StreamEvent
+```
+
+- `UserMessage` — user input content
+- `AssistantMessage` — Claude's response (text blocks, thinking blocks, tool use blocks, tool result blocks)
+- `SystemMessage` — system message with metadata (`subtype` + `data` dict)
+- `ResultMessage` — final result with cost, usage, session_id, duration
+- `StreamEvent` — partial streaming events (when `include_partial_messages=True`)
+
+### Current state
+
+What pynchy currently persists to SQLite:
+
+| What | Stored? | How |
+|------|---------|-----|
+| User messages (WhatsApp, TUI) | Yes | `store_message()` on inbound |
+| Bot responses (final text) | Yes | `store_message_direct()` after formatting |
+| Host notifications (boot, deploy, error) | Yes | `_broadcast_host_message()` |
+| Deploy markers | Yes | Synthetic message with `sender='deploy'` |
+| System messages | **No** | Not logged anywhere |
+| Tool use (name, input) | **No** | Streamed to TUI/channels ephemerally, not stored |
+| Tool results | **No** | Not stored |
+| Thinking blocks | **No** | Streamed ephemerally |
+| ResultMessage (cost, usage) | **No** | Not captured |
 
 ## Decisions (resolved)
 
-- **Always log** system prompts — every agent run, including scheduled tasks
-- **Always show** system messages in chat history (TUI, API, WhatsApp history)
-- Storage bloat is acceptable — system prompts are a few KB, and the transparency is worth it
+- **Always log** everything — system messages, tool use, thinking, results
+- **Always show** all message types in chat history
+- Storage cost is acceptable — transparency is worth it
 
 ## Plan
 
-### 1. Add `sender='system'` to the message schema vocabulary
+### 1. Log system messages
 
-No schema changes needed — the `sender` column is freeform TEXT. Just start writing rows with `sender='system'`.
+System messages are harness-to-model turns. They're real conversation turns that the LLM reads but knows came from the harness, not the user. Store with `sender='system'`.
 
-### 2. Find the system prompt assembly point
 
-Trace where the system prompt (CLAUDE.md contents + dynamic context) is assembled before being passed to the container agent. This is the interception point for logging.
+### 2. Log tool use and tool results
 
-Likely in `container_runner.py` where the `ContainerInput` is built, or wherever the CLAUDE.md files are read and concatenated.
+Currently `_handle_streamed_output` receives `ContainerOutput` with `type="tool_use"` and emits `AgentTraceEvent` but doesn't persist. Add `store_message_direct()` calls for:
 
-### 3. Log the system prompt when launching a container agent
+- `tool_use`: store tool name + input as `sender='bot'` (it's part of the assistant turn)
+- `tool_result`: if we can capture it from the stream
 
-At the interception point, store the full system prompt:
+### 3. Log thinking blocks
 
-```python
-await store_message_direct(
-    id=f"system-{int(datetime.now(UTC).timestamp() * 1000)}",
-    chat_jid=chat_jid,
-    sender="system",
-    sender_name="system",
-    content=system_prompt_text,
-    timestamp=ts,
-    is_from_me=True,
-)
-```
+Currently streamed as "thinking..." but content not persisted. Store the actual thinking text.
 
-Do this for both regular message processing (`_process_group_messages`) and scheduled task runs.
+### 4. Log ResultMessage data
 
-### 4. Ensure system messages don't trigger agent runs
+Capture cost, usage, duration, session_id from the final `ResultMessage`. Could be a new table or metadata on the last message.
 
-The SQL filters use `sender != 'host'` to exclude host messages from agent-triggering queries. System messages must also be excluded:
+### 5. Update SQL filters
+
+System messages (`sender='system'`) must not trigger agent runs:
 
 ```sql
 AND sender != 'host' AND sender != 'system'
 ```
 
-Update in `get_new_messages()` and `get_messages_since()` in `db.py`.
+Update `get_new_messages()` and `get_messages_since()`.
 
-### 5. Keep system messages visible in chat history
+### 6. Trace the system prompt assembly
 
-The `_EXCLUDE_INTERNAL_HOST` filter only hides `sender='host'` rows without `[host]` prefix. System messages (`sender='system'`) will naturally pass through `get_chat_history()` — no changes needed there.
+Need to trace: where does pynchy build the full system prompt that Claude sees? Key areas:
+- CLAUDE.md loading (per-group + global)
+- Dynamic context injection (tasks snapshot, groups snapshot)
+- The `ClaudeAgentOptions` or equivalent passed to the container agent runner
 
-### 6. Verify the full sender vocabulary is documented
+## Sender vocabulary (after this work)
 
-After this change, the sender values are:
-- `system` — LLM system prompt (the instructions the model receives)
-- `host` — pynchy process notifications (boot, deploy, errors)
-- `bot` — assistant responses
-- `deploy` — deploy continuation markers
-- `tui-user` — messages from the TUI client
-- `{phone_jid}` — WhatsApp user messages (sender is the user's JID)
+| `sender` | Visible to LLM? | What it represents |
+|-----------|-----------------|-------------------|
+| `system` | Yes | Harness-to-model messages — conversation turns the user can also read |
+| `host` | No | Pynchy process notifications (boot, deploy, errors) — user-only |
+| `bot` | Yes | Assistant messages (text, tool use, thinking — all parts of the assistant turn) |
+| `deploy` | Yes | Deploy continuation markers |
+| `tui-user` | Yes | Messages from the TUI client |
+| `{phone_jid}` | Yes | WhatsApp user messages |
