@@ -66,6 +66,12 @@ def _parse_container_output(json_str: str) -> ContainerOutput:
         tool_name=data.get("tool_name"),
         tool_input=data.get("tool_input"),
         text=data.get("text"),
+        system_subtype=data.get("system_subtype"),
+        system_data=data.get("system_data"),
+        tool_result_id=data.get("tool_result_id"),
+        tool_result_content=data.get("tool_result_content"),
+        tool_result_is_error=data.get("tool_result_is_error"),
+        result_metadata=data.get("result_metadata"),
     )
 
 

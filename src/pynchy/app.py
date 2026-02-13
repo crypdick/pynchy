@@ -74,6 +74,15 @@ from pynchy.runtime import get_runtime
 from pynchy.task_scheduler import start_scheduler_loop
 from pynchy.types import Channel, ContainerInput, ContainerOutput, NewMessage, RegisteredGroup
 
+_trace_counter = 0
+
+
+def _next_trace_id(prefix: str) -> str:
+    global _trace_counter
+    _trace_counter += 1
+    ts_ms = int(datetime.now(UTC).timestamp() * 1000)
+    return f"{prefix}-{ts_ms}-{_trace_counter}"
+
 
 class PynchyApp:
     """Main application class — owns all runtime state and wires subsystems."""
@@ -334,8 +343,19 @@ class PynchyApp:
         """
         from pynchy.router import strip_internal_tags
 
-        # Trace events — broadcast ephemerally, no SQLite storage
+        ts = datetime.now(UTC).isoformat()
+
+        # --- Trace events: persist to DB + broadcast ---
         if result.type == "thinking":
+            await store_message_direct(
+                id=_next_trace_id("think"),
+                chat_jid=chat_jid,
+                sender="thinking",
+                sender_name="thinking",
+                content=json.dumps({"thinking": result.thinking or ""}),
+                timestamp=ts,
+                is_from_me=True,
+            )
             trace_text = "\U0001f4ad thinking..."
             for ch in self.channels:
                 if ch.is_connected():
@@ -350,6 +370,20 @@ class PynchyApp:
             )
             return False
         if result.type == "tool_use":
+            await store_message_direct(
+                id=_next_trace_id("tool"),
+                chat_jid=chat_jid,
+                sender="tool_use",
+                sender_name="tool_use",
+                content=json.dumps(
+                    {
+                        "tool_name": result.tool_name or "",
+                        "tool_input": result.tool_input or {},
+                    }
+                ),
+                timestamp=ts,
+                is_from_me=True,
+            )
             trace_text = f"\U0001f527 {result.tool_name or 'tool'}"
             for ch in self.channels:
                 if ch.is_connected():
@@ -366,6 +400,70 @@ class PynchyApp:
                 )
             )
             return False
+        if result.type == "tool_result":
+            await store_message_direct(
+                id=_next_trace_id("toolr"),
+                chat_jid=chat_jid,
+                sender="tool_result",
+                sender_name="tool_result",
+                content=json.dumps(
+                    {
+                        "tool_use_id": result.tool_result_id or "",
+                        "content": result.tool_result_content or "",
+                        "is_error": result.tool_result_is_error or False,
+                    }
+                ),
+                timestamp=ts,
+                is_from_me=True,
+            )
+            trace_text = "\U0001f4cb tool result"
+            for ch in self.channels:
+                if ch.is_connected():
+                    with contextlib.suppress(Exception):
+                        await ch.send_message(chat_jid, trace_text)
+            self.event_bus.emit(
+                AgentTraceEvent(
+                    chat_jid=chat_jid,
+                    trace_type="tool_result",
+                    data={
+                        "tool_use_id": result.tool_result_id or "",
+                        "content": result.tool_result_content or "",
+                        "is_error": result.tool_result_is_error or False,
+                    },
+                )
+            )
+            return False
+        if result.type == "system":
+            await store_message_direct(
+                id=_next_trace_id("sys"),
+                chat_jid=chat_jid,
+                sender="system",
+                sender_name="system",
+                content=json.dumps(
+                    {
+                        "subtype": result.system_subtype or "",
+                        "data": result.system_data or {},
+                    }
+                ),
+                timestamp=ts,
+                is_from_me=True,
+            )
+            trace_text = f"\u2699\ufe0f system: {result.system_subtype or 'unknown'}"
+            for ch in self.channels:
+                if ch.is_connected():
+                    with contextlib.suppress(Exception):
+                        await ch.send_message(chat_jid, trace_text)
+            self.event_bus.emit(
+                AgentTraceEvent(
+                    chat_jid=chat_jid,
+                    trace_type="system",
+                    data={
+                        "subtype": result.system_subtype or "",
+                        "data": result.system_data or {},
+                    },
+                )
+            )
+            return False
         if result.type == "text":
             self.event_bus.emit(
                 AgentTraceEvent(
@@ -375,6 +473,42 @@ class PynchyApp:
                 )
             )
             return False
+
+        # Persist result metadata if present (cost, usage, duration)
+        if result.result_metadata:
+            meta = result.result_metadata
+            await store_message_direct(
+                id=_next_trace_id("meta"),
+                chat_jid=chat_jid,
+                sender="result_meta",
+                sender_name="result_meta",
+                content=json.dumps(meta),
+                timestamp=ts,
+                is_from_me=True,
+            )
+            cost = meta.get("total_cost_usd")
+            duration = meta.get("duration_ms")
+            turns = meta.get("num_turns")
+            parts = []
+            if cost is not None:
+                parts.append(f"{cost:.2f} USD")
+            if duration is not None:
+                parts.append(f"{duration / 1000:.1f}s")
+            if turns is not None:
+                parts.append(f"{turns} turns")
+            if parts:
+                trace_text = f"\U0001f4ca {' \u00b7 '.join(parts)}"
+                for ch in self.channels:
+                    if ch.is_connected():
+                        with contextlib.suppress(Exception):
+                            await ch.send_message(chat_jid, trace_text)
+            self.event_bus.emit(
+                AgentTraceEvent(
+                    chat_jid=chat_jid,
+                    trace_type="result_meta",
+                    data=meta,
+                )
+            )
 
         if result.result:
             raw = result.result if isinstance(result.result, str) else json.dumps(result.result)
@@ -387,7 +521,6 @@ class PynchyApp:
                 else:
                     formatted = f"{ASSISTANT_NAME}: {text}"
                     logger.info("Agent output", group=group.name, text=raw[:200])
-                ts = datetime.now(UTC).isoformat()
                 await store_message_direct(
                     id=f"bot-{int(datetime.now(UTC).timestamp() * 1000)}",
                     chat_jid=chat_jid,

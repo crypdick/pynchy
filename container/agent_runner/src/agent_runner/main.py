@@ -42,6 +42,7 @@ from claude_agent_sdk import (
     SystemMessage,
     TextBlock,
     ThinkingBlock,
+    ToolResultBlock,
     ToolUseBlock,
 )
 
@@ -81,6 +82,12 @@ class ContainerOutput:
         tool_name: str | None = None,
         tool_input: dict[str, Any] | None = None,
         text: str | None = None,
+        system_subtype: str | None = None,
+        system_data: dict[str, Any] | None = None,
+        tool_result_id: str | None = None,
+        tool_result_content: str | None = None,
+        tool_result_is_error: bool | None = None,
+        result_metadata: dict[str, Any] | None = None,
     ) -> None:
         self.status = status
         self.result = result
@@ -91,6 +98,12 @@ class ContainerOutput:
         self.tool_name = tool_name
         self.tool_input = tool_input
         self.text = text
+        self.system_subtype = system_subtype
+        self.system_data = system_data
+        self.tool_result_id = tool_result_id
+        self.tool_result_content = tool_result_content
+        self.tool_result_is_error = tool_result_is_error
+        self.result_metadata = result_metadata
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {"type": self.type, "status": self.status}
@@ -100,6 +113,8 @@ class ContainerOutput:
                 d["new_session_id"] = self.new_session_id
             if self.error:
                 d["error"] = self.error
+            if self.result_metadata:
+                d["result_metadata"] = self.result_metadata
         elif self.type == "thinking":
             d["thinking"] = self.thinking
         elif self.type == "tool_use":
@@ -107,6 +122,13 @@ class ContainerOutput:
             d["tool_input"] = self.tool_input
         elif self.type == "text":
             d["text"] = self.text
+        elif self.type == "system":
+            d["system_subtype"] = self.system_subtype
+            d["system_data"] = self.system_data
+        elif self.type == "tool_result":
+            d["tool_result_id"] = self.tool_result_id
+            d["tool_result_content"] = self.tool_result_content
+            d["tool_result_is_error"] = self.tool_result_is_error
         return d
 
 
@@ -433,16 +455,21 @@ async def main() -> None:
                         log("Close sentinel detected during query")
                         closed_during_query = True
 
-                    # Track session ID from init message
-                    if (
-                        isinstance(message, SystemMessage)
-                        and message.subtype == "init"
-                        and hasattr(message, "data")
-                    ):
-                        sid = message.data.get("session_id")
-                        if sid:
-                            new_session_id = sid
-                            log(f"Session initialized: {new_session_id}")
+                    # Emit all SystemMessages for transparent token stream
+                    if isinstance(message, SystemMessage):
+                        if message.subtype == "init" and hasattr(message, "data"):
+                            sid = message.data.get("session_id")
+                            if sid:
+                                new_session_id = sid
+                                log(f"Session initialized: {new_session_id}")
+                        write_output(
+                            ContainerOutput(
+                                status="success",
+                                type="system",
+                                system_subtype=message.subtype,
+                                system_data=message.data if hasattr(message, "data") else {},
+                            )
+                        )
 
                     # Emit trace blocks from assistant messages
                     if isinstance(message, AssistantMessage):
@@ -464,6 +491,23 @@ async def main() -> None:
                                         tool_input=block.input,
                                     )
                                 )
+                            elif isinstance(block, ToolResultBlock):
+                                # Flatten content to string for storage
+                                if isinstance(block.content, str):
+                                    content_str = block.content
+                                elif isinstance(block.content, list):
+                                    content_str = json.dumps(block.content)
+                                else:
+                                    content_str = ""
+                                write_output(
+                                    ContainerOutput(
+                                        status="success",
+                                        type="tool_result",
+                                        tool_result_id=block.tool_use_id,
+                                        tool_result_content=content_str,
+                                        tool_result_is_error=block.is_error,
+                                    )
+                                )
                             elif isinstance(block, TextBlock):
                                 write_output(
                                     ContainerOutput(
@@ -482,11 +526,22 @@ async def main() -> None:
                             f"subtype={message.subtype}"
                             f"{f' text={text_result[:200]}' if text_result else ''}"
                         )
+                        result_meta = {
+                            "subtype": message.subtype,
+                            "duration_ms": message.duration_ms,
+                            "duration_api_ms": message.duration_api_ms,
+                            "is_error": message.is_error,
+                            "num_turns": message.num_turns,
+                            "session_id": message.session_id,
+                            "total_cost_usd": message.total_cost_usd,
+                            "usage": message.usage,
+                        }
                         write_output(
                             ContainerOutput(
                                 status="success",
                                 result=text_result,
                                 new_session_id=new_session_id,
+                                result_metadata=result_meta,
                             )
                         )
 

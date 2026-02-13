@@ -503,7 +503,7 @@ class TestWriteEnvFile:
             env_dir = _write_env_file()
             assert env_dir is not None
             content = (env_dir / "env").read_text()
-            assert "ANTHROPIC_API_KEY='sk-ant-test'" in content
+            assert "ANTHROPIC_API_KEY='sk-ant-test'" in content  # pragma: allowlist secret
             assert "oauth-token" not in content
 
     def test_falls_back_to_oauth_token(self, tmp_path: Path):

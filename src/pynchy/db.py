@@ -114,7 +114,6 @@ async def _create_schema(database: aiosqlite.Connection) -> None:
         pass
 
 
-
 async def init_database() -> None:
     """Initialize the database connection and schema."""
     global _db
@@ -274,7 +273,7 @@ async def get_new_messages(
         FROM messages
         WHERE timestamp > ? AND chat_jid IN ({placeholders})
               AND content NOT LIKE ?
-              AND sender != 'host'
+              AND (sender LIKE '%@%' OR sender IN ('tui-user', 'deploy'))
         ORDER BY timestamp
     """
     cursor = await db.execute(sql, [last_timestamp, *jids, f"{bot_prefix}:%"])
@@ -310,7 +309,7 @@ async def get_messages_since(
         FROM messages
         WHERE chat_jid = ? AND timestamp > ?
               AND content NOT LIKE ?
-              AND sender != 'host'
+              AND (sender LIKE '%@%' OR sender IN ('tui-user', 'deploy'))
         ORDER BY timestamp
     """
     cursor = await db.execute(sql, (chat_jid, since_timestamp, f"{bot_prefix}:%"))
