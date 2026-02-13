@@ -78,7 +78,6 @@ class PynchyApp:
         self.event_bus: EventBus = EventBus()
         self._shutting_down: bool = False
         self._http_runner: Any | None = None
-        self._tailscale_hostname: str | None = None
 
     # ------------------------------------------------------------------
     # State persistence
@@ -751,8 +750,9 @@ class PynchyApp:
     # Tailscale
     # ------------------------------------------------------------------
 
-    def _check_tailscale(self) -> None:
-        """Check Tailscale connectivity and store hostname for service registration. Non-fatal."""
+    @staticmethod
+    def _check_tailscale() -> None:
+        """Log a warning if Tailscale is not connected. Non-fatal."""
         try:
             result = subprocess.run(
                 ["tailscale", "status", "--json"],
@@ -767,57 +767,12 @@ class PynchyApp:
             backend = status.get("BackendState", "")
             if backend != "Running":
                 logger.warning("Tailscale backend not running", state=backend)
-                return
-            hostname = status.get("Self", {}).get("HostName", "")
-            if hostname:
-                self._tailscale_hostname = hostname
-            logger.info("Tailscale connected", state=backend, hostname=hostname or "unknown")
+            else:
+                logger.info("Tailscale connected", state=backend)
         except FileNotFoundError:
             logger.warning("Tailscale CLI not found (non-fatal)")
         except Exception as exc:
             logger.warning("Tailscale check failed (non-fatal)", err=str(exc))
-
-    def _register_tailscale_service(self) -> None:
-        """Advertise Pynchy as a Tailscale service. Non-fatal."""
-        if not self._tailscale_hostname:
-            return
-        service_name = f"svc:pynchy-{self._tailscale_hostname}"
-        try:
-            result = subprocess.run(
-                ["tailscale", "serve", f"--service={service_name}", str(DEPLOY_PORT)],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode == 0:
-                logger.info("Registered Tailscale service", service=service_name)
-            else:
-                stderr = result.stderr.strip()
-                logger.warning(
-                    "Tailscale service registration failed. "
-                    "You may need to enable the service in the admin console: "
-                    "https://login.tailscale.com/admin/services",
-                    service=service_name,
-                    stderr=stderr,
-                )
-        except Exception as exc:
-            logger.warning("Tailscale service registration error (non-fatal)", err=str(exc))
-
-    def _deregister_tailscale_service(self) -> None:
-        """Remove Tailscale service advertisement. Best-effort cleanup."""
-        if not self._tailscale_hostname:
-            return
-        service_name = f"svc:pynchy-{self._tailscale_hostname}"
-        try:
-            subprocess.run(
-                ["tailscale", "serve", f"--service={service_name}", "off"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            logger.info("Deregistered Tailscale service", service=service_name)
-        except Exception:
-            pass  # best-effort
 
     # ------------------------------------------------------------------
     # Service installation
@@ -943,7 +898,6 @@ WantedBy=default.target
         loop = asyncio.get_running_loop()
         loop.call_later(12, lambda: os._exit(1))
 
-        self._deregister_tailscale_service()
         if self._http_runner:
             await self._http_runner.cleanup()
         await self.queue.shutdown(10.0)
@@ -1005,7 +959,6 @@ WantedBy=default.target
         self._check_tailscale()
         self._http_runner = await start_http_server(self._make_http_deps())
         logger.info("HTTP server ready", port=DEPLOY_PORT)
-        self._register_tailscale_service()
 
         await self._send_boot_notification()
         await self._recover_pending_messages()
