@@ -318,6 +318,36 @@ class WhatsAppChannel:
         except Exception as err:
             logger.debug("Failed to update typing status", jid=jid, error=str(err))
 
+    async def send_reaction(
+        self, chat_jid: str, message_id: str, sender_jid: str, emoji: str
+    ) -> None:
+        """Send a reaction emoji to a message. Best-effort — failures are silently logged."""
+        try:
+            chat = self._parse_jid(chat_jid)
+            sender = self._parse_jid(sender_jid)
+            reaction_msg = await self._client.build_reaction(chat, sender, message_id, emoji)
+            await self._client.send_message(chat, reaction_msg)
+            logger.debug("Reaction sent", chat_jid=chat_jid, message_id=message_id, emoji=emoji)
+        except Exception as err:
+            logger.debug("Failed to send reaction", chat_jid=chat_jid, error=str(err))
+
+    async def mark_message_read(self, chat_jid: str, message_id: str, sender_jid: str) -> None:
+        """Mark a message as read. Best-effort — failures are silently logged."""
+        try:
+            from neonize.utils.enum import ReceiptType
+
+            chat = self._parse_jid(chat_jid)
+            sender = self._parse_jid(sender_jid)
+            await self._client.mark_read(
+                message_id,
+                chat=chat,
+                sender=sender,
+                receipt=ReceiptType.READ,
+            )
+            logger.debug("Message marked as read", chat_jid=chat_jid, message_id=message_id)
+        except Exception as err:
+            logger.debug("Failed to mark message as read", chat_jid=chat_jid, error=str(err))
+
     # --- Group metadata sync ---
 
     async def sync_group_metadata(self, force: bool = False) -> None:
