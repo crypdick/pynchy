@@ -71,7 +71,9 @@ RUN chown -R agent:agent /workspace
 USER agent
 
 # Delegate git authentication to gh CLI (uses GH_TOKEN from environment at runtime)
-RUN git config --global credential.helper '!gh auth git-credential'
+# Rewrite SSH remote URLs to HTTPS so the credential helper works (no SSH keys in container)
+RUN git config --global credential.helper '!gh auth git-credential' \
+ && git config --global url."https://github.com/".insteadOf "git@github.com:"
 
 # Set working directory to group workspace
 WORKDIR /workspace/group
