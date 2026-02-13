@@ -163,7 +163,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
     # 2. Validate import (only when new code was pulled)
     if has_new_code:
         validate = subprocess.run(
-            ["python", "-c", "import pynchy"],
+            ["uv", "run", "python", "-c", "import pynchy"],
             cwd=str(PROJECT_ROOT),
             capture_output=True,
             text=True,
