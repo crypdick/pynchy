@@ -11,6 +11,7 @@ import asyncio
 import json
 import os
 import shutil
+import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -130,41 +131,107 @@ def _read_oauth_from_keychain() -> str | None:
         return None
 
 
+def _read_gh_token() -> str | None:
+    """Read GitHub token from the host's gh CLI."""
+    try:
+        result = subprocess.run(
+            ["gh", "auth", "token"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+    return None
+
+
+def _read_git_identity() -> tuple[str | None, str | None]:
+    """Read git user.name and user.email from the host's git config."""
+    name = email = None
+    for key in ("user.name", "user.email"):
+        try:
+            r = subprocess.run(
+                ["git", "config", key],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                if key == "user.name":
+                    name = r.stdout.strip()
+                else:
+                    email = r.stdout.strip()
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+            pass
+    return name, email
+
+
+def _shell_quote(value: str) -> str:
+    """Quote a value for safe inclusion in a shell env file."""
+    return "'" + value.replace("'", "'\\''") + "'"
+
+
 def _write_env_file() -> Path | None:
     """Write credential env vars for the container. Returns env dir or None.
 
-    Sources (in priority order):
-    1. .env file in project root (explicit ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN)
-    2. Claude Code's OAuth token (~/.claude/.credentials.json → macOS keychain)
+    Auto-discovers and writes (each independently):
+    - Claude credentials: .env file → OAuth token from Claude Code
+    - GH_TOKEN: .env file → ``gh auth token``
+    - Git identity: ``git config user.name/email`` → GIT_AUTHOR_NAME, etc.
+
+    # TODO: security hardening — generate per-container scoped tokens (GitHub App
+    # installation tokens or fine-grained PATs) instead of forwarding the host's
+    # full gh token. Each container should have least-privilege credentials scoped
+    # to only the repos/permissions it needs.
     """
     env_dir = DATA_DIR / "env"
     env_dir.mkdir(parents=True, exist_ok=True)
 
-    # Try .env file first
-    filtered: list[str] = []
+    env_vars: dict[str, str] = {}
+
+    # --- Parse .env overrides ---
+    allowed_vars = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "GH_TOKEN"]
     env_file = PROJECT_ROOT / ".env"
     if env_file.exists():
-        content = env_file.read_text()
-        allowed_vars = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]
-        filtered = [
-            line
-            for line in content.splitlines()
-            if line.strip()
-            and not line.strip().startswith("#")
-            and any(line.strip().startswith(f"{v}=") for v in allowed_vars)
-        ]
+        for line in env_file.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            for var in allowed_vars:
+                if line.startswith(f"{var}="):
+                    env_vars[var] = line[len(var) + 1 :]
+                    break
 
-    # Fallback: read OAuth token from Claude Code credentials
-    if not filtered:
+    # --- Auto-discover Claude credentials ---
+    if "CLAUDE_CODE_OAUTH_TOKEN" not in env_vars and "ANTHROPIC_API_KEY" not in env_vars:
         token = _read_oauth_token()
         if token:
-            filtered = [f"CLAUDE_CODE_OAUTH_TOKEN={token}"]
+            env_vars["CLAUDE_CODE_OAUTH_TOKEN"] = token
             logger.debug("Using OAuth token from Claude Code credentials")
 
-    if not filtered:
+    # --- Auto-discover GH_TOKEN ---
+    if "GH_TOKEN" not in env_vars:
+        gh_token = _read_gh_token()
+        if gh_token:
+            env_vars["GH_TOKEN"] = gh_token
+            logger.debug("Using GitHub token from gh CLI")
+
+    # --- Auto-discover git identity ---
+    git_name, git_email = _read_git_identity()
+    if git_name:
+        env_vars["GIT_AUTHOR_NAME"] = git_name
+        env_vars["GIT_COMMITTER_NAME"] = git_name
+    if git_email:
+        env_vars["GIT_AUTHOR_EMAIL"] = git_email
+        env_vars["GIT_COMMITTER_EMAIL"] = git_email
+
+    if not env_vars:
         return None
 
-    (env_dir / "env").write_text("\n".join(filtered) + "\n")
+    lines = [f"{k}={_shell_quote(v)}" for k, v in env_vars.items()]
+    (env_dir / "env").write_text("\n".join(lines) + "\n")
     return env_dir
 
 

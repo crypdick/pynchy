@@ -59,9 +59,9 @@ RUN pip install --no-cache-dir /app/
 RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/messages /workspace/ipc/tasks /workspace/ipc/input
 
 # Create entrypoint script
-# Sources env from mounted /workspace/env-dir/env if it exists
+# Sources env from mounted /workspace/env-dir/env if it exists (set -a exports all vars)
 # Stdin is buffered to /tmp then piped (Apple Container requires EOF to flush stdin pipe)
-RUN printf '#!/bin/bash\nset -e\n[ -f /workspace/env-dir/env ] && export $(cat /workspace/env-dir/env | xargs)\ncat > /tmp/input.json\npython -m agent_runner < /tmp/input.json\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+RUN printf '#!/bin/bash\nset -e\nif [ -f /workspace/env-dir/env ]; then set -a; . /workspace/env-dir/env; set +a; fi\ncat > /tmp/input.json\npython -m agent_runner < /tmp/input.json\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 # Create non-root user for security
 RUN useradd -m -s /bin/bash agent
@@ -69,6 +69,9 @@ RUN chown -R agent:agent /workspace
 
 # Switch to non-root user
 USER agent
+
+# Delegate git authentication to gh CLI (uses GH_TOKEN from environment at runtime)
+RUN git config --global credential.helper '!gh auth git-credential'
 
 # Set working directory to group workspace
 WORKDIR /workspace/group
