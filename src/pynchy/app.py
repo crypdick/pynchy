@@ -585,6 +585,17 @@ class PynchyApp:
             )
             logger.warning("No API credentials found at startup")
 
+        # Check for boot warnings left by a previous deploy
+        boot_warnings_path = DATA_DIR / "boot_warnings.json"
+        if boot_warnings_path.exists():
+            try:
+                warnings = json.loads(boot_warnings_path.read_text())
+                boot_warnings_path.unlink()
+                for warning in warnings:
+                    parts.append(f"⚠️ {warning}")
+            except Exception:
+                boot_warnings_path.unlink(missing_ok=True)
+
         text = format_system_message("\n".join(parts))
         await self._broadcast_system_message(main_jid, text)
         logger.info("Boot notification sent")
