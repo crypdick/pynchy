@@ -17,7 +17,7 @@ from typing import Any, Protocol
 
 from aiohttp import web
 
-from pynchy.config import DEPLOY_PORT, PROJECT_ROOT
+from pynchy.config import DATA_DIR, DEPLOY_PORT, PROJECT_ROOT
 from pynchy.deploy import finalize_deploy
 from pynchy.logger import logger
 from pynchy.router import format_system_message
@@ -69,6 +69,18 @@ def _get_head_commit_message(max_length: int = 72) -> str:
         return msg
     except Exception:
         return ""
+
+
+def _write_boot_warning(message: str) -> None:
+    """Append a warning to boot_warnings.json, picked up by _send_boot_notification on restart."""
+    path = DATA_DIR / "boot_warnings.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        warnings = json.loads(path.read_text()) if path.exists() else []
+    except Exception:
+        warnings = []
+    warnings.append(message)
+    path.write_text(json.dumps(warnings))
 
 
 class HttpDeps(Protocol):
@@ -139,6 +151,10 @@ async def _handle_deploy(request: web.Request) -> web.Response:
             capture_output=True,
         )
         logger.warning("git rebase failed, restarting with current code", stderr=pull.stderr.strip())
+        _write_boot_warning(
+            "Deploy rolled back to previous commit because incoming commits failed to rebase. "
+            "Please reconcile the incoming changes into your local clone, push, then redeploy."
+        )
 
     new_sha = _get_head_sha()
     has_new_code = new_sha != old_sha
