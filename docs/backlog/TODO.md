@@ -41,6 +41,7 @@ Single source of truth for all pynchy work items.
 - allow user to execute cmds, bypassing the llm. `!ls`, `!echo hi`, will run without llm approval. the llm will see in the history that the user ran a cmd and the cmd output. this type of user input does not initiate a conversation turn for the llm though-- the user needs to follow up with a non-command message in order to trigger the llm (at which point it'll see the tool usage in its history) 
 - implement 'handoff' tool calls as well as 'delegate' tool calls. handoff causes current agent to cease to exist; it decides what context to give to the next agent. the delegate tool is a blocking call that spawns a new agent to complete a task before passing it back. in reality, this tool call can abstract away a more complex system, like a deep research agent which has many subagents.
 - add support for multiple accounts/subscriptions. allow user to designate different workplaces to different accounts (e.g. corporate claude sub, personal claude sub, etc). 
+- add emoji to messages when they've been read by the agent. whatsapp should also send a '...' placeholder message while the agent is working on a response. errors should also be propagated into whatsapp as system messages.
 
 ### 4 - In Progress
 *Being implemented.*
