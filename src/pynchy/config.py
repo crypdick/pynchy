@@ -60,7 +60,7 @@ TRIGGER_PATTERN: re.Pattern[str] = re.compile(rf"^@({'|'.join(_trigger_names)})\
 
 # Magic words to reset conversation context (voice-friendly variants)
 CONTEXT_RESET_PATTERN: re.Pattern[str] = re.compile(
-    r"^\s*(?:(?:reset|restart)\s+(?:context|session)|(?:context|session)\s+(?:reset|restart))\s*$",
+    r"^\s*(?:(?:reset|restart|clear|new|wipe)\s+(?:context|session|chat|conversation)|(?:context|session|chat|conversation)\s+(?:reset|restart|clear|new|wipe))\s*$",
     re.IGNORECASE,
 )
 
