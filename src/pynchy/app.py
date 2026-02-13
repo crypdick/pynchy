@@ -205,31 +205,8 @@ class PynchyApp:
             prompt = reset_data.get("message", "")
             if prompt:
                 logger.info("Processing reset handoff", group=group.name)
-                # Show the handoff message so the user sees what the new agent receives
                 handoff_text = format_system_message(f"[handoff] {prompt}")
-                ts = datetime.now(UTC).isoformat()
-                await store_message_direct(
-                    id=f"system-{int(datetime.now(UTC).timestamp() * 1000)}",
-                    chat_jid=chat_jid,
-                    sender="system",
-                    sender_name="system",
-                    content=handoff_text,
-                    timestamp=ts,
-                    is_from_me=True,
-                )
-                for ch in self.channels:
-                    if ch.is_connected():
-                        with contextlib.suppress(Exception):
-                            await ch.send_message(chat_jid, handoff_text)
-                self.event_bus.emit(
-                    MessageEvent(
-                        chat_jid=chat_jid,
-                        sender_name="system",
-                        content=handoff_text,
-                        timestamp=ts,
-                        is_bot=True,
-                    )
-                )
+                await self._broadcast_system_message(chat_jid, handoff_text)
                 result = await self._run_agent(group, prompt, chat_jid)
                 return result != "error"
             return True
@@ -696,11 +673,21 @@ class PynchyApp:
             return
 
         chat_jid = continuation.get("chat_jid", "")
+        session_id = continuation.get("session_id", "")
         resume_prompt = continuation.get("resume_prompt", "Deploy complete.")
         commit_sha = continuation.get("commit_sha", "unknown")
 
         if not chat_jid:
             logger.warning("Deploy continuation missing chat_jid, skipping")
+            return
+
+        # Only inject a resume message if an agent session needs to continue.
+        # Plain HTTP deploys have no session_id — the boot notification suffices.
+        if not session_id:
+            logger.info(
+                "Deploy continuation has no session_id, skipping agent resume",
+                commit_sha=commit_sha,
+            )
             return
 
         logger.info(
@@ -772,6 +759,32 @@ class PynchyApp:
     # Helpers
     # ------------------------------------------------------------------
 
+    async def _broadcast_system_message(self, chat_jid: str, text: str) -> None:
+        """Store, send to all channels, and emit event for a system message."""
+        ts = datetime.now(UTC).isoformat()
+        await store_message_direct(
+            id=f"system-{int(datetime.now(UTC).timestamp() * 1000)}",
+            chat_jid=chat_jid,
+            sender="system",
+            sender_name="system",
+            content=text,
+            timestamp=ts,
+            is_from_me=True,
+        )
+        for ch in self.channels:
+            if ch.is_connected():
+                with contextlib.suppress(Exception):
+                    await ch.send_message(chat_jid, text)
+        self.event_bus.emit(
+            MessageEvent(
+                chat_jid=chat_jid,
+                sender_name="system",
+                content=text,
+                timestamp=ts,
+                is_bot=True,
+            )
+        )
+
     async def _send_clear_confirmation(self, chat_jid: str) -> None:
         """Set cleared_at, store and broadcast a system confirmation."""
         # Mark clear boundary — messages before this are hidden
@@ -779,31 +792,7 @@ class PynchyApp:
         await set_chat_cleared_at(chat_jid, cleared_ts)
         self.event_bus.emit(ChatClearedEvent(chat_jid=chat_jid))
 
-        # Store and send the confirmation (timestamp > cleared_at)
-        reset_text = format_system_message("🗑️")
-        ts = datetime.now(UTC).isoformat()
-        await store_message_direct(
-            id=f"system-{int(datetime.now(UTC).timestamp() * 1000)}",
-            chat_jid=chat_jid,
-            sender="system",
-            sender_name="system",
-            content=reset_text,
-            timestamp=ts,
-            is_from_me=True,
-        )
-        for ch in self.channels:
-            if ch.is_connected():
-                with contextlib.suppress(Exception):
-                    await ch.send_message(chat_jid, reset_text)
-        self.event_bus.emit(
-            MessageEvent(
-                chat_jid=chat_jid,
-                sender_name="system",
-                content=reset_text,
-                timestamp=ts,
-                is_bot=True,
-            )
-        )
+        await self._broadcast_system_message(chat_jid, format_system_message("🗑️"))
 
     def _find_channel(self, jid: str) -> Channel | None:
         """Find the channel that owns a given JID."""
@@ -1089,6 +1078,9 @@ WantedBy=default.target
                         with contextlib.suppress(Exception):
                             await ch.send_message(jid, text)
 
+            async def broadcast_system_message(self, jid: str, text: str) -> None:
+                await app._broadcast_system_message(jid, text)
+
             def main_chat_jid(self) -> str:
                 for jid, group in app.registered_groups.items():
                     if group.folder == MAIN_GROUP_FOLDER:
@@ -1205,6 +1197,9 @@ WantedBy=default.target
                     if ch.is_connected():
                         with contextlib.suppress(Exception):
                             await ch.send_message(jid, text)
+
+            async def broadcast_system_message(self, jid: str, text: str) -> None:
+                await app._broadcast_system_message(jid, text)
 
             def registered_groups(self) -> dict[str, RegisteredGroup]:
                 return app.registered_groups

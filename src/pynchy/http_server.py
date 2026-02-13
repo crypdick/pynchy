@@ -17,9 +17,10 @@ from typing import Any, Protocol
 
 from aiohttp import web
 
-from pynchy.config import ASSISTANT_NAME, DEPLOY_PORT, PROJECT_ROOT
+from pynchy.config import DEPLOY_PORT, PROJECT_ROOT
 from pynchy.deploy import finalize_deploy
 from pynchy.logger import logger
+from pynchy.router import format_system_message
 from pynchy.types import NewMessage
 
 _start_time = time.monotonic()
@@ -74,6 +75,8 @@ class HttpDeps(Protocol):
     """Dependencies injected by app.py."""
 
     async def send_message(self, jid: str, text: str) -> None: ...
+
+    async def broadcast_system_message(self, jid: str, text: str) -> None: ...
 
     def main_chat_jid(self) -> str: ...
 
@@ -147,7 +150,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
             chat_jid = deps.main_chat_jid()
             if chat_jid:
                 msg = f"Deploy failed — import validation error, rolled back to {old_sha[:8]}."
-                await deps.send_message(chat_jid, f"{ASSISTANT_NAME}: {msg}")
+                await deps.broadcast_system_message(chat_jid, format_system_message(msg))
             return web.json_response(
                 {"error": "import validation failed", "rolled_back_to": old_sha},
                 status=422,
@@ -157,7 +160,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
     chat_jid = deps.main_chat_jid()
     if has_new_code:
         await finalize_deploy(
-            send_message=deps.send_message,
+            broadcast_system_message=deps.broadcast_system_message,
             chat_jid=chat_jid,
             commit_sha=new_sha,
             previous_sha=old_sha,

@@ -8,13 +8,14 @@ import os
 import signal
 from collections.abc import Awaitable, Callable
 
-from pynchy.config import ASSISTANT_NAME, DATA_DIR
+from pynchy.config import DATA_DIR
 from pynchy.logger import logger
+from pynchy.router import format_system_message
 
 
 async def finalize_deploy(
     *,
-    send_message: Callable[[str, str], Awaitable[None]],
+    broadcast_system_message: Callable[[str, str], Awaitable[None]],
     chat_jid: str,
     commit_sha: str,
     previous_sha: str,
@@ -22,10 +23,11 @@ async def finalize_deploy(
     resume_prompt: str = "Deploy complete. Verifying service health.",
     sigterm_delay: float = 0,
 ) -> None:
-    """Write continuation, notify WhatsApp, and SIGTERM self.
+    """Write continuation, notify all UIs, and SIGTERM self.
 
     Args:
-        send_message: async callable(jid, text) to send a WhatsApp message.
+        broadcast_system_message: async callable(jid, text) to store, send,
+            and emit a system message to all UIs.
         chat_jid: JID of the chat to notify.
         commit_sha: The new HEAD after deploy.
         previous_sha: The HEAD before deploy (for rollback).
@@ -46,12 +48,12 @@ async def finalize_deploy(
     continuation_path.parent.mkdir(parents=True, exist_ok=True)
     continuation_path.write_text(json.dumps(continuation, indent=2))
 
-    # 2. Notify WhatsApp
+    # 2. Notify all UIs
     short_sha = commit_sha[:8] if commit_sha else "unknown"
     if chat_jid:
-        await send_message(
+        await broadcast_system_message(
             chat_jid,
-            f"{ASSISTANT_NAME}: Deploying {short_sha}... restarting now.",
+            format_system_message(f"Deploying {short_sha}... restarting now."),
         )
 
     logger.info(
