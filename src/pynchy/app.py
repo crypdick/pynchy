@@ -503,7 +503,19 @@ class PynchyApp:
         commit_msg = _get_head_commit_message(50)
         dirty = " (dirty)" if _is_repo_dirty() else ""
         label = f"{sha}{dirty} {commit_msg}".strip() if commit_msg else f"{sha}{dirty}"
-        text = format_system_message(f"{ASSISTANT_NAME} online — {label}")
+        parts = [f"{ASSISTANT_NAME} online — {label}"]
+
+        # Check for API credentials and warn if missing
+        from pynchy.container_runner import _write_env_file
+
+        if _write_env_file() is None:
+            parts.append(
+                "⚠️ No API credentials found — messages will fail. "
+                "Run 'claude' to authenticate or set ANTHROPIC_API_KEY in .env"
+            )
+            logger.warning("No API credentials found at startup")
+
+        text = format_system_message("\n".join(parts))
         ts = datetime.now(UTC).isoformat()
         await store_message_direct(
             id=f"system-boot-{int(datetime.now(UTC).timestamp() * 1000)}",
