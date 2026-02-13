@@ -67,7 +67,7 @@ class TestStoreMessage:
             )
         )
 
-        messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z", "BotName")
+        messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z")
         assert len(messages) == 1
         assert messages[0].id == "msg-1"
         assert messages[0].sender == "123@s.whatsapp.net"
@@ -87,7 +87,7 @@ class TestStoreMessage:
             )
         )
 
-        messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z", "BotName")
+        messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z")
         assert len(messages) == 1
         assert messages[0].content == ""
 
@@ -105,7 +105,7 @@ class TestStoreMessage:
             )
         )
 
-        messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z", "BotName")
+        messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z")
         assert len(messages) == 1
 
     async def test_upserts_on_duplicate_id_chat_jid(self):
@@ -131,7 +131,7 @@ class TestStoreMessage:
             )
         )
 
-        messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z", "BotName")
+        messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z")
         assert len(messages) == 1
         assert messages[0].content == "updated"
 
@@ -143,13 +143,11 @@ class TestGetMessagesSince:
     @pytest.fixture(autouse=True)
     async def _seed_messages(self):
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
-        msgs = [
+        for id_, content, ts, sender in [
             ("m1", "first", "2024-01-01T00:00:01.000Z", "Alice"),
             ("m2", "second", "2024-01-01T00:00:02.000Z", "Bob"),
-            ("m3", "pynchy: bot reply", "2024-01-01T00:00:03.000Z", "Bot"),
             ("m4", "third", "2024-01-01T00:00:04.000Z", "Carol"),
-        ]
-        for id_, content, ts, sender in msgs:
+        ]:
             await store_message(
                 _store(
                     id=id_,
@@ -160,21 +158,31 @@ class TestGetMessagesSince:
                     timestamp=ts,
                 )
             )
+        # Bot message — excluded by sender filter, not content prefix
+        await store_message_direct(
+            id="m3",
+            chat_jid="group@g.us",
+            sender="bot",
+            sender_name="pynchy",
+            content="bot reply",
+            timestamp="2024-01-01T00:00:03.000Z",
+            is_from_me=True,
+        )
 
     async def test_returns_messages_after_timestamp(self):
-        msgs = await get_messages_since("group@g.us", "2024-01-01T00:00:02.000Z", "pynchy")
-        # Excludes m1, m2 (before/at timestamp), m3 (bot message)
+        msgs = await get_messages_since("group@g.us", "2024-01-01T00:00:02.000Z")
+        # Excludes m1, m2 (before/at timestamp), m3 (bot — sender filter)
         assert len(msgs) == 1
         assert msgs[0].content == "third"
 
-    async def test_excludes_assistant_messages(self):
-        msgs = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z", "pynchy")
-        bot_msgs = [m for m in msgs if m.content.startswith("pynchy:")]
+    async def test_excludes_bot_messages(self):
+        msgs = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z")
+        bot_msgs = [m for m in msgs if m.sender == "bot"]
         assert len(bot_msgs) == 0
 
     async def test_returns_all_messages_when_empty_timestamp(self):
-        msgs = await get_messages_since("group@g.us", "", "pynchy")
-        # 3 user messages (bot message excluded)
+        msgs = await get_messages_since("group@g.us", "")
+        # 3 user messages (bot message excluded by sender filter)
         assert len(msgs) == 3
 
 
@@ -186,13 +194,11 @@ class TestGetNewMessages:
     async def _seed_messages(self):
         await store_chat_metadata("group1@g.us", "2024-01-01T00:00:00.000Z")
         await store_chat_metadata("group2@g.us", "2024-01-01T00:00:00.000Z")
-        msgs = [
+        for id_, chat, content, ts in [
             ("a1", "group1@g.us", "g1 msg1", "2024-01-01T00:00:01.000Z"),
             ("a2", "group2@g.us", "g2 msg1", "2024-01-01T00:00:02.000Z"),
-            ("a3", "group1@g.us", "pynchy: reply", "2024-01-01T00:00:03.000Z"),
             ("a4", "group1@g.us", "g1 msg2", "2024-01-01T00:00:04.000Z"),
-        ]
-        for id_, chat, content, ts in msgs:
+        ]:
             await store_message(
                 _store(
                     id=id_,
@@ -203,12 +209,21 @@ class TestGetNewMessages:
                     timestamp=ts,
                 )
             )
+        # Bot message — excluded by sender filter
+        await store_message_direct(
+            id="a3",
+            chat_jid="group1@g.us",
+            sender="bot",
+            sender_name="pynchy",
+            content="reply",
+            timestamp="2024-01-01T00:00:03.000Z",
+            is_from_me=True,
+        )
 
     async def test_returns_new_messages_across_multiple_groups(self):
         messages, new_ts = await get_new_messages(
             ["group1@g.us", "group2@g.us"],
             "2024-01-01T00:00:00.000Z",
-            "pynchy",
         )
         assert len(messages) == 3
         assert new_ts == "2024-01-01T00:00:04.000Z"
@@ -217,13 +232,12 @@ class TestGetNewMessages:
         messages, _ = await get_new_messages(
             ["group1@g.us", "group2@g.us"],
             "2024-01-01T00:00:02.000Z",
-            "pynchy",
         )
         assert len(messages) == 1
         assert messages[0].content == "g1 msg2"
 
     async def test_returns_empty_for_no_groups(self):
-        messages, new_ts = await get_new_messages([], "", "pynchy")
+        messages, new_ts = await get_new_messages([], "")
         assert len(messages) == 0
         assert new_ts == ""
 
@@ -385,7 +399,7 @@ class TestSenderFiltering:
             )
 
     async def test_get_new_messages_only_returns_user_senders(self):
-        messages, _ = await get_new_messages(["group@g.us"], "2024-01-01T00:00:00.000Z", "pynchy")
+        messages, _ = await get_new_messages(["group@g.us"], "2024-01-01T00:00:00.000Z")
         senders = {m.sender for m in messages}
         assert "123@s.whatsapp.net" in senders
         assert "tui-user" in senders
@@ -403,7 +417,7 @@ class TestSenderFiltering:
             assert internal not in senders
 
     async def test_get_messages_since_only_returns_user_senders(self):
-        messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z", "pynchy")
+        messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z")
         senders = {m.sender for m in messages}
         assert "123@s.whatsapp.net" in senders
         assert "tui-user" in senders
@@ -420,11 +434,11 @@ class TestSenderFiltering:
             assert internal not in senders
 
     async def test_get_chat_history_includes_all_types(self):
-        """Chat history (UI display) should include bot and trace messages."""
+        """Chat history (UI display) should include all message types."""
         messages = await get_chat_history("group@g.us", limit=50)
         senders = {m.sender for m in messages}
-        # Should include user + bot + internal (except hidden host internals)
         assert "123@s.whatsapp.net" in senders
         assert "bot" in senders
+        assert "host" in senders
         assert "thinking" in senders
         assert "tool_use" in senders

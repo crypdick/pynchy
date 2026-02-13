@@ -18,11 +18,6 @@ from pynchy.types import ContainerConfig, NewMessage, RegisteredGroup, Scheduled
 
 _db: aiosqlite.Connection | None = None
 
-# For chat history display: hide internal host messages (e.g. deploy synthetic)
-# but keep user-facing ones ([host] boot notification, [host] 🗑️ clear).
-# Agent-triggering queries use sender != 'host' instead.
-_EXCLUDE_INTERNAL_HOST = "AND NOT (sender = 'host' AND content NOT LIKE '[host]%')"
-
 _SCHEMA = """\
 CREATE TABLE IF NOT EXISTS chats (
     jid TEXT PRIMARY KEY,
@@ -259,9 +254,7 @@ async def store_message_direct(
     await db.commit()
 
 
-async def get_new_messages(
-    jids: list[str], last_timestamp: str, bot_prefix: str
-) -> tuple[list[NewMessage], str]:
+async def get_new_messages(jids: list[str], last_timestamp: str) -> tuple[list[NewMessage], str]:
     """Get new messages across multiple groups since a timestamp."""
     if not jids:
         return [], last_timestamp
@@ -272,11 +265,10 @@ async def get_new_messages(
         SELECT id, chat_jid, sender, sender_name, content, timestamp
         FROM messages
         WHERE timestamp > ? AND chat_jid IN ({placeholders})
-              AND content NOT LIKE ?
               AND (sender LIKE '%@%' OR sender IN ('tui-user', 'deploy'))
         ORDER BY timestamp
     """
-    cursor = await db.execute(sql, [last_timestamp, *jids, f"{bot_prefix}:%"])
+    cursor = await db.execute(sql, [last_timestamp, *jids])
     rows = await cursor.fetchall()
 
     messages = [
@@ -299,20 +291,17 @@ async def get_new_messages(
     return messages, new_timestamp
 
 
-async def get_messages_since(
-    chat_jid: str, since_timestamp: str, bot_prefix: str
-) -> list[NewMessage]:
+async def get_messages_since(chat_jid: str, since_timestamp: str) -> list[NewMessage]:
     """Get messages for a specific chat since a timestamp, excluding bot and host messages."""
     db = _get_db()
     sql = """
         SELECT id, chat_jid, sender, sender_name, content, timestamp
         FROM messages
         WHERE chat_jid = ? AND timestamp > ?
-              AND content NOT LIKE ?
               AND (sender LIKE '%@%' OR sender IN ('tui-user', 'deploy'))
         ORDER BY timestamp
     """
-    cursor = await db.execute(sql, (chat_jid, since_timestamp, f"{bot_prefix}:%"))
+    cursor = await db.execute(sql, (chat_jid, since_timestamp))
     rows = await cursor.fetchall()
 
     return [
@@ -341,10 +330,10 @@ async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
 
     if cleared_at:
         cursor = await db.execute(
-            f"""
+            """
             SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me
             FROM messages
-            WHERE chat_jid = ? AND timestamp > ? {_EXCLUDE_INTERNAL_HOST}
+            WHERE chat_jid = ? AND timestamp > ?
             ORDER BY timestamp DESC
             LIMIT ?
             """,
@@ -352,10 +341,10 @@ async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
         )
     else:
         cursor = await db.execute(
-            f"""
+            """
             SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me
             FROM messages
-            WHERE chat_jid = ? {_EXCLUDE_INTERNAL_HOST}
+            WHERE chat_jid = ?
             ORDER BY timestamp DESC
             LIMIT ?
             """,

@@ -16,8 +16,6 @@ if TYPE_CHECKING:
 _INTERNAL_TAG_RE = re.compile(r"<internal>[\s\S]*?</internal>")
 _HOST_TAG_RE = re.compile(r"^\s*<host>([\s\S]*?)</host>\s*$")
 
-HOST_PREFIX = "[host]"
-
 
 def escape_xml(s: str) -> str:
     """Escape XML special characters."""
@@ -45,11 +43,6 @@ def parse_host_tag(text: str) -> tuple[bool, str]:
     if match:
         return True, match.group(1).strip()
     return False, text
-
-
-def format_host_message(text: str) -> str:
-    """Format a host message with the standard prefix."""
-    return f"{HOST_PREFIX} {text}"
 
 
 def format_outbound(channel: Channel, raw_text: str) -> str:
