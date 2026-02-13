@@ -247,6 +247,17 @@ class PynchyApp:
             logger.info("Context reset", group=group.name)
             return True
 
+        # Check if the last message is a direct command execution (!command syntax)
+        last_msg_content = missed_messages[-1].content.strip()
+        if last_msg_content.startswith("!"):
+            command = last_msg_content[1:]  # Remove the ! prefix
+            if command:
+                await self._execute_direct_command(chat_jid, group, missed_messages[-1], command)
+                # Advance cursor but don't trigger agent
+                self.last_agent_timestamp[chat_jid] = missed_messages[-1].timestamp
+                await self._save_state()
+                return True
+
         prompt = format_messages(missed_messages)
 
         # Advance cursor; save old cursor for rollback on error
@@ -332,6 +343,85 @@ class PynchyApp:
             return False
 
         return True
+
+    async def _execute_direct_command(
+        self, chat_jid: str, group: RegisteredGroup, message: NewMessage, command: str
+    ) -> None:
+        """Execute a user command directly without LLM approval.
+
+        Stores both the command and its output in the message history so the LLM
+        can see it when triggered by a subsequent message.
+        """
+        logger.info("Executing direct command", group=group.name, command=command[:100])
+
+        try:
+            # Execute command with a timeout
+            result = subprocess.run(
+                command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=str(GROUPS_DIR / group.folder),
+            )
+
+            # Format output
+            if result.returncode == 0:
+                output = result.stdout if result.stdout else "(no output)"
+                status_emoji = "✅"
+            else:
+                output = result.stderr if result.stderr else result.stdout or "(no output)"
+                status_emoji = "❌"
+
+            # Store the command output as a system message
+            ts = datetime.now(UTC).isoformat()
+            output_text = (
+                f"{status_emoji} Command output (exit {result.returncode}):\n```\n{output}\n```"
+            )
+
+            await store_message_direct(
+                id=f"cmd-{int(datetime.now(UTC).timestamp() * 1000)}",
+                chat_jid=chat_jid,
+                sender="command_output",
+                sender_name="command",
+                content=output_text,
+                timestamp=ts,
+                is_from_me=True,
+            )
+
+            # Send to channels
+            channel_text = f"🔧 {output_text}"
+            for ch in self.channels:
+                if ch.is_connected():
+                    with contextlib.suppress(Exception):
+                        await ch.send_message(chat_jid, channel_text)
+
+            # Emit event for TUI
+            self.event_bus.emit(
+                MessageEvent(
+                    chat_jid=chat_jid,
+                    sender_name="command",
+                    content=output_text,
+                    timestamp=ts,
+                    is_bot=True,
+                )
+            )
+
+            logger.info(
+                "Direct command executed",
+                group=group.name,
+                exit_code=result.returncode,
+                output_len=len(output),
+            )
+
+        except subprocess.TimeoutExpired:
+            error_msg = "⏱️ Command timed out (30s limit)"
+            await self._broadcast_host_message(chat_jid, error_msg)
+            logger.warning("Direct command timeout", group=group.name, command=command[:100])
+        except Exception as exc:
+            error_msg = f"❌ Command failed: {str(exc)}"
+            await self._broadcast_host_message(chat_jid, error_msg)
+            logger.error("Direct command error", group=group.name, error=str(exc))
 
     async def _handle_streamed_output(
         self, chat_jid: str, group: RegisteredGroup, result: ContainerOutput
