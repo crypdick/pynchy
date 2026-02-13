@@ -33,13 +33,22 @@ class AgentActivityEvent:
 
 
 @dataclass
+class AgentTraceEvent:
+    """Ephemeral agent trace — thinking, tool use, intermediate text."""
+
+    chat_jid: str
+    trace_type: str  # "thinking", "tool_use", "text"
+    data: dict[str, Any]
+
+
+@dataclass
 class ChatClearedEvent:
     """Chat history was cleared (messages archived, not deleted)."""
 
     chat_jid: str
 
 
-type Event = MessageEvent | AgentActivityEvent | ChatClearedEvent
+type Event = MessageEvent | AgentActivityEvent | AgentTraceEvent | ChatClearedEvent
 type Listener = Callable[[Any], Coroutine[Any, Any, None]]
 
 

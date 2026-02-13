@@ -42,6 +42,7 @@ Single source of truth for all pynchy work items.
 - implement 'handoff' tool calls as well as 'delegate' tool calls. handoff causes current agent to cease to exist; it decides what context to give to the next agent. the delegate tool is a blocking call that spawns a new agent to complete a task before passing it back. in reality, this tool call can abstract away a more complex system, like a deep research agent which has many subagents.
 - add support for multiple accounts/subscriptions. allow user to designate different workplaces to different accounts (e.g. corporate claude sub, personal claude sub, etc). 
 - add emoji to messages when they've been read by the agent. whatsapp should also send a '...' placeholder message while the agent is working on a response. errors should also be propagated into whatsapp as system messages.
+- add a self-documenting hook to make the agent update its docs as it learns new things. it should run cmds and be sure that they work before writing docs (otherwise it's a hypothesis, not documetnation)
 
 ### 4 - In Progress
 *Being implemented.*

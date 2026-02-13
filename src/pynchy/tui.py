@@ -212,6 +212,20 @@ class PynchyTUI(App):
                     event["content"],
                     event["timestamp"],
                 )
+        elif event.get("type") == "agent_trace" and event.get("chat_jid") == self._active_jid:
+            chat_log = self.query_one(ChatLog)
+            trace_type = event.get("trace_type", "")
+            if trace_type == "thinking":
+                chat_log.write("[dim italic]\U0001f4ad thinking...[/dim italic]")
+            elif trace_type == "tool_use":
+                name = event.get("tool_name", "tool")
+                tool_input = event.get("tool_input", {})
+                preview = str(tool_input)[:120]
+                chat_log.write(f"[dim]\U0001f527 {name}[/dim] [dim italic]{preview}[/dim italic]")
+            elif trace_type == "text":
+                text = event.get("text", "")
+                if text:
+                    chat_log.write(f"[dim]{text}[/dim]")
         elif event.get("type") == "agent_activity" and event.get("chat_jid") == self._active_jid:
             group = next((g for g in self._groups if g["jid"] == self._active_jid), None)
             name = group["name"] if group else "?"

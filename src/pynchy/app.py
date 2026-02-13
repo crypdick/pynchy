@@ -53,9 +53,20 @@ from pynchy.db import (
     store_message,
     store_message_direct,
 )
-from pynchy.event_bus import AgentActivityEvent, ChatClearedEvent, EventBus, MessageEvent
+from pynchy.event_bus import (
+    AgentActivityEvent,
+    AgentTraceEvent,
+    ChatClearedEvent,
+    EventBus,
+    MessageEvent,
+)
 from pynchy.group_queue import GroupQueue
-from pynchy.http_server import _get_head_commit_message, _get_head_sha, _is_repo_dirty, start_http_server
+from pynchy.http_server import (
+    _get_head_commit_message,
+    _get_head_sha,
+    _is_repo_dirty,
+    start_http_server,
+)
 from pynchy.ipc import start_ipc_watcher
 from pynchy.logger import logger
 from pynchy.router import format_messages, format_outbound, format_system_message, parse_system_tag
@@ -261,6 +272,49 @@ class PynchyApp:
 
         async def on_output(result: ContainerOutput) -> None:
             nonlocal had_error, output_sent_to_user
+
+            # Trace events — broadcast ephemerally, no SQLite storage
+            if result.type == "thinking":
+                trace_text = "\U0001f4ad thinking..."
+                for ch in self.channels:
+                    if ch.is_connected():
+                        with contextlib.suppress(Exception):
+                            await ch.send_message(chat_jid, trace_text)
+                self.event_bus.emit(
+                    AgentTraceEvent(
+                        chat_jid=chat_jid,
+                        trace_type="thinking",
+                        data={"thinking": result.thinking or ""},
+                    )
+                )
+                return
+            if result.type == "tool_use":
+                trace_text = f"\U0001f527 {result.tool_name or 'tool'}"
+                for ch in self.channels:
+                    if ch.is_connected():
+                        with contextlib.suppress(Exception):
+                            await ch.send_message(chat_jid, trace_text)
+                self.event_bus.emit(
+                    AgentTraceEvent(
+                        chat_jid=chat_jid,
+                        trace_type="tool_use",
+                        data={
+                            "tool_name": result.tool_name or "",
+                            "tool_input": result.tool_input or {},
+                        },
+                    )
+                )
+                return
+            if result.type == "text":
+                self.event_bus.emit(
+                    AgentTraceEvent(
+                        chat_jid=chat_jid,
+                        trace_type="text",
+                        data={"text": result.text or ""},
+                    )
+                )
+                return
+
             if result.result:
                 raw = result.result if isinstance(result.result, str) else json.dumps(result.result)
                 from pynchy.router import strip_internal_tags
@@ -1057,6 +1111,7 @@ WantedBy=default.target
             def subscribe_events(self, callback: Any) -> Any:
                 from pynchy.event_bus import (
                     AgentActivityEvent,
+                    AgentTraceEvent,
                     ChatClearedEvent,
                     MessageEvent,
                 )
@@ -1084,6 +1139,16 @@ WantedBy=default.target
                         }
                     )
 
+                async def on_trace(event: AgentTraceEvent) -> None:
+                    await callback(
+                        {
+                            "type": "agent_trace",
+                            "chat_jid": event.chat_jid,
+                            "trace_type": event.trace_type,
+                            **event.data,
+                        }
+                    )
+
                 async def on_clear(event: ChatClearedEvent) -> None:
                     await callback(
                         {
@@ -1094,6 +1159,7 @@ WantedBy=default.target
 
                 unsubs.append(app.event_bus.subscribe(MessageEvent, on_msg))
                 unsubs.append(app.event_bus.subscribe(AgentActivityEvent, on_activity))
+                unsubs.append(app.event_bus.subscribe(AgentTraceEvent, on_trace))
                 unsubs.append(app.event_bus.subscribe(ChatClearedEvent, on_clear))
 
                 def unsubscribe() -> None:
