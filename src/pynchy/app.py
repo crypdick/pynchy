@@ -571,29 +571,7 @@ class PynchyApp:
             logger.warning("No API credentials found at startup")
 
         text = format_system_message("\n".join(parts))
-        ts = datetime.now(UTC).isoformat()
-        await store_message_direct(
-            id=f"system-boot-{int(datetime.now(UTC).timestamp() * 1000)}",
-            chat_jid=main_jid,
-            sender="system",
-            sender_name="system",
-            content=text,
-            timestamp=ts,
-            is_from_me=True,
-        )
-        for ch in self.channels:
-            if ch.is_connected():
-                with contextlib.suppress(Exception):
-                    await ch.send_message(main_jid, text)
-        self.event_bus.emit(
-            MessageEvent(
-                chat_jid=main_jid,
-                sender_name="system",
-                content=text,
-                timestamp=ts,
-                is_bot=True,
-            )
-        )
+        await self._broadcast_system_message(main_jid, text)
         logger.info("Boot notification sent")
 
     async def _recover_pending_messages(self) -> None:
@@ -696,12 +674,14 @@ class PynchyApp:
             chat_jid=chat_jid,
         )
 
-        # Inject a synthetic message to resume the agent session
+        # Inject a synthetic message to resume the agent session.
+        # Uses sender="deploy" so it passes get_messages_since filters
+        # (sender="system" is excluded to prevent system messages triggering the agent).
         synthetic_msg = NewMessage(
             id=f"deploy-{commit_sha[:8]}-{int(datetime.now(UTC).timestamp() * 1000)}",
             chat_jid=chat_jid,
-            sender="system",
-            sender_name="system",
+            sender="deploy",
+            sender_name="deploy",
             content=f"[DEPLOY COMPLETE — {commit_sha[:8]}] {resume_prompt}",
             timestamp=datetime.now(UTC).isoformat(),
             is_from_me=False,
