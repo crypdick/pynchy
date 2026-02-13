@@ -17,4 +17,6 @@ Before editing source code to fix this bug:
 2. **Run the test** to confirm it fails for the right reason
 3. **Then fix the code** and verify the test passes
 
-This ensures the bug is properly captured and won't regress. Skip TDD only for trivial fixes (typos, obvious one-liners).
+This ensures the bug is properly captured and won't regress. It also ensures that you are actually fixing the problem, not taking a guess and assuming the "fix" worked.
+
+Skip TDD only for trivial fixes (typos, obvious one-liners).
