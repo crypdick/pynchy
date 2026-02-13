@@ -31,7 +31,7 @@ Single source of truth for all pynchy work items.
 - add support for multiple accounts/subscriptions. allow user to designate different workplaces to different accounts (e.g. corporate claude sub, personal claude sub, etc). 
 - add a self-documenting hook to make the agent update its docs as it learns new things. it should run cmds and be sure that they work before writing docs (otherwise it's a hypothesis, not documetnation)
 - allow user to execute cmds, bypassing the llm. `!ls`, `!echo hi`, will run without llm approval. the llm will see in the history that the user ran a cmd and the cmd output. this type of user input does not initiate a conversation turn for the llm though-- the user needs to follow up with a non-command message in order to trigger the llm (at which point it'll see the tool usage in its history) 
-- migrate away from single 'god' CLAUDE.md files to .claude/ folders that use the progressive disclosure principle: https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices
+- migrate away from single 'god' CLAUDE.md files to .claude/ folders that use the progressive disclosure principle: https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices. similarly, some of the docs in the docs/ folder should be migrated to .claude/ files, to keep all claude instructions in a single place
 
 ### 2 - Planning
 *Draft plan exists. Awaiting human sign-off.*
