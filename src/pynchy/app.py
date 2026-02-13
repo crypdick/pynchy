@@ -90,6 +90,7 @@ class PynchyApp:
     def __init__(self) -> None:
         self.last_timestamp: str = ""
         self.sessions: dict[str, str] = {}
+        self._session_cleared: set[str] = set()  # group folders with pending clears
         self.registered_groups: dict[str, RegisteredGroup] = {}
         self.last_agent_timestamp: dict[str, str] = {}
         self.message_loop_running: bool = False
@@ -319,6 +320,7 @@ class PynchyApp:
         # Check if the last message is a context reset command
         if CONTEXT_RESET_PATTERN.match(missed_messages[-1].content.strip()):
             self.sessions.pop(group.folder, None)
+            self._session_cleared.add(group.folder)
             await clear_session(group.folder)
             self.queue.close_stdin(chat_jid)
             self.last_agent_timestamp[chat_jid] = missed_messages[-1].timestamp
@@ -765,11 +767,14 @@ class PynchyApp:
 
         # Wrap on_output to track session ID from streamed results
         async def wrapped_on_output(output: ContainerOutput) -> None:
-            if output.new_session_id:
+            if output.new_session_id and group.folder not in self._session_cleared:
                 self.sessions[group.folder] = output.new_session_id
                 await set_session(group.folder, output.new_session_id)
             if on_output:
                 await on_output(output)
+
+        # Clear the guard — this container run starts fresh
+        self._session_cleared.discard(group.folder)
 
         try:
             output = await run_container_agent(
@@ -788,7 +793,7 @@ class PynchyApp:
                 registry=self.registry,
             )
 
-            if output.new_session_id:
+            if output.new_session_id and group.folder not in self._session_cleared:
                 self.sessions[group.folder] = output.new_session_id
                 await set_session(group.folder, output.new_session_id)
 
@@ -858,6 +863,21 @@ class PynchyApp:
                         if not all_pending:
                             # Already consumed by _process_group_messages
                             continue
+
+                        # Intercept context reset commands before piping to
+                        # active containers — they must be handled by the host,
+                        # not forwarded as regular user messages.
+                        if CONTEXT_RESET_PATTERN.match(all_pending[-1].content.strip()):
+                            self.sessions.pop(group.folder, None)
+                            self._session_cleared.add(group.folder)
+                            await clear_session(group.folder)
+                            self.queue.close_stdin(chat_jid)
+                            self.last_agent_timestamp[chat_jid] = all_pending[-1].timestamp
+                            await self._save_state()
+                            await self._send_clear_confirmation(chat_jid)
+                            logger.info("Context reset (active container)", group=group.name)
+                            continue
+
                         formatted = format_messages(all_pending)
 
                         if self.queue.send_message(chat_jid, formatted):
@@ -1563,6 +1583,7 @@ WantedBy=default.target
 
             async def clear_session(self, group_folder: str) -> None:
                 app.sessions.pop(group_folder, None)
+                app._session_cleared.add(group_folder)
                 await clear_session(group_folder)
 
             async def clear_chat_history(self, chat_jid: str) -> None:
