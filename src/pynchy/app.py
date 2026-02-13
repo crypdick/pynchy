@@ -69,7 +69,7 @@ from pynchy.http_server import (
 )
 from pynchy.ipc import start_ipc_watcher
 from pynchy.logger import logger
-from pynchy.router import format_host_message, format_messages, format_outbound, parse_host_tag
+from pynchy.router import format_messages, format_outbound, parse_host_tag
 from pynchy.runtime import get_runtime
 from pynchy.task_scheduler import start_scheduler_loop
 from pynchy.types import Channel, ContainerInput, ContainerOutput, NewMessage, RegisteredGroup
@@ -214,8 +214,7 @@ class PynchyApp:
             prompt = reset_data.get("message", "")
             if prompt:
                 logger.info("Processing reset handoff", group=group.name)
-                handoff_text = format_host_message(f"[handoff] {prompt}")
-                await self._broadcast_host_message(chat_jid, handoff_text)
+                await self._broadcast_host_message(chat_jid, f"[handoff] {prompt}")
 
                 async def handoff_on_output(result: ContainerOutput) -> None:
                     await self._handle_streamed_output(chat_jid, group, result)
@@ -226,7 +225,7 @@ class PynchyApp:
 
         is_main_group = group.folder == MAIN_GROUP_FOLDER
         since_timestamp = self.last_agent_timestamp.get(chat_jid, "")
-        missed_messages = await get_messages_since(chat_jid, since_timestamp, ASSISTANT_NAME)
+        missed_messages = await get_messages_since(chat_jid, since_timestamp)
 
         if not missed_messages:
             return True
@@ -320,8 +319,9 @@ class PynchyApp:
                 )
                 return True
             # Send error notification to user
-            error_msg = format_host_message("⚠️ Agent error occurred. Will retry on next message.")
-            await self._broadcast_host_message(chat_jid, error_msg)
+            await self._broadcast_host_message(
+                chat_jid, "⚠️ Agent error occurred. Will retry on next message."
+            )
             # Roll back cursor for retry
             self.last_agent_timestamp[chat_jid] = previous_cursor
             await self._save_state()
@@ -516,31 +516,37 @@ class PynchyApp:
             if text:
                 is_host, content = parse_host_tag(text)
                 if is_host:
-                    formatted = format_host_message(content)
+                    sender = "host"
+                    sender_name = "host"
+                    db_content = content
+                    channel_text = f"\U0001f3e0 {content}"
                     logger.info("Host message", group=group.name, text=content[:200])
                 else:
-                    formatted = f"{ASSISTANT_NAME}: {text}"
+                    sender = "bot"
+                    sender_name = ASSISTANT_NAME
+                    db_content = text
+                    channel_text = f"{ASSISTANT_NAME}: {text}"
                     logger.info("Agent output", group=group.name, text=raw[:200])
                 await store_message_direct(
                     id=f"bot-{int(datetime.now(UTC).timestamp() * 1000)}",
                     chat_jid=chat_jid,
-                    sender="bot",
-                    sender_name=ASSISTANT_NAME,
-                    content=formatted,
+                    sender=sender,
+                    sender_name=sender_name,
+                    content=db_content,
                     timestamp=ts,
                     is_from_me=True,
                 )
                 for ch in self.channels:
                     if ch.is_connected():
                         try:
-                            await ch.send_message(chat_jid, formatted)
+                            await ch.send_message(chat_jid, channel_text)
                         except Exception as exc:
                             logger.warning("Channel send failed", channel=ch.name, err=str(exc))
                 self.event_bus.emit(
                     MessageEvent(
                         chat_jid=chat_jid,
-                        sender_name=ASSISTANT_NAME,
-                        content=formatted,
+                        sender_name=sender_name,
+                        content=db_content,
                         timestamp=ts,
                         is_bot=True,
                     )
@@ -644,9 +650,7 @@ class PynchyApp:
         while not self._shutting_down:
             try:
                 jids = list(self.registered_groups.keys())
-                messages, new_timestamp = await get_new_messages(
-                    jids, self.last_timestamp, ASSISTANT_NAME
-                )
+                messages, new_timestamp = await get_new_messages(jids, self.last_timestamp)
 
                 if messages:
                     logger.info("New messages", count=len(messages))
@@ -679,7 +683,6 @@ class PynchyApp:
                         all_pending = await get_messages_since(
                             chat_jid,
                             self.last_agent_timestamp.get(chat_jid, ""),
-                            ASSISTANT_NAME,
                         )
                         if not all_pending:
                             # Already consumed by _process_group_messages
@@ -746,15 +749,14 @@ class PynchyApp:
             except Exception:
                 boot_warnings_path.unlink(missing_ok=True)
 
-        text = format_host_message("\n".join(parts))
-        await self._broadcast_host_message(main_jid, text)
+        await self._broadcast_host_message(main_jid, "\n".join(parts))
         logger.info("Boot notification sent")
 
     async def _recover_pending_messages(self) -> None:
         """Startup recovery: check for unprocessed messages in registered groups."""
         for chat_jid, group in self.registered_groups.items():
             since_timestamp = self.last_agent_timestamp.get(chat_jid, "")
-            pending = await get_messages_since(chat_jid, since_timestamp, ASSISTANT_NAME)
+            pending = await get_messages_since(chat_jid, since_timestamp)
             if pending:
                 logger.info(
                     "Recovery: found unprocessed messages",
@@ -916,7 +918,7 @@ class PynchyApp:
     # ------------------------------------------------------------------
 
     async def _broadcast_host_message(self, chat_jid: str, text: str) -> None:
-        """Store, send to all channels, and emit event for a host message."""
+        """Store raw host message, send emoji-prefixed to channels."""
         ts = datetime.now(UTC).isoformat()
         await store_message_direct(
             id=f"host-{int(datetime.now(UTC).timestamp() * 1000)}",
@@ -927,10 +929,11 @@ class PynchyApp:
             timestamp=ts,
             is_from_me=True,
         )
+        channel_text = f"\U0001f3e0 {text}"
         for ch in self.channels:
             if ch.is_connected():
                 with contextlib.suppress(Exception):
-                    await ch.send_message(chat_jid, text)
+                    await ch.send_message(chat_jid, channel_text)
         self.event_bus.emit(
             MessageEvent(
                 chat_jid=chat_jid,
@@ -948,7 +951,7 @@ class PynchyApp:
         await set_chat_cleared_at(chat_jid, cleared_ts)
         self.event_bus.emit(ChatClearedEvent(chat_jid=chat_jid))
 
-        await self._broadcast_host_message(chat_jid, format_host_message("🗑️"))
+        await self._broadcast_host_message(chat_jid, "🗑️")
 
     def _find_channel(self, jid: str) -> Channel | None:
         """Find the channel that owns a given JID."""

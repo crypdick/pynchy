@@ -20,7 +20,6 @@ from aiohttp import web
 from pynchy.config import DATA_DIR, DEPLOY_PORT, PROJECT_ROOT
 from pynchy.deploy import finalize_deploy
 from pynchy.logger import logger
-from pynchy.router import format_host_message
 from pynchy.types import NewMessage
 
 _start_time = time.monotonic()
@@ -180,7 +179,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
             chat_jid = deps.main_chat_jid()
             if chat_jid:
                 msg = f"Deploy failed — import validation error, rolled back to {old_sha[:8]}."
-                await deps.broadcast_host_message(chat_jid, format_host_message(msg))
+                await deps.broadcast_host_message(chat_jid, msg)
             return web.json_response(
                 {"error": "import validation failed", "rolled_back_to": old_sha},
                 status=422,
@@ -212,7 +211,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
                 chat_jid = deps.main_chat_jid()
                 if chat_jid:
                     msg = "Deploy warning — container rebuild failed, continuing with old image."
-                    await deps.broadcast_host_message(chat_jid, format_host_message(msg))
+                    await deps.broadcast_host_message(chat_jid, msg)
             else:
                 logger.info("Container image rebuilt successfully")
 

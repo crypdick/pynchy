@@ -10,7 +10,6 @@ from collections.abc import Awaitable, Callable
 
 from pynchy.config import DATA_DIR
 from pynchy.logger import logger
-from pynchy.router import format_host_message
 
 
 async def finalize_deploy(
@@ -53,7 +52,7 @@ async def finalize_deploy(
     if chat_jid:
         await broadcast_host_message(
             chat_jid,
-            format_host_message(f"Deploying {short_sha}... restarting now."),
+            f"Deploying {short_sha}... restarting now.",
         )
 
     logger.info(

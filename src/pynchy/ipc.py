@@ -26,7 +26,6 @@ from pynchy.config import (
 from pynchy.db import create_task, delete_task, get_task_by_id, update_task
 from pynchy.deploy import finalize_deploy
 from pynchy.logger import logger
-from pynchy.router import format_host_message
 from pynchy.types import ContainerConfig, RegisteredGroup
 
 
@@ -481,7 +480,4 @@ async def _deploy_error(
 ) -> None:
     """Send a deploy error message back to the main group."""
     logger.error("Deploy failed", error=message)
-    await deps.broadcast_host_message(
-        chat_jid,
-        format_host_message(f"Deploy failed: {message}"),
-    )
+    await deps.broadcast_host_message(chat_jid, f"Deploy failed: {message}")
