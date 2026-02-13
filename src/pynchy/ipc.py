@@ -35,6 +35,8 @@ class IpcDeps(Protocol):
 
     async def send_message(self, jid: str, text: str) -> None: ...
 
+    async def broadcast_system_message(self, jid: str, text: str) -> None: ...
+
     def registered_groups(self) -> dict[str, RegisteredGroup]: ...
 
     def register_group(self, jid: str, group: RegisteredGroup) -> None: ...
@@ -463,7 +465,7 @@ async def _handle_deploy(
 
     # 2. Write continuation, notify WhatsApp, and SIGTERM
     await finalize_deploy(
-        send_message=deps.send_message,
+        broadcast_system_message=deps.broadcast_system_message,
         chat_jid=chat_jid,
         commit_sha=head_sha,
         previous_sha=head_sha,
@@ -479,7 +481,7 @@ async def _deploy_error(
 ) -> None:
     """Send a deploy error message back to the main group."""
     logger.error("Deploy failed", error=message)
-    await deps.send_message(
+    await deps.broadcast_system_message(
         chat_jid,
         format_system_message(f"Deploy failed: {message}"),
     )
