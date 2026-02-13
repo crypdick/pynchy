@@ -389,6 +389,32 @@ async def main() -> None:
     mcp_server_command = "python"
     mcp_server_args = ["-m", "agent_runner.ipc_mcp"]
 
+    # Build mcp_servers dict starting with built-in pynchy server
+    mcp_servers_dict = {
+        "pynchy": {
+            "command": mcp_server_command,
+            "args": mcp_server_args,
+            "env": {
+                "PYNCHY_CHAT_JID": container_input.chat_jid,
+                "PYNCHY_GROUP_FOLDER": container_input.group_folder,
+                "PYNCHY_IS_MAIN": ("1" if container_input.is_main else "0"),
+                "PYNCHY_SESSION_ID": (container_input.session_id or ""),
+            },
+        },
+    }
+
+    # Merge plugin MCP servers
+    if container_input.plugin_mcp_servers:
+        for name, spec in container_input.plugin_mcp_servers.items():
+            plugin_env = spec.get("env", {}).copy()
+            # Add PYTHONPATH for plugin source imports
+            plugin_env["PYTHONPATH"] = f"/workspace/plugins/{name}"
+            mcp_servers_dict[name] = {
+                "command": spec["command"],
+                "args": spec["args"],
+                "env": plugin_env,
+            }
+
     options = ClaudeAgentOptions(
         cwd="/workspace/group",
         resume=container_input.session_id,
@@ -416,18 +442,7 @@ async def main() -> None:
         ],
         permission_mode="bypassPermissions",
         setting_sources=["project", "user"],
-        mcp_servers={
-            "pynchy": {
-                "command": mcp_server_command,
-                "args": mcp_server_args,
-                "env": {
-                    "PYNCHY_CHAT_JID": container_input.chat_jid,
-                    "PYNCHY_GROUP_FOLDER": container_input.group_folder,
-                    "PYNCHY_IS_MAIN": ("1" if container_input.is_main else "0"),
-                    "PYNCHY_SESSION_ID": (container_input.session_id or ""),
-                },
-            },
-        },
+        mcp_servers=mcp_servers_dict,
         hooks={
             "PreCompact": [HookMatcher(hooks=[create_pre_compact_hook()])],
         },

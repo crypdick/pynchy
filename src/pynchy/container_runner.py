@@ -50,6 +50,8 @@ def _input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
         d["session_id"] = input_data.session_id
     if input_data.is_scheduled_task:
         d["is_scheduled_task"] = True
+    if input_data.plugin_mcp_servers is not None:
+        d["plugin_mcp_servers"] = input_data.plugin_mcp_servers
     return d
 
 
@@ -261,8 +263,19 @@ def _write_settings_json(session_dir: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _build_volume_mounts(group: RegisteredGroup, is_main: bool) -> list[VolumeMount]:
-    """Build the mount list for a container invocation."""
+def _build_volume_mounts(
+    group: RegisteredGroup, is_main: bool, registry: Any = None
+) -> list[VolumeMount]:
+    """Build the mount list for a container invocation.
+
+    Args:
+        group: The registered group configuration
+        is_main: Whether this is the main group
+        registry: Optional PluginRegistry for plugin MCP mounts
+
+    Returns:
+        List of volume mounts for the container
+    """
     mounts: list[VolumeMount] = []
 
     group_dir = GROUPS_DIR / group.folder
@@ -312,6 +325,27 @@ def _build_volume_mounts(group: RegisteredGroup, is_main: bool) -> list[VolumeMo
                     readonly=bool(m["readonly"]),
                 )
             )
+
+    # Plugin MCP server source mounts
+    if registry and hasattr(registry, "mcp_servers"):
+        for plugin in registry.mcp_servers:
+            try:
+                spec = plugin.mcp_server_spec()
+                if spec.host_source:
+                    # Mount plugin source to /workspace/plugins/{name}/
+                    mounts.append(
+                        VolumeMount(
+                            host_path=str(spec.host_source),
+                            container_path=f"/workspace/plugins/{spec.name}",
+                            readonly=True,
+                        )
+                    )
+            except Exception as e:
+                logger.warning(
+                    "Failed to mount plugin MCP source",
+                    plugin=plugin.name,
+                    error=str(e),
+                )
 
     return mounts
 
@@ -500,6 +534,7 @@ async def run_container_agent(
     input_data: ContainerInput,
     on_process: OnProcess,
     on_output: OnOutput | None = None,
+    registry: Any = None,
 ) -> ContainerOutput:
     """Spawn a container agent, stream output, manage timeouts, and return result.
 
@@ -509,6 +544,7 @@ async def run_container_agent(
         on_process: Callback invoked with (proc, container_name) after spawn.
         on_output: If provided, called for each streamed output marker pair.
                    Enables streaming mode. Without it, uses legacy mode.
+        registry: Optional PluginRegistry for plugin MCP mounts and config.
 
     Returns:
         ContainerOutput with the final status.
@@ -519,7 +555,28 @@ async def run_container_agent(
     group_dir = GROUPS_DIR / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
 
-    mounts = _build_volume_mounts(group, input_data.is_main)
+    mounts = _build_volume_mounts(group, input_data.is_main, registry)
+
+    # Collect plugin MCP server specs
+    if registry and hasattr(registry, "mcp_servers") and input_data.plugin_mcp_servers is None:
+        plugin_mcp_specs: dict[str, dict] = {}
+        for plugin in registry.mcp_servers:
+            try:
+                spec = plugin.mcp_server_spec()
+                plugin_mcp_specs[spec.name] = {
+                    "command": spec.command,
+                    "args": spec.args,
+                    "env": spec.env,
+                }
+            except Exception as e:
+                logger.warning(
+                    "Failed to get MCP spec from plugin",
+                    plugin=plugin.name,
+                    error=str(e),
+                )
+        if plugin_mcp_specs:
+            input_data.plugin_mcp_servers = plugin_mcp_specs
+
     safe_name = "".join(c if c.isalnum() or c == "-" else "-" for c in group.folder)
     container_name = f"pynchy-{safe_name}-{int(time.time() * 1000)}"
     container_args = _build_container_args(mounts, container_name)

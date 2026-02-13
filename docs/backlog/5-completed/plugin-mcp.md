@@ -1,5 +1,9 @@
 # MCP Plugins
 
+## Status: Completed ✅
+
+Implemented 2026-02-13
+
 ## Overview
 
 Enable agent tools (MCP servers) to be provided by external plugins. Plugins package their MCP server code and declare how to run it.
@@ -151,6 +155,34 @@ Plugin MCP servers run inside the container. They can use:
 If a plugin needs extra packages (e.g., `openai`), the user must add them to the container Dockerfile. The plugin's README should document this.
 
 **Alternative approach:** Plugins could declare a `requirements.txt`, and the container build could optionally install them. This needs design work.
+
+## Implementation Summary
+
+**Files Created:**
+- `src/pynchy/plugin/mcp.py` — McpPlugin base class and McpServerSpec dataclass
+- `tests/test_plugin_mcp.py` — Comprehensive tests (18 tests, all passing)
+
+**Files Modified:**
+- `src/pynchy/plugin/__init__.py` — Export McpPlugin and McpServerSpec
+- `src/pynchy/types.py` — Extended ContainerInput with plugin_mcp_servers field
+- `src/pynchy/container_runner.py` — Added plugin mount building and spec collection
+- `src/pynchy/app.py` — Pass registry to run_container_agent
+- `container/agent_runner/src/agent_runner/main.py` — Merge plugin MCP servers into config
+
+**Test Coverage:**
+- 18 tests covering spec creation, plugin lifecycle, integration scenarios
+- Tests for container runner integration (mount building, spec collection)
+- Tests for agent runner integration (config merging, PYTHONPATH setup)
+- Tests for error handling (graceful plugin failure)
+- All tests passing, code linted
+
+**Key Features:**
+- Plugin source mounted to `/workspace/plugins/{name}/` in container
+- PYTHONPATH automatically set for plugin imports
+- Plugin MCP specs serialized via ContainerInput JSON
+- Agent runner dynamically merges plugin and built-in MCP servers
+- Graceful error handling for plugin failures
+- Compatible with existing plugin discovery system
 
 ## Verification
 
