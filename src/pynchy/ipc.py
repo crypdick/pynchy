@@ -26,7 +26,7 @@ from pynchy.config import (
 from pynchy.db import create_task, delete_task, get_task_by_id, update_task
 from pynchy.deploy import finalize_deploy
 from pynchy.logger import logger
-from pynchy.router import format_system_message
+from pynchy.router import format_host_message
 from pynchy.types import ContainerConfig, RegisteredGroup
 
 
@@ -35,7 +35,7 @@ class IpcDeps(Protocol):
 
     async def send_message(self, jid: str, text: str) -> None: ...
 
-    async def broadcast_system_message(self, jid: str, text: str) -> None: ...
+    async def broadcast_host_message(self, jid: str, text: str) -> None: ...
 
     def registered_groups(self) -> dict[str, RegisteredGroup]: ...
 
@@ -465,7 +465,7 @@ async def _handle_deploy(
 
     # 2. Write continuation, notify WhatsApp, and SIGTERM
     await finalize_deploy(
-        broadcast_system_message=deps.broadcast_system_message,
+        broadcast_host_message=deps.broadcast_host_message,
         chat_jid=chat_jid,
         commit_sha=head_sha,
         previous_sha=head_sha,
@@ -481,7 +481,7 @@ async def _deploy_error(
 ) -> None:
     """Send a deploy error message back to the main group."""
     logger.error("Deploy failed", error=message)
-    await deps.broadcast_system_message(
+    await deps.broadcast_host_message(
         chat_jid,
-        format_system_message(f"Deploy failed: {message}"),
+        format_host_message(f"Deploy failed: {message}"),
     )

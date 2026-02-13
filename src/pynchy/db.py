@@ -18,10 +18,10 @@ from pynchy.types import ContainerConfig, NewMessage, RegisteredGroup, Scheduled
 
 _db: aiosqlite.Connection | None = None
 
-# For chat history display: hide internal system messages (e.g. deploy synthetic)
-# but keep user-facing ones ([system] boot notification, [system] 🗑️ clear).
-# Agent-triggering queries use sender != 'system' instead.
-_EXCLUDE_INTERNAL_SYSTEM = "AND NOT (sender = 'system' AND content NOT LIKE '[system]%')"
+# For chat history display: hide internal host messages (e.g. deploy synthetic)
+# but keep user-facing ones ([host] boot notification, [host] 🗑️ clear).
+# Agent-triggering queries use sender != 'host' instead.
+_EXCLUDE_INTERNAL_HOST = "AND NOT (sender = 'host' AND content NOT LIKE '[host]%')"
 
 _SCHEMA = """\
 CREATE TABLE IF NOT EXISTS chats (
@@ -112,6 +112,7 @@ async def _create_schema(database: aiosqlite.Connection) -> None:
         await database.commit()
     except Exception:
         pass
+
 
 
 async def init_database() -> None:
@@ -273,7 +274,7 @@ async def get_new_messages(
         FROM messages
         WHERE timestamp > ? AND chat_jid IN ({placeholders})
               AND content NOT LIKE ?
-              AND sender != 'system'
+              AND sender != 'host'
         ORDER BY timestamp
     """
     cursor = await db.execute(sql, [last_timestamp, *jids, f"{bot_prefix}:%"])
@@ -302,14 +303,14 @@ async def get_new_messages(
 async def get_messages_since(
     chat_jid: str, since_timestamp: str, bot_prefix: str
 ) -> list[NewMessage]:
-    """Get messages for a specific chat since a timestamp, excluding bot and system messages."""
+    """Get messages for a specific chat since a timestamp, excluding bot and host messages."""
     db = _get_db()
     sql = """
         SELECT id, chat_jid, sender, sender_name, content, timestamp
         FROM messages
         WHERE chat_jid = ? AND timestamp > ?
               AND content NOT LIKE ?
-              AND sender != 'system'
+              AND sender != 'host'
         ORDER BY timestamp
     """
     cursor = await db.execute(sql, (chat_jid, since_timestamp, f"{bot_prefix}:%"))
@@ -344,7 +345,7 @@ async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
             f"""
             SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me
             FROM messages
-            WHERE chat_jid = ? AND timestamp > ? {_EXCLUDE_INTERNAL_SYSTEM}
+            WHERE chat_jid = ? AND timestamp > ? {_EXCLUDE_INTERNAL_HOST}
             ORDER BY timestamp DESC
             LIMIT ?
             """,
@@ -355,7 +356,7 @@ async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
             f"""
             SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me
             FROM messages
-            WHERE chat_jid = ? {_EXCLUDE_INTERNAL_SYSTEM}
+            WHERE chat_jid = ? {_EXCLUDE_INTERNAL_HOST}
             ORDER BY timestamp DESC
             LIMIT ?
             """,

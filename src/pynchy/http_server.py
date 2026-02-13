@@ -20,7 +20,7 @@ from aiohttp import web
 from pynchy.config import DATA_DIR, DEPLOY_PORT, PROJECT_ROOT
 from pynchy.deploy import finalize_deploy
 from pynchy.logger import logger
-from pynchy.router import format_system_message
+from pynchy.router import format_host_message
 from pynchy.types import NewMessage
 
 _start_time = time.monotonic()
@@ -88,7 +88,7 @@ class HttpDeps(Protocol):
 
     async def send_message(self, jid: str, text: str) -> None: ...
 
-    async def broadcast_system_message(self, jid: str, text: str) -> None: ...
+    async def broadcast_host_message(self, jid: str, text: str) -> None: ...
 
     def main_chat_jid(self) -> str: ...
 
@@ -150,7 +150,9 @@ async def _handle_deploy(request: web.Request) -> web.Response:
             cwd=str(PROJECT_ROOT),
             capture_output=True,
         )
-        logger.warning("git rebase failed, restarting with current code", stderr=pull.stderr.strip())
+        logger.warning(
+            "git rebase failed, restarting with current code", stderr=pull.stderr.strip()
+        )
         _write_boot_warning(
             "Deploy rolled back to previous commit because incoming commits failed to rebase. "
             "Please reconcile the incoming changes into your local clone, push, then redeploy."
@@ -178,7 +180,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
             chat_jid = deps.main_chat_jid()
             if chat_jid:
                 msg = f"Deploy failed — import validation error, rolled back to {old_sha[:8]}."
-                await deps.broadcast_system_message(chat_jid, format_system_message(msg))
+                await deps.broadcast_host_message(chat_jid, format_host_message(msg))
             return web.json_response(
                 {"error": "import validation failed", "rolled_back_to": old_sha},
                 status=422,
@@ -210,7 +212,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
                 chat_jid = deps.main_chat_jid()
                 if chat_jid:
                     msg = "Deploy warning — container rebuild failed, continuing with old image."
-                    await deps.broadcast_system_message(chat_jid, format_system_message(msg))
+                    await deps.broadcast_host_message(chat_jid, format_host_message(msg))
             else:
                 logger.info("Container image rebuilt successfully")
 
@@ -218,7 +220,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
     chat_jid = deps.main_chat_jid()
     if has_new_code:
         await finalize_deploy(
-            broadcast_system_message=deps.broadcast_system_message,
+            broadcast_host_message=deps.broadcast_host_message,
             chat_jid=chat_jid,
             commit_sha=new_sha,
             previous_sha=old_sha,
