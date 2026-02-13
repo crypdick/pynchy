@@ -81,6 +81,16 @@ A personal Claude assistant accessible via WhatsApp, with minimal custom code.
 
 ## Architecture Decisions
 
+### Transparent Token Stream
+
+The chat history should be a faithful representation of the LLM's token stream. A user reading the conversation should be able to understand the exact contents of the LLM context — system prompts, user messages, assistant responses, tool calls, and host notifications. Nothing is hidden; every message role is visible and distinguishable. This means:
+
+- **System prompts** (`sender='system'`) are logged to the DB and shown in chat history
+- **Host messages** (`sender='host'`) are notifications from the pynchy process (boot, deploy, errors) — distinct from LLM system messages
+- **User messages**, **bot responses**, and **deploy markers** are all stored and visible
+
+The goal: if something went wrong, you can reconstruct what the LLM saw by reading the chat.
+
 ### Message Routing
 - A router listens to WhatsApp and routes messages based on configuration
 - Only messages from registered groups are processed
