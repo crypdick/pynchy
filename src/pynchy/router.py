@@ -14,6 +14,9 @@ if TYPE_CHECKING:
     from pynchy.types import Channel, NewMessage
 
 _INTERNAL_TAG_RE = re.compile(r"<internal>[\s\S]*?</internal>")
+_SYSTEM_TAG_RE = re.compile(r"^\s*<system>([\s\S]*?)</system>\s*$")
+
+SYSTEM_PREFIX = "[system]"
 
 
 def escape_xml(s: str) -> str:
@@ -34,6 +37,19 @@ def format_messages(messages: list[NewMessage]) -> str:
 def strip_internal_tags(text: str) -> str:
     """Remove <internal>...</internal> blocks and trim whitespace."""
     return _INTERNAL_TAG_RE.sub("", text).strip()
+
+
+def parse_system_tag(text: str) -> tuple[bool, str]:
+    """Check if text is wrapped in <system> tags. Returns (is_system, content)."""
+    match = _SYSTEM_TAG_RE.match(text)
+    if match:
+        return True, match.group(1).strip()
+    return False, text
+
+
+def format_system_message(text: str) -> str:
+    """Format a system message with the standard prefix."""
+    return f"{SYSTEM_PREFIX} {text}"
 
 
 def format_outbound(channel: Channel, raw_text: str) -> str:

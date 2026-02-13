@@ -269,7 +269,10 @@ async def list_tools() -> list[Tool]:
                 "initial prompt of the new session.\n\n"
                 "After calling this tool, the current session ends "
                 "immediately. Do NOT attempt further work after "
-                "calling it."
+                "calling it.\n\n"
+                "Wrap any user-facing confirmation text in <system> "
+                "tags so it displays as a system message, e.g.:\n"
+                "<system>Context cleared. Starting fresh session.</system>"
             ),
             inputSchema={
                 "type": "object",

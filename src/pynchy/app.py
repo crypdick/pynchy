@@ -42,6 +42,7 @@ from pynchy.db import (
     get_new_messages,
     get_router_state,
     init_database,
+    set_chat_cleared_at,
     set_registered_group,
     set_router_state,
     set_session,
@@ -49,12 +50,12 @@ from pynchy.db import (
     store_message,
     store_message_direct,
 )
-from pynchy.event_bus import AgentActivityEvent, EventBus, MessageEvent
+from pynchy.event_bus import AgentActivityEvent, ChatClearedEvent, EventBus, MessageEvent
 from pynchy.group_queue import GroupQueue
 from pynchy.http_server import start_http_server
 from pynchy.ipc import start_ipc_watcher
 from pynchy.logger import logger
-from pynchy.router import format_messages, format_outbound
+from pynchy.router import format_messages, format_outbound, format_system_message, parse_system_tag
 from pynchy.runtime import get_runtime
 from pynchy.task_scheduler import start_scheduler_loop
 from pynchy.types import Channel, ContainerInput, ContainerOutput, NewMessage, RegisteredGroup
@@ -214,11 +215,7 @@ class PynchyApp:
             self.queue.close_stdin(chat_jid)
             self.last_agent_timestamp[chat_jid] = missed_messages[-1].timestamp
             await self._save_state()
-            reset_text = "Context reset. Next message starts a fresh session."
-            for ch in self.channels:
-                if ch.is_connected():
-                    with contextlib.suppress(Exception):
-                        await ch.send_message(chat_jid, reset_text)
+            await self._send_clear_confirmation(chat_jid)
             logger.info("Context reset", group=group.name)
             return True
 
@@ -266,9 +263,14 @@ class PynchyApp:
                 from pynchy.router import strip_internal_tags
 
                 text = strip_internal_tags(raw)
-                logger.info("Agent output", group=group.name, text=raw[:200])
                 if text:
-                    formatted = f"{ASSISTANT_NAME}: {text}"
+                    is_system, content = parse_system_tag(text)
+                    if is_system:
+                        formatted = format_system_message(content)
+                        logger.info("System message", group=group.name, text=content[:200])
+                    else:
+                        formatted = f"{ASSISTANT_NAME}: {text}"
+                        logger.info("Agent output", group=group.name, text=raw[:200])
                     # Store bot response in SQLite (source of truth)
                     ts = datetime.now(UTC).isoformat()
                     await store_message_direct(
@@ -484,6 +486,22 @@ class PynchyApp:
 
             await asyncio.sleep(POLL_INTERVAL)
 
+    async def _send_boot_notification(self) -> None:
+        """Send a system message to the main channel on startup."""
+        main_jid = next(
+            (jid for jid, g in self.registered_groups.items() if g.folder == MAIN_GROUP_FOLDER),
+            None,
+        )
+        if not main_jid:
+            return
+
+        text = format_system_message(f"{ASSISTANT_NAME} online")
+        for ch in self.channels:
+            if ch.is_connected():
+                with contextlib.suppress(Exception):
+                    await ch.send_message(main_jid, text)
+        logger.info("Boot notification sent")
+
     async def _recover_pending_messages(self) -> None:
         """Startup recovery: check for unprocessed messages in registered groups."""
         for chat_jid, group in self.registered_groups.items():
@@ -637,6 +655,41 @@ class PynchyApp:
     # Helpers
     # ------------------------------------------------------------------
 
+    async def _send_clear_confirmation(self, chat_jid: str) -> None:
+        """Set cleared_at, store and broadcast a system confirmation."""
+        # Mark clear boundary — messages before this are hidden
+        cleared_ts = datetime.now(UTC).isoformat()
+        await set_chat_cleared_at(chat_jid, cleared_ts)
+        self.event_bus.emit(ChatClearedEvent(chat_jid=chat_jid))
+
+        # Store and send the confirmation (timestamp > cleared_at)
+        reset_text = format_system_message(
+            "Context reset. Next message starts a fresh session."
+        )
+        ts = datetime.now(UTC).isoformat()
+        await store_message_direct(
+            id=f"system-{int(datetime.now(UTC).timestamp() * 1000)}",
+            chat_jid=chat_jid,
+            sender="system",
+            sender_name="system",
+            content=reset_text,
+            timestamp=ts,
+            is_from_me=True,
+        )
+        for ch in self.channels:
+            if ch.is_connected():
+                with contextlib.suppress(Exception):
+                    await ch.send_message(chat_jid, reset_text)
+        self.event_bus.emit(
+            MessageEvent(
+                chat_jid=chat_jid,
+                sender_name="system",
+                content=reset_text,
+                timestamp=ts,
+                is_bot=True,
+            )
+        )
+
     def _find_channel(self, jid: str) -> Channel | None:
         """Find the channel that owns a given JID."""
         for c in self.channels:
@@ -759,6 +812,7 @@ class PynchyApp:
         self._http_runner = await start_http_server(self._make_http_deps())
         logger.info("HTTP server ready", port=DEPLOY_PORT)
 
+        await self._send_boot_notification()
         await self._recover_pending_messages()
         await self._check_deploy_continuation()
         await self._start_message_loop()
@@ -853,7 +907,11 @@ class PynchyApp:
                 app.queue.enqueue_message_check(jid)
 
             def subscribe_events(self, callback: Any) -> Any:
-                from pynchy.event_bus import AgentActivityEvent, MessageEvent
+                from pynchy.event_bus import (
+                    AgentActivityEvent,
+                    ChatClearedEvent,
+                    MessageEvent,
+                )
 
                 unsubs = []
 
@@ -878,8 +936,17 @@ class PynchyApp:
                         }
                     )
 
+                async def on_clear(event: ChatClearedEvent) -> None:
+                    await callback(
+                        {
+                            "type": "chat_cleared",
+                            "chat_jid": event.chat_jid,
+                        }
+                    )
+
                 unsubs.append(app.event_bus.subscribe(MessageEvent, on_msg))
                 unsubs.append(app.event_bus.subscribe(AgentActivityEvent, on_activity))
+                unsubs.append(app.event_bus.subscribe(ChatClearedEvent, on_clear))
 
                 def unsubscribe() -> None:
                     for unsub in unsubs:
@@ -926,6 +993,9 @@ class PynchyApp:
             async def clear_session(self, group_folder: str) -> None:
                 app.sessions.pop(group_folder, None)
                 await clear_session(group_folder)
+
+            async def clear_chat_history(self, chat_jid: str) -> None:
+                await app._send_clear_confirmation(chat_jid)
 
             def enqueue_message_check(self, group_jid: str) -> None:
                 app.queue.enqueue_message_check(group_jid)

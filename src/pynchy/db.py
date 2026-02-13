@@ -100,7 +100,12 @@ async def _create_schema(database: aiosqlite.Connection) -> None:
         )
         await database.commit()
     except Exception:
-        # Column already exists
+        pass
+    # Migration: add cleared_at column to chats
+    try:
+        await database.execute("ALTER TABLE chats ADD COLUMN cleared_at TEXT")
+        await database.commit()
+    except Exception:
         pass
 
 
@@ -127,6 +132,13 @@ async def _init_test_database() -> None:
 
 
 # --- Chat metadata ---
+
+
+async def set_chat_cleared_at(chat_jid: str, timestamp: str) -> None:
+    """Mark a chat as cleared at the given timestamp. Messages before this are hidden."""
+    db = _get_db()
+    await db.execute("UPDATE chats SET cleared_at = ? WHERE jid = ?", (timestamp, chat_jid))
+    await db.commit()
 
 
 async def store_chat_metadata(chat_jid: str, timestamp: str, name: str | None = None) -> None:
@@ -308,18 +320,40 @@ async def get_messages_since(
 
 
 async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
-    """Get recent messages for a chat, including bot responses. Newest last."""
+    """Get recent messages for a chat, including bot responses. Newest last.
+
+    Respects the cleared_at boundary — messages before it are hidden.
+    """
     db = _get_db()
-    cursor = await db.execute(
-        """
-        SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me
-        FROM messages
-        WHERE chat_jid = ?
-        ORDER BY timestamp DESC
-        LIMIT ?
-        """,
-        (chat_jid, limit),
+    # Fetch cleared_at for this chat
+    cleared_cursor = await db.execute(
+        "SELECT cleared_at FROM chats WHERE jid = ?", (chat_jid,)
     )
+    cleared_row = await cleared_cursor.fetchone()
+    cleared_at = cleared_row["cleared_at"] if cleared_row and cleared_row["cleared_at"] else None
+
+    if cleared_at:
+        cursor = await db.execute(
+            """
+            SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me
+            FROM messages
+            WHERE chat_jid = ? AND timestamp > ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+            """,
+            (chat_jid, cleared_at, limit),
+        )
+    else:
+        cursor = await db.execute(
+            """
+            SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me
+            FROM messages
+            WHERE chat_jid = ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+            """,
+            (chat_jid, limit),
+        )
     rows = await cursor.fetchall()
 
     return [
