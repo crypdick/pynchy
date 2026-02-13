@@ -31,6 +31,8 @@ Single source of truth for all pynchy work items.
 - add support for multiple accounts/subscriptions. allow user to designate different workplaces to different accounts (e.g. corporate claude sub, personal claude sub, etc).
 - add a self-documenting hook to make the agent update its docs as it learns new things. it should run cmds and be sure that they work before writing docs (otherwise it's a hypothesis, not documetnation)
 - migrate away from single 'god' CLAUDE.md files to .claude/ folders that use the progressive disclosure principle: https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices. similarly, some of the docs in the docs/ folder should be migrated to .claude/ files, to keep all claude instructions in a single place
+- **[LOW PRIORITY]** Extract Apple Container runtime into standalone plugin (`pynchy-plugin-apple-container`). Requires plugin discovery system first. Serves as reference implementation for RuntimePlugin.
+- **[LOW PRIORITY]** Extract agent-browser skill into standalone plugin. Consider if container image size becomes an issue.
 
 ### 2 - Planning
 *Draft plan exists. Awaiting human sign-off.*
