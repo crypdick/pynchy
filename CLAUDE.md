@@ -45,10 +45,27 @@ uvx pre-commit run --all-files  # Run all pre-commit hooks
 ./container/build.sh     # Rebuild agent container
 ```
 
-Service management:
+Service management (macOS):
 ```bash
 launchctl load ~/Library/LaunchAgents/com.pynchy.plist
 launchctl unload ~/Library/LaunchAgents/com.pynchy.plist
+```
+
+## Deployment
+
+The pynchy service runs on `nuc-server` (Intel NUC, headless Ubuntu) over Tailscale. SSH: `ssh nuc-server`, user `ricardo`.
+
+```bash
+# Deploy / restart
+curl -s -X POST http://nuc-server:8484/deploy
+
+# Service status & logs (run on NUC or via ssh)
+ssh nuc-server 'systemctl --user status pynchy'
+ssh nuc-server 'journalctl --user -u pynchy -f'
+ssh nuc-server 'journalctl --user -u pynchy -n 100'
+
+# Check running containers
+ssh nuc-server 'docker ps --filter name=pynchy'
 ```
 
 ## Container Build Cache
