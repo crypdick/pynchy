@@ -76,6 +76,22 @@ ssh nuc-server 'journalctl --user -u pynchy -n 100'
 ssh nuc-server 'docker ps --filter name=pynchy'
 ```
 
+## Container GitHub Access
+
+Container agents get GitHub credentials auto-forwarded from the host's `gh` CLI. To set up on a new host:
+
+```bash
+# Interactive login (works over SSH with -t for TTY)
+ssh -t nuc-server 'gh auth login -p ssh'
+# Select: GitHub.com → Login with a web browser
+# Then follow the device code flow in your local browser
+
+# Verify
+ssh nuc-server 'gh auth status'
+```
+
+After authenticating, `_write_env_file()` auto-discovers `GH_TOKEN` and git identity on each container launch. No manual env configuration needed.
+
 ## Container Build Cache
 
 Apple Container's buildkit caches the build context aggressively. `--no-cache` alone does NOT invalidate COPY steps — the builder's volume retains stale files. To force a truly clean rebuild:
