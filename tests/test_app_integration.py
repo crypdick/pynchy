@@ -190,6 +190,87 @@ class TestProcessGroupMessages:
         assert len(channel.sent_messages) == 1
         assert "The answer is 4" in channel.sent_messages[0][1]
 
+    async def test_trace_events_forwarded_to_channels(self, app: PynchyApp, tmp_path: Path):
+        """Thinking and tool_use trace events should be sent to channels, not just results."""
+        msg = _make_message(content="@pynchy do something complex")
+        await store_message(msg)
+
+        # Simulate a realistic agent session: thinking → tool_use → result
+        fake_proc = FakeProcess()
+        driver_started = asyncio.Event()
+
+        async def schedule_trace_sequence():
+            driver_started.set()
+            await asyncio.sleep(0.01)
+            # 1. Thinking block
+            fake_proc.stdout.feed_data(_marker_wrap({
+                "type": "thinking",
+                "status": "success",
+                "thinking": "Let me figure this out...",
+            }))
+            await asyncio.sleep(0.01)
+            # 2. Tool use block
+            fake_proc.stdout.feed_data(_marker_wrap({
+                "type": "tool_use",
+                "status": "success",
+                "tool_name": "Bash",
+                "tool_input": {"command": "ls"},
+            }))
+            await asyncio.sleep(0.01)
+            # 3. Final result
+            fake_proc.stdout.feed_data(_marker_wrap({
+                "type": "result",
+                "status": "success",
+                "result": "Done!",
+                "new_session_id": "sess-trace",
+            }))
+            await asyncio.sleep(0.01)
+            fake_proc._returncode = 0
+            fake_proc.stdout.feed_eof()
+            fake_proc.stderr.feed_eof()
+            fake_proc._wait_event.set()
+
+        driver = asyncio.create_task(schedule_trace_sequence())
+
+        async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
+            return fake_proc
+
+        channel = FakeChannel()
+        app.channels = [channel]
+
+        with (
+            patch("pynchy.container_runner.asyncio.create_subprocess_exec", fake_create),
+            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
+            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+        ):
+            (tmp_path / "groups" / "test-group").mkdir(parents=True)
+            result = await app._process_group_messages("group@g.us")
+
+        await driver
+        assert result is True
+
+        # Extract just the message texts
+        texts = [text for _, text in channel.sent_messages]
+
+        # Trace events should have been sent BEFORE the final result
+        assert any("thinking" in t.lower() for t in texts), (
+            f"Expected a thinking trace message, got: {texts}"
+        )
+        assert any("Bash" in t for t in texts), (
+            f"Expected a tool_use trace for 'Bash', got: {texts}"
+        )
+        # Final result should also be present
+        assert any("Done!" in t for t in texts), (
+            f"Expected final result 'Done!', got: {texts}"
+        )
+        # Thinking and tool traces should come before the result
+        thinking_idx = next(i for i, t in enumerate(texts) if "thinking" in t.lower())
+        tool_idx = next(i for i, t in enumerate(texts) if "Bash" in t)
+        result_idx = next(i for i, t in enumerate(texts) if "Done!" in t)
+        assert thinking_idx < result_idx, "Thinking trace should come before result"
+        assert tool_idx < result_idx, "Tool trace should come before result"
+
     async def test_skips_messages_without_trigger(self, app: PynchyApp, tmp_path: Path):
         """Messages without @pynchy trigger should be skipped for non-main groups."""
         msg = _make_message(content="just a regular message without trigger")
