@@ -895,6 +895,19 @@ WantedBy=default.target
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_text(unit)
             logger.info("Installed systemd user service", dest=str(dest))
+            subprocess.run(
+                ["systemctl", "--user", "daemon-reload"],
+                capture_output=True,
+            )
+            subprocess.run(
+                ["systemctl", "--user", "enable", "pynchy.service"],
+                capture_output=True,
+            )
+            # Enable lingering so the user service runs without an active login session
+            subprocess.run(
+                ["sudo", "loginctl", "enable-linger", home.name],
+                capture_output=True,
+            )
 
     # ------------------------------------------------------------------
     # Lifecycle
