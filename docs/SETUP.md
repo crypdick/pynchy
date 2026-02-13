@@ -23,8 +23,8 @@ On your local machine (for remote setup):
 SSH into your server and install the required packages:
 
 ```bash
-# Docker (container runtime for agents)
-sudo apt-get update && sudo apt-get install -y docker.io
+# System packages
+sudo apt-get update && sudo apt-get install -y docker.io sqlite3
 sudo usermod -aG docker $USER
 # Log out and back in, or use `sg docker -c "docker ps"` to test
 
