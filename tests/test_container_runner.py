@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -21,6 +22,8 @@ from pynchy.container_runner import (
     _input_to_dict,
     _parse_container_output,
     _parse_final_output,
+    _read_gh_token,
+    _read_git_identity,
     _read_oauth_token,
     _write_env_file,
     run_container_agent,
@@ -464,9 +467,7 @@ class TestReadOauthToken:
     def test_reads_token_from_credentials_file(self, tmp_path: Path):
         creds = tmp_path / ".claude" / ".credentials.json"
         creds.parent.mkdir(parents=True)
-        creds.write_text(json.dumps({
-            "claudeAiOauth": {"accessToken": "test-token-123"}
-        }))
+        creds.write_text(json.dumps({"claudeAiOauth": {"accessToken": "test-token-123"}}))
         with patch("pynchy.container_runner.Path.home", return_value=tmp_path):
             assert _read_oauth_token() == "test-token-123"
 
@@ -479,42 +480,48 @@ class TestReadOauthToken:
 
 
 class TestWriteEnvFile:
+    """Tests for _write_env_file with auto-discovery of Claude, GitHub, and git credentials."""
+
+    def _patch_env(self, tmp_path: Path, gh_token=None, git_name=None, git_email=None):
+        """Return a combined context manager patching dirs and subprocess auto-discovery."""
+        return contextlib.ExitStack()
+
     def test_prefers_dotenv_over_oauth(self, tmp_path: Path):
         """Explicit .env file takes priority over OAuth credentials."""
         env_file = tmp_path / ".env"
         env_file.write_text("ANTHROPIC_API_KEY=sk-ant-test\n")
         creds = tmp_path / ".claude" / ".credentials.json"
         creds.parent.mkdir(parents=True)
-        creds.write_text(json.dumps({
-            "claudeAiOauth": {"accessToken": "oauth-token"}
-        }))
+        creds.write_text(json.dumps({"claudeAiOauth": {"accessToken": "oauth-token"}}))
         with (
             patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
             patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
             patch("pynchy.container_runner.Path.home", return_value=tmp_path),
+            patch("pynchy.container_runner._read_gh_token", return_value=None),
+            patch("pynchy.container_runner._read_git_identity", return_value=(None, None)),
         ):
             env_dir = _write_env_file()
             assert env_dir is not None
             content = (env_dir / "env").read_text()
-            assert "ANTHROPIC_API_KEY=sk-ant-test" in content
+            assert "ANTHROPIC_API_KEY='sk-ant-test'" in content
             assert "oauth-token" not in content
 
     def test_falls_back_to_oauth_token(self, tmp_path: Path):
         """No .env file → reads OAuth token from credentials."""
         creds = tmp_path / ".claude" / ".credentials.json"
         creds.parent.mkdir(parents=True)
-        creds.write_text(json.dumps({
-            "claudeAiOauth": {"accessToken": "my-oauth-token"}
-        }))
+        creds.write_text(json.dumps({"claudeAiOauth": {"accessToken": "my-oauth-token"}}))
         with (
             patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
             patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
             patch("pynchy.container_runner.Path.home", return_value=tmp_path),
+            patch("pynchy.container_runner._read_gh_token", return_value=None),
+            patch("pynchy.container_runner._read_git_identity", return_value=(None, None)),
         ):
             env_dir = _write_env_file()
             assert env_dir is not None
             content = (env_dir / "env").read_text()
-            assert "CLAUDE_CODE_OAUTH_TOKEN=my-oauth-token" in content
+            assert "CLAUDE_CODE_OAUTH_TOKEN='my-oauth-token'" in content
 
     def test_returns_none_when_no_credentials(self, tmp_path: Path):
         with (
@@ -522,8 +529,163 @@ class TestWriteEnvFile:
             patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
             patch("pynchy.container_runner.Path.home", return_value=tmp_path),
             patch("pynchy.container_runner._read_oauth_from_keychain", return_value=None),
+            patch("pynchy.container_runner._read_gh_token", return_value=None),
+            patch("pynchy.container_runner._read_git_identity", return_value=(None, None)),
         ):
             assert _write_env_file() is None
+
+    def test_auto_discovers_gh_token(self, tmp_path: Path):
+        """GH_TOKEN is auto-discovered from gh CLI when not in .env."""
+        with (
+            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            patch("pynchy.container_runner.Path.home", return_value=tmp_path),
+            patch("pynchy.container_runner._read_oauth_from_keychain", return_value=None),
+            patch("pynchy.container_runner._read_gh_token", return_value="gho_abc123"),
+            patch("pynchy.container_runner._read_git_identity", return_value=(None, None)),
+        ):
+            env_dir = _write_env_file()
+            assert env_dir is not None
+            content = (env_dir / "env").read_text()
+            assert "GH_TOKEN='gho_abc123'" in content
+
+    def test_dotenv_gh_token_overrides_auto_discovery(self, tmp_path: Path):
+        """.env GH_TOKEN takes priority over gh CLI auto-discovery."""
+        env_file = tmp_path / ".env"
+        env_file.write_text("GH_TOKEN=explicit-token\n")
+        with (
+            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            patch("pynchy.container_runner.Path.home", return_value=tmp_path),
+            patch("pynchy.container_runner._read_oauth_from_keychain", return_value=None),
+            patch("pynchy.container_runner._read_gh_token", return_value="auto-token"),
+            patch("pynchy.container_runner._read_git_identity", return_value=(None, None)),
+        ):
+            env_dir = _write_env_file()
+            assert env_dir is not None
+            content = (env_dir / "env").read_text()
+            assert "GH_TOKEN='explicit-token'" in content
+            assert "auto-token" not in content
+
+    def test_auto_discovers_git_identity(self, tmp_path: Path):
+        """Git identity is auto-discovered and written as all four env vars."""
+        with (
+            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            patch("pynchy.container_runner.Path.home", return_value=tmp_path),
+            patch("pynchy.container_runner._read_oauth_from_keychain", return_value=None),
+            patch("pynchy.container_runner._read_gh_token", return_value=None),
+            patch(
+                "pynchy.container_runner._read_git_identity",
+                return_value=("Jane Doe", "jane@example.com"),
+            ),
+        ):
+            env_dir = _write_env_file()
+            assert env_dir is not None
+            content = (env_dir / "env").read_text()
+            assert "GIT_AUTHOR_NAME='Jane Doe'" in content
+            assert "GIT_COMMITTER_NAME='Jane Doe'" in content
+            assert "GIT_AUTHOR_EMAIL='jane@example.com'" in content
+            assert "GIT_COMMITTER_EMAIL='jane@example.com'" in content
+
+    def test_all_credentials_combined(self, tmp_path: Path):
+        """Claude, GitHub, and git credentials are all written together."""
+        creds = tmp_path / ".claude" / ".credentials.json"
+        creds.parent.mkdir(parents=True)
+        creds.write_text(json.dumps({"claudeAiOauth": {"accessToken": "oauth-tok"}}))
+        with (
+            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            patch("pynchy.container_runner.Path.home", return_value=tmp_path),
+            patch("pynchy.container_runner._read_gh_token", return_value="gho_xyz"),
+            patch(
+                "pynchy.container_runner._read_git_identity",
+                return_value=("Bob", "bob@test.com"),
+            ),
+        ):
+            env_dir = _write_env_file()
+            assert env_dir is not None
+            content = (env_dir / "env").read_text()
+            assert "CLAUDE_CODE_OAUTH_TOKEN='oauth-tok'" in content
+            assert "GH_TOKEN='gho_xyz'" in content
+            assert "GIT_AUTHOR_NAME='Bob'" in content
+
+    def test_values_are_shell_quoted(self, tmp_path: Path):
+        """Names with spaces and apostrophes are safely shell-quoted."""
+        with (
+            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            patch("pynchy.container_runner.Path.home", return_value=tmp_path),
+            patch("pynchy.container_runner._read_oauth_from_keychain", return_value=None),
+            patch("pynchy.container_runner._read_gh_token", return_value=None),
+            patch(
+                "pynchy.container_runner._read_git_identity",
+                return_value=("O'Brien Smith", None),
+            ),
+        ):
+            env_dir = _write_env_file()
+            assert env_dir is not None
+            content = (env_dir / "env").read_text()
+            # Shell quoting escapes single quotes: O'Brien → 'O'\''Brien Smith'
+            assert "O" in content
+            assert "Brien" in content
+
+
+class TestReadGhToken:
+    def test_returns_token_from_gh_cli(self):
+        mock_result = type("Result", (), {"returncode": 0, "stdout": "gho_test123\n"})()
+        with patch("pynchy.container_runner.subprocess.run", return_value=mock_result):
+            assert _read_gh_token() == "gho_test123"
+
+    def test_returns_none_on_failure(self):
+        mock_result = type("Result", (), {"returncode": 1, "stdout": ""})()
+        with patch("pynchy.container_runner.subprocess.run", return_value=mock_result):
+            assert _read_gh_token() is None
+
+    def test_returns_none_when_gh_not_installed(self):
+        with patch("pynchy.container_runner.subprocess.run", side_effect=FileNotFoundError):
+            assert _read_gh_token() is None
+
+    def test_returns_none_on_timeout(self):
+        with patch(
+            "pynchy.container_runner.subprocess.run",
+            side_effect=subprocess.TimeoutExpired("gh", 5),
+        ):
+            assert _read_gh_token() is None
+
+
+class TestReadGitIdentity:
+    def test_returns_name_and_email(self):
+        def mock_run(cmd, **kwargs):
+            key = cmd[-1]
+            if key == "user.name":
+                return type("R", (), {"returncode": 0, "stdout": "Alice\n"})()
+            elif key == "user.email":
+                return type("R", (), {"returncode": 0, "stdout": "alice@test.com\n"})()
+            return type("R", (), {"returncode": 1, "stdout": ""})()
+
+        with patch("pynchy.container_runner.subprocess.run", side_effect=mock_run):
+            name, email = _read_git_identity()
+            assert name == "Alice"
+            assert email == "alice@test.com"
+
+    def test_returns_none_when_not_configured(self):
+        mock_result = type("R", (), {"returncode": 1, "stdout": ""})()
+        with patch("pynchy.container_runner.subprocess.run", return_value=mock_result):
+            name, email = _read_git_identity()
+            assert name is None
+            assert email is None
+
+    def test_returns_partial_when_only_name_set(self):
+        def mock_run(cmd, **kwargs):
+            if cmd[-1] == "user.name":
+                return type("R", (), {"returncode": 0, "stdout": "Bob\n"})()
+            return type("R", (), {"returncode": 1, "stdout": ""})()
+
+        with patch("pynchy.container_runner.subprocess.run", side_effect=mock_run):
+            name, email = _read_git_identity()
+            assert name == "Bob"
+            assert email is None
 
 
 # ---------------------------------------------------------------------------

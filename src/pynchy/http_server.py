@@ -156,7 +156,37 @@ async def _handle_deploy(request: web.Request) -> web.Response:
                 status=422,
             )
 
-    # 3. Restart (write continuation only when new code was deployed)
+    # 3. Rebuild container image if container/ files changed
+    if has_new_code:
+        container_diff = subprocess.run(
+            ["git", "diff", "--name-only", old_sha, new_sha, "--", "container/"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if container_diff.stdout.strip():
+            build_script = PROJECT_ROOT / "container" / "build.sh"
+            logger.info("Container files changed, rebuilding image...")
+            result = subprocess.run(
+                [str(build_script)],
+                cwd=str(PROJECT_ROOT / "container"),
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+            if result.returncode != 0:
+                logger.error(
+                    "Container rebuild failed",
+                    stderr=result.stderr[-500:],
+                )
+                chat_jid = deps.main_chat_jid()
+                if chat_jid:
+                    msg = "Deploy warning — container rebuild failed, continuing with old image."
+                    await deps.broadcast_system_message(chat_jid, format_system_message(msg))
+            else:
+                logger.info("Container image rebuilt successfully")
+
+    # 4. Restart (write continuation only when new code was deployed)
     chat_jid = deps.main_chat_jid()
     if has_new_code:
         await finalize_deploy(
@@ -172,13 +202,15 @@ async def _handle_deploy(request: web.Request) -> web.Response:
         loop = asyncio.get_running_loop()
         loop.call_later(0.5, os.kill, os.getpid(), signal.SIGTERM)
 
-    return web.json_response({
-        "status": "restarting",
-        "sha": new_sha,
-        "commit": _get_head_commit_message(),
-        "dirty": _is_repo_dirty(),
-        "previous_sha": old_sha,
-    })
+    return web.json_response(
+        {
+            "status": "restarting",
+            "sha": new_sha,
+            "commit": _get_head_commit_message(),
+            "dirty": _is_repo_dirty(),
+            "previous_sha": old_sha,
+        }
+    )
 
 
 # ------------------------------------------------------------------
