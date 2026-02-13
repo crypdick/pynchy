@@ -26,6 +26,7 @@ from pynchy.config import (
 from pynchy.db import create_task, delete_task, get_task_by_id, update_task
 from pynchy.deploy import finalize_deploy
 from pynchy.logger import logger
+from pynchy.router import format_system_message
 from pynchy.types import ContainerConfig, RegisteredGroup
 
 
@@ -51,6 +52,8 @@ class IpcDeps(Protocol):
     ) -> None: ...
 
     async def clear_session(self, group_folder: str) -> None: ...
+
+    async def clear_chat_history(self, chat_jid: str) -> None: ...
 
     def enqueue_message_check(self, group_jid: str) -> None: ...
 
@@ -360,6 +363,9 @@ async def process_task_ipc(
 
             await deps.clear_session(group_folder)
 
+            # Archive chat history and send system confirmation
+            await deps.clear_chat_history(chat_jid)
+
             # Write reset prompt for _process_group_messages to pick up
             reset_dir = DATA_DIR / "ipc" / group_folder
             reset_dir.mkdir(parents=True, exist_ok=True)
@@ -475,5 +481,5 @@ async def _deploy_error(
     logger.error("Deploy failed", error=message)
     await deps.send_message(
         chat_jid,
-        f"{ASSISTANT_NAME}: Deploy failed: {message}",
+        format_system_message(f"Deploy failed: {message}"),
     )
