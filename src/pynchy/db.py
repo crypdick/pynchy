@@ -335,9 +335,7 @@ async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
     """
     db = _get_db()
     # Fetch cleared_at for this chat
-    cleared_cursor = await db.execute(
-        "SELECT cleared_at FROM chats WHERE jid = ?", (chat_jid,)
-    )
+    cleared_cursor = await db.execute("SELECT cleared_at FROM chats WHERE jid = ?", (chat_jid,))
     cleared_row = await cleared_cursor.fetchone()
     cleared_at = cleared_row["cleared_at"] if cleared_row and cleared_row["cleared_at"] else None
 
