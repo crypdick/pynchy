@@ -207,7 +207,11 @@ class PynchyApp:
                 logger.info("Processing reset handoff", group=group.name)
                 handoff_text = format_system_message(f"[handoff] {prompt}")
                 await self._broadcast_system_message(chat_jid, handoff_text)
-                result = await self._run_agent(group, prompt, chat_jid)
+
+                async def handoff_on_output(result: ContainerOutput) -> None:
+                    await self._handle_streamed_output(chat_jid, group, result)
+
+                result = await self._run_agent(group, prompt, chat_jid, handoff_on_output)
                 return result != "error"
             return True
 
@@ -275,93 +279,12 @@ class PynchyApp:
         async def on_output(result: ContainerOutput) -> None:
             nonlocal had_error, output_sent_to_user
 
-            # Trace events — broadcast ephemerally, no SQLite storage
-            if result.type == "thinking":
-                trace_text = "\U0001f4ad thinking..."
-                for ch in self.channels:
-                    if ch.is_connected():
-                        with contextlib.suppress(Exception):
-                            await ch.send_message(chat_jid, trace_text)
-                self.event_bus.emit(
-                    AgentTraceEvent(
-                        chat_jid=chat_jid,
-                        trace_type="thinking",
-                        data={"thinking": result.thinking or ""},
-                    )
-                )
-                return
-            if result.type == "tool_use":
-                trace_text = f"\U0001f527 {result.tool_name or 'tool'}"
-                for ch in self.channels:
-                    if ch.is_connected():
-                        with contextlib.suppress(Exception):
-                            await ch.send_message(chat_jid, trace_text)
-                self.event_bus.emit(
-                    AgentTraceEvent(
-                        chat_jid=chat_jid,
-                        trace_type="tool_use",
-                        data={
-                            "tool_name": result.tool_name or "",
-                            "tool_input": result.tool_input or {},
-                        },
-                    )
-                )
-                return
-            if result.type == "text":
-                self.event_bus.emit(
-                    AgentTraceEvent(
-                        chat_jid=chat_jid,
-                        trace_type="text",
-                        data={"text": result.text or ""},
-                    )
-                )
-                return
-
-            if result.result:
-                raw = result.result if isinstance(result.result, str) else json.dumps(result.result)
-                from pynchy.router import strip_internal_tags
-
-                text = strip_internal_tags(raw)
-                if text:
-                    is_system, content = parse_system_tag(text)
-                    if is_system:
-                        formatted = format_system_message(content)
-                        logger.info("System message", group=group.name, text=content[:200])
-                    else:
-                        formatted = f"{ASSISTANT_NAME}: {text}"
-                        logger.info("Agent output", group=group.name, text=raw[:200])
-                    # Store bot response in SQLite (source of truth)
-                    ts = datetime.now(UTC).isoformat()
-                    await store_message_direct(
-                        id=f"bot-{int(datetime.now(UTC).timestamp() * 1000)}",
-                        chat_jid=chat_jid,
-                        sender="bot",
-                        sender_name=ASSISTANT_NAME,
-                        content=formatted,
-                        timestamp=ts,
-                        is_from_me=True,
-                    )
-                    # Broadcast to all connected channels
-                    for ch in self.channels:
-                        if ch.is_connected():
-                            try:
-                                await ch.send_message(chat_jid, formatted)
-                            except Exception as exc:
-                                logger.warning("Channel send failed", channel=ch.name, err=str(exc))
-                    # Emit for real-time TUI updates
-                    self.event_bus.emit(
-                        MessageEvent(
-                            chat_jid=chat_jid,
-                            sender_name=ASSISTANT_NAME,
-                            content=formatted,
-                            timestamp=ts,
-                            is_bot=True,
-                        )
-                    )
-                    output_sent_to_user = True
-                # Only reset idle timer on actual results, not session-update markers
+            sent = await self._handle_streamed_output(chat_jid, group, result)
+            if sent:
+                output_sent_to_user = True
+            # Only reset idle timer on actual results, not session-update markers
+            if result.type == "result":
                 reset_idle_timer()
-
             if result.status == "error":
                 had_error = True
 
@@ -391,6 +314,98 @@ class PynchyApp:
             return False
 
         return True
+
+    async def _handle_streamed_output(
+        self, chat_jid: str, group: RegisteredGroup, result: ContainerOutput
+    ) -> bool:
+        """Handle a streamed output from the container agent.
+
+        Broadcasts trace events and results to channels/TUI.
+        Returns True if a user-visible result was sent.
+        """
+        from pynchy.router import strip_internal_tags
+
+        # Trace events — broadcast ephemerally, no SQLite storage
+        if result.type == "thinking":
+            trace_text = "\U0001f4ad thinking..."
+            for ch in self.channels:
+                if ch.is_connected():
+                    with contextlib.suppress(Exception):
+                        await ch.send_message(chat_jid, trace_text)
+            self.event_bus.emit(
+                AgentTraceEvent(
+                    chat_jid=chat_jid,
+                    trace_type="thinking",
+                    data={"thinking": result.thinking or ""},
+                )
+            )
+            return False
+        if result.type == "tool_use":
+            trace_text = f"\U0001f527 {result.tool_name or 'tool'}"
+            for ch in self.channels:
+                if ch.is_connected():
+                    with contextlib.suppress(Exception):
+                        await ch.send_message(chat_jid, trace_text)
+            self.event_bus.emit(
+                AgentTraceEvent(
+                    chat_jid=chat_jid,
+                    trace_type="tool_use",
+                    data={
+                        "tool_name": result.tool_name or "",
+                        "tool_input": result.tool_input or {},
+                    },
+                )
+            )
+            return False
+        if result.type == "text":
+            self.event_bus.emit(
+                AgentTraceEvent(
+                    chat_jid=chat_jid,
+                    trace_type="text",
+                    data={"text": result.text or ""},
+                )
+            )
+            return False
+
+        if result.result:
+            raw = result.result if isinstance(result.result, str) else json.dumps(result.result)
+            text = strip_internal_tags(raw)
+            if text:
+                is_system, content = parse_system_tag(text)
+                if is_system:
+                    formatted = format_system_message(content)
+                    logger.info("System message", group=group.name, text=content[:200])
+                else:
+                    formatted = f"{ASSISTANT_NAME}: {text}"
+                    logger.info("Agent output", group=group.name, text=raw[:200])
+                ts = datetime.now(UTC).isoformat()
+                await store_message_direct(
+                    id=f"bot-{int(datetime.now(UTC).timestamp() * 1000)}",
+                    chat_jid=chat_jid,
+                    sender="bot",
+                    sender_name=ASSISTANT_NAME,
+                    content=formatted,
+                    timestamp=ts,
+                    is_from_me=True,
+                )
+                for ch in self.channels:
+                    if ch.is_connected():
+                        try:
+                            await ch.send_message(chat_jid, formatted)
+                        except Exception as exc:
+                            logger.warning("Channel send failed", channel=ch.name, err=str(exc))
+                self.event_bus.emit(
+                    MessageEvent(
+                        chat_jid=chat_jid,
+                        sender_name=ASSISTANT_NAME,
+                        content=formatted,
+                        timestamp=ts,
+                        is_bot=True,
+                    )
+                )
+                return True
+
+        return False
 
     async def _run_agent(
         self,
@@ -830,14 +845,13 @@ class PynchyApp:
     def _is_launchd_managed() -> bool:
         """Check if this process was started by launchd (PPID 1)."""
         import os
+
         return os.getppid() == 1
 
     @staticmethod
     def _is_launchd_loaded(label: str) -> bool:
         """Check if a launchd job is loaded."""
-        result = subprocess.run(
-            ["launchctl", "list", label], capture_output=True
-        )
+        result = subprocess.run(["launchctl", "list", label], capture_output=True)
         return result.returncode == 0
 
     @staticmethod
