@@ -164,6 +164,8 @@ class HttpDeps(Protocol):
         self, callback: Callable[[dict[str, Any]], Coroutine[Any, Any, None]]
     ) -> Callable[[], None]: ...
 
+    async def get_periodic_agents(self) -> list[dict[str, Any]]: ...
+
 
 # ------------------------------------------------------------------
 # Existing endpoints
@@ -384,6 +386,13 @@ async def _handle_api_events(request: web.Request) -> web.StreamResponse:
     return response
 
 
+async def _handle_api_periodic(request: web.Request) -> web.Response:
+    """Return periodic agent status."""
+    deps: HttpDeps = request.app["deps"]
+    agents = await deps.get_periodic_agents()
+    return web.json_response(agents)
+
+
 # ------------------------------------------------------------------
 # Server setup
 # ------------------------------------------------------------------
@@ -399,6 +408,7 @@ async def start_http_server(deps: HttpDeps) -> web.AppRunner:
     app.router.add_get("/api/messages", _handle_api_messages)
     app.router.add_post("/api/send", _handle_api_send)
     app.router.add_get("/api/events", _handle_api_events)
+    app.router.add_get("/api/periodic", _handle_api_periodic)
 
     runner = web.AppRunner(app)
     await runner.setup()

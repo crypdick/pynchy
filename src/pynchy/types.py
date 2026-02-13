@@ -150,6 +150,9 @@ class Channel(Protocol):
     # Optional: typing indicator. Channels that support it implement it.
     # set_typing is NOT part of the protocol — check with hasattr at call sites.
 
+    # Optional: group creation. Only WhatsApp supports this currently.
+    # create_group is NOT part of the protocol — check with hasattr at call sites.
+
     # Whether to prefix outbound messages with the assistant name.
     # Telegram bots already display their name, so they return false.
     # WhatsApp returns true. Default true if not implemented.

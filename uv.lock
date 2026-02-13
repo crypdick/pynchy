@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.13"
 
 [[package]]
@@ -1073,6 +1073,7 @@ dependencies = [
     { name = "mcp" },
     { name = "neonize" },
     { name = "pydantic" },
+    { name = "pyyaml" },
     { name = "qrcode" },
     { name = "structlog" },
     { name = "textual" },
@@ -1098,6 +1099,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=1.26.0" },
     { name = "neonize", specifier = ">=0.3.14.post0" },
     { name = "pydantic", specifier = ">=2.12.5" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "qrcode", specifier = ">=8.2" },
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "textual", specifier = ">=7.5.0" },

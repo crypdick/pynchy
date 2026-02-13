@@ -37,6 +37,8 @@ from pynchy.container_runner import (
 )
 from pynchy.db import (
     clear_session,
+    create_task,
+    get_active_task_for_group,
     get_all_chats,
     get_all_registered_groups,
     get_all_sessions,
@@ -52,6 +54,7 @@ from pynchy.db import (
     store_chat_metadata,
     store_message,
     store_message_direct,
+    update_task,
 )
 from pynchy.event_bus import (
     AgentActivityEvent,
@@ -148,6 +151,122 @@ class PynchyApp:
             name=group.name,
             folder=group.folder,
         )
+
+    async def _reconcile_periodic_agents(self) -> None:
+        """Scan groups/ for periodic.yaml files and ensure tasks + chat groups exist.
+
+        Idempotent — safe to run on every startup. Creates WhatsApp groups for
+        new periodic agents, and updates scheduled tasks if config changed.
+        """
+        import uuid
+        from zoneinfo import ZoneInfo
+
+        from croniter import croniter
+
+        from pynchy.config import TIMEZONE
+        from pynchy.periodic import load_periodic_config
+
+        # Build folder->jid lookup from existing registered groups
+        folder_to_jid: dict[str, str] = {g.folder: jid for jid, g in self.registered_groups.items()}
+
+        # Scan all group folders for periodic.yaml
+        if not GROUPS_DIR.exists():
+            return
+
+        reconciled = 0
+        for folder in sorted(GROUPS_DIR.iterdir()):
+            if not folder.is_dir():
+                continue
+
+            config = load_periodic_config(folder.name)
+            if config is None:
+                continue
+
+            # 1. Ensure the group is registered (create chat group if needed)
+            jid = folder_to_jid.get(folder.name)
+            if jid is None:
+                # Find a channel that supports create_group
+                channel = next(
+                    (ch for ch in self.channels if hasattr(ch, "create_group")),
+                    None,
+                )
+                if channel is None:
+                    logger.warning(
+                        "No channel supports create_group, skipping periodic agent",
+                        folder=folder.name,
+                    )
+                    continue
+
+                agent_name = folder.name.replace("-", " ").title()
+                jid = await channel.create_group(agent_name)
+                group = RegisteredGroup(
+                    name=agent_name,
+                    folder=folder.name,
+                    trigger=f"@{ASSISTANT_NAME}",
+                    added_at=datetime.now(UTC).isoformat(),
+                    requires_trigger=False,
+                )
+                await self._register_group(jid, group)
+                folder_to_jid[folder.name] = jid
+                logger.info(
+                    "Created chat group for periodic agent",
+                    name=agent_name,
+                    folder=folder.name,
+                )
+
+            # 2. Ensure a scheduled task exists and is up to date
+            existing_task = await get_active_task_for_group(folder.name)
+
+            if existing_task is None:
+                # Create new task
+                tz = ZoneInfo(TIMEZONE)
+                cron = croniter(config.schedule, datetime.now(tz))
+                next_run = cron.get_next(datetime).isoformat()
+
+                task_id = f"periodic-{folder.name}-{uuid.uuid4().hex[:8]}"
+                await create_task(
+                    {
+                        "id": task_id,
+                        "group_folder": folder.name,
+                        "chat_jid": jid,
+                        "prompt": config.prompt,
+                        "schedule_type": "cron",
+                        "schedule_value": config.schedule,
+                        "context_mode": config.context_mode,
+                        "next_run": next_run,
+                        "status": "active",
+                        "created_at": datetime.now(UTC).isoformat(),
+                    }
+                )
+                logger.info(
+                    "Created scheduled task for periodic agent",
+                    task_id=task_id,
+                    folder=folder.name,
+                    schedule=config.schedule,
+                )
+            else:
+                # Update if schedule or prompt changed
+                updates: dict[str, Any] = {}
+                if existing_task.schedule_value != config.schedule:
+                    updates["schedule_value"] = config.schedule
+                    tz = ZoneInfo(TIMEZONE)
+                    cron = croniter(config.schedule, datetime.now(tz))
+                    updates["next_run"] = cron.get_next(datetime).isoformat()
+                if existing_task.prompt != config.prompt:
+                    updates["prompt"] = config.prompt
+                if updates:
+                    await update_task(existing_task.id, updates)
+                    logger.info(
+                        "Updated periodic agent task",
+                        task_id=existing_task.id,
+                        folder=folder.name,
+                        changed=list(updates.keys()),
+                    )
+
+            reconciled += 1
+
+        if reconciled:
+            logger.info("Periodic agents reconciled", count=reconciled)
 
     async def get_available_groups(self) -> list[dict[str, Any]]:
         """Get available groups list for the agent, ordered by most recent activity."""
@@ -535,9 +654,7 @@ class PynchyApp:
             if ch.is_connected():
                 with contextlib.suppress(Exception):
                     await ch.send_message(chat_jid, channel_text)
-        self.event_bus.emit(
-            AgentTraceEvent(chat_jid=chat_jid, trace_type=trace_type, data=data)
-        )
+        self.event_bus.emit(AgentTraceEvent(chat_jid=chat_jid, trace_type=trace_type, data=data))
 
     async def _handle_streamed_output(
         self, chat_jid: str, group: RegisteredGroup, result: ContainerOutput
@@ -1374,6 +1491,9 @@ WantedBy=default.target
         # Create and connect plugin channels
         await self._connect_plugin_channels()
 
+        # Reconcile periodic agents (create chat groups + tasks from periodic.yaml)
+        await self._reconcile_periodic_agents()
+
         # Start subsystems
         asyncio.create_task(start_scheduler_loop(self._make_scheduler_deps()))
         asyncio.create_task(start_ipc_watcher(self._make_ipc_deps()))
@@ -1480,6 +1600,28 @@ WantedBy=default.target
                     )
                 )
                 app.queue.enqueue_message_check(jid)
+
+            async def get_periodic_agents(self) -> list[dict[str, Any]]:
+                from pynchy.periodic import load_periodic_config
+
+                results = []
+                for group in app.registered_groups.values():
+                    config = load_periodic_config(group.folder)
+                    if config is None:
+                        continue
+                    task = await get_active_task_for_group(group.folder)
+                    results.append(
+                        {
+                            "name": group.name,
+                            "folder": group.folder,
+                            "schedule": config.schedule,
+                            "context_mode": config.context_mode,
+                            "last_run": task.last_run if task else None,
+                            "next_run": task.next_run if task else None,
+                            "status": task.status if task else "no_task",
+                        }
+                    )
+                return results
 
             def subscribe_events(self, callback: Any) -> Any:
                 from pynchy.event_bus import (
@@ -1590,5 +1732,8 @@ WantedBy=default.target
 
             def enqueue_message_check(self, group_jid: str) -> None:
                 app.queue.enqueue_message_check(group_jid)
+
+            def channels(self) -> list:
+                return app.channels
 
         return _Deps()
