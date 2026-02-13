@@ -51,6 +51,14 @@ launchctl load ~/Library/LaunchAgents/com.pynchy.plist
 launchctl unload ~/Library/LaunchAgents/com.pynchy.plist
 ```
 
+Service management (Linux):
+```bash
+systemctl --user start pynchy
+systemctl --user stop pynchy
+systemctl --user restart pynchy
+journalctl --user -u pynchy -f          # Follow logs
+```
+
 ## Deployment
 
 The pynchy service runs on `nuc-server` (Intel NUC, headless Ubuntu) over Tailscale. SSH: `ssh nuc-server`, user `ricardo`.
