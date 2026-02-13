@@ -36,11 +36,16 @@ Single source of truth for all pynchy work items.
 *Draft plan exists. Awaiting human sign-off.*
 
 - [System message logging](2-planning/system-message-logging.md) — Log actual LLM system prompts to the DB, now that "host" messages have their own sender
+- [Plugin discovery](2-planning/plugin-discovery.md) — Core plugin infrastructure for discovering and registering extensions via Python entry points
+- [Plugin: Runtime](2-planning/plugin-runtime.md) — Alternative container runtimes (Apple Container, Podman) as plugins
+- [Plugin: Channel](2-planning/plugin-channel.md) — New communication platforms (Telegram, Slack, Discord) as plugins
+- [Plugin: MCP](2-planning/plugin-mcp.md) — Agent tools (MCP servers) provided by plugins
+- [Plugin: Skill](2-planning/plugin-skill.md) — Agent skills/instructions provided by plugins
+- [Plugin: Hook](2-planning/plugin-hook.md) — Agent lifecycle hooks provided by plugins (most complex, implement last)
 
 ### 3 - Ready
 *Plan approved or not needed. Ready for an agent to pick up.*
 
-- [Plugin system](3-ready/plugin-system.md) — Plugin architecture for extending pynchy with modular capabilities
 - [Security hardening](3-ready/security-hardening.md) — Security improvements and hardening measures
 
 ### 4 - In Progress
