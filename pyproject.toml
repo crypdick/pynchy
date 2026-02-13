@@ -42,7 +42,7 @@ packages = ["src/pynchy"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-n auto"
+addopts = "-n auto --tb=short -q --no-header"
 timeout = 30
 filterwarnings = [
     "ignore:There is no current event loop:DeprecationWarning:neonize",
