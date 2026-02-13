@@ -39,7 +39,12 @@ Single source of truth for all pynchy work items.
 
 - [System message logging](2-planning/system-message-logging.md) — Log actual LLM system prompts to the DB, now that "host" messages have their own sender
 - [Plugin: Runtime](2-planning/plugin-runtime.md) — Alternative container runtimes (Apple Container, Podman) as plugins
-- [Plugin: Hook](2-planning/plugin-hook.md) — Agent lifecycle hooks provided by plugins (most complex, implement last)
+- [Plugin: Hook](2-planning/plugin-hook.md) — Agent lifecycle hooks provided by plugins (overview - see sub-plans below)
+  - [Hook Step 1: Base Class](2-planning/plugin-hook-1-base-class.md) — HookPlugin base class and discovery integration
+  - [Hook Step 2: Container Input](2-planning/plugin-hook-2-container-input.md) — Extend ContainerInput to carry hook configs
+  - [Hook Step 3: Mount Sources](2-planning/plugin-hook-3-mount-sources.md) — Collect configs and mount plugin sources
+  - [Hook Step 4: Agent Runner](2-planning/plugin-hook-4-agent-runner.md) — Load and register hooks in container
+  - [Hook Step 5: Polish](2-planning/plugin-hook-5-polish.md) — Error handling, docs, and example plugin
 
 ### 3 - Ready
 *Plan approved or not needed. Ready for an agent to pick up.*
