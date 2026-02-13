@@ -233,6 +233,7 @@ class PynchyApp:
             "Processing messages",
             group=group.name,
             message_count=len(missed_messages),
+            preview=missed_messages[-1].content[:200],
         )
 
         # Track idle timer for closing stdin when agent is idle
@@ -462,16 +463,18 @@ class PynchyApp:
                             self.last_agent_timestamp.get(chat_jid, ""),
                             ASSISTANT_NAME,
                         )
-                        messages_to_send = all_pending if all_pending else group_messages
-                        formatted = format_messages(messages_to_send)
+                        if not all_pending:
+                            # Already consumed by _process_group_messages
+                            continue
+                        formatted = format_messages(all_pending)
 
                         if self.queue.send_message(chat_jid, formatted):
                             logger.debug(
                                 "Piped messages to active container",
                                 chat_jid=chat_jid,
-                                count=len(messages_to_send),
+                                count=len(all_pending),
                             )
-                            self.last_agent_timestamp[chat_jid] = messages_to_send[-1].timestamp
+                            self.last_agent_timestamp[chat_jid] = all_pending[-1].timestamp
                             await self._save_state()
                         else:
                             self.queue.enqueue_message_check(chat_jid)
