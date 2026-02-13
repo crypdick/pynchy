@@ -313,14 +313,25 @@ class GroupQueue:
     async def shutdown(self, grace_period_seconds: float) -> None:
         self._shutting_down = True
 
-        active_containers: list[str] = []
+        active: list[tuple[Any, str]] = []
         for _jid, state in self._groups.items():
             proc_alive = getattr(state.process, "returncode", None) is None
             if state.process and state.container_name and proc_alive:
-                active_containers.append(state.container_name)
+                active.append((state.process, state.container_name))
+
+        if not active:
+            logger.info("GroupQueue shutdown, no active containers")
+            return
 
         logger.info(
-            "GroupQueue shutting down (containers detached, not killed)",
-            active_count=self._active_count,
-            detached_containers=active_containers,
+            "GroupQueue shutting down, stopping containers",
+            active_count=len(active),
+            containers=[name for _, name in active],
+        )
+
+        from pynchy.container_runner import _graceful_stop
+
+        await asyncio.gather(
+            *(_graceful_stop(proc, name) for proc, name in active),
+            return_exceptions=True,
         )
