@@ -107,6 +107,11 @@ class ContainerOutput:
     result: str | None = None
     new_session_id: str | None = None
     error: str | None = None
+    type: str = "result"
+    thinking: str | None = None
+    tool_name: str | None = None
+    tool_input: dict | None = None
+    text: str | None = None
 
 
 @dataclass

@@ -33,12 +33,16 @@ from pathlib import Path
 from typing import Any
 
 from claude_agent_sdk import (
+    AssistantMessage,
     ClaudeAgentOptions,
     ClaudeSDKClient,
     HookContext,
     HookMatcher,
     ResultMessage,
     SystemMessage,
+    TextBlock,
+    ThinkingBlock,
+    ToolUseBlock,
 )
 
 IPC_INPUT_DIR = Path("/workspace/ipc/input")
@@ -71,18 +75,38 @@ class ContainerOutput:
         result: str | None = None,
         new_session_id: str | None = None,
         error: str | None = None,
+        *,
+        type: str = "result",
+        thinking: str | None = None,
+        tool_name: str | None = None,
+        tool_input: dict[str, Any] | None = None,
+        text: str | None = None,
     ) -> None:
         self.status = status
         self.result = result
         self.new_session_id = new_session_id
         self.error = error
+        self.type = type
+        self.thinking = thinking
+        self.tool_name = tool_name
+        self.tool_input = tool_input
+        self.text = text
 
     def to_dict(self) -> dict[str, Any]:
-        d: dict[str, Any] = {"status": self.status, "result": self.result}
-        if self.new_session_id:
-            d["new_session_id"] = self.new_session_id
-        if self.error:
-            d["error"] = self.error
+        d: dict[str, Any] = {"type": self.type, "status": self.status}
+        if self.type == "result":
+            d["result"] = self.result
+            if self.new_session_id:
+                d["new_session_id"] = self.new_session_id
+            if self.error:
+                d["error"] = self.error
+        elif self.type == "thinking":
+            d["thinking"] = self.thinking
+        elif self.type == "tool_use":
+            d["tool_name"] = self.tool_name
+            d["tool_input"] = self.tool_input
+        elif self.type == "text":
+            d["text"] = self.text
         return d
 
 
@@ -419,6 +443,35 @@ async def main() -> None:
                         if sid:
                             new_session_id = sid
                             log(f"Session initialized: {new_session_id}")
+
+                    # Emit trace blocks from assistant messages
+                    if isinstance(message, AssistantMessage):
+                        for block in message.content:
+                            if isinstance(block, ThinkingBlock):
+                                write_output(
+                                    ContainerOutput(
+                                        status="success",
+                                        type="thinking",
+                                        thinking=block.thinking,
+                                    )
+                                )
+                            elif isinstance(block, ToolUseBlock):
+                                write_output(
+                                    ContainerOutput(
+                                        status="success",
+                                        type="tool_use",
+                                        tool_name=block.name,
+                                        tool_input=block.input,
+                                    )
+                                )
+                            elif isinstance(block, TextBlock):
+                                write_output(
+                                    ContainerOutput(
+                                        status="success",
+                                        type="text",
+                                        text=block.text,
+                                    )
+                                )
 
                     # Emit results
                     if isinstance(message, ResultMessage):

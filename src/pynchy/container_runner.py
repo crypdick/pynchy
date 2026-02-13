@@ -60,6 +60,11 @@ def _parse_container_output(json_str: str) -> ContainerOutput:
         result=data.get("result"),
         new_session_id=data.get("new_session_id"),
         error=data.get("error"),
+        type=data.get("type", "result"),
+        thinking=data.get("thinking"),
+        tool_name=data.get("tool_name"),
+        tool_input=data.get("tool_input"),
+        text=data.get("text"),
     )
 
 
