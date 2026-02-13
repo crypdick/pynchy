@@ -82,20 +82,63 @@ def _parse_container_output(json_str: str) -> ContainerOutput:
 # ---------------------------------------------------------------------------
 
 
-def _sync_skills(session_dir: Path) -> None:
-    """Copy container/skills/ into the session's .claude/skills/ directory."""
-    skills_src = PROJECT_ROOT / "container" / "skills"
+def _sync_skills(session_dir: Path, registry: Any = None) -> None:
+    """Copy container/skills/ and plugin skills into the session's .claude/skills/ directory.
+
+    Args:
+        session_dir: Path to the .claude directory for this session
+        registry: Optional PluginRegistry for plugin skills
+    """
     skills_dst = session_dir / "skills"
-    if not skills_src.exists():
-        return
-    for skill_dir in skills_src.iterdir():
-        if not skill_dir.is_dir():
-            continue
-        dst_dir = skills_dst / skill_dir.name
-        dst_dir.mkdir(parents=True, exist_ok=True)
-        for f in skill_dir.iterdir():
-            if f.is_file():
-                shutil.copy2(f, dst_dir / f.name)
+    skills_dst.mkdir(parents=True, exist_ok=True)
+
+    # Copy built-in skills
+    skills_src = PROJECT_ROOT / "container" / "skills"
+    if skills_src.exists():
+        for skill_dir in skills_src.iterdir():
+            if not skill_dir.is_dir():
+                continue
+            dst_dir = skills_dst / skill_dir.name
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            for f in skill_dir.iterdir():
+                if f.is_file():
+                    shutil.copy2(f, dst_dir / f.name)
+
+    # Copy plugin skills
+    if registry and hasattr(registry, "skills"):
+        for plugin in registry.skills:
+            try:
+                skill_paths = plugin.skill_paths()
+                for skill_path in skill_paths:
+                    if not skill_path.exists() or not skill_path.is_dir():
+                        logger.warning(
+                            "Plugin skill path does not exist or is not a directory",
+                            plugin=plugin.name,
+                            path=str(skill_path),
+                        )
+                        continue
+
+                    dst_dir = skills_dst / skill_path.name
+                    if dst_dir.exists():
+                        logger.warning(
+                            "Skill name conflict - plugin skill will override existing",
+                            plugin=plugin.name,
+                            skill=skill_path.name,
+                        )
+                        shutil.rmtree(dst_dir)
+
+                    shutil.copytree(skill_path, dst_dir)
+                    logger.info(
+                        "Synced plugin skill",
+                        plugin=plugin.name,
+                        skill=skill_path.name,
+                    )
+            except Exception as e:
+                logger.warning(
+                    "Failed to sync plugin skills",
+                    plugin=plugin.name,
+                    error=str(e),
+                )
 
 
 def _read_oauth_token() -> str | None:
@@ -294,7 +337,7 @@ def _build_volume_mounts(
     session_dir = DATA_DIR / "sessions" / group.folder / ".claude"
     session_dir.mkdir(parents=True, exist_ok=True)
     _write_settings_json(session_dir)
-    _sync_skills(session_dir)
+    _sync_skills(session_dir, registry)
     mounts.append(VolumeMount(str(session_dir), "/home/agent/.claude", readonly=False))
 
     # Per-group IPC namespace

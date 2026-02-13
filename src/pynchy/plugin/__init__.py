@@ -18,6 +18,7 @@ from pynchy.logger import logger
 from pynchy.plugin.base import PluginBase, PluginRegistry
 from pynchy.plugin.channel import ChannelPlugin, PluginContext
 from pynchy.plugin.mcp import McpPlugin, McpServerSpec
+from pynchy.plugin.skill import SkillPlugin
 
 __all__ = [
     "PluginBase",
@@ -26,6 +27,7 @@ __all__ = [
     "PluginContext",
     "McpPlugin",
     "McpServerSpec",
+    "SkillPlugin",
     "discover_plugins",
 ]
 
