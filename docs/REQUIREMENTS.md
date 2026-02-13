@@ -83,11 +83,32 @@ A personal Claude assistant accessible via WhatsApp, with minimal custom code.
 
 ### Transparent Token Stream
 
-The chat history should be a faithful representation of the LLM's token stream. A user reading the conversation should be able to understand the exact contents of the LLM context — system prompts, user messages, assistant responses, tool calls, and host notifications. Nothing is hidden; every message role is visible and distinguishable. This means:
+The chat history should be a faithful representation of the LLM's token stream. A user reading the conversation should be able to reconstruct the exact contents of the LLM context. Nothing is hidden; every message type is visible and distinguishable.
 
-- **System prompts** (`sender='system'`) are logged to the DB and shown in chat history
-- **Host messages** (`sender='host'`) are notifications from the pynchy process (boot, deploy, errors) — distinct from LLM system messages
-- **User messages**, **bot responses**, and **deploy markers** are all stored and visible
+Two key sender types from the harness:
+
+- **`host`**: Messages from the pynchy process shown to the **user only**. The LLM never sees these (boot notifications, deploy status, error alerts).
+- **`system`**: Messages from the harness shown to **both** the LLM and the user. These are real conversation turns — they signal to the model that the harness is talking, not the user.
+
+The Claude Agent SDK message types ([docs](https://platform.claude.com/docs/en/agent-sdk/python#message-types)):
+
+| SDK Type | Description |
+|----------|-------------|
+| `UserMessage` | User input content |
+| `AssistantMessage` | Claude's response — text, thinking, tool use, and tool result blocks |
+| `SystemMessage` | System message with metadata (`subtype` + `data` dict) |
+| `ResultMessage` | Final result with cost, usage, session_id |
+
+Pynchy should log all of these, plus its own host-process messages, to the DB. The sender vocabulary:
+
+| `sender` value | Visible to LLM? | Description |
+|----------------|-----------------|-------------|
+| `system` | Yes | Harness-to-model messages — a conversation turn the user can also read |
+| `host` | No | Pynchy process notifications (boot, deploy, errors) — user-only |
+| `bot` | Yes | Claude's responses (`AssistantMessage`) |
+| `deploy` | Yes | Deploy continuation markers |
+| `tui-user` | Yes | Messages from the TUI client (`UserMessage`) |
+| `{phone_jid}` | Yes | WhatsApp user messages (`UserMessage`) |
 
 The goal: if something went wrong, you can reconstruct what the LLM saw by reading the chat.
 
