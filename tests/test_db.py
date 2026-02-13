@@ -12,11 +12,13 @@ from pynchy.db import (
     create_task,
     delete_task,
     get_all_chats,
+    get_chat_history,
     get_messages_since,
     get_new_messages,
     get_task_by_id,
     store_chat_metadata,
     store_message,
+    store_message_direct,
     update_task,
 )
 from pynchy.types import NewMessage
@@ -320,3 +322,109 @@ class TestTaskCRUD:
 
         await delete_task("task-3")
         assert await get_task_by_id("task-3") is None
+
+
+# --- Sender filtering (transparent token stream) ---
+
+
+class TestSenderFiltering:
+    """Verify opt-in sender filter: only WhatsApp JIDs, tui-user, and deploy
+    pass through get_new_messages() / get_messages_since(). Internal senders
+    (thinking, tool_use, system, etc.) are excluded."""
+
+    @pytest.fixture(autouse=True)
+    async def _seed_messages(self):
+        await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
+        # Real user messages (should pass filter)
+        await store_message(
+            _store(
+                id="m-user",
+                chat_jid="group@g.us",
+                sender="123@s.whatsapp.net",
+                sender_name="Alice",
+                content="hello",
+                timestamp="2024-01-01T00:00:01.000Z",
+            )
+        )
+        await store_message_direct(
+            id="m-tui",
+            chat_jid="group@g.us",
+            sender="tui-user",
+            sender_name="You",
+            content="tui message",
+            timestamp="2024-01-01T00:00:02.000Z",
+            is_from_me=False,
+        )
+        await store_message_direct(
+            id="m-deploy",
+            chat_jid="group@g.us",
+            sender="deploy",
+            sender_name="deploy",
+            content="[DEPLOY COMPLETE]",
+            timestamp="2024-01-01T00:00:03.000Z",
+            is_from_me=False,
+        )
+        # Internal senders (should be excluded)
+        for sender, id_suffix in [
+            ("thinking", "think"),
+            ("tool_use", "tool"),
+            ("tool_result", "toolr"),
+            ("system", "sys"),
+            ("result_meta", "meta"),
+            ("host", "host"),
+            ("bot", "bot"),
+        ]:
+            await store_message_direct(
+                id=f"m-{id_suffix}",
+                chat_jid="group@g.us",
+                sender=sender,
+                sender_name=sender,
+                content=f"{sender} content",
+                timestamp=f"2024-01-01T00:00:04.{id_suffix}Z",
+                is_from_me=True,
+            )
+
+    async def test_get_new_messages_only_returns_user_senders(self):
+        messages, _ = await get_new_messages(["group@g.us"], "2024-01-01T00:00:00.000Z", "pynchy")
+        senders = {m.sender for m in messages}
+        assert "123@s.whatsapp.net" in senders
+        assert "tui-user" in senders
+        assert "deploy" in senders
+        # Internal senders excluded
+        for internal in (
+            "thinking",
+            "tool_use",
+            "tool_result",
+            "system",
+            "result_meta",
+            "host",
+            "bot",
+        ):
+            assert internal not in senders
+
+    async def test_get_messages_since_only_returns_user_senders(self):
+        messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z", "pynchy")
+        senders = {m.sender for m in messages}
+        assert "123@s.whatsapp.net" in senders
+        assert "tui-user" in senders
+        assert "deploy" in senders
+        for internal in (
+            "thinking",
+            "tool_use",
+            "tool_result",
+            "system",
+            "result_meta",
+            "host",
+            "bot",
+        ):
+            assert internal not in senders
+
+    async def test_get_chat_history_includes_all_types(self):
+        """Chat history (UI display) should include bot and trace messages."""
+        messages = await get_chat_history("group@g.us", limit=50)
+        senders = {m.sender for m in messages}
+        # Should include user + bot + internal (except hidden host internals)
+        assert "123@s.whatsapp.net" in senders
+        assert "bot" in senders
+        assert "thinking" in senders
+        assert "tool_use" in senders

@@ -16,7 +16,7 @@ import pytest
 
 from pynchy.app import PynchyApp
 from pynchy.config import OUTPUT_END_MARKER, OUTPUT_START_MARKER
-from pynchy.db import _init_test_database, store_message
+from pynchy.db import _init_test_database, get_chat_history, store_message
 from pynchy.types import NewMessage, RegisteredGroup
 
 # ---------------------------------------------------------------------------
@@ -161,11 +161,13 @@ class TestProcessGroupMessages:
         msg = _make_message(content="@pynchy what is 2+2?")
         await store_message(msg)
 
-        fake_proc = FakeProcess(output={
-            "status": "success",
-            "result": "The answer is 4",
-            "new_session_id": "sess-1",
-        })
+        fake_proc = FakeProcess(
+            output={
+                "status": "success",
+                "result": "The answer is 4",
+                "new_session_id": "sess-1",
+            }
+        )
         driver = asyncio.create_task(fake_proc.schedule_output())
 
         async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
@@ -203,27 +205,39 @@ class TestProcessGroupMessages:
             driver_started.set()
             await asyncio.sleep(0.01)
             # 1. Thinking block
-            fake_proc.stdout.feed_data(_marker_wrap({
-                "type": "thinking",
-                "status": "success",
-                "thinking": "Let me figure this out...",
-            }))
+            fake_proc.stdout.feed_data(
+                _marker_wrap(
+                    {
+                        "type": "thinking",
+                        "status": "success",
+                        "thinking": "Let me figure this out...",
+                    }
+                )
+            )
             await asyncio.sleep(0.01)
             # 2. Tool use block
-            fake_proc.stdout.feed_data(_marker_wrap({
-                "type": "tool_use",
-                "status": "success",
-                "tool_name": "Bash",
-                "tool_input": {"command": "ls"},
-            }))
+            fake_proc.stdout.feed_data(
+                _marker_wrap(
+                    {
+                        "type": "tool_use",
+                        "status": "success",
+                        "tool_name": "Bash",
+                        "tool_input": {"command": "ls"},
+                    }
+                )
+            )
             await asyncio.sleep(0.01)
             # 3. Final result
-            fake_proc.stdout.feed_data(_marker_wrap({
-                "type": "result",
-                "status": "success",
-                "result": "Done!",
-                "new_session_id": "sess-trace",
-            }))
+            fake_proc.stdout.feed_data(
+                _marker_wrap(
+                    {
+                        "type": "result",
+                        "status": "success",
+                        "result": "Done!",
+                        "new_session_id": "sess-trace",
+                    }
+                )
+            )
             await asyncio.sleep(0.01)
             fake_proc._returncode = 0
             fake_proc.stdout.feed_eof()
@@ -261,9 +275,7 @@ class TestProcessGroupMessages:
             f"Expected a tool_use trace for 'Bash', got: {texts}"
         )
         # Final result should also be present
-        assert any("Done!" in t for t in texts), (
-            f"Expected final result 'Done!', got: {texts}"
-        )
+        assert any("Done!" in t for t in texts), f"Expected final result 'Done!', got: {texts}"
         # Thinking and tool traces should come before the result
         thinking_idx = next(i for i, t in enumerate(texts) if "thinking" in t.lower())
         tool_idx = next(i for i, t in enumerate(texts) if "Bash" in t)
@@ -286,6 +298,7 @@ class TestProcessGroupMessages:
         await store_message(msg)
 
         fake_proc = FakeProcess()
+
         # Simulate error exit
         async def schedule_error():
             await asyncio.sleep(0.01)
@@ -330,11 +343,13 @@ class TestProcessGroupMessages:
         msg = _make_message(chat_jid="main@g.us", content="no trigger needed")
         await store_message(msg)
 
-        fake_proc = FakeProcess(output={
-            "status": "success",
-            "result": "Got it",
-            "new_session_id": "s-main",
-        })
+        fake_proc = FakeProcess(
+            output={
+                "status": "success",
+                "result": "Got it",
+                "new_session_id": "s-main",
+            }
+        )
         driver = asyncio.create_task(fake_proc.schedule_output())
 
         async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
@@ -359,11 +374,13 @@ class TestRunAgent:
     """Test the agent runner wrapper."""
 
     async def test_returns_success_on_good_output(self, app: PynchyApp, tmp_path: Path):
-        fake_proc = FakeProcess(output={
-            "status": "success",
-            "result": "hello world",
-            "new_session_id": "s-1",
-        })
+        fake_proc = FakeProcess(
+            output={
+                "status": "success",
+                "result": "hello world",
+                "new_session_id": "s-1",
+            }
+        )
         driver = asyncio.create_task(fake_proc.schedule_output())
 
         async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
@@ -441,6 +458,7 @@ class TestStatePersistence:
 
     async def test_load_state_handles_corrupted_json(self, app: PynchyApp):
         from pynchy.db import set_router_state
+
         await set_router_state("last_agent_timestamp", "not valid json")
 
         app2 = PynchyApp()
@@ -460,3 +478,202 @@ class TestFindChannel:
         app = PynchyApp()
         app.channels = []
         assert app._find_channel("group@g.us") is None
+
+
+class TestTracePersistence:
+    """Verify that trace events (thinking, tool_use, system, result_meta) are
+    persisted to the database with correct sender values."""
+
+    async def test_thinking_and_tool_use_persisted(self, app: PynchyApp, tmp_path: Path):
+        """Thinking and tool_use events should be stored in DB."""
+        msg = _make_message(content="@pynchy do something")
+        await store_message(msg)
+
+        fake_proc = FakeProcess()
+
+        async def schedule_trace():
+            await asyncio.sleep(0.01)
+            fake_proc.stdout.feed_data(
+                _marker_wrap(
+                    {
+                        "type": "thinking",
+                        "status": "success",
+                        "thinking": "Let me think...",
+                    }
+                )
+            )
+            await asyncio.sleep(0.01)
+            fake_proc.stdout.feed_data(
+                _marker_wrap(
+                    {
+                        "type": "tool_use",
+                        "status": "success",
+                        "tool_name": "Bash",
+                        "tool_input": {"command": "echo hi"},
+                    }
+                )
+            )
+            await asyncio.sleep(0.01)
+            fake_proc.stdout.feed_data(
+                _marker_wrap(
+                    {
+                        "type": "result",
+                        "status": "success",
+                        "result": "Done",
+                        "new_session_id": "sess-trace",
+                    }
+                )
+            )
+            await asyncio.sleep(0.01)
+            fake_proc._returncode = 0
+            fake_proc.stdout.feed_eof()
+            fake_proc.stderr.feed_eof()
+            fake_proc._wait_event.set()
+
+        driver = asyncio.create_task(schedule_trace())
+
+        async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
+            return fake_proc
+
+        channel = FakeChannel()
+        app.channels = [channel]
+
+        with (
+            patch("pynchy.container_runner.asyncio.create_subprocess_exec", fake_create),
+            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
+            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+        ):
+            (tmp_path / "groups" / "test-group").mkdir(parents=True)
+            await app._process_group_messages("group@g.us")
+
+        await driver
+
+        # Check DB for persisted trace messages
+        history = await get_chat_history("group@g.us", limit=50)
+        senders = {m.sender for m in history}
+        assert "thinking" in senders, f"Expected 'thinking' in senders, got {senders}"
+        assert "tool_use" in senders, f"Expected 'tool_use' in senders, got {senders}"
+        assert "bot" in senders, f"Expected 'bot' in senders, got {senders}"
+
+    async def test_system_message_persisted(self, app: PynchyApp, tmp_path: Path):
+        """System messages should be stored with sender='system'."""
+        msg = _make_message(content="@pynchy hello")
+        await store_message(msg)
+
+        fake_proc = FakeProcess()
+
+        async def schedule_system():
+            await asyncio.sleep(0.01)
+            fake_proc.stdout.feed_data(
+                _marker_wrap(
+                    {
+                        "type": "system",
+                        "status": "success",
+                        "system_subtype": "init",
+                        "system_data": {"session_id": "sess-sys"},
+                    }
+                )
+            )
+            await asyncio.sleep(0.01)
+            fake_proc.stdout.feed_data(
+                _marker_wrap(
+                    {
+                        "type": "result",
+                        "status": "success",
+                        "result": "Hi",
+                        "new_session_id": "sess-sys",
+                    }
+                )
+            )
+            await asyncio.sleep(0.01)
+            fake_proc._returncode = 0
+            fake_proc.stdout.feed_eof()
+            fake_proc.stderr.feed_eof()
+            fake_proc._wait_event.set()
+
+        driver = asyncio.create_task(schedule_system())
+
+        async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
+            return fake_proc
+
+        channel = FakeChannel()
+        app.channels = [channel]
+
+        with (
+            patch("pynchy.container_runner.asyncio.create_subprocess_exec", fake_create),
+            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
+            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+        ):
+            (tmp_path / "groups" / "test-group").mkdir(parents=True)
+            await app._process_group_messages("group@g.us")
+
+        await driver
+
+        history = await get_chat_history("group@g.us", limit=50)
+        system_msgs = [m for m in history if m.sender == "system"]
+        assert len(system_msgs) >= 1
+        content = json.loads(system_msgs[0].content)
+        assert content["subtype"] == "init"
+
+    async def test_result_metadata_persisted(self, app: PynchyApp, tmp_path: Path):
+        """Result metadata should be stored with sender='result_meta'."""
+        msg = _make_message(content="@pynchy hello")
+        await store_message(msg)
+
+        fake_proc = FakeProcess()
+
+        async def schedule_meta():
+            await asyncio.sleep(0.01)
+            fake_proc.stdout.feed_data(
+                _marker_wrap(
+                    {
+                        "type": "result",
+                        "status": "success",
+                        "result": "Hi",
+                        "new_session_id": "sess-meta",
+                        "result_metadata": {
+                            "duration_ms": 2100,
+                            "total_cost_usd": 0.03,
+                            "num_turns": 3,
+                            "usage": {"input_tokens": 100, "output_tokens": 50},
+                        },
+                    }
+                )
+            )
+            await asyncio.sleep(0.01)
+            fake_proc._returncode = 0
+            fake_proc.stdout.feed_eof()
+            fake_proc.stderr.feed_eof()
+            fake_proc._wait_event.set()
+
+        driver = asyncio.create_task(schedule_meta())
+
+        async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
+            return fake_proc
+
+        channel = FakeChannel()
+        app.channels = [channel]
+
+        with (
+            patch("pynchy.container_runner.asyncio.create_subprocess_exec", fake_create),
+            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
+            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+        ):
+            (tmp_path / "groups" / "test-group").mkdir(parents=True)
+            await app._process_group_messages("group@g.us")
+
+        await driver
+
+        history = await get_chat_history("group@g.us", limit=50)
+        meta_msgs = [m for m in history if m.sender == "result_meta"]
+        assert len(meta_msgs) >= 1
+        content = json.loads(meta_msgs[0].content)
+        assert content["total_cost_usd"] == 0.03
+        assert content["num_turns"] == 3
+
+        # Channel should have received the formatted cost message
+        texts = [text for _, text in channel.sent_messages]
+        assert any("0.03 USD" in t for t in texts), f"Expected cost in channel, got {texts}"

@@ -43,9 +43,7 @@ class TestJidOwnership:
 class TestGetAvailableGroups:
     async def test_returns_only_g_us_jids(self, app: PynchyApp):
         await store_chat_metadata("group1@g.us", "2024-01-01T00:00:01.000Z", "Group 1")
-        await store_chat_metadata(
-            "user@s.whatsapp.net", "2024-01-01T00:00:02.000Z", "User DM"
-        )
+        await store_chat_metadata("user@s.whatsapp.net", "2024-01-01T00:00:02.000Z", "User DM")
         await store_chat_metadata("group2@g.us", "2024-01-01T00:00:03.000Z", "Group 2")
 
         groups = await app.get_available_groups()

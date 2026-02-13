@@ -148,13 +148,17 @@ class TestContainerPathValidation:
 class TestLoadAllowlist:
     def test_loads_valid_allowlist(self, tmp_path: Path):
         allowlist_file = tmp_path / "allowlist.json"
-        allowlist_file.write_text(json.dumps({
-            "allowedRoots": [
-                {"path": "~/projects", "allowReadWrite": True, "description": "Dev"},
-            ],
-            "blockedPatterns": ["custom-secret"],
-            "nonMainReadOnly": True,
-        }))
+        allowlist_file.write_text(
+            json.dumps(
+                {
+                    "allowedRoots": [
+                        {"path": "~/projects", "allowReadWrite": True, "description": "Dev"},
+                    ],
+                    "blockedPatterns": ["custom-secret"],
+                    "nonMainReadOnly": True,
+                }
+            )
+        )
         with patch("pynchy.mount_security.MOUNT_ALLOWLIST_PATH", allowlist_file):
             result = load_mount_allowlist()
 
@@ -188,11 +192,15 @@ class TestLoadAllowlist:
 
     def test_caches_result(self, tmp_path: Path):
         allowlist_file = tmp_path / "allowlist.json"
-        allowlist_file.write_text(json.dumps({
-            "allowedRoots": [],
-            "blockedPatterns": [],
-            "nonMainReadOnly": True,
-        }))
+        allowlist_file.write_text(
+            json.dumps(
+                {
+                    "allowedRoots": [],
+                    "blockedPatterns": [],
+                    "nonMainReadOnly": True,
+                }
+            )
+        )
         with patch("pynchy.mount_security.MOUNT_ALLOWLIST_PATH", allowlist_file):
             first = load_mount_allowlist()
             second = load_mount_allowlist()
@@ -210,11 +218,15 @@ class TestValidateMount:
     ):
         """Write an allowlist file and return its path."""
         allowlist_file = tmp_path / "allowlist.json"
-        allowlist_file.write_text(json.dumps({
-            "allowedRoots": roots,
-            "blockedPatterns": [],
-            "nonMainReadOnly": non_main_read_only,
-        }))
+        allowlist_file.write_text(
+            json.dumps(
+                {
+                    "allowedRoots": roots,
+                    "blockedPatterns": [],
+                    "nonMainReadOnly": non_main_read_only,
+                }
+            )
+        )
         return allowlist_file
 
     def test_allows_path_under_root(self, tmp_path: Path):
@@ -327,13 +339,17 @@ class TestReadonlyEnforcement:
         target = tmp_path / "data"
         target.mkdir()
         allowlist_file = tmp_path / "allowlist.json"
-        allowlist_file.write_text(json.dumps({
-            "allowedRoots": [
-                {"path": str(tmp_path), "allowReadWrite": allow_read_write},
-            ],
-            "blockedPatterns": [],
-            "nonMainReadOnly": non_main_read_only,
-        }))
+        allowlist_file.write_text(
+            json.dumps(
+                {
+                    "allowedRoots": [
+                        {"path": str(tmp_path), "allowReadWrite": allow_read_write},
+                    ],
+                    "blockedPatterns": [],
+                    "nonMainReadOnly": non_main_read_only,
+                }
+            )
+        )
         return target, allowlist_file
 
     def test_main_group_can_get_readwrite_when_root_allows(self, tmp_path: Path):
@@ -411,13 +427,17 @@ class TestValidateAdditionalMounts:
         good.mkdir()
 
         allowlist_file = tmp_path / "allowlist.json"
-        allowlist_file.write_text(json.dumps({
-            "allowedRoots": [
-                {"path": str(allowed_dir), "allowReadWrite": True},
-            ],
-            "blockedPatterns": [],
-            "nonMainReadOnly": True,
-        }))
+        allowlist_file.write_text(
+            json.dumps(
+                {
+                    "allowedRoots": [
+                        {"path": str(allowed_dir), "allowReadWrite": True},
+                    ],
+                    "blockedPatterns": [],
+                    "nonMainReadOnly": True,
+                }
+            )
+        )
 
         mounts = [
             AdditionalMount(host_path=str(good), container_path="good"),
@@ -431,11 +451,15 @@ class TestValidateAdditionalMounts:
 
     def test_empty_mounts_returns_empty(self, tmp_path: Path):
         allowlist_file = tmp_path / "allowlist.json"
-        allowlist_file.write_text(json.dumps({
-            "allowedRoots": [],
-            "blockedPatterns": [],
-            "nonMainReadOnly": True,
-        }))
+        allowlist_file.write_text(
+            json.dumps(
+                {
+                    "allowedRoots": [],
+                    "blockedPatterns": [],
+                    "nonMainReadOnly": True,
+                }
+            )
+        )
         with patch("pynchy.mount_security.MOUNT_ALLOWLIST_PATH", allowlist_file):
             result = validate_additional_mounts([], "TestGroup", is_main=True)
         assert result == []

@@ -112,6 +112,13 @@ class ContainerOutput:
     tool_name: str | None = None
     tool_input: dict | None = None
     text: str | None = None
+    # Transparent token stream fields
+    system_subtype: str | None = None
+    system_data: dict | None = None
+    tool_result_id: str | None = None
+    tool_result_content: str | None = None
+    tool_result_is_error: bool | None = None
+    result_metadata: dict | None = None
 
 
 @dataclass

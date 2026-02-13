@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from unittest.mock import patch
-
-import pytest
 
 import pynchy.runtime as runtime_mod
 from pynchy.runtime import ContainerRuntime, detect_runtime
@@ -61,20 +58,22 @@ class TestDetectRuntime:
 class TestListAppleContainers:
     def test_parses_apple_json_format(self):
         rt = ContainerRuntime(name="apple", cli="container")
-        apple_json = json.dumps([
-            {
-                "status": "running",
-                "configuration": {"id": "pynchy-group1-123"},
-            },
-            {
-                "status": "stopped",
-                "configuration": {"id": "pynchy-group2-456"},
-            },
-            {
-                "status": "running",
-                "configuration": {"id": "other-container"},
-            },
-        ])
+        apple_json = json.dumps(
+            [
+                {
+                    "status": "running",
+                    "configuration": {"id": "pynchy-group1-123"},
+                },
+                {
+                    "status": "stopped",
+                    "configuration": {"id": "pynchy-group2-456"},
+                },
+                {
+                    "status": "running",
+                    "configuration": {"id": "other-container"},
+                },
+            ]
+        )
         with patch("pynchy.runtime.subprocess.run") as mock_run:
             mock_run.return_value.stdout = apple_json
             result = rt.list_running_containers("pynchy-")
@@ -84,11 +83,13 @@ class TestListAppleContainers:
 class TestListDockerContainers:
     def test_parses_docker_ndjson_format(self):
         rt = ContainerRuntime(name="docker", cli="docker")
-        ndjson = "\n".join([
-            json.dumps({"Names": "pynchy-group1-123"}),
-            json.dumps({"Names": "pynchy-group2-456"}),
-            json.dumps({"Names": "other-container"}),
-        ])
+        ndjson = "\n".join(
+            [
+                json.dumps({"Names": "pynchy-group1-123"}),
+                json.dumps({"Names": "pynchy-group2-456"}),
+                json.dumps({"Names": "other-container"}),
+            ]
+        )
         with patch("pynchy.runtime.subprocess.run") as mock_run:
             mock_run.return_value.stdout = ndjson
             result = rt.list_running_containers("pynchy-")
