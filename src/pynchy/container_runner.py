@@ -52,6 +52,8 @@ def _input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
         d["is_scheduled_task"] = True
     if input_data.plugin_mcp_servers is not None:
         d["plugin_mcp_servers"] = input_data.plugin_mcp_servers
+    if input_data.system_notices:
+        d["system_notices"] = input_data.system_notices
     return d
 
 
