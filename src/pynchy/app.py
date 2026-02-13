@@ -205,6 +205,31 @@ class PynchyApp:
             prompt = reset_data.get("message", "")
             if prompt:
                 logger.info("Processing reset handoff", group=group.name)
+                # Show the handoff message so the user sees what the new agent receives
+                handoff_text = format_system_message(f"[handoff] {prompt}")
+                ts = datetime.now(UTC).isoformat()
+                await store_message_direct(
+                    id=f"system-{int(datetime.now(UTC).timestamp() * 1000)}",
+                    chat_jid=chat_jid,
+                    sender="system",
+                    sender_name="system",
+                    content=handoff_text,
+                    timestamp=ts,
+                    is_from_me=True,
+                )
+                for ch in self.channels:
+                    if ch.is_connected():
+                        with contextlib.suppress(Exception):
+                            await ch.send_message(chat_jid, handoff_text)
+                self.event_bus.emit(
+                    MessageEvent(
+                        chat_jid=chat_jid,
+                        sender_name="system",
+                        content=handoff_text,
+                        timestamp=ts,
+                        is_bot=True,
+                    )
+                )
                 result = await self._run_agent(group, prompt, chat_jid)
                 return result != "error"
             return True
