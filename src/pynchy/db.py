@@ -18,8 +18,9 @@ from pynchy.types import ContainerConfig, NewMessage, RegisteredGroup, Scheduled
 
 _db: aiosqlite.Connection | None = None
 
-# Hide internal system messages (e.g. [DEPLOY COMPLETE]) from queries but keep
-# user-facing ones ([system] boot notification, [system] 🗑️ clear).
+# For chat history display: hide internal system messages (e.g. deploy synthetic)
+# but keep user-facing ones ([system] boot notification, [system] 🗑️ clear).
+# Agent-triggering queries use sender != 'system' instead.
 _EXCLUDE_INTERNAL_SYSTEM = "AND NOT (sender = 'system' AND content NOT LIKE '[system]%')"
 
 _SCHEMA = """\
@@ -270,8 +271,9 @@ async def get_new_messages(
     sql = f"""
         SELECT id, chat_jid, sender, sender_name, content, timestamp
         FROM messages
-        WHERE timestamp > ? AND chat_jid IN ({placeholders}) AND content NOT LIKE ?
-              {_EXCLUDE_INTERNAL_SYSTEM}
+        WHERE timestamp > ? AND chat_jid IN ({placeholders})
+              AND content NOT LIKE ?
+              AND sender != 'system'
         ORDER BY timestamp
     """
     cursor = await db.execute(sql, [last_timestamp, *jids, f"{bot_prefix}:%"])
@@ -302,11 +304,12 @@ async def get_messages_since(
 ) -> list[NewMessage]:
     """Get messages for a specific chat since a timestamp, excluding bot and system messages."""
     db = _get_db()
-    sql = f"""
+    sql = """
         SELECT id, chat_jid, sender, sender_name, content, timestamp
         FROM messages
-        WHERE chat_jid = ? AND timestamp > ? AND content NOT LIKE ?
-              {_EXCLUDE_INTERNAL_SYSTEM}
+        WHERE chat_jid = ? AND timestamp > ?
+              AND content NOT LIKE ?
+              AND sender != 'system'
         ORDER BY timestamp
     """
     cursor = await db.execute(sql, (chat_jid, since_timestamp, f"{bot_prefix}:%"))
