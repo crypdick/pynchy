@@ -52,7 +52,7 @@ Single source of truth for all pynchy work items.
 ### 4 - In Progress
 *Being implemented.*
 
-- [Plugin discovery](2-planning/plugin-discovery.md) — Core plugin infrastructure for discovering and registering extensions via Python entry points
+- [Plugin: Channel](2-planning/plugin-channel.md) — New communication platforms (Telegram, Slack, Discord) as plugins
 
 ### Completed
 We don't track completed items here. Plans are moved to `5-completed/` via `git mv` and the line is removed.

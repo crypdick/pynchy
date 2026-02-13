@@ -192,6 +192,85 @@ class PynchyApp:
             jid=jid,
         )
 
+    async def _connect_plugin_channels(self) -> None:
+        """Create and connect channels from plugins.
+
+        Called during startup after WhatsApp is connected. Creates a channel
+        for each ChannelPlugin and connects it.
+        """
+        from pynchy.plugin import PluginContext
+
+        if not self.registry or not self.registry.channels:
+            logger.debug("No channel plugins found")
+            return
+
+        # Create plugin context for channel initialization
+        ctx = PluginContext(
+            registered_groups=lambda: self.registered_groups,
+            send_message=self._plugin_send_message,
+        )
+
+        for plugin in self.registry.channels:
+            try:
+                # Validate required credentials
+                missing_creds = self._validate_plugin_credentials(plugin)
+                if missing_creds:
+                    logger.warning(
+                        "Channel plugin missing required credentials, skipping",
+                        plugin=plugin.name,
+                        missing=missing_creds,
+                    )
+                    continue
+
+                # Create channel
+                channel = plugin.create_channel(ctx)
+                self.channels.append(channel)
+
+                # Connect
+                await channel.connect()
+                logger.info(
+                    "Plugin channel connected",
+                    plugin=plugin.name,
+                    channel=channel.name,
+                )
+
+            except Exception as exc:
+                logger.error(
+                    "Failed to connect plugin channel",
+                    plugin=plugin.name,
+                    error=str(exc),
+                )
+                # Continue with other plugins - don't crash startup
+
+    async def _plugin_send_message(self, jid: str, text: str) -> None:
+        """Send message helper for plugin context.
+
+        Sends to all connected channels (used by plugins that need to
+        broadcast messages).
+        """
+        for ch in self.channels:
+            if ch.is_connected():
+                with contextlib.suppress(Exception):
+                    await ch.send_message(jid, text)
+
+    def _validate_plugin_credentials(self, plugin: Any) -> list[str]:
+        """Check if plugin has required environment variables.
+
+        Args:
+            plugin: Plugin instance with optional requires_credentials() method
+
+        Returns:
+            List of missing credential names (empty if all present)
+        """
+        import os
+
+        if not hasattr(plugin, "requires_credentials"):
+            return []
+
+        required = plugin.requires_credentials()
+        missing = [cred for cred in required if cred not in os.environ]
+        return missing
+
     # ------------------------------------------------------------------
     # Message processing
     # ------------------------------------------------------------------
@@ -1271,6 +1350,9 @@ WantedBy=default.target
         # First-run: create a private group and register as main channel
         if not self.registered_groups:
             await self._setup_main_group(whatsapp)
+
+        # Create and connect plugin channels
+        await self._connect_plugin_channels()
 
         # Start subsystems
         asyncio.create_task(start_scheduler_loop(self._make_scheduler_deps()))

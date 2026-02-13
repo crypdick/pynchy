@@ -16,8 +16,9 @@ from importlib.metadata import entry_points
 
 from pynchy.logger import logger
 from pynchy.plugin.base import PluginBase, PluginRegistry
+from pynchy.plugin.channel import ChannelPlugin, PluginContext
 
-__all__ = ["PluginBase", "PluginRegistry", "discover_plugins"]
+__all__ = ["PluginBase", "PluginRegistry", "ChannelPlugin", "PluginContext", "discover_plugins"]
 
 
 def discover_plugins() -> PluginRegistry:
