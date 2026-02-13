@@ -333,12 +333,16 @@ async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
     cleared_row = await cleared_cursor.fetchone()
     cleared_at = cleared_row["cleared_at"] if cleared_row and cleared_row["cleared_at"] else None
 
+    # Hide internal system messages (e.g. [DEPLOY COMPLETE]) but keep
+    # user-facing ones ([system] boot notification, [system] 🗑️ clear).
+    internal_filter = "AND NOT (sender = 'system' AND content NOT LIKE '[system]%')"
+
     if cleared_at:
         cursor = await db.execute(
-            """
+            f"""
             SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me
             FROM messages
-            WHERE chat_jid = ? AND timestamp > ?
+            WHERE chat_jid = ? AND timestamp > ? {internal_filter}
             ORDER BY timestamp DESC
             LIMIT ?
             """,
@@ -346,10 +350,10 @@ async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
         )
     else:
         cursor = await db.execute(
-            """
+            f"""
             SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me
             FROM messages
-            WHERE chat_jid = ?
+            WHERE chat_jid = ? {internal_filter}
             ORDER BY timestamp DESC
             LIMIT ?
             """,

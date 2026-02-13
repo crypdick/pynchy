@@ -171,6 +171,7 @@ class PynchyTUI(App):
 
     async def _listen_sse(self) -> None:
         """Listen for server-sent events and update the UI."""
+        connected_before = False
         while True:
             try:
                 async with self._session.get(
@@ -178,6 +179,11 @@ class PynchyTUI(App):
                     headers={"Accept": "text/event-stream"},
                     timeout=aiohttp.ClientTimeout(total=None, sock_read=None),
                 ) as resp:
+                    if connected_before and self._active_jid:
+                        # Reconnected after a drop — reload messages to fill the gap
+                        await self._switch_to_group(self._active_jid)
+                        await self._update_status()
+                    connected_before = True
                     async for line in resp.content:
                         decoded = line.decode("utf-8").strip()
                         if not decoded.startswith("data: "):

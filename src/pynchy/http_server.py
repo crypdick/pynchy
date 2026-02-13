@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import signal
 import subprocess
 import time
 from collections.abc import Callable, Coroutine
@@ -35,6 +37,20 @@ def _get_head_sha() -> str:
         return result.stdout.strip() if result.returncode == 0 else "unknown"
     except Exception:
         return "unknown"
+
+
+def _is_repo_dirty() -> bool:
+    """Check if the working tree has uncommitted changes."""
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        return bool(result.stdout.strip()) if result.returncode == 0 else False
+    except Exception:
+        return False
 
 
 def _get_head_commit_message(max_length: int = 72) -> str:
@@ -89,6 +105,7 @@ async def _handle_health(request: web.Request) -> web.Response:
             "uptime_seconds": round(time.monotonic() - _start_time),
             "head_sha": _get_head_sha(),
             "head_commit": _get_head_commit_message(),
+            "dirty": _is_repo_dirty(),
             "channels_connected": deps.channels_connected(),
         }
     )
@@ -136,20 +153,27 @@ async def _handle_deploy(request: web.Request) -> web.Response:
                 status=422,
             )
 
-    # 3. Write continuation, notify WhatsApp, and schedule SIGTERM
+    # 3. Restart (write continuation only when new code was deployed)
     chat_jid = deps.main_chat_jid()
-    await finalize_deploy(
-        send_message=deps.send_message,
-        chat_jid=chat_jid,
-        commit_sha=new_sha,
-        previous_sha=old_sha,
-        sigterm_delay=0.5,  # let the HTTP response flush first
-    )
+    if has_new_code:
+        await finalize_deploy(
+            send_message=deps.send_message,
+            chat_jid=chat_jid,
+            commit_sha=new_sha,
+            previous_sha=old_sha,
+            sigterm_delay=0.5,
+        )
+    else:
+        # Plain restart — no continuation needed, boot notification handles "I'm back"
+        logger.info("Restarting service (no new code)")
+        loop = asyncio.get_running_loop()
+        loop.call_later(0.5, os.kill, os.getpid(), signal.SIGTERM)
 
     return web.json_response({
         "status": "restarting",
         "sha": new_sha,
         "commit": _get_head_commit_message(),
+        "dirty": _is_repo_dirty(),
         "previous_sha": old_sha,
     })
 

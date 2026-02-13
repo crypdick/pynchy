@@ -19,6 +19,8 @@
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>ExitTimeOut</key>
+    <integer>15</integer>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
