@@ -65,6 +65,7 @@ from pynchy.http_server import (
     _get_head_commit_message,
     _get_head_sha,
     _is_repo_dirty,
+    _push_local_commits,
     start_http_server,
 )
 from pynchy.ipc import start_ipc_watcher
@@ -424,6 +425,10 @@ class PynchyApp:
             )
             return False
 
+        # Push local commits after successful agent session (main group only)
+        if is_main_group:
+            asyncio.create_task(asyncio.to_thread(_push_local_commits))
+
         return True
 
     async def _execute_direct_command(
@@ -735,6 +740,37 @@ class PynchyApp:
             if on_output:
                 await on_output(output)
 
+        # Warn the agent about repo issues so it can self-correct
+        system_notices: list[str] = []
+        if is_main:
+            dirty = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+            )
+            if dirty.returncode == 0 and dirty.stdout.strip():
+                system_notices.append(
+                    "There are uncommitted local changes. Run `git status` and `git diff` "
+                    "to review them. If they are good, commit and push. If not, discard them."
+                )
+            unpushed = subprocess.run(
+                ["git", "rev-list", "origin/main..HEAD", "--count"],
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+            )
+            if unpushed.returncode == 0 and int(unpushed.stdout.strip() or "0") > 0:
+                system_notices.append(
+                    "There are local commits that haven't been pushed. "
+                    "Run `git push` or `git rebase origin/main && git push` to sync them."
+                )
+            if system_notices:
+                system_notices.append(
+                    "Consider whether to address these issues "
+                    "before or after handling the new message."
+                )
+
         # Clear the guard — this container run starts fresh
         self._session_cleared.discard(group.folder)
 
@@ -747,6 +783,7 @@ class PynchyApp:
                     group_folder=group.folder,
                     chat_jid=chat_jid,
                     is_main=is_main,
+                    system_notices=system_notices or None,
                 ),
                 on_process=lambda proc, name: self.queue.register_process(
                     chat_jid, proc, name, group.folder

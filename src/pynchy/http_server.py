@@ -70,6 +70,65 @@ def _get_head_commit_message(max_length: int = 72) -> str:
         return ""
 
 
+def _push_local_commits(*, skip_fetch: bool = False) -> bool:
+    """Best-effort push of local commits to origin/main.
+
+    Returns True if repo is in sync (nothing to push, or push succeeded).
+    Never raises — all failures are logged and return False.
+    """
+    try:
+        if not skip_fetch:
+            fetch = subprocess.run(
+                ["git", "fetch", "origin"],
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+            )
+            if fetch.returncode != 0:
+                logger.warning("push_local: git fetch failed", stderr=fetch.stderr.strip())
+                return False
+
+        count = subprocess.run(
+            ["git", "rev-list", "origin/main..HEAD", "--count"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if count.returncode != 0 or int(count.stdout.strip() or "0") == 0:
+            return True  # nothing to push (or can't tell)
+
+        rebase = subprocess.run(
+            ["git", "rebase", "origin/main"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if rebase.returncode != 0:
+            subprocess.run(
+                ["git", "rebase", "--abort"],
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+            )
+            logger.warning("push_local: rebase failed", stderr=rebase.stderr.strip())
+            return False
+
+        push = subprocess.run(
+            ["git", "push"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if push.returncode != 0:
+            logger.warning("push_local: git push failed", stderr=push.stderr.strip())
+            return False
+
+        logger.info("push_local: pushed local commits")
+        return True
+    except Exception as exc:
+        logger.warning("push_local: unexpected error", err=str(exc))
+        return False
+
+
 def _write_boot_warning(message: str) -> None:
     """Append a warning to boot_warnings.json, picked up by _send_boot_notification on restart."""
     path = DATA_DIR / "boot_warnings.json"
@@ -129,13 +188,17 @@ async def _handle_deploy(request: web.Request) -> web.Response:
     deps: HttpDeps = request.app["deps"]
     old_sha = _get_head_sha()
 
-    # 1. Fetch + rebase to handle local divergence gracefully
+    # 1. Push any local commits before pulling (prevents divergence)
     subprocess.run(
         ["git", "fetch", "origin"],
         cwd=str(PROJECT_ROOT),
         capture_output=True,
         text=True,
     )
+    if not _push_local_commits(skip_fetch=True):
+        logger.warning("Pre-deploy push failed, continuing with rebase")
+
+    # 2. Rebase to incorporate incoming remote changes
     pull = subprocess.run(
         ["git", "rebase", "origin/main"],
         cwd=str(PROJECT_ROOT),
@@ -160,7 +223,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
     new_sha = _get_head_sha()
     has_new_code = new_sha != old_sha
 
-    # 2. Validate import (only when new code was pulled)
+    # 3. Validate import (only when new code was pulled)
     if has_new_code:
         validate = subprocess.run(
             ["uv", "run", "python", "-c", "import pynchy"],
@@ -185,7 +248,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
                 status=422,
             )
 
-    # 3. Rebuild container image if container/ files changed
+    # 4. Rebuild container image if container/ files changed
     if has_new_code:
         container_diff = subprocess.run(
             ["git", "diff", "--name-only", old_sha, new_sha, "--", "container/"],
@@ -215,7 +278,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
             else:
                 logger.info("Container image rebuilt successfully")
 
-    # 4. Restart (write continuation only when new code was deployed)
+    # 5. Restart (write continuation only when new code was deployed)
     chat_jid = deps.main_chat_jid()
     if has_new_code:
         await finalize_deploy(

@@ -100,6 +100,7 @@ class ContainerInput:
     session_id: str | None = None
     is_scheduled_task: bool = False
     plugin_mcp_servers: dict[str, dict] | None = None
+    system_notices: list[str] | None = None
 
 
 @dataclass

@@ -67,6 +67,7 @@ class ContainerInput:
         self.chat_jid: str = data["chat_jid"]
         self.is_main: bool = data["is_main"]
         self.is_scheduled_task: bool = data.get("is_scheduled_task", False)
+        self.system_notices: list[str] | None = data.get("system_notices")
 
 
 class ContainerOutput:
@@ -384,6 +385,18 @@ async def main() -> None:
             "preset": "claude_code",
             "append": global_claude_md,
         }
+
+    # Append system notices (e.g., git health warnings from host)
+    if container_input.system_notices:
+        notices_text = "\n\n".join(container_input.system_notices)
+        if system_prompt is None:
+            system_prompt = {
+                "type": "preset",
+                "preset": "claude_code",
+                "append": notices_text,
+            }
+        else:
+            system_prompt["append"] += "\n\n" + notices_text
 
     # MCP server path for IPC tools
     mcp_server_command = "python"
