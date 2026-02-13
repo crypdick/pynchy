@@ -39,7 +39,6 @@ Single source of truth for all pynchy work items.
 
 - [System message logging](2-planning/system-message-logging.md) — Log actual LLM system prompts to the DB, now that "host" messages have their own sender
 - [Plugin: Runtime](2-planning/plugin-runtime.md) — Alternative container runtimes (Apple Container, Podman) as plugins
-- [Plugin: Channel](2-planning/plugin-channel.md) — New communication platforms (Telegram, Slack, Discord) as plugins
 - [Plugin: Skill](2-planning/plugin-skill.md) — Agent skills/instructions provided by plugins
 - [Plugin: Hook](2-planning/plugin-hook.md) — Agent lifecycle hooks provided by plugins (most complex, implement last)
 
@@ -50,8 +49,6 @@ Single source of truth for all pynchy work items.
 
 ### 4 - In Progress
 *Being implemented.*
-
-- [Plugin: Channel](2-planning/plugin-channel.md) — New communication platforms (Telegram, Slack, Discord) as plugins
 
 ### Completed
 We don't track completed items here. Plans are moved to `5-completed/` via `git mv` and the line is removed.
