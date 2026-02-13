@@ -42,6 +42,9 @@ RUN apt-get update && apt-get install -y \
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 
+# Disable Python stdout buffering so streaming markers reach the host immediately
+ENV PYTHONUNBUFFERED=1
+
 # Install agent-browser and claude-code globally
 RUN npm install -g agent-browser @anthropic-ai/claude-code
 
