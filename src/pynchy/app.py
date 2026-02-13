@@ -785,6 +785,7 @@ class PynchyApp:
                     chat_jid, proc, name, group.folder
                 ),
                 on_output=wrapped_on_output if on_output else None,
+                registry=self.registry,
             )
 
             if output.new_session_id:

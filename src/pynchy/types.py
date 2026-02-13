@@ -99,6 +99,7 @@ class ContainerInput:
     is_main: bool
     session_id: str | None = None
     is_scheduled_task: bool = False
+    plugin_mcp_servers: dict[str, dict] | None = None
 
 
 @dataclass
