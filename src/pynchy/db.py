@@ -18,6 +18,10 @@ from pynchy.types import ContainerConfig, NewMessage, RegisteredGroup, Scheduled
 
 _db: aiosqlite.Connection | None = None
 
+# Hide internal system messages (e.g. [DEPLOY COMPLETE]) from queries but keep
+# user-facing ones ([system] boot notification, [system] 🗑️ clear).
+_EXCLUDE_INTERNAL_SYSTEM = "AND NOT (sender = 'system' AND content NOT LIKE '[system]%')"
+
 _SCHEMA = """\
 CREATE TABLE IF NOT EXISTS chats (
     jid TEXT PRIMARY KEY,
@@ -267,6 +271,7 @@ async def get_new_messages(
         SELECT id, chat_jid, sender, sender_name, content, timestamp
         FROM messages
         WHERE timestamp > ? AND chat_jid IN ({placeholders}) AND content NOT LIKE ?
+              {_EXCLUDE_INTERNAL_SYSTEM}
         ORDER BY timestamp
     """
     cursor = await db.execute(sql, [last_timestamp, *jids, f"{bot_prefix}:%"])
@@ -297,11 +302,11 @@ async def get_messages_since(
 ) -> list[NewMessage]:
     """Get messages for a specific chat since a timestamp, excluding bot and system messages."""
     db = _get_db()
-    sql = """
+    sql = f"""
         SELECT id, chat_jid, sender, sender_name, content, timestamp
         FROM messages
         WHERE chat_jid = ? AND timestamp > ? AND content NOT LIKE ?
-              AND content NOT LIKE '[system]%'
+              {_EXCLUDE_INTERNAL_SYSTEM}
         ORDER BY timestamp
     """
     cursor = await db.execute(sql, (chat_jid, since_timestamp, f"{bot_prefix}:%"))
@@ -333,16 +338,12 @@ async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
     cleared_row = await cleared_cursor.fetchone()
     cleared_at = cleared_row["cleared_at"] if cleared_row and cleared_row["cleared_at"] else None
 
-    # Hide internal system messages (e.g. [DEPLOY COMPLETE]) but keep
-    # user-facing ones ([system] boot notification, [system] 🗑️ clear).
-    internal_filter = "AND NOT (sender = 'system' AND content NOT LIKE '[system]%')"
-
     if cleared_at:
         cursor = await db.execute(
             f"""
             SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me
             FROM messages
-            WHERE chat_jid = ? AND timestamp > ? {internal_filter}
+            WHERE chat_jid = ? AND timestamp > ? {_EXCLUDE_INTERNAL_SYSTEM}
             ORDER BY timestamp DESC
             LIMIT ?
             """,
@@ -353,7 +354,7 @@ async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
             f"""
             SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me
             FROM messages
-            WHERE chat_jid = ? {internal_filter}
+            WHERE chat_jid = ? {_EXCLUDE_INTERNAL_SYSTEM}
             ORDER BY timestamp DESC
             LIMIT ?
             """,
