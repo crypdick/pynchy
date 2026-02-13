@@ -55,7 +55,7 @@ from pynchy.db import (
 )
 from pynchy.event_bus import AgentActivityEvent, ChatClearedEvent, EventBus, MessageEvent
 from pynchy.group_queue import GroupQueue
-from pynchy.http_server import _get_head_commit_message, _get_head_sha, start_http_server
+from pynchy.http_server import _get_head_commit_message, _get_head_sha, _is_repo_dirty, start_http_server
 from pynchy.ipc import start_ipc_watcher
 from pynchy.logger import logger
 from pynchy.router import format_messages, format_outbound, format_system_message, parse_system_tag
@@ -500,12 +500,32 @@ class PynchyApp:
 
         sha = _get_head_sha()[:8]
         commit_msg = _get_head_commit_message(50)
-        label = f"{sha} {commit_msg}".strip() if commit_msg else sha
+        dirty = " (dirty)" if _is_repo_dirty() else ""
+        label = f"{sha}{dirty} {commit_msg}".strip() if commit_msg else f"{sha}{dirty}"
         text = format_system_message(f"{ASSISTANT_NAME} online — {label}")
+        ts = datetime.now(UTC).isoformat()
+        await store_message_direct(
+            id=f"system-boot-{int(datetime.now(UTC).timestamp() * 1000)}",
+            chat_jid=main_jid,
+            sender="system",
+            sender_name="system",
+            content=text,
+            timestamp=ts,
+            is_from_me=True,
+        )
         for ch in self.channels:
             if ch.is_connected():
                 with contextlib.suppress(Exception):
                     await ch.send_message(main_jid, text)
+        self.event_bus.emit(
+            MessageEvent(
+                chat_jid=main_jid,
+                sender_name="system",
+                content=text,
+                timestamp=ts,
+                is_bot=True,
+            )
+        )
         logger.info("Boot notification sent")
 
     async def _recover_pending_messages(self) -> None:
@@ -747,19 +767,57 @@ class PynchyApp:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _is_launchd_managed() -> bool:
+        """Check if this process was started by launchd (PPID 1)."""
+        import os
+        return os.getppid() == 1
+
+    @staticmethod
+    def _is_launchd_loaded(label: str) -> bool:
+        """Check if a launchd job is loaded."""
+        result = subprocess.run(
+            ["launchctl", "list", label], capture_output=True
+        )
+        return result.returncode == 0
+
+    @staticmethod
     def _install_service() -> None:
-        """Install the platform service file so the process auto-restarts on exit."""
+        """Install the platform service file so the process auto-restarts on exit.
+
+        On macOS: copies plist to ~/Library/LaunchAgents/ and loads it into
+        launchd if we're already running under launchd (safe reload). When
+        running manually, only copies the file to avoid spawning a competing
+        second instance — the user runs launchctl load once to activate.
+        """
         if sys.platform == "darwin":
-            src = PROJECT_ROOT / "launchd" / "com.pynchy.plist"
-            dest = Path.home() / "Library" / "LaunchAgents" / "com.pynchy.plist"
+            label = "com.pynchy"
+            src = PROJECT_ROOT / "launchd" / f"{label}.plist"
+            dest = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
             if not src.exists():
                 logger.warning("launchd plist not found in repo, skipping service install")
                 return
-            if dest.exists() and filecmp.cmp(str(src), str(dest), shallow=False):
-                return  # already up to date
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dest)
-            logger.info("Installed launchd plist", dest=str(dest))
+            already_loaded = PynchyApp._is_launchd_loaded(label)
+            file_changed = not dest.exists() or not filecmp.cmp(str(src), str(dest), shallow=False)
+            if not file_changed and already_loaded:
+                return  # already up to date and loaded
+            if file_changed:
+                # Unload before overwriting so launchd picks up the new version
+                if already_loaded:
+                    subprocess.run(["launchctl", "unload", str(dest)], capture_output=True)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dest)
+                logger.info("Installed launchd plist", dest=str(dest))
+            # Only load if we're already running under launchd (safe to reload).
+            # When running manually, loading would spawn a competing instance
+            # that fights over WhatsApp websocket and port binding.
+            if already_loaded or PynchyApp._is_launchd_managed():
+                subprocess.run(["launchctl", "load", str(dest)], capture_output=True)
+                logger.info("Loaded launchd service", label=label)
+            elif not already_loaded:
+                logger.info(
+                    "Launchd plist installed. To enable auto-restart, stop this "
+                    "process and run: launchctl load ~/Library/LaunchAgents/com.pynchy.plist"
+                )
         elif sys.platform == "linux":
             uv_path = shutil.which("uv")
             if not uv_path:
@@ -806,6 +864,15 @@ WantedBy=default.target
             os._exit(1)
         self._shutting_down = True
         logger.info("Shutdown signal received", signal=sig_name)
+
+        # Hard-exit watchdog: if graceful shutdown hangs, force-exit after 12s.
+        # This ensures launchd/systemd can restart us even if a container or
+        # channel disconnect blocks indefinitely.
+        import os
+
+        loop = asyncio.get_running_loop()
+        loop.call_later(12, lambda: os._exit(1))
+
         if self._http_runner:
             await self._http_runner.cleanup()
         await self.queue.shutdown(10.0)
