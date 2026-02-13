@@ -10,12 +10,12 @@ from collections.abc import Awaitable, Callable
 
 from pynchy.config import DATA_DIR
 from pynchy.logger import logger
-from pynchy.router import format_system_message
+from pynchy.router import format_host_message
 
 
 async def finalize_deploy(
     *,
-    broadcast_system_message: Callable[[str, str], Awaitable[None]],
+    broadcast_host_message: Callable[[str, str], Awaitable[None]],
     chat_jid: str,
     commit_sha: str,
     previous_sha: str,
@@ -26,8 +26,8 @@ async def finalize_deploy(
     """Write continuation, notify all UIs, and SIGTERM self.
 
     Args:
-        broadcast_system_message: async callable(jid, text) to store, send,
-            and emit a system message to all UIs.
+        broadcast_host_message: async callable(jid, text) to store, send,
+            and emit a host message to all UIs.
         chat_jid: JID of the chat to notify.
         commit_sha: The new HEAD after deploy.
         previous_sha: The HEAD before deploy (for rollback).
@@ -51,9 +51,9 @@ async def finalize_deploy(
     # 2. Notify all UIs
     short_sha = commit_sha[:8] if commit_sha else "unknown"
     if chat_jid:
-        await broadcast_system_message(
+        await broadcast_host_message(
             chat_jid,
-            format_system_message(f"Deploying {short_sha}... restarting now."),
+            format_host_message(f"Deploying {short_sha}... restarting now."),
         )
 
     logger.info(

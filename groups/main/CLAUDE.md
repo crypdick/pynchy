@@ -34,15 +34,15 @@ Here are the key findings from the research...
 
 Text inside `<internal>` tags is logged but not sent to the user. If you've already sent the key information via `send_message`, you can wrap the recap in `<internal>` to avoid sending it again.
 
-### System messages
+### Host messages
 
-For operational confirmations (context resets, status updates) that should NOT appear as a regular "pynchy" message, wrap your entire output in `<system>` tags:
+For operational confirmations (context resets, status updates) that should NOT appear as a regular "pynchy" message, wrap your entire output in `<host>` tags:
 
 ```
-<system>Context cleared. Starting fresh session.</system>
+<host>Context cleared. Starting fresh session.</host>
 ```
 
-Text inside `<system>` tags is displayed with a `[system]` prefix instead of the assistant name.
+Text inside `<host>` tags is displayed with a `[host]` prefix instead of the assistant name.
 
 ### Sub-agents and teammates
 

@@ -69,7 +69,7 @@ from pynchy.http_server import (
 )
 from pynchy.ipc import start_ipc_watcher
 from pynchy.logger import logger
-from pynchy.router import format_messages, format_outbound, format_system_message, parse_system_tag
+from pynchy.router import format_host_message, format_messages, format_outbound, parse_host_tag
 from pynchy.runtime import get_runtime
 from pynchy.task_scheduler import start_scheduler_loop
 from pynchy.types import Channel, ContainerInput, ContainerOutput, NewMessage, RegisteredGroup
@@ -205,8 +205,8 @@ class PynchyApp:
             prompt = reset_data.get("message", "")
             if prompt:
                 logger.info("Processing reset handoff", group=group.name)
-                handoff_text = format_system_message(f"[handoff] {prompt}")
-                await self._broadcast_system_message(chat_jid, handoff_text)
+                handoff_text = format_host_message(f"[handoff] {prompt}")
+                await self._broadcast_host_message(chat_jid, handoff_text)
 
                 async def handoff_on_output(result: ContainerOutput) -> None:
                     await self._handle_streamed_output(chat_jid, group, result)
@@ -311,8 +311,8 @@ class PynchyApp:
                 )
                 return True
             # Send error notification to user
-            error_msg = format_system_message("⚠️ Agent error occurred. Will retry on next message.")
-            await self._broadcast_system_message(chat_jid, error_msg)
+            error_msg = format_host_message("⚠️ Agent error occurred. Will retry on next message.")
+            await self._broadcast_host_message(chat_jid, error_msg)
             # Roll back cursor for retry
             self.last_agent_timestamp[chat_jid] = previous_cursor
             await self._save_state()
@@ -380,10 +380,10 @@ class PynchyApp:
             raw = result.result if isinstance(result.result, str) else json.dumps(result.result)
             text = strip_internal_tags(raw)
             if text:
-                is_system, content = parse_system_tag(text)
-                if is_system:
-                    formatted = format_system_message(content)
-                    logger.info("System message", group=group.name, text=content[:200])
+                is_host, content = parse_host_tag(text)
+                if is_host:
+                    formatted = format_host_message(content)
+                    logger.info("Host message", group=group.name, text=content[:200])
                 else:
                     formatted = f"{ASSISTANT_NAME}: {text}"
                     logger.info("Agent output", group=group.name, text=raw[:200])
@@ -613,8 +613,8 @@ class PynchyApp:
             except Exception:
                 boot_warnings_path.unlink(missing_ok=True)
 
-        text = format_system_message("\n".join(parts))
-        await self._broadcast_system_message(main_jid, text)
+        text = format_host_message("\n".join(parts))
+        await self._broadcast_host_message(main_jid, text)
         logger.info("Boot notification sent")
 
     async def _recover_pending_messages(self) -> None:
@@ -719,7 +719,7 @@ class PynchyApp:
 
         # Inject a synthetic message to resume the agent session.
         # Uses sender="deploy" so it passes get_messages_since filters
-        # (sender="system" is excluded to prevent system messages triggering the agent).
+        # (sender="host" is excluded to prevent host messages triggering the agent).
         synthetic_msg = NewMessage(
             id=f"deploy-{commit_sha[:8]}-{int(datetime.now(UTC).timestamp() * 1000)}",
             chat_jid=chat_jid,
@@ -782,14 +782,14 @@ class PynchyApp:
     # Helpers
     # ------------------------------------------------------------------
 
-    async def _broadcast_system_message(self, chat_jid: str, text: str) -> None:
-        """Store, send to all channels, and emit event for a system message."""
+    async def _broadcast_host_message(self, chat_jid: str, text: str) -> None:
+        """Store, send to all channels, and emit event for a host message."""
         ts = datetime.now(UTC).isoformat()
         await store_message_direct(
-            id=f"system-{int(datetime.now(UTC).timestamp() * 1000)}",
+            id=f"host-{int(datetime.now(UTC).timestamp() * 1000)}",
             chat_jid=chat_jid,
-            sender="system",
-            sender_name="system",
+            sender="host",
+            sender_name="host",
             content=text,
             timestamp=ts,
             is_from_me=True,
@@ -801,7 +801,7 @@ class PynchyApp:
         self.event_bus.emit(
             MessageEvent(
                 chat_jid=chat_jid,
-                sender_name="system",
+                sender_name="host",
                 content=text,
                 timestamp=ts,
                 is_bot=True,
@@ -815,7 +815,7 @@ class PynchyApp:
         await set_chat_cleared_at(chat_jid, cleared_ts)
         self.event_bus.emit(ChatClearedEvent(chat_jid=chat_jid))
 
-        await self._broadcast_system_message(chat_jid, format_system_message("🗑️"))
+        await self._broadcast_host_message(chat_jid, format_host_message("🗑️"))
 
     def _find_channel(self, jid: str) -> Channel | None:
         """Find the channel that owns a given JID."""
@@ -1100,8 +1100,8 @@ WantedBy=default.target
                         with contextlib.suppress(Exception):
                             await ch.send_message(jid, text)
 
-            async def broadcast_system_message(self, jid: str, text: str) -> None:
-                await app._broadcast_system_message(jid, text)
+            async def broadcast_host_message(self, jid: str, text: str) -> None:
+                await app._broadcast_host_message(jid, text)
 
             def main_chat_jid(self) -> str:
                 for jid, group in app.registered_groups.items():
@@ -1220,8 +1220,8 @@ WantedBy=default.target
                         with contextlib.suppress(Exception):
                             await ch.send_message(jid, text)
 
-            async def broadcast_system_message(self, jid: str, text: str) -> None:
-                await app._broadcast_system_message(jid, text)
+            async def broadcast_host_message(self, jid: str, text: str) -> None:
+                await app._broadcast_host_message(jid, text)
 
             def registered_groups(self) -> dict[str, RegisteredGroup]:
                 return app.registered_groups
