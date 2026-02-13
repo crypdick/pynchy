@@ -38,7 +38,6 @@ Single source of truth for all pynchy work items.
 *Draft plan exists. Awaiting human sign-off.*
 
 - [System message logging](2-planning/system-message-logging.md) — Log actual LLM system prompts to the DB, now that "host" messages have their own sender
-- [Plugin discovery](2-planning/plugin-discovery.md) — Core plugin infrastructure for discovering and registering extensions via Python entry points
 - [Plugin: Runtime](2-planning/plugin-runtime.md) — Alternative container runtimes (Apple Container, Podman) as plugins
 - [Plugin: Channel](2-planning/plugin-channel.md) — New communication platforms (Telegram, Slack, Discord) as plugins
 - [Plugin: MCP](2-planning/plugin-mcp.md) — Agent tools (MCP servers) provided by plugins
@@ -53,7 +52,7 @@ Single source of truth for all pynchy work items.
 ### 4 - In Progress
 *Being implemented.*
 
-- allow user to execute cmds, bypassing the llm. `!ls`, `!echo hi`, will run without llm approval. the llm will see in the history that the user ran a cmd and the cmd output. this type of user input does not initiate a conversation turn for the llm though-- the user needs to follow up with a non-command message in order to trigger the llm (at which point it'll see the tool usage in its history)
+- [Plugin discovery](2-planning/plugin-discovery.md) — Core plugin infrastructure for discovering and registering extensions via Python entry points
 
 ### Completed
 We don't track completed items here. Plans are moved to `5-completed/` via `git mv` and the line is removed.

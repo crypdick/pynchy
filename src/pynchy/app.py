@@ -98,6 +98,7 @@ class PynchyApp:
         self.event_bus: EventBus = EventBus()
         self._shutting_down: bool = False
         self._http_runner: Any | None = None
+        self.registry: Any = None  # PluginRegistry, set during startup
 
     # ------------------------------------------------------------------
     # State persistence
@@ -1230,6 +1231,11 @@ WantedBy=default.target
             await init_database()
             logger.info("Database initialized")
             await self._load_state()
+
+            # Discover plugins after loading state
+            from pynchy.plugin import discover_plugins
+
+            self.registry = discover_plugins()
         except Exception as exc:
             # Auto-rollback if we crash during startup after a deploy
             if continuation_path.exists():
