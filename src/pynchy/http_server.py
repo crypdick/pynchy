@@ -118,15 +118,27 @@ async def _handle_deploy(request: web.Request) -> web.Response:
     deps: HttpDeps = request.app["deps"]
     old_sha = _get_head_sha()
 
-    # 1. Try git pull --ff-only (non-fatal — allows restart without new commits)
+    # 1. Fetch + rebase to handle local divergence gracefully
+    subprocess.run(
+        ["git", "fetch", "origin"],
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+    )
     pull = subprocess.run(
-        ["git", "pull", "--ff-only"],
+        ["git", "rebase", "origin/main"],
         cwd=str(PROJECT_ROOT),
         capture_output=True,
         text=True,
     )
     if pull.returncode != 0:
-        logger.warning("git pull failed, restarting with current code", stderr=pull.stderr.strip())
+        # Abort failed rebase to leave repo clean, then continue with current code
+        subprocess.run(
+            ["git", "rebase", "--abort"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+        )
+        logger.warning("git rebase failed, restarting with current code", stderr=pull.stderr.strip())
 
     new_sha = _get_head_sha()
     has_new_code = new_sha != old_sha
