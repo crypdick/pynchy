@@ -245,12 +245,13 @@ Parameters:
 1. Make changes to files under `/workspace/project/`
 2. Run tests: `uv run pytest tests/`
 3. Run linter: `uv run ruff check src/`
-4. Commit: `git add -A && git commit -m "descriptive message"`
+4. Commit and push: `git add -A && git commit -m "descriptive message" && git push`
 5. Deploy: call `deploy_changes`
 
 ### Safety Rules
 
 - *Always* run tests and lint before deploying
+- *Always* push before deploying — local-only commits cause divergence on restart
 - Make small, focused changes — one logical change per deploy
 - Write descriptive commit messages
 - If you changed anything under `container/`, set `rebuild_container: true`
