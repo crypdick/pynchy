@@ -266,6 +266,12 @@ class PynchyApp:
                 lambda: self.queue.close_stdin(chat_jid),
             )
 
+        # Send emoji reaction on the last message to indicate agent is reading
+        last_msg = missed_messages[-1]
+        for ch in self.channels:
+            if ch.is_connected() and hasattr(ch, "send_reaction"):
+                await ch.send_reaction(chat_jid, last_msg.id, last_msg.sender, "👀")
+
         # Set typing indicator on all channels that support it
         for ch in self.channels:
             if ch.is_connected() and hasattr(ch, "set_typing"):
@@ -304,6 +310,9 @@ class PynchyApp:
                     group=group.name,
                 )
                 return True
+            # Send error notification to user
+            error_msg = format_system_message("⚠️ Agent error occurred. Will retry on next message.")
+            await self._broadcast_system_message(chat_jid, error_msg)
             # Roll back cursor for retry
             self.last_agent_timestamp[chat_jid] = previous_cursor
             await self._save_state()
@@ -550,6 +559,14 @@ class PynchyApp:
                                 chat_jid=chat_jid,
                                 count=len(all_pending),
                             )
+                            # Send emoji reaction to indicate reading
+                            last_msg = all_pending[-1]
+                            for ch in self.channels:
+                                if ch.is_connected() and hasattr(ch, "send_reaction"):
+                                    await ch.send_reaction(
+                                        chat_jid, last_msg.id, last_msg.sender, "👀"
+                                    )
+
                             self.last_agent_timestamp[chat_jid] = all_pending[-1].timestamp
                             await self._save_state()
                         else:
