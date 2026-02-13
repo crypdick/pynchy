@@ -26,6 +26,7 @@ Single source of truth for all pynchy work items.
 - [Periodic agents](1-approved/periodic-agents.md) — Background agents for security sweeps, code quality, SDK updates, etc.
 - [Project ideas](1-approved/project-ideas.md) — Standalone integration ideas (calendar, voice, Cloudflare, AWS, etc.)
 - [Small improvements](1-approved/small-improvements.md) — Distinct system messages, external pull & restart, dossier logging, ruff hooks, slack-tools check
+- [Ray resource orchestration](1-approved/ray-resource-orchestration.md) — Thin Ray integration for resource-aware container scaling, blocking queues, multi-node distribution, and GPU routing
 
 ### 2 - Planning
 *Draft plan exists. Awaiting human sign-off.*
@@ -39,6 +40,7 @@ Single source of truth for all pynchy work items.
 - [Security hardening](3-ready/security-hardening.md) — Security improvements and hardening measures
 - when the host container starts, send a system message to the whatsapp channel
 - allow user to execute cmds, bypassing the llm. `!ls`, `!echo hi`, will run without llm approval. the llm will see in the history that the user ran a cmd and the cmd output. this type of user input does not initiate a conversation turn for the llm though-- the user needs to follow up with a non-command message in order to trigger the llm (at which point it'll see the tool usage in its history) 
+- implement 'handoff' tool calls as well as 'delegate' tool calls. handoff causes current agent to cease to exist; it decides what context to give to the next agent. the delegate tool is a blocking call that spawns a new agent to complete a task before passing it back. in reality, this tool call can abstract away a more complex system, like a deep research agent which has many subagents.
 
 ### 4 - In Progress
 *Being implemented.*
