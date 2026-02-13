@@ -18,6 +18,7 @@ from croniter import croniter
 from pynchy.config import (
     ASSISTANT_NAME,
     DATA_DIR,
+    GROUPS_DIR,
     IPC_POLL_INTERVAL,
     MAIN_GROUP_FOLDER,
     PROJECT_ROOT,
@@ -26,7 +27,7 @@ from pynchy.config import (
 from pynchy.db import create_task, delete_task, get_task_by_id, update_task
 from pynchy.deploy import finalize_deploy
 from pynchy.logger import logger
-from pynchy.types import ContainerConfig, RegisteredGroup
+from pynchy.types import Channel, ContainerConfig, RegisteredGroup
 
 
 class IpcDeps(Protocol):
@@ -57,6 +58,8 @@ class IpcDeps(Protocol):
     async def clear_chat_history(self, chat_jid: str) -> None: ...
 
     def enqueue_message_check(self, group_jid: str) -> None: ...
+
+    def channels(self) -> list[Channel]: ...
 
 
 _ipc_watcher_running = False
@@ -379,6 +382,15 @@ async def process_task_ipc(
                 group=group_folder,
             )
 
+        case "create_periodic_agent":
+            if not is_main:
+                logger.warning(
+                    "Unauthorized create_periodic_agent attempt blocked",
+                    source_group=source_group,
+                )
+                return
+            await _handle_create_periodic_agent(data, deps)
+
         case "register_group":
             if not is_main:
                 logger.warning(
@@ -481,3 +493,85 @@ async def _deploy_error(
     """Send a deploy error message back to the main group."""
     logger.error("Deploy failed", error=message)
     await deps.broadcast_host_message(chat_jid, f"Deploy failed: {message}")
+
+
+async def _handle_create_periodic_agent(data: dict[str, Any], deps: IpcDeps) -> None:
+    """Create a periodic agent: folder, periodic.yaml, CLAUDE.md, chat group, and task."""
+    from pynchy.periodic import PeriodicAgentConfig, write_periodic_config
+
+    name = data.get("name")
+    schedule = data.get("schedule")
+    prompt = data.get("prompt")
+    if not name or not schedule or not prompt:
+        logger.warning("create_periodic_agent missing required fields", data=str(data))
+        return
+
+    if not croniter.is_valid(schedule):
+        logger.warning("create_periodic_agent invalid cron", schedule=schedule)
+        return
+
+    context_mode = data.get("context_mode", "group")
+    if context_mode not in ("group", "isolated"):
+        context_mode = "group"
+
+    claude_md = data.get("claude_md", f"You are the {name} periodic agent.")
+
+    # 1. Create group folder and write config files
+    group_dir = GROUPS_DIR / name
+    group_dir.mkdir(parents=True, exist_ok=True)
+
+    config = PeriodicAgentConfig(schedule=schedule, prompt=prompt, context_mode=context_mode)
+    write_periodic_config(name, config)
+
+    claude_md_path = group_dir / "CLAUDE.md"
+    if not claude_md_path.exists():
+        claude_md_path.write_text(claude_md)
+
+    # 2. Create chat group via a channel that supports it
+    channels = deps.channels()
+    channel = next((ch for ch in channels if hasattr(ch, "create_group")), None)
+    if channel is None:
+        logger.warning("No channel supports create_group, periodic agent created without chat")
+        return
+
+    agent_display_name = name.replace("-", " ").title()
+    jid = await channel.create_group(agent_display_name)
+
+    # 3. Register the group
+    group = RegisteredGroup(
+        name=agent_display_name,
+        folder=name,
+        trigger=f"@{ASSISTANT_NAME}",
+        added_at=datetime.now(UTC).isoformat(),
+        requires_trigger=False,
+    )
+    deps.register_group(jid, group)
+
+    # 4. Create the scheduled task
+    tz = ZoneInfo(TIMEZONE)
+    cron = croniter(schedule, datetime.now(tz))
+    next_run = cron.get_next(datetime).isoformat()
+    task_id = f"periodic-{name}-{uuid.uuid4().hex[:8]}"
+
+    await create_task(
+        {
+            "id": task_id,
+            "group_folder": name,
+            "chat_jid": jid,
+            "prompt": prompt,
+            "schedule_type": "cron",
+            "schedule_value": schedule,
+            "context_mode": context_mode,
+            "next_run": next_run,
+            "status": "active",
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+    )
+
+    logger.info(
+        "Periodic agent created via IPC",
+        name=name,
+        schedule=schedule,
+        task_id=task_id,
+        jid=jid,
+    )

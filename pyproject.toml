@@ -12,6 +12,7 @@ dependencies = [
     "mcp>=1.26.0",
     "neonize>=0.3.14.post0",
     "pydantic>=2.12.5",
+    "pyyaml>=6.0.3",
     "qrcode>=8.2",
     "structlog>=25.5.0",
     "textual>=7.5.0",

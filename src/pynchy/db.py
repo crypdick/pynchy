@@ -455,6 +455,19 @@ async def delete_task(task_id: str) -> None:
     await db.commit()
 
 
+async def get_active_task_for_group(group_folder: str) -> ScheduledTask | None:
+    """Find the active scheduled task for a periodic agent group."""
+    db = _get_db()
+    cursor = await db.execute(
+        "SELECT * FROM scheduled_tasks WHERE group_folder = ? AND status = 'active' LIMIT 1",
+        (group_folder,),
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        return None
+    return _row_to_task(row)
+
+
 async def get_due_tasks() -> list[ScheduledTask]:
     """Get all active tasks that are due to run."""
     db = _get_db()
