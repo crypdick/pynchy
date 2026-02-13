@@ -63,6 +63,52 @@ async def route_outbound(channels: list[Channel], jid: str, text: str) -> None:
     await channel.send_message(jid, text)
 
 
+def format_tool_preview(tool_name: str, tool_input: dict) -> str:
+    """Format a one-line preview of a tool invocation for channel messages.
+
+    Extracts the most relevant detail per tool type so WhatsApp/Telegram
+    users see *what* the agent is doing, not just the tool name.
+    """
+    if tool_name == "Bash":
+        cmd = tool_input.get("command", "")
+        if cmd:
+            if len(cmd) > 60:
+                cmd = cmd[:57] + "..."
+            return f"Bash: {cmd}"
+        return "Bash"
+
+    if tool_name in ("Read", "Edit", "Write"):
+        path = tool_input.get("file_path", "")
+        if path:
+            # Show just the filename or last 50 chars of path
+            if len(path) > 50:
+                path = "..." + path[-47:]
+            return f"{tool_name}: {path}"
+        return tool_name
+
+    if tool_name == "Grep":
+        pattern = tool_input.get("pattern", "")
+        path = tool_input.get("path", "")
+        parts = [tool_name]
+        if pattern:
+            parts.append(f"/{pattern}/")
+        if path:
+            parts.append(path)
+        return " ".join(parts)
+
+    if tool_name == "Glob":
+        pattern = tool_input.get("pattern", "")
+        if pattern:
+            return f"Glob: {pattern}"
+        return "Glob"
+
+    # Fallback: show first 50 chars of input
+    preview = str(tool_input)
+    if len(preview) > 50:
+        preview = preview[:47] + "..."
+    return f"{tool_name}: {preview}" if tool_input else tool_name
+
+
 def find_channel(channels: list[Channel], jid: str) -> Channel | None:
     """Find the channel that owns a given JID."""
     for c in channels:
