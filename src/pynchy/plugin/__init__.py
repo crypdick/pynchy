@@ -15,6 +15,7 @@ from __future__ import annotations
 from importlib.metadata import entry_points
 
 from pynchy.logger import logger
+from pynchy.plugin.agent_core import AgentCorePlugin
 from pynchy.plugin.base import PluginBase, PluginRegistry
 from pynchy.plugin.channel import ChannelPlugin, PluginContext
 from pynchy.plugin.mcp import McpPlugin, McpServerSpec
@@ -28,6 +29,7 @@ __all__ = [
     "McpPlugin",
     "McpServerSpec",
     "SkillPlugin",
+    "AgentCorePlugin",
     "discover_plugins",
 ]
 
@@ -70,6 +72,8 @@ def discover_plugins() -> PluginRegistry:
                 registry.skills.append(plugin)
             if "hook" in plugin.categories:
                 registry.hooks.append(plugin)
+            if "agent_core" in plugin.categories:
+                registry.agent_cores.append(plugin)
 
             logger.info(
                 "Plugin discovered",
@@ -90,6 +94,7 @@ def discover_plugins() -> PluginRegistry:
         mcp_servers=len(registry.mcp_servers),
         skills=len(registry.skills),
         hooks=len(registry.hooks),
+        agent_cores=len(registry.agent_cores),
     )
 
     return registry

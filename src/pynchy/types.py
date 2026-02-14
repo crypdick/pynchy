@@ -232,6 +232,8 @@ class ContainerInput:
     plugin_mcp_servers: dict[str, dict] | None = None
     system_notices: list[str] | None = None
     project_access: bool = False
+    agent_core: str = "claude"  # Which agent core to use
+    agent_core_config: dict | None = None  # Core-specific settings
 
 
 @dataclass

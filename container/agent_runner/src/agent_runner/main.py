@@ -2,6 +2,10 @@
 
 Port of container/agent-runner/src/index.ts.
 
+This is the framework-agnostic runner. It handles stdin/stdout framing, IPC
+polling, and output marker wrapping. The actual LLM agent logic is delegated
+to AgentCore implementations (Claude SDK, OpenAI, etc.).
+
 Input protocol:
   Stdin: Full ContainerInput JSON (read until EOF)
   IPC:   Follow-up messages written as JSON files to /workspace/ipc/input/
@@ -9,16 +13,6 @@ Input protocol:
 
 Stdout protocol:
   Each result is wrapped in OUTPUT_START_MARKER / OUTPUT_END_MARKER pairs.
-
-Known SDK differences from TypeScript:
-  - No resumeSessionAt: Python SDK only supports resume by session_id, not by
-    a specific message UUID within a session. Follow-up queries re-enter the
-    session from the end, not from a specific assistant turn.
-  - No mid-query message injection: TS uses a MessageStream (push-based
-    AsyncIterable) to pipe IPC messages into an active query. The Python SDK's
-    client.query()+receive_response() pattern processes messages between query
-    rounds instead. Follow-up messages are queued and handled in the next loop
-    iteration rather than injected live.
 """
 
 from __future__ import annotations
@@ -26,25 +20,12 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import re
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from claude_agent_sdk import (
-    AssistantMessage,
-    ClaudeAgentOptions,
-    ClaudeSDKClient,
-    HookContext,
-    HookMatcher,
-    ResultMessage,
-    SystemMessage,
-    TextBlock,
-    ThinkingBlock,
-    ToolResultBlock,
-    ToolUseBlock,
-)
+from .core import AgentCoreConfig, AgentEvent
+from .registry import create_agent_core
 
 IPC_INPUT_DIR = Path("/workspace/ipc/input")
 IPC_INPUT_CLOSE_SENTINEL = IPC_INPUT_DIR / "_close"
@@ -70,6 +51,8 @@ class ContainerInput:
         self.system_notices: list[str] | None = data.get("system_notices")
         self.project_access: bool = data.get("project_access", False)
         self.plugin_mcp_servers: dict[str, Any] | None = data.get("plugin_mcp_servers")
+        self.agent_core: str = data.get("agent_core", "claude")
+        self.agent_core_config: dict[str, Any] | None = data.get("agent_core_config")
 
 
 class ContainerOutput:
@@ -205,142 +188,6 @@ async def wait_for_ipc_message() -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Session summary lookup
-# ---------------------------------------------------------------------------
-
-
-def get_session_summary(session_id: str, transcript_path: str) -> str | None:
-    """Look up session summary from sessions-index.json."""
-    project_dir = Path(transcript_path).parent
-    index_path = project_dir / "sessions-index.json"
-
-    if not index_path.exists():
-        log(f"Sessions index not found at {index_path}")
-        return None
-
-    try:
-        index = json.loads(index_path.read_text())
-        for entry in index.get("entries", []):
-            if entry.get("sessionId") == session_id:
-                return entry.get("summary")
-    except Exception as exc:
-        log(f"Failed to read sessions index: {exc}")
-
-    return None
-
-
-# ---------------------------------------------------------------------------
-# Transcript archival (PreCompact hook)
-# ---------------------------------------------------------------------------
-
-
-def sanitize_filename(summary: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", summary.lower()).strip("-")[:50]
-
-
-def generate_fallback_name() -> str:
-    now = datetime.now()
-    return f"conversation-{now.hour:02d}{now.minute:02d}"
-
-
-def parse_transcript(content: str) -> list[dict[str, str]]:
-    """Parse JSONL transcript to messages."""
-    messages: list[dict[str, str]] = []
-
-    for line in content.splitlines():
-        if not line.strip():
-            continue
-        try:
-            entry = json.loads(line)
-            if entry.get("type") == "user" and entry.get("message", {}).get("content"):
-                raw = entry["message"]["content"]
-                text = raw if isinstance(raw, str) else "".join(c.get("text", "") for c in raw)
-                if text:
-                    messages.append({"role": "user", "content": text})
-            elif entry.get("type") == "assistant" and entry.get("message", {}).get("content"):
-                text_parts = [
-                    c.get("text", "")
-                    for c in entry["message"]["content"]
-                    if c.get("type") == "text"
-                ]
-                text = "".join(text_parts)
-                if text:
-                    messages.append({"role": "assistant", "content": text})
-        except (json.JSONDecodeError, KeyError, TypeError):
-            pass
-
-    return messages
-
-
-def format_transcript_markdown(messages: list[dict[str, str]], title: str | None = None) -> str:
-    """Format parsed messages as markdown."""
-    now = datetime.now()
-    formatted_date = now.strftime("%b %d, %I:%M %p")
-
-    lines = [
-        f"# {title or 'Conversation'}",
-        "",
-        f"Archived: {formatted_date}",
-        "",
-        "---",
-        "",
-    ]
-
-    for msg in messages:
-        sender = "User" if msg["role"] == "user" else "Pynchy"
-        content = msg["content"][:2000] + "..." if len(msg["content"]) > 2000 else msg["content"]
-        lines.append(f"**{sender}**: {content}")
-        lines.append("")
-
-    return "\n".join(lines)
-
-
-def create_pre_compact_hook():
-    """Create a PreCompact hook that archives the transcript."""
-
-    async def hook(
-        input_data: dict[str, Any],
-        tool_use_id: str | None,
-        context: HookContext,
-    ) -> dict[str, Any]:
-        transcript_path = input_data.get("transcript_path", "")
-        session_id = input_data.get("session_id", "")
-
-        if not transcript_path or not Path(transcript_path).exists():
-            log("No transcript found for archiving")
-            return {}
-
-        try:
-            content = Path(transcript_path).read_text()
-            messages = parse_transcript(content)
-
-            if not messages:
-                log("No messages to archive")
-                return {}
-
-            summary = get_session_summary(session_id, transcript_path)
-            name = sanitize_filename(summary) if summary else generate_fallback_name()
-
-            conversations_dir = Path("/workspace/group/conversations")
-            conversations_dir.mkdir(parents=True, exist_ok=True)
-
-            date = datetime.now().strftime("%Y-%m-%d")
-            filename = f"{date}-{name}.md"
-            file_path = conversations_dir / filename
-
-            markdown = format_transcript_markdown(messages, summary)
-            file_path.write_text(markdown)
-
-            log(f"Archived conversation to {file_path}")
-        except Exception as exc:
-            log(f"Failed to archive transcript: {exc}")
-
-        return {}
-
-    return hook
-
-
-# ---------------------------------------------------------------------------
 # Message conversion
 # ---------------------------------------------------------------------------
 
@@ -379,68 +226,28 @@ def build_sdk_messages(messages: list[dict[str, Any]]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Main
+# Core configuration
 # ---------------------------------------------------------------------------
 
 
-async def main() -> None:
-    # Read input from stdin
-    try:
-        stdin_data = sys.stdin.read()
-        container_input = ContainerInput(json.loads(stdin_data))
-        log(f"Received input for group: {container_input.group_folder}")
-    except Exception as exc:
-        write_output(
-            ContainerOutput(
-                status="error",
-                error=f"Failed to parse input: {exc}",
-            )
-        )
-        sys.exit(1)
-
-    # Clean up stale _close sentinel
-    IPC_INPUT_DIR.mkdir(parents=True, exist_ok=True)
-    with contextlib.suppress(OSError):
-        IPC_INPUT_CLOSE_SENTINEL.unlink()
-
-    # Build initial prompt from SDK messages
-    log(f"Using SDK message list ({len(container_input.messages)} messages)")
-    prompt = build_sdk_messages(container_input.messages)
-
-    if container_input.is_scheduled_task:
-        prompt = (
-            "[SCHEDULED TASK - The following message was sent automatically "
-            "and is not coming directly from the user or group.]\n\n" + prompt
-        )
-    pending = drain_ipc_input()
-    if pending:
-        log(f"Draining {len(pending)} pending IPC messages into initial prompt")
-        prompt += "\n" + "\n".join(pending)
-
+def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
+    """Build AgentCoreConfig from ContainerInput."""
     # Load global CLAUDE.md as additional system context (non-main groups only)
     global_claude_md_path = Path("/workspace/global/CLAUDE.md")
-    system_prompt: dict[str, Any] | None = None
+    system_prompt_append: str | None = None
+
     if not container_input.is_main and global_claude_md_path.exists():
-        global_claude_md = global_claude_md_path.read_text()
-        system_prompt = {
-            "type": "preset",
-            "preset": "claude_code",
-            "append": global_claude_md,
-        }
+        system_prompt_append = global_claude_md_path.read_text()
 
     # Append system notices to system prompt (SDK system messages FOR the LLM)
     # These provide context TO the LLM, distinct from operational host messages.
     # Examples: git health warnings, uncommitted changes, deployment state
     if container_input.system_notices:
         notices_text = "\n\n".join(container_input.system_notices)
-        if system_prompt is None:
-            system_prompt = {
-                "type": "preset",
-                "preset": "claude_code",
-                "append": notices_text,
-            }
+        if system_prompt_append:
+            system_prompt_append += "\n\n" + notices_text
         else:
-            system_prompt["append"] += "\n\n" + notices_text
+            system_prompt_append = notices_text
 
     # MCP server path for IPC tools
     mcp_server_command = "python"
@@ -478,183 +285,209 @@ async def main() -> None:
     has_project = container_input.is_main or container_input.project_access
     agent_cwd = "/workspace/project" if has_project else "/workspace/group"
 
-    options = ClaudeAgentOptions(
+    # Build extra config from agent_core_config
+    extra = container_input.agent_core_config or {}
+
+    return AgentCoreConfig(
         cwd=agent_cwd,
-        resume=container_input.session_id,
-        system_prompt=system_prompt,
-        allowed_tools=[
-            "Bash",
-            "Read",
-            "Write",
-            "Edit",
-            "Glob",
-            "Grep",
-            "WebSearch",
-            "WebFetch",
-            "Task",
-            "TaskOutput",
-            "TaskStop",
-            "TeamCreate",
-            "TeamDelete",
-            "SendMessage",
-            "TodoWrite",
-            "ToolSearch",
-            "Skill",
-            "NotebookEdit",
-            "mcp__pynchy__*",
-        ],
-        permission_mode="bypassPermissions",
-        setting_sources=["project", "user"],
+        session_id=container_input.session_id,
+        group_folder=container_input.group_folder,
+        chat_jid=container_input.chat_jid,
+        is_main=container_input.is_main,
+        is_scheduled_task=container_input.is_scheduled_task,
+        system_prompt_append=system_prompt_append,
         mcp_servers=mcp_servers_dict,
-        hooks={
-            "PreCompact": [HookMatcher(hooks=[create_pre_compact_hook()])],
-        },
+        plugin_hooks=[],  # TODO: load plugin hooks from container_input
+        extra=extra,
     )
+
+
+# ---------------------------------------------------------------------------
+# Event conversion
+# ---------------------------------------------------------------------------
+
+
+def event_to_output(event: AgentEvent, session_id: str | None) -> ContainerOutput:
+    """Convert AgentEvent to ContainerOutput."""
+    if event.type == "thinking":
+        return ContainerOutput(
+            status="success",
+            type="thinking",
+            thinking=event.data.get("thinking"),
+        )
+    elif event.type == "tool_use":
+        return ContainerOutput(
+            status="success",
+            type="tool_use",
+            tool_name=event.data.get("tool_name"),
+            tool_input=event.data.get("tool_input"),
+        )
+    elif event.type == "tool_result":
+        return ContainerOutput(
+            status="success",
+            type="tool_result",
+            tool_result_id=event.data.get("tool_result_id"),
+            tool_result_content=event.data.get("tool_result_content"),
+            tool_result_is_error=event.data.get("tool_result_is_error"),
+        )
+    elif event.type == "text":
+        return ContainerOutput(
+            status="success",
+            type="text",
+            text=event.data.get("text"),
+        )
+    elif event.type == "system":
+        return ContainerOutput(
+            status="success",
+            type="system",
+            system_subtype=event.data.get("system_subtype"),
+            system_data=event.data.get("system_data", {}),
+        )
+    elif event.type == "result":
+        return ContainerOutput(
+            status="success",
+            result=event.data.get("result"),
+            new_session_id=session_id,
+            result_metadata=event.data.get("result_metadata"),
+        )
+    else:
+        # Unknown event type, log and skip
+        log(f"Unknown event type: {event.type}")
+        return ContainerOutput(status="success", type="text", text="")
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+
+async def main() -> None:
+    # Read input from stdin
+    try:
+        stdin_data = sys.stdin.read()
+        container_input = ContainerInput(json.loads(stdin_data))
+        log(f"Received input for group: {container_input.group_folder}")
+        log(f"Using agent core: {container_input.agent_core}")
+    except Exception as exc:
+        write_output(
+            ContainerOutput(
+                status="error",
+                error=f"Failed to parse input: {exc}",
+            )
+        )
+        sys.exit(1)
+
+    # Clean up stale _close sentinel
+    IPC_INPUT_DIR.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        IPC_INPUT_CLOSE_SENTINEL.unlink()
+
+    # Build initial prompt from SDK messages
+    log(f"Using SDK message list ({len(container_input.messages)} messages)")
+    prompt = build_sdk_messages(container_input.messages)
+
+    if container_input.is_scheduled_task:
+        prompt = (
+            "[SCHEDULED TASK - The following message was sent automatically "
+            "and is not coming directly from the user or group.]\n\n" + prompt
+        )
+
+    # Drain any pending IPC messages into initial prompt
+    pending = drain_ipc_input()
+    if pending:
+        log(f"Draining {len(pending)} pending IPC messages into initial prompt")
+        prompt += "\n" + "\n".join(pending)
+
+    # Build core config
+    core_config = build_core_config(container_input)
+
+    # Create and start agent core
+    try:
+        core = create_agent_core(container_input.agent_core, core_config)
+    except Exception as exc:
+        write_output(
+            ContainerOutput(
+                status="error",
+                error=f"Failed to create agent core '{container_input.agent_core}': {exc}",
+            )
+        )
+        sys.exit(1)
+
+    try:
+        await core.start()
+    except Exception as exc:
+        write_output(
+            ContainerOutput(
+                status="error",
+                error=f"Failed to start agent core: {exc}",
+            )
+        )
+        sys.exit(1)
 
     session_id = container_input.session_id
 
     try:
-        async with ClaudeSDKClient(options) as client:
-            while True:
-                log(f"Starting query (session: {session_id or 'new'})...")
+        while True:
+            log(f"Starting query (session: {session_id or 'new'})...")
 
-                await client.query(prompt)
+            result_count = 0
+            closed_during_query = False
+            new_session_id: str | None = None
 
-                new_session_id: str | None = None
-                message_count = 0
-                result_count = 0
-                closed_during_query = False
+            async for event in core.query(prompt):
+                # Check for close during query
+                if should_close():
+                    log("Close sentinel detected during query")
+                    closed_during_query = True
 
-                async for message in client.receive_response():
-                    message_count += 1
+                # Track session ID from system init events
+                if event.type == "system":
+                    subtype = event.data.get("system_subtype")
+                    if subtype == "init":
+                        sid = event.data.get("system_data", {}).get("session_id")
+                        if sid:
+                            new_session_id = sid
+                            log(f"Session initialized: {new_session_id}")
 
-                    # Check for close during query
-                    if should_close():
-                        log("Close sentinel detected during query")
-                        closed_during_query = True
+                # Track results
+                if event.type == "result":
+                    result_count += 1
 
-                    # Emit all SystemMessages for transparent token stream
-                    if isinstance(message, SystemMessage):
-                        if message.subtype == "init" and hasattr(message, "data"):
-                            sid = message.data.get("session_id")
-                            if sid:
-                                new_session_id = sid
-                                log(f"Session initialized: {new_session_id}")
-                        write_output(
-                            ContainerOutput(
-                                status="success",
-                                type="system",
-                                system_subtype=message.subtype,
-                                system_data=message.data if hasattr(message, "data") else {},
-                            )
-                        )
+                # Convert event to output and write
+                output = event_to_output(event, new_session_id or session_id)
+                write_output(output)
 
-                    # Emit trace blocks from assistant messages
-                    if isinstance(message, AssistantMessage):
-                        for block in message.content:
-                            if isinstance(block, ThinkingBlock):
-                                write_output(
-                                    ContainerOutput(
-                                        status="success",
-                                        type="thinking",
-                                        thinking=block.thinking,
-                                    )
-                                )
-                            elif isinstance(block, ToolUseBlock):
-                                write_output(
-                                    ContainerOutput(
-                                        status="success",
-                                        type="tool_use",
-                                        tool_name=block.name,
-                                        tool_input=block.input,
-                                    )
-                                )
-                            elif isinstance(block, ToolResultBlock):
-                                # Flatten content to string for storage
-                                if isinstance(block.content, str):
-                                    content_str = block.content
-                                elif isinstance(block.content, list):
-                                    content_str = json.dumps(block.content)
-                                else:
-                                    content_str = ""
-                                write_output(
-                                    ContainerOutput(
-                                        status="success",
-                                        type="tool_result",
-                                        tool_result_id=block.tool_use_id,
-                                        tool_result_content=content_str,
-                                        tool_result_is_error=block.is_error,
-                                    )
-                                )
-                            elif isinstance(block, TextBlock):
-                                write_output(
-                                    ContainerOutput(
-                                        status="success",
-                                        type="text",
-                                        text=block.text,
-                                    )
-                                )
+            # Update session ID from core after query
+            if core.session_id:
+                session_id = core.session_id
+            elif new_session_id:
+                session_id = new_session_id
 
-                    # Emit results
-                    if isinstance(message, ResultMessage):
-                        result_count += 1
-                        text_result = getattr(message, "result", None)
-                        log(
-                            f"Result #{result_count}: "
-                            f"subtype={message.subtype}"
-                            f"{f' text={text_result[:200]}' if text_result else ''}"
-                        )
-                        result_meta = {
-                            "subtype": message.subtype,
-                            "duration_ms": message.duration_ms,
-                            "duration_api_ms": message.duration_api_ms,
-                            "is_error": message.is_error,
-                            "num_turns": message.num_turns,
-                            "session_id": message.session_id,
-                            "total_cost_usd": message.total_cost_usd,
-                            "usage": message.usage,
-                        }
-                        write_output(
-                            ContainerOutput(
-                                status="success",
-                                result=text_result,
-                                new_session_id=new_session_id,
-                                result_metadata=result_meta,
-                            )
-                        )
+            log(f"Query done. Results: {result_count}, closedDuringQuery: {closed_during_query}")
 
-                if new_session_id:
-                    session_id = new_session_id
+            # If _close was consumed during the query, exit immediately
+            if closed_during_query:
+                log("Close sentinel consumed during query, exiting")
+                break
 
-                log(
-                    f"Query done. Messages: {message_count}, "
-                    f"results: {result_count}, "
-                    f"closedDuringQuery: {closed_during_query}"
+            # Emit session update so host can track it
+            write_output(
+                ContainerOutput(
+                    status="success",
+                    result=None,
+                    new_session_id=session_id,
                 )
+            )
 
-                # If _close was consumed during the query, exit immediately
-                if closed_during_query:
-                    log("Close sentinel consumed during query, exiting")
-                    break
+            log("Query ended, waiting for next IPC message...")
 
-                # Emit session update so host can track it
-                write_output(
-                    ContainerOutput(
-                        status="success",
-                        result=None,
-                        new_session_id=session_id,
-                    )
-                )
+            next_message = await wait_for_ipc_message()
+            if next_message is None:
+                log("Close sentinel received, exiting")
+                break
 
-                log("Query ended, waiting for next IPC message...")
-
-                next_message = await wait_for_ipc_message()
-                if next_message is None:
-                    log("Close sentinel received, exiting")
-                    break
-
-                log(f"Got new message ({len(next_message)} chars), starting new query")
-                prompt = next_message
+            log(f"Got new message ({len(next_message)} chars), starting new query")
+            prompt = next_message
 
     except Exception as exc:
         error_message = str(exc)
@@ -667,3 +500,9 @@ async def main() -> None:
             )
         )
         sys.exit(1)
+    finally:
+        # Clean up core
+        try:
+            await core.stop()
+        except Exception as exc:
+            log(f"Error stopping core: {exc}")

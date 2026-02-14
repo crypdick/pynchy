@@ -52,7 +52,7 @@ class PluginBase(ABC):
         if not getattr(self, "categories", None):
             raise ValueError("Plugin must declare at least one category")
 
-        valid_categories = {"runtime", "channel", "mcp", "skill", "hook"}
+        valid_categories = {"runtime", "channel", "mcp", "skill", "hook", "agent_core"}
         for category in self.categories:
             if category not in valid_categories:
                 raise ValueError(
@@ -74,3 +74,4 @@ class PluginRegistry:
     mcp_servers: list[PluginBase] = field(default_factory=list)
     skills: list[PluginBase] = field(default_factory=list)
     hooks: list[PluginBase] = field(default_factory=list)
+    agent_cores: list[PluginBase] = field(default_factory=list)
