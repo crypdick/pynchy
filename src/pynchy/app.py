@@ -85,7 +85,7 @@ from pynchy.http_server import (
 )
 from pynchy.ipc import start_ipc_watcher
 from pynchy.logger import logger
-from pynchy.router import format_messages, format_tool_preview, parse_host_tag
+from pynchy.router import format_tool_preview, parse_host_tag
 from pynchy.runtime import get_runtime
 from pynchy.task_scheduler import start_scheduler_loop
 from pynchy.types import Channel, ContainerInput, ContainerOutput, NewMessage, RegisteredGroup
@@ -424,15 +424,25 @@ class PynchyApp:
                 reset_file.unlink(missing_ok=True)
                 return True
 
-            prompt = reset_data.get("message", "")
-            if prompt:
+            reset_message = reset_data.get("message", "")
+            if reset_message:
                 logger.info("Processing reset handoff", group=group.name)
 
                 async def handoff_on_output(result: ContainerOutput) -> None:
                     await self._handle_streamed_output(chat_jid, group, result)
 
+                # Convert plain text message to SDK format
+                reset_messages = [{
+                    "message_type": "user",
+                    "sender": "system",
+                    "sender_name": "System",
+                    "content": reset_message,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "metadata": {"source": "reset_handoff"},
+                }]
+
                 result = await self._run_agent(
-                    group, prompt, chat_jid, handoff_on_output, messages=[]
+                    group, chat_jid, reset_messages, handoff_on_output
                 )
 
                 # If dirty repo check is needed after reset, write marker for next message
@@ -483,7 +493,6 @@ class PynchyApp:
 
         from pynchy.router import format_messages_for_sdk
 
-        prompt = format_messages(missed_messages)
         messages = format_messages_for_sdk(missed_messages)
 
         # Check if we need to add dirty repo warning after context reset
@@ -568,7 +577,7 @@ class PynchyApp:
                 had_error = True
 
         agent_result = await self._run_agent(
-            group, prompt, chat_jid, on_output, reset_system_notices or None, messages
+            group, chat_jid, messages, on_output, reset_system_notices or None
         )
 
         await self._set_typing_on_channels(chat_jid, False)
@@ -860,11 +869,10 @@ class PynchyApp:
     async def _run_agent(
         self,
         group: RegisteredGroup,
-        prompt: str,
         chat_jid: str,
+        messages: list[dict],
         on_output: Any | None = None,
         extra_system_notices: list[str] | None = None,
-        messages: list[dict] | None = None,
     ) -> str:
         """Run the container agent for a group. Returns 'success' or 'error'."""
         from pynchy.periodic import load_periodic_config
@@ -959,14 +967,13 @@ class PynchyApp:
             output = await run_container_agent(
                 group=group,
                 input_data=ContainerInput(
-                    prompt=prompt,
+                    messages=messages,
                     session_id=session_id,
                     group_folder=group.folder,
                     chat_jid=chat_jid,
                     is_main=is_main,
                     system_notices=system_notices or None,
                     project_access=project_access,
-                    messages=messages,
                 ),
                 on_process=lambda proc, name: self.queue.register_process(
                     chat_jid, proc, name, group.folder
@@ -1060,7 +1067,10 @@ class PynchyApp:
                             logger.info("Context reset (active container)", group=group.name)
                             continue
 
-                        formatted = format_messages(all_pending)
+                        # Format messages as plain text for IPC piping
+                        formatted = "\n".join(
+                            f"{msg.sender_name}: {msg.content}" for msg in all_pending
+                        )
 
                         if self.queue.send_message(chat_jid, formatted):
                             logger.debug(

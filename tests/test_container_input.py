@@ -13,7 +13,7 @@ from agent_runner.main import ContainerInput
 class TestContainerInput:
     def test_parses_plugin_mcp_servers(self):
         data = {
-            "prompt": "hi",
+            "messages": [{"message_type": "user", "content": "hi"}],
             "group_folder": "test",
             "chat_jid": "j@g.us",
             "is_main": False,
@@ -26,7 +26,7 @@ class TestContainerInput:
 
     def test_plugin_mcp_servers_defaults_to_none(self):
         data = {
-            "prompt": "hi",
+            "messages": [{"message_type": "user", "content": "hi"}],
             "group_folder": "test",
             "chat_jid": "j@g.us",
             "is_main": False,

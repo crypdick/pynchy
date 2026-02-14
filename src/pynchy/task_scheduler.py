@@ -162,15 +162,24 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
         )
 
     try:
+        # Convert task prompt to SDK message format
+        task_messages = [{
+            "message_type": "user",
+            "sender": "scheduled_task",
+            "sender_name": "Scheduled Task",
+            "content": task.prompt,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "metadata": {"source": "scheduled_task"},
+        }]
+
         container_input = ContainerInput(
-            prompt=task.prompt,
+            messages=task_messages,
             group_folder=task.group_folder,
             chat_jid=task.chat_jid,
             is_main=_is_main,
             session_id=_session_id,
             is_scheduled_task=True,
             project_access=task.project_access,
-            messages=[],  # Scheduled tasks use prompt string directly, not message history
         )
 
         async def _on_streamed_output(streamed: ContainerOutput) -> None:
