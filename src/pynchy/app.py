@@ -431,7 +431,9 @@ class PynchyApp:
                 async def handoff_on_output(result: ContainerOutput) -> None:
                     await self._handle_streamed_output(chat_jid, group, result)
 
-                result = await self._run_agent(group, prompt, chat_jid, handoff_on_output)
+                result = await self._run_agent(
+                    group, prompt, chat_jid, handoff_on_output, messages=[]
+                )
 
                 # If dirty repo check is needed after reset, write marker for next message
                 if reset_data.get("needsDirtyRepoCheck"):
@@ -479,7 +481,10 @@ class PynchyApp:
                 await self._save_state()
                 return True
 
+        from pynchy.router import format_messages_for_sdk
+
         prompt = format_messages(missed_messages)
+        messages = format_messages_for_sdk(missed_messages)
 
         # Check if we need to add dirty repo warning after context reset
         reset_system_notices: list[str] = []
@@ -563,7 +568,7 @@ class PynchyApp:
                 had_error = True
 
         agent_result = await self._run_agent(
-            group, prompt, chat_jid, on_output, reset_system_notices or None
+            group, prompt, chat_jid, on_output, reset_system_notices or None, messages
         )
 
         await self._set_typing_on_channels(chat_jid, False)
@@ -859,6 +864,7 @@ class PynchyApp:
         chat_jid: str,
         on_output: Any | None = None,
         extra_system_notices: list[str] | None = None,
+        messages: list[dict] | None = None,
     ) -> str:
         """Run the container agent for a group. Returns 'success' or 'error'."""
         from pynchy.periodic import load_periodic_config
@@ -956,6 +962,7 @@ class PynchyApp:
                     is_main=is_main,
                     system_notices=system_notices or None,
                     project_access=project_access,
+                    messages=messages,
                 ),
                 on_process=lambda proc, name: self.queue.register_process(
                     chat_jid, proc, name, group.folder

@@ -328,7 +328,7 @@ async def get_new_messages(jids: list[str], last_timestamp: str) -> tuple[list[N
     db = _get_db()
     placeholders = ",".join("?" for _ in jids)
     sql = f"""
-        SELECT id, chat_jid, sender, sender_name, content, timestamp
+        SELECT id, chat_jid, sender, sender_name, content, timestamp, message_type, metadata
         FROM messages
         WHERE timestamp > ? AND chat_jid IN ({placeholders})
               AND (sender LIKE '%@%' OR sender IN ('tui-user', 'deploy'))
@@ -337,17 +337,31 @@ async def get_new_messages(jids: list[str], last_timestamp: str) -> tuple[list[N
     cursor = await db.execute(sql, [last_timestamp, *jids])
     rows = await cursor.fetchall()
 
-    messages = [
-        NewMessage(
+    messages = []
+    for row in rows:
+        # Handle optional columns gracefully for backward compatibility
+        try:
+            message_type = row["message_type"] or "user"
+        except (KeyError, IndexError):
+            message_type = "user"
+
+        try:
+            metadata_str = row["metadata"]
+            metadata = json.loads(metadata_str) if metadata_str else None
+        except (KeyError, IndexError):
+            metadata = None
+
+        messages.append(NewMessage(
             id=row["id"],
             chat_jid=row["chat_jid"],
             sender=row["sender"],
             sender_name=row["sender_name"],
             content=row["content"],
             timestamp=row["timestamp"],
-        )
-        for row in rows
-    ]
+            message_type=message_type,
+            metadata=metadata,
+        ))
+
 
     new_timestamp = last_timestamp
     for msg in messages:
@@ -361,7 +375,7 @@ async def get_messages_since(chat_jid: str, since_timestamp: str) -> list[NewMes
     """Get messages for a specific chat since a timestamp, excluding bot and host messages."""
     db = _get_db()
     sql = """
-        SELECT id, chat_jid, sender, sender_name, content, timestamp
+        SELECT id, chat_jid, sender, sender_name, content, timestamp, message_type, metadata
         FROM messages
         WHERE chat_jid = ? AND timestamp > ?
               AND (sender LIKE '%@%' OR sender IN ('tui-user', 'deploy'))
@@ -370,17 +384,31 @@ async def get_messages_since(chat_jid: str, since_timestamp: str) -> list[NewMes
     cursor = await db.execute(sql, (chat_jid, since_timestamp))
     rows = await cursor.fetchall()
 
-    return [
-        NewMessage(
+    messages = []
+    for row in rows:
+        # Handle optional columns gracefully for backward compatibility
+        try:
+            message_type = row["message_type"] or "user"
+        except (KeyError, IndexError):
+            message_type = "user"
+
+        try:
+            metadata_str = row["metadata"]
+            metadata = json.loads(metadata_str) if metadata_str else None
+        except (KeyError, IndexError):
+            metadata = None
+
+        messages.append(NewMessage(
             id=row["id"],
             chat_jid=row["chat_jid"],
             sender=row["sender"],
             sender_name=row["sender_name"],
             content=row["content"],
             timestamp=row["timestamp"],
-        )
-        for row in rows
-    ]
+            message_type=message_type,
+            metadata=metadata,
+        ))
+    return messages
 
 
 async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
@@ -397,7 +425,8 @@ async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
     if cleared_at:
         cursor = await db.execute(
             """
-            SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me
+            SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me,
+                   message_type, metadata
             FROM messages
             WHERE chat_jid = ? AND timestamp > ?
             ORDER BY timestamp DESC
@@ -408,7 +437,8 @@ async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
     else:
         cursor = await db.execute(
             """
-            SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me
+            SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me,
+                   message_type, metadata
             FROM messages
             WHERE chat_jid = ?
             ORDER BY timestamp DESC
@@ -418,8 +448,21 @@ async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
         )
     rows = await cursor.fetchall()
 
-    return [
-        NewMessage(
+    messages = []
+    for row in reversed(rows):
+        # Handle optional columns gracefully for backward compatibility
+        try:
+            message_type = row["message_type"] or "user"
+        except (KeyError, IndexError):
+            message_type = "user"
+
+        try:
+            metadata_str = row["metadata"]
+            metadata = json.loads(metadata_str) if metadata_str else None
+        except (KeyError, IndexError):
+            metadata = None
+
+        messages.append(NewMessage(
             id=row["id"],
             chat_jid=row["chat_jid"],
             sender=row["sender"],
@@ -427,9 +470,10 @@ async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
             content=row["content"],
             timestamp=row["timestamp"],
             is_from_me=bool(row["is_from_me"]),
-        )
-        for row in reversed(rows)
-    ]
+            message_type=message_type,
+            metadata=metadata,
+        ))
+    return messages
 
 
 # --- Scheduled tasks ---

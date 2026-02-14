@@ -23,13 +23,48 @@ def escape_xml(s: str) -> str:
 
 
 def format_messages(messages: list[NewMessage]) -> str:
-    """Format messages as XML for the agent prompt."""
+    """Format messages as XML for the agent prompt.
+
+    NOTE: This is the legacy XML format. Use format_messages_for_sdk() for new code.
+    """
     lines = [
         f'<message sender="{escape_xml(m.sender_name)}" time="{m.timestamp}">'
         f"{escape_xml(m.content)}</message>"
         for m in messages
     ]
     return f"<messages>\n{chr(10).join(lines)}\n</messages>"
+
+
+def format_messages_for_sdk(messages: list[NewMessage]) -> list[dict]:
+    """Format messages as SDK message list, filtering out host messages.
+
+    Host messages are operational notifications that should NOT be sent to the LLM.
+    Returns a list of dicts that can be passed to the container/SDK.
+
+    Message type mapping:
+    - 'user' → UserMessage (from humans)
+    - 'assistant' → AssistantMessage (from LLM)
+    - 'system' → SystemMessage (context for LLM)
+    - 'tool_result' → Part of conversation history (command outputs, etc.)
+    - 'host' → FILTERED OUT (never sent to LLM)
+    """
+    sdk_messages = []
+
+    for msg in messages:
+        # Skip host messages - they're operational, not part of the LLM conversation
+        if msg.message_type == "host":
+            continue
+
+        sdk_messages.append({
+            "message_type": msg.message_type,
+            "sender": msg.sender,
+            "sender_name": msg.sender_name,
+            "content": msg.content,
+            "timestamp": msg.timestamp,
+            "metadata": msg.metadata,
+        })
+
+    return sdk_messages
 
 
 def strip_internal_tags(text: str) -> str:
