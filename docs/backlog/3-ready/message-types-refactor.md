@@ -117,6 +117,17 @@ def convert_to_sdk_message(msg: Message) -> SDKMessage:
 await client.query(sdk_messages)  # Proper SDK message list
 ```
 
+## Recent Code Changes That Simplify This Plan
+
+**Adapter Refactoring (Feb 2026)**: The dependency injection code in `app.py` was refactored to use composable adapter classes in `src/pynchy/adapters.py`. This significantly reduces the implementation effort:
+
+**Key Adapters:**
+- `HostMessageBroadcaster` - Centralizes all host message storage (lines 47-95)
+- `UserMessageHandler` - Handles user message ingestion (lines 296-318)
+- `MessageBroadcaster` - General channel broadcasting (lines 18-44)
+
+**Impact:** Instead of updating 10+ scattered call sites in `app.py`, we now only need to update 3 focused adapter classes. Each adapter naturally corresponds to a message type.
+
 ## Implementation Plan
 
 ### Phase 1: Database Migration
@@ -131,13 +142,33 @@ await client.query(sdk_messages)  # Proper SDK message list
 5. Create index on `(chat_jid, timestamp)` for efficient queries
 
 ### Phase 2: Message Storage Layer
-1. Update `store_message_direct()` to require `message_type` parameter
-2. Update all call sites:
-   - `_broadcast_host_message()` → use `message_type='host'`
-   - Command output storage → use `message_type='tool_result'`
-   - User messages → use `message_type='user'`
+
+**✨ SIMPLIFIED by adapter refactoring** - Only 3 touch points instead of 10+!
+
+1. Update `store_message_direct()` signature to require `message_type` parameter
+2. Update adapter injection points in `app.py`:
+   - **HostMessageBroadcaster**: Wrap `store_message_direct` to inject `message_type='host'`
+   - **UserMessageHandler**: Update `_ingest_user_message` to pass `message_type='user'`
+   - **app._broadcast_trace()**: Add `message_type='assistant'` for bot outputs
+   - **app._execute_direct_command()**: Add `message_type='tool_result'` for command outputs
 3. Remove emoji prefixes from content (move to rendering layer)
 4. Store structured metadata instead of embedding in content
+
+**Example wrapper approach:**
+```python
+# In app._make_http_deps() and app._make_ipc_deps()
+def store_host_message(id, jid, sender, sender_name, content, timestamp, is_from_me):
+    return store_message_direct(
+        id, jid, sender, sender_name, content, timestamp, is_from_me,
+        message_type='host'
+    )
+
+host_broadcaster = HostMessageBroadcaster(
+    broadcaster, store_host_message, self.event_bus.emit
+)
+```
+
+This allows gradual migration without touching adapter code!
 
 ### Phase 3: Message Retrieval & Formatting
 1. Update `format_messages()` to build SDK message list instead of XML
@@ -189,6 +220,7 @@ await client.query(sdk_messages)  # Proper SDK message list
 3. **Testing**: Extensive tests for migration scripts and new code paths
 4. **Rollback Plan**: DB migration is additive (add columns, don't remove)
 5. **Data Validation**: Verify all messages migrated correctly before making required
+6. **Adapter Isolation**: ✨ NEW - Adapters can be tested independently with mock storage functions
 
 ## Success Criteria
 
@@ -206,8 +238,19 @@ await client.query(sdk_messages)  # Proper SDK message list
 2. Do we want a separate table for host messages vs conversation messages?
 3. How do we handle messages during migration? (Probably read both formats)
 
-## Related Issues
+## Related Changes
 
+- **✅ Feb 2026**: Adapter refactoring (commit 905727e) - Extracted dependency adapters, reducing Phase 2 effort by ~70%
 - Context reset dirty repo warning (recently implemented using system_notices pattern)
 - Command output handling (currently misleading comment says "system message")
 - Host message documentation (recently clarified in comments)
+
+## Estimated Effort Update
+
+**Original Estimate:** Large (7 phases, 10+ scattered call sites)
+**Revised Estimate:** Medium-Large (7 phases, but Phase 2 now only 3-4 adapters)
+
+The adapter refactoring reduced Phase 2 complexity significantly:
+- **Before**: 10+ call sites scattered across 1850-line app.py
+- **After**: 3 focused adapters + 4 call sites in app.py
+- **Benefit**: Easier testing, clearer boundaries, lower risk
