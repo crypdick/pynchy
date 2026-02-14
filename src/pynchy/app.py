@@ -951,6 +951,10 @@ class PynchyApp:
         # Clear the guard — this container run starts fresh
         self._session_cleared.discard(group.folder)
 
+        # system_notices are handled via system_prompt in the container (ephemeral context)
+        # messages contains the persistent conversation history (with message types)
+        # The container appends system_notices to the SDK system_prompt parameter
+
         try:
             output = await run_container_agent(
                 group=group,

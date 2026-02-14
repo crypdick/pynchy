@@ -44,9 +44,13 @@ def format_messages_for_sdk(messages: list[NewMessage]) -> list[dict]:
     Message type mapping:
     - 'user' → UserMessage (from humans)
     - 'assistant' → AssistantMessage (from LLM)
-    - 'system' → SystemMessage (context for LLM)
+    - 'system' → SystemMessage (context for LLM, stored in DB for persistent context)
     - 'tool_result' → Part of conversation history (command outputs, etc.)
     - 'host' → FILTERED OUT (never sent to LLM)
+
+    Note on system_notices:
+        Ephemeral system context (git warnings, etc.) is handled separately via
+        system_prompt in ContainerInput. This function only handles persisted messages.
     """
     sdk_messages = []
 

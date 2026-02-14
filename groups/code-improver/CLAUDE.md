@@ -53,6 +53,7 @@ When triggered by a scheduled run:
 
 - One logical improvement per session — pick the most impactful one
 - If something looks over-engineered, think about how to simplify it
+- **Prefer simplification and code removal**: If you find legacy fallbacks, backwards compatibility code, or deprecated patterns, prefer to delete them and use the latest pattern. Reduce bloat by removing code rather than adding more.
 - If a change requires design input, message the human and stop
 - Prefix all commits with `[code improver]`
 - Run tests before committing: `uv run pytest tests/`
