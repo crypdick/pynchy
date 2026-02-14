@@ -419,14 +419,7 @@ class PynchyApp:
                 async def handoff_on_output(result: ContainerOutput) -> None:
                     await self._handle_streamed_output(chat_jid, group, result)
 
-                # Inform LLM this is a context reset handoff via system notice
-                handoff_system_notice = [
-                    "Note: The conversation context was recently reset. You are resuming "
-                    "with the message below as your starting context."
-                ]
-                result = await self._run_agent(
-                    group, prompt, chat_jid, handoff_on_output, handoff_system_notice
-                )
+                result = await self._run_agent(group, prompt, chat_jid, handoff_on_output)
 
                 # If dirty repo check is needed after reset, write marker for next message
                 if reset_data.get("needsDirtyRepoCheck"):
