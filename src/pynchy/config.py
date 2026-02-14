@@ -62,7 +62,7 @@ TRIGGER_PATTERN: re.Pattern[str] = re.compile(rf"^@({'|'.join(_trigger_names)})\
 # Magic words to reset conversation context (voice-friendly variants)
 _RESET_VERBS = {"reset", "restart", "clear", "new", "wipe"}
 _RESET_NOUNS = {"context", "session", "chat", "conversation"}
-_RESET_ALIASES = {"boom"}
+_RESET_ALIASES = {"boom", "c"}
 
 
 def is_context_reset(text: str) -> bool:

@@ -477,6 +477,13 @@ class PynchyApp:
 
         # Check if the last message is a context reset command
         if is_context_reset(missed_messages[-1].content):
+            # Merge worktree commits before clearing session so work isn't stranded
+            from pynchy.periodic import load_periodic_config as _load_periodic
+
+            _periodic = _load_periodic(group.folder)
+            if is_main_group or (_periodic and _periodic.project_access):
+                asyncio.create_task(asyncio.to_thread(_merge_and_push_worktree, group.folder))
+
             self.sessions.pop(group.folder, None)
             self._session_cleared.add(group.folder)
             await clear_session(group.folder)
@@ -1075,6 +1082,15 @@ class PynchyApp:
                         # active containers — they must be handled by the host,
                         # not forwarded as regular user messages.
                         if is_context_reset(all_pending[-1].content):
+                            # Merge worktree commits before clearing session
+                            from pynchy.periodic import load_periodic_config as _lpc
+
+                            _pc = _lpc(group.folder)
+                            if is_main_group or (_pc and _pc.project_access):
+                                asyncio.create_task(
+                                    asyncio.to_thread(_merge_and_push_worktree, group.folder)
+                                )
+
                             self.sessions.pop(group.folder, None)
                             self._session_cleared.add(group.folder)
                             await clear_session(group.folder)
