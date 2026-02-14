@@ -8,7 +8,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pynchy.config import ASSISTANT_NAME, TRIGGER_PATTERN
-from pynchy.router import escape_xml, format_messages, format_outbound, strip_internal_tags
+from pynchy.router import (
+    escape_xml,
+    format_messages,
+    format_outbound,
+    format_tool_preview,
+    parse_host_tag,
+    strip_internal_tags,
+)
 from pynchy.types import NewMessage
 
 # --- escapeXml ---
@@ -208,3 +215,180 @@ class TestTriggerGating:
     def test_non_main_with_requires_trigger_false_always_processes(self, make_msg):
         msgs = [make_msg(content="hello no trigger")]
         assert self._should_process(False, False, msgs)
+
+
+# --- parseHostTag ---
+
+
+class TestParseHostTag:
+    """Test the parse_host_tag function which extracts host-tagged content.
+
+    Host tags (<host>...</host>) are used to indicate messages from the system
+    that should be formatted differently in the UI (not prefixed with assistant name).
+    """
+
+    def test_recognizes_host_tag(self):
+        is_host, content = parse_host_tag("<host>System message</host>")
+        assert is_host is True
+        assert content == "System message"
+
+    def test_extracts_multiline_content(self):
+        is_host, content = parse_host_tag("<host>Line 1\nLine 2\nLine 3</host>")
+        assert is_host is True
+        assert content == "Line 1\nLine 2\nLine 3"
+
+    def test_trims_whitespace_inside_tags(self):
+        is_host, content = parse_host_tag("<host>  \n  message  \n  </host>")
+        assert is_host is True
+        assert content == "message"
+
+    def test_requires_tags_at_start_and_end(self):
+        # Tags must wrap the entire string
+        is_host, content = parse_host_tag("prefix <host>message</host>")
+        assert is_host is False
+        assert content == "prefix <host>message</host>"
+
+    def test_requires_closing_tag(self):
+        is_host, content = parse_host_tag("<host>message")
+        assert is_host is False
+        assert content == "<host>message"
+
+    def test_returns_false_for_plain_text(self):
+        is_host, content = parse_host_tag("Just a regular message")
+        assert is_host is False
+        assert content == "Just a regular message"
+
+    def test_returns_false_for_empty_string(self):
+        is_host, content = parse_host_tag("")
+        assert is_host is False
+        assert content == ""
+
+    def test_handles_whitespace_around_tags(self):
+        is_host, content = parse_host_tag("  <host>message</host>  ")
+        assert is_host is True
+        assert content == "message"
+
+    def test_empty_host_tag(self):
+        is_host, content = parse_host_tag("<host></host>")
+        assert is_host is True
+        assert content == ""
+
+    def test_preserves_internal_xml(self):
+        is_host, content = parse_host_tag("<host>Message with <b>bold</b> text</host>")
+        assert is_host is True
+        assert content == "Message with <b>bold</b> text"
+
+
+# --- formatToolPreview ---
+
+
+class TestFormatToolPreview:
+    """Test the format_tool_preview function which creates human-readable
+    summaries of tool invocations for display in chat interfaces.
+
+    This function has complex branching logic and is critical for user experience -
+    users need to understand what the agent is doing at a glance.
+    """
+
+    # Bash tool
+    def test_bash_with_command(self):
+        result = format_tool_preview("Bash", {"command": "ls -la"})
+        assert result == "Bash: ls -la"
+
+    def test_bash_truncates_long_commands(self):
+        long_cmd = "echo " + "x" * 100
+        result = format_tool_preview("Bash", {"command": long_cmd})
+        assert result.startswith("Bash: echo ")
+        assert result.endswith("...")
+        # Check that truncation happened (original was >100 chars)
+        assert len(result) < len(f"Bash: {long_cmd}")
+        assert len(result) <= 66  # "Bash: " (6) + 57 chars + "..." (3) = 66
+
+    def test_bash_without_command(self):
+        result = format_tool_preview("Bash", {})
+        assert result == "Bash"
+
+    # Read/Edit/Write tools
+    def test_read_with_path(self):
+        result = format_tool_preview("Read", {"file_path": "/path/to/file.py"})
+        assert result == "Read: /path/to/file.py"
+
+    def test_edit_with_path(self):
+        result = format_tool_preview("Edit", {"file_path": "/src/main.py"})
+        assert result == "Edit: /src/main.py"
+
+    def test_write_with_path(self):
+        result = format_tool_preview("Write", {"file_path": "/tmp/output.txt"})
+        assert result == "Write: /tmp/output.txt"
+
+    def test_read_truncates_long_paths(self):
+        long_path = "/very/long/" + "deep/" * 20 + "file.txt"
+        result = format_tool_preview("Read", {"file_path": long_path})
+        assert result.startswith("Read: ...")
+        assert len(result) <= 56  # "Read: " (6) + "..." (3) + 47 chars
+
+    def test_read_without_path(self):
+        result = format_tool_preview("Read", {})
+        assert result == "Read"
+
+    # Grep tool
+    def test_grep_with_pattern_only(self):
+        result = format_tool_preview("Grep", {"pattern": "TODO"})
+        assert result == "Grep /TODO/"
+
+    def test_grep_with_pattern_and_path(self):
+        result = format_tool_preview("Grep", {"pattern": "def main", "path": "src/"})
+        assert result == "Grep /def main/ src/"
+
+    def test_grep_without_pattern(self):
+        result = format_tool_preview("Grep", {})
+        assert result == "Grep"
+
+    def test_grep_with_path_only(self):
+        result = format_tool_preview("Grep", {"path": "src/"})
+        assert result == "Grep src/"
+
+    # Glob tool
+    def test_glob_with_pattern(self):
+        result = format_tool_preview("Glob", {"pattern": "**/*.py"})
+        assert result == "Glob: **/*.py"
+
+    def test_glob_without_pattern(self):
+        result = format_tool_preview("Glob", {})
+        assert result == "Glob"
+
+    # Unknown tools - fallback behavior
+    def test_unknown_tool_with_empty_input(self):
+        result = format_tool_preview("UnknownTool", {})
+        assert result == "UnknownTool"
+
+    def test_unknown_tool_with_input(self):
+        result = format_tool_preview("CustomTool", {"param": "value"})
+        assert "CustomTool:" in result
+        assert "param" in result
+
+    def test_unknown_tool_truncates_long_input(self):
+        long_input = {"data": "x" * 100}
+        result = format_tool_preview("CustomTool", long_input)
+        assert result.endswith("...")
+        # Check that truncation happened
+        assert len(result) < len(f"CustomTool: {long_input}")
+        assert len(result) <= 65  # Tool name + ": " + 47 chars + "..." = ~62
+
+    # Edge cases
+    def test_empty_tool_name(self):
+        result = format_tool_preview("", {"command": "test"})
+        assert ": " in result  # Should still format somehow
+
+    def test_none_values_in_input(self):
+        result = format_tool_preview("Bash", {"command": None})
+        # Should not crash, should handle gracefully
+        assert "Bash" in result
+
+    def test_special_characters_in_command(self):
+        result = format_tool_preview("Bash", {"command": 'echo "hello & goodbye"'})
+        assert result == 'Bash: echo "hello & goodbye"'
+
+    def test_multiline_command(self):
+        result = format_tool_preview("Bash", {"command": "echo foo\necho bar"})
+        assert result == "Bash: echo foo\necho bar"

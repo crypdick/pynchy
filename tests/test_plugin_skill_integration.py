@@ -5,8 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import Mock
 
-import pytest
-
 from pynchy.container_runner import _sync_skills
 from pynchy.plugin import PluginRegistry
 
