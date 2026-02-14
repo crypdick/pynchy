@@ -372,10 +372,7 @@ class PynchyApp:
         Sends to all connected channels (used by plugins that need to
         broadcast messages).
         """
-        for ch in self.channels:
-            if ch.is_connected():
-                with contextlib.suppress(Exception):
-                    await ch.send_message(jid, text)
+        await self._broadcast_to_channels(jid, text)
 
     def _validate_plugin_credentials(self, plugin: Any) -> list[str]:
         """Check if plugin has required environment variables.
@@ -492,14 +489,10 @@ class PynchyApp:
 
         # Send emoji reaction on the last message to indicate agent is reading
         last_msg = missed_messages[-1]
-        for ch in self.channels:
-            if ch.is_connected() and hasattr(ch, "send_reaction"):
-                await ch.send_reaction(chat_jid, last_msg.id, last_msg.sender, "👀")
+        await self._send_reaction_to_channels(chat_jid, last_msg.id, last_msg.sender, "👀")
 
         # Set typing indicator on all channels that support it
-        for ch in self.channels:
-            if ch.is_connected() and hasattr(ch, "set_typing"):
-                await ch.set_typing(chat_jid, True)
+        await self._set_typing_on_channels(chat_jid, True)
 
         self.event_bus.emit(AgentActivityEvent(chat_jid=chat_jid, active=True))
 
@@ -520,9 +513,7 @@ class PynchyApp:
 
         agent_result = await self._run_agent(group, prompt, chat_jid, on_output)
 
-        for ch in self.channels:
-            if ch.is_connected() and hasattr(ch, "set_typing"):
-                await ch.set_typing(chat_jid, False)
+        await self._set_typing_on_channels(chat_jid, False)
         self.event_bus.emit(AgentActivityEvent(chat_jid=chat_jid, active=False))
         if idle_handle is not None:
             idle_handle.cancel()
@@ -600,10 +591,7 @@ class PynchyApp:
 
             # Send to channels
             channel_text = f"🔧 {output_text}"
-            for ch in self.channels:
-                if ch.is_connected():
-                    with contextlib.suppress(Exception):
-                        await ch.send_message(chat_jid, channel_text)
+            await self._broadcast_to_channels(chat_jid, channel_text)
 
             # Emit event for TUI
             self.event_bus.emit(
@@ -653,10 +641,7 @@ class PynchyApp:
             timestamp=ts,
             is_from_me=True,
         )
-        for ch in self.channels:
-            if ch.is_connected():
-                with contextlib.suppress(Exception):
-                    await ch.send_message(chat_jid, channel_text)
+        await self._broadcast_to_channels(chat_jid, channel_text)
         self.event_bus.emit(AgentTraceEvent(chat_jid=chat_jid, trace_type=trace_type, data=data))
 
     async def _handle_streamed_output(
@@ -757,10 +742,7 @@ class PynchyApp:
                 parts.append(f"{turns} turns")
             if parts:
                 trace_text = f"\U0001f4ca {' \u00b7 '.join(parts)}"
-                for ch in self.channels:
-                    if ch.is_connected():
-                        with contextlib.suppress(Exception):
-                            await ch.send_message(chat_jid, trace_text)
+                await self._broadcast_to_channels(chat_jid, trace_text)
             self.event_bus.emit(
                 AgentTraceEvent(
                     chat_jid=chat_jid,
@@ -795,12 +777,7 @@ class PynchyApp:
                     timestamp=ts,
                     is_from_me=True,
                 )
-                for ch in self.channels:
-                    if ch.is_connected():
-                        try:
-                            await ch.send_message(chat_jid, channel_text)
-                        except Exception as exc:
-                            logger.warning("Channel send failed", channel=ch.name, err=str(exc))
+                await self._broadcast_to_channels(chat_jid, channel_text, suppress_errors=False)
                 self.event_bus.emit(
                     MessageEvent(
                         chat_jid=chat_jid,
@@ -1012,11 +989,9 @@ class PynchyApp:
                             )
                             # Send emoji reaction to indicate reading
                             last_msg = all_pending[-1]
-                            for ch in self.channels:
-                                if ch.is_connected() and hasattr(ch, "send_reaction"):
-                                    await ch.send_reaction(
-                                        chat_jid, last_msg.id, last_msg.sender, "👀"
-                                    )
+                            await self._send_reaction_to_channels(
+                                chat_jid, last_msg.id, last_msg.sender, "👀"
+                            )
 
                             self.last_agent_timestamp[chat_jid] = all_pending[-1].timestamp
                             await self._save_state()
@@ -1229,6 +1204,45 @@ class PynchyApp:
             )
 
     # ------------------------------------------------------------------
+    # Channel broadcast helpers
+    # ------------------------------------------------------------------
+
+    async def _broadcast_to_channels(
+        self, chat_jid: str, text: str, *, suppress_errors: bool = True
+    ) -> None:
+        """Send a message to all connected channels.
+
+        Args:
+            chat_jid: Target chat JID
+            text: Message text to send
+            suppress_errors: If True, silently ignore channel send failures
+        """
+        for ch in self.channels:
+            if ch.is_connected():
+                if suppress_errors:
+                    with contextlib.suppress(Exception):
+                        await ch.send_message(chat_jid, text)
+                else:
+                    try:
+                        await ch.send_message(chat_jid, text)
+                    except Exception as exc:
+                        logger.warning("Channel send failed", channel=ch.name, err=str(exc))
+
+    async def _send_reaction_to_channels(
+        self, chat_jid: str, message_id: str, sender: str, emoji: str
+    ) -> None:
+        """Send a reaction emoji to a message on all channels that support it."""
+        for ch in self.channels:
+            if ch.is_connected() and hasattr(ch, "send_reaction"):
+                await ch.send_reaction(chat_jid, message_id, sender, emoji)
+
+    async def _set_typing_on_channels(self, chat_jid: str, is_typing: bool) -> None:
+        """Set typing indicator on all channels that support it."""
+        for ch in self.channels:
+            if ch.is_connected() and hasattr(ch, "set_typing"):
+                await ch.set_typing(chat_jid, is_typing)
+
+    # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
@@ -1245,10 +1259,7 @@ class PynchyApp:
             is_from_me=True,
         )
         channel_text = f"\U0001f3e0 {text}"
-        for ch in self.channels:
-            if ch.is_connected():
-                with contextlib.suppress(Exception):
-                    await ch.send_message(chat_jid, channel_text)
+        await self._broadcast_to_channels(chat_jid, channel_text)
         self.event_bus.emit(
             MessageEvent(
                 chat_jid=chat_jid,
@@ -1542,6 +1553,7 @@ WantedBy=default.target
                 app.queue.register_process(group_jid, proc, container_name, group_folder)
 
             async def send_message(self, jid: str, raw_text: str) -> None:
+                # Need to format per channel, so can't use broadcast helper here
                 for ch in app.channels:
                     if ch.is_connected():
                         text = format_outbound(ch, raw_text)
@@ -1557,10 +1569,7 @@ WantedBy=default.target
 
         class _Deps:
             async def send_message(self, jid: str, text: str) -> None:
-                for ch in app.channels:
-                    if ch.is_connected():
-                        with contextlib.suppress(Exception):
-                            await ch.send_message(jid, text)
+                await app._broadcast_to_channels(jid, text)
 
             async def broadcast_host_message(self, jid: str, text: str) -> None:
                 await app._broadcast_host_message(jid, text)
@@ -1699,10 +1708,7 @@ WantedBy=default.target
 
         class _Deps:
             async def send_message(self, jid: str, text: str) -> None:
-                for ch in app.channels:
-                    if ch.is_connected():
-                        with contextlib.suppress(Exception):
-                            await ch.send_message(jid, text)
+                await app._broadcast_to_channels(jid, text)
 
             async def broadcast_host_message(self, jid: str, text: str) -> None:
                 await app._broadcast_host_message(jid, text)
