@@ -34,6 +34,7 @@ Single source of truth for all pynchy work items.
 - migrate away from single 'god' CLAUDE.md files to .claude/ folders that use the progressive disclosure principle: https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices. similarly, some of the docs in the docs/ folder should be migrated to .claude/ files, to keep all claude instructions in a single place
 - **[LOW PRIORITY]** Extract Apple Container runtime into standalone plugin (`pynchy-plugin-apple-container`). Requires plugin discovery system first. Serves as reference implementation for RuntimePlugin.
 - **[LOW PRIORITY]** Extract agent-browser skill into standalone plugin. Consider if container image size becomes an issue.
+- right now, each workspace is created using bespoke code. we should ideally have them all configured using a dataclass or similar, so that we can standardize workspaces a bit and enable templating
 - beginners tips. the tips print sometimes after a user sends a message. it has usage instructions and pro tips. plugin authors can optionally define tips for their plugins. there should be a global setting to disalbe tips. on by default.
 
 ### 2 - Planning
