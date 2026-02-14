@@ -309,7 +309,8 @@ async def list_tools() -> list[Tool]:
                             "type": "boolean",
                             "default": False,
                             "description": (
-                                "Set true only if container/Dockerfile or container/entrypoint.sh changed. "
+                                "Set true only if container/Dockerfile or "
+                                "container/entrypoint.sh changed. "
                                 "Code/dependency changes use false (default)."
                             ),
                         },
