@@ -40,6 +40,8 @@ Single source of truth for all pynchy work items.
 - we need a mechanism for spinning down containers. if the worktree is in sync with main, and there hasn't been activity in 10 minutes, the agent container gets killed. this prevents the sync workflow from sending system messages to an inactive container, causing the agent to passively burn tokens for no reason. similarly, deploy shouldn't redeploy the individual containers if they are killed; only active containers.
 - daily cron job that redeploys containers with a full container rebuild. make sure that the deploy script does not spin up containers if they are idle.
 - a new 'end session' magic word that spins down the container. it runs sync before container is stopped.
+- MCPs are known to burn lots of tokens. see whether it's feasible to migrate all MCPs to tools that are passed by the claude sdk. the key requirement is that they execute host-side, or that they have a special channel that can poke an endpoint on the host side that triggers a workflow. these can't be arbitrary code execution, just trigger a workflow.
+
 
 ### 2 - Planning
 *Draft plan exists. Awaiting human sign-off.*
