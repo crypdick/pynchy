@@ -101,6 +101,14 @@ async def _create_schema(database: aiosqlite.Connection) -> None:
         await database.commit()
     except Exception:
         pass
+    # Migration: add project_access column if missing
+    try:
+        await database.execute(
+            "ALTER TABLE scheduled_tasks ADD COLUMN project_access INTEGER DEFAULT 0"
+        )
+        await database.commit()
+    except Exception:
+        pass
     # Migration: add cleared_at column to chats
     try:
         await database.execute("ALTER TABLE chats ADD COLUMN cleared_at TEXT")
@@ -376,8 +384,9 @@ async def create_task(task: dict[str, Any]) -> None:
         """
         INSERT INTO scheduled_tasks
             (id, group_folder, chat_jid, prompt, schedule_type,
-             schedule_value, context_mode, next_run, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             schedule_value, context_mode, next_run, status, created_at,
+             project_access)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             task["id"],
@@ -390,6 +399,7 @@ async def create_task(task: dict[str, Any]) -> None:
             task.get("next_run"),
             task["status"],
             task["created_at"],
+            1 if task.get("project_access") else 0,
         ),
     )
     await db.commit()
@@ -426,7 +436,7 @@ async def get_all_tasks() -> list[ScheduledTask]:
 
 async def update_task(task_id: str, updates: dict[str, Any]) -> None:
     """Update specific fields of a task."""
-    allowed = {"prompt", "schedule_type", "schedule_value", "next_run", "status"}
+    allowed = {"prompt", "schedule_type", "schedule_value", "next_run", "status", "project_access"}
     fields: list[str] = []
     values: list[Any] = []
 
@@ -680,6 +690,12 @@ async def _migrate_json_state() -> None:
 
 
 def _row_to_task(row: aiosqlite.Row) -> ScheduledTask:
+    # project_access may not exist in old rows before migration
+    try:
+        project_access = bool(row["project_access"])
+    except (IndexError, KeyError):
+        project_access = False
+
     return ScheduledTask(
         id=row["id"],
         group_folder=row["group_folder"],
@@ -693,6 +709,7 @@ def _row_to_task(row: aiosqlite.Row) -> ScheduledTask:
         last_result=row["last_result"],
         status=row["status"],
         created_at=row["created_at"],
+        project_access=project_access,
     )
 
 

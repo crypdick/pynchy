@@ -79,6 +79,7 @@ class ScheduledTask:
     last_result: str | None = None
     status: Literal["active", "paused", "completed"] = "active"
     created_at: str = ""
+    project_access: bool = False
 
 
 @dataclass
@@ -101,6 +102,7 @@ class ContainerInput:
     is_scheduled_task: bool = False
     plugin_mcp_servers: dict[str, dict] | None = None
     system_notices: list[str] | None = None
+    project_access: bool = False
 
 
 @dataclass

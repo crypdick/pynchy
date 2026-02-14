@@ -169,6 +169,7 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
             is_main=_is_main,
             session_id=_session_id,
             is_scheduled_task=True,
+            project_access=task.project_access,
         )
 
         async def _on_streamed_output(streamed: ContainerOutput) -> None:
