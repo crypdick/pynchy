@@ -162,6 +162,38 @@ def host_sync_worktree(group_folder: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Notification formatting
+# ---------------------------------------------------------------------------
+
+
+def _build_rebase_notice(worktree_path: Path, old_head: str, commit_count: int) -> str:
+    """Build a descriptive auto-rebase notification for an agent.
+
+    Shows commit count, files changed, and — for single commits — the full
+    commit message so the agent understands what landed without extra commands.
+    """
+    parts = [f"[git-sync] Auto-rebased {commit_count} commit(s) onto your worktree."]
+
+    # File change stats (e.g. "3 files changed, 42 insertions(+), 10 deletions(-)")
+    diffstat = _run_git("diff", "--stat", old_head, "HEAD", cwd=worktree_path)
+    if diffstat.returncode == 0 and diffstat.stdout.strip():
+        # Last line of --stat is the summary (e.g. "3 files changed, ...")
+        stat_lines = diffstat.stdout.strip().splitlines()
+        if stat_lines:
+            parts.append(stat_lines[-1].strip())
+
+    if commit_count == 1:
+        # Show full commit message for single commits
+        msg = _run_git("log", "-1", "--format=%B", cwd=worktree_path)
+        if msg.returncode == 0 and msg.stdout.strip():
+            parts.append(f"Commit: {msg.stdout.strip()}")
+    else:
+        parts.append("Run `git log --oneline -5` to see what changed.")
+
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
 # host_notify_worktree_updates — rebase all worktrees and notify agents
 # ---------------------------------------------------------------------------
 
@@ -220,6 +252,10 @@ async def host_notify_worktree_updates(
             )
             continue
 
+        # Gather stats before rebase for the notification
+        behind_count = int(behind.stdout.strip())
+        head_before = _run_git("rev-parse", "HEAD", cwd=entry).stdout.strip()
+
         # Attempt rebase
         rebase = _run_git("rebase", main_branch, cwd=entry)
         if rebase.returncode != 0:
@@ -236,10 +272,7 @@ async def host_notify_worktree_updates(
                 error=rebase.stderr.strip(),
             )
         else:
-            notice = (
-                "[git-sync] Your worktree has been auto-rebased onto the latest main. "
-                "Run `git log --oneline -5` to see recent changes."
-            )
+            notice = _build_rebase_notice(entry, head_before, behind_count)
             await deps.send_message(jid, notice)
             logger.info("Auto-rebased worktree", group=group_folder)
 

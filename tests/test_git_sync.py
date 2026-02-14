@@ -22,7 +22,6 @@ from pynchy.git_sync import (
 )
 from pynchy.worktree import ensure_worktree
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -203,7 +202,48 @@ class TestHostNotifyWorktreeUpdates:
         deps.send_message.assert_called_once()
         call_args = deps.send_message.call_args
         assert "jid-1@g.us" in call_args[0]
-        assert "auto-rebased" in call_args[0][1]
+        msg = call_args[0][1]
+        assert "Auto-rebased 1 commit(s)" in msg
+        # Single commit: shows full commit message instead of --oneline hint
+        assert "advance main" in msg
+        assert "--oneline" not in msg
+
+    @pytest.mark.asyncio
+    async def test_multi_commit_shows_oneline_hint(self, git_env: dict):
+        """Multiple commits show --oneline hint instead of commit message."""
+        project = git_env["project"]
+
+        ensure_worktree("agent-1")
+
+        # Push 2 commits to main
+        (project / "file1.txt").write_text("first")
+        _git(project, "add", "file1.txt")
+        _git(project, "commit", "-m", "first change")
+        (project / "file2.txt").write_text("second")
+        _git(project, "add", "file2.txt")
+        _git(project, "commit", "-m", "second change")
+
+        from pynchy.types import RegisteredGroup
+
+        deps = Mock()
+        deps.send_message = AsyncMock()
+        deps.registered_groups.return_value = {
+            "jid-1@g.us": RegisteredGroup(
+                name="Agent 1",
+                folder="agent-1",
+                trigger="@test",
+                added_at="2024-01-01",
+            ),
+        }
+
+        await host_notify_worktree_updates(exclude_group=None, deps=deps)
+
+        deps.send_message.assert_called_once()
+        msg = deps.send_message.call_args[0][1]
+        assert "Auto-rebased 2 commit(s)" in msg
+        assert "--oneline" in msg
+        # Should show file stats
+        assert "file" in msg.lower()
 
     @pytest.mark.asyncio
     async def test_skips_excluded_group(self, git_env: dict):
@@ -384,9 +424,7 @@ class TestPollingHelpers:
 
     def test_host_get_origin_main_sha_failure(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(
-                args=[], returncode=1, stdout=""
-            )
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=1, stdout="")
             sha = _host_get_origin_main_sha()
             assert sha is None
 
@@ -399,7 +437,5 @@ class TestPollingHelpers:
 
     def test_host_container_files_changed_false(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(
-                args=[], returncode=0, stdout=""
-            )
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
             assert _host_container_files_changed("abc", "def") is False
