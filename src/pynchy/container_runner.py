@@ -56,6 +56,10 @@ def _input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
         d["system_notices"] = input_data.system_notices
     if input_data.project_access:
         d["project_access"] = True
+    if input_data.agent_core != "claude":  # Only include if non-default
+        d["agent_core"] = input_data.agent_core
+    if input_data.agent_core_config is not None:
+        d["agent_core_config"] = input_data.agent_core_config
     return d
 
 
