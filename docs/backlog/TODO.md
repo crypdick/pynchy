@@ -36,6 +36,10 @@ Single source of truth for all pynchy work items.
 - **[LOW PRIORITY]** Extract agent-browser skill into standalone plugin. Consider if container image size becomes an issue.
 - right now, each workspace is created using bespoke code. we should ideally have them all configured using a dataclass or similar, so that we can standardize workspaces a bit and enable templating
 - beginners tips. the tips print sometimes after a user sends a message. it has usage instructions and pro tips. plugin authors can optionally define tips for their plugins. there should be a global setting to disalbe tips. on by default.
+- we should have a design principle that no files from the host get mounted into any containers with write access. if an agent wants to edit a shared file (say, a .claude/ rule) then we should have a way for agents to spawn a new 'god' container with a feature request. the god container decides whether to implement it or not.
+- we need a mechanism for spinning down containers. if the worktree is in sync with main, and there hasn't been activity in 10 minutes, the agent container gets killed. this prevents the sync workflow from sending system messages to an inactive container, causing the agent to passively burn tokens for no reason. similarly, deploy shouldn't redeploy the individual containers if they are killed; only active containers.
+- daily cron job that redeploys containers with a full container rebuild. make sure that the deploy script does not spin up containers if they are idle.
+- a new 'end session' magic word that spins down the container. it runs sync before container is stopped.
 
 ### 2 - Planning
 *Draft plan exists. Awaiting human sign-off.*
@@ -58,6 +62,13 @@ Single source of truth for all pynchy work items.
 
 ### 3 - Ready
 *Plan approved or not needed. Ready for an agent to pick up.*
+
+
+#### Bugs
+- messaging is broken. when I send a message, sometimes I see no response in the chat. then when i send a follow up message, it responds to the previous message. the system is desynchronized somehow. update: the message the agents send (as well as tool calls, other messages) seem to be sending to whatsapp more reliably than the tui.
+- previously, the messages sent to the channels were prefixes by emoticons to denote the sender (system, bot, tool call, tool response, host). theyve been reverted to text prefixes like [system]
+- we need to improve the robustness of synchronization. deploys keep failing because the remote does not push their local commits.
+- when I woke up today, pynchy had created a new Pynchy whatsapp group instead of using the existing one. fix this bug.
 
 ### 4 - In Progress
 *Being implemented.*
