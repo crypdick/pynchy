@@ -7,9 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import filecmp
 import json
-import shutil
 import signal
 import subprocess
 import sys
@@ -31,7 +29,6 @@ from pynchy.adapters import (
 )
 from pynchy.config import (
     ASSISTANT_NAME,
-    CONTAINER_IMAGE,
     DATA_DIR,
     DEPLOY_PORT,
     GROUPS_DIR,
@@ -86,7 +83,8 @@ from pynchy.http_server import (
 from pynchy.ipc import start_ipc_watcher
 from pynchy.logger import logger
 from pynchy.router import format_tool_preview, parse_host_tag
-from pynchy.runtime import get_runtime
+from pynchy.service_installer import install_service
+from pynchy.system_checks import check_tailscale, ensure_container_system_running
 from pynchy.task_scheduler import start_scheduler_loop
 from pynchy.types import Channel, ContainerInput, ContainerOutput, NewMessage, RegisteredGroup
 
@@ -1208,7 +1206,6 @@ class PynchyApp:
         continuation_path.write_text(json.dumps(continuation, indent=2))
 
         logger.info("Rollback complete, exiting for service restart")
-        import sys
 
         sys.exit(1)
 
@@ -1268,51 +1265,6 @@ class PynchyApp:
         await store_message(synthetic_msg)
         self.queue.enqueue_message_check(chat_jid)
 
-    # ------------------------------------------------------------------
-    # Container system
-    # ------------------------------------------------------------------
-
-    def _ensure_container_system_running(self) -> None:
-        """Verify container runtime is available and stop orphaned containers."""
-        runtime = get_runtime()
-        runtime.ensure_running()
-
-        # Auto-build container image if missing
-        result = subprocess.run(
-            [runtime.cli, "image", "inspect", CONTAINER_IMAGE],
-            capture_output=True,
-        )
-        if result.returncode != 0:
-            from pynchy.config import PROJECT_ROOT
-
-            container_dir = PROJECT_ROOT / "container"
-            if not (container_dir / "Dockerfile").exists():
-                raise RuntimeError(
-                    f"Container image '{CONTAINER_IMAGE}' not found and "
-                    f"no Dockerfile at {container_dir / 'Dockerfile'}"
-                )
-            logger.info("Container image not found, building...", image=CONTAINER_IMAGE)
-            build = subprocess.run(
-                [runtime.cli, "build", "-t", CONTAINER_IMAGE, "."],
-                cwd=str(container_dir),
-            )
-            if build.returncode != 0:
-                raise RuntimeError(f"Failed to build container image '{CONTAINER_IMAGE}'")
-
-        # Kill orphaned containers from previous runs
-        orphans = runtime.list_running_containers("pynchy-")
-        for name in orphans:
-            with contextlib.suppress(Exception):
-                subprocess.run(
-                    [runtime.cli, "stop", name],
-                    capture_output=True,
-                )
-        if orphans:
-            logger.info(
-                "Stopped orphaned containers",
-                count=len(orphans),
-                names=orphans,
-            )
 
     # ------------------------------------------------------------------
     # Channel broadcast helpers
@@ -1464,134 +1416,7 @@ class PynchyApp:
 
         await self._ingest_user_message(msg, source_channel=source_channel)
 
-    # ------------------------------------------------------------------
-    # Tailscale
-    # ------------------------------------------------------------------
 
-    @staticmethod
-    def _check_tailscale() -> None:
-        """Log a warning if Tailscale is not connected. Non-fatal."""
-        try:
-            result = subprocess.run(
-                ["tailscale", "status", "--json"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode != 0:
-                logger.warning("Tailscale not connected (non-fatal)", stderr=result.stderr.strip())
-                return
-            status = json.loads(result.stdout)
-            backend = status.get("BackendState", "")
-            if backend != "Running":
-                logger.warning("Tailscale backend not running", state=backend)
-            else:
-                logger.info("Tailscale connected", state=backend)
-        except FileNotFoundError:
-            logger.warning("Tailscale CLI not found (non-fatal)")
-        except Exception as exc:
-            logger.warning("Tailscale check failed (non-fatal)", err=str(exc))
-
-    # ------------------------------------------------------------------
-    # Service installation
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _is_launchd_managed() -> bool:
-        """Check if this process was started by launchd (PPID 1)."""
-        import os
-
-        return os.getppid() == 1
-
-    @staticmethod
-    def _is_launchd_loaded(label: str) -> bool:
-        """Check if a launchd job is loaded."""
-        result = subprocess.run(["launchctl", "list", label], capture_output=True)
-        return result.returncode == 0
-
-    @staticmethod
-    def _install_service() -> None:
-        """Install the platform service file so the process auto-restarts on exit.
-
-        On macOS: copies plist to ~/Library/LaunchAgents/ and loads it into
-        launchd if we're already running under launchd (safe reload). When
-        running manually, only copies the file to avoid spawning a competing
-        second instance — the user runs launchctl load once to activate.
-        """
-        if sys.platform == "darwin":
-            label = "com.pynchy"
-            src = PROJECT_ROOT / "launchd" / f"{label}.plist"
-            dest = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
-            if not src.exists():
-                logger.warning("launchd plist not found in repo, skipping service install")
-                return
-            already_loaded = PynchyApp._is_launchd_loaded(label)
-            file_changed = not dest.exists() or not filecmp.cmp(str(src), str(dest), shallow=False)
-            if not file_changed and already_loaded:
-                return  # already up to date and loaded
-            if file_changed:
-                # Unload before overwriting so launchd picks up the new version
-                if already_loaded:
-                    subprocess.run(["launchctl", "unload", str(dest)], capture_output=True)
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dest)
-                logger.info("Installed launchd plist", dest=str(dest))
-            # Only load if we're already running under launchd (safe to reload).
-            # When running manually, loading would spawn a competing instance
-            # that fights over WhatsApp websocket and port binding.
-            if already_loaded or PynchyApp._is_launchd_managed():
-                subprocess.run(["launchctl", "load", str(dest)], capture_output=True)
-                logger.info("Loaded launchd service", label=label)
-            elif not already_loaded:
-                logger.info(
-                    "Launchd plist installed. To enable auto-restart, stop this "
-                    "process and run: launchctl load ~/Library/LaunchAgents/com.pynchy.plist"
-                )
-        elif sys.platform == "linux":
-            uv_path = shutil.which("uv")
-            if not uv_path:
-                logger.warning("uv not found in PATH, skipping systemd service install")
-                return
-            home = Path.home()
-            # TODO: Uninstall cleanup — need a way to systemctl --user disable + rm
-            # this service when the user wants to remove pynchy.
-            unit = f"""\
-[Unit]
-Description=Pynchy personal assistant
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-WorkingDirectory={PROJECT_ROOT}
-ExecStart={uv_path} run pynchy
-Restart=always
-RestartSec=10
-Environment=HOME={home}
-Environment=PATH={home}/.local/bin:/usr/local/bin:/usr/bin:/bin
-
-[Install]
-WantedBy=default.target
-"""
-            dest = home / ".config" / "systemd" / "user" / "pynchy.service"
-            if dest.exists() and dest.read_text() == unit:
-                return  # already up to date
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(unit)
-            logger.info("Installed systemd user service", dest=str(dest))
-            subprocess.run(
-                ["systemctl", "--user", "daemon-reload"],
-                capture_output=True,
-            )
-            subprocess.run(
-                ["systemctl", "--user", "enable", "pynchy.service"],
-                capture_output=True,
-            )
-            # Enable lingering so the user service runs without an active login session
-            subprocess.run(
-                ["sudo", "loginctl", "enable-linger", home.name],
-                capture_output=True,
-            )
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -1626,8 +1451,8 @@ WantedBy=default.target
         continuation_path = DATA_DIR / "deploy_continuation.json"
 
         try:
-            self._install_service()
-            self._ensure_container_system_running()
+            install_service()
+            ensure_container_system_running()
             await init_database()
             logger.info("Database initialized")
             await self._load_state()
@@ -1684,7 +1509,7 @@ WantedBy=default.target
         self.queue.set_process_messages_fn(self._process_group_messages)
 
         # HTTP server for remote health checks, deploys, and TUI API
-        self._check_tailscale()
+        check_tailscale()
         self._http_runner = await start_http_server(self._make_http_deps())
         logger.info("HTTP server ready", port=DEPLOY_PORT)
 
