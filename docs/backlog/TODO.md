@@ -23,7 +23,6 @@ Single source of truth for all pynchy work items.
 ### 1 - Approved
 *Approved ideas. No plan yet.*
 
-- [Provider-agnostic agents](1-approved/provider-agnostic-agents.md) — Generic agent interface so people can swap in other LLMs
 - [X integration port](1-approved/x-integration-port.md) — Port the archived TypeScript X/Twitter skill to Python plugins
 - [Periodic agents](1-approved/periodic-agents.md) — Background agents for security sweeps, code quality, SDK updates, etc.
 - [Project ideas](1-approved/project-ideas.md) — Standalone integration ideas (calendar, voice, Cloudflare, AWS, etc.)
@@ -55,6 +54,7 @@ Single source of truth for all pynchy work items.
   - [Hook Step 4: Agent Runner](2-planning/plugin-hook-4-agent-runner.md) — Load and register hooks in container
   - [Hook Step 5: Polish](2-planning/plugin-hook-5-polish.md) — Error handling, docs, and example plugin
 - [Security Hardening](2-planning/security-hardening.md) — Security improvements and hardening measures (overview - see sub-plans below)
+  - [Security Step 0: IPC Surface](2-planning/security-hardening-0-ipc-surface.md) — Reduce IPC to signal-only protocol, Deputy mediation for data-carrying requests, replace polling with inotify
   - [Security Step 1: Profiles](2-planning/security-hardening-1-profiles.md) — Workspace security profiles and config schema
   - [Security Step 2: MCP & Policy](2-planning/security-hardening-2-mcp-policy.md) — New MCP tools and basic policy enforcement
   - [Security Step 3: Email](2-planning/security-hardening-3-email.md) — Email service integration (IMAP/SMTP)
@@ -66,7 +66,7 @@ Single source of truth for all pynchy work items.
 ### 3 - Ready
 *Plan approved or not needed. Ready for an agent to pick up.*
 
-
+- [Provider-agnostic agents](3-ready/provider-agnostic-agents.md) — Generic `AgentCore` protocol to swap in other LLM frameworks (OpenAI, Ollama, LangChain)
 - rename the 'main container' to the 'God container' in code and docs. this is to disambiguate from 'main' branch.
 
 #### Bugs
