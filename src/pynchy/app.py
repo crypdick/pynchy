@@ -421,6 +421,14 @@ class PynchyApp:
                     await self._handle_streamed_output(chat_jid, group, result)
 
                 result = await self._run_agent(group, prompt, chat_jid, handoff_on_output)
+
+                # If dirty repo check is needed after reset, write marker for next message
+                if reset_data.get("needsDirtyRepoCheck"):
+                    dirty_check_file = DATA_DIR / "ipc" / group.folder / "needs_dirty_check.json"
+                    dirty_check_file.write_text(
+                        json.dumps({"timestamp": datetime.now(UTC).isoformat()})
+                    )
+
                 return result != "error"
             return True
 
@@ -461,6 +469,39 @@ class PynchyApp:
                 return True
 
         prompt = format_messages(missed_messages)
+
+        # Check if we need to add dirty repo warning after context reset
+        dirty_check_file = DATA_DIR / "ipc" / group.folder / "needs_dirty_check.json"
+        if dirty_check_file.exists() and is_main_group:
+            try:
+                dirty_check_file.unlink()
+                # Check if repo is dirty
+                dirty = subprocess.run(
+                    ["git", "status", "--porcelain"],
+                    cwd=str(PROJECT_ROOT),
+                    capture_output=True,
+                    text=True,
+                )
+                if dirty.returncode == 0 and dirty.stdout.strip():
+                    # Inject system reminder about uncommitted changes
+                    prompt = (
+                        f"{prompt}\n\n<system-reminder>\n"
+                        "WARNING: Uncommitted changes detected in the repository. "
+                        "Please review and commit these changes so that you may work "
+                        "with a clean slate. "
+                        "Run `git status` and `git diff` to see what has changed.\n"
+                        "</system-reminder>"
+                    )
+                    logger.info(
+                        "Injected dirty repo warning after reset",
+                        group=group.name,
+                    )
+            except Exception as exc:
+                logger.error(
+                    "Error checking for dirty repo after reset",
+                    err=str(exc),
+                )
+                dirty_check_file.unlink(missing_ok=True)
 
         # Advance cursor; save old cursor for rollback on error
         previous_cursor = self.last_agent_timestamp.get(chat_jid, "")

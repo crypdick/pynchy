@@ -365,6 +365,43 @@ async def process_task_ipc(
                 )
                 return
 
+            # Sync git repo before clearing session (pull + push)
+            logger.info(
+                "Syncing git repo before context reset",
+                group=group_folder,
+            )
+            try:
+                # Pull latest changes
+                pull_result = subprocess.run(
+                    ["git", "pull", "--rebase"],
+                    cwd=str(PROJECT_ROOT),
+                    capture_output=True,
+                    text=True,
+                )
+                if pull_result.returncode != 0:
+                    logger.warning(
+                        "Git pull failed during reset",
+                        stderr=pull_result.stderr,
+                    )
+
+                # Push any local commits
+                push_result = subprocess.run(
+                    ["git", "push"],
+                    cwd=str(PROJECT_ROOT),
+                    capture_output=True,
+                    text=True,
+                )
+                if push_result.returncode != 0:
+                    logger.warning(
+                        "Git push failed during reset",
+                        stderr=push_result.stderr,
+                    )
+            except Exception as exc:
+                logger.error(
+                    "Git sync failed during context reset",
+                    err=str(exc),
+                )
+
             await deps.clear_session(group_folder)
 
             # Archive chat history and send system confirmation
@@ -374,7 +411,13 @@ async def process_task_ipc(
             reset_dir = DATA_DIR / "ipc" / group_folder
             reset_dir.mkdir(parents=True, exist_ok=True)
             reset_file = reset_dir / "reset_prompt.json"
-            reset_file.write_text(json.dumps({"message": message, "chatJid": chat_jid}))
+            reset_file.write_text(
+                json.dumps({
+                    "message": message,
+                    "chatJid": chat_jid,
+                    "needsDirtyRepoCheck": True,
+                })
+            )
 
             deps.enqueue_message_check(chat_jid)
             logger.info(
