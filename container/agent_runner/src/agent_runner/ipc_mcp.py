@@ -7,6 +7,7 @@ Reads context from environment variables, writes IPC files for the host.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import random
@@ -256,6 +257,19 @@ async def list_tools() -> list[Tool]:
             },
         ),
     ]
+
+    tools.append(
+        Tool(
+            name="sync_worktree_to_main",
+            description=(
+                "Merge your worktree into main and push to origin. "
+                "Commit all changes first. On conflict, your worktree "
+                "will have conflict markers — fix them, git add, "
+                "git rebase --continue, then retry."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
+    )
 
     tools.append(
         Tool(
@@ -576,6 +590,49 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolR
             close_sentinel.parent.mkdir(parents=True, exist_ok=True)
             close_sentinel.write_text("")
             os._exit(0)
+
+        case "sync_worktree_to_main":
+            request_id = f"{int(time.time() * 1000)}-{random.randbytes(3).hex()}"
+            write_ipc_file(
+                TASKS_DIR,
+                {
+                    "type": "sync_worktree_to_main",
+                    "groupFolder": group_folder,
+                    "requestId": request_id,
+                    "timestamp": _now_iso(),
+                },
+            )
+
+            # Block until host writes response
+            result_file = IPC_DIR / "merge_results" / f"{request_id}.json"
+            timeout = 120
+            start = time.time()
+            while time.time() - start < timeout:
+                if result_file.exists():
+                    try:
+                        result = json.loads(result_file.read_text())
+                        result_file.unlink()
+                    except (json.JSONDecodeError, OSError):
+                        await asyncio.sleep(0.3)
+                        continue
+
+                    if result.get("success"):
+                        return [TextContent(type="text", text=result["message"])]
+                    return CallToolResult(
+                        content=[TextContent(type="text", text=result["message"])],
+                        isError=True,
+                    )
+                await asyncio.sleep(0.3)
+
+            return CallToolResult(
+                content=[
+                    TextContent(
+                        type="text",
+                        text="Timed out (120s). Retry or check with the host.",
+                    )
+                ],
+                isError=True,
+            )
 
         case "deploy_changes":
             if not is_main:

@@ -72,6 +72,7 @@ from pynchy.event_bus import (
     EventBus,
     MessageEvent,
 )
+from pynchy.git_sync import start_host_git_sync_loop
 from pynchy.group_queue import GroupQueue
 from pynchy.http_server import (
     _get_head_commit_message,
@@ -1317,7 +1318,6 @@ class PynchyApp:
         await store_message(synthetic_msg)
         self.queue.enqueue_message_check(chat_jid)
 
-
     # ------------------------------------------------------------------
     # Channel broadcast helpers
     # ------------------------------------------------------------------
@@ -1468,8 +1468,6 @@ class PynchyApp:
 
         await self._ingest_user_message(msg, source_channel=source_channel)
 
-
-
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
@@ -1552,12 +1550,18 @@ class PynchyApp:
         # Create and connect plugin channels
         await self._connect_plugin_channels()
 
+        # Prune stale worktrees and rebase diverged branches before containers launch
+        from pynchy.worktree import cleanup_stale_worktrees
+
+        await asyncio.to_thread(cleanup_stale_worktrees)
+
         # Reconcile periodic agents (create chat groups + tasks from periodic.yaml)
         await self._reconcile_periodic_agents()
 
         # Start subsystems
         asyncio.create_task(start_scheduler_loop(self._make_scheduler_deps()))
         asyncio.create_task(start_ipc_watcher(self._make_ipc_deps()))
+        asyncio.create_task(start_host_git_sync_loop(self._make_git_sync_deps()))
         self.queue.set_process_messages_fn(self._process_group_messages)
 
         # HTTP server for remote health checks, deploys, and TUI API
@@ -1664,3 +1668,60 @@ class PynchyApp:
             channels = metadata_manager.channels
 
         return IpcDeps()
+
+    def _make_git_sync_deps(self) -> Any:
+        """Create the dependency object for the git sync loop."""
+        broadcaster = MessageBroadcaster(self.channels)
+
+        # Wrapper to inject message_type='host' for host messages
+        async def store_host_message(**kwargs: Any) -> None:
+            await store_message_direct(**kwargs, message_type="host")
+
+        host_broadcaster = HostMessageBroadcaster(
+            broadcaster, store_host_message, self.event_bus.emit
+        )
+        group_registry = GroupRegistry(self.registered_groups)
+
+        class GitSyncDeps:
+            send_message = broadcaster.send_message
+
+            def registered_groups(self_inner) -> dict[str, Any]:
+                return group_registry.registered_groups()
+
+            async def trigger_deploy(self_inner) -> None:
+                chat_jid = group_registry.main_chat_jid()
+                if chat_jid:
+                    await host_broadcaster.broadcast_host_message(
+                        chat_jid,
+                        "Container files changed on origin — rebuilding and restarting...",
+                    )
+
+                # Rebuild container image
+                build_script = PROJECT_ROOT / "container" / "build.sh"
+                if build_script.exists():
+                    import subprocess
+
+                    result = subprocess.run(
+                        [str(build_script)],
+                        cwd=str(PROJECT_ROOT / "container"),
+                        capture_output=True,
+                        text=True,
+                        timeout=600,
+                    )
+                    if result.returncode != 0:
+                        logger.error(
+                            "Container rebuild failed during sync",
+                            stderr=result.stderr[-500:],
+                        )
+
+                from pynchy.deploy import finalize_deploy
+                from pynchy.http_server import _get_head_sha
+
+                await finalize_deploy(
+                    broadcast_host_message=host_broadcaster.broadcast_host_message,
+                    chat_jid=chat_jid,
+                    commit_sha=_get_head_sha(),
+                    previous_sha=_get_head_sha(),
+                )
+
+        return GitSyncDeps()

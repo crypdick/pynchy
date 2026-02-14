@@ -160,9 +160,7 @@ async def _create_schema(database: aiosqlite.Connection) -> None:
         pass
     # Migration: add security_profile column for WorkspaceProfile (Phase B.1)
     try:
-        await database.execute(
-            "ALTER TABLE registered_groups ADD COLUMN security_profile TEXT"
-        )
+        await database.execute("ALTER TABLE registered_groups ADD COLUMN security_profile TEXT")
         await database.commit()
     except Exception:
         pass
@@ -975,9 +973,7 @@ def _row_to_workspace_profile(row: aiosqlite.Row) -> WorkspaceProfile:
         # Fall back to default security if parsing fails
         pass
 
-    requires_trigger = (
-        True if row["requires_trigger"] is None else row["requires_trigger"] == 1
-    )
+    requires_trigger = True if row["requires_trigger"] is None else row["requires_trigger"] == 1
 
     return WorkspaceProfile(
         jid=row["jid"],

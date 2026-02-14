@@ -128,6 +128,15 @@ The goal: if something went wrong, you can reconstruct what the LLM saw by readi
 - Each group gets a dedicated folder under `groups/`
 - Groups can have additional directories mounted via `containerConfig`
 
+### Coordinated Git Sync
+
+Agents inside containers never push to main directly. The host mediates all merges into main, pushes to origin, and syncs other running agents. Design principles:
+
+1. **Prefer mountable files over generated code** — Hook config and scripts live in `container/` as static files, mounted read-only. Don't generate complex logic in Python when a mountable file would do.
+2. **Clear host/container naming** — Host-side functions prefixed `host_` (e.g., `host_sync_worktree()`). Container-side scripts live in `container/scripts/`.
+3. **Self-contained error messages to containers** — Containers can't read host state (logs, config, etc.). Errors sent to containers must be descriptive and actionable. On conflict, leave the worktree in a resolvable state (conflict markers visible to agent) rather than aborting.
+4. **Host owns main** — Agents never push to main directly. The host mediates all merges into main, pushes to origin, and syncs other agents.
+
 ### God Channel Privileges
 - God channel is the admin/control group (typically self-chat)
 - Can write to global memory (`groups/CLAUDE.md`)
@@ -172,6 +181,7 @@ The goal: if something went wrong, you can reconstruct what the LLM saw by readi
 - Setup and customization done via Claude Code
 - Users clone the repo and run Claude Code to configure
 - Each user gets a custom setup matching their exact needs
+- Each user should fork the main repo and use that fork for their deployment. They can ask claude to use the `gh` cli tool to make it private, if they wish.
 
 ### Skills
 - `/setup` - Install dependencies, authenticate WhatsApp, configure scheduler, start services

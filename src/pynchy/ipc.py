@@ -26,6 +26,7 @@ from pynchy.config import (
 )
 from pynchy.db import create_task, delete_task, get_task_by_id, update_task
 from pynchy.deploy import finalize_deploy
+from pynchy.git_sync import host_notify_worktree_updates, host_sync_worktree, write_ipc_response
 from pynchy.logger import logger
 from pynchy.types import Channel, ContainerConfig, RegisteredGroup
 
@@ -415,6 +416,34 @@ async def process_task_ipc(
                 )
                 return
             await _handle_create_periodic_agent(data, deps)
+
+        case "sync_worktree_to_main":
+            request_id = data.get("requestId", "")
+            result = host_sync_worktree(source_group)
+
+            # Write response for the blocking MCP tool (atomic write)
+            result_dir = DATA_DIR / "ipc" / source_group / "merge_results"
+            write_ipc_response(result_dir / f"{request_id}.json", result)
+
+            if result.get("success"):
+                # Adapter: bridge IpcDeps.send_message to GitSyncDeps interface
+                class _GitSyncAdapter:
+                    async def send_message(self, jid: str, text: str) -> None:
+                        await deps.send_message(jid, text)
+
+                    def registered_groups(self) -> dict[str, RegisteredGroup]:
+                        return deps.registered_groups()
+
+                    async def trigger_deploy(self) -> None:
+                        pass  # not used for post-sync broadcast
+
+                await host_notify_worktree_updates(source_group, _GitSyncAdapter())
+
+            logger.info(
+                "sync_worktree_to_main handled",
+                group=source_group,
+                success=result.get("success"),
+            )
 
         case "register_group":
             if not is_main:

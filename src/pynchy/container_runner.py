@@ -293,17 +293,29 @@ def _write_env_file() -> Path | None:
 
 
 def _write_settings_json(session_dir: Path) -> None:
-    """Write Claude Code settings.json if it doesn't exist."""
+    """Write Claude Code settings.json, merging hook config from scripts/.
+
+    Always regenerates to pick up hook config changes (e.g. guard_git).
+    """
     settings_file = session_dir / "settings.json"
-    if settings_file.exists():
-        return
-    settings = {
+    settings: dict[str, Any] = {
         "env": {
             "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
             "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD": "1",
             "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "0",
         },
     }
+
+    # Merge hook config from container/scripts/settings.json
+    hook_settings_file = PROJECT_ROOT / "container" / "scripts" / "settings.json"
+    if hook_settings_file.exists():
+        try:
+            hook_settings = json.loads(hook_settings_file.read_text())
+            if "hooks" in hook_settings:
+                settings["hooks"] = hook_settings["hooks"]
+        except (json.JSONDecodeError, OSError):
+            pass
+
     settings_file.write_text(json.dumps(settings, indent=2) + "\n")
 
 
@@ -358,9 +370,14 @@ def _build_volume_mounts(
 
     # Per-group IPC namespace
     group_ipc_dir = DATA_DIR / "ipc" / group.folder
-    for sub in ("messages", "tasks", "input"):
+    for sub in ("messages", "tasks", "input", "merge_results"):
         (group_ipc_dir / sub).mkdir(parents=True, exist_ok=True)
     mounts.append(VolumeMount(str(group_ipc_dir), "/workspace/ipc", readonly=False))
+
+    # Guard scripts (read-only: hook script + settings overlay)
+    scripts_dir = PROJECT_ROOT / "container" / "scripts"
+    if scripts_dir.exists():
+        mounts.append(VolumeMount(str(scripts_dir), "/workspace/scripts", readonly=True))
 
     # Environment file directory
     env_dir = _write_env_file()

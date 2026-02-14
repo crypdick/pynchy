@@ -365,10 +365,7 @@ def build_sdk_messages(messages: list[dict[str, Any]]) -> str:
     def escape_xml(s: str) -> str:
         """Escape XML special characters."""
         return (
-            s.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace('"', "&quot;")
+            s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
         )
 
     lines = []
@@ -376,9 +373,7 @@ def build_sdk_messages(messages: list[dict[str, Any]]) -> str:
         sender_name = escape_xml(msg.get("sender_name", "Unknown"))
         timestamp = msg.get("timestamp", "")
         content = escape_xml(msg.get("content", ""))
-        lines.append(
-            f'<message sender="{sender_name}" time="{timestamp}">{content}</message>'
-        )
+        lines.append(f'<message sender="{sender_name}" time="{timestamp}">{content}</message>')
 
     return f"<messages>\n{chr(10).join(lines)}\n</messages>"
 

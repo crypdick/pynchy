@@ -11,8 +11,12 @@ from unittest.mock import patch
 
 import pytest
 
-from pynchy.worktree import WorktreeError, ensure_worktree, merge_worktree
-
+from pynchy.worktree import (
+    WorktreeError,
+    cleanup_stale_worktrees,
+    ensure_worktree,
+    merge_worktree,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -188,7 +192,8 @@ class TestMergeWorktree:
         merged = merge_worktree("code-improver")
         assert merged is True
 
-    def test_non_fast_forward_returns_false(self, git_env: dict):
+    def test_diverged_non_conflicting_merges_via_rebase(self, git_env: dict):
+        """Diverged but non-conflicting changes are rebased and merged."""
         project = git_env["project"]
 
         # Create worktree and make a commit
@@ -200,14 +205,99 @@ class TestMergeWorktree:
         _git(wt_path, "config", "user.name", "Test")
         _git(wt_path, "commit", "-m", "worktree commit")
 
-        # Make a divergent commit on main in project
+        # Make a divergent commit on main in project (different file = no conflict)
         (project / "other.txt").write_text("main change")
         _git(project, "add", "other.txt")
         _git(project, "commit", "-m", "divergent commit on main")
 
-        # Merge should fail (non-fast-forward)
+        # Rebase-then-merge handles diverged branches
+        merged = merge_worktree("code-improver")
+        assert merged is True
+
+        # Both files should be on main now
+        assert (project / "feature.txt").read_text() == "worktree change"
+        assert (project / "other.txt").read_text() == "main change"
+
+    def test_conflicting_merge_returns_false(self, git_env: dict):
+        """True conflict (same file, different content) returns False."""
+        project = git_env["project"]
+
+        # Create worktree and modify README.md
+        result = ensure_worktree("code-improver")
+        wt_path = result.path
+        (wt_path / "README.md").write_text("worktree version")
+        _git(wt_path, "add", "README.md")
+        _git(wt_path, "config", "user.email", "test@test.com")
+        _git(wt_path, "config", "user.name", "Test")
+        _git(wt_path, "commit", "-m", "worktree edit README")
+
+        # Make a conflicting commit on main (same file, different content)
+        (project / "README.md").write_text("main version")
+        _git(project, "add", "README.md")
+        _git(project, "commit", "-m", "main edit README")
+
+        # Should fail due to real conflict
         merged = merge_worktree("code-improver")
         assert merged is False
 
-        # main should NOT have the worktree's file
-        assert not (project / "feature.txt").exists()
+
+# ---------------------------------------------------------------------------
+# cleanup_stale_worktrees tests
+# ---------------------------------------------------------------------------
+
+
+class TestCleanupStaleWorktrees:
+    def test_rebases_diverged_worktree(self, git_env: dict):
+        """Diverged worktree branch is rebased onto main at startup."""
+        project = git_env["project"]
+
+        # Create worktree and commit
+        result = ensure_worktree("code-improver")
+        wt_path = result.path
+        (wt_path / "feature.txt").write_text("worktree work")
+        _git(wt_path, "add", "feature.txt")
+        _git(wt_path, "config", "user.email", "test@test.com")
+        _git(wt_path, "config", "user.name", "Test")
+        _git(wt_path, "commit", "-m", "worktree commit")
+
+        # Advance main to create divergence
+        (project / "other.txt").write_text("main work")
+        _git(project, "add", "other.txt")
+        _git(project, "commit", "-m", "advance main")
+
+        # Verify divergence exists
+        ahead = _git(project, "rev-list", "main..worktree/code-improver", "--count")
+        behind = _git(project, "rev-list", "worktree/code-improver..main", "--count")
+        assert int(ahead.stdout.strip()) > 0
+        assert int(behind.stdout.strip()) > 0
+
+        cleanup_stale_worktrees()
+
+        # After cleanup, worktree branch should be ahead of main (rebased), not diverged
+        behind_after = _git(project, "rev-list", "worktree/code-improver..main", "--count")
+        assert int(behind_after.stdout.strip()) == 0
+
+    def test_skips_non_diverged_worktree(self, git_env: dict):
+        """Worktrees that aren't diverged are left alone."""
+        result = ensure_worktree("code-improver")
+        wt_path = result.path
+
+        # Commit in worktree (ahead only, not diverged)
+        (wt_path / "feature.txt").write_text("feature")
+        _git(wt_path, "add", "feature.txt")
+        _git(wt_path, "config", "user.email", "test@test.com")
+        _git(wt_path, "config", "user.name", "Test")
+        _git(wt_path, "commit", "-m", "feature")
+
+        head_before = _git(wt_path, "rev-parse", "HEAD").stdout.strip()
+
+        cleanup_stale_worktrees()
+
+        # HEAD unchanged — no rebase needed
+        head_after = _git(wt_path, "rev-parse", "HEAD").stdout.strip()
+        assert head_before == head_after
+
+    def test_handles_no_worktrees_dir(self, git_env: dict):
+        """Runs cleanly when worktrees dir doesn't exist."""
+        # worktrees_dir doesn't exist yet — should not raise
+        cleanup_stale_worktrees()
