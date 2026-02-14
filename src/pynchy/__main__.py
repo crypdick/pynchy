@@ -14,7 +14,8 @@ import asyncio
 import subprocess
 import sys
 
-_DEFAULT_HOST = "localhost:8484"
+_DEFAULT_PORT = "8484"
+_DEFAULT_HOST = f"localhost:{_DEFAULT_PORT}"
 
 
 def _run() -> None:
@@ -81,7 +82,10 @@ def main() -> None:
             _build()
         case _:
             if args.tui:
-                _tui(host=args.host)
+                host = args.host
+                if ":" not in host.split("//")[-1]:
+                    host = f"{host}:{_DEFAULT_PORT}"
+                _tui(host=host)
             else:
                 _run()
 
