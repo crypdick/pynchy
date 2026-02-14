@@ -17,24 +17,6 @@ _INTERNAL_TAG_RE = re.compile(r"<internal>[\s\S]*?</internal>")
 _HOST_TAG_RE = re.compile(r"^\s*<host>([\s\S]*?)</host>\s*$")
 
 
-def escape_xml(s: str) -> str:
-    """Escape XML special characters."""
-    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
-
-
-def format_messages(messages: list[NewMessage]) -> str:
-    """Format messages as XML for the agent prompt.
-
-    NOTE: This is the legacy XML format. Use format_messages_for_sdk() for new code.
-    """
-    lines = [
-        f'<message sender="{escape_xml(m.sender_name)}" time="{m.timestamp}">'
-        f"{escape_xml(m.content)}</message>"
-        for m in messages
-    ]
-    return f"<messages>\n{chr(10).join(lines)}\n</messages>"
-
-
 def format_messages_for_sdk(messages: list[NewMessage]) -> list[dict]:
     """Format messages as SDK message list, filtering out host messages.
 

@@ -48,7 +48,14 @@ TEST_GROUP = RegisteredGroup(
 )
 
 TEST_INPUT = ContainerInput(
-    prompt="Hello",
+    messages=[{
+        "message_type": "user",
+        "sender": "user@s.whatsapp.net",
+        "sender_name": "User",
+        "content": "Hello",
+        "timestamp": "2024-01-01T00:00:00.000Z",
+        "metadata": None,
+    }],
     group_folder="test-group",
     chat_jid="test@g.us",
     is_main=False,
@@ -120,14 +127,14 @@ class FakeStdin:
 class TestInputSerialization:
     def test_basic_fields_snake_case(self):
         inp = ContainerInput(
-            prompt="hi",
+            messages=[{"message_type": "user", "content": "hi"}],
             group_folder="my-group",
             chat_jid="chat@g.us",
             is_main=True,
         )
         d = _input_to_dict(inp)
         assert d == {
-            "prompt": "hi",
+            "messages": [{"message_type": "user", "content": "hi"}],
             "group_folder": "my-group",
             "chat_jid": "chat@g.us",
             "is_main": True,
@@ -135,7 +142,7 @@ class TestInputSerialization:
 
     def test_optional_fields_included_when_set(self):
         inp = ContainerInput(
-            prompt="hi",
+            messages=[{"message_type": "user", "content": "hi"}],
             group_folder="g",
             chat_jid="c",
             is_main=False,
@@ -147,7 +154,7 @@ class TestInputSerialization:
         assert d["is_scheduled_task"] is True
 
     def test_optional_fields_omitted_when_default(self):
-        inp = ContainerInput(prompt="hi", group_folder="g", chat_jid="c", is_main=False)
+        inp = ContainerInput(messages=[{"message_type": "user", "content": "hi"}], group_folder="g", chat_jid="c", is_main=False)
         d = _input_to_dict(inp)
         assert "session_id" not in d
         assert "is_scheduled_task" not in d

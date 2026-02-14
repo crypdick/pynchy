@@ -1,4 +1,4 @@
-"""Tests for XML escaping, message formatting, trigger pattern, and outbound formatting.
+"""Tests for trigger pattern, outbound formatting, and tool previews.
 
 Port of src/formatting.test.ts.
 """
@@ -9,75 +9,12 @@ from dataclasses import dataclass
 
 from pynchy.config import ASSISTANT_NAME, TRIGGER_PATTERN
 from pynchy.router import (
-    escape_xml,
-    format_messages,
     format_outbound,
     format_tool_preview,
     parse_host_tag,
     strip_internal_tags,
 )
 from pynchy.types import NewMessage
-
-# --- escapeXml ---
-
-
-class TestEscapeXml:
-    def test_escapes_ampersands(self):
-        assert escape_xml("a & b") == "a &amp; b"
-
-    def test_escapes_less_than(self):
-        assert escape_xml("a < b") == "a &lt; b"
-
-    def test_escapes_greater_than(self):
-        assert escape_xml("a > b") == "a &gt; b"
-
-    def test_escapes_double_quotes(self):
-        assert escape_xml('"hello"') == "&quot;hello&quot;"
-
-    def test_handles_multiple_special_characters(self):
-        assert escape_xml('a & b < c > d "e"') == "a &amp; b &lt; c &gt; d &quot;e&quot;"
-
-    def test_passes_through_no_special_chars(self):
-        assert escape_xml("hello world") == "hello world"
-
-    def test_handles_empty_string(self):
-        assert escape_xml("") == ""
-
-
-# --- formatMessages ---
-
-
-class TestFormatMessages:
-    def test_formats_single_message_as_xml(self, make_msg):
-        result = format_messages([make_msg()])
-        assert result == (
-            "<messages>\n"
-            '<message sender="Alice" time="2024-01-01T00:00:00.000Z">hello</message>\n'
-            "</messages>"
-        )
-
-    def test_formats_multiple_messages(self, make_msg):
-        msgs = [
-            make_msg(id="1", sender_name="Alice", content="hi", timestamp="t1"),
-            make_msg(id="2", sender_name="Bob", content="hey", timestamp="t2"),
-        ]
-        result = format_messages(msgs)
-        assert 'sender="Alice"' in result
-        assert 'sender="Bob"' in result
-        assert ">hi</message>" in result
-        assert ">hey</message>" in result
-
-    def test_escapes_special_chars_in_sender_names(self, make_msg):
-        result = format_messages([make_msg(sender_name="A & B <Co>")])
-        assert 'sender="A &amp; B &lt;Co&gt;"' in result
-
-    def test_escapes_special_chars_in_content(self, make_msg):
-        result = format_messages([make_msg(content='<script>alert("xss")</script>')])
-        assert "&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;" in result
-
-    def test_handles_empty_array(self):
-        result = format_messages([])
-        assert result == "<messages>\n\n</messages>"
 
 
 # --- TRIGGER_PATTERN ---

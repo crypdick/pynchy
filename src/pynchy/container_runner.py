@@ -41,7 +41,7 @@ from pynchy.types import ContainerInput, ContainerOutput, RegisteredGroup, Volum
 def _input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
     """Convert ContainerInput to dict for the Python agent-runner."""
     d: dict[str, Any] = {
-        "prompt": input_data.prompt,
+        "messages": input_data.messages,
         "group_folder": input_data.group_folder,
         "chat_jid": input_data.chat_jid,
         "is_main": input_data.is_main,
@@ -526,7 +526,7 @@ def _write_run_log(
         lines.extend(
             [
                 "=== Input Summary ===",
-                f"Prompt length: {len(input_data.prompt)} chars",
+                f"Messages: {len(input_data.messages)} messages",
                 f"Session ID: {input_data.session_id or 'new'}",
                 "",
                 "=== Mounts ===",

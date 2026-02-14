@@ -61,8 +61,7 @@ OUTPUT_END_MARKER = "---PYNCHY_OUTPUT_END---"
 
 class ContainerInput:
     def __init__(self, data: dict[str, Any]) -> None:
-        self.prompt: str = data["prompt"]  # Legacy XML format (for backward compatibility)
-        self.messages: list[dict[str, Any]] | None = data.get("messages")  # New SDK format
+        self.messages: list[dict[str, Any]] = data["messages"]
         self.session_id: str | None = data.get("session_id")
         self.group_folder: str = data["group_folder"]
         self.chat_jid: str = data["chat_jid"]
@@ -364,7 +363,12 @@ def build_sdk_messages(messages: list[dict[str, Any]]) -> str:
 
     def escape_xml(s: str) -> str:
         """Escape XML special characters."""
-        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+        return (
+            s.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+        )
 
     lines = []
     for msg in messages:
@@ -403,13 +407,9 @@ async def main() -> None:
     with contextlib.suppress(OSError):
         IPC_INPUT_CLOSE_SENTINEL.unlink()
 
-    # Build initial prompt (prefer SDK messages if available, fallback to legacy prompt)
-    if container_input.messages:
-        log(f"Using SDK message list ({len(container_input.messages)} messages)")
-        prompt = build_sdk_messages(container_input.messages)
-    else:
-        log("Using legacy XML prompt format")
-        prompt = container_input.prompt
+    # Build initial prompt from SDK messages
+    log(f"Using SDK message list ({len(container_input.messages)} messages)")
+    prompt = build_sdk_messages(container_input.messages)
 
     if container_input.is_scheduled_task:
         prompt = (

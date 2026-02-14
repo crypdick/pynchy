@@ -132,7 +132,8 @@ async def _create_schema(database: aiosqlite.Connection) -> None:
     try:
         # Host messages
         await database.execute(
-            "UPDATE messages SET message_type = 'host' WHERE sender = 'host' AND message_type = 'user'"
+            "UPDATE messages SET message_type = 'host' "
+            "WHERE sender = 'host' AND message_type = 'user'"
         )
         # Tool result messages (command outputs)
         await database.execute(
@@ -264,7 +265,8 @@ async def store_message(msg: NewMessage, message_type: str = "user") -> None:
     db = _get_db()
     await db.execute(
         "INSERT OR REPLACE INTO messages "
-        "(id, chat_jid, sender, sender_name, content, timestamp, is_from_me, message_type, metadata) "
+        "(id, chat_jid, sender, sender_name, content, timestamp, is_from_me, "
+        "message_type, metadata) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             msg.id,
@@ -303,7 +305,8 @@ async def store_message_direct(
     metadata_json = json.dumps(metadata) if metadata else None
     await db.execute(
         "INSERT OR REPLACE INTO messages "
-        "(id, chat_jid, sender, sender_name, content, timestamp, is_from_me, message_type, metadata) "
+        "(id, chat_jid, sender, sender_name, content, timestamp, is_from_me, "
+        "message_type, metadata) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             id,
