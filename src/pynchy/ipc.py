@@ -365,40 +365,20 @@ async def process_task_ipc(
                 )
                 return
 
-            # Sync git repo before clearing session (pull + push)
+            # Merge worktree commits into main and push before clearing session
             logger.info(
-                "Syncing git repo before context reset",
+                "Merging worktree before context reset",
                 group=group_folder,
             )
             try:
-                # Pull latest changes
-                pull_result = subprocess.run(
-                    ["git", "pull", "--rebase"],
-                    cwd=str(PROJECT_ROOT),
-                    capture_output=True,
-                    text=True,
-                )
-                if pull_result.returncode != 0:
-                    logger.warning(
-                        "Git pull failed during reset",
-                        stderr=pull_result.stderr,
-                    )
+                from pynchy.http_server import _push_local_commits
+                from pynchy.worktree import merge_worktree
 
-                # Push any local commits
-                push_result = subprocess.run(
-                    ["git", "push"],
-                    cwd=str(PROJECT_ROOT),
-                    capture_output=True,
-                    text=True,
-                )
-                if push_result.returncode != 0:
-                    logger.warning(
-                        "Git push failed during reset",
-                        stderr=push_result.stderr,
-                    )
+                if merge_worktree(group_folder):
+                    _push_local_commits()
             except Exception as exc:
                 logger.error(
-                    "Git sync failed during context reset",
+                    "Worktree merge failed during context reset",
                     err=str(exc),
                 )
 
