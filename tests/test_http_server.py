@@ -2,28 +2,22 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
-import subprocess
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
-import pytest
 from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
 
 from pynchy.http_server import (
-    HttpDeps,
     _get_head_commit_message,
     _get_head_sha,
     _is_repo_dirty,
     _push_local_commits,
     _write_boot_warning,
-    start_http_server,
 )
 from pynchy.types import NewMessage
-
 
 # ---------------------------------------------------------------------------
 # Git utility tests
@@ -151,16 +145,34 @@ def test_push_local_commits_fetch_failure():
         assert _push_local_commits() is False
 
 
-def test_push_local_commits_rebase_failure():
-    """_push_local_commits aborts rebase and returns False on conflict."""
+def test_push_local_commits_rebase_failure_retries_and_fails():
+    """_push_local_commits retries once after rebase failure, then gives up."""
     with patch("subprocess.run") as mock_run:
         mock_run.side_effect = [
             Mock(returncode=0),  # fetch
             Mock(returncode=0, stdout="2\n"),  # rev-list
-            Mock(returncode=1, stderr="CONFLICT"),  # rebase fails
+            Mock(returncode=1, stderr="CONFLICT"),  # rebase fails (attempt 1)
+            Mock(returncode=0),  # rebase --abort
+            Mock(returncode=0),  # retry fetch
+            Mock(returncode=1, stderr="CONFLICT"),  # rebase fails (attempt 2)
             Mock(returncode=0),  # rebase --abort
         ]
         assert _push_local_commits() is False
+
+
+def test_push_local_commits_rebase_retry_succeeds():
+    """_push_local_commits succeeds on retry when origin advanced mid-push."""
+    with patch("subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            Mock(returncode=0),  # fetch
+            Mock(returncode=0, stdout="2\n"),  # rev-list
+            Mock(returncode=1, stderr="CONFLICT"),  # rebase fails (attempt 1)
+            Mock(returncode=0),  # rebase --abort
+            Mock(returncode=0),  # retry fetch
+            Mock(returncode=0),  # rebase succeeds (attempt 2)
+            Mock(returncode=0),  # push
+        ]
+        assert _push_local_commits() is True
 
 
 def test_push_local_commits_push_failure():

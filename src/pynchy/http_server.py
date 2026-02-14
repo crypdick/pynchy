@@ -74,6 +74,8 @@ def _push_local_commits(*, skip_fetch: bool = False) -> bool:
     """Best-effort push of local commits to origin/main.
 
     Returns True if repo is in sync (nothing to push, or push succeeded).
+    Retries once on rebase failure (covers the race where origin advances
+    between fetch and rebase when two worktrees push nearly simultaneously).
     Never raises — all failures are logged and return False.
     """
     try:
@@ -97,33 +99,54 @@ def _push_local_commits(*, skip_fetch: bool = False) -> bool:
         if count.returncode != 0 or int(count.stdout.strip() or "0") == 0:
             return True  # nothing to push (or can't tell)
 
-        rebase = subprocess.run(
-            ["git", "rebase", "origin/main"],
-            cwd=str(PROJECT_ROOT),
-            capture_output=True,
-            text=True,
-        )
-        if rebase.returncode != 0:
-            subprocess.run(
-                ["git", "rebase", "--abort"],
+        # Try rebase+push, retry once if origin advanced mid-operation
+        for attempt in range(2):
+            rebase = subprocess.run(
+                ["git", "rebase", "origin/main"],
                 cwd=str(PROJECT_ROOT),
                 capture_output=True,
+                text=True,
             )
-            logger.warning("push_local: rebase failed", stderr=rebase.stderr.strip())
-            return False
+            if rebase.returncode != 0:
+                subprocess.run(
+                    ["git", "rebase", "--abort"],
+                    cwd=str(PROJECT_ROOT),
+                    capture_output=True,
+                )
+                if attempt == 0:
+                    # Re-fetch and retry — origin may have advanced
+                    logger.info("push_local: rebase failed, retrying after fresh fetch")
+                    retry_fetch = subprocess.run(
+                        ["git", "fetch", "origin"],
+                        cwd=str(PROJECT_ROOT),
+                        capture_output=True,
+                        text=True,
+                    )
+                    if retry_fetch.returncode != 0:
+                        logger.warning(
+                            "push_local: retry fetch failed", stderr=retry_fetch.stderr.strip()
+                        )
+                        return False
+                    continue
+                logger.warning(
+                    "push_local: rebase failed after retry", stderr=rebase.stderr.strip()
+                )
+                return False
 
-        push = subprocess.run(
-            ["git", "push"],
-            cwd=str(PROJECT_ROOT),
-            capture_output=True,
-            text=True,
-        )
-        if push.returncode != 0:
-            logger.warning("push_local: git push failed", stderr=push.stderr.strip())
-            return False
+            push = subprocess.run(
+                ["git", "push"],
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+            )
+            if push.returncode != 0:
+                logger.warning("push_local: git push failed", stderr=push.stderr.strip())
+                return False
 
-        logger.info("push_local: pushed local commits")
-        return True
+            logger.info("push_local: pushed local commits")
+            return True
+
+        return False  # exhausted attempts
     except Exception as exc:
         logger.warning("push_local: unexpected error", err=str(exc))
         return False
@@ -200,7 +223,16 @@ async def _handle_deploy(request: web.Request) -> web.Response:
     if not _push_local_commits(skip_fetch=True):
         logger.warning("Pre-deploy push failed, continuing with rebase")
 
-    # 2. Rebase to incorporate incoming remote changes
+    # 2. Stash dirty files so they don't block the rebase
+    stash = subprocess.run(
+        ["git", "stash"],
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    stashed = stash.returncode == 0 and "No local changes" not in stash.stdout
+
+    # 3. Rebase to incorporate incoming remote changes
     pull = subprocess.run(
         ["git", "rebase", "origin/main"],
         cwd=str(PROJECT_ROOT),
@@ -222,10 +254,19 @@ async def _handle_deploy(request: web.Request) -> web.Response:
             "Please reconcile the incoming changes into your local clone, push, then redeploy."
         )
 
+    # Restore stashed files regardless of rebase outcome
+    if stashed:
+        subprocess.run(
+            ["git", "stash", "pop"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+
     new_sha = _get_head_sha()
     has_new_code = new_sha != old_sha
 
-    # 3. Validate import (only when new code was pulled)
+    # 4. Validate import (only when new code was pulled)
     if has_new_code:
         validate = subprocess.run(
             ["uv", "run", "python", "-c", "import pynchy"],
@@ -250,7 +291,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
                 status=422,
             )
 
-    # 4. Rebuild container image if container/ files changed
+    # 5. Rebuild container image if container/ files changed
     if has_new_code:
         container_diff = subprocess.run(
             ["git", "diff", "--name-only", old_sha, new_sha, "--", "container/"],
@@ -280,7 +321,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
             else:
                 logger.info("Container image rebuilt successfully")
 
-    # 5. Restart (write continuation only when new code was deployed)
+    # 6. Restart (write continuation only when new code was deployed)
     chat_jid = deps.main_chat_jid()
     if has_new_code:
         await finalize_deploy(

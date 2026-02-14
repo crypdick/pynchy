@@ -18,6 +18,7 @@ Single source of truth for all pynchy work items.
 
 - [Plugin verifier agent](0-proposed/plugin-verifier.md) — Automated security audit for third-party plugins before activation (container-based, LLM-powered, SHA-pinned)
 - convert setup into pyinfra deployments for repeatable deployments.
+- **Deputy agent for worktree contributions** — Ephemeral agent that inspects commits from worktrees before they enter main. Reviews for malicious code, security issues, and project conventions. Spawned by `host_sync_worktree()` before the merge step.
 
 ### 1 - Approved
 *Approved ideas. No plan yet.*
