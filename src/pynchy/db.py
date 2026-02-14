@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS messages (
     FOREIGN KEY (chat_jid) REFERENCES chats(jid)
 );
 CREATE INDEX IF NOT EXISTS idx_timestamp ON messages(timestamp);
+CREATE INDEX IF NOT EXISTS idx_messages_by_chat ON messages(chat_jid, timestamp);
 
 CREATE TABLE IF NOT EXISTS scheduled_tasks (
     id TEXT PRIMARY KEY,
@@ -112,6 +113,38 @@ async def _create_schema(database: aiosqlite.Connection) -> None:
     # Migration: add cleared_at column to chats
     try:
         await database.execute("ALTER TABLE chats ADD COLUMN cleared_at TEXT")
+        await database.commit()
+    except Exception:
+        pass
+    # Migration: add message_type column (Phase 1 of message types refactor)
+    try:
+        await database.execute("ALTER TABLE messages ADD COLUMN message_type TEXT DEFAULT 'user'")
+        await database.commit()
+    except Exception:
+        pass
+    # Migration: add metadata JSON column (Phase 1 of message types refactor)
+    try:
+        await database.execute("ALTER TABLE messages ADD COLUMN metadata TEXT")
+        await database.commit()
+    except Exception:
+        pass
+    # Migration: backfill message_type based on sender patterns
+    try:
+        # Host messages
+        await database.execute(
+            "UPDATE messages SET message_type = 'host' WHERE sender = 'host' AND message_type = 'user'"
+        )
+        # Tool result messages (command outputs)
+        await database.execute(
+            "UPDATE messages SET message_type = 'tool_result' "
+            "WHERE sender = 'command_output' AND message_type = 'user'"
+        )
+        # Assistant messages (bot responses)
+        await database.execute(
+            "UPDATE messages SET message_type = 'assistant' "
+            "WHERE sender IN ('bot', 'pynchy') AND message_type = 'user'"
+        )
+        # Everything else stays as 'user' (already the default)
         await database.commit()
     except Exception:
         pass
@@ -221,13 +254,18 @@ async def set_last_group_sync() -> None:
 # --- Messages ---
 
 
-async def store_message(msg: NewMessage) -> None:
-    """Store a message with full content."""
+async def store_message(msg: NewMessage, message_type: str = "user") -> None:
+    """Store a message with full content.
+
+    Args:
+        msg: The message to store
+        message_type: One of 'user', 'assistant', 'system', 'host', 'tool_result'
+    """
     db = _get_db()
     await db.execute(
         "INSERT OR REPLACE INTO messages "
-        "(id, chat_jid, sender, sender_name, content, timestamp, is_from_me) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "(id, chat_jid, sender, sender_name, content, timestamp, is_from_me, message_type, metadata) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             msg.id,
             msg.chat_jid,
@@ -236,6 +274,8 @@ async def store_message(msg: NewMessage) -> None:
             msg.content,
             msg.timestamp,
             1 if msg.is_from_me else 0,
+            message_type,
+            None,  # metadata - will be populated later if needed
         ),
     )
     await db.commit()
@@ -250,14 +290,32 @@ async def store_message_direct(
     content: str,
     timestamp: str,
     is_from_me: bool,
+    message_type: str = "user",
+    metadata: dict[str, Any] | None = None,
 ) -> None:
-    """Store a message directly (for non-WhatsApp channels)."""
+    """Store a message directly (for non-WhatsApp channels).
+
+    Args:
+        message_type: One of 'user', 'assistant', 'system', 'host', 'tool_result'
+        metadata: Optional metadata dict (e.g., severity, tool_use_id, etc.)
+    """
     db = _get_db()
+    metadata_json = json.dumps(metadata) if metadata else None
     await db.execute(
         "INSERT OR REPLACE INTO messages "
-        "(id, chat_jid, sender, sender_name, content, timestamp, is_from_me) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (id, chat_jid, sender, sender_name, content, timestamp, 1 if is_from_me else 0),
+        "(id, chat_jid, sender, sender_name, content, timestamp, is_from_me, message_type, metadata) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            id,
+            chat_jid,
+            sender,
+            sender_name,
+            content,
+            timestamp,
+            1 if is_from_me else 0,
+            message_type,
+            metadata_json,
+        ),
     )
     await db.commit()
 
