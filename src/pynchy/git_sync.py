@@ -31,7 +31,7 @@ class GitSyncDeps(Protocol):
 
     def registered_groups(self) -> dict[str, Any]: ...
 
-    async def trigger_deploy(self) -> None: ...
+    async def trigger_deploy(self, previous_sha: str) -> None: ...
 
 
 # ---------------------------------------------------------------------------
@@ -297,6 +297,17 @@ def write_ipc_response(path: Path, data: dict[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _get_local_head_sha() -> str:
+    """Get the local HEAD SHA."""
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
 def _host_get_origin_main_sha() -> str | None:
     """Lightweight check: get origin/main SHA via ls-remote."""
     try:
@@ -363,6 +374,16 @@ async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
                 new_sha=current_sha[:8],
             )
 
+            # Skip if local HEAD already matches (e.g. we just pushed these commits)
+            local_head = await asyncio.to_thread(_get_local_head_sha)
+            if local_head == current_sha:
+                logger.info(
+                    "Origin changed but local HEAD already matches, skipping",
+                    sha=current_sha[:8],
+                )
+                continue
+
+            pre_update_sha = local_head
             updated = await asyncio.to_thread(_host_update_main)
             if not updated:
                 continue
@@ -370,7 +391,7 @@ async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
             # Check if container files changed — trigger rebuild + restart
             if old_sha and _host_container_files_changed(old_sha, current_sha):
                 logger.info("Container files changed, triggering deploy")
-                await deps.trigger_deploy()
+                await deps.trigger_deploy(pre_update_sha)
                 return  # process will restart
 
             # Sync all worktrees + notify agents
