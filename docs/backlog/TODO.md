@@ -66,11 +66,14 @@ Single source of truth for all pynchy work items.
 *Plan approved or not needed. Ready for an agent to pick up.*
 
 
+- rename the 'main container' to the 'God container' in code and docs. this is to disambiguate from 'main' branch.
+
 #### Bugs
 - messaging is broken. when I send a message, sometimes I see no response in the chat. then when i send a follow up message, it responds to the previous message. the system is desynchronized somehow. update: the message the agents send (as well as tool calls, other messages) seem to be sending to whatsapp more reliably than the tui.
 - previously, the messages sent to the channels were prefixes by emoticons to denote the sender (system, bot, tool call, tool response, host). theyve been reverted to text prefixes like [system]
 - we need to improve the robustness of synchronization. deploys keep failing because the remote does not push their local commits.
 - when I woke up today, pynchy had created a new Pynchy whatsapp group instead of using the existing one. fix this bug.
+
 
 ### 4 - In Progress
 *Being implemented.*
