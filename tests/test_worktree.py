@@ -89,8 +89,8 @@ class TestEnsureWorktree:
         assert result.notices == []
 
         # Verify the branch was created
-        branch_list = _git(git_env["project"], "branch", "--list", "code-improver/workspace")
-        assert "code-improver/workspace" in branch_list.stdout
+        branch_list = _git(git_env["project"], "branch", "--list", "worktree/code-improver")
+        assert "worktree/code-improver" in branch_list.stdout
 
     def test_syncs_existing_worktree_with_notice(self, git_env: dict):
         """Pulling new commits produces a notice about auto-pulled changes."""

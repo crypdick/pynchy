@@ -10,7 +10,7 @@ import asyncio
 import json
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -371,11 +371,18 @@ class TestProcessGroupMessages:
 
         app.channels = [FakeChannel()]
 
+        worktree_path = tmp_path / "worktrees" / "main"
+        worktree_path.mkdir(parents=True)
+        fake_wt = MagicMock()
+        fake_wt.path = worktree_path
+        fake_wt.notices = []
+
         with (
             patch("pynchy.container_runner.asyncio.create_subprocess_exec", fake_create),
             patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
             patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
             patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+            patch("pynchy.worktree.ensure_worktree", return_value=fake_wt),
         ):
             (tmp_path / "groups" / "main").mkdir(parents=True)
             result = await app._process_group_messages("main@g.us")

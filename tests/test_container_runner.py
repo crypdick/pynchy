@@ -239,6 +239,8 @@ class TestLegacyParsing:
 
 class TestMountBuilding:
     def test_main_group_has_project_mount(self, tmp_path: Path):
+        worktree_path = tmp_path / "worktrees" / "main"
+        worktree_path.mkdir(parents=True)
         with (
             patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
             patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
@@ -248,7 +250,9 @@ class TestMountBuilding:
             group = RegisteredGroup(
                 name="Main", folder="main", trigger="always", added_at="2024-01-01"
             )
-            mounts = _build_volume_mounts(group, is_main=True)
+            mounts = _build_volume_mounts(
+                group, is_main=True, project_access=True, worktree_path=worktree_path
+            )
 
             paths = [m.container_path for m in mounts]
             assert "/workspace/project" in paths
@@ -303,8 +307,14 @@ class TestMountBuilding:
             assert project_mount.host_path == str(worktree_path)
             assert project_mount.readonly is False
 
-    def test_main_still_uses_project_root(self, tmp_path: Path):
-        """Main group mounts PROJECT_ROOT directly even with project_access=True."""
+            # .git dir mounted at host path so worktree gitdir reference resolves
+            git_mount = next(m for m in mounts if m.host_path == str(tmp_path / ".git"))
+            assert git_mount.container_path == str(tmp_path / ".git")
+
+    def test_main_uses_worktree(self, tmp_path: Path):
+        """Main group uses worktree just like any other project_access group."""
+        worktree_path = tmp_path / "worktrees" / "main"
+        worktree_path.mkdir(parents=True)
         with (
             patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
             patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
@@ -314,10 +324,13 @@ class TestMountBuilding:
             group = RegisteredGroup(
                 name="Main", folder="main", trigger="always", added_at="2024-01-01"
             )
-            mounts = _build_volume_mounts(group, is_main=True, project_access=True)
+            mounts = _build_volume_mounts(
+                group, is_main=True, project_access=True, worktree_path=worktree_path
+            )
 
             project_mount = next(m for m in mounts if m.container_path == "/workspace/project")
-            assert project_mount.host_path == str(tmp_path)
+            assert project_mount.host_path == str(worktree_path)
+            assert project_mount.readonly is False
 
 
 # ---------------------------------------------------------------------------

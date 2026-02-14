@@ -213,8 +213,8 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
         elapsed_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
         logger.info("Task completed", task_id=task.id, duration_ms=elapsed_ms)
 
-        # Merge worktree commits and push for non-main project_access tasks
-        if not error and task.project_access and task.group_folder != MAIN_GROUP_FOLDER:
+        # Merge worktree commits and push for all project_access tasks
+        if not error and task.project_access:
             from pynchy.http_server import _push_local_commits
             from pynchy.worktree import merge_worktree
 

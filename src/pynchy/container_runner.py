@@ -54,6 +54,8 @@ def _input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
         d["plugin_mcp_servers"] = input_data.plugin_mcp_servers
     if input_data.system_notices:
         d["system_notices"] = input_data.system_notices
+    if input_data.project_access:
+        d["project_access"] = True
     return d
 
 
@@ -334,11 +336,12 @@ def _build_volume_mounts(
     group_dir = GROUPS_DIR / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
 
-    if is_main:
-        mounts.append(VolumeMount(str(PROJECT_ROOT), "/workspace/project", readonly=False))
-        mounts.append(VolumeMount(str(group_dir), "/workspace/group", readonly=False))
-    elif project_access and worktree_path:
+    if worktree_path:
         mounts.append(VolumeMount(str(worktree_path), "/workspace/project", readonly=False))
+        # Worktree .git file references the main repo's .git dir via absolute path.
+        # Mount it at the same host path so git resolves the reference inside the container.
+        git_dir = PROJECT_ROOT / ".git"
+        mounts.append(VolumeMount(str(git_dir), str(git_dir), readonly=False))
         mounts.append(VolumeMount(str(group_dir), "/workspace/group", readonly=False))
     else:
         mounts.append(VolumeMount(str(group_dir), "/workspace/group", readonly=False))
@@ -611,11 +614,11 @@ async def run_container_agent(
     group_dir = GROUPS_DIR / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
 
-    # Resolve worktree for non-main project_access groups.
+    # Resolve worktree for all project_access groups (including main).
     # Uses best-effort sync — uncommitted changes from killed containers are
     # preserved and reported via system notices so the agent can resume.
     worktree_path: Path | None = None
-    if not input_data.is_main and input_data.project_access:
+    if input_data.project_access:
         from pynchy.worktree import ensure_worktree
 
         wt_result = ensure_worktree(group.folder)
