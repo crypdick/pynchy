@@ -415,6 +415,7 @@ class PynchyApp:
             prompt = reset_data.get("message", "")
             if prompt:
                 logger.info("Processing reset handoff", group=group.name)
+                # Send operational notification to user (not part of LLM conversation)
                 await self._broadcast_host_message(chat_jid, f"[handoff] {prompt}")
 
                 async def handoff_on_output(result: ContainerOutput) -> None:
@@ -615,7 +616,10 @@ class PynchyApp:
                 output = result.stderr if result.stderr else result.stdout or "(no output)"
                 status_emoji = "❌"
 
-            # Store the command output as a system message
+            # Store command output in message history (shown to user and LLM)
+            # Note: This is stored as a regular message with sender="command_output",
+            # NOT as an SDK system message. It becomes part of the chat history that
+            # the LLM sees on subsequent turns.
             ts = datetime.now(UTC).isoformat()
             output_text = (
                 f"{status_emoji} Command output (exit {result.returncode}):\n```\n{output}\n```"
@@ -884,7 +888,8 @@ class PynchyApp:
             if on_output:
                 await on_output(output)
 
-        # Warn the agent about repo issues so it can self-correct
+        # Build system notices for the LLM (SDK system messages, NOT host messages)
+        # These are sent TO the LLM as context, distinct from operational host messages
         system_notices: list[str] = []
         if is_main:
             dirty = subprocess.run(
@@ -1297,7 +1302,19 @@ class PynchyApp:
     # ------------------------------------------------------------------
 
     async def _broadcast_host_message(self, chat_jid: str, text: str) -> None:
-        """Store raw host message, send emoji-prefixed to channels."""
+        """Send operational notification from the host/platform to the user.
+
+        Host messages are purely operational notifications (errors, status updates,
+        confirmations) that are OUTSIDE the LLM's conversation. They are:
+        - Sent to the user via channels (WhatsApp, etc.)
+        - Stored in message history for user reference
+        - NOT sent to the LLM as system messages or user messages
+        - NOT part of the SDK conversation flow
+
+        This is distinct from SDK system messages, which provide context TO the LLM.
+
+        Examples: "⚠️ Agent error occurred", "Context cleared", deployment notifications.
+        """
         ts = datetime.now(UTC).isoformat()
         await store_message_direct(
             id=f"host-{int(datetime.now(UTC).timestamp() * 1000)}",

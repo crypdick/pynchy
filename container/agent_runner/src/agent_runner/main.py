@@ -387,7 +387,9 @@ async def main() -> None:
             "append": global_claude_md,
         }
 
-    # Append system notices (e.g., git health warnings from host)
+    # Append system notices to system prompt (SDK system messages FOR the LLM)
+    # These provide context TO the LLM, distinct from operational host messages.
+    # Examples: git health warnings, uncommitted changes, deployment state
     if container_input.system_notices:
         notices_text = "\n\n".join(container_input.system_notices)
         if system_prompt is None:
