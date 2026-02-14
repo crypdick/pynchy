@@ -291,3 +291,78 @@ This refactoring is complete and ready for deployment. Future work:
 - `src/pynchy/plugin/base.py` (added agent_core category)
 - `src/pynchy/plugin/__init__.py` (registered agent_core discovery)
 - `src/pynchy/container_runner.py` (added agent_core to input dict)
+
+---
+
+## Fix Applied: Host-Orchestrated Architecture (2026-02-14)
+
+**Problem:** The original implementation violated Pynchy's plugin manifest format:
+- Used container-side entry point discovery (`pynchy.agent_cores`)
+- Bypassed host plugin registry entirely
+- Created dual registration systems (host + container)
+
+**Solution:** Refactored to follow Pynchy's standard host-orchestrated plugin pattern:
+
+### Architecture Changes
+
+**Before (Wrong):**
+```
+Host: AgentCorePlugin (unused shell)
+Container: Registry discovers cores via entry points → string lookup
+```
+
+**After (Correct):**
+```
+Host: Plugin → core_module() + core_class_name() → ContainerInput
+Container: Direct import + instantiation (no registry lookup)
+```
+
+### Implementation Details
+
+1. **AgentCorePlugin interface** — Changed from `core_name()` to `core_module()` + `core_class_name()`
+   - Returns fully qualified module path and class name
+   - Host collects this info during plugin discovery
+   - Similar pattern to MCP/Skill plugins
+
+2. **ContainerInput** — Replaced `agent_core: str` with:
+   - `agent_core_module: str` (e.g., "agent_runner.cores.claude")
+   - `agent_core_class: str` (e.g., "ClaudeAgentCore")
+
+3. **Container registry** — Removed entry point discovery, simplified to direct import:
+   ```python
+   def create_agent_core(module_path: str, class_name: str, config: AgentCoreConfig) -> AgentCore:
+       module = importlib.import_module(module_path)
+       cls = getattr(module, class_name)
+       return cls(config)
+   ```
+
+4. **Built-in Claude plugin** — Registered via `pyproject.toml`:
+   ```toml
+   [project.entry-points."pynchy.plugins"]
+   claude = "pynchy.plugin.builtin_agent_claude:ClaudeAgentCorePlugin"
+   ```
+
+### Files Changed
+
+**New:**
+- `src/pynchy/plugin/builtin_agent_claude.py` — Built-in Claude agent core plugin
+
+**Modified:**
+- `src/pynchy/plugin/agent_core.py` — Updated interface to return module/class
+- `src/pynchy/types.py` — Changed ContainerInput fields
+- `src/pynchy/app.py` — Look up core from plugin registry
+- `src/pynchy/task_scheduler.py` — Look up core from plugin registry
+- `src/pynchy/container_runner.py` — Pass module/class to container
+- `container/agent_runner/src/agent_runner/main.py` — Read new fields
+- `container/agent_runner/src/agent_runner/registry.py` — Direct import instead of entry points
+- `pyproject.toml` — Register built-in plugin
+- `tests/test_agent_core.py` — Updated tests for new API
+
+### Verification
+
+✅ Plugin discovery finds Claude core
+✅ Plugin methods return correct module/class info
+✅ Container can import and instantiate core directly
+✅ All tests passing (12 passed, 1 skipped)
+✅ Linting clean
+✅ No behavioral changes to agent runtime

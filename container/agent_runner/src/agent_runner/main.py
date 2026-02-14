@@ -51,7 +51,8 @@ class ContainerInput:
         self.system_notices: list[str] | None = data.get("system_notices")
         self.project_access: bool = data.get("project_access", False)
         self.plugin_mcp_servers: dict[str, Any] | None = data.get("plugin_mcp_servers")
-        self.agent_core: str = data.get("agent_core", "claude")
+        self.agent_core_module: str = data.get("agent_core_module", "agent_runner.cores.claude")
+        self.agent_core_class: str = data.get("agent_core_class", "ClaudeAgentCore")
         self.agent_core_config: dict[str, Any] | None = data.get("agent_core_config")
 
 
@@ -367,7 +368,8 @@ async def main() -> None:
         stdin_data = sys.stdin.read()
         container_input = ContainerInput(json.loads(stdin_data))
         log(f"Received input for group: {container_input.group_folder}")
-        log(f"Using agent core: {container_input.agent_core}")
+        core_ref = f"{container_input.agent_core_module}.{container_input.agent_core_class}"
+        log(f"Using agent core: {core_ref}")
     except Exception as exc:
         write_output(
             ContainerOutput(
@@ -403,12 +405,15 @@ async def main() -> None:
 
     # Create and start agent core
     try:
-        core = create_agent_core(container_input.agent_core, core_config)
+        core = create_agent_core(
+            container_input.agent_core_module, container_input.agent_core_class, core_config
+        )
     except Exception as exc:
+        core_ref = f"{container_input.agent_core_module}.{container_input.agent_core_class}"
         write_output(
             ContainerOutput(
                 status="error",
-                error=f"Failed to create agent core '{container_input.agent_core}': {exc}",
+                error=f"Failed to create agent core '{core_ref}': {exc}",
             )
         )
         sys.exit(1)

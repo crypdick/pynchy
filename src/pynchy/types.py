@@ -232,7 +232,8 @@ class ContainerInput:
     plugin_mcp_servers: dict[str, dict] | None = None
     system_notices: list[str] | None = None
     project_access: bool = False
-    agent_core: str = "claude"  # Which agent core to use
+    agent_core_module: str = "agent_runner.cores.claude"  # Module path for agent core
+    agent_core_class: str = "ClaudeAgentCore"  # Class name for agent core
     agent_core_config: dict | None = None  # Core-specific settings
 
 

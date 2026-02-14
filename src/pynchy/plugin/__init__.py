@@ -1,100 +1,57 @@
 """Plugin system for pynchy.
 
-Plugins extend pynchy with external capabilities like alternative runtimes,
-communication channels, MCP tools, skills, and lifecycle hooks.
+Plugins extend pynchy with external capabilities like agent cores,
+communication channels, MCP tools, and skills.
+
+Built on pluggy (pytest's plugin framework) for robust, type-safe plugin management.
 
 Usage:
-    from pynchy.plugin import discover_plugins
+    from pynchy.plugin import get_plugin_manager
 
-    registry = discover_plugins()
-    # Use registry.runtimes, registry.channels, etc.
+    pm = get_plugin_manager()
+    cores = pm.hook.pynchy_agent_core_info()  # List of agent core dicts
+    channel = pm.hook.pynchy_create_channel(context=ctx)  # First channel that matches
 """
 
 from __future__ import annotations
 
-from importlib.metadata import entry_points
+import pluggy
 
 from pynchy.logger import logger
-from pynchy.plugin.agent_core import AgentCorePlugin
-from pynchy.plugin.base import PluginBase, PluginRegistry
-from pynchy.plugin.channel import ChannelPlugin, PluginContext
-from pynchy.plugin.mcp import McpPlugin, McpServerSpec
-from pynchy.plugin.skill import SkillPlugin
+from pynchy.plugin.hookspecs import PynchySpec
 
 __all__ = [
-    "PluginBase",
-    "PluginRegistry",
-    "ChannelPlugin",
-    "PluginContext",
-    "McpPlugin",
-    "McpServerSpec",
-    "SkillPlugin",
-    "AgentCorePlugin",
-    "discover_plugins",
+    "get_plugin_manager",
 ]
 
 
-def discover_plugins() -> PluginRegistry:
-    """Discover all installed plugins via entry points.
+def get_plugin_manager() -> pluggy.PluginManager:
+    """Create and configure the plugin manager.
 
-    Scans for plugins registered under the "pynchy.plugins" entry point group.
-    Each plugin is instantiated, validated, and registered in the appropriate
-    category lists.
-
-    Broken plugins are logged and skipped - they don't crash the application.
+    Discovers plugins from entry points and registers built-in plugins.
+    All hook specifications are validated at registration time.
 
     Returns:
-        PluginRegistry: Registry containing all discovered plugins
+        Configured PluginManager ready to call hooks
     """
-    registry = PluginRegistry()
+    pm = pluggy.PluginManager("pynchy")
+    pm.add_hookspecs(PynchySpec)
 
-    for ep in entry_points(group="pynchy.plugins"):
-        try:
-            # Load and instantiate the plugin class
-            plugin_class = ep.load()
-            plugin = plugin_class()
+    # Register built-in plugins directly
+    # Built-ins are always available, no installation required
+    from pynchy.plugin.builtin_agent_claude import ClaudeAgentCorePlugin
 
-            # Validate plugin configuration
-            plugin.validate()
+    pm.register(ClaudeAgentCorePlugin(), name="builtin-claude")
+    logger.info("Registered built-in plugin", name="claude", category="agent_core")
 
-            # Register in all_plugins list
-            registry.all_plugins.append(plugin)
+    # Discover and register third-party plugins from entry points
+    # Plugins register via "pynchy" group in their pyproject.toml
+    discovered = pm.load_setuptools_entrypoints("pynchy")
+    if discovered:
+        logger.info("Discovered third-party plugins", count=discovered)
 
-            # Register in category-specific lists
-            # Note: Uses 'if' not 'elif' - composite plugins appear in multiple lists
-            if "runtime" in plugin.categories:
-                registry.runtimes.append(plugin)
-            if "channel" in plugin.categories:
-                registry.channels.append(plugin)
-            if "mcp" in plugin.categories:
-                registry.mcp_servers.append(plugin)
-            if "skill" in plugin.categories:
-                registry.skills.append(plugin)
-            if "hook" in plugin.categories:
-                registry.hooks.append(plugin)
-            if "agent_core" in plugin.categories:
-                registry.agent_cores.append(plugin)
+    # Log plugin summary
+    plugin_names = [pm.get_name(p) for p in pm.get_plugins()]
+    logger.info("Plugin manager ready", plugins=plugin_names)
 
-            logger.info(
-                "Plugin discovered",
-                name=plugin.name,
-                version=plugin.version,
-                categories=plugin.categories,
-            )
-
-        except Exception as e:
-            logger.warning("Failed to load plugin", name=ep.name, error=str(e))
-            # Continue with other plugins - don't crash the app
-
-    logger.info(
-        "Plugin discovery complete",
-        total=len(registry.all_plugins),
-        runtimes=len(registry.runtimes),
-        channels=len(registry.channels),
-        mcp_servers=len(registry.mcp_servers),
-        skills=len(registry.skills),
-        hooks=len(registry.hooks),
-        agent_cores=len(registry.agent_cores),
-    )
-
-    return registry
+    return pm

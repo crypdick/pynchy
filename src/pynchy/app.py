@@ -131,7 +131,7 @@ class PynchyApp:
         self.event_bus: EventBus = EventBus()
         self._shutting_down: bool = False
         self._http_runner: Any | None = None
-        self.registry: Any = None  # PluginRegistry, set during startup
+        self.plugin_manager: Any = None  # pluggy.PluginManager, set during startup
 
     # ------------------------------------------------------------------
     # State persistence
@@ -378,49 +378,10 @@ class PynchyApp:
         Called during startup after WhatsApp is connected. Creates a channel
         for each ChannelPlugin and connects it.
         """
-        from pynchy.plugin import PluginContext
-
-        if not self.registry or not self.registry.channels:
-            logger.debug("No channel plugins found")
-            return
-
-        # Create plugin context for channel initialization
-        ctx = PluginContext(
-            registered_groups=lambda: self.registered_groups,
-            send_message=self._plugin_send_message,
-        )
-
-        for plugin in self.registry.channels:
-            try:
-                # Validate required credentials
-                missing_creds = self._validate_plugin_credentials(plugin)
-                if missing_creds:
-                    logger.warning(
-                        "Channel plugin missing required credentials, skipping",
-                        plugin=plugin.name,
-                        missing=missing_creds,
-                    )
-                    continue
-
-                # Create channel
-                channel = plugin.create_channel(ctx)
-                self.channels.append(channel)
-
-                # Connect
-                await channel.connect()
-                logger.info(
-                    "Plugin channel connected",
-                    plugin=plugin.name,
-                    channel=channel.name,
-                )
-
-            except Exception as exc:
-                logger.error(
-                    "Failed to connect plugin channel",
-                    plugin=plugin.name,
-                    error=str(exc),
-                )
-                # Continue with other plugins - don't crash startup
+        # TODO: Implement channel hook and plugin context for pluggy
+        # For now, channels are not implemented via pluggy hooks
+        # The hookspec exists but no built-in channel plugins yet
+        logger.debug("Channel plugin support via pluggy not yet implemented")
 
     async def _plugin_send_message(self, jid: str, text: str) -> None:
         """Send message helper for plugin context.
@@ -1025,6 +986,17 @@ class PynchyApp:
         # messages contains the persistent conversation history (with message types)
         # The container appends system_notices to the SDK system_prompt parameter
 
+        # Look up agent core plugin (default to Claude if not found)
+        agent_core_module = "agent_runner.cores.claude"
+        agent_core_class = "ClaudeAgentCore"
+        if self.plugin_manager:
+            # Use first agent core plugin (in the future, support per-group config)
+            cores = self.plugin_manager.hook.pynchy_agent_core_info()
+            if cores:
+                core_info = cores[0]
+                agent_core_module = core_info["module"]
+                agent_core_class = core_info["class_name"]
+
         try:
             output = await run_container_agent(
                 group=group,
@@ -1036,12 +1008,14 @@ class PynchyApp:
                     is_main=is_main,
                     system_notices=system_notices or None,
                     project_access=project_access,
+                    agent_core_module=agent_core_module,
+                    agent_core_class=agent_core_class,
                 ),
                 on_process=lambda proc, name: self.queue.register_process(
                     chat_jid, proc, name, group.folder
                 ),
                 on_output=wrapped_on_output if on_output else None,
-                registry=self.registry,
+                plugin_manager=self.plugin_manager,
             )
 
             if output.new_session_id and group.folder not in self._session_cleared:
@@ -1507,10 +1481,10 @@ class PynchyApp:
             logger.info("Database initialized")
             await self._load_state()
 
-            # Discover plugins after loading state
-            from pynchy.plugin import discover_plugins
+            # Initialize plugin manager after loading state
+            from pynchy.plugin import get_plugin_manager
 
-            self.registry = discover_plugins()
+            self.plugin_manager = get_plugin_manager()
         except Exception as exc:
             # Auto-rollback if we crash during startup after a deploy
             if continuation_path.exists():
@@ -1593,6 +1567,7 @@ class PynchyApp:
             queue = queue_manager.queue
             on_process = queue_manager.on_process
             send_message = broadcaster.send_formatted_message
+            plugin_manager = self.plugin_manager
 
         return SchedulerDeps()
 

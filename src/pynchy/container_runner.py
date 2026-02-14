@@ -56,8 +56,9 @@ def _input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
         d["system_notices"] = input_data.system_notices
     if input_data.project_access:
         d["project_access"] = True
-    if input_data.agent_core != "claude":  # Only include if non-default
-        d["agent_core"] = input_data.agent_core
+    # Always include agent core fields (container needs them to import the core)
+    d["agent_core_module"] = input_data.agent_core_module
+    d["agent_core_class"] = input_data.agent_core_class
     if input_data.agent_core_config is not None:
         d["agent_core_config"] = input_data.agent_core_config
     return d
@@ -90,12 +91,12 @@ def _parse_container_output(json_str: str) -> ContainerOutput:
 # ---------------------------------------------------------------------------
 
 
-def _sync_skills(session_dir: Path, registry: Any = None) -> None:
+def _sync_skills(session_dir: Path, plugin_manager: Any = None) -> None:
     """Copy container/skills/ and plugin skills into the session's .claude/skills/ directory.
 
     Args:
         session_dir: Path to the .claude directory for this session
-        registry: Optional PluginRegistry for plugin skills
+        plugin_manager: Optional pluggy.PluginManager for plugin skills
     """
     skills_dst = session_dir / "skills"
     skills_dst.mkdir(parents=True, exist_ok=True)
@@ -113,15 +114,16 @@ def _sync_skills(session_dir: Path, registry: Any = None) -> None:
                     shutil.copy2(f, dst_dir / f.name)
 
     # Copy plugin skills
-    if registry and hasattr(registry, "skills"):
-        for plugin in registry.skills:
+    if plugin_manager:
+        # Hook returns list of lists (one list per plugin)
+        skill_path_lists = plugin_manager.hook.pynchy_skill_paths()
+        for skill_paths in skill_path_lists:
             try:
-                skill_paths = plugin.skill_paths()
-                for skill_path in skill_paths:
+                for skill_path_str in skill_paths:
+                    skill_path = Path(skill_path_str)
                     if not skill_path.exists() or not skill_path.is_dir():
                         logger.warning(
                             "Plugin skill path does not exist or is not a directory",
-                            plugin=plugin.name,
                             path=str(skill_path),
                         )
                         continue
@@ -129,16 +131,14 @@ def _sync_skills(session_dir: Path, registry: Any = None) -> None:
                     dst_dir = skills_dst / skill_path.name
                     if dst_dir.exists():
                         raise ValueError(
-                            f"Skill name collision: plugin '{plugin.name}' provides "
-                            f"skill '{skill_path.name}' which conflicts with an "
-                            f"existing skill. Rename the plugin skill directory to "
+                            f"Skill name collision: skill '{skill_path.name}' conflicts with "
+                            f"an existing skill. Rename the plugin skill directory to "
                             f"avoid shadowing built-in or other plugin skills."
                         )
 
                     shutil.copytree(skill_path, dst_dir)
                     logger.info(
                         "Synced plugin skill",
-                        plugin=plugin.name,
                         skill=skill_path.name,
                     )
             except ValueError:
@@ -146,7 +146,6 @@ def _sync_skills(session_dir: Path, registry: Any = None) -> None:
             except Exception as e:
                 logger.warning(
                     "Failed to sync plugin skills",
-                    plugin=plugin.name,
                     error=str(e),
                 )
 
@@ -331,7 +330,7 @@ def _write_settings_json(session_dir: Path) -> None:
 def _build_volume_mounts(
     group: RegisteredGroup,
     is_main: bool,
-    registry: Any = None,
+    plugin_manager: Any = None,
     project_access: bool = False,
     worktree_path: Path | None = None,
 ) -> list[VolumeMount]:
@@ -340,7 +339,7 @@ def _build_volume_mounts(
     Args:
         group: The registered group configuration
         is_main: Whether this is the main group
-        registry: Optional PluginRegistry for plugin MCP mounts
+        plugin_manager: Optional pluggy.PluginManager for plugin MCP mounts
         project_access: Whether to mount the host project into the container
         worktree_path: Pre-resolved worktree path for non-main project_access groups
 
@@ -369,7 +368,7 @@ def _build_volume_mounts(
     session_dir = DATA_DIR / "sessions" / group.folder / ".claude"
     session_dir.mkdir(parents=True, exist_ok=True)
     _write_settings_json(session_dir)
-    _sync_skills(session_dir, registry)
+    _sync_skills(session_dir, plugin_manager)
     mounts.append(VolumeMount(str(session_dir), "/home/agent/.claude", readonly=False))
 
     # Per-group IPC namespace
@@ -407,23 +406,22 @@ def _build_volume_mounts(
             )
 
     # Plugin MCP server source mounts
-    if registry and hasattr(registry, "mcp_servers"):
-        for plugin in registry.mcp_servers:
+    if plugin_manager:
+        mcp_specs_list = plugin_manager.hook.pynchy_mcp_server_spec()
+        for spec in mcp_specs_list:
             try:
-                spec = plugin.mcp_server_spec()
-                if spec.host_source:
+                if spec.get("host_source"):
                     # Mount plugin source to /workspace/plugins/{name}/
                     mounts.append(
                         VolumeMount(
-                            host_path=str(spec.host_source),
-                            container_path=f"/workspace/plugins/{spec.name}",
+                            host_path=str(spec["host_source"]),
+                            container_path=f"/workspace/plugins/{spec['name']}",
                             readonly=True,
                         )
                     )
             except Exception as e:
                 logger.warning(
                     "Failed to mount plugin MCP source",
-                    plugin=plugin.name,
                     error=str(e),
                 )
 
@@ -614,7 +612,7 @@ async def run_container_agent(
     input_data: ContainerInput,
     on_process: OnProcess,
     on_output: OnOutput | None = None,
-    registry: Any = None,
+    plugin_manager: Any = None,
 ) -> ContainerOutput:
     """Spawn a container agent, stream output, manage timeouts, and return result.
 
@@ -624,7 +622,7 @@ async def run_container_agent(
         on_process: Callback invoked with (proc, container_name) after spawn.
         on_output: If provided, called for each streamed output marker pair.
                    Enables streaming mode. Without it, uses legacy mode.
-        registry: Optional PluginRegistry for plugin MCP mounts and config.
+        plugin_manager: Optional pluggy.PluginManager for plugin MCP mounts and config.
 
     Returns:
         ContainerOutput with the final status.
@@ -650,24 +648,23 @@ async def run_container_agent(
             input_data.system_notices.extend(wt_result.notices)
 
     mounts = _build_volume_mounts(
-        group, input_data.is_main, registry, input_data.project_access, worktree_path
+        group, input_data.is_main, plugin_manager, input_data.project_access, worktree_path
     )
 
     # Collect plugin MCP server specs
-    if registry and hasattr(registry, "mcp_servers") and input_data.plugin_mcp_servers is None:
+    if plugin_manager and input_data.plugin_mcp_servers is None:
         plugin_mcp_specs: dict[str, dict] = {}
-        for plugin in registry.mcp_servers:
+        mcp_specs_list = plugin_manager.hook.pynchy_mcp_server_spec()
+        for spec in mcp_specs_list:
             try:
-                spec = plugin.mcp_server_spec()
-                plugin_mcp_specs[spec.name] = {
-                    "command": spec.command,
-                    "args": spec.args,
-                    "env": spec.env,
+                plugin_mcp_specs[spec["name"]] = {
+                    "command": spec["command"],
+                    "args": spec["args"],
+                    "env": spec["env"],
                 }
             except Exception as e:
                 logger.warning(
                     "Failed to get MCP spec from plugin",
-                    plugin=plugin.name,
                     error=str(e),
                 )
         if plugin_mcp_specs:

@@ -1,212 +1,264 @@
-"""Tests for plugin discovery system."""
+"""Tests for plugin discovery system with pluggy."""
 
 from __future__ import annotations
 
 from unittest.mock import Mock, patch
 
+import pluggy
 import pytest
 
-from pynchy.plugin import PluginBase, PluginRegistry, discover_plugins
+from pynchy.plugin import get_plugin_manager
 
 
-class MockPlugin(PluginBase):
-    """Mock plugin for testing."""
+class TestPluginManager:
+    """Tests for plugin manager initialization and discovery."""
 
-    def __init__(self, name: str = "test", categories: list[str] | None = None):
-        self.name = name
-        self.version = "0.1.0"
-        self.categories = categories if categories is not None else ["mcp"]
-        self.description = "Test plugin"
+    def test_plugin_manager_initialization(self):
+        """Plugin manager initializes successfully."""
+        pm = get_plugin_manager()
+        assert pm is not None
+        assert pm.project_name == "pynchy"
 
+    def test_built_in_claude_plugin_registered(self):
+        """Built-in Claude plugin is registered automatically."""
+        pm = get_plugin_manager()
 
-class TestPluginBase:
-    """Tests for PluginBase validation."""
+        cores = pm.hook.pynchy_agent_core_info()
+        assert len(cores) >= 1
 
-    def test_validate_succeeds_with_valid_plugin(self):
-        """Valid plugin passes validation."""
-        plugin = MockPlugin(name="test", categories=["mcp"])
-        plugin.validate()  # Should not raise
+        claude_core = next((c for c in cores if c["name"] == "claude"), None)
+        assert claude_core is not None
+        assert claude_core["module"] == "agent_runner.cores.claude"
+        assert claude_core["class_name"] == "ClaudeAgentCore"
 
-    def test_validate_fails_without_name(self):
-        """Plugin without name fails validation."""
-        plugin = MockPlugin(name="", categories=["mcp"])
-        with pytest.raises(ValueError, match="Plugin must have a name"):
-            plugin.validate()
+    def test_plugin_manager_has_hookspecs(self):
+        """Plugin manager has all expected hook specifications."""
+        pm = get_plugin_manager()
 
-    def test_validate_fails_without_categories(self):
-        """Plugin without categories fails validation."""
-        plugin = MockPlugin(name="test", categories=[])
-        with pytest.raises(ValueError, match="Plugin must declare at least one category"):
-            plugin.validate()
+        # Verify all hooks are available
+        assert hasattr(pm.hook, "pynchy_agent_core_info")
+        assert hasattr(pm.hook, "pynchy_mcp_server_spec")
+        assert hasattr(pm.hook, "pynchy_skill_paths")
+        assert hasattr(pm.hook, "pynchy_create_channel")
 
-    def test_validate_fails_with_invalid_category(self):
-        """Plugin with invalid category fails validation."""
-        plugin = MockPlugin(name="test", categories=["invalid"])
-        with pytest.raises(ValueError, match="Invalid category 'invalid'"):
-            plugin.validate()
+    def test_multiple_plugin_manager_calls(self):
+        """Multiple calls to get_plugin_manager work correctly."""
+        pm1 = get_plugin_manager()
+        pm2 = get_plugin_manager()
 
-    def test_validate_allows_valid_categories(self):
-        """All valid categories are accepted."""
-        valid_categories = ["runtime", "channel", "mcp", "skill", "hook"]
-        for category in valid_categories:
-            plugin = MockPlugin(name="test", categories=[category])
-            plugin.validate()  # Should not raise
+        # Each call creates a new manager instance
+        assert pm1 is not pm2
 
-    def test_validate_allows_multiple_categories(self):
-        """Plugin can have multiple categories."""
-        plugin = MockPlugin(name="test", categories=["channel", "mcp"])
-        plugin.validate()  # Should not raise
+        # But both have the same plugins
+        cores1 = pm1.hook.pynchy_agent_core_info()
+        cores2 = pm2.hook.pynchy_agent_core_info()
+        assert len(cores1) == len(cores2)
 
 
-class TestPluginRegistry:
-    """Tests for PluginRegistry."""
+class TestCustomPluginRegistration:
+    """Tests for registering custom plugins."""
 
-    def test_registry_starts_empty(self):
-        """New registry has empty lists."""
-        registry = PluginRegistry()
-        assert registry.all_plugins == []
-        assert registry.runtimes == []
-        assert registry.channels == []
-        assert registry.mcp_servers == []
-        assert registry.skills == []
-        assert registry.hooks == []
+    def test_register_agent_core_plugin(self):
+        """Register a custom agent core plugin."""
+        hookimpl = pluggy.HookimplMarker("pynchy")
 
-    def test_registry_can_hold_plugins(self):
-        """Registry can store plugins in lists."""
-        registry = PluginRegistry()
-        plugin = MockPlugin(name="test", categories=["mcp"])
+        class CustomCorePlugin:
+            @hookimpl
+            def pynchy_agent_core_info(self):
+                return {
+                    "name": "custom",
+                    "module": "custom.core",
+                    "class_name": "CustomCore",
+                    "packages": [],
+                    "host_source_path": None,
+                }
 
-        registry.all_plugins.append(plugin)
-        registry.mcp_servers.append(plugin)
+        pm = get_plugin_manager()
+        pm.register(CustomCorePlugin(), name="custom-plugin")
 
-        assert len(registry.all_plugins) == 1
-        assert len(registry.mcp_servers) == 1
-        assert registry.all_plugins[0] == plugin
-        assert registry.mcp_servers[0] == plugin
+        cores = pm.hook.pynchy_agent_core_info()
+        custom_core = next((c for c in cores if c["name"] == "custom"), None)
+
+        assert custom_core is not None
+        assert custom_core["module"] == "custom.core"
+
+    def test_register_mcp_plugin(self):
+        """Register a custom MCP server plugin."""
+        hookimpl = pluggy.HookimplMarker("pynchy")
+
+        class CustomMcpPlugin:
+            @hookimpl
+            def pynchy_mcp_server_spec(self):
+                return {
+                    "name": "custom-mcp",
+                    "command": "python",
+                    "args": ["-m", "custom.mcp"],
+                    "env": {},
+                    "host_source": None,
+                }
+
+        pm = get_plugin_manager()
+        pm.register(CustomMcpPlugin(), name="custom-mcp-plugin")
+
+        specs = pm.hook.pynchy_mcp_server_spec()
+        custom_spec = next((s for s in specs if s["name"] == "custom-mcp"), None)
+
+        assert custom_spec is not None
+        assert custom_spec["command"] == "python"
+
+    def test_register_skill_plugin(self):
+        """Register a custom skill plugin."""
+        hookimpl = pluggy.HookimplMarker("pynchy")
+
+        class CustomSkillPlugin:
+            @hookimpl
+            def pynchy_skill_paths(self):
+                return ["/path/to/skills"]
+
+        pm = get_plugin_manager()
+        pm.register(CustomSkillPlugin(), name="custom-skill-plugin")
+
+        skill_path_lists = pm.hook.pynchy_skill_paths()
+        # Result is list of lists
+        assert len(skill_path_lists) >= 1
+
+        # Find our plugin's paths
+        custom_paths = next((paths for paths in skill_path_lists if "/path/to/skills" in paths), None)
+        assert custom_paths is not None
+
+    def test_register_multi_category_plugin(self):
+        """Single plugin can implement multiple hooks."""
+        hookimpl = pluggy.HookimplMarker("pynchy")
+
+        class MultiPlugin:
+            @hookimpl
+            def pynchy_agent_core_info(self):
+                return {
+                    "name": "multi",
+                    "module": "multi.core",
+                    "class_name": "MultiCore",
+                    "packages": [],
+                    "host_source_path": None,
+                }
+
+            @hookimpl
+            def pynchy_skill_paths(self):
+                return ["/multi/skills"]
+
+        pm = get_plugin_manager()
+        pm.register(MultiPlugin(), name="multi-plugin")
+
+        # Plugin appears in both hooks
+        cores = pm.hook.pynchy_agent_core_info()
+        multi_core = next((c for c in cores if c["name"] == "multi"), None)
+        assert multi_core is not None
+
+        skill_path_lists = pm.hook.pynchy_skill_paths()
+        multi_paths = next((paths for paths in skill_path_lists if "/multi/skills" in paths), None)
+        assert multi_paths is not None
 
 
-class TestDiscoverPlugins:
-    """Tests for discover_plugins function."""
+class TestHookCalling:
+    """Tests for hook calling strategies."""
 
-    def test_discover_with_no_plugins(self):
-        """Discovery with no plugins returns empty registry."""
-        with patch("pynchy.plugin.entry_points", return_value=[]):
-            registry = discover_plugins()
+    def test_agent_core_hook_returns_all_results(self):
+        """Agent core hook returns results from all plugins."""
+        hookimpl = pluggy.HookimplMarker("pynchy")
 
-        assert len(registry.all_plugins) == 0
-        assert len(registry.runtimes) == 0
-        assert len(registry.channels) == 0
-        assert len(registry.mcp_servers) == 0
-        assert len(registry.skills) == 0
-        assert len(registry.hooks) == 0
+        class Plugin1:
+            @hookimpl
+            def pynchy_agent_core_info(self):
+                return {"name": "core1", "module": "m1", "class_name": "C1", "packages": [], "host_source_path": None}
 
-    def test_discover_single_plugin(self):
-        """Discovery finds and registers a single plugin."""
-        mock_ep = Mock()
-        mock_ep.name = "test-plugin"
-        mock_ep.load.return_value = lambda: MockPlugin(name="test", categories=["mcp"])
+        class Plugin2:
+            @hookimpl
+            def pynchy_agent_core_info(self):
+                return {"name": "core2", "module": "m2", "class_name": "C2", "packages": [], "host_source_path": None}
 
-        with patch("pynchy.plugin.entry_points", return_value=[mock_ep]):
-            registry = discover_plugins()
+        pm = get_plugin_manager()
+        pm.register(Plugin1(), name="plugin1")
+        pm.register(Plugin2(), name="plugin2")
 
-        assert len(registry.all_plugins) == 1
-        assert len(registry.mcp_servers) == 1
-        assert registry.all_plugins[0].name == "test"
-        assert registry.mcp_servers[0].name == "test"
+        cores = pm.hook.pynchy_agent_core_info()
 
-    def test_discover_multiple_plugins(self):
-        """Discovery finds multiple plugins."""
-        mock_ep1 = Mock()
-        mock_ep1.name = "plugin1"
-        mock_ep1.load.return_value = lambda: MockPlugin(name="plugin1", categories=["mcp"])
+        # Results from all plugins (including built-in Claude)
+        assert len(cores) >= 3
+        names = [c["name"] for c in cores]
+        assert "core1" in names
+        assert "core2" in names
+        assert "claude" in names
 
-        mock_ep2 = Mock()
-        mock_ep2.name = "plugin2"
-        mock_ep2.load.return_value = lambda: MockPlugin(name="plugin2", categories=["channel"])
+    def test_empty_hook_returns_empty_list(self):
+        """Hook with no implementations returns empty list."""
+        pm = get_plugin_manager()
 
-        with patch("pynchy.plugin.entry_points", return_value=[mock_ep1, mock_ep2]):
-            registry = discover_plugins()
+        # MCP and skill hooks have no built-in implementations
+        mcp_specs = pm.hook.pynchy_mcp_server_spec()
+        skill_paths = pm.hook.pynchy_skill_paths()
 
-        assert len(registry.all_plugins) == 2
-        assert len(registry.mcp_servers) == 1
-        assert len(registry.channels) == 1
-        assert registry.mcp_servers[0].name == "plugin1"
-        assert registry.channels[0].name == "plugin2"
+        assert isinstance(mcp_specs, list)
+        assert isinstance(skill_paths, list)
+        # They should be empty if no plugins provide them
+        assert len(mcp_specs) == 0
+        assert len(skill_paths) == 0
 
-    def test_discover_composite_plugin(self):
-        """Composite plugin appears in multiple category lists."""
-        mock_ep = Mock()
-        mock_ep.name = "composite"
-        mock_ep.load.return_value = lambda: MockPlugin(
-            name="composite", categories=["channel", "mcp"]
-        )
+    def test_plugin_blocking(self):
+        """Plugins can be blocked from calling."""
+        hookimpl = pluggy.HookimplMarker("pynchy")
 
-        with patch("pynchy.plugin.entry_points", return_value=[mock_ep]):
-            registry = discover_plugins()
+        class BlockablePlugin:
+            @hookimpl
+            def pynchy_agent_core_info(self):
+                return {"name": "blockable", "module": "m", "class_name": "C", "packages": [], "host_source_path": None}
 
-        assert len(registry.all_plugins) == 1
-        assert len(registry.channels) == 1
-        assert len(registry.mcp_servers) == 1
-        # Same plugin instance in both lists
-        assert registry.channels[0] == registry.mcp_servers[0]
+        pm = get_plugin_manager()
+        pm.register(BlockablePlugin(), name="blockable-plugin")
 
-    def test_discover_all_category_types(self):
-        """Plugin can be registered in all category types."""
-        mock_ep = Mock()
-        mock_ep.name = "all-categories"
-        mock_ep.load.return_value = lambda: MockPlugin(
-            name="all", categories=["runtime", "channel", "mcp", "skill", "hook"]
-        )
+        # Before blocking
+        cores_before = pm.hook.pynchy_agent_core_info()
+        names_before = [c["name"] for c in cores_before]
+        assert "blockable" in names_before
 
-        with patch("pynchy.plugin.entry_points", return_value=[mock_ep]):
-            registry = discover_plugins()
+        # Block the plugin
+        pm.set_blocked("blockable-plugin")
 
-        assert len(registry.all_plugins) == 1
-        assert len(registry.runtimes) == 1
-        assert len(registry.channels) == 1
-        assert len(registry.mcp_servers) == 1
-        assert len(registry.skills) == 1
-        assert len(registry.hooks) == 1
+        # After blocking
+        cores_after = pm.hook.pynchy_agent_core_info()
+        names_after = [c["name"] for c in cores_after]
+        assert "blockable" not in names_after
 
-    def test_discover_skips_broken_plugin(self):
-        """Broken plugin is logged and skipped, doesn't crash."""
-        mock_ep_good = Mock()
-        mock_ep_good.name = "good"
-        mock_ep_good.load.return_value = lambda: MockPlugin(name="good", categories=["mcp"])
 
-        mock_ep_broken = Mock()
-        mock_ep_broken.name = "broken"
-        mock_ep_broken.load.side_effect = RuntimeError("Plugin load failed")
+class TestPluginErrors:
+    """Tests for plugin error handling."""
 
-        with patch("pynchy.plugin.entry_points", return_value=[mock_ep_good, mock_ep_broken]):
-            registry = discover_plugins()
+    def test_plugin_with_invalid_hook_signature(self):
+        """Plugin with wrong hook signature raises error on registration."""
+        hookimpl = pluggy.HookimplMarker("pynchy")
 
-        # Good plugin is registered, broken is skipped
-        assert len(registry.all_plugins) == 1
-        assert registry.all_plugins[0].name == "good"
+        class BadPlugin:
+            @hookimpl
+            def pynchy_agent_core_info(self, invalid_param):
+                # This signature doesn't match the hookspec
+                return {"name": "bad"}
 
-    def test_discover_skips_invalid_plugin(self):
-        """Plugin that fails validation is skipped."""
-        mock_ep_good = Mock()
-        mock_ep_good.name = "good"
-        mock_ep_good.load.return_value = lambda: MockPlugin(name="good", categories=["mcp"])
+        pm = get_plugin_manager()
 
-        mock_ep_invalid = Mock()
-        mock_ep_invalid.name = "invalid"
-        # Plugin with no categories fails validation
-        mock_ep_invalid.load.return_value = lambda: MockPlugin(name="invalid", categories=[])
+        # Pluggy catches signature mismatches
+        with pytest.raises(Exception):
+            pm.register(BadPlugin(), name="bad-plugin")
+            # Trigger validation by calling the hook
+            pm.hook.pynchy_agent_core_info()
 
-        with patch("pynchy.plugin.entry_points", return_value=[mock_ep_good, mock_ep_invalid]):
-            registry = discover_plugins()
+    def test_hook_with_no_plugins_still_callable(self):
+        """Hooks with no implementations are still callable."""
+        pm = get_plugin_manager()
 
-        # Only good plugin is registered
-        assert len(registry.all_plugins) == 1
-        assert registry.all_plugins[0].name == "good"
+        # These hooks have no built-in implementations
+        # but should still be callable without errors
+        mcp_specs = pm.hook.pynchy_mcp_server_spec()
+        skill_paths = pm.hook.pynchy_skill_paths()
+        channel = pm.hook.pynchy_create_channel(context=None)
 
-    def test_discover_uses_correct_entry_point_group(self):
-        """Discovery queries the correct entry point group."""
-        with patch("pynchy.plugin.entry_points") as mock_eps:
-            mock_eps.return_value = []
-            discover_plugins()
-
-        mock_eps.assert_called_once_with(group="pynchy.plugins")
+        assert mcp_specs == []
+        assert skill_paths == []
+        assert channel is None  # firstresult returns None if no results

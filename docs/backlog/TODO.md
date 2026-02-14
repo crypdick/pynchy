@@ -46,6 +46,7 @@ Single source of truth for all pynchy work items.
 ### 2 - Planning
 *Draft plan exists. Awaiting human sign-off.*
 
+- [Pluggy Migration](2-planning/plugin-pluggy-migration.md) — Replace manual plugin system with pluggy (pytest's plugin framework) for type-safe, robust plugin management
 - [Plugin: Runtime](2-planning/plugin-runtime.md) — Alternative container runtimes (Apple Container, Podman) as plugins
 - [Plugin: Hook](2-planning/plugin-hook.md) — Agent lifecycle hooks provided by plugins (overview - see sub-plans below)
   - [Hook Step 1: Base Class](2-planning/plugin-hook-1-base-class.md) — HookPlugin base class and discovery integration
