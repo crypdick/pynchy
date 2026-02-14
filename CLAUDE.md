@@ -17,6 +17,7 @@ Single Python process that connects to WhatsApp, routes messages to Claude Agent
 | `src/pynchy/group_queue.py` | Per-group queue with global concurrency limit |
 | `src/pynchy/runtime.py` | Container runtime detection (Apple Container / Docker) |
 | `src/pynchy/mount_security.py` | Mount path validation and allowlist |
+| `src/pynchy/worktree.py` | Git worktree isolation for non-main project_access groups |
 | `src/pynchy/task_scheduler.py` | Runs scheduled tasks |
 | `src/pynchy/types.py` | Data models (dataclasses) |
 | `src/pynchy/logger.py` | Structured logging (structlog) |
@@ -45,6 +46,14 @@ All plugin Python code runs on the host during discovery (`__init__`, `validate(
 
 **Rule: only install plugins from authors you trust.** See `plugin/base.py` docstring for full details.
 
+## Worktree Isolation
+
+Non-main groups with `project_access` (e.g. code-improver) get their own git worktree at `~/.config/pynchy/worktrees/{group}/` instead of mounting the shared project root. This prevents concurrent containers from editing the same files.
+
+**Sync behavior:** Existing worktrees use best-effort `git fetch` + `git merge`, never `git reset --hard`. A service restart kills all running containers, so agents may leave uncommitted work in their worktree. That state is preserved and reported via system notices so the agent can resume gracefully.
+
+**Post-run merge:** After a successful container run, worktree commits are fast-forward merged into the main branch and pushed. Non-fast-forward merges are logged but not forced.
+
 ## Documentation Philosophy
 
 Write documentation from the **user's perspective and goal**, not chronological order. The user is trying to achieve something—help them achieve it by disclosing information when it makes sense in their pursuit of that goal.
@@ -58,6 +67,14 @@ Structure documentation around:
 - What they need to know to do it
 - Relevant context disclosed at the point of need
 - Not the history of how the code evolved
+
+## Code Comments: Capture User Reasoning
+
+When the user gives an instruction or makes a design decision **and explains their reasoning**, capture that reasoning as a comment in the code — right where the decision is implemented. Future maintainers should be able to understand the intent without leaving the code context.
+
+- Only add comments when the user provides a *reason*, not for every instruction
+- Place the comment at the point of implementation, not in a separate doc
+- Preserve the user's reasoning faithfully — don't paraphrase away the nuance
 
 ## Development
 

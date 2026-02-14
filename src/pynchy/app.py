@@ -90,6 +90,15 @@ from pynchy.runtime import get_runtime
 from pynchy.task_scheduler import start_scheduler_loop
 from pynchy.types import Channel, ContainerInput, ContainerOutput, NewMessage, RegisteredGroup
 
+
+def _merge_and_push_worktree(group_folder: str) -> None:
+    """Merge worktree commits into main and push. Runs in a thread."""
+    from pynchy.worktree import merge_worktree
+
+    if merge_worktree(group_folder):
+        _push_local_commits()
+
+
 _trace_counter = 0
 
 
@@ -432,18 +441,18 @@ class PynchyApp:
                     await self._handle_streamed_output(chat_jid, group, result)
 
                 # Convert plain text message to SDK format
-                reset_messages = [{
-                    "message_type": "user",
-                    "sender": "system",
-                    "sender_name": "System",
-                    "content": reset_message,
-                    "timestamp": datetime.now(UTC).isoformat(),
-                    "metadata": {"source": "reset_handoff"},
-                }]
+                reset_messages = [
+                    {
+                        "message_type": "user",
+                        "sender": "system",
+                        "sender_name": "System",
+                        "content": reset_message,
+                        "timestamp": datetime.now(UTC).isoformat(),
+                        "metadata": {"source": "reset_handoff"},
+                    }
+                ]
 
-                result = await self._run_agent(
-                    group, chat_jid, reset_messages, handoff_on_output
-                )
+                result = await self._run_agent(group, chat_jid, reset_messages, handoff_on_output)
 
                 # If dirty repo check is needed after reset, write marker for next message
                 if reset_data.get("needsDirtyRepoCheck"):
@@ -608,6 +617,14 @@ class PynchyApp:
         # Push local commits after successful agent session (main group only)
         if is_main_group:
             asyncio.create_task(asyncio.to_thread(_push_local_commits))
+
+        # Merge worktree commits and push for non-main groups with project access
+        if not is_main_group:
+            from pynchy.periodic import load_periodic_config as _load_periodic
+
+            _periodic = _load_periodic(group.folder)
+            if _periodic and _periodic.project_access:
+                asyncio.create_task(asyncio.to_thread(_merge_and_push_worktree, group.folder))
 
         return True
 

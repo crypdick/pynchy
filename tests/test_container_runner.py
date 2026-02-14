@@ -48,14 +48,16 @@ TEST_GROUP = RegisteredGroup(
 )
 
 TEST_INPUT = ContainerInput(
-    messages=[{
-        "message_type": "user",
-        "sender": "user@s.whatsapp.net",
-        "sender_name": "User",
-        "content": "Hello",
-        "timestamp": "2024-01-01T00:00:00.000Z",
-        "metadata": None,
-    }],
+    messages=[
+        {
+            "message_type": "user",
+            "sender": "user@s.whatsapp.net",
+            "sender_name": "User",
+            "content": "Hello",
+            "timestamp": "2024-01-01T00:00:00.000Z",
+            "metadata": None,
+        }
+    ],
     group_folder="test-group",
     chat_jid="test@g.us",
     is_main=False,
@@ -154,7 +156,12 @@ class TestInputSerialization:
         assert d["is_scheduled_task"] is True
 
     def test_optional_fields_omitted_when_default(self):
-        inp = ContainerInput(messages=[{"message_type": "user", "content": "hi"}], group_folder="g", chat_jid="c", is_main=False)
+        inp = ContainerInput(
+            messages=[{"message_type": "user", "content": "hi"}],
+            group_folder="g",
+            chat_jid="c",
+            is_main=False,
+        )
         d = _input_to_dict(inp)
         assert "session_id" not in d
         assert "is_scheduled_task" not in d
@@ -270,6 +277,47 @@ class TestMountBuilding:
             # Global mount should be readonly
             global_mount = next(m for m in mounts if m.container_path == "/workspace/global")
             assert global_mount.readonly is True
+
+    def test_nonmain_project_access_uses_worktree_path(self, tmp_path: Path):
+        """Non-main group with project_access + worktree_path mounts the worktree."""
+        worktree_path = tmp_path / "worktrees" / "code-improver"
+        worktree_path.mkdir(parents=True)
+
+        with (
+            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
+            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+        ):
+            (tmp_path / "groups" / "code-improver").mkdir(parents=True)
+            group = RegisteredGroup(
+                name="Code Improver",
+                folder="code-improver",
+                trigger="@pynchy",
+                added_at="2024-01-01",
+            )
+            mounts = _build_volume_mounts(
+                group, is_main=False, project_access=True, worktree_path=worktree_path
+            )
+
+            project_mount = next(m for m in mounts if m.container_path == "/workspace/project")
+            assert project_mount.host_path == str(worktree_path)
+            assert project_mount.readonly is False
+
+    def test_main_still_uses_project_root(self, tmp_path: Path):
+        """Main group mounts PROJECT_ROOT directly even with project_access=True."""
+        with (
+            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
+            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+        ):
+            (tmp_path / "groups" / "main").mkdir(parents=True)
+            group = RegisteredGroup(
+                name="Main", folder="main", trigger="always", added_at="2024-01-01"
+            )
+            mounts = _build_volume_mounts(group, is_main=True, project_access=True)
+
+            project_mount = next(m for m in mounts if m.container_path == "/workspace/project")
+            assert project_mount.host_path == str(tmp_path)
 
 
 # ---------------------------------------------------------------------------

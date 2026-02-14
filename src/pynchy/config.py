@@ -21,6 +21,7 @@ PROJECT_ROOT: Path = Path.cwd()
 HOME_DIR: Path = Path(os.environ.get("HOME", "/Users/user"))
 
 MOUNT_ALLOWLIST_PATH: Path = HOME_DIR / ".config" / "pynchy" / "mount-allowlist.json"
+WORKTREES_DIR: Path = HOME_DIR / ".config" / "pynchy" / "worktrees"
 STORE_DIR: Path = (PROJECT_ROOT / "store").resolve()
 GROUPS_DIR: Path = (PROJECT_ROOT / "groups").resolve()
 DATA_DIR: Path = (PROJECT_ROOT / "data").resolve()
