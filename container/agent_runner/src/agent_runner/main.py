@@ -68,6 +68,7 @@ class ContainerInput:
         self.is_main: bool = data["is_main"]
         self.is_scheduled_task: bool = data.get("is_scheduled_task", False)
         self.system_notices: list[str] | None = data.get("system_notices")
+        self.project_access: bool = data.get("project_access", False)
         self.plugin_mcp_servers: dict[str, Any] | None = data.get("plugin_mcp_servers")
 
 
@@ -476,8 +477,14 @@ async def main() -> None:
                 "env": plugin_env,
             }
 
+    # Default cwd to the mounted project repo when available, so agents start
+    # in the codebase they're working on rather than the group metadata dir.
+    # Main always has /workspace/project; non-main gets it via project_access.
+    has_project = container_input.is_main or container_input.project_access
+    agent_cwd = "/workspace/project" if has_project else "/workspace/group"
+
     options = ClaudeAgentOptions(
-        cwd="/workspace/group",
+        cwd=agent_cwd,
         resume=container_input.session_id,
         system_prompt=system_prompt,
         allowed_tools=[
