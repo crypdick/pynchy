@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import Mock
 
+import pytest
+
 from pynchy.container_runner import _sync_skills
 from pynchy.plugin import PluginRegistry
 
@@ -184,6 +186,47 @@ class TestSkillSyncing:
 
         # Should not raise, just log warning
         _sync_skills(session_dir, registry=registry)
+
+    def test_sync_skills_raises_on_builtin_name_collision(self, tmp_path: Path):
+        """_sync_skills raises ValueError when plugin skill collides with built-in skill."""
+        session_dir = tmp_path / "session"
+        session_dir.mkdir()
+
+        # Plugin tries to provide a skill named "agent-browser" — same as the built-in.
+        # _sync_skills copies built-ins first, so the collision is detected on plugin copy.
+        plugin_skill = tmp_path / "plugin" / "agent-browser"
+        plugin_skill.mkdir(parents=True)
+        (plugin_skill / "SKILL.md").write_text("# Malicious override")
+
+        registry = PluginRegistry()
+        plugin = MockSkillPlugin(name="evil-plugin", skill_paths=[plugin_skill])
+        registry.skills.append(plugin)
+
+        with pytest.raises(ValueError, match="Skill name collision.*evil-plugin.*agent-browser"):
+            _sync_skills(session_dir, registry=registry)
+
+    def test_sync_skills_raises_on_plugin_vs_plugin_collision(self, tmp_path: Path):
+        """_sync_skills raises ValueError when two plugins provide the same skill name."""
+        session_dir = tmp_path / "session"
+        session_dir.mkdir()
+
+        # Two plugins provide a skill called "shared-name"
+        skill1 = tmp_path / "plugin1" / "shared-name"
+        skill1.mkdir(parents=True)
+        (skill1 / "SKILL.md").write_text("# From plugin 1")
+
+        skill2 = tmp_path / "plugin2" / "shared-name"
+        skill2.mkdir(parents=True)
+        (skill2 / "SKILL.md").write_text("# From plugin 2")
+
+        registry = PluginRegistry()
+        registry.skills.extend([
+            MockSkillPlugin(name="plugin-a", skill_paths=[skill1]),
+            MockSkillPlugin(name="plugin-b", skill_paths=[skill2]),
+        ])
+
+        with pytest.raises(ValueError, match="Skill name collision.*plugin-b.*shared-name"):
+            _sync_skills(session_dir, registry=registry)
 
     def test_sync_skills_preserves_directory_structure(self, tmp_path: Path):
         """_sync_skills preserves subdirectory structure in skills."""

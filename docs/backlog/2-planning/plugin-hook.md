@@ -138,9 +138,20 @@ The agent runner needs to:
 - `agent_runner/main.py` — imports and registers hooks
 - Claude Agent SDK — hook mechanism already exists
 
+## Security / Trust Model
+
+**Hook plugins are partially unsandboxed — medium risk.** The plugin class
+(`__init__`, `validate()`, `hook_module_path()`) runs on the host with full
+privileges. The hook *code* runs inside the container via dynamic import, but
+the host-controlled module path could point to arbitrary code. Additionally,
+`importlib.import_module` inside the container executes plugin code with the
+agent's `bypassPermissions` mode — no permission gates.
+
+**Only install hook plugins from authors you trust.**
+
 ## Open Questions
 
-- **Security**: Should we sandbox hook execution?
+- **Security**: Should we further restrict what hook code can access inside the container?
 - **Error handling**: What if a hook raises an exception?
 - **Hook ordering**: Can plugins control execution order?
 - **Hook conflicts**: What if multiple plugins hook the same event?
