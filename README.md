@@ -123,14 +123,27 @@ Skills we'd love to see:
 - [Claude Code](https://claude.ai/download)
 - [Apple Container](https://github.com/apple/container) (macOS, preferred) or [Docker](https://docker.com/products/docker-desktop) (macOS/Linux)
 
-### macOS system dependencies
+### System dependencies
 
+**macOS:**
 ```bash
 brew install libmagic              # Required by neonize (WhatsApp) for MIME detection
 brew install container             # Apple Container (recommended) — or install Docker Desktop
 ```
 
-If Apple Container is not installed, pynchy falls back to Docker automatically.
+**Linux (Debian/Ubuntu):**
+```bash
+sudo apt-get install libmagic1     # Required by neonize (WhatsApp) for MIME detection
+# Install Docker - https://docs.docker.com/engine/install/
+```
+
+**Linux (Fedora/RHEL):**
+```bash
+sudo dnf install file-libs         # Required by neonize (WhatsApp) for MIME detection
+# Install Docker - https://docs.docker.com/engine/install/
+```
+
+If Apple Container is not installed on macOS, pynchy falls back to Docker automatically.
 
 ## Architecture
 
