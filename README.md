@@ -6,7 +6,7 @@
   <em>Pynchy</em> — Personal Claude assistant that runs securely in containers.
 </p>
 
-> **Python port of [NanoClaw](https://github.com/qwibitai/nanoclaw).** Huge thanks to [@gavrielc](https://github.com/gavrielc) for creating the original project — Pynchy wouldn't exist without it. This port rewrites the codebase in Python while keeping the same philosophy and architecture.
+
 
 ## Why This Exists
 
@@ -188,6 +188,10 @@ Security fixes, bug fixes, and clear improvements to the base configuration. Tha
 Everything else (new capabilities, OS compatibility, hardware support, enhancements) should be contributed as skills.
 
 This keeps the base system minimal and lets every user customize their installation without inheriting features they don't want.
+
+## Credits
+
+Huge thanks to [NanoClaw](https://github.com/qwibitai/nanoclaw). This project started as a Python port of theat project.
 
 ## License
 
