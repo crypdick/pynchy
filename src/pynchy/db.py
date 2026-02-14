@@ -354,17 +354,18 @@ async def get_new_messages(jids: list[str], last_timestamp: str) -> tuple[list[N
         except (KeyError, IndexError):
             metadata = None
 
-        messages.append(NewMessage(
-            id=row["id"],
-            chat_jid=row["chat_jid"],
-            sender=row["sender"],
-            sender_name=row["sender_name"],
-            content=row["content"],
-            timestamp=row["timestamp"],
-            message_type=message_type,
-            metadata=metadata,
-        ))
-
+        messages.append(
+            NewMessage(
+                id=row["id"],
+                chat_jid=row["chat_jid"],
+                sender=row["sender"],
+                sender_name=row["sender_name"],
+                content=row["content"],
+                timestamp=row["timestamp"],
+                message_type=message_type,
+                metadata=metadata,
+            )
+        )
 
     new_timestamp = last_timestamp
     for msg in messages:
@@ -401,16 +402,18 @@ async def get_messages_since(chat_jid: str, since_timestamp: str) -> list[NewMes
         except (KeyError, IndexError):
             metadata = None
 
-        messages.append(NewMessage(
-            id=row["id"],
-            chat_jid=row["chat_jid"],
-            sender=row["sender"],
-            sender_name=row["sender_name"],
-            content=row["content"],
-            timestamp=row["timestamp"],
-            message_type=message_type,
-            metadata=metadata,
-        ))
+        messages.append(
+            NewMessage(
+                id=row["id"],
+                chat_jid=row["chat_jid"],
+                sender=row["sender"],
+                sender_name=row["sender_name"],
+                content=row["content"],
+                timestamp=row["timestamp"],
+                message_type=message_type,
+                metadata=metadata,
+            )
+        )
     return messages
 
 
@@ -465,17 +468,19 @@ async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
         except (KeyError, IndexError):
             metadata = None
 
-        messages.append(NewMessage(
-            id=row["id"],
-            chat_jid=row["chat_jid"],
-            sender=row["sender"],
-            sender_name=row["sender_name"],
-            content=row["content"],
-            timestamp=row["timestamp"],
-            is_from_me=bool(row["is_from_me"]),
-            message_type=message_type,
-            metadata=metadata,
-        ))
+        messages.append(
+            NewMessage(
+                id=row["id"],
+                chat_jid=row["chat_jid"],
+                sender=row["sender"],
+                sender_name=row["sender_name"],
+                content=row["content"],
+                timestamp=row["timestamp"],
+                is_from_me=bool(row["is_from_me"]),
+                message_type=message_type,
+                metadata=metadata,
+            )
+        )
     return messages
 
 

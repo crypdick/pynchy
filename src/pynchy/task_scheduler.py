@@ -163,14 +163,16 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
 
     try:
         # Convert task prompt to SDK message format
-        task_messages = [{
-            "message_type": "user",
-            "sender": "scheduled_task",
-            "sender_name": "Scheduled Task",
-            "content": task.prompt,
-            "timestamp": datetime.now(UTC).isoformat(),
-            "metadata": {"source": "scheduled_task"},
-        }]
+        task_messages = [
+            {
+                "message_type": "user",
+                "sender": "scheduled_task",
+                "sender_name": "Scheduled Task",
+                "content": task.prompt,
+                "timestamp": datetime.now(UTC).isoformat(),
+                "metadata": {"source": "scheduled_task"},
+            }
+        ]
 
         container_input = ContainerInput(
             messages=task_messages,
@@ -210,6 +212,14 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
 
         elapsed_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
         logger.info("Task completed", task_id=task.id, duration_ms=elapsed_ms)
+
+        # Merge worktree commits and push for non-main project_access tasks
+        if not error and task.project_access and task.group_folder != MAIN_GROUP_FOLDER:
+            from pynchy.http_server import _push_local_commits
+            from pynchy.worktree import merge_worktree
+
+            if merge_worktree(task.group_folder):
+                _push_local_commits()
     except Exception as exc:
         if idle_handle is not None:
             idle_handle.cancel()

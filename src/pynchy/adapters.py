@@ -147,9 +147,7 @@ class QueueManager:
         """Enqueue a message check for a group."""
         self._queue.enqueue_message_check(group_jid)
 
-    def on_process(
-        self, group_jid: str, proc: Any, container_name: str, group_folder: str
-    ) -> None:
+    def on_process(self, group_jid: str, proc: Any, container_name: str, group_folder: str) -> None:
         """Register a container process with the queue."""
         self._queue.register_process(group_jid, proc, container_name, group_folder)
 
@@ -239,10 +237,7 @@ class GroupMetadataManager:
 
     def get_groups(self) -> list[dict[str, Any]]:
         """Return list of registered groups for API."""
-        return [
-            {"jid": jid, "name": g.name, "folder": g.folder}
-            for jid, g in self._groups.items()
-        ]
+        return [{"jid": jid, "name": g.name, "folder": g.folder} for jid, g in self._groups.items()]
 
     async def get_available_groups(self) -> list[Any]:
         """Get list of all available groups."""

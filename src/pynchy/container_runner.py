@@ -315,6 +315,7 @@ def _build_volume_mounts(
     is_main: bool,
     registry: Any = None,
     project_access: bool = False,
+    worktree_path: Path | None = None,
 ) -> list[VolumeMount]:
     """Build the mount list for a container invocation.
 
@@ -323,6 +324,7 @@ def _build_volume_mounts(
         is_main: Whether this is the main group
         registry: Optional PluginRegistry for plugin MCP mounts
         project_access: Whether to mount the host project into the container
+        worktree_path: Pre-resolved worktree path for non-main project_access groups
 
     Returns:
         List of volume mounts for the container
@@ -332,8 +334,11 @@ def _build_volume_mounts(
     group_dir = GROUPS_DIR / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
 
-    if is_main or project_access:
+    if is_main:
         mounts.append(VolumeMount(str(PROJECT_ROOT), "/workspace/project", readonly=False))
+        mounts.append(VolumeMount(str(group_dir), "/workspace/group", readonly=False))
+    elif project_access and worktree_path:
+        mounts.append(VolumeMount(str(worktree_path), "/workspace/project", readonly=False))
         mounts.append(VolumeMount(str(group_dir), "/workspace/group", readonly=False))
     else:
         mounts.append(VolumeMount(str(group_dir), "/workspace/group", readonly=False))
@@ -606,7 +611,23 @@ async def run_container_agent(
     group_dir = GROUPS_DIR / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
 
-    mounts = _build_volume_mounts(group, input_data.is_main, registry, input_data.project_access)
+    # Resolve worktree for non-main project_access groups.
+    # Uses best-effort sync — uncommitted changes from killed containers are
+    # preserved and reported via system notices so the agent can resume.
+    worktree_path: Path | None = None
+    if not input_data.is_main and input_data.project_access:
+        from pynchy.worktree import ensure_worktree
+
+        wt_result = ensure_worktree(group.folder)
+        worktree_path = wt_result.path
+        if wt_result.notices:
+            if input_data.system_notices is None:
+                input_data.system_notices = []
+            input_data.system_notices.extend(wt_result.notices)
+
+    mounts = _build_volume_mounts(
+        group, input_data.is_main, registry, input_data.project_access, worktree_path
+    )
 
     # Collect plugin MCP server specs
     if registry and hasattr(registry, "mcp_servers") and input_data.plugin_mcp_servers is None:

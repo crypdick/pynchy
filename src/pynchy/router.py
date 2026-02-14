@@ -41,14 +41,16 @@ def format_messages_for_sdk(messages: list[NewMessage]) -> list[dict]:
         if msg.message_type == "host":
             continue
 
-        sdk_messages.append({
-            "message_type": msg.message_type,
-            "sender": msg.sender,
-            "sender_name": msg.sender_name,
-            "content": msg.content,
-            "timestamp": msg.timestamp,
-            "metadata": msg.metadata,
-        })
+        sdk_messages.append(
+            {
+                "message_type": msg.message_type,
+                "sender": msg.sender,
+                "sender_name": msg.sender_name,
+                "content": msg.content,
+                "timestamp": msg.timestamp,
+                "metadata": msg.metadata,
+            }
+        )
 
     return sdk_messages
 
