@@ -1286,9 +1286,26 @@ class PynchyApp:
                 return c
         return None
 
-    async def _on_inbound(self, _jid: str, msg: NewMessage) -> None:
-        """Handle inbound message from any channel — store, emit, and enqueue."""
+    async def _ingest_user_message(
+        self, msg: NewMessage, *, source_channel: str | None = None
+    ) -> None:
+        """Unified user message ingestion — stores, emits, and broadcasts to all channels.
+
+        This is the common code path for ALL user inputs from ANY UI:
+        - WhatsApp messages
+        - TUI messages
+        - Telegram messages
+        - Any future channels
+
+        Args:
+            msg: The user message to ingest
+            source_channel: Optional name of the originating channel (e.g., "whatsapp", "tui").
+                           If provided, we skip broadcasting back to that channel.
+        """
+        # 1. Store in database
         await store_message(msg)
+
+        # 2. Emit to event bus (for TUI/SSE, logging, etc.)
         self.event_bus.emit(
             MessageEvent(
                 chat_jid=msg.chat_jid,
@@ -1298,6 +1315,30 @@ class PynchyApp:
                 is_bot=False,
             )
         )
+
+        # 3. Broadcast to all connected channels (except source)
+        # This ensures messages from one UI appear in all other UIs
+        for ch in self.channels:
+            if ch.is_connected():
+                # Skip broadcasting back to the source channel
+                if source_channel and ch.name == source_channel:
+                    continue
+
+                # Format the message with sender name
+                formatted = f"{msg.sender_name}: {msg.content}"
+                with contextlib.suppress(Exception):
+                    await ch.send_message(msg.chat_jid, formatted)
+
+    async def _on_inbound(self, _jid: str, msg: NewMessage) -> None:
+        """Handle inbound message from any channel — delegates to unified ingestion."""
+        # Find which channel this came from
+        source_channel = None
+        for ch in self.channels:
+            if ch.owns_jid(msg.chat_jid):
+                source_channel = ch.name
+                break
+
+        await self._ingest_user_message(msg, source_channel=source_channel)
 
     # ------------------------------------------------------------------
     # Tailscale
@@ -1606,16 +1647,8 @@ WantedBy=default.target
                     timestamp=datetime.now(UTC).isoformat(),
                     is_from_me=False,
                 )
-                await store_message(msg)
-                app.event_bus.emit(
-                    MessageEvent(
-                        chat_jid=jid,
-                        sender_name="You",
-                        content=content,
-                        timestamp=msg.timestamp,
-                        is_bot=False,
-                    )
-                )
+                # Use unified ingestion to store, emit, AND broadcast to all channels
+                await app._ingest_user_message(msg, source_channel="tui")
                 app.queue.enqueue_message_check(jid)
 
             async def get_periodic_agents(self) -> list[dict[str, Any]]:
