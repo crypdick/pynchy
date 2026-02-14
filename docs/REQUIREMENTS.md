@@ -14,9 +14,9 @@ Pynchy gives you the core functionality without that mess.
 
 ## Philosophy
 
-### Small Enough to Understand
+### Prefer symplicity
 
-The entire codebase should be something you can read and understand. One Node.js process. A handful of source files. No microservices, no message queues, no abstraction layers.
+The entire codebase should be something you can read and understand. A handful of source files. No microservices, no message queues, no abstraction layers.
 
 ### Security Through True Isolation
 
@@ -26,9 +26,6 @@ Instead of application-level permission systems trying to prevent agents from ac
 
 This isn't a framework or a platform. It's working software for my specific needs. I use WhatsApp and Email, so it supports WhatsApp and Email. I don't use Telegram, so it doesn't support Telegram. I add the integrations I actually want, not every possible integration.
 
-### Customization = Code Changes
-
-No configuration sprawl. If you want different behavior, modify the code. The codebase is small enough that this is safe and practical. Very minimal things like the trigger word are in config. Everything else - just change the code to do what you want.
 
 ### AI-Native Development
 
@@ -36,26 +33,9 @@ I don't need an installation wizard - Claude Code guides the setup. I don't need
 
 The codebase assumes you have an AI collaborator. It doesn't need to be excessively self-documenting or self-debugging because Claude is always there.
 
-### Skills Over Features
+### Plugins Over Features
 
-When people contribute, they shouldn't add "Telegram support alongside WhatsApp." They should contribute a skill like `/add-telegram` that transforms the codebase. Users fork the repo, run skills to customize, and end up with clean code that does exactly what they need - not a bloated system trying to support everyone's use case simultaneously.
-
----
-
-## RFS (Request for Skills)
-
-Skills we'd love contributors to build:
-
-### Communication Channels
-Skills to add or switch to different messaging platforms:
-- `/add-telegram` - Add Telegram as an input channel
-- `/add-slack` - Add Slack as an input channel
-- `/add-discord` - Add Discord as an input channel
-- `/add-sms` - Add SMS via Twilio or similar
-- `/convert-to-telegram` - Replace WhatsApp with Telegram entirely
-
-### Platform Support
-- `/setup-windows` - Windows support via WSL2 + Docker
+When people contribute, they shouldn't add "Telegram support alongside WhatsApp." They should write a plugins and keep this repo minimal.
 
 ---
 
@@ -65,8 +45,6 @@ A personal Claude assistant accessible via WhatsApp, with minimal custom code.
 
 **Core components:**
 - **Claude Agent SDK** as the core agent
-- **Apple Container** for isolated agent execution (Linux VMs)
-- **WhatsApp** as the primary I/O channel
 - **Persistent memory** per conversation and globally
 - **Scheduled tasks** that run Claude and can message back
 - **Web access** for search and browsing
@@ -84,11 +62,6 @@ A personal Claude assistant accessible via WhatsApp, with minimal custom code.
 ### Transparent Token Stream
 
 The chat history should be a faithful representation of the LLM's token stream. A user reading the conversation should be able to reconstruct the exact contents of the LLM context. Nothing is hidden; every message type is visible and distinguishable.
-
-Two key sender types from the harness:
-
-- **`host`**: Messages from the pynchy process shown to the **user only**. The LLM never sees these (boot notifications, deploy status, error alerts).
-- **`system`**: Messages from the harness shown to **both** the LLM and the user. These are real conversation turns — they signal to the model that the harness is talking, not the user.
 
 The Claude Agent SDK message types ([docs](https://platform.claude.com/docs/en/agent-sdk/python#message-types)):
 
@@ -113,14 +86,17 @@ Pynchy should log all of these, plus its own host-process messages, to the DB. T
 The goal: if something went wrong, you can reconstruct what the LLM saw by reading the chat.
 
 ### Message Routing
-- A router listens to WhatsApp and routes messages based on configuration
+- All channels send messages to the same code path.
 - Only messages from registered groups are processed
 - Trigger: `@Pynchy` prefix (case insensitive), configurable via `ASSISTANT_NAME` env var
 - Unregistered groups are ignored completely
+- All channels are kept in sync. Ongoing conversations can be continued from different channels, and all 
+  channels display the exact same message history.
 
 ### Memory System
-- **Per-group memory**: Each group has a folder with its own `CLAUDE.md`
-- **Global memory**: Root `CLAUDE.md` is read by all groups, but only writable from "main" (self-chat)
+- **Per-group memory**: Each group has a folder with its own `CLAUDE.md` and `.claude`.
+- **Global memory**: Root `CLAUDE.md` and `.claude/` is read by all groups, but only writable from "god channel" (self-chat).
+- If agent wants to edit global memory, it has to send the request to the god container. It decides whether to approve the request.
 - **Files**: Groups can create/read files in their folder and reference them
 - Agent runs in the group's folder, automatically inherits both CLAUDE.md files
 
@@ -133,7 +109,8 @@ The goal: if something went wrong, you can reconstruct what the LLM saw by readi
 - Each agent invocation spawns a container with mounted directories
 - Containers provide filesystem isolation - agents can only see mounted paths
 - Bash access is safe because commands run inside the container, not on the host
-- Browser automation via agent-browser with Chromium in the container
+- Browser automation via agent-browser with Chromium in the container (if enabled)
+- Avoid the 
 
 ### Scheduled Tasks
 - Users can ask Claude to schedule recurring or one-time tasks from any group
@@ -142,21 +119,22 @@ The goal: if something went wrong, you can reconstruct what the LLM saw by readi
 - Tasks can optionally send messages to their group via `send_message` tool, or complete silently
 - Task runs are logged to the database with duration and result
 - Schedule types: cron expressions, intervals (ms), or one-time (ISO timestamp)
-- From main: can schedule tasks for any group, view/manage all tasks
+- From god container: can schedule tasks for any group, view/manage all tasks
 - From other groups: can only manage that group's tasks
 
 ### Group Management
-- New groups are added explicitly via the main channel
-- Groups are registered in SQLite (via the main channel or IPC `register_group` command)
+- New groups are added explicitly via the god channel
+- Groups are registered in SQLite (via the god channel or IPC `register_group` command)
 - Each group gets a dedicated folder under `groups/`
 - Groups can have additional directories mounted via `containerConfig`
 
-### Main Channel Privileges
-- Main channel is the admin/control group (typically self-chat)
+### God Channel Privileges
+- God channel is the admin/control group (typically self-chat)
 - Can write to global memory (`groups/CLAUDE.md`)
 - Can schedule tasks for any group
 - Can view and manage tasks from all groups
 - Can configure additional directory mounts for any group
+- Can recieve requests from agents; it decides whether to honor the request. This is mediated by a Deputy agent which blocks malicious requests.
 
 ---
 
@@ -212,7 +190,7 @@ These are the creator's settings, stored here for reference:
 - **Trigger**: `@Pynchy` (case insensitive)
 - **Response prefix**: `Pynchy:`
 - **Persona**: Default Claude (no custom personality)
-- **Main channel**: Self-chat (messaging yourself in WhatsApp)
+- **God channel**: Self-chat (messaging yourself in WhatsApp)
 
 ---
 
