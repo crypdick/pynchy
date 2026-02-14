@@ -59,10 +59,22 @@ _trigger_names = [_escape_regex(ASSISTANT_NAME)] + [
 TRIGGER_PATTERN: re.Pattern[str] = re.compile(rf"^@({'|'.join(_trigger_names)})\b", re.IGNORECASE)
 
 # Magic words to reset conversation context (voice-friendly variants)
-CONTEXT_RESET_PATTERN: re.Pattern[str] = re.compile(
-    r"^\s*(?:(?:reset|restart|clear|new|wipe)\s+(?:context|session|chat|conversation)|(?:context|session|chat|conversation)\s+(?:reset|restart|clear|new|wipe))\s*$",
-    re.IGNORECASE,
-)
+_RESET_VERBS = {"reset", "restart", "clear", "new", "wipe"}
+_RESET_NOUNS = {"context", "session", "chat", "conversation"}
+_RESET_ALIASES = {"boom"}
+
+
+def is_context_reset(text: str) -> bool:
+    """Check if a message is a context reset command."""
+    words = text.strip().lower().split()
+    if len(words) == 1:
+        return words[0] in _RESET_ALIASES
+    if len(words) == 2:
+        a, b = words
+        return (a in _RESET_VERBS and b in _RESET_NOUNS) or (
+            a in _RESET_NOUNS and b in _RESET_VERBS
+        )
+    return False
 
 
 # Timezone for scheduled tasks — uses system IANA timezone by default.
