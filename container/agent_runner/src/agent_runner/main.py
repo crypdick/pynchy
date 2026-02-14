@@ -61,7 +61,8 @@ OUTPUT_END_MARKER = "---PYNCHY_OUTPUT_END---"
 
 class ContainerInput:
     def __init__(self, data: dict[str, Any]) -> None:
-        self.prompt: str = data["prompt"]
+        self.prompt: str = data["prompt"]  # Legacy XML format (for backward compatibility)
+        self.messages: list[dict[str, Any]] | None = data.get("messages")  # New SDK format
         self.session_id: str | None = data.get("session_id")
         self.group_folder: str = data["group_folder"]
         self.chat_jid: str = data["chat_jid"]
@@ -340,6 +341,44 @@ def create_pre_compact_hook():
 
 
 # ---------------------------------------------------------------------------
+# Message conversion
+# ---------------------------------------------------------------------------
+
+
+def build_sdk_messages(messages: list[dict[str, Any]]) -> str:
+    """Convert message list to SDK-compatible format.
+
+    For now, we convert to XML format for compatibility. In the future,
+    this will build proper SDK message objects (UserMessage, AssistantMessage, etc.)
+    once the SDK supports that in the query() method.
+
+    Message types:
+    - 'user': From humans
+    - 'assistant': From LLM (previous responses)
+    - 'system': Context for LLM (currently handled via system_prompt)
+    - 'tool_result': Command outputs, tool execution results
+    - 'host': Operational notifications (FILTERED OUT - should never reach here)
+    """
+    if not messages:
+        return ""
+
+    def escape_xml(s: str) -> str:
+        """Escape XML special characters."""
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+    lines = []
+    for msg in messages:
+        sender_name = escape_xml(msg.get("sender_name", "Unknown"))
+        timestamp = msg.get("timestamp", "")
+        content = escape_xml(msg.get("content", ""))
+        lines.append(
+            f'<message sender="{sender_name}" time="{timestamp}">{content}</message>'
+        )
+
+    return f"<messages>\n{chr(10).join(lines)}\n</messages>"
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -364,8 +403,14 @@ async def main() -> None:
     with contextlib.suppress(OSError):
         IPC_INPUT_CLOSE_SENTINEL.unlink()
 
-    # Build initial prompt (drain any pending IPC messages too)
-    prompt = container_input.prompt
+    # Build initial prompt (prefer SDK messages if available, fallback to legacy prompt)
+    if container_input.messages:
+        log(f"Using SDK message list ({len(container_input.messages)} messages)")
+        prompt = build_sdk_messages(container_input.messages)
+    else:
+        log("Using legacy XML prompt format")
+        prompt = container_input.prompt
+
     if container_input.is_scheduled_task:
         prompt = (
             "[SCHEDULED TASK - The following message was sent automatically "
