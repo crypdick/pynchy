@@ -8,7 +8,7 @@ import sys
 from collections.abc import AsyncIterator
 from typing import Any
 
-from agents import Agent, ApplyPatchTool, Runner, ShellTool
+from agents import Agent, ApplyPatchTool, Runner, ShellTool, WebSearchTool
 from agents.editor import ApplyPatchEditor, ApplyPatchOperation, ApplyPatchResult
 from agents.mcp import MCPServerStdio
 
@@ -151,6 +151,7 @@ class OpenAIAgentCore:
             tools=[
                 ShellTool(executor=_make_shell_executor(self.config.cwd)),
                 ApplyPatchTool(editor=_ContainerPatchEditor()),
+                WebSearchTool(),
             ],
             mcp_servers=self._mcp_servers,
         )
