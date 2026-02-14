@@ -122,9 +122,9 @@ await client.query(sdk_messages)  # Proper SDK message list
 **Adapter Refactoring (Feb 2026)**: The dependency injection code in `app.py` was refactored to use composable adapter classes in `src/pynchy/adapters.py`. This significantly reduces the implementation effort:
 
 **Key Adapters:**
+- `MessageBroadcaster` - General channel broadcasting (lines 24-45)
 - `HostMessageBroadcaster` - Centralizes all host message storage (lines 47-95)
 - `UserMessageHandler` - Handles user message ingestion (lines 296-318)
-- `MessageBroadcaster` - General channel broadcasting (lines 18-44)
 
 **Impact:** Instead of updating 10+ scattered call sites in `app.py`, we now only need to update 3 focused adapter classes. Each adapter naturally corresponds to a message type.
 
@@ -143,16 +143,23 @@ await client.query(sdk_messages)  # Proper SDK message list
 
 ### Phase 2: Message Storage Layer
 
-**✨ SIMPLIFIED by adapter refactoring** - Only 3 touch points instead of 10+!
+**✨ SIMPLIFIED by adapter refactoring** - Centralized injection points instead of scattered call sites!
 
-1. Update `store_message_direct()` signature to require `message_type` parameter
-2. Update adapter injection points in `app.py`:
-   - **HostMessageBroadcaster**: Wrap `store_message_direct` to inject `message_type='host'`
+1. Update `store_message_direct()` signature to add optional `message_type` parameter (defaults to 'user' for backward compatibility during migration)
+
+2. Update adapter injection points (2 adapters):
+   - **HostMessageBroadcaster** (lines 1664, 1695): Wrap `store_message_direct` to inject `message_type='host'`
    - **UserMessageHandler**: Update `_ingest_user_message` to pass `message_type='user'`
-   - **app._broadcast_trace()**: Add `message_type='assistant'` for bot outputs
-   - **app._execute_direct_command()**: Add `message_type='tool_result'` for command outputs
-3. Remove emoji prefixes from content (move to rendering layer)
-4. Store structured metadata instead of embedding in content
+
+3. Update direct call sites in `app.py` for SDK-relevant messages:
+   - **Line 638** (`_execute_direct_command`): Change to `message_type='tool_result'` for command outputs
+   - **Line 827** (`_handle_streamed_output`): Change to `message_type='assistant'` for bot responses (sender='bot')
+
+4. Keep trace events (thinking, tool_use, etc.) as-is - these are NOT SDK message types, just event logging for UI/debugging
+
+5. Remove emoji prefixes from content (move to rendering layer)
+
+6. Store structured metadata instead of embedding in content
 
 **Example wrapper approach:**
 ```python
@@ -247,10 +254,15 @@ This allows gradual migration without touching adapter code!
 
 ## Estimated Effort Update
 
-**Original Estimate:** Large (7 phases, 10+ scattered call sites)
-**Revised Estimate:** Medium-Large (7 phases, but Phase 2 now only 3-4 adapters)
+**Original Estimate:** Large (7 phases, 10+ scattered call sites for message storage)
+**Revised Estimate:** Medium-Large (7 phases, but Phase 2 now only 2 adapters + 2 direct call sites)
 
 The adapter refactoring reduced Phase 2 complexity significantly:
-- **Before**: 10+ call sites scattered across 1850-line app.py
-- **After**: 3 focused adapters + 4 call sites in app.py
-- **Benefit**: Easier testing, clearer boundaries, lower risk
+- **Before**: 10+ scattered `store_message_direct()` calls across 1850-line app.py
+- **After**: 2 adapter wrappers + 2 direct call sites in app.py
+- **Specific changes needed:**
+  - Wrap `HostMessageBroadcaster` injection (2 locations: lines 1664, 1695)
+  - Update `_ingest_user_message` for user messages
+  - Update line 638 for tool_result (command outputs)
+  - Update line 827 for assistant messages (bot responses)
+- **Benefit**: Clearer boundaries, easier testing, lower risk of missing call sites
