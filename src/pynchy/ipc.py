@@ -445,6 +445,112 @@ async def process_task_ipc(
                 success=result.get("success"),
             )
 
+        case "ralph_start":
+            prompt = data.get("prompt", "")
+            check_command = data.get("check_command", "")
+            target_folder = data.get("groupFolder", source_group)
+
+            if not prompt or not check_command:
+                logger.warning(
+                    "Invalid ralph_start request — missing prompt or check_command",
+                    source_group=source_group,
+                )
+                return
+
+            # Authorization: non-main groups can only start ralph loops for themselves
+            if not is_main and target_folder != source_group:
+                logger.warning(
+                    "Unauthorized ralph_start attempt blocked",
+                    source_group=source_group,
+                    target_folder=target_folder,
+                )
+                return
+
+            from pynchy.ralph import is_ralph_active
+            from pynchy.types import RalphLoopConfig
+
+            if is_ralph_active(target_folder):
+                logger.warning(
+                    "Ralph loop already active",
+                    target_folder=target_folder,
+                )
+                return
+
+            config = RalphLoopConfig(
+                prompt=prompt,
+                check_command=check_command,
+                max_iterations=data.get("max_iterations", 10),
+                session_mode=data.get("session_mode", "same"),
+                stagnation_threshold=data.get("stagnation_threshold", 3),
+            )
+
+            # Find the chat_jid for the target group
+            target_group = next(
+                ((jid, g) for jid, g in registered_groups.items() if g.folder == target_folder),
+                None,
+            )
+            if not target_group:
+                logger.warning(
+                    "Target group not found for ralph_start",
+                    target_folder=target_folder,
+                )
+                return
+
+            target_jid, _ = target_group
+
+            # Write ralph config to IPC directory for app to pick up
+            ralph_dir = DATA_DIR / "ipc" / target_folder
+            ralph_dir.mkdir(parents=True, exist_ok=True)
+            ralph_file = ralph_dir / "ralph_start.json"
+            ralph_file.write_text(
+                json.dumps(
+                    {
+                        "config": {
+                            "prompt": config.prompt,
+                            "check_command": config.check_command,
+                            "max_iterations": config.max_iterations,
+                            "session_mode": config.session_mode,
+                            "stagnation_threshold": config.stagnation_threshold,
+                        },
+                        "chat_jid": target_jid,
+                    }
+                )
+            )
+
+            deps.enqueue_message_check(target_jid)
+
+            logger.info(
+                "Ralph loop start requested via IPC",
+                source_group=source_group,
+                target_folder=target_folder,
+                check_command=check_command,
+            )
+
+        case "ralph_stop":
+            target_folder = data.get("groupFolder", source_group)
+
+            if not is_main and target_folder != source_group:
+                logger.warning(
+                    "Unauthorized ralph_stop attempt blocked",
+                    source_group=source_group,
+                    target_folder=target_folder,
+                )
+                return
+
+            from pynchy.ralph import stop_ralph
+
+            if stop_ralph(target_folder):
+                logger.info(
+                    "Ralph loop stop requested via IPC",
+                    source_group=source_group,
+                    target_folder=target_folder,
+                )
+            else:
+                logger.warning(
+                    "No active Ralph loop to stop",
+                    target_folder=target_folder,
+                )
+
         case "register_group":
             if not is_main:
                 logger.warning(

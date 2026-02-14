@@ -8,6 +8,7 @@ requires-python = ">=3.13"
 dependencies = [
     "aiohttp>=3.13.3",
     "aiosqlite>=0.22.1",
+    "anthropic>=0.79.0",
     "croniter>=6.0.0",
     "mcp>=1.26.0",
     "neonize>=0.3.14.post0",

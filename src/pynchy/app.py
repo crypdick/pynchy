@@ -97,6 +97,44 @@ from pynchy.types import (
 )
 
 
+async def _call_verifier_llm(prompt: str) -> str:
+    """Make a lightweight Claude API call for the Ralph loop verifier.
+
+    Uses the Anthropic SDK which handles both ANTHROPIC_API_KEY and
+    CLAUDE_CODE_OAUTH_TOKEN authentication automatically.
+    Uses Haiku for speed and cost — the verifier just needs to say CONTINUE or STOP.
+    """
+    import os
+
+    try:
+        import anthropic
+    except ImportError:
+        logger.error("anthropic SDK not installed, verifier cannot run")
+        return "STOP\nanthropic SDK not installed"
+
+    # The SDK auto-discovers ANTHROPIC_API_KEY from env.
+    # For OAuth token, we need to set it explicitly.
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        from pynchy.container_runner import _read_oauth_token
+
+        oauth_token = _read_oauth_token()
+        if oauth_token:
+            os.environ["ANTHROPIC_API_KEY"] = oauth_token
+
+    try:
+        client = anthropic.AsyncAnthropic()
+        response = await client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=256,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return response.content[0].text if response.content else "STOP\nEmpty response"
+    except Exception as exc:
+        logger.error("Verifier LLM call failed", error=str(exc))
+        return f"STOP\nVerifier LLM call failed: {exc}"
+
+
 def _merge_and_push_worktree(group_folder: str) -> None:
     """Merge worktree commits into main and push. Runs in a thread."""
     from pynchy.worktree import merge_worktree
@@ -458,6 +496,31 @@ class PynchyApp:
                     )
 
                 return result != "error"
+            return True
+
+        # Check for Ralph Wiggum loop start request
+        ralph_file = DATA_DIR / "ipc" / group.folder / "ralph_start.json"
+        if ralph_file.exists():
+            try:
+                ralph_data = json.loads(ralph_file.read_text())
+                ralph_file.unlink()
+            except Exception:
+                ralph_file.unlink(missing_ok=True)
+                return True
+
+            from pynchy.ralph import run_ralph_loop
+            from pynchy.types import RalphLoopConfig
+
+            config = RalphLoopConfig(**ralph_data["config"])
+            ralph_deps = self._make_ralph_deps(group)
+
+            # Run the ralph loop (this blocks until completion)
+            await run_ralph_loop(
+                config=config,
+                group_folder=group.folder,
+                chat_jid=chat_jid,
+                deps=ralph_deps,
+            )
             return True
 
         is_main_group = group.folder == MAIN_GROUP_FOLDER
@@ -1700,3 +1763,36 @@ class PynchyApp:
                 )
 
         return GitSyncDeps()
+
+    def _make_ralph_deps(self, group: RegisteredGroup) -> Any:
+        """Create the dependency object for a Ralph Wiggum loop."""
+        app = self
+
+        class _RalphDeps:
+            async def run_worker_agent(
+                self_inner,
+                group_folder: str,
+                chat_jid: str,
+                messages: list[dict],
+                on_output: Any | None,
+                extra_system_notices: list[str] | None,
+            ) -> str:
+                async def _on_output(result: ContainerOutput) -> None:
+                    await app._handle_streamed_output(chat_jid, group, result)
+
+                return await app._run_agent(
+                    group, chat_jid, messages, _on_output, extra_system_notices
+                )
+
+            async def run_verifier(self_inner, prompt: str) -> str:
+                return await _call_verifier_llm(prompt)
+
+            async def broadcast_host_message(self_inner, chat_jid: str, text: str) -> None:
+                await app._broadcast_host_message(chat_jid, text)
+
+            async def clear_session(self_inner, group_folder: str) -> None:
+                app.sessions.pop(group_folder, None)
+                app._session_cleared.add(group_folder)
+                await clear_session(group_folder)
+
+        return _RalphDeps()

@@ -95,3 +95,8 @@ def _detect_timezone() -> str:
 
 
 TIMEZONE: str = _detect_timezone()
+
+# Ralph Wiggum loop defaults
+RALPH_MAX_ITERATIONS: int = int(os.environ.get("RALPH_MAX_ITERATIONS", "10"))
+RALPH_STAGNATION_THRESHOLD: int = int(os.environ.get("RALPH_STAGNATION_THRESHOLD", "3"))
+RALPH_CHECK_TIMEOUT: float = float(os.environ.get("RALPH_CHECK_TIMEOUT", "120"))  # seconds

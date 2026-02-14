@@ -293,6 +293,34 @@ class Channel(Protocol):
     # prefix_assistant_name is NOT part of the protocol — use getattr with default.
 
 
+@dataclass
+class RalphLoopConfig:
+    """Configuration for a Ralph Wiggum loop.
+
+    A Ralph loop runs a worker agent iteratively, using an LLM verifier
+    to decide whether the task is complete or needs another iteration.
+    The verifier sees the check_command output and decides CONTINUE or STOP.
+    """
+
+    prompt: str  # Task prompt for the worker agent
+    check_command: str  # Shell command after each iteration (e.g. "pytest")
+    max_iterations: int = 10
+    session_mode: Literal["same", "fresh"] = "same"  # same=accumulate, fresh=clean
+    stagnation_threshold: int = 3  # halt if identical check output N times
+
+
+@dataclass
+class RalphLoopState:
+    """Runtime state of an active Ralph loop."""
+
+    config: RalphLoopConfig
+    group_folder: str
+    chat_jid: str
+    iteration: int = 0
+    recent_check_outputs: list[str] = field(default_factory=list)
+    active: bool = True
+
+
 # Callback types
 OnInboundMessage = Callable[[str, NewMessage], None]
 OnChatMetadata = Callable[[str, str, str | None], None]
