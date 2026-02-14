@@ -1,29 +1,4 @@
 schedule: "0 2 * * 0"
-prompt: |
-  This is a scheduled code improvement run.
-
-  1. First, check `git log --oneline -1` in /workspace/project. If the last commit
-     message starts with "[code improver] no improvements needed", exit immediately.
-     Nothing has changed since your last run.
-
-  2. Run `git log --oneline -20` to see recent history and your past work.
-
-  3. Review the codebase for concrete improvements. Pick the single most important
-     code improvement you can make in this session and execute it. Possibilities include:
-     dead code, duplicated logic, inconsistent patterns, missing error handling,
-     type safety gaps, bugs, improved abstractions, improving test coverage, or
-     any other kind of code improvement.
-
-  4. If something looks like an over-engineered mess, pause and ponder how to make
-     it more elegant.
-
-  5. If a code improvement requires design input, prompt the human.
-
-  6. If you find an improvement: make changes, run tests and linting, commit with
-     a message prefixed with `[code improver]`.
-
-  7. Do not feel obligated to make an edit. If the code is already good, just commit:
-     `git commit --allow-empty -m "[code improver] no improvements needed"`
-     and stop.
+prompt: "This is a scheduled code improvement run. Follow the workflow in your CLAUDE.md."
 context_mode: isolated
 project_access: true

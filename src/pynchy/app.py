@@ -822,7 +822,11 @@ class PynchyApp:
         on_output: Any | None = None,
     ) -> str:
         """Run the container agent for a group. Returns 'success' or 'error'."""
+        from pynchy.periodic import load_periodic_config
+
         is_main = group.folder == MAIN_GROUP_FOLDER
+        periodic_config = load_periodic_config(group.folder)
+        project_access = periodic_config.project_access if periodic_config else False
         session_id = self.sessions.get(group.folder)
 
         # Update snapshots for container to read
@@ -904,6 +908,7 @@ class PynchyApp:
                     chat_jid=chat_jid,
                     is_main=is_main,
                     system_notices=system_notices or None,
+                    project_access=project_access,
                 ),
                 on_process=lambda proc, name: self.queue.register_process(
                     chat_jid, proc, name, group.folder
