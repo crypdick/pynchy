@@ -45,7 +45,134 @@ class ContainerConfig:
 
 
 @dataclass
+class McpToolConfig:
+    """Configuration for a single MCP tool."""
+
+    risk_tier: Literal["read-only", "policy-check", "human-approval"]
+    enabled: bool = True
+
+
+@dataclass
+class WorkspaceSecurity:
+    """Security configuration for a workspace."""
+
+    # MCP tool permissions (tool_name -> config)
+    mcp_tools: dict[str, McpToolConfig] = field(default_factory=dict)
+
+    # Default risk tier for tools not explicitly configured
+    default_risk_tier: Literal["read-only", "policy-check", "human-approval"] = "human-approval"
+
+    # Filesystem and network access
+    allow_filesystem_access: bool = True
+    allow_network_access: bool = True
+
+
+@dataclass
+class WorkspaceProfile:
+    """Complete workspace configuration with security profile.
+
+    Replaces RegisteredGroup with added security features for Phase B.1
+    of security hardening.
+    """
+
+    # Identity
+    jid: str  # WhatsApp JID or workspace identifier
+    name: str  # Display name
+    folder: str  # Folder under groups/
+
+    # Communication
+    trigger: str  # @mention to activate (e.g., "@Pynchy")
+    requires_trigger: bool = True  # Whether trigger is required (False for 1-on-1 chats)
+
+    # Container runtime
+    container_config: ContainerConfig | None = None
+
+    # Security profile (Phase B.1)
+    security: WorkspaceSecurity = field(default_factory=WorkspaceSecurity)
+
+    # Metadata
+    added_at: str = ""
+
+    def validate(self) -> list[str]:
+        """Validate workspace configuration.
+
+        Returns:
+            List of error messages (empty if valid)
+        """
+        errors = []
+
+        # Validate required fields
+        if not self.name:
+            errors.append("Workspace name is required")
+        if not self.folder:
+            errors.append("Workspace folder is required")
+        if not self.trigger:
+            errors.append("Workspace trigger is required")
+
+        # Validate MCP tool risk tiers
+        valid_tiers = {"read-only", "policy-check", "human-approval"}
+        for tool_name, config in self.security.mcp_tools.items():
+            if config.risk_tier not in valid_tiers:
+                errors.append(
+                    f"Invalid risk tier '{config.risk_tier}' for tool '{tool_name}'. "
+                    f"Must be one of: {', '.join(valid_tiers)}"
+                )
+
+        # Validate default risk tier
+        if self.security.default_risk_tier not in valid_tiers:
+            errors.append(
+                f"Invalid default risk tier '{self.security.default_risk_tier}'. "
+                f"Must be one of: {', '.join(valid_tiers)}"
+            )
+
+        return errors
+
+    @classmethod
+    def from_registered_group(cls, jid: str, rg: RegisteredGroup) -> WorkspaceProfile:
+        """Migrate from old RegisteredGroup format.
+
+        Args:
+            jid: The workspace JID
+            rg: RegisteredGroup instance to migrate
+
+        Returns:
+            WorkspaceProfile with default security settings
+        """
+        return cls(
+            jid=jid,
+            name=rg.name,
+            folder=rg.folder,
+            trigger=rg.trigger,
+            requires_trigger=rg.requires_trigger if rg.requires_trigger is not None else True,
+            container_config=rg.container_config,
+            security=WorkspaceSecurity(),  # Default security profile
+            added_at=rg.added_at,
+        )
+
+    def to_registered_group(self) -> RegisteredGroup:
+        """Convert to legacy RegisteredGroup format for backward compatibility.
+
+        Returns:
+            RegisteredGroup instance (security info is lost)
+        """
+        return RegisteredGroup(
+            name=self.name,
+            folder=self.folder,
+            trigger=self.trigger,
+            added_at=self.added_at,
+            container_config=self.container_config,
+            requires_trigger=self.requires_trigger,
+        )
+
+
+@dataclass
 class RegisteredGroup:
+    """Legacy group configuration format.
+
+    DEPRECATED: Use WorkspaceProfile instead.
+    Kept for backward compatibility during migration.
+    """
+
     name: str
     folder: str
     trigger: str

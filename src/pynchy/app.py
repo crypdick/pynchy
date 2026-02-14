@@ -49,17 +49,17 @@ from pynchy.db import (
     create_task,
     get_active_task_for_group,
     get_all_chats,
-    get_all_registered_groups,
     get_all_sessions,
     get_all_tasks,
+    get_all_workspace_profiles,
     get_messages_since,
     get_new_messages,
     get_router_state,
     init_database,
     set_chat_cleared_at,
-    set_registered_group,
     set_router_state,
     set_session,
+    set_workspace_profile,
     store_chat_metadata,
     store_message,
     store_message_direct,
@@ -86,7 +86,14 @@ from pynchy.router import format_tool_preview, parse_host_tag
 from pynchy.service_installer import install_service
 from pynchy.system_checks import check_tailscale, ensure_container_system_running
 from pynchy.task_scheduler import start_scheduler_loop
-from pynchy.types import Channel, ContainerInput, ContainerOutput, NewMessage, RegisteredGroup
+from pynchy.types import (
+    Channel,
+    ContainerInput,
+    ContainerOutput,
+    NewMessage,
+    RegisteredGroup,
+    WorkspaceProfile,
+)
 
 
 def _merge_and_push_worktree(group_folder: str) -> None:
@@ -114,7 +121,8 @@ class PynchyApp:
         self.last_timestamp: str = ""
         self.sessions: dict[str, str] = {}
         self._session_cleared: set[str] = set()  # group folders with pending clears
-        self.registered_groups: dict[str, RegisteredGroup] = {}
+        self.workspaces: dict[str, WorkspaceProfile] = {}  # New: workspace profiles
+        self.registered_groups: dict[str, RegisteredGroup] = {}  # Legacy: backward compat
         self.last_agent_timestamp: dict[str, str] = {}
         self.message_loop_running: bool = False
         self.queue: GroupQueue = GroupQueue()
@@ -138,9 +146,18 @@ class PynchyApp:
             logger.warning("Corrupted last_agent_timestamp in DB, resetting")
             self.last_agent_timestamp = {}
         self.sessions = await get_all_sessions()
-        self.registered_groups = await get_all_registered_groups()
+
+        # Load workspace profiles (new security-aware format)
+        self.workspaces = await get_all_workspace_profiles()
+
+        # Maintain backward compatibility with registered_groups
+        self.registered_groups = {
+            jid: profile.to_registered_group() for jid, profile in self.workspaces.items()
+        }
+
         logger.info(
             "State loaded",
+            workspace_count=len(self.workspaces),
             group_count=len(self.registered_groups),
         )
 
@@ -156,16 +173,32 @@ class PynchyApp:
     # Group management
     # ------------------------------------------------------------------
 
-    async def _register_group(self, jid: str, group: RegisteredGroup) -> None:
-        """Register a new group and persist it."""
-        self.registered_groups[jid] = group
-        await set_registered_group(jid, group)
+    async def _register_workspace(self, profile: WorkspaceProfile) -> None:
+        """Register a new workspace and persist it."""
+        self.workspaces[profile.jid] = profile
+        self.registered_groups[profile.jid] = profile.to_registered_group()  # Backward compat
+        await set_workspace_profile(profile)
 
-        group_dir = GROUPS_DIR / group.folder
-        (group_dir / "logs").mkdir(parents=True, exist_ok=True)
+        workspace_dir = GROUPS_DIR / profile.folder
+        (workspace_dir / "logs").mkdir(parents=True, exist_ok=True)
 
         logger.info(
-            "Group registered",
+            "Workspace registered",
+            jid=profile.jid,
+            name=profile.name,
+            folder=profile.folder,
+        )
+
+    async def _register_group(self, jid: str, group: RegisteredGroup) -> None:
+        """Register a new group and persist it.
+
+        DEPRECATED: Use _register_workspace() instead.
+        """
+        profile = WorkspaceProfile.from_registered_group(jid, group)
+        await self._register_workspace(profile)
+
+        logger.info(
+            "Group registered (legacy method)",
             jid=jid,
             name=group.name,
             folder=group.folder,
@@ -321,14 +354,17 @@ class PynchyApp:
 
         jid = await whatsapp.create_group(group_name)
 
-        group = RegisteredGroup(
+        # Create main workspace with default security profile
+        profile = WorkspaceProfile(
+            jid=jid,
             name=group_name,
             folder=MAIN_GROUP_FOLDER,
             trigger=f"@{ASSISTANT_NAME}",
             added_at=datetime.now(UTC).isoformat(),
             requires_trigger=False,
+            # Default security: all tools require human approval
         )
-        await self._register_group(jid, group)
+        await self._register_workspace(profile)
         logger.info(
             "Main channel created! Open the group in WhatsApp to start chatting.",
             group=group_name,
