@@ -434,7 +434,7 @@ async def process_task_ipc(
                     def registered_groups(self) -> dict[str, RegisteredGroup]:
                         return deps.registered_groups()
 
-                    async def trigger_deploy(self) -> None:
+                    async def trigger_deploy(self, previous_sha: str) -> None:
                         pass  # not used for post-sync broadcast
 
                 await host_notify_worktree_updates(source_group, _GitSyncAdapter())

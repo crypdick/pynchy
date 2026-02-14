@@ -1663,7 +1663,7 @@ class PynchyApp:
             def registered_groups(self_inner) -> dict[str, Any]:
                 return group_registry.registered_groups()
 
-            async def trigger_deploy(self_inner) -> None:
+            async def trigger_deploy(self_inner, previous_sha: str) -> None:
                 chat_jid = group_registry.main_chat_jid()
                 if chat_jid:
                     await host_broadcaster.broadcast_host_message(
@@ -1696,7 +1696,7 @@ class PynchyApp:
                     broadcast_host_message=host_broadcaster.broadcast_host_message,
                     chat_jid=chat_jid,
                     commit_sha=_get_head_sha(),
-                    previous_sha=_get_head_sha(),
+                    previous_sha=previous_sha,
                 )
 
         return GitSyncDeps()
