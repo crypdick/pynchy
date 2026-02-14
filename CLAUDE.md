@@ -89,6 +89,10 @@ uvx pre-commit run --all-files  # Run all pre-commit hooks
 ./container/build.sh     # Rebuild agent container
 ```
 
+## Documentation Lookup
+
+When you need documentation for a library or framework, use the context7 MCP server to get up-to-date docs. Don't rely on training data for API details that may have changed.
+
 ## Testing Philosophy
 
 Write tests that validate **actual business logic**, not just line coverage.
