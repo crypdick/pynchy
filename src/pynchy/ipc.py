@@ -107,9 +107,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
                                 and data.get("text")
                             ):
                                 target_group = registered_groups.get(data["chatJid"])
-                                if is_god or (
-                                    target_group and target_group.folder == source_group
-                                ):
+                                if is_god or (target_group and target_group.folder == source_group):
                                     await deps.send_message(
                                         data["chatJid"],
                                         f"{ASSISTANT_NAME}: {data['text']}",

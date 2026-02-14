@@ -19,17 +19,22 @@ class TestPluginManager:
         assert pm is not None
         assert pm.project_name == "pynchy"
 
-    def test_built_in_claude_plugin_registered(self):
-        """Built-in Claude plugin is registered automatically."""
+    def test_built_in_plugins_registered(self):
+        """Built-in Claude and OpenAI plugins are registered automatically."""
         pm = get_plugin_manager()
 
         cores = pm.hook.pynchy_agent_core_info()
-        assert len(cores) >= 1
+        assert len(cores) >= 2
 
         claude_core = next((c for c in cores if c["name"] == "claude"), None)
         assert claude_core is not None
         assert claude_core["module"] == "agent_runner.cores.claude"
         assert claude_core["class_name"] == "ClaudeAgentCore"
+
+        openai_core = next((c for c in cores if c["name"] == "openai"), None)
+        assert openai_core is not None
+        assert openai_core["module"] == "agent_runner.cores.openai"
+        assert openai_core["class_name"] == "OpenAIAgentCore"
 
     def test_plugin_manager_has_hookspecs(self):
         """Plugin manager has all expected hook specifications."""
@@ -181,8 +186,8 @@ class TestHookCalling:
 
         cores = pm.hook.pynchy_agent_core_info()
 
-        # Results from all plugins (including built-in Claude)
-        assert len(cores) >= 3
+        # Results from all plugins (including built-in Claude and OpenAI)
+        assert len(cores) >= 4
         names = [c["name"] for c in cores]
         assert "core1" in names
         assert "core2" in names

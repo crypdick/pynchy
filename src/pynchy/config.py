@@ -28,6 +28,7 @@ DATA_DIR: Path = (PROJECT_ROOT / "data").resolve()
 GOD_GROUP_FOLDER: str = "god"
 
 # Container settings (time values converted from ms to seconds)
+DEFAULT_AGENT_CORE: str = os.environ.get("PYNCHY_AGENT_CORE", "claude")
 CONTAINER_IMAGE: str = os.environ.get("CONTAINER_IMAGE", "pynchy-agent:latest")
 CONTAINER_TIMEOUT: float = int(os.environ.get("CONTAINER_TIMEOUT", "1800000")) / 1000
 CONTAINER_MAX_OUTPUT_SIZE: int = int(

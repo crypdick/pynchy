@@ -30,6 +30,7 @@ from pynchy.adapters import (
 from pynchy.config import (
     ASSISTANT_NAME,
     DATA_DIR,
+    DEFAULT_AGENT_CORE,
     DEPLOY_PORT,
     GOD_GROUP_FOLDER,
     GROUPS_DIR,
@@ -986,14 +987,16 @@ class PynchyApp:
         # messages contains the persistent conversation history (with message types)
         # The container appends system_notices to the SDK system_prompt parameter
 
-        # Look up agent core plugin (default to Claude if not found)
+        # Look up agent core plugin by configured name
         agent_core_module = "agent_runner.cores.claude"
         agent_core_class = "ClaudeAgentCore"
         if self.plugin_manager:
-            # Use first agent core plugin (in the future, support per-group config)
             cores = self.plugin_manager.hook.pynchy_agent_core_info()
-            if cores:
+            desired = DEFAULT_AGENT_CORE
+            core_info = next((c for c in cores if c["name"] == desired), None)
+            if core_info is None and cores:
                 core_info = cores[0]
+            if core_info:
                 agent_core_module = core_info["module"]
                 agent_core_class = core_info["class_name"]
 
