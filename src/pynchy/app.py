@@ -643,6 +643,8 @@ class PynchyApp:
                 content=output_text,
                 timestamp=ts,
                 is_from_me=True,
+                message_type="tool_result",
+                metadata={"exit_code": result.returncode},
             )
 
             # Send to channels
@@ -824,6 +826,8 @@ class PynchyApp:
                     db_content = text
                     channel_text = f"{ASSISTANT_NAME}: {text}"
                     logger.info("Agent output", group=group.name, text=raw[:200])
+                # Determine message type based on sender
+                msg_type = "host" if sender == "host" else "assistant"
                 await store_message_direct(
                     id=f"bot-{int(datetime.now(UTC).timestamp() * 1000)}",
                     chat_jid=chat_jid,
@@ -832,6 +836,7 @@ class PynchyApp:
                     content=db_content,
                     timestamp=ts,
                     is_from_me=True,
+                    message_type=msg_type,
                 )
                 await self._broadcast_to_channels(chat_jid, channel_text, suppress_errors=False)
                 self.event_bus.emit(
@@ -1334,6 +1339,7 @@ class PynchyApp:
             content=text,
             timestamp=ts,
             is_from_me=True,
+            message_type="host",
         )
         channel_text = f"\U0001f3e0 {text}"
         await self._broadcast_to_channels(chat_jid, channel_text)
@@ -1672,8 +1678,13 @@ WantedBy=default.target
         """Create the dependency object for the HTTP server."""
         # Use composition of adapters instead of manual delegation
         broadcaster = MessageBroadcaster(self.channels)
+
+        # Wrapper to inject message_type='host' for host messages
+        async def store_host_message(**kwargs: Any) -> None:
+            await store_message_direct(**kwargs, message_type="host")
+
         host_broadcaster = HostMessageBroadcaster(
-            broadcaster, store_message_direct, self.event_bus.emit
+            broadcaster, store_host_message, self.event_bus.emit
         )
         group_registry = GroupRegistry(self.registered_groups)
         metadata_manager = GroupMetadataManager(
@@ -1703,8 +1714,13 @@ WantedBy=default.target
         """Create the dependency object for the IPC watcher."""
         # Use composition of adapters instead of manual delegation
         broadcaster = MessageBroadcaster(self.channels)
+
+        # Wrapper to inject message_type='host' for host messages
+        async def store_host_message(**kwargs: Any) -> None:
+            await store_message_direct(**kwargs, message_type="host")
+
         host_broadcaster = HostMessageBroadcaster(
-            broadcaster, store_message_direct, self.event_bus.emit
+            broadcaster, store_host_message, self.event_bus.emit
         )
         registration_manager = GroupRegistrationManager(
             self.registered_groups, self._register_group, self._send_clear_confirmation
