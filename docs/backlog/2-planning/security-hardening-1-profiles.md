@@ -181,7 +181,7 @@ except SecurityProfileError as e:
 
 ## Configuration Examples
 
-### Example: Main Group (Trusted)
+### Example: God Group (Trusted)
 
 ```json
 {

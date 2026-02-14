@@ -28,7 +28,7 @@ class AllowedRoot:
 class MountAllowlist:
     allowed_roots: list[AllowedRoot] = field(default_factory=list)
     blocked_patterns: list[str] = field(default_factory=list)
-    non_main_read_only: bool = True
+    non_god_read_only: bool = True
 
 
 @dataclass
@@ -226,7 +226,7 @@ class ContainerInput:
     messages: list[dict]  # SDK message list with message types
     group_folder: str
     chat_jid: str
-    is_main: bool
+    is_god: bool
     session_id: str | None = None
     is_scheduled_task: bool = False
     plugin_mcp_servers: dict[str, dict] | None = None

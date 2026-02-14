@@ -53,7 +53,7 @@ A personal Claude assistant accessible via WhatsApp, with persistent memory per 
 │  │  Working directory: /workspace/group (mounted from host)       │   │
 │  │  Volume mounts:                                                │   │
 │  │    • groups/{name}/ → /workspace/group                         │   │
-│  │    • groups/global/ → /workspace/global/ (non-main only)        │   │
+│  │    • groups/global/ → /workspace/global/ (non-god only)          │   │
 │  │    • data/sessions/{group}/.claude/ → /home/node/.claude/      │   │
 │  │    • Additional dirs → /workspace/extra/*                      │   │
 │  │                                                                │   │
@@ -141,7 +141,7 @@ pynchy/
 │
 ├── groups/
 │   ├── CLAUDE.md                  # Global memory (all groups read this)
-│   ├── main/                      # Self-chat (main control channel)
+│   ├── god/                       # Self-chat (god control channel)
 │   │   ├── CLAUDE.md              # Main channel memory
 │   │   └── logs/                  # Task execution logs
 │   └── {Group Name}/              # Per-group folders (created on registration)
@@ -285,11 +285,11 @@ Pynchy uses a hierarchical memory system based on CLAUDE.md files.
 
 2. **Writing Memory**
    - When user says "remember this", agent writes to `./CLAUDE.md`
-   - When user says "remember this globally" (main channel only), agent writes to `../CLAUDE.md`
+   - When user says "remember this globally" (god channel only), agent writes to `../CLAUDE.md`
    - Agent can create files like `notes.md`, `research.md` in the group folder
 
 3. **Main Channel Privileges**
-   - Only the "main" group (self-chat) can write to global memory
+   - Only the "god" group (self-chat) can write to global memory
    - Main can manage registered groups and schedule tasks for any group
    - Main can configure additional directory mounts for any group
    - All groups have Bash access (safe because it runs inside container)
@@ -405,7 +405,7 @@ Pynchy has a built-in scheduler that runs tasks as full agents in their group's 
 1. **Group Context**: Tasks created in a group run with that group's working directory and memory
 2. **Full Agent Capabilities**: Scheduled tasks have access to all tools (WebSearch, file operations, etc.)
 3. **Optional Messaging**: Tasks can send messages to their group using the `send_message` tool, or complete silently
-4. **Main Channel Privileges**: The main channel can schedule tasks for any group and view all tasks
+4. **God Channel Privileges**: The god channel can schedule tasks for any group and view all tasks
 
 ### Schedule Types
 
@@ -451,7 +451,7 @@ From any group:
 - `@Andy resume task [id]` - Resume a paused task
 - `@Andy cancel task [id]` - Delete a task
 
-From main channel:
+From god channel:
 - `@Andy list all tasks` - View tasks from all groups
 - `@Andy schedule task for "Family Chat": [prompt]` - Schedule for another group
 
@@ -467,7 +467,7 @@ The `pynchy` MCP server is created dynamically per agent call with the current g
 | Tool | Purpose |
 |------|---------|
 | `schedule_task` | Schedule a recurring or one-time task |
-| `list_tasks` | Show tasks (group's tasks, or all if main) |
+| `list_tasks` | Show tasks (group's tasks, or all if god) |
 | `get_task` | Get task details and run history |
 | `update_task` | Modify task prompt or schedule |
 | `pause_task` | Pause a task |
@@ -610,7 +610,7 @@ chmod 700 groups/
 | Session not continuing | Session ID not saved | Check SQLite: `sqlite3 store/messages.db "SELECT * FROM sessions"` |
 | Session not continuing | Mount path mismatch | Container user is `node` with HOME=/home/node; sessions must be at `/home/node/.claude/` |
 | "QR code expired" | WhatsApp session expired | Delete store/auth/ and restart |
-| "No groups registered" | Haven't added groups | Use `@Andy add group "Name"` in main |
+| "No groups registered" | Haven't added groups | Use `@Andy add group "Name"` in god |
 
 ### Log Location
 

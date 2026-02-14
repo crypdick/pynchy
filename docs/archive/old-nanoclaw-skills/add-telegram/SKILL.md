@@ -521,13 +521,13 @@ After installing and starting the bot, tell the user:
 Registration uses the `registerGroup()` function in `src/index.ts`, which writes to SQLite and creates the group folder structure. Call it like this (or add a one-time script):
 
 ```typescript
-// For private chat (main group):
+// For private chat (god group):
 registerGroup("tg:123456789", {
   name: "Personal",
   folder: "main",
   trigger: `@${ASSISTANT_NAME}`,
   added_at: new Date().toISOString(),
-  requiresTrigger: false, // main group responds to all messages
+  requiresTrigger: false, // god group responds to all messages
 });
 
 // For group chat (note negative ID for Telegram groups):
@@ -542,7 +542,7 @@ registerGroup("tg:-1001234567890", {
 
 The `RegisteredGroup` type requires a `trigger` string field and has an optional `requiresTrigger` boolean (defaults to `true`). Set `requiresTrigger: false` for chats that should respond to all messages.
 
-Alternatively, if the agent is already running in the main group, it can register new groups via IPC using the `register_group` task type.
+Alternatively, if the agent is already running in the god group, it can register new groups via IPC using the `register_group` task type.
 
 ### Step 6: Build and Restart
 
@@ -564,7 +564,7 @@ Tell the user:
 
 > Send a message to your registered Telegram chat:
 > - For main chat: Any message works
-> - For non-main: `@Andy hello` or @mention the bot
+> - For non-god: `@Andy hello` or @mention the bot
 >
 > Check logs: `tail -f logs/nanoclaw.log`
 
@@ -588,7 +588,7 @@ If user wants Telegram-only:
 ### Trigger Options
 
 The bot responds when:
-1. Chat has `requiresTrigger: false` in its registration (e.g., main group)
+1. Chat has `requiresTrigger: false` in its registration (e.g., god group)
 2. Bot is @mentioned in Telegram (translated to TRIGGER_PATTERN automatically)
 3. Message matches TRIGGER_PATTERN directly (e.g., starts with @Andy)
 
@@ -608,7 +608,7 @@ Telegram @mentions (e.g., `@andy_ai_bot`) are automatically translated: if the b
 Check:
 1. `TELEGRAM_BOT_TOKEN` is set in `.env` AND synced to `data/env/env`
 2. Chat is registered in SQLite (check with: `sqlite3 store/messages.db "SELECT * FROM registered_groups WHERE jid LIKE 'tg:%'"`)
-3. For non-main chats: message includes trigger pattern
+3. For non-god chats: message includes trigger pattern
 4. Service is running: `launchctl list | grep nanoclaw`
 
 ### Bot only responds to @mentions in groups

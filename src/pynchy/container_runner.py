@@ -44,7 +44,7 @@ def _input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
         "messages": input_data.messages,
         "group_folder": input_data.group_folder,
         "chat_jid": input_data.chat_jid,
-        "is_main": input_data.is_main,
+        "is_god": input_data.is_god,
     }
     if input_data.session_id is not None:
         d["session_id"] = input_data.session_id
@@ -329,7 +329,7 @@ def _write_settings_json(session_dir: Path) -> None:
 
 def _build_volume_mounts(
     group: RegisteredGroup,
-    is_main: bool,
+    is_god: bool,
     plugin_manager: Any = None,
     project_access: bool = False,
     worktree_path: Path | None = None,
@@ -338,7 +338,7 @@ def _build_volume_mounts(
 
     Args:
         group: The registered group configuration
-        is_main: Whether this is the main group
+        is_god: Whether this is the god group
         plugin_manager: Optional pluggy.PluginManager for plugin MCP mounts
         project_access: Whether to mount the host project into the container
         worktree_path: Pre-resolved worktree path for non-main project_access groups
@@ -394,7 +394,7 @@ def _build_volume_mounts(
     # Additional mounts validated against external allowlist
     if group.container_config and group.container_config.additional_mounts:
         validated = validate_additional_mounts(
-            group.container_config.additional_mounts, group.name, is_main
+            group.container_config.additional_mounts, group.name, is_god
         )
         for m in validated:
             mounts.append(
@@ -519,7 +519,7 @@ def _write_run_log(
         "=== Container Run Log ===",
         f"Timestamp: {datetime.now(UTC).isoformat()}",
         f"Group: {group_name}",
-        f"IsMain: {input_data.is_main}",
+        f"IsMain: {input_data.is_god}",
         f"Duration: {duration_ms:.0f}ms",
         f"Exit Code: {exit_code}",
         f"Stdout Truncated: {stdout_truncated}",
@@ -633,7 +633,7 @@ async def run_container_agent(
     group_dir = GROUPS_DIR / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
 
-    # Resolve worktree for all project_access groups (including main).
+    # Resolve worktree for all project_access groups (including god).
     # Uses best-effort sync — uncommitted changes from killed containers are
     # preserved and reported via system notices so the agent can resume.
     worktree_path: Path | None = None
@@ -648,7 +648,7 @@ async def run_container_agent(
             input_data.system_notices.extend(wt_result.notices)
 
     mounts = _build_volume_mounts(
-        group, input_data.is_main, plugin_manager, input_data.project_access, worktree_path
+        group, input_data.is_god, plugin_manager, input_data.project_access, worktree_path
     )
 
     # Collect plugin MCP server specs
@@ -679,7 +679,7 @@ async def run_container_agent(
         group=group.name,
         container=container_name,
         mount_count=len(mounts),
-        is_main=input_data.is_main,
+        is_god=input_data.is_god,
     )
 
     logs_dir = GROUPS_DIR / group.folder / "logs"
@@ -908,21 +908,21 @@ async def run_container_agent(
 
 def write_tasks_snapshot(
     folder: str,
-    is_main: bool,
+    is_god: bool,
     tasks: list[dict[str, Any]],
 ) -> None:
     """Write current_tasks.json to the group's IPC directory."""
     group_ipc_dir = DATA_DIR / "ipc" / folder
     group_ipc_dir.mkdir(parents=True, exist_ok=True)
 
-    # Main sees all tasks, others only see their own
-    filtered = tasks if is_main else [t for t in tasks if t.get("groupFolder") == folder]
+    # God sees all tasks, others only see their own
+    filtered = tasks if is_god else [t for t in tasks if t.get("groupFolder") == folder]
     (group_ipc_dir / "current_tasks.json").write_text(json.dumps(filtered, indent=2))
 
 
 def write_groups_snapshot(
     folder: str,
-    is_main: bool,
+    is_god: bool,
     groups: list[dict[str, Any]],
     registered_jids: set[str],
 ) -> None:
@@ -930,8 +930,8 @@ def write_groups_snapshot(
     group_ipc_dir = DATA_DIR / "ipc" / folder
     group_ipc_dir.mkdir(parents=True, exist_ok=True)
 
-    # Main sees all groups; others see nothing (they can't activate groups)
-    visible = groups if is_main else []
+    # God sees all groups; others see nothing (they can't activate groups)
+    visible = groups if is_god else []
     payload = {
         "groups": visible,
         "lastSync": datetime.now(UTC).isoformat(),

@@ -13,9 +13,9 @@ from zoneinfo import ZoneInfo
 from croniter import croniter
 
 from pynchy.config import (
+    GOD_GROUP_FOLDER,
     GROUPS_DIR,
     IDLE_TIMEOUT,
-    MAIN_GROUP_FOLDER,
     SCHEDULER_POLL_INTERVAL,
     TIMEZONE,
 )
@@ -119,13 +119,13 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
         )
         return
 
-    _is_main = task.group_folder == MAIN_GROUP_FOLDER
+    _is_god = task.group_folder == GOD_GROUP_FOLDER
 
     # Write tasks snapshot so the container can read current task state
     all_tasks = await get_all_tasks()
     write_tasks_snapshot(
         task.group_folder,
-        _is_main,
+        _is_god,
         [
             {
                 "id": t.id,
@@ -192,7 +192,7 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
             messages=task_messages,
             group_folder=task.group_folder,
             chat_jid=task.chat_jid,
-            is_main=_is_main,
+            is_god=_is_god,
             session_id=_session_id,
             is_scheduled_task=True,
             project_access=task.project_access,

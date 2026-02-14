@@ -551,8 +551,8 @@ class TestRunTask:
 
         snapshots = []
 
-        def mock_write_snapshot(group_folder, is_main, tasks):
-            snapshots.append((group_folder, is_main, tasks))
+        def mock_write_snapshot(group_folder, is_god, tasks):
+            snapshots.append((group_folder, is_god, tasks))
 
         async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
             return ContainerOutput(status="success", result="Done")
