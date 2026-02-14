@@ -68,6 +68,7 @@ class ContainerInput:
         self.is_main: bool = data["is_main"]
         self.is_scheduled_task: bool = data.get("is_scheduled_task", False)
         self.system_notices: list[str] | None = data.get("system_notices")
+        self.plugin_mcp_servers: dict[str, Any] | None = data.get("plugin_mcp_servers")
 
 
 class ContainerOutput:
