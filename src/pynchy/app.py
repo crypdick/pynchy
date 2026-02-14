@@ -614,17 +614,13 @@ class PynchyApp:
             )
             return False
 
-        # Push local commits after successful agent session (main group only)
-        if is_main_group:
-            asyncio.create_task(asyncio.to_thread(_push_local_commits))
+        # Merge worktree commits into main and push for all project_access groups
+        from pynchy.periodic import load_periodic_config as _load_periodic
 
-        # Merge worktree commits and push for non-main groups with project access
-        if not is_main_group:
-            from pynchy.periodic import load_periodic_config as _load_periodic
-
-            _periodic = _load_periodic(group.folder)
-            if _periodic and _periodic.project_access:
-                asyncio.create_task(asyncio.to_thread(_merge_and_push_worktree, group.folder))
+        _periodic = _load_periodic(group.folder)
+        _project_access = is_main_group or (_periodic.project_access if _periodic else False)
+        if _project_access:
+            asyncio.create_task(asyncio.to_thread(_merge_and_push_worktree, group.folder))
 
         return True
 
@@ -903,7 +899,7 @@ class PynchyApp:
 
         is_main = group.folder == MAIN_GROUP_FOLDER
         periodic_config = load_periodic_config(group.folder)
-        project_access = periodic_config.project_access if periodic_config else False
+        project_access = is_main or (periodic_config.project_access if periodic_config else False)
         session_id = self.sessions.get(group.folder)
 
         # Update snapshots for container to read

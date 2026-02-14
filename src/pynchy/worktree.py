@@ -77,7 +77,9 @@ def ensure_worktree(group_folder: str) -> WorktreeResult:
         WorktreeError: If creating a new worktree fails
     """
     worktree_path = WORKTREES_DIR / group_folder
-    branch_name = f"{group_folder}/workspace"
+    # Use worktree/ prefix to avoid ref conflicts (e.g. "main/workspace" would
+    # conflict with the "main" branch since git refs are path-based).
+    branch_name = f"worktree/{group_folder}"
     main_branch = _detect_main_branch()
 
     if worktree_path.exists():
@@ -175,7 +177,7 @@ def merge_worktree(group_folder: str) -> bool:
     Returns:
         True if merge succeeded or nothing to merge, False if non-fast-forward
     """
-    branch_name = f"{group_folder}/workspace"
+    branch_name = f"worktree/{group_folder}"
 
     # Check if worktree branch has commits ahead of HEAD
     count = _run_git("rev-list", f"HEAD..{branch_name}", "--count")
