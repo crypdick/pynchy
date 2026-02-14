@@ -471,6 +471,7 @@ class PynchyApp:
         prompt = format_messages(missed_messages)
 
         # Check if we need to add dirty repo warning after context reset
+        reset_system_notices: list[str] = []
         dirty_check_file = DATA_DIR / "ipc" / group.folder / "needs_dirty_check.json"
         if dirty_check_file.exists() and is_main_group:
             try:
@@ -483,17 +484,15 @@ class PynchyApp:
                     text=True,
                 )
                 if dirty.returncode == 0 and dirty.stdout.strip():
-                    # Inject system reminder about uncommitted changes
-                    prompt = (
-                        f"{prompt}\n\n<system-reminder>\n"
+                    # Add system notice about uncommitted changes
+                    reset_system_notices.append(
                         "WARNING: Uncommitted changes detected in the repository. "
                         "Please review and commit these changes so that you may work "
                         "with a clean slate. "
-                        "Run `git status` and `git diff` to see what has changed.\n"
-                        "</system-reminder>"
+                        "Run `git status` and `git diff` to see what has changed."
                     )
                     logger.info(
-                        "Injected dirty repo warning after reset",
+                        "Added dirty repo warning after reset",
                         group=group.name,
                     )
             except Exception as exc:
@@ -552,7 +551,9 @@ class PynchyApp:
             if result.status == "error":
                 had_error = True
 
-        agent_result = await self._run_agent(group, prompt, chat_jid, on_output)
+        agent_result = await self._run_agent(
+            group, prompt, chat_jid, on_output, reset_system_notices or None
+        )
 
         await self._set_typing_on_channels(chat_jid, False)
         self.event_bus.emit(AgentActivityEvent(chat_jid=chat_jid, active=False))
@@ -838,6 +839,7 @@ class PynchyApp:
         prompt: str,
         chat_jid: str,
         on_output: Any | None = None,
+        extra_system_notices: list[str] | None = None,
     ) -> str:
         """Run the container agent for a group. Returns 'success' or 'error'."""
         from pynchy.periodic import load_periodic_config
@@ -912,6 +914,13 @@ class PynchyApp:
                     "Consider whether to address these issues "
                     "before or after handling the new message."
                 )
+
+        # Add any extra system notices passed in
+        if extra_system_notices:
+            if system_notices:
+                system_notices.extend(extra_system_notices)
+            else:
+                system_notices = extra_system_notices[:]
 
         # Clear the guard — this container run starts fresh
         self._session_cleared.discard(group.folder)
