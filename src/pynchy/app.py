@@ -718,6 +718,7 @@ class PynchyApp:
         *,
         db_id_prefix: str,
         db_sender: str,
+        message_type: str = "assistant",
     ) -> None:
         """Store a trace event, send to channels, and emit to EventBus."""
         ts = datetime.now(UTC).isoformat()
@@ -729,6 +730,7 @@ class PynchyApp:
             content=json.dumps(data),
             timestamp=ts,
             is_from_me=True,
+            message_type=message_type,
         )
         await self._broadcast_to_channels(chat_jid, channel_text)
         self.event_bus.emit(AgentTraceEvent(chat_jid=chat_jid, trace_type=trace_type, data=data))
@@ -754,6 +756,7 @@ class PynchyApp:
                 "\U0001f4ad thinking...",
                 db_id_prefix="think",
                 db_sender="thinking",
+                message_type="assistant",  # Thinking is part of assistant turn
             )
             return False
         if result.type == "tool_use":
@@ -768,6 +771,7 @@ class PynchyApp:
                 f"\U0001f527 {preview}",
                 db_id_prefix="tool",
                 db_sender="tool_use",
+                message_type="assistant",  # Tool use is part of assistant turn
             )
             return False
         if result.type == "tool_result":
@@ -782,6 +786,7 @@ class PynchyApp:
                 "\U0001f4cb tool result",
                 db_id_prefix="toolr",
                 db_sender="tool_result",
+                message_type="assistant",  # Tool result is part of assistant turn
             )
             return False
         if result.type == "system":
@@ -795,6 +800,7 @@ class PynchyApp:
                 f"\u2699\ufe0f system: {result.system_subtype or 'unknown'}",
                 db_id_prefix="sys",
                 db_sender="system",
+                message_type="system",  # System messages from SDK
             )
             return False
         if result.type == "text":
@@ -818,6 +824,7 @@ class PynchyApp:
                 content=json.dumps(meta),
                 timestamp=ts,
                 is_from_me=True,
+                message_type="assistant",  # Result metadata is part of assistant turn
             )
             cost = meta.get("total_cost_usd")
             duration = meta.get("duration_ms")
