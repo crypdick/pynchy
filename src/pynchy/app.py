@@ -233,6 +233,7 @@ class PynchyApp:
                         "schedule_type": "cron",
                         "schedule_value": config.schedule,
                         "context_mode": config.context_mode,
+                        "project_access": config.project_access,
                         "next_run": next_run,
                         "status": "active",
                         "created_at": datetime.now(UTC).isoformat(),
@@ -254,6 +255,8 @@ class PynchyApp:
                     updates["next_run"] = cron.get_next(datetime).isoformat()
                 if existing_task.prompt != config.prompt:
                     updates["prompt"] = config.prompt
+                if existing_task.project_access != config.project_access:
+                    updates["project_access"] = config.project_access
                 if updates:
                     await update_task(existing_task.id, updates)
                     logger.info(

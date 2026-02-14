@@ -309,7 +309,10 @@ def _write_settings_json(session_dir: Path) -> None:
 
 
 def _build_volume_mounts(
-    group: RegisteredGroup, is_main: bool, registry: Any = None
+    group: RegisteredGroup,
+    is_main: bool,
+    registry: Any = None,
+    project_access: bool = False,
 ) -> list[VolumeMount]:
     """Build the mount list for a container invocation.
 
@@ -317,6 +320,7 @@ def _build_volume_mounts(
         group: The registered group configuration
         is_main: Whether this is the main group
         registry: Optional PluginRegistry for plugin MCP mounts
+        project_access: Whether to mount the host project into the container
 
     Returns:
         List of volume mounts for the container
@@ -326,7 +330,7 @@ def _build_volume_mounts(
     group_dir = GROUPS_DIR / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
 
-    if is_main:
+    if is_main or project_access:
         mounts.append(VolumeMount(str(PROJECT_ROOT), "/workspace/project", readonly=False))
         mounts.append(VolumeMount(str(group_dir), "/workspace/group", readonly=False))
     else:
@@ -600,7 +604,7 @@ async def run_container_agent(
     group_dir = GROUPS_DIR / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
 
-    mounts = _build_volume_mounts(group, input_data.is_main, registry)
+    mounts = _build_volume_mounts(group, input_data.is_main, registry, input_data.project_access)
 
     # Collect plugin MCP server specs
     if registry and hasattr(registry, "mcp_servers") and input_data.plugin_mcp_servers is None:

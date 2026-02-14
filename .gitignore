@@ -17,6 +17,10 @@ groups/main/*
 groups/global/*
 !groups/main/CLAUDE.md
 !groups/global/CLAUDE.md
+!groups/code-improver/
+groups/code-improver/*
+!groups/code-improver/CLAUDE.md
+!groups/code-improver/periodic.yaml
 
 # Secrets
 *.keys.json
