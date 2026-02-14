@@ -1,0 +1,3 @@
+# Add custom plugin Python dependencies here (one per line).
+# These are installed at container build time.
+# Example: my-custom-plugin>=1.0.0

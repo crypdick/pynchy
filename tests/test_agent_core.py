@@ -217,7 +217,7 @@ class TestAgentCorePlugin:
 
         # Test that hook is callable
         cores = pm.hook.pynchy_agent_core_info()
-        assert len(cores) >= 1
+        assert len(cores) >= 2
 
         # Verify Claude plugin is registered
         claude_core = next((c for c in cores if c["name"] == "claude"), None)

@@ -15,8 +15,12 @@ Usage:
 
 from __future__ import annotations
 
+import importlib
+import pkgutil
+
 import pluggy
 
+import pynchy.plugin as plugin_pkg
 from pynchy.logger import logger
 from pynchy.plugin.hookspecs import PynchySpec
 
@@ -37,12 +41,26 @@ def get_plugin_manager() -> pluggy.PluginManager:
     pm = pluggy.PluginManager("pynchy")
     pm.add_hookspecs(PynchySpec)
 
-    # Register built-in plugins directly
-    # Built-ins are always available, no installation required
-    from pynchy.plugin.builtin_agent_claude import ClaudeAgentCorePlugin
+    # Auto-discover and register all builtin_*.py plugins in this directory.
+    # Any file matching builtin_*.py with a class ending in "Plugin" gets registered.
+    for _finder, module_name, _is_pkg in pkgutil.iter_modules(
+        plugin_pkg.__path__, plugin_pkg.__name__ + "."
+    ):
+        short = module_name.split(".")[-1]
+        if not short.startswith("builtin_"):
+            continue
+        try:
+            mod = importlib.import_module(module_name)
+        except Exception:
+            logger.exception("Failed to import built-in plugin", module=module_name)
+            continue
 
-    pm.register(ClaudeAgentCorePlugin(), name="builtin-claude")
-    logger.info("Registered built-in plugin", name="claude", category="agent_core")
+        for attr_name in dir(mod):
+            cls = getattr(mod, attr_name)
+            if isinstance(cls, type) and attr_name.endswith("Plugin"):
+                plugin_name = short.removeprefix("builtin_")
+                pm.register(cls(), name=f"builtin-{plugin_name}")
+                logger.info("Registered built-in plugin", name=plugin_name)
 
     # Discover and register third-party plugins from entry points
     # Plugins register via "pynchy" group in their pyproject.toml

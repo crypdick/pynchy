@@ -1,5 +1,5 @@
 # Pynchy Agent Container
-# Runs Claude Agent SDK (Python) in isolated Linux VM with browser automation
+# Runs agent cores (Claude SDK, OpenAI Agents SDK) in isolated Linux VM with browser automation
 
 FROM python:3.13-slim
 
@@ -52,9 +52,13 @@ RUN npm install -g agent-browser @anthropic-ai/claude-code
 # Create app directory
 WORKDIR /app
 
-# Copy Python agent runner and install
+# Copy Python agent runner and install with uv
 COPY agent_runner/ /app/
-RUN pip install --no-cache-dir /app/
+RUN uv pip install --system --no-cache-dir /app/
+
+# Install custom plugin dependencies (users add packages to this file)
+COPY requirements-plugins.txt /app/requirements-plugins.txt
+RUN uv pip install --system --no-cache-dir -r /app/requirements-plugins.txt
 
 # Create workspace directories
 RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/messages /workspace/ipc/tasks /workspace/ipc/input

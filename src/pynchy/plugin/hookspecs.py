@@ -35,7 +35,8 @@ class PynchySpec:
                 - module: Fully qualified module path (e.g., "agent_runner.cores.claude")
                 - class_name: Class name to instantiate (e.g., "ClaudeAgentCore")
                 - packages: List of pip packages to install in container (e.g., ["openai>=1.0.0"])
-                - host_source_path: Optional path to plugin source on host (for mounting into container)
+                - host_source_path: Optional path to plugin source on host
+                  (for mounting into container)
         """
 
     @hookspec
