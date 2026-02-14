@@ -45,6 +45,20 @@ All plugin Python code runs on the host during discovery (`__init__`, `validate(
 
 **Rule: only install plugins from authors you trust.** See `plugin/base.py` docstring for full details.
 
+## Documentation Philosophy
+
+Write documentation from the **user's perspective and goal**, not chronological order. The user is trying to achieve something—help them achieve it by disclosing information when it makes sense in their pursuit of that goal.
+
+**Bad (chronological):** "First we added X, then we refactored Y, then we discovered Z needed changing..."
+
+**Good (goal-oriented):** "To accomplish [goal], do [steps]. Note: [context when relevant to the task]."
+
+Structure documentation around:
+- What the user is trying to do
+- What they need to know to do it
+- Relevant context disclosed at the point of need
+- Not the history of how the code evolved
+
 ## Development
 
 Run commands directly—don't tell the user to run them.
