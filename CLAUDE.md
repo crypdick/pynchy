@@ -158,8 +158,10 @@ journalctl --user -u pynchy -f          # Follow logs
 
 The pynchy service runs on `nuc-server` (Intel NUC, headless Ubuntu) over Tailscale. SSH: `ssh nuc-server`, user `ricardo`.
 
+Pushing to `main` is all that's needed — the prod server auto-pulls and restarts the service. No manual deploy required.
+
 ```bash
-# Deploy / restart
+# Manual deploy / restart (emergency only)
 curl -s -X POST http://nuc-server:8484/deploy
 
 # Service status & logs (run on NUC or via ssh)

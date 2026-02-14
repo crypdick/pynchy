@@ -252,7 +252,7 @@ def _write_env_file() -> Path | None:
     env_vars: dict[str, str] = {}
 
     # --- Parse .env overrides ---
-    allowed_vars = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "GH_TOKEN"]
+    allowed_vars = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "GH_TOKEN", "OPENAI_API_KEY"]
     env_file = PROJECT_ROOT / ".env"
     if env_file.exists():
         for line in env_file.read_text().splitlines():
