@@ -40,6 +40,16 @@ class ChannelPlugin(PluginBase):
     instance that integrates with pynchy's multi-channel message routing.
 
     WhatsApp remains built-in; this is for additional platforms.
+
+    .. warning:: **Unsandboxed — highest risk plugin category.**
+
+       Channel plugins run **persistently in the host process** (not in a
+       container). The ``create_channel()`` return value lives for the entire
+       application lifetime and has full access to the host filesystem,
+       network, and Python runtime. A malicious or buggy channel plugin can
+       read secrets, exfiltrate data, or crash the host process.
+
+       **Only install channel plugins from authors you trust.**
     """
 
     categories = ["channel"]  # Fixed category for all channel plugins

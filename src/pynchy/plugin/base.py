@@ -14,6 +14,24 @@ class PluginBase(ABC):
     """Base class for all pynchy plugins.
 
     Plugins extend this class and declare their capabilities via class attributes.
+
+    ## Security / Trust Model
+
+    **All plugin code runs on the host** during discovery and initialization.
+    Entry point loading, ``__init__``, ``validate()``, and category-specific
+    methods (``skill_paths()``, ``mcp_server_spec()``, ``create_channel()``)
+    all execute in the host Python process with full filesystem and network
+    access. Installing a plugin is equivalent to trusting its code.
+
+    The per-category risk profile varies — see each subclass docstring:
+
+    - **Channel plugins** — highest risk: persistent host-process execution.
+    - **Skill plugins** — medium risk: brief host execution, content runs in
+      container, but ``skill_paths()`` can read arbitrary host paths.
+    - **MCP plugins** — lower risk: brief host execution; the MCP server itself
+      runs inside the container sandbox with read-only source mounts.
+    - **Hook plugins** — medium risk: class runs on host, hook code runs inside
+      the container via dynamic import, but the module path is host-controlled.
     """
 
     name: str

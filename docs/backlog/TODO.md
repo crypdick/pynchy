@@ -16,6 +16,7 @@ Single source of truth for all pynchy work items.
 ### 0 - Proposed
 *ideas awaiting human review - to be discussed.*
 
+- [Plugin verifier agent](0-proposed/plugin-verifier.md) — Automated security audit for third-party plugins before activation (container-based, LLM-powered, SHA-pinned)
 - convert setup into pyinfra deployments for repeatable deployments.
 
 ### 1 - Approved

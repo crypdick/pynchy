@@ -122,12 +122,12 @@ def _sync_skills(session_dir: Path, registry: Any = None) -> None:
 
                     dst_dir = skills_dst / skill_path.name
                     if dst_dir.exists():
-                        logger.warning(
-                            "Skill name conflict - plugin skill will override existing",
-                            plugin=plugin.name,
-                            skill=skill_path.name,
+                        raise ValueError(
+                            f"Skill name collision: plugin '{plugin.name}' provides "
+                            f"skill '{skill_path.name}' which conflicts with an "
+                            f"existing skill. Rename the plugin skill directory to "
+                            f"avoid shadowing built-in or other plugin skills."
                         )
-                        shutil.rmtree(dst_dir)
 
                     shutil.copytree(skill_path, dst_dir)
                     logger.info(
@@ -135,6 +135,8 @@ def _sync_skills(session_dir: Path, registry: Any = None) -> None:
                         plugin=plugin.name,
                         skill=skill_path.name,
                     )
+            except ValueError:
+                raise  # Re-raise name collisions — these must not be silenced
             except Exception as e:
                 logger.warning(
                     "Failed to sync plugin skills",

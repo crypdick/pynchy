@@ -48,6 +48,16 @@ class McpPlugin(PluginBase):
     MCP plugins provide agent tools by running MCP servers inside the
     agent container. The plugin source is mounted into the container
     and the server is configured via the spec.
+
+    .. note:: **Mostly sandboxed — lower risk.**
+
+       The ``mcp_server_spec()`` method runs briefly on the host, but the
+       MCP server itself runs inside the container with the plugin source
+       mounted **read-only**. This is the most isolated plugin category.
+       However, the host-side plugin class (``__init__``, ``validate()``,
+       ``mcp_server_spec()``) still executes with full host privileges.
+
+       **Only install plugins from authors you trust.**
     """
 
     categories = ["mcp"]  # Fixed category for all MCP plugins
