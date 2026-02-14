@@ -47,7 +47,7 @@ See [docs/SETUP.md](docs/SETUP.md) for a full step-by-step guide to deploying on
 
 **AI-native.** No installation wizard; Claude Code guides setup. No monitoring dashboard; ask Claude what's happening. No debugging tools; describe the problem, Claude fixes it.
 
-**Skills over features.** Contributors shouldn't add features (e.g. support for Telegram) to the codebase. Instead, they contribute [claude code skills](https://code.claude.com/docs/en/skills) like `/add-telegram` that transform your fork. You end up with clean code that does exactly what you need.
+**Plugins over features.** Contributors shouldn't add features (e.g. support for Telegram) to the codebase. Instead, they contribute [claude code skills](https://code.claude.com/docs/en/skills) or plugins.
 
 **Best harness, best model.** This runs on Claude Agent SDK, which means you're running Claude Code directly. The harness matters. A bad harness makes even smart models seem dumb, a good harness gives them superpowers. Claude Code is (IMO) the best harness available.
 
@@ -55,12 +55,11 @@ See [docs/SETUP.md](docs/SETUP.md) for a full step-by-step guide to deploying on
 
 - **WhatsApp I/O** - Message Claude from your phone
 - **Isolated group context** - Each group has its own `CLAUDE.md` memory, isolated filesystem, and runs in its own container sandbox with only that filesystem mounted
-- **Main channel** - Your private channel (self-chat) for admin control; every other group is completely isolated
+- **God channel** - Your private channel (self-chat) for admin control; every other group is completely isolated
 - **Scheduled tasks** - Recurring jobs that run Claude and can message you back
 - **Web access** - Search and fetch content
 - **Container isolation** - Agents sandboxed in Apple Container (macOS) or Docker (macOS/Linux)
 - **Agent Swarms** - Spin up teams of specialized agents that collaborate on complex tasks
-- **Optional integrations** - Add Gmail (`/add-gmail`) and more via skills
 
 ## Usage
 
@@ -72,7 +71,7 @@ Talk to your assistant with the trigger word (default: `@Pynchy`):
 @Pynchy every Monday at 8am, compile news on AI developments from Hacker News and TechCrunch and message me a briefing
 ```
 
-From the main channel (your self-chat), you can manage groups and tasks:
+From the God channel (your self-chat), you can manage groups and tasks:
 ```
 @Pynchy list all scheduled tasks across groups
 @Pynchy pause the Monday briefing task
@@ -94,26 +93,9 @@ The codebase is small enough that Claude can safely modify it.
 
 ## Contributing
 
-**Don't add features. Add skills.**
+**Don't add features. Add plugins.**
 
-If you want to add Telegram support, don't create a PR that adds Telegram alongside WhatsApp. Instead, contribute a skill file (`.claude/skills/add-telegram/SKILL.md`) that teaches Claude Code how to transform a Pynchy installation to use Telegram.
-
-Users then run `/add-telegram` on their fork and get clean code that does exactly what they need, not a bloated system trying to support every use case.
-
-### RFS (Request for Skills)
-
-Skills we'd love to see:
-
-**Communication Channels**
-- `/add-telegram` - Add Telegram as channel. Should give the user option to replace WhatsApp or add as additional channel. Also should be possible to add it as a control channel (where it can trigger actions) or just a channel that can be used in actions triggered elsewhere
-- `/add-slack` - Add Slack
-- `/add-discord` - Add Discord
-
-**Platform Support**
-- `/setup-windows` - Windows via WSL2 + Docker
-
-**Session Management**
-- `/add-clear` - Add a `/clear` command that compacts the conversation (summarizes context while preserving critical information in the same session). Requires figuring out how to trigger compaction programmatically via the Claude Agent SDK.
+If you want to add Telegram support, don't create a PR that adds Telegram alongside WhatsApp. Instead, contribute a plugin. TODO link to plugins documentation.
 
 ## Requirements
 
@@ -168,15 +150,11 @@ Key files:
 
 **Why WhatsApp and not Telegram/Signal/etc?**
 
-Because I use WhatsApp. Fork it and run a skill to change it. That's the whole point.
+Because I use WhatsApp. Write a new plugin to support new channels.
 
 **Why Apple Container instead of Docker?**
 
 On macOS, Apple Container is the preferred runtime — it's lightweight and optimized for Apple silicon, running Linux containers in minimal VMs via Apple's Virtualization framework. Docker works too and is used as a fallback if Apple Container isn't installed. On Linux, Docker is the only option.
-
-**Can I run this on Linux?**
-
-Yes. Run `/setup` and it will automatically configure Docker as the container runtime.
 
 **Is this secure?**
 
@@ -192,13 +170,13 @@ Ask Claude Code. "Why isn't the scheduler running?" "What's in the recent logs?"
 
 **Why isn't the setup working for me?**
 
-I don't know. Run `claude`, then run `/debug`. If claude finds an issue that is likely affecting other users, open a PR to modify the setup SKILL.md.
+I don't know. Ask `claude`. If claude finds a bug that is likely affecting other users, open a PR.
 
 **What changes will be accepted into the codebase?**
 
 Security fixes, bug fixes, and clear improvements to the base configuration. That's it.
 
-Everything else (new capabilities, OS compatibility, hardware support, enhancements) should be contributed as skills.
+Everything else (new capabilities, OS compatibility, hardware support, enhancements) should be contributed as plugins.
 
 This keeps the base system minimal and lets every user customize their installation without inheriting features they don't want.
 
