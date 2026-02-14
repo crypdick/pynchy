@@ -48,6 +48,9 @@ class SchedulerDependencies(Protocol):
 
     async def send_message(self, jid: str, text: str) -> None: ...
 
+    @property
+    def plugin_manager(self) -> Any: ...
+
 
 _scheduler_running = False
 
@@ -174,6 +177,17 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
             }
         ]
 
+        # Look up agent core plugin (default to Claude if not found)
+        agent_core_module = "agent_runner.cores.claude"
+        agent_core_class = "ClaudeAgentCore"
+        if deps.plugin_manager:
+            # Use first agent core plugin (in the future, support per-group config)
+            cores = deps.plugin_manager.hook.pynchy_agent_core_info()
+            if cores:
+                core_info = cores[0]
+                agent_core_module = core_info["module"]
+                agent_core_class = core_info["class_name"]
+
         container_input = ContainerInput(
             messages=task_messages,
             group_folder=task.group_folder,
@@ -182,6 +196,8 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
             session_id=_session_id,
             is_scheduled_task=True,
             project_access=task.project_access,
+            agent_core_module=agent_core_module,
+            agent_core_class=agent_core_class,
         )
 
         async def _on_streamed_output(streamed: ContainerOutput) -> None:
@@ -200,6 +216,7 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
                 task.chat_jid, proc, name, task.group_folder
             ),
             on_output=_on_streamed_output,
+            plugin_manager=deps.plugin_manager,
         )
 
         if idle_handle is not None:

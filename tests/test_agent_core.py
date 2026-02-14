@@ -14,7 +14,7 @@ try:
 
     from agent_runner.core import AgentCore, AgentCoreConfig, AgentEvent
     from agent_runner.hooks import AGNOSTIC_TO_CLAUDE, CLAUDE_HOOK_MAP, HookEvent
-    from agent_runner.registry import create_agent_core, list_cores, register_core
+    from agent_runner.registry import create_agent_core
 
     AGENT_RUNNER_AVAILABLE = True
 except ImportError:
@@ -87,21 +87,28 @@ class TestAgentCoreProtocol:
 
 @pytest.mark.skipif(not AGENT_RUNNER_AVAILABLE, reason="agent_runner module not available")
 class TestAgentCoreRegistry:
-    """Test agent core registry and selection."""
-
-    def test_list_cores_includes_claude(self):
-        """Test that Claude core is registered by default."""
-        cores = list_cores()
-        # Claude should be registered if SDK is available
-        # If not available, registry should be empty but not crash
-        assert isinstance(cores, list)
+    """Test agent core direct import and instantiation."""
 
     def test_create_claude_core(self):
-        """Test creating Claude core instance."""
-        cores = list_cores()
-        if "claude" not in cores:
+        """Test creating Claude core instance via direct import."""
+        config = AgentCoreConfig(
+            cwd="/workspace/project",
+            session_id=None,
+            group_folder="main",
+            chat_jid="test@g.us",
+            is_main=True,
+            is_scheduled_task=False,
+        )
+
+        try:
+            core = create_agent_core("agent_runner.cores.claude", "ClaudeAgentCore", config)
+            assert isinstance(core, AgentCore)
+            assert core.session_id is None  # Not started yet
+        except ImportError:
             pytest.skip("Claude SDK not available")
 
+    def test_create_unknown_module_raises_error(self):
+        """Test that importing unknown module raises ImportError."""
         config = AgentCoreConfig(
             cwd="/workspace/project",
             session_id=None,
@@ -111,12 +118,11 @@ class TestAgentCoreRegistry:
             is_scheduled_task=False,
         )
 
-        core = create_agent_core("claude", config)
-        assert isinstance(core, AgentCore)
-        assert core.session_id is None  # Not started yet
+        with pytest.raises(ImportError, match="Failed to import agent core module"):
+            create_agent_core("nonexistent.module", "NonexistentCore", config)
 
-    def test_create_unknown_core_raises_error(self):
-        """Test that creating unknown core raises KeyError."""
+    def test_create_unknown_class_raises_error(self):
+        """Test that accessing unknown class raises AttributeError."""
         config = AgentCoreConfig(
             cwd="/workspace/project",
             session_id=None,
@@ -126,49 +132,8 @@ class TestAgentCoreRegistry:
             is_scheduled_task=False,
         )
 
-        with pytest.raises(KeyError, match="Unknown agent core 'nonexistent'"):
-            create_agent_core("nonexistent", config)
-
-    def test_register_custom_core(self):
-        """Test registering a custom core implementation."""
-
-        class MockCore:
-            def __init__(self, config):
-                self.config = config
-                self._session_id = None
-
-            async def start(self):
-                pass
-
-            async def query(self, prompt):
-                yield AgentEvent(type="text", data={"text": "Mock response"})
-                yield AgentEvent(type="result", data={"result": "Done", "result_metadata": {}})
-
-            async def stop(self):
-                pass
-
-            @property
-            def session_id(self):
-                return self._session_id
-
-        # Register mock core
-        register_core("mock", MockCore)
-
-        # Verify it's listed
-        cores = list_cores()
-        assert "mock" in cores
-
-        # Create instance
-        config = AgentCoreConfig(
-            cwd="/workspace/project",
-            session_id=None,
-            group_folder="main",
-            chat_jid="test@g.us",
-            is_main=True,
-            is_scheduled_task=False,
-        )
-        core = create_agent_core("mock", config)
-        assert isinstance(core, AgentCore)
+        with pytest.raises(AttributeError, match="has no class"):
+            create_agent_core("agent_runner.core", "NonexistentClass", config)
 
 
 @pytest.mark.skipif(not AGENT_RUNNER_AVAILABLE, reason="agent_runner module not available")
@@ -207,7 +172,7 @@ class TestContainerInputAgentCore:
     """Test ContainerInput includes agent_core fields."""
 
     def test_container_input_has_agent_core_fields(self):
-        """Test ContainerInput has agent_core and agent_core_config fields."""
+        """Test ContainerInput has agent_core_module and agent_core_config fields."""
         from pynchy.types import ContainerInput
 
         input_data = ContainerInput(
@@ -215,15 +180,17 @@ class TestContainerInputAgentCore:
             group_folder="test",
             chat_jid="test@g.us",
             is_main=True,
-            agent_core="openai",
+            agent_core_module="pynchy_core_openai.core",
+            agent_core_class="OpenAIAgentCore",
             agent_core_config={"model": "gpt-4"},
         )
 
-        assert input_data.agent_core == "openai"
+        assert input_data.agent_core_module == "pynchy_core_openai.core"
+        assert input_data.agent_core_class == "OpenAIAgentCore"
         assert input_data.agent_core_config == {"model": "gpt-4"}
 
     def test_container_input_agent_core_defaults(self):
-        """Test ContainerInput agent_core defaults to claude."""
+        """Test ContainerInput agent_core_module defaults to Claude."""
         from pynchy.types import ContainerInput
 
         input_data = ContainerInput(
@@ -233,44 +200,86 @@ class TestContainerInputAgentCore:
             is_main=True,
         )
 
-        assert input_data.agent_core == "claude"
+        assert input_data.agent_core_module == "agent_runner.cores.claude"
+        assert input_data.agent_core_class == "ClaudeAgentCore"
         assert input_data.agent_core_config is None
 
 
 class TestAgentCorePlugin:
-    """Test agent core plugin infrastructure."""
+    """Test agent core plugin infrastructure with pluggy."""
 
-    def test_agent_core_plugin_base_class(self):
-        """Test AgentCorePlugin base class."""
-        from pynchy.plugin.agent_core import AgentCorePlugin
+    def test_plugin_manager_initialization(self):
+        """Test plugin manager initializes with built-in Claude plugin."""
+        from pynchy.plugin import get_plugin_manager
 
-        class TestCore(AgentCorePlugin):
-            name = "test-core"
-            categories = ["agent_core"]
+        pm = get_plugin_manager()
+        assert pm is not None
 
-            def core_name(self):
-                return "test"
+        # Test that hook is callable
+        cores = pm.hook.pynchy_agent_core_info()
+        assert len(cores) >= 1
 
-        plugin = TestCore()
-        assert plugin.name == "test-core"
-        assert "agent_core" in plugin.categories
-        assert plugin.core_name() == "test"
-        assert plugin.container_packages() == []
-        assert plugin.core_module_path() is None
+        # Verify Claude plugin is registered
+        claude_core = next((c for c in cores if c["name"] == "claude"), None)
+        assert claude_core is not None
+        assert claude_core["module"] == "agent_runner.cores.claude"
+        assert claude_core["class_name"] == "ClaudeAgentCore"
+        assert claude_core["packages"] == []
+        assert claude_core["host_source_path"] is None
 
-    def test_agent_core_plugin_with_packages(self):
-        """Test AgentCorePlugin with container packages."""
-        from pynchy.plugin.agent_core import AgentCorePlugin
+    def test_custom_plugin_registration(self):
+        """Test registering a custom agent core plugin."""
+        import pluggy
 
-        class OpenAICore(AgentCorePlugin):
-            name = "openai-core"
-            categories = ["agent_core"]
+        from pynchy.plugin import get_plugin_manager
 
-            def core_name(self):
-                return "openai"
+        hookimpl = pluggy.HookimplMarker("pynchy")
 
-            def container_packages(self):
-                return ["openai>=1.0.0"]
+        class TestCorePlugin:
+            @hookimpl
+            def pynchy_agent_core_info(self):
+                return {
+                    "name": "test-core",
+                    "module": "test_module.core",
+                    "class_name": "TestAgentCore",
+                    "packages": [],
+                    "host_source_path": None,
+                }
 
-        plugin = OpenAICore()
-        assert plugin.container_packages() == ["openai>=1.0.0"]
+        pm = get_plugin_manager()
+        pm.register(TestCorePlugin(), name="test-plugin")
+
+        cores = pm.hook.pynchy_agent_core_info()
+        test_core = next((c for c in cores if c["name"] == "test-core"), None)
+
+        assert test_core is not None
+        assert test_core["module"] == "test_module.core"
+        assert test_core["class_name"] == "TestAgentCore"
+
+    def test_plugin_with_packages(self):
+        """Test plugin returning container packages."""
+        import pluggy
+
+        from pynchy.plugin import get_plugin_manager
+
+        hookimpl = pluggy.HookimplMarker("pynchy")
+
+        class OpenAICorePlugin:
+            @hookimpl
+            def pynchy_agent_core_info(self):
+                return {
+                    "name": "openai",
+                    "module": "pynchy_core_openai.core",
+                    "class_name": "OpenAIAgentCore",
+                    "packages": ["openai>=1.0.0"],
+                    "host_source_path": None,
+                }
+
+        pm = get_plugin_manager()
+        pm.register(OpenAICorePlugin(), name="openai-plugin")
+
+        cores = pm.hook.pynchy_agent_core_info()
+        openai_core = next((c for c in cores if c["name"] == "openai"), None)
+
+        assert openai_core is not None
+        assert openai_core["packages"] == ["openai>=1.0.0"]

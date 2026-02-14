@@ -140,6 +140,8 @@ class TestInputSerialization:
             "group_folder": "my-group",
             "chat_jid": "chat@g.us",
             "is_main": True,
+            "agent_core_module": "agent_runner.cores.claude",
+            "agent_core_class": "ClaudeAgentCore",
         }
 
     def test_optional_fields_included_when_set(self):

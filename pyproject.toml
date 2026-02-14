@@ -11,6 +11,7 @@ dependencies = [
     "croniter>=6.0.0",
     "mcp>=1.26.0",
     "neonize>=0.3.14.post0",
+    "pluggy>=1.6.0",
     "pydantic>=2.12.5",
     "pyyaml>=6.0.3",
     "qrcode>=8.2",
@@ -20,6 +21,9 @@ dependencies = [
 
 [project.scripts]
 pynchy = "pynchy.__main__:main"
+
+[project.entry-points."pynchy.plugins"]
+claude = "pynchy.plugin.builtin_agent_claude:ClaudeAgentCorePlugin"
 
 [dependency-groups]
 dev = [
