@@ -41,7 +41,7 @@ def _make_bare_origin(tmp_path: Path) -> Path:
     """Create a bare 'origin' repo with one commit on main."""
     origin = tmp_path / "origin.git"
     origin.mkdir()
-    _git(origin, "init", "--bare")
+    _git(origin, "init", "--bare", "--initial-branch=main")
 
     clone = tmp_path / "setup-clone"
     _git(tmp_path, "clone", str(origin), str(clone))
