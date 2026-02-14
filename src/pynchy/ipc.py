@@ -472,9 +472,22 @@ async def _handle_deploy(
     session_id = data.get("sessionId", "")
     chat_jid = data.get("chatJid", "")
 
+    # Fall back to looking up the main group's JID from registered groups.
+    # The container's MCP env may not propagate PYNCHY_CHAT_JID reliably,
+    # and deploys are already restricted to the main group (checked above).
     if not chat_jid:
-        logger.error("Deploy request missing chatJid")
-        return
+        groups = deps.registered_groups()
+        chat_jid = next(
+            (jid for jid, g in groups.items() if g.folder == MAIN_GROUP_FOLDER),
+            "",
+        )
+        if not chat_jid:
+            logger.error("Deploy request missing chatJid and no main group registered")
+            return
+        logger.warning(
+            "Deploy request missing chatJid, resolved from main group",
+            chat_jid=chat_jid,
+        )
 
     # 1. Optional container rebuild
     if rebuild_container:
