@@ -14,7 +14,16 @@ from typing import Any
 import aiosqlite
 
 from pynchy.config import DATA_DIR, STORE_DIR
-from pynchy.types import ContainerConfig, NewMessage, RegisteredGroup, ScheduledTask, TaskRunLog
+from pynchy.types import (
+    ContainerConfig,
+    McpToolConfig,
+    NewMessage,
+    RegisteredGroup,
+    ScheduledTask,
+    TaskRunLog,
+    WorkspaceProfile,
+    WorkspaceSecurity,
+)
 
 _db: aiosqlite.Connection | None = None
 
@@ -146,6 +155,32 @@ async def _create_schema(database: aiosqlite.Connection) -> None:
             "WHERE sender IN ('bot', 'pynchy') AND message_type = 'user'"
         )
         # Everything else stays as 'user' (already the default)
+        await database.commit()
+    except Exception:
+        pass
+    # Migration: add security_profile column for WorkspaceProfile (Phase B.1)
+    try:
+        await database.execute(
+            "ALTER TABLE registered_groups ADD COLUMN security_profile TEXT"
+        )
+        await database.commit()
+    except Exception:
+        pass
+    # Migration: backfill default security profiles
+    try:
+        # Set default security profile for existing workspaces
+        default_security = json.dumps(
+            {
+                "mcp_tools": {},
+                "default_risk_tier": "human-approval",
+                "allow_filesystem_access": True,
+                "allow_network_access": True,
+            }
+        )
+        await database.execute(
+            "UPDATE registered_groups SET security_profile = ? WHERE security_profile IS NULL",
+            (default_security,),
+        )
         await database.commit()
     except Exception:
         pass
@@ -727,7 +762,10 @@ async def set_registered_group(jid: str, group: RegisteredGroup) -> None:
 
 
 async def get_all_registered_groups() -> dict[str, RegisteredGroup]:
-    """Get all registered groups as dict of jid -> RegisteredGroup."""
+    """Get all registered groups as dict of jid -> RegisteredGroup.
+
+    DEPRECATED: Use get_all_workspace_profiles() instead.
+    """
     db = _get_db()
     cursor = await db.execute("SELECT * FROM registered_groups")
     rows = await cursor.fetchall()
@@ -745,6 +783,72 @@ async def get_all_registered_groups() -> dict[str, RegisteredGroup]:
             requires_trigger=entry.get("requires_trigger"),
         )
     return result
+
+
+# --- Workspace Profiles (Phase B.1 Security Hardening) ---
+
+
+async def get_workspace_profile(jid: str) -> WorkspaceProfile | None:
+    """Get a workspace profile by JID.
+
+    Returns None if workspace doesn't exist.
+    """
+    db = _get_db()
+    cursor = await db.execute("SELECT * FROM registered_groups WHERE jid = ?", (jid,))
+    row = await cursor.fetchone()
+    if row is None:
+        return None
+    return _row_to_workspace_profile(row)
+
+
+async def set_workspace_profile(profile: WorkspaceProfile) -> None:
+    """Register or update a workspace profile.
+
+    Validates the profile before saving. Raises ValueError if validation fails.
+    """
+    # Validate before saving
+    errors = profile.validate()
+    if errors:
+        raise ValueError(f"Invalid workspace profile: {'; '.join(errors)}")
+
+    db = _get_db()
+
+    # Serialize security profile
+    security_data = {
+        "mcp_tools": {
+            tool_name: {"risk_tier": config.risk_tier, "enabled": config.enabled}
+            for tool_name, config in profile.security.mcp_tools.items()
+        },
+        "default_risk_tier": profile.security.default_risk_tier,
+        "allow_filesystem_access": profile.security.allow_filesystem_access,
+        "allow_network_access": profile.security.allow_network_access,
+    }
+
+    await db.execute(
+        """INSERT OR REPLACE INTO registered_groups
+            (jid, name, folder, trigger_pattern, added_at,
+             container_config, requires_trigger, security_profile)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            profile.jid,
+            profile.name,
+            profile.folder,
+            profile.trigger,
+            profile.added_at,
+            json.dumps(asdict(profile.container_config)) if profile.container_config else None,
+            1 if profile.requires_trigger else 0,
+            json.dumps(security_data),
+        ),
+    )
+    await db.commit()
+
+
+async def get_all_workspace_profiles() -> dict[str, WorkspaceProfile]:
+    """Get all workspace profiles as dict of jid -> WorkspaceProfile."""
+    db = _get_db()
+    cursor = await db.execute("SELECT * FROM registered_groups")
+    rows = await cursor.fetchall()
+    return {row["jid"]: _row_to_workspace_profile(row) for row in rows}
 
 
 # --- JSON migration ---
@@ -824,6 +928,7 @@ def _row_to_task(row: aiosqlite.Row) -> ScheduledTask:
 
 
 def _row_to_registered_group(row: aiosqlite.Row) -> dict[str, Any]:
+    """Legacy helper - converts row to RegisteredGroup dict."""
     container_config = None
     if row["container_config"]:
         container_config = json.loads(row["container_config"])
@@ -839,3 +944,48 @@ def _row_to_registered_group(row: aiosqlite.Row) -> dict[str, Any]:
         "container_config": container_config,
         "requires_trigger": requires_trigger,
     }
+
+
+def _row_to_workspace_profile(row: aiosqlite.Row) -> WorkspaceProfile:
+    """Convert database row to WorkspaceProfile."""
+    # Parse container config
+    container_config = None
+    if row["container_config"]:
+        container_config = ContainerConfig.from_dict(json.loads(row["container_config"]))
+
+    # Parse security profile
+    security = WorkspaceSecurity()
+    try:
+        if row["security_profile"]:
+            sec_data = json.loads(row["security_profile"])
+            # Parse MCP tool configs
+            mcp_tools = {}
+            for tool_name, tool_data in sec_data.get("mcp_tools", {}).items():
+                mcp_tools[tool_name] = McpToolConfig(
+                    risk_tier=tool_data.get("risk_tier", "human-approval"),
+                    enabled=tool_data.get("enabled", True),
+                )
+            security = WorkspaceSecurity(
+                mcp_tools=mcp_tools,
+                default_risk_tier=sec_data.get("default_risk_tier", "human-approval"),
+                allow_filesystem_access=sec_data.get("allow_filesystem_access", True),
+                allow_network_access=sec_data.get("allow_network_access", True),
+            )
+    except (KeyError, json.JSONDecodeError):
+        # Fall back to default security if parsing fails
+        pass
+
+    requires_trigger = (
+        True if row["requires_trigger"] is None else row["requires_trigger"] == 1
+    )
+
+    return WorkspaceProfile(
+        jid=row["jid"],
+        name=row["name"],
+        folder=row["folder"],
+        trigger=row["trigger_pattern"],
+        requires_trigger=requires_trigger,
+        container_config=container_config,
+        security=security,
+        added_at=row["added_at"],
+    )
