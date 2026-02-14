@@ -20,7 +20,6 @@ from typing import Any
 from pynchy.config import (
     ASSISTANT_NAME,
     CONTAINER_IMAGE,
-    CONTEXT_RESET_PATTERN,
     DATA_DIR,
     DEPLOY_PORT,
     GROUPS_DIR,
@@ -29,6 +28,7 @@ from pynchy.config import (
     POLL_INTERVAL,
     PROJECT_ROOT,
     TRIGGER_PATTERN,
+    is_context_reset,
 )
 from pynchy.container_runner import (
     run_container_agent,
@@ -441,7 +441,7 @@ class PynchyApp:
                 return True
 
         # Check if the last message is a context reset command
-        if CONTEXT_RESET_PATTERN.match(missed_messages[-1].content.strip()):
+        if is_context_reset(missed_messages[-1].content):
             self.sessions.pop(group.folder, None)
             self._session_cleared.add(group.folder)
             await clear_session(group.folder)
@@ -991,7 +991,7 @@ class PynchyApp:
                         # Intercept context reset commands before piping to
                         # active containers — they must be handled by the host,
                         # not forwarded as regular user messages.
-                        if CONTEXT_RESET_PATTERN.match(all_pending[-1].content.strip()):
+                        if is_context_reset(all_pending[-1].content):
                             self.sessions.pop(group.folder, None)
                             self._session_cleared.add(group.folder)
                             await clear_session(group.folder)
