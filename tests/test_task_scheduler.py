@@ -39,6 +39,10 @@ class MockSchedulerDeps:
         self.queue = GroupQueue()
         self.processes: list = []
         self.messages: list = []
+        # Plugin manager for agent core lookup
+        from pynchy.plugin import get_plugin_manager
+
+        self.plugin_manager = get_plugin_manager()
 
     def registered_groups(self) -> dict[str, RegisteredGroup]:
         return self.groups
@@ -287,7 +291,7 @@ class TestRunTask:
 
         container_inputs = []
 
-        async def mock_run_container(group, input_data, on_process, on_output):
+        async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
             container_inputs.append(input_data)
             return ContainerOutput(status="success", result="Done")
 
@@ -317,7 +321,7 @@ class TestRunTask:
 
         container_inputs = []
 
-        async def mock_run_container(group, input_data, on_process, on_output):
+        async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
             container_inputs.append(input_data)
             return ContainerOutput(status="success", result="Done")
 
@@ -343,7 +347,7 @@ class TestRunTask:
         monkeypatch.setattr("pynchy.task_scheduler.GROUPS_DIR", tmp_path)
         mock_deps.groups["test-jid"] = sample_group
 
-        async def mock_run_container(group, input_data, on_process, on_output):
+        async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
             # Simulate streamed output
             await on_output(ContainerOutput(status="success", result="Task completed successfully"))
             return ContainerOutput(status="success", result="Task completed successfully")
@@ -377,7 +381,7 @@ class TestRunTask:
         async def mock_update(task_id, next_run, result_summary):
             updates.append((task_id, next_run, result_summary))
 
-        async def mock_run_container(group, input_data, on_process, on_output):
+        async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
             return ContainerOutput(status="success", result="Done")
 
         with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
@@ -412,7 +416,7 @@ class TestRunTask:
         async def mock_update(task_id, next_run, result_summary):
             updates.append((task_id, next_run, result_summary))
 
-        async def mock_run_container(group, input_data, on_process, on_output):
+        async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
             return ContainerOutput(status="success", result="Done")
 
         with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
@@ -449,7 +453,7 @@ class TestRunTask:
         async def mock_update(task_id, next_run, result_summary):
             updates.append((task_id, next_run, result_summary))
 
-        async def mock_run_container(group, input_data, on_process, on_output):
+        async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
             return ContainerOutput(status="success", result="Done")
 
         with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
@@ -474,7 +478,7 @@ class TestRunTask:
         monkeypatch.setattr("pynchy.task_scheduler.GROUPS_DIR", tmp_path)
         mock_deps.groups["test-jid"] = sample_group
 
-        async def mock_run_container(group, input_data, on_process, on_output):
+        async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
             raise ValueError("Container failed")
 
         logged_runs = []
@@ -508,7 +512,7 @@ class TestRunTask:
 
         container_inputs = []
 
-        async def mock_run_container(group, input_data, on_process, on_output):
+        async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
             container_inputs.append(input_data)
             return ContainerOutput(status="success", result="Done")
 
@@ -550,7 +554,7 @@ class TestRunTask:
         def mock_write_snapshot(group_folder, is_main, tasks):
             snapshots.append((group_folder, is_main, tasks))
 
-        async def mock_run_container(group, input_data, on_process, on_output):
+        async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
             return ContainerOutput(status="success", result="Done")
 
         with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
