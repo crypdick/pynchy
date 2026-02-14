@@ -415,13 +415,18 @@ class PynchyApp:
             prompt = reset_data.get("message", "")
             if prompt:
                 logger.info("Processing reset handoff", group=group.name)
-                # Send operational notification to user (not part of LLM conversation)
-                await self._broadcast_host_message(chat_jid, f"[handoff] {prompt}")
 
                 async def handoff_on_output(result: ContainerOutput) -> None:
                     await self._handle_streamed_output(chat_jid, group, result)
 
-                result = await self._run_agent(group, prompt, chat_jid, handoff_on_output)
+                # Inform LLM this is a context reset handoff via system notice
+                handoff_system_notice = [
+                    "Note: The conversation context was recently reset. You are resuming "
+                    "with the message below as your starting context."
+                ]
+                result = await self._run_agent(
+                    group, prompt, chat_jid, handoff_on_output, handoff_system_notice
+                )
 
                 # If dirty repo check is needed after reset, write marker for next message
                 if reset_data.get("needsDirtyRepoCheck"):
