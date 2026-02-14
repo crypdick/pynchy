@@ -63,6 +63,8 @@ class NewMessage:
     content: str
     timestamp: str
     is_from_me: bool | None = None
+    message_type: str = "user"  # 'user', 'assistant', 'system', 'host', 'tool_result'
+    metadata: dict | None = None
 
 
 @dataclass
@@ -94,7 +96,7 @@ class TaskRunLog:
 
 @dataclass
 class ContainerInput:
-    prompt: str
+    prompt: str  # Legacy XML format (for backward compatibility during transition)
     group_folder: str
     chat_jid: str
     is_main: bool
@@ -103,6 +105,7 @@ class ContainerInput:
     plugin_mcp_servers: dict[str, dict] | None = None
     system_notices: list[str] | None = None
     project_access: bool = False
+    messages: list[dict] | None = None  # New: SDK message list (replaces prompt eventually)
 
 
 @dataclass

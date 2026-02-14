@@ -170,6 +170,7 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
             session_id=_session_id,
             is_scheduled_task=True,
             project_access=task.project_access,
+            messages=[],  # Scheduled tasks use prompt string directly, not message history
         )
 
         async def _on_streamed_output(streamed: ContainerOutput) -> None:
