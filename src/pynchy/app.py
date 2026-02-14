@@ -17,6 +17,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from pynchy.adapters import (
+    EventBusAdapter,
+    GroupMetadataManager,
+    GroupRegistrationManager,
+    GroupRegistry,
+    HostMessageBroadcaster,
+    MessageBroadcaster,
+    PeriodicAgentManager,
+    QueueManager,
+    SessionManager,
+    UserMessageHandler,
+)
 from pynchy.config import (
     ASSISTANT_NAME,
     CONTAINER_IMAGE,
@@ -73,7 +85,7 @@ from pynchy.http_server import (
 )
 from pynchy.ipc import start_ipc_watcher
 from pynchy.logger import logger
-from pynchy.router import format_messages, format_outbound, format_tool_preview, parse_host_tag
+from pynchy.router import format_messages, format_tool_preview, parse_host_tag
 from pynchy.runtime import get_runtime
 from pynchy.task_scheduler import start_scheduler_loop
 from pynchy.types import Channel, ContainerInput, ContainerOutput, NewMessage, RegisteredGroup
@@ -1640,212 +1652,81 @@ WantedBy=default.target
 
     def _make_scheduler_deps(self) -> Any:
         """Create the dependency object for the task scheduler."""
-        app = self
+        # Use composition of adapters instead of manual delegation
+        group_registry = GroupRegistry(self.registered_groups)
+        session_manager = SessionManager(self.sessions, self._session_cleared)
+        queue_manager = QueueManager(self.queue)
+        broadcaster = MessageBroadcaster(self.channels)
 
-        class _Deps:
-            def registered_groups(self) -> dict[str, RegisteredGroup]:
-                return app.registered_groups
+        # Return a composite object that provides all required deps
+        class SchedulerDeps:
+            registered_groups = group_registry.registered_groups
+            get_sessions = session_manager.get_sessions
+            queue = queue_manager.queue
+            on_process = queue_manager.on_process
+            send_message = broadcaster.send_formatted_message
 
-            def get_sessions(self) -> dict[str, str]:
-                return app.sessions
-
-            @property
-            def queue(self) -> GroupQueue:
-                return app.queue
-
-            def on_process(
-                self, group_jid: str, proc: Any, container_name: str, group_folder: str
-            ) -> None:
-                app.queue.register_process(group_jid, proc, container_name, group_folder)
-
-            async def send_message(self, jid: str, raw_text: str) -> None:
-                # Need to format per channel, so can't use broadcast helper here
-                for ch in app.channels:
-                    if ch.is_connected():
-                        text = format_outbound(ch, raw_text)
-                        if text:
-                            with contextlib.suppress(Exception):
-                                await ch.send_message(jid, text)
-
-        return _Deps()
+        return SchedulerDeps()
 
     def _make_http_deps(self) -> Any:
         """Create the dependency object for the HTTP server."""
-        app = self
+        # Use composition of adapters instead of manual delegation
+        broadcaster = MessageBroadcaster(self.channels)
+        host_broadcaster = HostMessageBroadcaster(
+            broadcaster, store_message_direct, self.event_bus.emit
+        )
+        group_registry = GroupRegistry(self.registered_groups)
+        metadata_manager = GroupMetadataManager(
+            self.registered_groups, self.channels, self.get_available_groups
+        )
+        periodic_agent_manager = PeriodicAgentManager(self.registered_groups)
+        user_message_handler = UserMessageHandler(
+            self._ingest_user_message, self.queue.enqueue_message_check
+        )
+        event_adapter = EventBusAdapter(self.event_bus)
 
-        class _Deps:
-            async def send_message(self, jid: str, text: str) -> None:
-                await app._broadcast_to_channels(jid, text)
+        # Return a composite object that provides all required deps
+        class HttpDeps:
+            send_message = broadcaster.send_message
+            broadcast_host_message = host_broadcaster.broadcast_host_message
+            main_chat_jid = group_registry.main_chat_jid
+            channels_connected = metadata_manager.channels_connected
+            get_groups = metadata_manager.get_groups
+            get_messages = user_message_handler.get_messages
+            send_user_message = user_message_handler.send_user_message
+            get_periodic_agents = periodic_agent_manager.get_periodic_agents
+            subscribe_events = event_adapter.subscribe_events
 
-            async def broadcast_host_message(self, jid: str, text: str) -> None:
-                await app._broadcast_host_message(jid, text)
-
-            def main_chat_jid(self) -> str:
-                for jid, group in app.registered_groups.items():
-                    if group.folder == MAIN_GROUP_FOLDER:
-                        return jid
-                return ""
-
-            def channels_connected(self) -> bool:
-                return any(c.is_connected() for c in app.channels)
-
-            # --- TUI API deps ---
-
-            def get_groups(self) -> list[dict[str, Any]]:
-                return [
-                    {"jid": jid, "name": g.name, "folder": g.folder}
-                    for jid, g in app.registered_groups.items()
-                ]
-
-            async def get_messages(self, jid: str, limit: int) -> list[NewMessage]:
-                from pynchy.db import get_chat_history
-
-                return await get_chat_history(jid, limit)
-
-            async def send_user_message(self, jid: str, content: str) -> None:
-                msg = NewMessage(
-                    id=f"tui-{int(datetime.now(UTC).timestamp() * 1000)}",
-                    chat_jid=jid,
-                    sender="tui-user",
-                    sender_name="You",
-                    content=content,
-                    timestamp=datetime.now(UTC).isoformat(),
-                    is_from_me=False,
-                )
-                # Use unified ingestion to store, emit, AND broadcast to all channels
-                await app._ingest_user_message(msg, source_channel="tui")
-                app.queue.enqueue_message_check(jid)
-
-            async def get_periodic_agents(self) -> list[dict[str, Any]]:
-                from pynchy.periodic import load_periodic_config
-
-                results = []
-                for group in app.registered_groups.values():
-                    config = load_periodic_config(group.folder)
-                    if config is None:
-                        continue
-                    task = await get_active_task_for_group(group.folder)
-                    results.append(
-                        {
-                            "name": group.name,
-                            "folder": group.folder,
-                            "schedule": config.schedule,
-                            "context_mode": config.context_mode,
-                            "last_run": task.last_run if task else None,
-                            "next_run": task.next_run if task else None,
-                            "status": task.status if task else "no_task",
-                        }
-                    )
-                return results
-
-            def subscribe_events(self, callback: Any) -> Any:
-                from pynchy.event_bus import (
-                    AgentActivityEvent,
-                    AgentTraceEvent,
-                    ChatClearedEvent,
-                    MessageEvent,
-                )
-
-                unsubs = []
-
-                async def on_msg(event: MessageEvent) -> None:
-                    await callback(
-                        {
-                            "type": "message",
-                            "chat_jid": event.chat_jid,
-                            "sender_name": event.sender_name,
-                            "content": event.content,
-                            "timestamp": event.timestamp,
-                            "is_bot": event.is_bot,
-                        }
-                    )
-
-                async def on_activity(event: AgentActivityEvent) -> None:
-                    await callback(
-                        {
-                            "type": "agent_activity",
-                            "chat_jid": event.chat_jid,
-                            "active": event.active,
-                        }
-                    )
-
-                async def on_trace(event: AgentTraceEvent) -> None:
-                    await callback(
-                        {
-                            "type": "agent_trace",
-                            "chat_jid": event.chat_jid,
-                            "trace_type": event.trace_type,
-                            **event.data,
-                        }
-                    )
-
-                async def on_clear(event: ChatClearedEvent) -> None:
-                    await callback(
-                        {
-                            "type": "chat_cleared",
-                            "chat_jid": event.chat_jid,
-                        }
-                    )
-
-                unsubs.append(app.event_bus.subscribe(MessageEvent, on_msg))
-                unsubs.append(app.event_bus.subscribe(AgentActivityEvent, on_activity))
-                unsubs.append(app.event_bus.subscribe(AgentTraceEvent, on_trace))
-                unsubs.append(app.event_bus.subscribe(ChatClearedEvent, on_clear))
-
-                def unsubscribe() -> None:
-                    for unsub in unsubs:
-                        unsub()
-
-                return unsubscribe
-
-        return _Deps()
+        return HttpDeps()
 
     def _make_ipc_deps(self) -> Any:
         """Create the dependency object for the IPC watcher."""
-        app = self
+        # Use composition of adapters instead of manual delegation
+        broadcaster = MessageBroadcaster(self.channels)
+        host_broadcaster = HostMessageBroadcaster(
+            broadcaster, store_message_direct, self.event_bus.emit
+        )
+        registration_manager = GroupRegistrationManager(
+            self.registered_groups, self._register_group, self._send_clear_confirmation
+        )
+        session_manager = SessionManager(self.sessions, self._session_cleared)
+        metadata_manager = GroupMetadataManager(
+            self.registered_groups, self.channels, self.get_available_groups
+        )
+        queue_manager = QueueManager(self.queue)
 
-        class _Deps:
-            async def send_message(self, jid: str, text: str) -> None:
-                await app._broadcast_to_channels(jid, text)
+        # Return a composite object that provides all required deps
+        class IpcDeps:
+            send_message = broadcaster.send_message
+            broadcast_host_message = host_broadcaster.broadcast_host_message
+            registered_groups = registration_manager.registered_groups
+            register_group = registration_manager.register_group
+            sync_group_metadata = metadata_manager.sync_group_metadata
+            get_available_groups = metadata_manager.get_available_groups
+            write_groups_snapshot = staticmethod(write_groups_snapshot)
+            clear_session = session_manager.clear_session
+            clear_chat_history = registration_manager.clear_chat_history
+            enqueue_message_check = queue_manager.enqueue_message_check
+            channels = metadata_manager.channels
 
-            async def broadcast_host_message(self, jid: str, text: str) -> None:
-                await app._broadcast_host_message(jid, text)
-
-            def registered_groups(self) -> dict[str, RegisteredGroup]:
-                return app.registered_groups
-
-            def register_group(self, jid: str, group: RegisteredGroup) -> None:
-                asyncio.ensure_future(app._register_group(jid, group))
-
-            async def sync_group_metadata(self, force: bool) -> None:
-                for channel in app.channels:
-                    if hasattr(channel, "sync_group_metadata"):
-                        await channel.sync_group_metadata(force)
-
-            async def get_available_groups(self) -> list[Any]:
-                return await app.get_available_groups()
-
-            def write_groups_snapshot(
-                self,
-                group_folder: str,
-                is_main: bool,
-                available_groups: list[Any],
-                registered_jids: set[str],
-            ) -> None:
-                write_groups_snapshot(group_folder, is_main, available_groups, registered_jids)
-
-            async def clear_session(self, group_folder: str) -> None:
-                app.sessions.pop(group_folder, None)
-                app._session_cleared.add(group_folder)
-                await clear_session(group_folder)
-
-            async def clear_chat_history(self, chat_jid: str) -> None:
-                await app._send_clear_confirmation(chat_jid)
-
-            def enqueue_message_check(self, group_jid: str) -> None:
-                app.queue.enqueue_message_check(group_jid)
-
-            def channels(self) -> list:
-                return app.channels
-
-        return _Deps()
+        return IpcDeps()
