@@ -4,8 +4,8 @@
 
 | Entity | Trust Level | Rationale |
 |--------|-------------|-----------|
-| Main group | Trusted | Private self-chat, admin control |
-| Non-main groups | Untrusted | Other users may be malicious |
+| God group | Trusted | Private self-chat, admin control |
+| Non-god groups | Untrusted | Other users may be malicious |
 | Container agents | Sandboxed | Isolated execution environment |
 | WhatsApp messages | User input | Potential prompt injection |
 
@@ -38,7 +38,7 @@ private_key, .secret
 **Protections:**
 - Symlink resolution before validation (prevents traversal attacks)
 - Container path validation (rejects `..` and absolute paths)
-- `nonMainReadOnly` option forces read-only for non-main groups
+- `nonGodReadOnly` option forces read-only for non-god groups
 
 ### 3. Session Isolation
 
@@ -51,7 +51,7 @@ Each group has isolated Claude sessions at `data/sessions/{group}/.claude/`:
 
 Messages and task operations are verified against group identity:
 
-| Operation | Main Group | Non-Main Group |
+| Operation | God Group | Non-God Group |
 |-----------|------------|----------------|
 | Send message to own chat | ✓ | ✓ |
 | Send message to other chats | ✓ | ✗ |
@@ -80,7 +80,7 @@ const allowedVars = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'];
 
 ## Privilege Comparison
 
-| Capability | Main Group | Non-Main Group |
+| Capability | God Group | Non-God Group |
 |------------|------------|----------------|
 | Project root access | `/workspace/project` (rw) | None |
 | Group folder | `/workspace/group` (rw) | `/workspace/group` (rw) |

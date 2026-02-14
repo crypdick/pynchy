@@ -19,9 +19,9 @@ from pynchy.db import (
 from pynchy.ipc import process_task_ipc
 from pynchy.types import RegisteredGroup
 
-MAIN_GROUP = RegisteredGroup(
-    name="Main",
-    folder="main",
+GOD_GROUP = RegisteredGroup(
+    name="God",
+    folder="god",
     trigger="always",
     added_at="2024-01-01T00:00:00.000Z",
 )
@@ -69,7 +69,7 @@ class MockDeps:
     def write_groups_snapshot(
         self,
         group_folder: str,
-        is_main: bool,
+        is_god: bool,
         available_groups: list[Any],
         registered_jids: set[str],
     ) -> None:
@@ -81,12 +81,12 @@ async def deps():
     await _init_test_database()
 
     groups = {
-        "main@g.us": MAIN_GROUP,
+        "god@g.us": GOD_GROUP,
         "other@g.us": OTHER_GROUP,
         "third@g.us": THIRD_GROUP,
     }
 
-    await set_registered_group("main@g.us", MAIN_GROUP)
+    await set_registered_group("god@g.us", GOD_GROUP)
     await set_registered_group("other@g.us", OTHER_GROUP)
     await set_registered_group("third@g.us", THIRD_GROUP)
 
@@ -97,7 +97,7 @@ async def deps():
 
 
 class TestScheduleTaskAuth:
-    async def test_main_group_can_schedule_for_another_group(self, deps):
+    async def test_god_group_can_schedule_for_another_group(self, deps):
         await process_task_ipc(
             {
                 "type": "schedule_task",
@@ -106,7 +106,7 @@ class TestScheduleTaskAuth:
                 "schedule_value": "2025-06-01T00:00:00.000Z",
                 "targetJid": "other@g.us",
             },
-            "main",
+            "god",
             True,
             deps,
         )
@@ -115,7 +115,7 @@ class TestScheduleTaskAuth:
         assert len(tasks) == 1
         assert tasks[0].group_folder == "other-group"
 
-    async def test_non_main_group_can_schedule_for_itself(self, deps):
+    async def test_non_god_group_can_schedule_for_itself(self, deps):
         await process_task_ipc(
             {
                 "type": "schedule_task",
@@ -133,14 +133,14 @@ class TestScheduleTaskAuth:
         assert len(tasks) == 1
         assert tasks[0].group_folder == "other-group"
 
-    async def test_non_main_cannot_schedule_for_another_group(self, deps):
+    async def test_non_god_cannot_schedule_for_another_group(self, deps):
         await process_task_ipc(
             {
                 "type": "schedule_task",
                 "prompt": "unauthorized",
                 "schedule_type": "once",
                 "schedule_value": "2025-06-01T00:00:00.000Z",
-                "targetJid": "main@g.us",
+                "targetJid": "god@g.us",
             },
             "other-group",
             False,
@@ -159,7 +159,7 @@ class TestScheduleTaskAuth:
                 "schedule_value": "2025-06-01T00:00:00.000Z",
                 "targetJid": "unknown@g.us",
             },
-            "main",
+            "god",
             True,
             deps,
         )
@@ -176,10 +176,10 @@ class TestPauseTaskAuth:
     async def _create_tasks(self, deps):
         await create_task(
             {
-                "id": "task-main",
-                "group_folder": "main",
-                "chat_jid": "main@g.us",
-                "prompt": "main task",
+                "id": "task-god",
+                "group_folder": "god",
+                "chat_jid": "god@g.us",
+                "prompt": "god task",
                 "schedule_type": "once",
                 "schedule_value": "2025-06-01T00:00:00.000Z",
                 "context_mode": "isolated",
@@ -203,13 +203,13 @@ class TestPauseTaskAuth:
             }
         )
 
-    async def test_main_can_pause_any_task(self, deps):
-        await process_task_ipc({"type": "pause_task", "taskId": "task-other"}, "main", True, deps)
+    async def test_god_can_pause_any_task(self, deps):
+        await process_task_ipc({"type": "pause_task", "taskId": "task-other"}, "god", True, deps)
         task = await get_task_by_id("task-other")
         assert task is not None
         assert task.status == "paused"
 
-    async def test_non_main_can_pause_own_task(self, deps):
+    async def test_non_god_can_pause_own_task(self, deps):
         await process_task_ipc(
             {"type": "pause_task", "taskId": "task-other"},
             "other-group",
@@ -220,14 +220,14 @@ class TestPauseTaskAuth:
         assert task is not None
         assert task.status == "paused"
 
-    async def test_non_main_cannot_pause_other_groups_task(self, deps):
+    async def test_non_god_cannot_pause_other_groups_task(self, deps):
         await process_task_ipc(
-            {"type": "pause_task", "taskId": "task-main"},
+            {"type": "pause_task", "taskId": "task-god"},
             "other-group",
             False,
             deps,
         )
-        task = await get_task_by_id("task-main")
+        task = await get_task_by_id("task-god")
         assert task is not None
         assert task.status == "active"
 
@@ -253,13 +253,13 @@ class TestResumeTaskAuth:
             }
         )
 
-    async def test_main_can_resume_any_task(self, deps):
-        await process_task_ipc({"type": "resume_task", "taskId": "task-paused"}, "main", True, deps)
+    async def test_god_can_resume_any_task(self, deps):
+        await process_task_ipc({"type": "resume_task", "taskId": "task-paused"}, "god", True, deps)
         task = await get_task_by_id("task-paused")
         assert task is not None
         assert task.status == "active"
 
-    async def test_non_main_can_resume_own_task(self, deps):
+    async def test_non_god_can_resume_own_task(self, deps):
         await process_task_ipc(
             {"type": "resume_task", "taskId": "task-paused"},
             "other-group",
@@ -270,7 +270,7 @@ class TestResumeTaskAuth:
         assert task is not None
         assert task.status == "active"
 
-    async def test_non_main_cannot_resume_other_groups_task(self, deps):
+    async def test_non_god_cannot_resume_other_groups_task(self, deps):
         await process_task_ipc(
             {"type": "resume_task", "taskId": "task-paused"},
             "third-group",
@@ -286,7 +286,7 @@ class TestResumeTaskAuth:
 
 
 class TestCancelTaskAuth:
-    async def test_main_can_cancel_any_task(self, deps):
+    async def test_god_can_cancel_any_task(self, deps):
         await create_task(
             {
                 "id": "task-to-cancel",
@@ -303,11 +303,11 @@ class TestCancelTaskAuth:
         )
 
         await process_task_ipc(
-            {"type": "cancel_task", "taskId": "task-to-cancel"}, "main", True, deps
+            {"type": "cancel_task", "taskId": "task-to-cancel"}, "god", True, deps
         )
         assert await get_task_by_id("task-to-cancel") is None
 
-    async def test_non_main_can_cancel_own_task(self, deps):
+    async def test_non_god_can_cancel_own_task(self, deps):
         await create_task(
             {
                 "id": "task-own",
@@ -331,12 +331,12 @@ class TestCancelTaskAuth:
         )
         assert await get_task_by_id("task-own") is None
 
-    async def test_non_main_cannot_cancel_other_groups_task(self, deps):
+    async def test_non_god_cannot_cancel_other_groups_task(self, deps):
         await create_task(
             {
                 "id": "task-foreign",
-                "group_folder": "main",
-                "chat_jid": "main@g.us",
+                "group_folder": "god",
+                "chat_jid": "god@g.us",
                 "prompt": "not yours",
                 "schedule_type": "once",
                 "schedule_value": "2025-06-01T00:00:00.000Z",
@@ -360,7 +360,7 @@ class TestCancelTaskAuth:
 
 
 class TestRegisterGroupAuth:
-    async def test_non_main_cannot_register_a_group(self, deps):
+    async def test_non_god_cannot_register_a_group(self, deps):
         await process_task_ipc(
             {
                 "type": "register_group",
@@ -381,7 +381,7 @@ class TestRegisterGroupAuth:
 
 
 class TestRefreshGroupsAuth:
-    async def test_non_main_cannot_trigger_refresh(self, deps):
+    async def test_non_god_cannot_trigger_refresh(self, deps):
         # Should be silently blocked
         await process_task_ipc({"type": "refresh_groups"}, "other-group", False, deps)
 
@@ -393,34 +393,34 @@ class TestIpcMessageAuth:
     @staticmethod
     def is_message_authorized(
         source_group: str,
-        is_main: bool,
+        is_god: bool,
         target_chat_jid: str,
         registered_groups: dict[str, RegisteredGroup],
     ) -> bool:
         target_group = registered_groups.get(target_chat_jid)
-        return is_main or (target_group is not None and target_group.folder == source_group)
+        return is_god or (target_group is not None and target_group.folder == source_group)
 
-    def test_main_can_send_to_any_group(self, deps):
+    def test_god_can_send_to_any_group(self, deps):
         groups = deps.registered_groups()
-        assert self.is_message_authorized("main", True, "other@g.us", groups)
-        assert self.is_message_authorized("main", True, "third@g.us", groups)
+        assert self.is_message_authorized("god", True, "other@g.us", groups)
+        assert self.is_message_authorized("god", True, "third@g.us", groups)
 
-    def test_non_main_can_send_to_own_chat(self, deps):
+    def test_non_god_can_send_to_own_chat(self, deps):
         groups = deps.registered_groups()
         assert self.is_message_authorized("other-group", False, "other@g.us", groups)
 
-    def test_non_main_cannot_send_to_other_chat(self, deps):
+    def test_non_god_cannot_send_to_other_chat(self, deps):
         groups = deps.registered_groups()
-        assert not self.is_message_authorized("other-group", False, "main@g.us", groups)
+        assert not self.is_message_authorized("other-group", False, "god@g.us", groups)
         assert not self.is_message_authorized("other-group", False, "third@g.us", groups)
 
-    def test_non_main_cannot_send_to_unregistered(self, deps):
+    def test_non_god_cannot_send_to_unregistered(self, deps):
         groups = deps.registered_groups()
         assert not self.is_message_authorized("other-group", False, "unknown@g.us", groups)
 
-    def test_main_can_send_to_unregistered(self, deps):
+    def test_god_can_send_to_unregistered(self, deps):
         groups = deps.registered_groups()
-        assert self.is_message_authorized("main", True, "unknown@g.us", groups)
+        assert self.is_message_authorized("god", True, "unknown@g.us", groups)
 
 
 # --- schedule_task schedule types ---
@@ -436,7 +436,7 @@ class TestScheduleTaskTypes:
                 "schedule_value": "0 9 * * *",
                 "targetJid": "other@g.us",
             },
-            "main",
+            "god",
             True,
             deps,
         )
@@ -455,7 +455,7 @@ class TestScheduleTaskTypes:
                 "schedule_value": "not a cron",
                 "targetJid": "other@g.us",
             },
-            "main",
+            "god",
             True,
             deps,
         )
@@ -471,7 +471,7 @@ class TestScheduleTaskTypes:
                 "schedule_value": "3600000",  # 1 hour in ms
                 "targetJid": "other@g.us",
             },
-            "main",
+            "god",
             True,
             deps,
         )
@@ -490,7 +490,7 @@ class TestScheduleTaskTypes:
                 "schedule_value": "abc",
                 "targetJid": "other@g.us",
             },
-            "main",
+            "god",
             True,
             deps,
         )
@@ -506,7 +506,7 @@ class TestScheduleTaskTypes:
                 "schedule_value": "0",
                 "targetJid": "other@g.us",
             },
-            "main",
+            "god",
             True,
             deps,
         )
@@ -522,7 +522,7 @@ class TestScheduleTaskTypes:
                 "schedule_value": "not-a-date",
                 "targetJid": "other@g.us",
             },
-            "main",
+            "god",
             True,
             deps,
         )
@@ -544,7 +544,7 @@ class TestContextMode:
                 "context_mode": "group",
                 "targetJid": "other@g.us",
             },
-            "main",
+            "god",
             True,
             deps,
         )
@@ -562,7 +562,7 @@ class TestContextMode:
                 "context_mode": "isolated",
                 "targetJid": "other@g.us",
             },
-            "main",
+            "god",
             True,
             deps,
         )
@@ -580,7 +580,7 @@ class TestContextMode:
                 "context_mode": "bogus",
                 "targetJid": "other@g.us",
             },
-            "main",
+            "god",
             True,
             deps,
         )
@@ -597,7 +597,7 @@ class TestContextMode:
                 "schedule_value": "2025-06-01T00:00:00.000Z",
                 "targetJid": "other@g.us",
             },
-            "main",
+            "god",
             True,
             deps,
         )
@@ -610,7 +610,7 @@ class TestContextMode:
 
 
 class TestRegisterGroupSuccess:
-    async def test_main_can_register_new_group(self, deps):
+    async def test_god_can_register_new_group(self, deps):
         await process_task_ipc(
             {
                 "type": "register_group",
@@ -619,7 +619,7 @@ class TestRegisterGroupSuccess:
                 "folder": "new-group",
                 "trigger": "@pynchy",
             },
-            "main",
+            "god",
             True,
             deps,
         )
@@ -638,7 +638,7 @@ class TestRegisterGroupSuccess:
                 "name": "Partial",
                 # missing folder and trigger
             },
-            "main",
+            "god",
             True,
             deps,
         )

@@ -60,7 +60,7 @@ TEST_INPUT = ContainerInput(
     ],
     group_folder="test-group",
     chat_jid="test@g.us",
-    is_main=False,
+    is_god=False,
 )
 
 
@@ -132,14 +132,14 @@ class TestInputSerialization:
             messages=[{"message_type": "user", "content": "hi"}],
             group_folder="my-group",
             chat_jid="chat@g.us",
-            is_main=True,
+            is_god=True,
         )
         d = _input_to_dict(inp)
         assert d == {
             "messages": [{"message_type": "user", "content": "hi"}],
             "group_folder": "my-group",
             "chat_jid": "chat@g.us",
-            "is_main": True,
+            "is_god": True,
             "agent_core_module": "agent_runner.cores.claude",
             "agent_core_class": "ClaudeAgentCore",
         }
@@ -149,7 +149,7 @@ class TestInputSerialization:
             messages=[{"message_type": "user", "content": "hi"}],
             group_folder="g",
             chat_jid="c",
-            is_main=False,
+            is_god=False,
             session_id="sess-1",
             is_scheduled_task=True,
         )
@@ -162,7 +162,7 @@ class TestInputSerialization:
             messages=[{"message_type": "user", "content": "hi"}],
             group_folder="g",
             chat_jid="c",
-            is_main=False,
+            is_god=False,
         )
         d = _input_to_dict(inp)
         assert "session_id" not in d
@@ -240,29 +240,29 @@ class TestLegacyParsing:
 
 
 class TestMountBuilding:
-    def test_main_group_has_project_mount(self, tmp_path: Path):
-        worktree_path = tmp_path / "worktrees" / "main"
+    def test_god_group_has_project_mount(self, tmp_path: Path):
+        worktree_path = tmp_path / "worktrees" / "god"
         worktree_path.mkdir(parents=True)
         with (
             patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
             patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
             patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
         ):
-            (tmp_path / "groups" / "main").mkdir(parents=True)
+            (tmp_path / "groups" / "god").mkdir(parents=True)
             group = RegisteredGroup(
-                name="Main", folder="main", trigger="always", added_at="2024-01-01"
+                name="God", folder="god", trigger="always", added_at="2024-01-01"
             )
             mounts = _build_volume_mounts(
-                group, is_main=True, project_access=True, worktree_path=worktree_path
+                group, is_god=True, project_access=True, worktree_path=worktree_path
             )
 
             paths = [m.container_path for m in mounts]
             assert "/workspace/project" in paths
             assert "/workspace/group" in paths
-            # Main should NOT have /workspace/global
+            # God should NOT have /workspace/global
             assert "/workspace/global" not in paths
 
-    def test_nonmain_group_has_global_mount_when_exists(self, tmp_path: Path):
+    def test_nongod_group_has_global_mount_when_exists(self, tmp_path: Path):
         with (
             patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
             patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
@@ -273,10 +273,10 @@ class TestMountBuilding:
             group = RegisteredGroup(
                 name="Other", folder="other", trigger="@pynchy", added_at="2024-01-01"
             )
-            mounts = _build_volume_mounts(group, is_main=False)
+            mounts = _build_volume_mounts(group, is_god=False)
 
             paths = [m.container_path for m in mounts]
-            # Non-main should NOT have /workspace/project
+            # Non-god should NOT have /workspace/project
             assert "/workspace/project" not in paths
             assert "/workspace/group" in paths
             assert "/workspace/global" in paths
@@ -284,8 +284,8 @@ class TestMountBuilding:
             global_mount = next(m for m in mounts if m.container_path == "/workspace/global")
             assert global_mount.readonly is True
 
-    def test_nonmain_project_access_uses_worktree_path(self, tmp_path: Path):
-        """Non-main group with project_access + worktree_path mounts the worktree."""
+    def test_nongod_project_access_uses_worktree_path(self, tmp_path: Path):
+        """Non-god group with project_access + worktree_path mounts the worktree."""
         worktree_path = tmp_path / "worktrees" / "code-improver"
         worktree_path.mkdir(parents=True)
 
@@ -302,7 +302,7 @@ class TestMountBuilding:
                 added_at="2024-01-01",
             )
             mounts = _build_volume_mounts(
-                group, is_main=False, project_access=True, worktree_path=worktree_path
+                group, is_god=False, project_access=True, worktree_path=worktree_path
             )
 
             project_mount = next(m for m in mounts if m.container_path == "/workspace/project")
@@ -313,21 +313,21 @@ class TestMountBuilding:
             git_mount = next(m for m in mounts if m.host_path == str(tmp_path / ".git"))
             assert git_mount.container_path == str(tmp_path / ".git")
 
-    def test_main_uses_worktree(self, tmp_path: Path):
-        """Main group uses worktree just like any other project_access group."""
-        worktree_path = tmp_path / "worktrees" / "main"
+    def test_god_uses_worktree(self, tmp_path: Path):
+        """God group uses worktree just like any other project_access group."""
+        worktree_path = tmp_path / "worktrees" / "god"
         worktree_path.mkdir(parents=True)
         with (
             patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
             patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
             patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
         ):
-            (tmp_path / "groups" / "main").mkdir(parents=True)
+            (tmp_path / "groups" / "god").mkdir(parents=True)
             group = RegisteredGroup(
-                name="Main", folder="main", trigger="always", added_at="2024-01-01"
+                name="God", folder="god", trigger="always", added_at="2024-01-01"
             )
             mounts = _build_volume_mounts(
-                group, is_main=True, project_access=True, worktree_path=worktree_path
+                group, is_god=True, project_access=True, worktree_path=worktree_path
             )
 
             project_mount = next(m for m in mounts if m.container_path == "/workspace/project")
@@ -764,20 +764,20 @@ class TestReadGitIdentity:
 
 
 class TestTasksSnapshot:
-    def test_main_sees_all_tasks(self, tmp_path: Path):
+    def test_god_sees_all_tasks(self, tmp_path: Path):
         with patch("pynchy.container_runner.DATA_DIR", tmp_path):
             tasks = [
-                {"groupFolder": "main", "id": "t1"},
+                {"groupFolder": "god", "id": "t1"},
                 {"groupFolder": "other", "id": "t2"},
             ]
-            write_tasks_snapshot("main", True, tasks)
-            result = json.loads((tmp_path / "ipc" / "main" / "current_tasks.json").read_text())
+            write_tasks_snapshot("god", True, tasks)
+            result = json.loads((tmp_path / "ipc" / "god" / "current_tasks.json").read_text())
             assert len(result) == 2
 
-    def test_nonmain_sees_only_own_tasks(self, tmp_path: Path):
+    def test_nongod_sees_only_own_tasks(self, tmp_path: Path):
         with patch("pynchy.container_runner.DATA_DIR", tmp_path):
             tasks = [
-                {"groupFolder": "main", "id": "t1"},
+                {"groupFolder": "god", "id": "t1"},
                 {"groupFolder": "other", "id": "t2"},
             ]
             write_tasks_snapshot("other", False, tasks)
@@ -787,14 +787,14 @@ class TestTasksSnapshot:
 
 
 class TestGroupsSnapshot:
-    def test_main_sees_all_groups(self, tmp_path: Path):
+    def test_god_sees_all_groups(self, tmp_path: Path):
         with patch("pynchy.container_runner.DATA_DIR", tmp_path):
             groups = [{"jid": "a@g.us"}, {"jid": "b@g.us"}]
-            write_groups_snapshot("main", True, groups, {"a@g.us", "b@g.us"})
-            result = json.loads((tmp_path / "ipc" / "main" / "available_groups.json").read_text())
+            write_groups_snapshot("god", True, groups, {"a@g.us", "b@g.us"})
+            result = json.loads((tmp_path / "ipc" / "god" / "available_groups.json").read_text())
             assert len(result["groups"]) == 2
 
-    def test_nonmain_sees_no_groups(self, tmp_path: Path):
+    def test_nongod_sees_no_groups(self, tmp_path: Path):
         with patch("pynchy.container_runner.DATA_DIR", tmp_path):
             groups = [{"jid": "a@g.us"}]
             write_groups_snapshot("other", False, groups, {"a@g.us"})

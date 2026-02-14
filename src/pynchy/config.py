@@ -25,7 +25,7 @@ WORKTREES_DIR: Path = HOME_DIR / ".config" / "pynchy" / "worktrees"
 STORE_DIR: Path = (PROJECT_ROOT / "store").resolve()
 GROUPS_DIR: Path = (PROJECT_ROOT / "groups").resolve()
 DATA_DIR: Path = (PROJECT_ROOT / "data").resolve()
-MAIN_GROUP_FOLDER: str = "main"
+GOD_GROUP_FOLDER: str = "god"
 
 # Container settings (time values converted from ms to seconds)
 CONTAINER_IMAGE: str = os.environ.get("CONTAINER_IMAGE", "pynchy-agent:latest")

@@ -65,7 +65,7 @@ export function createXTools(ctx: SkillToolsContext) {
   return [
     tool(
       'x_post',
-      `Post a tweet to X (Twitter). Main group only.
+      `Post a tweet to X (Twitter). God group only.
 
 The host machine will execute the browser automation to post the tweet.
 Make sure the content is appropriate and within X's character limit (280 chars for text).`,
@@ -75,7 +75,7 @@ Make sure the content is appropriate and within X's character limit (280 chars f
       async (args: { content: string }) => {
         if (!isMain) {
           return {
-            content: [{ type: 'text', text: 'Only the main group can post tweets.' }],
+            content: [{ type: 'text', text: 'Only the god group can post tweets.' }],
             isError: true
           };
         }
@@ -106,7 +106,7 @@ Make sure the content is appropriate and within X's character limit (280 chars f
 
     tool(
       'x_like',
-      `Like a tweet on X (Twitter). Main group only.
+      `Like a tweet on X (Twitter). God group only.
 
 Provide the tweet URL or tweet ID to like.`,
       {
@@ -115,7 +115,7 @@ Provide the tweet URL or tweet ID to like.`,
       async (args: { tweet_url: string }) => {
         if (!isMain) {
           return {
-            content: [{ type: 'text', text: 'Only the main group can interact with X.' }],
+            content: [{ type: 'text', text: 'Only the god group can interact with X.' }],
             isError: true
           };
         }
@@ -139,7 +139,7 @@ Provide the tweet URL or tweet ID to like.`,
 
     tool(
       'x_reply',
-      `Reply to a tweet on X (Twitter). Main group only.
+      `Reply to a tweet on X (Twitter). God group only.
 
 Provide the tweet URL and your reply content.`,
       {
@@ -149,7 +149,7 @@ Provide the tweet URL and your reply content.`,
       async (args: { tweet_url: string; content: string }) => {
         if (!isMain) {
           return {
-            content: [{ type: 'text', text: 'Only the main group can interact with X.' }],
+            content: [{ type: 'text', text: 'Only the god group can interact with X.' }],
             isError: true
           };
         }
@@ -174,7 +174,7 @@ Provide the tweet URL and your reply content.`,
 
     tool(
       'x_retweet',
-      `Retweet a tweet on X (Twitter). Main group only.
+      `Retweet a tweet on X (Twitter). God group only.
 
 Provide the tweet URL to retweet.`,
       {
@@ -183,7 +183,7 @@ Provide the tweet URL to retweet.`,
       async (args: { tweet_url: string }) => {
         if (!isMain) {
           return {
-            content: [{ type: 'text', text: 'Only the main group can interact with X.' }],
+            content: [{ type: 'text', text: 'Only the god group can interact with X.' }],
             isError: true
           };
         }
@@ -207,7 +207,7 @@ Provide the tweet URL to retweet.`,
 
     tool(
       'x_quote',
-      `Quote tweet on X (Twitter). Main group only.
+      `Quote tweet on X (Twitter). God group only.
 
 Retweet with your own comment added.`,
       {
@@ -217,7 +217,7 @@ Retweet with your own comment added.`,
       async (args: { tweet_url: string; comment: string }) => {
         if (!isMain) {
           return {
-            content: [{ type: 'text', text: 'Only the main group can interact with X.' }],
+            content: [{ type: 'text', text: 'Only the god group can interact with X.' }],
             isError: true
           };
         }

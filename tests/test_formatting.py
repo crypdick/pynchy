@@ -116,40 +116,40 @@ class TestTriggerGating:
     """Replicates the trigger gating logic from the orchestrator."""
 
     @staticmethod
-    def _should_require_trigger(is_main_group: bool, requires_trigger: bool | None) -> bool:
-        return not is_main_group and requires_trigger is not False
+    def _should_require_trigger(is_god_group: bool, requires_trigger: bool | None) -> bool:
+        return not is_god_group and requires_trigger is not False
 
     @staticmethod
     def _should_process(
-        is_main_group: bool,
+        is_god_group: bool,
         requires_trigger: bool | None,
         messages: list[NewMessage],
     ) -> bool:
-        if not TestTriggerGating._should_require_trigger(is_main_group, requires_trigger):
+        if not TestTriggerGating._should_require_trigger(is_god_group, requires_trigger):
             return True
         return any(TRIGGER_PATTERN.search(m.content.strip()) for m in messages)
 
-    def test_main_group_always_processes(self, make_msg):
+    def test_god_group_always_processes(self, make_msg):
         msgs = [make_msg(content="hello no trigger")]
         assert self._should_process(True, None, msgs)
 
-    def test_main_group_processes_even_with_requires_trigger_true(self, make_msg):
+    def test_god_group_processes_even_with_requires_trigger_true(self, make_msg):
         msgs = [make_msg(content="hello no trigger")]
         assert self._should_process(True, True, msgs)
 
-    def test_non_main_defaults_to_requiring_trigger(self, make_msg):
+    def test_non_god_defaults_to_requiring_trigger(self, make_msg):
         msgs = [make_msg(content="hello no trigger")]
         assert not self._should_process(False, None, msgs)
 
-    def test_non_main_with_requires_trigger_true(self, make_msg):
+    def test_non_god_with_requires_trigger_true(self, make_msg):
         msgs = [make_msg(content="hello no trigger")]
         assert not self._should_process(False, True, msgs)
 
-    def test_non_main_processes_when_trigger_present(self, make_msg):
+    def test_non_god_processes_when_trigger_present(self, make_msg):
         msgs = [make_msg(content="@pynchy do something")]
         assert self._should_process(False, True, msgs)
 
-    def test_non_main_with_requires_trigger_false_always_processes(self, make_msg):
+    def test_non_god_with_requires_trigger_false_always_processes(self, make_msg):
         msgs = [make_msg(content="hello no trigger")]
         assert self._should_process(False, False, msgs)
 

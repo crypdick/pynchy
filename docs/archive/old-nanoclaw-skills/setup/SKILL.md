@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Run initial NanoClaw setup. Use when user wants to install dependencies, authenticate WhatsApp, register their main channel, or start the background services. Triggers on "setup", "install", "configure nanoclaw", or first-time setup requests.
+description: Run initial NanoClaw setup. Use when user wants to install dependencies, authenticate WhatsApp, register their god channel, or start the background services. Triggers on "setup", "install", "configure nanoclaw", or first-time setup requests.
 ---
 
 # NanoClaw Setup
@@ -161,7 +161,7 @@ If it says "Already authenticated", skip to the next step.
 
 ## 6. Configure Assistant Name and Main Channel
 
-This step configures three things at once: the trigger word, the main channel type, and the main channel selection.
+This step configures three things at once: the trigger word, the god channel type, and the god channel selection.
 
 ### 6a. Ask for trigger word
 
@@ -169,25 +169,25 @@ Ask the user:
 > What trigger word do you want to use? (default: `Andy`)
 >
 > In group chats, messages starting with `@TriggerWord` will be sent to Claude.
-> In your main channel (and optionally solo chats), no prefix is needed — all messages are processed.
+> In your god channel (and optionally solo chats), no prefix is needed — all messages are processed.
 
 Store their choice for use in the steps below.
 
-### 6b. Explain security model and ask about main channel type
+### 6b. Explain security model and ask about god channel type
 
 **Use the AskUserQuestion tool** to present this:
 
 > **Important: Your "main" channel is your admin control portal.**
 >
-> The main channel has elevated privileges:
+> The god channel has elevated privileges:
 > - Can see messages from ALL other registered groups
 > - Can manage and delete tasks across all groups
 > - Can write to global memory that all groups can read
 > - Has read-write access to the entire NanoClaw project
 >
-> **Recommendation:** Use your personal "Message Yourself" chat or a solo WhatsApp group as your main channel. This ensures only you have admin control.
+> **Recommendation:** Use your personal "Message Yourself" chat or a solo WhatsApp group as your god channel. This ensures only you have admin control.
 >
-> **Question:** Which setup will you use for your main channel?
+> **Question:** Which setup will you use for your god channel?
 >
 > Options:
 > 1. Personal chat (Message Yourself) - Recommended
@@ -207,7 +207,7 @@ If they choose option 3, ask a follow-up:
 > 1. Yes, I understand and want to proceed
 > 2. No, let me use a personal chat or solo group instead
 
-### 6c. Register the main channel
+### 6c. Register the god channel
 
 First build, then start the app briefly to connect to WhatsApp and sync group metadata. Use the Bash tool's timeout parameter (15000ms) — do NOT use the `timeout` shell command (it's not available on macOS). The app will be killed when the timeout fires, which is expected.
 
@@ -290,7 +290,7 @@ cat > ~/.config/nanoclaw/mount-allowlist.json << 'EOF'
 {
   "allowedRoots": [],
   "blockedPatterns": [],
-  "nonMainReadOnly": true
+  "nonGodReadOnly": true
 }
 EOF
 echo "Mount allowlist created - no external directories allowed"
@@ -317,10 +317,10 @@ For each directory they provide, ask:
 > Read-write is needed for: code changes, creating files, git commits
 > Read-only is safer for: reference docs, config examples, templates
 
-### 7b. Configure Non-Main Group Access
+### 7b. Configure Non-God Group Access
 
 Ask the user:
-> Should **non-main groups** (other WhatsApp chats you add later) be restricted to **read-only** access even if read-write is allowed for the directory?
+> Should **non-god groups** (other WhatsApp chats you add later) be restricted to **read-only** access even if read-write is allowed for the directory?
 >
 > Recommended: **Yes** - this prevents other groups from modifying files even if you grant them access to a directory.
 
@@ -332,7 +332,7 @@ Create the allowlist file based on their answers:
 mkdir -p ~/.config/nanoclaw
 ```
 
-Then write the JSON file. Example for a user who wants `~/projects` (read-write) and `~/docs` (read-only) with non-main read-only:
+Then write the JSON file. Example for a user who wants `~/projects` (read-write) and `~/docs` (read-only) with non-god read-only:
 
 ```bash
 cat > ~/.config/nanoclaw/mount-allowlist.json << 'EOF'
@@ -350,7 +350,7 @@ cat > ~/.config/nanoclaw/mount-allowlist.json << 'EOF'
     }
   ],
   "blockedPatterns": [],
-  "nonMainReadOnly": true
+  "nonGodReadOnly": true
 }
 EOF
 ```
@@ -446,7 +446,7 @@ launchctl list | grep nanoclaw
 Tell the user (using the assistant name they configured):
 > Send `@ASSISTANT_NAME hello` in your registered chat.
 >
-> **Tip:** In your main channel, you don't need the `@` prefix — just send `hello` and the agent will respond.
+> **Tip:** In your god channel, you don't need the `@` prefix — just send `hello` and the agent will respond.
 
 Check the logs:
 ```bash

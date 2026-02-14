@@ -134,7 +134,7 @@ Phases are ordered by dependency. Check the box when complete and add a brief no
 ### Phase 7: IPC Watcher
 - [x] **ipc.py** — `start_ipc_watcher()` as async polling loop (1s interval).
 - [x] `process_task_ipc()` with `match/case` for command dispatch (Python 3.10+).
-- [x] Authorization: non-main groups can only operate on themselves.
+- [x] Authorization: non-god groups can only operate on themselves.
 - [x] Atomic file processing: read → execute → delete. Move failures to `errors/` dir.
 - [x] Port all tests from `ipc-auth.test.ts` (largest test file — 594 lines).
 

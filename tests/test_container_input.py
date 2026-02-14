@@ -16,7 +16,7 @@ class TestContainerInput:
             "messages": [{"message_type": "user", "content": "hi"}],
             "group_folder": "test",
             "chat_jid": "j@g.us",
-            "is_main": False,
+            "is_god": False,
             "plugin_mcp_servers": {
                 "weather": {"command": "python", "args": ["-m", "weather"]}
             },
@@ -29,7 +29,7 @@ class TestContainerInput:
             "messages": [{"message_type": "user", "content": "hi"}],
             "group_folder": "test",
             "chat_jid": "j@g.us",
-            "is_main": False,
+            "is_god": False,
         }
         ci = ContainerInput(data)
         assert ci.plugin_mcp_servers is None

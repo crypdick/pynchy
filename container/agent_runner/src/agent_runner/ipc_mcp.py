@@ -27,7 +27,7 @@ TASKS_DIR = IPC_DIR / "tasks"
 # Context from environment variables (set by the agent runner)
 chat_jid = os.environ.get("PYNCHY_CHAT_JID", "")
 group_folder = os.environ.get("PYNCHY_GROUP_FOLDER", "")
-is_main = os.environ.get("PYNCHY_IS_MAIN") == "1"
+is_god = os.environ.get("PYNCHY_IS_GOD") == "1"
 
 
 def write_ipc_file(directory: Path, data: dict) -> str:
@@ -165,7 +165,7 @@ async def list_tools() -> list[Tool]:
                     "target_group_jid": {
                         "type": "string",
                         "description": (
-                            "(Main group only) JID of the group to "
+                            "(God group only) JID of the group to "
                             "schedule the task for. Defaults to the "
                             "current group."
                         ),
@@ -177,7 +177,7 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="list_tasks",
             description=(
-                "List all scheduled tasks. From main: shows all tasks. "
+                "List all scheduled tasks. From god: shows all tasks. "
                 "From other groups: shows only that group's tasks."
             ),
             inputSchema={"type": "object", "properties": {}},
@@ -228,7 +228,7 @@ async def list_tools() -> list[Tool]:
             name="register_group",
             description=(
                 "Register a new WhatsApp group so the agent can "
-                "respond to messages there. Main group only.\n\n"
+                "respond to messages there. God group only.\n\n"
                 "Use available_groups.json to find the JID for a "
                 "group. The folder name should be lowercase with "
                 'hyphens (e.g., "family-chat").'
@@ -304,7 +304,7 @@ async def list_tools() -> list[Tool]:
         ),
     )
 
-    if is_main:
+    if is_god:
         tools.append(
             Tool(
                 name="deploy_changes",
@@ -424,8 +424,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolR
                         isError=True,
                     )
 
-            # Non-main groups can only schedule for themselves
-            target_jid = (arguments.get("target_group_jid") if is_main else None) or chat_jid
+            # Non-god groups can only schedule for themselves
+            target_jid = (arguments.get("target_group_jid") if is_god else None) or chat_jid
 
             data = {
                 "type": "schedule_task",
@@ -461,7 +461,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolR
                 all_tasks = json.loads(tasks_file.read_text())
                 tasks = (
                     all_tasks
-                    if is_main
+                    if is_god
                     else [t for t in all_tasks if t.get("groupFolder") == group_folder]
                 )
 
@@ -500,7 +500,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolR
                 "type": "pause_task",
                 "taskId": arguments["task_id"],
                 "groupFolder": group_folder,
-                "isMain": is_main,
+                "isGod": is_god,
                 "timestamp": _now_iso(),
             }
             write_ipc_file(TASKS_DIR, data)
@@ -516,7 +516,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolR
                 "type": "resume_task",
                 "taskId": arguments["task_id"],
                 "groupFolder": group_folder,
-                "isMain": is_main,
+                "isGod": is_god,
                 "timestamp": _now_iso(),
             }
             write_ipc_file(TASKS_DIR, data)
@@ -532,7 +532,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolR
                 "type": "cancel_task",
                 "taskId": arguments["task_id"],
                 "groupFolder": group_folder,
-                "isMain": is_main,
+                "isGod": is_god,
                 "timestamp": _now_iso(),
             }
             write_ipc_file(TASKS_DIR, data)
@@ -544,12 +544,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolR
             ]
 
         case "register_group":
-            if not is_main:
+            if not is_god:
                 return CallToolResult(
                     content=[
                         TextContent(
                             type="text",
-                            text=("Only the main group can register new groups."),
+                            text=("Only the god group can register new groups."),
                         )
                     ],
                     isError=True,
@@ -635,12 +635,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolR
             )
 
         case "deploy_changes":
-            if not is_main:
+            if not is_god:
                 return CallToolResult(
                     content=[
                         TextContent(
                             type="text",
-                            text="Only the main group can deploy.",
+                            text="Only the god group can deploy.",
                         )
                     ],
                     isError=True,

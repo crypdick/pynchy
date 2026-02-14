@@ -11,7 +11,7 @@ import contextlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from pynchy.config import MAIN_GROUP_FOLDER
+from pynchy.config import GOD_GROUP_FOLDER
 from pynchy.db import clear_session, get_active_task_for_group, get_chat_history
 from pynchy.router import format_outbound
 
@@ -102,10 +102,10 @@ class GroupRegistry:
         """Return all registered groups."""
         return self._groups
 
-    def main_chat_jid(self) -> str:
-        """Find the JID of the main group."""
+    def god_chat_jid(self) -> str:
+        """Find the JID of the god group."""
         for jid, group in self._groups.items():
-            if group.folder == MAIN_GROUP_FOLDER:
+            if group.folder == GOD_GROUP_FOLDER:
                 return jid
         return ""
 

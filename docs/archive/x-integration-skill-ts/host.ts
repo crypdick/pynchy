@@ -88,9 +88,9 @@ export async function handleXIpc(
     return false;
   }
 
-  // Only main group can use X integration
+  // Only god group can use X integration
   if (!isMain) {
-    logger.warn({ sourceGroup, type }, 'X integration blocked: not main group');
+    logger.warn({ sourceGroup, type }, 'X integration blocked: not god group');
     return true;
   }
 

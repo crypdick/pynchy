@@ -259,7 +259,7 @@ sleep 2 && launchctl list | grep nanoclaw
 
 Tell the user:
 
-> Gmail integration is set up! Test it by sending this message in your WhatsApp main channel:
+> Gmail integration is set up! Test it by sending this message in your WhatsApp god channel:
 >
 > `@Andy check my recent emails`
 >
@@ -311,8 +311,8 @@ Also ask:
 > - Agent remembers all interactions with that person
 >
 > **Option C: Single Context**
-> - All emails share the main group context
-> - Like an additional input to the main channel
+> - All emails share the god group context
+> - Like an additional input to the god channel
 
 Store their choices for implementation.
 
@@ -552,7 +552,7 @@ async function runEmailAgent(
   // 2. Or dynamic folders per thread/sender
 
   const groupFolder = EMAIL_CHANNEL.contextMode === 'single'
-    ? 'main'  // Use main group context
+    ? 'main'  // Use god group context
     : `email/${contextKey}`;  // Isolated email context
 
   // Ensure folder exists

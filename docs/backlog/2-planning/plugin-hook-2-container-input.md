@@ -28,7 +28,7 @@ class ContainerInput:
     prompt: str
     group_folder: str
     chat_jid: str
-    is_main: bool
+    is_god: bool
     session_id: str | None = None
     is_scheduled_task: bool = False
     plugin_mcp_servers: list[dict[str, Any]] | None = None
@@ -56,7 +56,7 @@ def _input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
         "prompt": input_data.prompt,
         "group_folder": input_data.group_folder,
         "chat_jid": input_data.chat_jid,
-        "is_main": input_data.is_main,
+        "is_god": input_data.is_god,
     }
     if input_data.session_id is not None:
         d["session_id"] = input_data.session_id
@@ -82,7 +82,7 @@ class ContainerInput:
         self.session_id: str | None = data.get("session_id")
         self.group_folder: str = data["group_folder"]
         self.chat_jid: str = data["chat_jid"]
-        self.is_main: bool = data["is_main"]
+        self.is_god: bool = data["is_god"]
         self.is_scheduled_task: bool = data.get("is_scheduled_task", False)
         self.plugin_hooks: list[dict[str, str]] = data.get("plugin_hooks", [])  # NEW
 ```
@@ -104,7 +104,7 @@ def test_container_input_with_hooks():
         prompt="test",
         group_folder="main",
         chat_jid="test@jid",
-        is_main=True,
+        is_god=True,
         plugin_hooks=[
             {"name": "logger", "module_path": "plugin_logger.hooks"},
             {"name": "monitor", "module_path": "plugin_monitor.hooks"},
@@ -122,7 +122,7 @@ def test_container_input_without_hooks():
         prompt="test",
         group_folder="main",
         chat_jid="test@jid",
-        is_main=True,
+        is_god=True,
     )
 
     assert input_data.plugin_hooks is None
@@ -134,7 +134,7 @@ def test_input_to_dict_serialization():
         prompt="test",
         group_folder="main",
         chat_jid="test@jid",
-        is_main=True,
+        is_god=True,
         plugin_hooks=[{"name": "test", "module_path": "test.hooks"}],
     )
 
@@ -149,7 +149,7 @@ def test_input_to_dict_omits_empty_hooks():
         prompt="test",
         group_folder="main",
         chat_jid="test@jid",
-        is_main=True,
+        is_god=True,
     )
 
     result = _input_to_dict(input_data)
