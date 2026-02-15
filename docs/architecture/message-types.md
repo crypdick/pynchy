@@ -1,10 +1,6 @@
-# Message Types Architecture
+# Message Types
 
-This document describes the message type system implemented in Pynchy.
-
-## Overview
-
-Messages in Pynchy are categorized by semantic type, enabling proper handling throughout the stack from storage to SDK integration. This architecture ensures operational notifications (host messages) are never sent to the LLM while maintaining conversation context.
+Messages are categorized by semantic type, enabling proper handling from storage to SDK integration. Operational notifications (host messages) are never sent to the LLM while conversation context is maintained.
 
 ## Message Types
 
@@ -151,34 +147,3 @@ Handles user message ingestion:
 4. **Extensibility**: Easy to add new message types
 5. **Debuggability**: Clear types in DB, logs, UI
 6. **Filtered Context**: Host messages never pollute LLM context
-
-## Backward Compatibility
-
-The system maintains full backward compatibility:
-
-- Legacy `prompt` string still supported alongside `messages` list
-- XML formatting functions preserved for transition period
-- Old databases automatically migrated with backfill
-- All existing tests pass without modification
-
-## Future Enhancements
-
-1. **True SDK Message Objects**: When SDK supports passing message lists directly to `query()`, build proper `UserMessage`, `AssistantMessage`, etc. objects instead of converting to XML
-
-2. **Rich Content**: Leverage SDK content blocks for images, files, structured data
-
-3. **Message Metadata**: Store tool_use_id, error details, cost tracking in metadata field
-
-4. **Remove Legacy**: Eventually remove XML formatting when all code paths use SDK messages
-
-## Implementation Status
-
-- ✅ Phase 1: Database migration
-- ✅ Phase 2: Storage layer updates
-- ✅ Phase 3: Message retrieval & SDK list building
-- ✅ Phase 4: Container integration
-- ✅ Phase 5: System context documentation
-- ✅ Phase 6: UI/channel rendering (emojis at broadcast)
-- ✅ Phase 7: Documentation & cleanup
-
-All 465 tests passing. Refactor complete.

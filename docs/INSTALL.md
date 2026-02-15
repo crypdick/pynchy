@@ -288,7 +288,7 @@ On first run, the systemd service is only created if you start Pynchy without th
 After installation:
 
 1. **Send a test message** - Message yourself in WhatsApp with `@Pynchy hello` to verify it's working
-2. **Read the docs** - Understand the philosophy at [index.md](index.md) and architecture at [SPEC.md](SPEC.md)
+2. **Read the docs** - Understand the philosophy at [index.md](index.md) and architecture at [architecture/](architecture/index.md)
 3. **Customize** - Tell Claude Code to add channels, integrations, or change behavior directly in the codebase
 4. **Set up scheduled tasks** - Ask Pynchy to run recurring tasks: `@Pynchy send me a summary of Hacker News every morning at 9am`
 

@@ -12,19 +12,19 @@ Helps decide where to document things and maintain consistency across Pynchy doc
 
 - Write for a **user trying to achieve a goal**. Don't chronicle the evolution of the codebase. Don't go into unnecessary technical details that are not relevant to the user's goal.
 - Follow the [Google Style Guide](https://developers.google.com/style). Write in the present tense. Don't use "we" or "they". Write in the active voice. Don't use "is" or "are".
+- Read `.claude/style-guide.md` for the full documentation philosophy and information architecture rules.
 
 ## Where to Document What
 
 Quick decision tree:
 
 **New feature?**
-- User-facing behavior → `docs/SPEC.md` (under relevant section)
+- Architecture decision → `docs/architecture/` (find the relevant topic file, or create a new one)
 - Installation requirement → `docs/INSTALL.md`
 - Security implication → `docs/SECURITY.md`
 - Development workflow change → `.claude/development.md`
 
 **Bug fix?**
-- If it revealed architecture issue → `docs/SPEC.md`
 - If it needs install change → `docs/INSTALL.md`
 - Usually: No doc update needed
 
@@ -38,37 +38,41 @@ Quick decision tree:
 |------|-----------------|
 | `README.md` | Philosophy, quick start, high-level overview |
 | `docs/INSTALL.md` | Complete installation guide |
-| `docs/SPEC.md` | Architecture decisions, technical details |
 | `docs/SECURITY.md` | Security model, threat analysis |
-| `.claude/*.md` | Development context for Claude Code |
+| `docs/architecture/index.md` | Architecture overview and links to topic pages |
+| `docs/architecture/*.md` | One topic per file (containers, routing, tasks, etc.) |
+| `.claude/*.md` | Development context for Claude Code agents |
+
+## Information Architecture Rules
+
+1. **Single source of truth** — Every concept explained in exactly one place. Cross-link, don't duplicate.
+2. **Tree-shaped navigation** — Root files have links + short summaries. Leaf files have the actual content.
+3. **Small, focused files** — One topic per file. If it covers multiple concerns, split it.
 
 ## Validation
 
 **Before committing:**
 ```bash
 # Check for broken links
-grep -r "old-filename.md" docs/ README.md CLAUDE.md .claude/
-
-# If using MkDocs
-mkdocs build --strict
+uv run mkdocs build --strict
 ```
 
 **After moving/renaming files:**
 1. Search for all references to old name
 2. Update each reference
-3. Test with `mkdocs build --strict` if available
+3. Update `mkdocs.yml` nav
+4. Test with `uv run mkdocs build --strict`
 
 ## Common Mistakes
 
-❌ Duplicating content across files (link instead)
-❌ Chronological explanations ("First we tried X...")
-❌ Mixing audiences (keep README brief, details in docs/)
-❌ Forgetting to update references after renames
+- Duplicating content across files (link instead)
+- Chronological explanations ("First we tried X...")
+- Mixing audiences (keep README brief, details in docs/)
+- Forgetting to update references after renames
+- Writing mega-files that cover multiple topics
 
 ## Link Checking
 
 Link validation runs automatically in pre-commit hooks. If docs have broken links, the commit will fail.
 
 To manually check: `uv run mkdocs build --strict`
-
-Read `.claude/style-guide.md` for the philosophy.

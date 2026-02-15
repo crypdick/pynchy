@@ -16,4 +16,4 @@ This keeps the base system small and lets every user customize their installatio
 
 ## Development
 
-See the [development guide](https://github.com/crypdick/pynchy/blob/main/.claude/development.md) for running commands, writing tests, and linting.
+See `.claude/development.md` in the project root for running commands, writing tests, and linting.
