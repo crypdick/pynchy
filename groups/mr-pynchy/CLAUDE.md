@@ -1,0 +1,1 @@
+../admin/CLAUDE.md

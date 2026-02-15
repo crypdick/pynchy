@@ -14,7 +14,6 @@ from croniter import croniter
 
 from pynchy.config import (
     DEFAULT_AGENT_CORE,
-    GOD_GROUP_FOLDER,
     GROUPS_DIR,
     IDLE_TIMEOUT,
     SCHEDULER_POLL_INTERVAL,
@@ -120,7 +119,7 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
         )
         return
 
-    _is_god = task.group_folder == GOD_GROUP_FOLDER
+    _is_god = group.is_god
 
     # Write tasks snapshot so the container can read current task state
     all_tasks = await get_all_tasks()

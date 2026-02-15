@@ -11,7 +11,6 @@ import contextlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from pynchy.config import GOD_GROUP_FOLDER
 from pynchy.db import clear_session, get_active_task_for_group, get_chat_history
 from pynchy.router import format_outbound
 
@@ -140,9 +139,9 @@ class GroupRegistry:
         return self._groups
 
     def god_chat_jid(self) -> str:
-        """Find the JID of the god group."""
+        """Find the JID of a god group (returns first match)."""
         for jid, group in self._groups.items():
-            if group.folder == GOD_GROUP_FOLDER:
+            if group.is_god:
                 return jid
         return ""
 

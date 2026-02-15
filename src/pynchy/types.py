@@ -90,6 +90,9 @@ class WorkspaceProfile:
     # Security profile (Phase B.1)
     security: WorkspaceSecurity = field(default_factory=WorkspaceSecurity)
 
+    # Privileges
+    is_god: bool = False
+
     # Metadata
     added_at: str = ""
 
@@ -146,6 +149,7 @@ class WorkspaceProfile:
             requires_trigger=rg.requires_trigger if rg.requires_trigger is not None else True,
             container_config=rg.container_config,
             security=WorkspaceSecurity(),  # Default security profile
+            is_god=rg.is_god,
             added_at=rg.added_at,
         )
 
@@ -162,6 +166,7 @@ class WorkspaceProfile:
             added_at=self.added_at,
             container_config=self.container_config,
             requires_trigger=self.requires_trigger,
+            is_god=self.is_god,
         )
 
 
@@ -179,6 +184,7 @@ class RegisteredGroup:
     added_at: str
     container_config: ContainerConfig | None = None
     requires_trigger: bool | None = None  # Default: True for groups, False for solo
+    is_god: bool = False
 
 
 @dataclass

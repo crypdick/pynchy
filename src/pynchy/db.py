@@ -90,7 +90,9 @@ CREATE TABLE IF NOT EXISTS registered_groups (
     trigger_pattern TEXT NOT NULL,
     added_at TEXT NOT NULL,
     container_config TEXT,
-    requires_trigger INTEGER DEFAULT 1
+    requires_trigger INTEGER DEFAULT 1,
+    security_profile TEXT,
+    is_god INTEGER DEFAULT 0
 );
 """
 
@@ -155,30 +157,6 @@ async def _create_schema(database: aiosqlite.Connection) -> None:
             "WHERE sender IN ('bot', 'pynchy') AND message_type = 'user'"
         )
         # Everything else stays as 'user' (already the default)
-        await database.commit()
-    except Exception:
-        pass
-    # Migration: add security_profile column for WorkspaceProfile (Phase B.1)
-    try:
-        await database.execute("ALTER TABLE registered_groups ADD COLUMN security_profile TEXT")
-        await database.commit()
-    except Exception:
-        pass
-    # Migration: backfill default security profiles
-    try:
-        # Set default security profile for existing workspaces
-        default_security = json.dumps(
-            {
-                "mcp_tools": {},
-                "default_risk_tier": "human-approval",
-                "allow_filesystem_access": True,
-                "allow_network_access": True,
-            }
-        )
-        await database.execute(
-            "UPDATE registered_groups SET security_profile = ? WHERE security_profile IS NULL",
-            (default_security,),
-        )
         await database.commit()
     except Exception:
         pass
@@ -666,8 +644,8 @@ async def set_registered_group(jid: str, group: RegisteredGroup) -> None:
     await db.execute(
         """INSERT OR REPLACE INTO registered_groups
             (jid, name, folder, trigger_pattern, added_at,
-             container_config, requires_trigger)
-         VALUES (?, ?, ?, ?, ?, ?, ?)""",
+             container_config, requires_trigger, is_god)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             jid,
             group.name,
@@ -676,6 +654,7 @@ async def set_registered_group(jid: str, group: RegisteredGroup) -> None:
             group.added_at,
             json.dumps(asdict(group.container_config)) if group.container_config else None,
             1 if group.requires_trigger is None else (1 if group.requires_trigger else 0),
+            1 if group.is_god else 0,
         ),
     )
     await db.commit()
@@ -701,6 +680,7 @@ async def get_all_registered_groups() -> dict[str, RegisteredGroup]:
             added_at=entry["added_at"],
             container_config=ContainerConfig.from_dict(raw_cc) if raw_cc else None,
             requires_trigger=entry.get("requires_trigger"),
+            is_god=entry.get("is_god", False),
         )
     return result
 
@@ -747,8 +727,8 @@ async def set_workspace_profile(profile: WorkspaceProfile) -> None:
     await db.execute(
         """INSERT OR REPLACE INTO registered_groups
             (jid, name, folder, trigger_pattern, added_at,
-             container_config, requires_trigger, security_profile)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+             container_config, requires_trigger, security_profile, is_god)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             profile.jid,
             profile.name,
@@ -758,6 +738,7 @@ async def set_workspace_profile(profile: WorkspaceProfile) -> None:
             json.dumps(asdict(profile.container_config)) if profile.container_config else None,
             1 if profile.requires_trigger else 0,
             json.dumps(security_data),
+            1 if profile.is_god else 0,
         ),
     )
     await db.commit()
@@ -899,6 +880,7 @@ def _row_to_registered_group(row: aiosqlite.Row) -> dict[str, Any]:
         "added_at": row["added_at"],
         "container_config": container_config,
         "requires_trigger": requires_trigger,
+        "is_god": bool(row["is_god"]),
     }
 
 
@@ -941,5 +923,6 @@ def _row_to_workspace_profile(row: aiosqlite.Row) -> WorkspaceProfile:
         requires_trigger=requires_trigger,
         container_config=container_config,
         security=security,
+        is_god=bool(row["is_god"]),
         added_at=row["added_at"],
     )

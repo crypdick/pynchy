@@ -11,12 +11,15 @@ logs/
 
 # Groups - only track base structure and specific CLAUDE.md files
 groups/*
-!groups/main/
 !groups/global/
-groups/main/*
 groups/global/*
-!groups/main/CLAUDE.md
 !groups/global/CLAUDE.md
+!groups/admin/
+groups/admin/*
+!groups/admin/CLAUDE.md
+!groups/mr-pynchy/
+groups/mr-pynchy/*
+!groups/mr-pynchy/CLAUDE.md
 !groups/code-improver/
 groups/code-improver/*
 !groups/code-improver/CLAUDE.md
