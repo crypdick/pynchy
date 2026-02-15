@@ -6,6 +6,7 @@ Port of src/ipc-auth.test.ts.
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -47,6 +48,21 @@ class MockDeps:
 
     def __init__(self, groups: dict[str, RegisteredGroup]):
         self._groups = groups
+        self.broadcast_messages: list[tuple[str, str]] = []
+        self.host_messages: list[tuple[str, str]] = []
+        self.system_notices: list[tuple[str, str]] = []
+        self.cleared_sessions: list[str] = []
+        self.cleared_chats: list[str] = []
+        self.enqueued_checks: list[str] = []
+
+    async def broadcast_to_channels(self, jid: str, text: str) -> None:
+        self.broadcast_messages.append((jid, text))
+
+    async def broadcast_host_message(self, jid: str, text: str) -> None:
+        self.host_messages.append((jid, text))
+
+    async def broadcast_system_notice(self, jid: str, text: str) -> None:
+        self.system_notices.append((jid, text))
 
     async def send_message(self, jid: str, text: str) -> None:
         pass
@@ -64,7 +80,7 @@ class MockDeps:
     async def sync_group_metadata(self, force: bool) -> None:
         pass
 
-    def get_available_groups(self) -> list[Any]:
+    async def get_available_groups(self) -> list[Any]:
         return []
 
     def write_groups_snapshot(
@@ -75,6 +91,18 @@ class MockDeps:
         registered_jids: set[str],
     ) -> None:
         pass
+
+    async def clear_session(self, group_folder: str) -> None:
+        self.cleared_sessions.append(group_folder)
+
+    async def clear_chat_history(self, chat_jid: str) -> None:
+        self.cleared_chats.append(chat_jid)
+
+    def enqueue_message_check(self, group_jid: str) -> None:
+        self.enqueued_checks.append(group_jid)
+
+    def channels(self) -> list:
+        return []
 
 
 @pytest.fixture
@@ -784,3 +812,328 @@ class TestAuthorizedTaskActionEdges:
             True,
             deps,
         )
+
+
+# --- deploy authorization ---
+
+
+class TestDeployAuth:
+    """Deploy IPC is god-only. Non-god attempts should be silently blocked."""
+
+    async def test_non_god_cannot_deploy(self, deps):
+        await process_task_ipc(
+            {
+                "type": "deploy",
+                "rebuildContainer": False,
+                "resumePrompt": "test",
+                "headSha": "abc123",
+                "chatJid": "other@g.us",
+            },
+            "other-group",
+            False,
+            deps,
+        )
+        # No host messages sent (deploy was blocked)
+        assert len(deps.host_messages) == 0
+
+    async def test_god_deploy_invokes_finalize(self, deps):
+        """God deploy with valid data calls finalize_deploy."""
+        with patch("pynchy.ipc.finalize_deploy", new_callable=AsyncMock) as mock_finalize:
+            await process_task_ipc(
+                {
+                    "type": "deploy",
+                    "rebuildContainer": False,
+                    "resumePrompt": "Deploy complete.",
+                    "headSha": "abc123",
+                    "sessionId": "sess-1",
+                    "chatJid": "god@g.us",
+                },
+                "god",
+                True,
+                deps,
+            )
+            mock_finalize.assert_called_once()
+            call_kwargs = mock_finalize.call_args
+            assert call_kwargs.kwargs["chat_jid"] == "god@g.us"
+
+
+# --- reset_context execution ---
+
+
+class TestResetContextExecution:
+    """Tests for the reset_context IPC command execution paths."""
+
+    async def test_reset_context_clears_session_and_chat(self, deps, tmp_path):
+        with (
+            patch("pynchy.ipc.DATA_DIR", tmp_path / "data"),
+            patch("pynchy.worktree.merge_and_push_worktree"),
+        ):
+            (tmp_path / "data" / "ipc" / "god").mkdir(parents=True)
+            await process_task_ipc(
+                {
+                    "type": "reset_context",
+                    "chatJid": "god@g.us",
+                    "message": "Start fresh",
+                    "groupFolder": "god",
+                },
+                "god",
+                True,
+                deps,
+            )
+
+            assert "god" in deps.cleared_sessions
+            assert "god@g.us" in deps.cleared_chats
+            assert "god@g.us" in deps.enqueued_checks
+
+    async def test_reset_context_writes_reset_prompt_file(self, deps, tmp_path):
+        with (
+            patch("pynchy.ipc.DATA_DIR", tmp_path / "data"),
+            patch("pynchy.worktree.merge_and_push_worktree"),
+        ):
+            (tmp_path / "data" / "ipc" / "god").mkdir(parents=True)
+            await process_task_ipc(
+                {
+                    "type": "reset_context",
+                    "chatJid": "god@g.us",
+                    "message": "Start fresh",
+                    "groupFolder": "god",
+                },
+                "god",
+                True,
+                deps,
+            )
+
+            import json
+
+            reset_file = tmp_path / "data" / "ipc" / "god" / "reset_prompt.json"
+            assert reset_file.exists()
+            data = json.loads(reset_file.read_text())
+            assert data["message"] == "Start fresh"
+            assert data["chatJid"] == "god@g.us"
+            assert data["needsDirtyRepoCheck"] is True
+
+    async def test_reset_context_rejects_missing_chat_jid(self, deps):
+        """reset_context without chatJid should bail without clearing."""
+        await process_task_ipc(
+            {
+                "type": "reset_context",
+                "message": "Start fresh",
+                "groupFolder": "god",
+            },
+            "god",
+            True,
+            deps,
+        )
+
+        assert len(deps.cleared_sessions) == 0
+        assert len(deps.cleared_chats) == 0
+
+    async def test_reset_context_rejects_missing_message(self, deps):
+        """reset_context without message should bail without clearing."""
+        await process_task_ipc(
+            {
+                "type": "reset_context",
+                "chatJid": "god@g.us",
+                "groupFolder": "god",
+            },
+            "god",
+            True,
+            deps,
+        )
+
+        assert len(deps.cleared_sessions) == 0
+
+    async def test_reset_context_survives_merge_failure(self, deps, tmp_path):
+        """reset_context should continue even if worktree merge fails."""
+        with (
+            patch("pynchy.ipc.DATA_DIR", tmp_path / "data"),
+            patch(
+                "pynchy.worktree.merge_and_push_worktree",
+                side_effect=Exception("merge failed"),
+            ),
+        ):
+            (tmp_path / "data" / "ipc" / "god").mkdir(parents=True)
+            await process_task_ipc(
+                {
+                    "type": "reset_context",
+                    "chatJid": "god@g.us",
+                    "message": "Start fresh",
+                    "groupFolder": "god",
+                },
+                "god",
+                True,
+                deps,
+            )
+
+            # Session should still be cleared despite merge failure
+            assert "god" in deps.cleared_sessions
+
+
+# --- finished_work execution ---
+
+
+class TestFinishedWorkExecution:
+    """Tests for the finished_work IPC command."""
+
+    async def test_finished_work_sends_host_message(self, deps):
+        with patch("pynchy.workspace_config.has_project_access", return_value=False):
+            await process_task_ipc(
+                {
+                    "type": "finished_work",
+                    "chatJid": "other@g.us",
+                },
+                "other-group",
+                False,
+                deps,
+            )
+
+            assert len(deps.host_messages) == 1
+            assert deps.host_messages[0][0] == "other@g.us"
+            assert "finished" in deps.host_messages[0][1].lower()
+
+    async def test_finished_work_merges_worktree_for_project_access(self, deps):
+        with (
+            patch("pynchy.workspace_config.has_project_access", return_value=True),
+            patch("pynchy.worktree.merge_and_push_worktree") as mock_merge,
+        ):
+            await process_task_ipc(
+                {
+                    "type": "finished_work",
+                    "chatJid": "other@g.us",
+                },
+                "other-group",
+                False,
+                deps,
+            )
+
+            mock_merge.assert_called_once_with("other-group")
+
+    async def test_finished_work_skips_merge_for_non_project_access(self, deps):
+        with (
+            patch("pynchy.workspace_config.has_project_access", return_value=False),
+            patch("pynchy.worktree.merge_and_push_worktree") as mock_merge,
+        ):
+            await process_task_ipc(
+                {
+                    "type": "finished_work",
+                    "chatJid": "other@g.us",
+                },
+                "other-group",
+                False,
+                deps,
+            )
+
+            mock_merge.assert_not_called()
+
+    async def test_finished_work_rejects_missing_chat_jid(self, deps):
+        """finished_work without chatJid should bail."""
+        await process_task_ipc(
+            {
+                "type": "finished_work",
+            },
+            "other-group",
+            False,
+            deps,
+        )
+
+        assert len(deps.host_messages) == 0
+
+    async def test_finished_work_survives_merge_failure(self, deps):
+        """finished_work should send message even if merge fails."""
+        with (
+            patch("pynchy.workspace_config.has_project_access", return_value=True),
+            patch(
+                "pynchy.worktree.merge_and_push_worktree",
+                side_effect=Exception("merge boom"),
+            ),
+        ):
+            await process_task_ipc(
+                {
+                    "type": "finished_work",
+                    "chatJid": "other@g.us",
+                },
+                "other-group",
+                False,
+                deps,
+            )
+
+            # Host message should still be sent despite merge failure
+            assert len(deps.host_messages) == 1
+
+
+# --- refresh_groups execution ---
+
+
+class TestRefreshGroupsExecution:
+    """Tests for refresh_groups IPC command execution."""
+
+    async def test_god_triggers_metadata_refresh(self, deps):
+        # Patch sync_group_metadata on the deps instance to track calls
+        deps.sync_group_metadata = AsyncMock()
+        deps.get_available_groups = AsyncMock(return_value=[])
+
+        await process_task_ipc(
+            {"type": "refresh_groups"},
+            "god",
+            True,
+            deps,
+        )
+
+        deps.sync_group_metadata.assert_called_once_with(True)
+
+
+# --- create_periodic_agent authorization ---
+
+
+class TestCreatePeriodicAgentAuth:
+    """Tests for create_periodic_agent authorization and validation."""
+
+    async def test_non_god_cannot_create_periodic_agent(self, deps):
+        await process_task_ipc(
+            {
+                "type": "create_periodic_agent",
+                "name": "my-agent",
+                "schedule": "0 9 * * *",
+                "prompt": "do something",
+            },
+            "other-group",
+            False,
+            deps,
+        )
+
+        # No tasks should be created
+        tasks = await get_all_tasks()
+        assert len(tasks) == 0
+
+    async def test_rejects_missing_required_fields(self, deps):
+        """create_periodic_agent without name/schedule/prompt should bail."""
+        await process_task_ipc(
+            {
+                "type": "create_periodic_agent",
+                "name": "my-agent",
+                # missing schedule and prompt
+            },
+            "god",
+            True,
+            deps,
+        )
+
+        tasks = await get_all_tasks()
+        assert len(tasks) == 0
+
+    async def test_rejects_invalid_cron_expression(self, deps):
+        """create_periodic_agent with invalid cron should bail."""
+        await process_task_ipc(
+            {
+                "type": "create_periodic_agent",
+                "name": "bad-cron-agent",
+                "schedule": "not valid cron",
+                "prompt": "do something",
+            },
+            "god",
+            True,
+            deps,
+        )
+
+        tasks = await get_all_tasks()
+        assert len(tasks) == 0
