@@ -10,10 +10,9 @@ from unittest.mock import Mock, patch
 from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
 
-from pynchy.git_utils import get_head_sha, is_repo_dirty
+from pynchy.git_utils import get_head_sha, is_repo_dirty, push_local_commits
 from pynchy.http_server import (
     _get_head_commit_message,
-    _push_local_commits,
     _write_boot_warning,
     deps_key,
 )
@@ -103,19 +102,19 @@ def test_get_head_commit_message_exception():
 # ---------------------------------------------------------------------------
 
 
-def test_push_local_commits_nothing_to_push():
-    """_push_local_commits returns True when no local commits exist."""
+def testpush_local_commits_nothing_to_push():
+    """push_local_commits returns True when no local commits exist."""
     with patch("subprocess.run") as mock_run:
         # fetch succeeds, rev-list shows 0 commits
         mock_run.side_effect = [
             Mock(returncode=0),  # fetch
             Mock(returncode=0, stdout="0\n"),  # rev-list
         ]
-        assert _push_local_commits() is True
+        assert push_local_commits() is True
 
 
-def test_push_local_commits_success():
-    """_push_local_commits returns True when push succeeds."""
+def testpush_local_commits_success():
+    """push_local_commits returns True when push succeeds."""
     with patch("subprocess.run") as mock_run:
         mock_run.side_effect = [
             Mock(returncode=0),  # fetch
@@ -123,18 +122,18 @@ def test_push_local_commits_success():
             Mock(returncode=0),  # rebase
             Mock(returncode=0),  # push
         ]
-        assert _push_local_commits() is True
+        assert push_local_commits() is True
 
 
-def test_push_local_commits_fetch_failure():
-    """_push_local_commits returns False when fetch fails."""
+def testpush_local_commits_fetch_failure():
+    """push_local_commits returns False when fetch fails."""
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = Mock(returncode=1, stderr="network error")
-        assert _push_local_commits() is False
+        assert push_local_commits() is False
 
 
-def test_push_local_commits_rebase_failure_retries_and_fails():
-    """_push_local_commits retries once after rebase failure, then gives up."""
+def testpush_local_commits_rebase_failure_retries_and_fails():
+    """push_local_commits retries once after rebase failure, then gives up."""
     with patch("subprocess.run") as mock_run:
         mock_run.side_effect = [
             Mock(returncode=0),  # fetch
@@ -145,11 +144,11 @@ def test_push_local_commits_rebase_failure_retries_and_fails():
             Mock(returncode=1, stderr="CONFLICT"),  # rebase fails (attempt 2)
             Mock(returncode=0),  # rebase --abort
         ]
-        assert _push_local_commits() is False
+        assert push_local_commits() is False
 
 
-def test_push_local_commits_rebase_retry_succeeds():
-    """_push_local_commits succeeds on retry when origin advanced mid-push."""
+def testpush_local_commits_rebase_retry_succeeds():
+    """push_local_commits succeeds on retry when origin advanced mid-push."""
     with patch("subprocess.run") as mock_run:
         mock_run.side_effect = [
             Mock(returncode=0),  # fetch
@@ -160,11 +159,11 @@ def test_push_local_commits_rebase_retry_succeeds():
             Mock(returncode=0),  # rebase succeeds (attempt 2)
             Mock(returncode=0),  # push
         ]
-        assert _push_local_commits() is True
+        assert push_local_commits() is True
 
 
-def test_push_local_commits_push_failure():
-    """_push_local_commits returns False when push is rejected."""
+def testpush_local_commits_push_failure():
+    """push_local_commits returns False when push is rejected."""
     with patch("subprocess.run") as mock_run:
         mock_run.side_effect = [
             Mock(returncode=0),  # fetch
@@ -172,22 +171,22 @@ def test_push_local_commits_push_failure():
             Mock(returncode=0),  # rebase
             Mock(returncode=1, stderr="rejected"),  # push fails
         ]
-        assert _push_local_commits() is False
+        assert push_local_commits() is False
 
 
-def test_push_local_commits_skip_fetch():
-    """_push_local_commits skips fetch when skip_fetch=True."""
+def testpush_local_commits_skip_fetch():
+    """push_local_commits skips fetch when skip_fetch=True."""
     with patch("subprocess.run") as mock_run:
         mock_run.side_effect = [
             Mock(returncode=0, stdout="0\n"),  # rev-list
         ]
-        assert _push_local_commits(skip_fetch=True) is True
+        assert push_local_commits(skip_fetch=True) is True
 
 
-def test_push_local_commits_exception():
-    """_push_local_commits returns False on unexpected exception."""
+def testpush_local_commits_exception():
+    """push_local_commits returns False on unexpected exception."""
     with patch("subprocess.run", side_effect=OSError("disk error")):
-        assert _push_local_commits() is False
+        assert push_local_commits() is False
 
 
 # ---------------------------------------------------------------------------

@@ -234,11 +234,9 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
 
         # Merge worktree commits and push for all project_access tasks
         if not error and task.project_access:
-            from pynchy.http_server import _push_local_commits
-            from pynchy.worktree import merge_worktree
+            from pynchy.worktree import merge_and_push_worktree
 
-            if merge_worktree(task.group_folder):
-                _push_local_commits()
+            merge_and_push_worktree(task.group_folder)
     except Exception as exc:
         if idle_handle is not None:
             idle_handle.cancel()

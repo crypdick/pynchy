@@ -23,6 +23,7 @@ from pynchy.git_utils import (
     files_changed_between,
     get_head_sha,
     is_repo_dirty,
+    push_local_commits,
     run_git,
 )
 from pynchy.logger import logger
@@ -44,59 +45,6 @@ def _get_head_commit_message(max_length: int = 72) -> str:
         return msg
     except Exception:
         return ""
-
-
-def _push_local_commits(*, skip_fetch: bool = False) -> bool:
-    """Best-effort push of local commits to origin/main.
-
-    Returns True if repo is in sync (nothing to push, or push succeeded).
-    Retries once on rebase failure (covers the race where origin advances
-    between fetch and rebase when two worktrees push nearly simultaneously).
-    Never raises — all failures are logged and return False.
-    """
-    try:
-        if not skip_fetch:
-            fetch = run_git("fetch", "origin")
-            if fetch.returncode != 0:
-                logger.warning("push_local: git fetch failed", stderr=fetch.stderr.strip())
-                return False
-
-        count = run_git("rev-list", "origin/main..HEAD", "--count")
-        if count.returncode != 0 or int(count.stdout.strip() or "0") == 0:
-            return True  # nothing to push (or can't tell)
-
-        # Try rebase+push, retry once if origin advanced mid-operation
-        for attempt in range(2):
-            rebase = run_git("rebase", "origin/main")
-            if rebase.returncode != 0:
-                run_git("rebase", "--abort")
-                if attempt == 0:
-                    # Re-fetch and retry — origin may have advanced
-                    logger.info("push_local: rebase failed, retrying after fresh fetch")
-                    retry_fetch = run_git("fetch", "origin")
-                    if retry_fetch.returncode != 0:
-                        logger.warning(
-                            "push_local: retry fetch failed", stderr=retry_fetch.stderr.strip()
-                        )
-                        return False
-                    continue
-                logger.warning(
-                    "push_local: rebase failed after retry", stderr=rebase.stderr.strip()
-                )
-                return False
-
-            push = run_git("push")
-            if push.returncode != 0:
-                logger.warning("push_local: git push failed", stderr=push.stderr.strip())
-                return False
-
-            logger.info("push_local: pushed local commits")
-            return True
-
-        return False  # exhausted attempts
-    except Exception as exc:
-        logger.warning("push_local: unexpected error", err=str(exc))
-        return False
 
 
 def _write_boot_warning(message: str) -> None:
@@ -160,7 +108,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
 
     # 1. Push any local commits before pulling (prevents divergence)
     run_git("fetch", "origin")
-    if not _push_local_commits(skip_fetch=True):
+    if not push_local_commits(skip_fetch=True):
         logger.warning("Pre-deploy push failed, continuing with rebase")
 
     # 2. Stash dirty files so they don't block the rebase
