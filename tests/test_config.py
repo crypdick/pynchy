@@ -1,11 +1,11 @@
 """Tests for configuration logic.
 
-Tests critical business logic in config.py, especially context reset detection.
+Tests critical business logic in config.py: context reset and redeploy detection.
 """
 
 from __future__ import annotations
 
-from pynchy.config import is_context_reset
+from pynchy.config import is_context_reset, is_redeploy
 
 
 class TestIsContextReset:
@@ -148,3 +148,76 @@ class TestIsContextReset:
 
         for verb, noun in test_cases:
             assert is_context_reset(f"{verb} {noun}"), f"Failed for: {verb} {noun}"
+
+    # Alias 'c' for quick context reset
+    def test_recognizes_c_alias(self):
+        assert is_context_reset("c")
+
+    def test_c_alias_is_case_insensitive(self):
+        assert is_context_reset("C")
+
+    def test_c_alias_with_whitespace(self):
+        assert is_context_reset("  c  ")
+
+
+class TestIsRedeploy:
+    """Test the is_redeploy() function which detects manual redeploy commands.
+
+    Critical because incorrect detection could either cause unwanted service
+    restarts (false positive) or prevent intentional deploys (false negative).
+    """
+
+    # Valid aliases
+    def test_recognizes_r_alias(self):
+        assert is_redeploy("r")
+
+    def test_recognizes_redeploy(self):
+        assert is_redeploy("redeploy")
+
+    def test_recognizes_deploy(self):
+        assert is_redeploy("deploy")
+
+    # Case insensitivity
+    def test_case_insensitive_r(self):
+        assert is_redeploy("R")
+
+    def test_case_insensitive_redeploy(self):
+        assert is_redeploy("REDEPLOY")
+        assert is_redeploy("Redeploy")
+        assert is_redeploy("rEdEpLoY")
+
+    def test_case_insensitive_deploy(self):
+        assert is_redeploy("DEPLOY")
+        assert is_redeploy("Deploy")
+
+    # Whitespace handling
+    def test_handles_leading_trailing_whitespace(self):
+        assert is_redeploy("  r  ")
+        assert is_redeploy("  redeploy  ")
+        assert is_redeploy("\n deploy \t")
+
+    # Negative cases
+    def test_does_not_match_empty_string(self):
+        assert not is_redeploy("")
+
+    def test_does_not_match_whitespace_only(self):
+        assert not is_redeploy("   ")
+
+    def test_does_not_match_partial_words(self):
+        assert not is_redeploy("redeploying")
+        assert not is_redeploy("redeployed")
+
+    def test_does_not_match_sentences(self):
+        assert not is_redeploy("please redeploy")
+        assert not is_redeploy("redeploy now")
+        assert not is_redeploy("r now")
+
+    def test_does_not_match_similar_words(self):
+        assert not is_redeploy("restart")
+        assert not is_redeploy("reset")
+        assert not is_redeploy("re")
+
+    def test_does_not_match_r_as_substring(self):
+        """Single letter 'r' shouldn't match within longer words."""
+        assert not is_redeploy("run")
+        assert not is_redeploy("read")

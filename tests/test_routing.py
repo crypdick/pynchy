@@ -1,6 +1,7 @@
 """Tests for routing and group availability.
 
-Port of src/routing.test.ts — JID patterns, getAvailableGroups filtering/ordering.
+Port of src/routing.test.ts — JID patterns, getAvailableGroups filtering/ordering,
+and format_messages_for_sdk message filtering.
 """
 
 from __future__ import annotations
@@ -9,7 +10,8 @@ import pytest
 
 from pynchy.app import PynchyApp
 from pynchy.db import _init_test_database, store_chat_metadata
-from pynchy.types import RegisteredGroup
+from pynchy.router import format_messages_for_sdk
+from pynchy.types import NewMessage, RegisteredGroup
 
 
 @pytest.fixture
@@ -91,3 +93,118 @@ class TestGetAvailableGroups:
     async def test_returns_empty_when_no_chats(self, app: PynchyApp):
         groups = await app.get_available_groups()
         assert len(groups) == 0
+
+
+# --- format_messages_for_sdk ---
+
+
+def _msg(
+    *,
+    content: str = "hello",
+    message_type: str = "user",
+    sender: str = "user@s.whatsapp.net",
+    sender_name: str = "Alice",
+    timestamp: str = "2024-01-01T00:00:01.000Z",
+    metadata: dict | None = None,
+) -> NewMessage:
+    return NewMessage(
+        id="m1",
+        chat_jid="group@g.us",
+        sender=sender,
+        sender_name=sender_name,
+        content=content,
+        timestamp=timestamp,
+        message_type=message_type,
+        metadata=metadata,
+    )
+
+
+class TestFormatMessagesForSdk:
+    """Test format_messages_for_sdk which converts NewMessages to SDK dicts.
+
+    This is the critical boundary between stored messages and what the LLM sees.
+    Bugs here can leak host messages to the LLM or drop user messages.
+    """
+
+    def test_converts_user_message_to_sdk_format(self):
+        msgs = [_msg(content="hello world")]
+        result = format_messages_for_sdk(msgs)
+        assert len(result) == 1
+        assert result[0]["message_type"] == "user"
+        assert result[0]["sender"] == "user@s.whatsapp.net"
+        assert result[0]["sender_name"] == "Alice"
+        assert result[0]["content"] == "hello world"
+        assert result[0]["timestamp"] == "2024-01-01T00:00:01.000Z"
+
+    def test_filters_out_host_messages(self):
+        """Host messages are operational and must NEVER be sent to the LLM."""
+        msgs = [
+            _msg(content="user question", message_type="user"),
+            _msg(content="⚠️ Agent error occurred", message_type="host"),
+            _msg(content="another question", message_type="user"),
+        ]
+        result = format_messages_for_sdk(msgs)
+        assert len(result) == 2
+        assert all(m["message_type"] != "host" for m in result)
+
+    def test_preserves_assistant_messages(self):
+        msgs = [_msg(content="I'll help with that", message_type="assistant")]
+        result = format_messages_for_sdk(msgs)
+        assert len(result) == 1
+        assert result[0]["message_type"] == "assistant"
+
+    def test_preserves_system_messages(self):
+        msgs = [_msg(content="System context update", message_type="system")]
+        result = format_messages_for_sdk(msgs)
+        assert len(result) == 1
+        assert result[0]["message_type"] == "system"
+
+    def test_preserves_tool_result_messages(self):
+        msgs = [_msg(content="command output", message_type="tool_result")]
+        result = format_messages_for_sdk(msgs)
+        assert len(result) == 1
+        assert result[0]["message_type"] == "tool_result"
+
+    def test_preserves_metadata(self):
+        msgs = [_msg(content="hello", metadata={"source": "whatsapp"})]
+        result = format_messages_for_sdk(msgs)
+        assert result[0]["metadata"] == {"source": "whatsapp"}
+
+    def test_preserves_none_metadata(self):
+        msgs = [_msg(content="hello", metadata=None)]
+        result = format_messages_for_sdk(msgs)
+        assert result[0]["metadata"] is None
+
+    def test_preserves_message_order(self):
+        msgs = [
+            _msg(content="first", timestamp="2024-01-01T00:00:01.000Z"),
+            _msg(content="second", timestamp="2024-01-01T00:00:02.000Z"),
+            _msg(content="third", timestamp="2024-01-01T00:00:03.000Z"),
+        ]
+        result = format_messages_for_sdk(msgs)
+        assert [m["content"] for m in result] == ["first", "second", "third"]
+
+    def test_returns_empty_list_for_no_messages(self):
+        assert format_messages_for_sdk([]) == []
+
+    def test_returns_empty_list_when_all_messages_are_host(self):
+        msgs = [
+            _msg(content="host msg 1", message_type="host"),
+            _msg(content="host msg 2", message_type="host"),
+        ]
+        assert format_messages_for_sdk(msgs) == []
+
+    def test_mixed_message_types_with_host_filtering(self):
+        """Realistic scenario: conversation interleaved with host notifications."""
+        msgs = [
+            _msg(content="@pynchy help me", message_type="user"),
+            _msg(content="thinking...", message_type="assistant"),
+            _msg(content="🗑️", message_type="host"),
+            _msg(content="tool output", message_type="tool_result"),
+            _msg(content="⚠️ error", message_type="host"),
+            _msg(content="Here's the answer", message_type="assistant"),
+        ]
+        result = format_messages_for_sdk(msgs)
+        assert len(result) == 4
+        types = [m["message_type"] for m in result]
+        assert types == ["user", "assistant", "tool_result", "assistant"]
