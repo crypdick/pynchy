@@ -160,6 +160,8 @@ The pynchy service runs on `nuc-server` (Intel NUC, headless Ubuntu) over Tailsc
 
 Pushing to `main` is all that's needed — the prod server auto-pulls and restarts the service. No manual deploy required.
 
+**Never SSH into the server to run `git pull` manually.** The polling mechanism detects changes on `main` and handles the pull + restart itself. Manual pulls bypass the deploy lifecycle (graceful shutdown, process restart, health checks) and can leave the service in a bad state. Only SSH for `git pull` if you have a specific reason (e.g. debugging a deploy failure).
+
 ```bash
 # Manual deploy / restart from HOST only (not from containers — use mcp__pynchy__deploy_changes instead)
 curl -s -X POST http://nuc-server:8484/deploy
