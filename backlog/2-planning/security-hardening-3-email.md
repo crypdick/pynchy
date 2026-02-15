@@ -345,14 +345,14 @@ class IPCWatcher:
       "host": "imap.gmail.com",
       "port": 993,
       "username": "user@gmail.com",
-      "password": "app-specific-password",
+      "password": "app-specific-password", // pragma: allowlist secret
       "use_ssl": true
     },
     "smtp": {
       "host": "smtp.gmail.com",
       "port": 587,
       "username": "user@gmail.com",
-      "password": "app-specific-password",
+      "password": "app-specific-password", // pragma: allowlist secret
       "use_tls": true
     },
     "default_from": "user@gmail.com"
@@ -384,14 +384,14 @@ def email_config():
             "host": "imap.example.com",
             "port": 993,
             "username": "test@example.com",
-            "password": "password",
+            "password": "password", // pragma: allowlist secret
             "use_ssl": True,
         },
         "smtp": {
             "host": "smtp.example.com",
             "port": 587,
             "username": "test@example.com",
-            "password": "password",
+            "password": "password", // pragma: allowlist secret
             "use_tls": True,
         },
         "default_from": "test@example.com",

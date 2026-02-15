@@ -1,0 +1,156 @@
+# ============================================================================
+# Pynchy Configuration
+# ============================================================================
+# Copy this file to config.toml and configure for your setup:
+#   cp config.toml.EXAMPLE config.toml
+#
+# Most settings have sensible defaults and can be omitted.
+# Environment variables override TOML values using __ as the nested delimiter:
+#   AGENT__NAME=mybot  →  [agent] name = "mybot"
+# ============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Agent Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+
+[agent]
+# Name of the assistant (used in trigger detection and message attribution)
+# name = "pynchy"
+
+# Trigger aliases (used in addition to agent name for @mentions)
+# trigger_aliases = ["ghost"]
+
+# Agent core: "claude" (default) or "openai"
+# core = "claude"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# API Credentials
+# ─────────────────────────────────────────────────────────────────────────────
+# These are masked in logs via Pydantic SecretStr.
+#
+# Option 1: Claude OAuth (recommended)
+# Run `claude` CLI to authenticate — no config needed.
+#
+# Option 2: Anthropic API key
+# Option 3: OpenAI API key (set agent.core = "openai")
+
+[secrets]
+# anthropic_api_key = "sk-ant-api03-..."
+# openai_api_key = "sk-proj-..."
+# gh_token = "ghp_..."
+# claude_code_oauth_token = "..."
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Container Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+
+[container]
+# Container image name (built via ./container/build.sh)
+# image = "pynchy-agent:latest"
+
+# Container timeout in milliseconds (30 minutes default)
+# timeout_ms = 1800000
+
+# Maximum container output size in bytes (10MB default)
+# max_output_size = 10485760
+
+# Idle timeout in milliseconds (30 minutes default)
+# idle_timeout_ms = 1800000
+
+# Maximum concurrent agent containers
+# max_concurrent = 5
+
+# Override container runtime detection (usually auto-detected)
+# Options: "apple" (Apple Container), "docker" (Docker)
+# runtime = "apple"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Server Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+
+[server]
+# HTTP server port for TUI and deploy endpoint
+# port = 8484
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scheduler & Intervals
+# ─────────────────────────────────────────────────────────────────────────────
+
+[scheduler]
+# Poll interval for scheduled tasks (seconds)
+# poll_interval = 60.0
+
+# Timezone for scheduled tasks (auto-detected from system if empty)
+# timezone = "America/New_York"
+
+[intervals]
+# Message polling interval (seconds)
+# message_poll = 2.0
+
+# IPC file polling interval (seconds)
+# ipc_poll = 1.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Queue Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+
+[queue]
+# max_retries = 5
+# base_retry_seconds = 5.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Workspace Defaults
+# ─────────────────────────────────────────────────────────────────────────────
+# Defaults applied to workspaces that don't override these fields.
+
+[workspace_defaults]
+# requires_trigger = true
+# context_mode = "group"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Workspaces
+# ─────────────────────────────────────────────────────────────────────────────
+# Each [workspaces.<folder_name>] defines a workspace. The folder name matches
+# the directory under groups/.
+
+[workspaces.admin]
+is_god = true
+requires_trigger = false
+
+[workspaces.mr-pynchy]
+is_god = true
+requires_trigger = false
+
+[workspaces.code-improver]
+project_access = true
+schedule = "0 4 * * *"
+prompt = "This is a scheduled code improvement run. Follow the workflow in your CLAUDE.md."
+context_mode = "isolated"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Command Words (magic commands)
+# ─────────────────────────────────────────────────────────────────────────────
+# Customize the words that trigger special commands.
+
+# [commands.reset]
+# verbs = ["reset", "restart", "clear", "new", "wipe"]
+# nouns = ["context", "session", "chat", "conversation"]
+# aliases = ["boom", "c"]
+
+# [commands.end_session]
+# verbs = ["end", "stop", "close", "finish"]
+# nouns = ["session"]
+# aliases = ["done", "bye", "goodbye", "cya"]
+
+# [commands.redeploy]
+# aliases = ["r"]
+# verbs = ["redeploy", "deploy"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Security
+# ─────────────────────────────────────────────────────────────────────────────
+# Default blocked patterns for mount security. These are merged with patterns
+# from the mount-allowlist.toml file.
+
+# [security]
+# blocked_patterns = [".ssh", ".gnupg", ".gpg", ".aws", ...]

@@ -38,30 +38,26 @@ def _auth() -> None:
 
 
 def _build() -> None:
-    from pynchy.config import CONTAINER_IMAGE, PROJECT_ROOT
+    from pynchy.config import get_settings
     from pynchy.runtime import get_runtime
 
+    s = get_settings()
     runtime = get_runtime()
-    container_dir = PROJECT_ROOT / "container"
+    container_dir = s.project_root / "container"
 
     if not (container_dir / "Dockerfile").exists():
         print(f"Error: No Dockerfile at {container_dir / 'Dockerfile'}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Building {CONTAINER_IMAGE} with {runtime.cli}...")
+    print(f"Building {s.container.image} with {runtime.cli}...")
     result = subprocess.run(
-        [runtime.cli, "build", "-t", CONTAINER_IMAGE, "."],
+        [runtime.cli, "build", "-t", s.container.image, "."],
         cwd=str(container_dir),
     )
     sys.exit(result.returncode)
 
 
 def main() -> None:
-    # Load .env before any config imports read os.environ
-    from dotenv import load_dotenv
-
-    load_dotenv()
-
     parser = argparse.ArgumentParser(
         prog="pynchy",
         description="Personal Claude assistant on WhatsApp",

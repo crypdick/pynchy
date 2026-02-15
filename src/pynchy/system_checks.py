@@ -6,7 +6,7 @@ import contextlib
 import json
 import subprocess
 
-from pynchy.config import CONTAINER_IMAGE, PROJECT_ROOT
+from pynchy.config import get_settings
 from pynchy.logger import logger
 from pynchy.runtime import get_runtime
 
@@ -41,24 +41,26 @@ def ensure_container_system_running() -> None:
     runtime.ensure_running()
 
     # Auto-build container image if missing
+    s = get_settings()
+    image = s.container.image
     result = subprocess.run(
-        [runtime.cli, "image", "inspect", CONTAINER_IMAGE],
+        [runtime.cli, "image", "inspect", image],
         capture_output=True,
     )
     if result.returncode != 0:
-        container_dir = PROJECT_ROOT / "container"
+        container_dir = s.project_root / "container"
         if not (container_dir / "Dockerfile").exists():
             raise RuntimeError(
-                f"Container image '{CONTAINER_IMAGE}' not found and "
+                f"Container image '{image}' not found and "
                 f"no Dockerfile at {container_dir / 'Dockerfile'}"
             )
-        logger.info("Container image not found, building...", image=CONTAINER_IMAGE)
+        logger.info("Container image not found, building...", image=image)
         build = subprocess.run(
-            [runtime.cli, "build", "-t", CONTAINER_IMAGE, "."],
+            [runtime.cli, "build", "-t", image, "."],
             cwd=str(container_dir),
         )
         if build.returncode != 0:
-            raise RuntimeError(f"Failed to build container image '{CONTAINER_IMAGE}'")
+            raise RuntimeError(f"Failed to build container image '{image}'")
 
     # Kill orphaned containers from previous runs
     orphans = runtime.list_running_containers("pynchy-")

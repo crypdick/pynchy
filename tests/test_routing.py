@@ -1,8 +1,4 @@
-"""Tests for routing and group availability.
-
-Port of src/routing.test.ts — JID patterns, getAvailableGroups filtering/ordering,
-and format_messages_for_sdk message filtering.
-"""
+"""Tests for routing and group availability."""
 
 from __future__ import annotations
 

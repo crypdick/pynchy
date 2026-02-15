@@ -1,7 +1,4 @@
-"""Tests for the container runner.
-
-Port of src/container-runner.test.ts — uses FakeProcess to simulate subprocess behavior.
-"""
+"""Tests for the container runner. Uses FakeProcess to simulate subprocess behavior."""
 
 from __future__ import annotations
 
@@ -14,8 +11,22 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import SecretStr
 
-from pynchy.config import OUTPUT_END_MARKER, OUTPUT_START_MARKER
+from pynchy.config import (
+    AgentConfig,
+    CommandWordsConfig,
+    ContainerConfig,
+    IntervalsConfig,
+    LoggingConfig,
+    QueueConfig,
+    SchedulerConfig,
+    SecretsConfig,
+    SecurityConfig,
+    ServerConfig,
+    Settings,
+    WorkspaceDefaultsConfig,
+)
 from pynchy.container_runner import (
     _build_container_args,
     _build_volume_mounts,
@@ -70,8 +81,54 @@ TEST_INPUT = ContainerInput(
 
 def _marker_wrap(output: dict[str, Any]) -> bytes:
     """Wrap a dict as sentinel-marked output bytes."""
-    payload = f"{OUTPUT_START_MARKER}\n{json.dumps(output)}\n{OUTPUT_END_MARKER}\n"
+    payload = (
+        f"{Settings.OUTPUT_START_MARKER}\n{json.dumps(output)}\n{Settings.OUTPUT_END_MARKER}\n"
+    )
     return payload.encode()
+
+
+@contextlib.contextmanager
+def _patch_settings(
+    tmp_path: Path | None = None,
+    *,
+    core: str | None = None,
+    container_timeout: float | None = None,
+    idle_timeout: float | None = None,
+    max_output_size: int | None = None,
+    secret_overrides: dict[str, str] | None = None,
+):
+    """Patch container_runner.get_settings() with test-friendly values."""
+    s = Settings.model_construct(
+        agent=AgentConfig(),
+        container=ContainerConfig(),
+        server=ServerConfig(),
+        logging=LoggingConfig(),
+        secrets=SecretsConfig(),
+        workspace_defaults=WorkspaceDefaultsConfig(),
+        workspaces={},
+        commands=CommandWordsConfig(),
+        scheduler=SchedulerConfig(),
+        intervals=IntervalsConfig(),
+        queue=QueueConfig(),
+        security=SecurityConfig(),
+    )
+    if tmp_path is not None:
+        s.__dict__["project_root"] = tmp_path
+        s.__dict__["groups_dir"] = tmp_path / "groups"
+        s.__dict__["data_dir"] = tmp_path / "data"
+    if core is not None:
+        s.agent.core = core
+    if container_timeout is not None:
+        s.__dict__["container_timeout"] = container_timeout
+    if idle_timeout is not None:
+        s.__dict__["idle_timeout"] = idle_timeout
+    if max_output_size is not None:
+        s.container.max_output_size = max_output_size
+    if secret_overrides:
+        for key, value in secret_overrides.items():
+            setattr(s.secrets, key, SecretStr(value))
+    with patch("pynchy.container_runner.get_settings", return_value=s):
+        yield
 
 
 class FakeProcess:
@@ -219,14 +276,14 @@ class TestContainerArgs:
 class TestLegacyParsing:
     def test_extracts_between_markers(self):
         stdout = (
-            f"noise\n{OUTPUT_START_MARKER}\n"
+            f"noise\n{Settings.OUTPUT_START_MARKER}\n"
             + json.dumps(
                 {
                     "status": "success",
                     "result": "hello",
                 }
             )
-            + f"\n{OUTPUT_END_MARKER}\nmore noise"
+            + f"\n{Settings.OUTPUT_END_MARKER}\nmore noise"
         )
         result = _parse_final_output(stdout, "test", "", 100)
         assert result.status == "success"
@@ -248,9 +305,7 @@ class TestMountBuilding:
         worktree_path = tmp_path / "worktrees" / "god"
         worktree_path.mkdir(parents=True)
         with (
-            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
-            patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
-            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+            _patch_settings(tmp_path),
         ):
             (tmp_path / "groups" / "god").mkdir(parents=True)
             group = RegisteredGroup(
@@ -268,9 +323,7 @@ class TestMountBuilding:
 
     def test_nongod_group_has_global_mount_when_exists(self, tmp_path: Path):
         with (
-            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
-            patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
-            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+            _patch_settings(tmp_path),
         ):
             (tmp_path / "groups" / "other").mkdir(parents=True)
             (tmp_path / "groups" / "global").mkdir(parents=True)
@@ -294,9 +347,7 @@ class TestMountBuilding:
         worktree_path.mkdir(parents=True)
 
         with (
-            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
-            patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
-            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+            _patch_settings(tmp_path),
         ):
             (tmp_path / "groups" / "code-improver").mkdir(parents=True)
             group = RegisteredGroup(
@@ -322,9 +373,7 @@ class TestMountBuilding:
         worktree_path = tmp_path / "worktrees" / "god"
         worktree_path.mkdir(parents=True)
         with (
-            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
-            patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
-            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+            _patch_settings(tmp_path),
         ):
             (tmp_path / "groups" / "god").mkdir(parents=True)
             group = RegisteredGroup(
@@ -361,12 +410,8 @@ def _patch_subprocess(fake_proc: FakeProcess):
 
 @contextlib.contextmanager
 def _patch_dirs(tmp_path: Path):
-    """Patch directory constants to use tmp_path."""
-    with (
-        patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
-        patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
-        patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
-    ):
+    """Patch directory settings to use tmp_path."""
+    with _patch_settings(tmp_path):
         yield
 
 
@@ -453,10 +498,9 @@ class TestRunContainerAgent:
 
         with (
             _patch_subprocess(fake_proc),
-            _patch_dirs(tmp_path),
-            # IDLE_TIMEOUT=-29.9 so max(0.1, -29.9+30.0)=max(0.1, 0.1)=0.1s
-            patch("pynchy.container_runner.IDLE_TIMEOUT", -29.9),
-            patch("pynchy.container_runner.CONTAINER_TIMEOUT", 0.1),
+            # idle_timeout=-29.9 and container_timeout=0.1:
+            # max(0.1, -29.9 + 30.0) == 0.1s
+            _patch_settings(tmp_path, idle_timeout=-29.9, container_timeout=0.1),
             patch("pynchy.container_runner._graceful_stop", _fake_stop),
         ):
             # Don't emit any output — let it timeout
@@ -479,9 +523,7 @@ class TestRunContainerAgent:
 
         with (
             _patch_subprocess(fake_proc),
-            _patch_dirs(tmp_path),
-            patch("pynchy.container_runner.IDLE_TIMEOUT", -29.9),
-            patch("pynchy.container_runner.CONTAINER_TIMEOUT", 0.1),
+            _patch_settings(tmp_path, idle_timeout=-29.9, container_timeout=0.1),
             patch("pynchy.container_runner._graceful_stop", _fake_stop),
         ):
 
@@ -512,8 +554,7 @@ class TestRunContainerAgent:
         """Exceeding CONTAINER_MAX_OUTPUT_SIZE doesn't crash."""
         with (
             _patch_subprocess(fake_proc),
-            _patch_dirs(tmp_path),
-            patch("pynchy.container_runner.CONTAINER_MAX_OUTPUT_SIZE", 100),
+            _patch_settings(tmp_path, max_output_size=100),
         ):
 
             async def _driver():
@@ -560,16 +601,18 @@ class TestWriteEnvFile:
         """Return a combined context manager patching dirs and subprocess auto-discovery."""
         return contextlib.ExitStack()
 
-    def test_prefers_dotenv_over_oauth(self, tmp_path: Path):
-        """Explicit .env file takes priority over OAuth credentials."""
-        env_file = tmp_path / ".env"
-        env_file.write_text("ANTHROPIC_API_KEY=sk-ant-test\n")
+    def test_prefers_settings_secret_over_oauth(self, tmp_path: Path):
+        """Configured settings secret takes priority over OAuth credentials."""
         creds = tmp_path / ".claude" / ".credentials.json"
         creds.parent.mkdir(parents=True)
         creds.write_text(json.dumps({"claudeAiOauth": {"accessToken": "oauth-token"}}))
         with (
-            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
-            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            _patch_settings(
+                tmp_path,
+                secret_overrides={
+                    "anthropic_api_key": "sk-ant-test"  # pragma: allowlist secret
+                },
+            ),
             patch("pynchy.container_runner.Path.home", return_value=tmp_path),
             patch("pynchy.container_runner._read_gh_token", return_value=None),
             patch("pynchy.container_runner._read_git_identity", return_value=(None, None)),
@@ -586,8 +629,7 @@ class TestWriteEnvFile:
         creds.parent.mkdir(parents=True)
         creds.write_text(json.dumps({"claudeAiOauth": {"accessToken": "my-oauth-token"}}))
         with (
-            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
-            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            _patch_settings(tmp_path),
             patch("pynchy.container_runner.Path.home", return_value=tmp_path),
             patch("pynchy.container_runner._read_gh_token", return_value=None),
             patch("pynchy.container_runner._read_git_identity", return_value=(None, None)),
@@ -599,8 +641,7 @@ class TestWriteEnvFile:
 
     def test_returns_none_when_no_credentials(self, tmp_path: Path):
         with (
-            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
-            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            _patch_settings(tmp_path),
             patch("pynchy.container_runner.Path.home", return_value=tmp_path),
             patch("pynchy.container_runner._read_oauth_from_keychain", return_value=None),
             patch("pynchy.container_runner._read_gh_token", return_value=None),
@@ -611,8 +652,7 @@ class TestWriteEnvFile:
     def test_auto_discovers_gh_token(self, tmp_path: Path):
         """GH_TOKEN is auto-discovered from gh CLI when not in .env."""
         with (
-            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
-            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            _patch_settings(tmp_path),
             patch("pynchy.container_runner.Path.home", return_value=tmp_path),
             patch("pynchy.container_runner._read_oauth_from_keychain", return_value=None),
             patch("pynchy.container_runner._read_gh_token", return_value="gho_abc123"),
@@ -623,13 +663,10 @@ class TestWriteEnvFile:
             content = (env_dir / "env").read_text()
             assert "GH_TOKEN='gho_abc123'" in content
 
-    def test_dotenv_gh_token_overrides_auto_discovery(self, tmp_path: Path):
-        """.env GH_TOKEN takes priority over gh CLI auto-discovery."""
-        env_file = tmp_path / ".env"
-        env_file.write_text("GH_TOKEN=explicit-token\n")
+    def test_settings_gh_token_overrides_auto_discovery(self, tmp_path: Path):
+        """Configured GH_TOKEN takes priority over gh CLI auto-discovery."""
         with (
-            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
-            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            _patch_settings(tmp_path, secret_overrides={"gh_token": "explicit-token"}),
             patch("pynchy.container_runner.Path.home", return_value=tmp_path),
             patch("pynchy.container_runner._read_oauth_from_keychain", return_value=None),
             patch("pynchy.container_runner._read_gh_token", return_value="auto-token"),
@@ -644,8 +681,7 @@ class TestWriteEnvFile:
     def test_auto_discovers_git_identity(self, tmp_path: Path):
         """Git identity is auto-discovered and written as all four env vars."""
         with (
-            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
-            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            _patch_settings(tmp_path),
             patch("pynchy.container_runner.Path.home", return_value=tmp_path),
             patch("pynchy.container_runner._read_oauth_from_keychain", return_value=None),
             patch("pynchy.container_runner._read_gh_token", return_value=None),
@@ -668,8 +704,7 @@ class TestWriteEnvFile:
         creds.parent.mkdir(parents=True)
         creds.write_text(json.dumps({"claudeAiOauth": {"accessToken": "oauth-tok"}}))
         with (
-            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
-            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            _patch_settings(tmp_path),
             patch("pynchy.container_runner.Path.home", return_value=tmp_path),
             patch("pynchy.container_runner._read_gh_token", return_value="gho_xyz"),
             patch(
@@ -687,8 +722,7 @@ class TestWriteEnvFile:
     def test_values_are_shell_quoted(self, tmp_path: Path):
         """Names with spaces and apostrophes are safely shell-quoted."""
         with (
-            patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
-            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            _patch_settings(tmp_path),
             patch("pynchy.container_runner.Path.home", return_value=tmp_path),
             patch("pynchy.container_runner._read_oauth_from_keychain", return_value=None),
             patch("pynchy.container_runner._read_gh_token", return_value=None),
@@ -769,40 +803,48 @@ class TestReadGitIdentity:
 
 class TestTasksSnapshot:
     def test_god_sees_all_tasks(self, tmp_path: Path):
-        with patch("pynchy.container_runner.DATA_DIR", tmp_path):
+        with _patch_settings(tmp_path):
             tasks = [
                 {"groupFolder": "god", "id": "t1"},
                 {"groupFolder": "other", "id": "t2"},
             ]
             write_tasks_snapshot("god", True, tasks)
-            result = json.loads((tmp_path / "ipc" / "god" / "current_tasks.json").read_text())
+            result = json.loads(
+                (tmp_path / "data" / "ipc" / "god" / "current_tasks.json").read_text()
+            )
             assert len(result) == 2
 
     def test_nongod_sees_only_own_tasks(self, tmp_path: Path):
-        with patch("pynchy.container_runner.DATA_DIR", tmp_path):
+        with _patch_settings(tmp_path):
             tasks = [
                 {"groupFolder": "god", "id": "t1"},
                 {"groupFolder": "other", "id": "t2"},
             ]
             write_tasks_snapshot("other", False, tasks)
-            result = json.loads((tmp_path / "ipc" / "other" / "current_tasks.json").read_text())
+            result = json.loads(
+                (tmp_path / "data" / "ipc" / "other" / "current_tasks.json").read_text()
+            )
             assert len(result) == 1
             assert result[0]["id"] == "t2"
 
 
 class TestGroupsSnapshot:
     def test_god_sees_all_groups(self, tmp_path: Path):
-        with patch("pynchy.container_runner.DATA_DIR", tmp_path):
+        with _patch_settings(tmp_path):
             groups = [{"jid": "a@g.us"}, {"jid": "b@g.us"}]
             write_groups_snapshot("god", True, groups, {"a@g.us", "b@g.us"})
-            result = json.loads((tmp_path / "ipc" / "god" / "available_groups.json").read_text())
+            result = json.loads(
+                (tmp_path / "data" / "ipc" / "god" / "available_groups.json").read_text()
+            )
             assert len(result["groups"]) == 2
 
     def test_nongod_sees_no_groups(self, tmp_path: Path):
-        with patch("pynchy.container_runner.DATA_DIR", tmp_path):
+        with _patch_settings(tmp_path):
             groups = [{"jid": "a@g.us"}]
             write_groups_snapshot("other", False, groups, {"a@g.us"})
-            result = json.loads((tmp_path / "ipc" / "other" / "available_groups.json").read_text())
+            result = json.loads(
+                (tmp_path / "data" / "ipc" / "other" / "available_groups.json").read_text()
+            )
             assert len(result["groups"]) == 0
 
 
@@ -856,7 +898,7 @@ class TestResolveAgentCore:
         class FakePM:
             hook = FakeHook()
 
-        with patch("pynchy.container_runner.DEFAULT_AGENT_CORE", "claude"):
+        with _patch_settings(core="claude"):
             module, cls = resolve_agent_core(FakePM())
 
         assert module == "cores.claude_v2"
@@ -875,7 +917,7 @@ class TestResolveAgentCore:
         class FakePM:
             hook = FakeHook()
 
-        with patch("pynchy.container_runner.DEFAULT_AGENT_CORE", "claude"):
+        with _patch_settings(core="claude"):
             module, cls = resolve_agent_core(FakePM())
 
         assert module == "cores.openai"
@@ -894,7 +936,7 @@ class TestResolveAgentCore:
         class FakePM:
             hook = FakeHook()
 
-        with patch("pynchy.container_runner.DEFAULT_AGENT_CORE", "custom"):
+        with _patch_settings(core="custom"):
             module, cls = resolve_agent_core(FakePM())
 
         assert module == "cores.custom"
@@ -920,7 +962,7 @@ class TestSyncSkills:
         session_dir = tmp_path / "session" / ".claude"
         session_dir.mkdir(parents=True)
 
-        with patch("pynchy.container_runner.PROJECT_ROOT", tmp_path):
+        with _patch_settings(tmp_path):
             _sync_skills(session_dir)
 
         skills_dst = session_dir / "skills" / "my-skill"
@@ -933,7 +975,7 @@ class TestSyncSkills:
         session_dir = tmp_path / "session" / ".claude"
         session_dir.mkdir(parents=True)
 
-        with patch("pynchy.container_runner.PROJECT_ROOT", tmp_path):
+        with _patch_settings(tmp_path):
             _sync_skills(session_dir)
 
         # skills/ directory should still be created (empty)
@@ -955,7 +997,7 @@ class TestSyncSkills:
         class FakePM:
             hook = FakeHook()
 
-        with patch("pynchy.container_runner.PROJECT_ROOT", tmp_path):
+        with _patch_settings(tmp_path):
             _sync_skills(session_dir, plugin_manager=FakePM())
 
         ext_dst = session_dir / "skills" / "ext-skill"
@@ -985,7 +1027,7 @@ class TestSyncSkills:
             hook = FakeHook()
 
         with (
-            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            _patch_settings(tmp_path),
             pytest.raises(ValueError, match="collision"),
         ):
             _sync_skills(session_dir, plugin_manager=FakePM())
@@ -1002,7 +1044,7 @@ class TestSyncSkills:
         class FakePM:
             hook = FakeHook()
 
-        with patch("pynchy.container_runner.PROJECT_ROOT", tmp_path):
+        with _patch_settings(tmp_path):
             # Should not crash
             _sync_skills(session_dir, plugin_manager=FakePM())
 
@@ -1015,7 +1057,7 @@ class TestSyncSkills:
         session_dir = tmp_path / "session" / ".claude"
         session_dir.mkdir(parents=True)
 
-        with patch("pynchy.container_runner.PROJECT_ROOT", tmp_path):
+        with _patch_settings(tmp_path):
             _sync_skills(session_dir)
 
         # Only the skills/ directory should exist, no README.md copied
@@ -1034,7 +1076,7 @@ class TestWriteSettingsJson:
         session_dir = tmp_path / ".claude"
         session_dir.mkdir(parents=True)
 
-        with patch("pynchy.container_runner.PROJECT_ROOT", tmp_path):
+        with _patch_settings(tmp_path):
             _write_settings_json(session_dir)
 
         settings_file = session_dir / "settings.json"
@@ -1066,7 +1108,7 @@ class TestWriteSettingsJson:
         session_dir = tmp_path / ".claude"
         session_dir.mkdir(parents=True)
 
-        with patch("pynchy.container_runner.PROJECT_ROOT", tmp_path):
+        with _patch_settings(tmp_path):
             _write_settings_json(session_dir)
 
         settings = json.loads((session_dir / "settings.json").read_text())
@@ -1082,7 +1124,7 @@ class TestWriteSettingsJson:
         session_dir = tmp_path / ".claude"
         session_dir.mkdir(parents=True)
 
-        with patch("pynchy.container_runner.PROJECT_ROOT", tmp_path):
+        with _patch_settings(tmp_path):
             _write_settings_json(session_dir)
 
         settings = json.loads((session_dir / "settings.json").read_text())
@@ -1096,7 +1138,7 @@ class TestWriteSettingsJson:
         session_dir.mkdir(parents=True)
         (session_dir / "settings.json").write_text('{"stale": true}')
 
-        with patch("pynchy.container_runner.PROJECT_ROOT", tmp_path):
+        with _patch_settings(tmp_path):
             _write_settings_json(session_dir)
 
         settings = json.loads((session_dir / "settings.json").read_text())
@@ -1181,7 +1223,7 @@ class TestOutputParsingEdgeCases:
 
     def test_parse_final_output_markers_without_json(self):
         """Markers present but content is not valid JSON."""
-        stdout = f"{OUTPUT_START_MARKER}\nnot json\n{OUTPUT_END_MARKER}"
+        stdout = f"{Settings.OUTPUT_START_MARKER}\nnot json\n{Settings.OUTPUT_END_MARKER}"
         result = _parse_final_output(stdout, "test-container", "", 100)
         assert result.status == "error"
         assert "Failed to parse" in (result.error or "")
@@ -1191,8 +1233,8 @@ class TestOutputParsingEdgeCases:
         first = json.dumps({"status": "success", "result": "first"})
         second = json.dumps({"status": "success", "result": "second"})
         stdout = (
-            f"{OUTPUT_START_MARKER}\n{first}\n{OUTPUT_END_MARKER}\n"
-            f"{OUTPUT_START_MARKER}\n{second}\n{OUTPUT_END_MARKER}"
+            f"{Settings.OUTPUT_START_MARKER}\n{first}\n{Settings.OUTPUT_END_MARKER}\n"
+            f"{Settings.OUTPUT_START_MARKER}\n{second}\n{Settings.OUTPUT_END_MARKER}"
         )
         result = _parse_final_output(stdout, "test-container", "", 100)
         assert result.status == "success"

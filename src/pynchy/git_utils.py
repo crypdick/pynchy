@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from pynchy.config import PROJECT_ROOT
+from pynchy.config import get_settings
 from pynchy.logger import logger
 
 _SUBPROCESS_TIMEOUT = 30
@@ -18,7 +18,7 @@ def run_git(
     """Run a git command with standard timeout and error capture."""
     return subprocess.run(
         ["git", *args],
-        cwd=str(cwd or PROJECT_ROOT),
+        cwd=str(cwd or get_settings().project_root),
         capture_output=True,
         text=True,
         timeout=_SUBPROCESS_TIMEOUT,

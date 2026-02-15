@@ -11,6 +11,20 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
+from pynchy.config import (
+    AgentConfig,
+    CommandWordsConfig,
+    ContainerConfig,
+    IntervalsConfig,
+    LoggingConfig,
+    QueueConfig,
+    SchedulerConfig,
+    SecretsConfig,
+    SecurityConfig,
+    ServerConfig,
+    Settings,
+    WorkspaceDefaultsConfig,
+)
 from pynchy.git_sync import (
     _build_rebase_notice,
     _get_local_head_sha,
@@ -115,7 +129,22 @@ class TestGetLocalHeadSha:
         repo = _make_repo(tmp_path)
         expected = _git(repo, "rev-parse", "HEAD").stdout.strip()
 
-        with patch("pynchy.git_utils.PROJECT_ROOT", repo):
+        s = Settings.model_construct(
+            agent=AgentConfig(),
+            container=ContainerConfig(),
+            server=ServerConfig(),
+            logging=LoggingConfig(),
+            secrets=SecretsConfig(),
+            workspace_defaults=WorkspaceDefaultsConfig(),
+            workspaces={},
+            commands=CommandWordsConfig(),
+            scheduler=SchedulerConfig(),
+            intervals=IntervalsConfig(),
+            queue=QueueConfig(),
+            security=SecurityConfig(),
+        )
+        s.__dict__["project_root"] = repo
+        with patch("pynchy.git_utils.get_settings", return_value=s):
             result = _get_local_head_sha()
             assert result == expected
 

@@ -1,5 +1,0 @@
-project_access: true
-# Every day at 4am
-schedule: "0 4 * * *"
-prompt: "This is a scheduled code improvement run. Follow the workflow in your CLAUDE.md."
-context_mode: isolated

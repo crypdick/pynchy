@@ -68,6 +68,17 @@ def get_plugin_manager() -> pluggy.PluginManager:
     if discovered:
         logger.info("Discovered third-party plugins", count=discovered)
 
+    # Defensive cleanup: some entrypoint loaders can return plugin classes
+    # instead of instances, which then fail hook invocation with missing `self`.
+    for plugin in list(pm.get_plugins()):
+        if isinstance(plugin, type):
+            plugin_name = pm.get_name(plugin) or plugin.__name__
+            pm.unregister(plugin=plugin)
+            logger.warning(
+                "Unregistered invalid class-based plugin object",
+                plugin=plugin_name,
+            )
+
     # Log plugin summary
     plugin_names = [pm.get_name(p) for p in pm.get_plugins()]
     logger.info("Plugin manager ready", plugins=plugin_names)

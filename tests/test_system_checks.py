@@ -11,6 +11,20 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from pynchy.config import (
+    AgentConfig,
+    CommandWordsConfig,
+    ContainerConfig,
+    IntervalsConfig,
+    LoggingConfig,
+    QueueConfig,
+    SchedulerConfig,
+    SecretsConfig,
+    SecurityConfig,
+    ServerConfig,
+    Settings,
+    WorkspaceDefaultsConfig,
+)
 from pynchy.system_checks import check_tailscale, ensure_container_system_running
 
 # ---------------------------------------------------------------------------
@@ -95,6 +109,25 @@ class TestEnsureContainerSystemRunning:
         runtime.list_running_containers.return_value = []
         return runtime
 
+    @staticmethod
+    def _settings(tmp_path):
+        s = Settings.model_construct(
+            agent=AgentConfig(),
+            container=ContainerConfig(),
+            server=ServerConfig(),
+            logging=LoggingConfig(),
+            secrets=SecretsConfig(),
+            workspace_defaults=WorkspaceDefaultsConfig(),
+            workspaces={},
+            commands=CommandWordsConfig(),
+            scheduler=SchedulerConfig(),
+            intervals=IntervalsConfig(),
+            queue=QueueConfig(),
+            security=SecurityConfig(),
+        )
+        s.__dict__["project_root"] = tmp_path
+        return s
+
     def test_image_exists_no_orphans(self, mock_runtime):
         """Happy path: image exists, no orphaned containers."""
         image_inspect = MagicMock(returncode=0)
@@ -123,7 +156,7 @@ class TestEnsureContainerSystemRunning:
                 "pynchy.system_checks.subprocess.run",
                 side_effect=[inspect_fail, build_ok],
             ),
-            patch("pynchy.system_checks.PROJECT_ROOT", tmp_path),
+            patch("pynchy.system_checks.get_settings", return_value=self._settings(tmp_path)),
         ):
             ensure_container_system_running()
 
@@ -138,7 +171,7 @@ class TestEnsureContainerSystemRunning:
         with (
             patch("pynchy.system_checks.get_runtime", return_value=mock_runtime),
             patch("pynchy.system_checks.subprocess.run", return_value=inspect_fail),
-            patch("pynchy.system_checks.PROJECT_ROOT", tmp_path),
+            patch("pynchy.system_checks.get_settings", return_value=self._settings(tmp_path)),
             pytest.raises(RuntimeError, match="not found"),
         ):
             ensure_container_system_running()
@@ -158,7 +191,7 @@ class TestEnsureContainerSystemRunning:
                 "pynchy.system_checks.subprocess.run",
                 side_effect=[inspect_fail, build_fail],
             ),
-            patch("pynchy.system_checks.PROJECT_ROOT", tmp_path),
+            patch("pynchy.system_checks.get_settings", return_value=self._settings(tmp_path)),
             pytest.raises(RuntimeError, match="Failed to build"),
         ):
             ensure_container_system_running()

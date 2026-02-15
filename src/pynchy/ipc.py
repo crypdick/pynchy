@@ -1,6 +1,6 @@
 """File-based IPC watcher.
 
-Port of src/ipc.ts — async polling loop that processes IPC files from containers.
+async polling loop that processes IPC files from containers.
 """
 
 from __future__ import annotations
@@ -16,14 +16,7 @@ from typing import Any, Protocol
 
 from croniter import croniter
 
-from pynchy.config import (
-    ASSISTANT_NAME,
-    DATA_DIR,
-    GROUPS_DIR,
-    IPC_POLL_INTERVAL,
-    PROJECT_ROOT,
-    TIMEZONE,
-)
+from pynchy.config import get_settings
 from pynchy.db import create_task, delete_task, get_task_by_id, update_task
 from pynchy.deploy import finalize_deploy
 from pynchy.git_sync import host_notify_worktree_updates, host_sync_worktree, write_ipc_response
@@ -84,7 +77,8 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
         return
     _ipc_watcher_running = True
 
-    ipc_base_dir = DATA_DIR / "ipc"
+    s = get_settings()
+    ipc_base_dir = s.data_dir / "ipc"
     ipc_base_dir.mkdir(parents=True, exist_ok=True)
 
     async def process_ipc_files() -> None:
@@ -94,7 +88,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
             ]
         except OSError as exc:
             logger.error("Error reading IPC base directory", err=str(exc))
-            await asyncio.sleep(IPC_POLL_INTERVAL)
+            await asyncio.sleep(s.intervals.ipc_poll)
             return
 
         registered_groups = deps.registered_groups()
@@ -122,7 +116,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
                                 if is_god or (target_group and target_group.folder == source_group):
                                     await deps.broadcast_to_channels(
                                         data["chatJid"],
-                                        f"{ASSISTANT_NAME}: {data['text']}",
+                                        f"{s.agent.name}: {data['text']}",
                                     )
                                     logger.info(
                                         "IPC message sent",
@@ -177,7 +171,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
 
     while True:
         await process_ipc_files()
-        await asyncio.sleep(IPC_POLL_INTERVAL)
+        await asyncio.sleep(s.intervals.ipc_poll)
 
 
 async def process_task_ipc(
@@ -228,7 +222,9 @@ async def process_task_ipc(
                     return
             else:
                 try:
-                    next_run = compute_next_run(schedule_type, schedule_value, TIMEZONE)
+                    next_run = compute_next_run(
+                        schedule_type, schedule_value, get_settings().timezone
+                    )
                 except (ValueError, TypeError, KeyError):
                     logger.warning(
                         f"Invalid {schedule_type} value",
@@ -352,7 +348,7 @@ async def process_task_ipc(
             await deps.clear_chat_history(chat_jid)
 
             # Write reset prompt for _process_group_messages to pick up
-            reset_dir = DATA_DIR / "ipc" / group_folder
+            reset_dir = get_settings().data_dir / "ipc" / group_folder
             reset_dir.mkdir(parents=True, exist_ok=True)
             reset_file = reset_dir / "reset_prompt.json"
             reset_file.write_text(
@@ -415,7 +411,7 @@ async def process_task_ipc(
             result = host_sync_worktree(source_group)
 
             # Write response for the blocking MCP tool (atomic write)
-            result_dir = DATA_DIR / "ipc" / source_group / "merge_results"
+            result_dir = get_settings().data_dir / "ipc" / source_group / "merge_results"
             write_ipc_response(result_dir / f"{request_id}.json", result)
 
             if result.get("success"):
@@ -545,12 +541,12 @@ async def _handle_deploy(
 
     # 1. Optional container rebuild
     if rebuild_container:
-        build_script = PROJECT_ROOT / "container" / "build.sh"
+        build_script = get_settings().project_root / "container" / "build.sh"
         if build_script.exists():
             logger.info("Rebuilding container image...")
             result = subprocess.run(
                 [str(build_script)],
-                cwd=str(PROJECT_ROOT / "container"),
+                cwd=str(get_settings().project_root / "container"),
                 capture_output=True,
                 text=True,
             )
@@ -588,8 +584,10 @@ async def _deploy_error(
 
 
 async def _handle_create_periodic_agent(data: dict[str, Any], deps: IpcDeps) -> None:
-    """Create a periodic agent: folder, workspace.yaml, CLAUDE.md, chat group, and task."""
-    from pynchy.workspace_config import WorkspaceConfig, write_workspace_config
+    """Create a periodic agent: folder, config.toml workspace, CLAUDE.md, chat group, and task."""
+    from pynchy.config import WorkspaceConfig, add_workspace_to_toml
+
+    s = get_settings()
 
     name = data.get("name")
     schedule = data.get("schedule")
@@ -608,14 +606,14 @@ async def _handle_create_periodic_agent(data: dict[str, Any], deps: IpcDeps) -> 
 
     claude_md = data.get("claude_md", f"You are the {name} periodic agent.")
 
-    # 1. Create group folder and write config files
-    group_dir = GROUPS_DIR / name
+    # 1. Create group folder and write workspace to config.toml
+    group_dir = s.groups_dir / name
     group_dir.mkdir(parents=True, exist_ok=True)
 
     config = WorkspaceConfig(
         schedule=schedule, prompt=prompt, context_mode=context_mode, requires_trigger=False
     )
-    write_workspace_config(name, config)
+    add_workspace_to_toml(name, config)
 
     claude_md_path = group_dir / "CLAUDE.md"
     if not claude_md_path.exists():
@@ -635,14 +633,14 @@ async def _handle_create_periodic_agent(data: dict[str, Any], deps: IpcDeps) -> 
     group = RegisteredGroup(
         name=agent_display_name,
         folder=name,
-        trigger=f"@{ASSISTANT_NAME}",
+        trigger=f"@{s.agent.name}",
         added_at=datetime.now(UTC).isoformat(),
         requires_trigger=False,
     )
     deps.register_group(jid, group)
 
     # 4. Create the scheduled task
-    next_run = compute_next_run("cron", schedule, TIMEZONE)
+    next_run = compute_next_run("cron", schedule, s.timezone)
     task_id = f"periodic-{name}-{uuid.uuid4().hex[:8]}"
 
     await create_task(

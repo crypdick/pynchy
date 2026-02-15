@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from pynchy.config import PROJECT_ROOT
+from pynchy.config import get_settings
 from pynchy.logger import logger
 
 
@@ -44,7 +44,7 @@ def install_service() -> None:
 def _install_launchd_service() -> None:
     """Install macOS launchd service."""
     label = "com.pynchy"
-    src = PROJECT_ROOT / "launchd" / f"{label}.plist"
+    src = get_settings().project_root / "launchd" / f"{label}.plist"
     dest = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
     if not src.exists():
         logger.warning("launchd plist not found in repo, skipping service install")
@@ -90,7 +90,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory={PROJECT_ROOT}
+WorkingDirectory={get_settings().project_root}
 ExecStart={uv_path} run pynchy
 Restart=always
 RestartSec=10

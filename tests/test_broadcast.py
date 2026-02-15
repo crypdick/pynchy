@@ -8,6 +8,7 @@ the WhatsApp/Telegram path and the TUI/SSE path.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 from pathlib import Path
 from typing import Any
@@ -16,7 +17,20 @@ from unittest.mock import patch
 import pytest
 
 from pynchy.app import PynchyApp
-from pynchy.config import OUTPUT_END_MARKER, OUTPUT_START_MARKER
+from pynchy.config import (
+    AgentConfig,
+    CommandWordsConfig,
+    ContainerConfig,
+    IntervalsConfig,
+    LoggingConfig,
+    QueueConfig,
+    SchedulerConfig,
+    SecretsConfig,
+    SecurityConfig,
+    ServerConfig,
+    Settings,
+    WorkspaceDefaultsConfig,
+)
 from pynchy.db import _init_test_database, store_message
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.router import format_tool_preview
@@ -47,8 +61,38 @@ def _make_message(
 
 
 def _marker_wrap(output: dict[str, Any]) -> bytes:
-    payload = f"{OUTPUT_START_MARKER}\n{json.dumps(output)}\n{OUTPUT_END_MARKER}\n"
+    payload = (
+        f"{Settings.OUTPUT_START_MARKER}\n{json.dumps(output)}\n{Settings.OUTPUT_END_MARKER}\n"
+    )
     return payload.encode()
+
+
+@contextlib.contextmanager
+def _patch_test_settings(tmp_path: Path):
+    """Patch settings accessors to use tmp test directories."""
+    s = Settings.model_construct(
+        agent=AgentConfig(),
+        container=ContainerConfig(),
+        server=ServerConfig(),
+        logging=LoggingConfig(),
+        secrets=SecretsConfig(),
+        workspace_defaults=WorkspaceDefaultsConfig(),
+        workspaces={},
+        commands=CommandWordsConfig(),
+        scheduler=SchedulerConfig(),
+        intervals=IntervalsConfig(),
+        queue=QueueConfig(),
+        security=SecurityConfig(),
+    )
+    s.__dict__["project_root"] = tmp_path
+    s.__dict__["groups_dir"] = tmp_path / "groups"
+    s.__dict__["data_dir"] = tmp_path / "data"
+    with (
+        patch("pynchy.container_runner.get_settings", return_value=s),
+        patch("pynchy.message_handler.get_settings", return_value=s),
+        patch("pynchy.output_handler.get_settings", return_value=s),
+    ):
+        yield
 
 
 class FakeChannel:
@@ -186,9 +230,7 @@ async def _run_with_trace_sequence(
 
     with (
         patch("pynchy.container_runner.asyncio.create_subprocess_exec", fake_create),
-        patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
-        patch("pynchy.container_runner.GROUPS_DIR", tmp_path / "groups"),
-        patch("pynchy.container_runner.DATA_DIR", tmp_path / "data"),
+        _patch_test_settings(tmp_path),
     ):
         (tmp_path / "groups" / "test-group").mkdir(parents=True)
         await app._process_group_messages("group@g.us")
@@ -379,7 +421,7 @@ class TestBroadcastConsistency:
 
         group = app.registered_groups["group@g.us"]
 
-        with patch("pynchy.app.GROUPS_DIR", tmp_path / "groups"):
+        with _patch_test_settings(tmp_path):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
             await app._execute_direct_command("group@g.us", group, msg, "echo hello world")
 

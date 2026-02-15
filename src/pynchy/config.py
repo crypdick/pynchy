@@ -1,118 +1,272 @@
-"""Configuration constants and paths.
+"""Centralized configuration — Pydantic BaseSettings with TOML source.
 
-Port of src/config.ts — all time intervals in seconds, all paths as pathlib.Path.
+All settings live in config.toml (optional) with env var overrides using
+``__`` as the nested delimiter. Secrets use SecretStr for masking in logs.
+
+Usage::
+
+    from pynchy.config import get_settings
+
+    s = get_settings()
+    print(s.agent.name)
+    print(s.container.image)
 """
 
 from __future__ import annotations
 
 import os
 import re
+from functools import cached_property
 from pathlib import Path
+from typing import ClassVar, Literal
 
-ASSISTANT_NAME: str = os.environ.get("ASSISTANT_NAME", "pynchy")
+from croniter import croniter
+from pydantic import BaseModel, SecretStr, field_validator
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+    TomlConfigSettingsSource,
+)
 
-# Intervals in seconds (TS uses milliseconds)
-POLL_INTERVAL: float = 2.0
-SCHEDULER_POLL_INTERVAL: float = 60.0
-IPC_POLL_INTERVAL: float = 1.0
-
-# Paths
-PROJECT_ROOT: Path = Path.cwd()
-HOME_DIR: Path = Path(os.environ.get("HOME", "/Users/user"))
-
-MOUNT_ALLOWLIST_PATH: Path = HOME_DIR / ".config" / "pynchy" / "mount-allowlist.json"
-WORKTREES_DIR: Path = HOME_DIR / ".config" / "pynchy" / "worktrees"
-STORE_DIR: Path = (PROJECT_ROOT / "store").resolve()
-GROUPS_DIR: Path = (PROJECT_ROOT / "groups").resolve()
-DATA_DIR: Path = (PROJECT_ROOT / "data").resolve()
-# Container settings (time values converted from ms to seconds)
-DEFAULT_AGENT_CORE: str = os.environ.get("PYNCHY_AGENT_CORE", "claude")
-CONTAINER_IMAGE: str = os.environ.get("CONTAINER_IMAGE", "pynchy-agent:latest")
-CONTAINER_TIMEOUT: float = int(os.environ.get("CONTAINER_TIMEOUT", "1800000")) / 1000
-CONTAINER_MAX_OUTPUT_SIZE: int = int(
-    os.environ.get("CONTAINER_MAX_OUTPUT_SIZE", "10485760")
-)  # 10MB
-IDLE_TIMEOUT: float = int(os.environ.get("IDLE_TIMEOUT", "1800000")) / 1000  # 30min
-DEPLOY_PORT: int = int(os.environ.get("DEPLOY_PORT", "8484"))
-try:
-    MAX_CONCURRENT_CONTAINERS: int = max(1, int(os.environ.get("MAX_CONCURRENT_CONTAINERS", "5")))
-except ValueError:
-    MAX_CONCURRENT_CONTAINERS: int = 5
-
-# Sentinel markers for robust output parsing (must match agent-runner)
-OUTPUT_START_MARKER = "---PYNCHY_OUTPUT_START---"
-OUTPUT_END_MARKER = "---PYNCHY_OUTPUT_END---"
+# ---------------------------------------------------------------------------
+# Sub-models (each maps to a [section] in config.toml)
+# ---------------------------------------------------------------------------
 
 
-def _escape_regex(s: str) -> str:
-    return re.escape(s)
+class AgentConfig(BaseModel):
+    name: str = "pynchy"
+    trigger_aliases: list[str] = ["ghost"]
+    core: str = "claude"  # "claude" or "openai"
 
 
-# Additional trigger aliases (case insensitive, matched alongside ASSISTANT_NAME)
-TRIGGER_ALIASES: list[str] = [
-    s for s in os.environ.get("TRIGGER_ALIASES", "ghost").split(",") if s.strip()
-]
+class ContainerConfig(BaseModel):
+    image: str = "pynchy-agent:latest"
+    timeout_ms: int = 1800000  # 30 minutes
+    max_output_size: int = 10485760  # 10MB
+    idle_timeout_ms: int = 1800000  # 30 minutes
+    max_concurrent: int = 5
+    runtime: str | None = None  # "apple" | "docker" | None (auto-detect)
 
-_trigger_names = [_escape_regex(ASSISTANT_NAME)] + [
-    _escape_regex(a.strip()) for a in TRIGGER_ALIASES
-]
-TRIGGER_PATTERN: re.Pattern[str] = re.compile(rf"^@({'|'.join(_trigger_names)})\b", re.IGNORECASE)
-
-# Magic words to reset conversation context (voice-friendly variants)
-_RESET_VERBS = {"reset", "restart", "clear", "new", "wipe"}
-_RESET_NOUNS = {"context", "session", "chat", "conversation"}
-_RESET_ALIASES = {"boom", "c"}
-
-# Magic words to end session without clearing context.
-# Syncs worktree and spins down container, but preserves conversation history.
-# Next message will start a fresh container with the existing session context.
-_END_SESSION_VERBS = {"end", "stop", "close", "finish"}
-_END_SESSION_NOUNS = {"session"}
-_END_SESSION_ALIASES = {"done", "bye", "goodbye", "cya"}
+    @field_validator("max_concurrent")
+    @classmethod
+    def clamp_max_concurrent(cls, v: int) -> int:
+        return max(1, v)
 
 
-def _is_magic_command(
-    text: str,
-    verbs: set[str],
-    nouns: set[str],
-    aliases: set[str],
-) -> bool:
-    """Check if text matches a verb+noun pair (either order) or a single alias."""
-    words = text.strip().lower().split()
-    if len(words) == 1:
-        return words[0] in aliases
-    if len(words) == 2:
-        a, b = words
-        return (a in verbs and b in nouns) or (a in nouns and b in verbs)
-    return False
+class ServerConfig(BaseModel):
+    port: int = 8484
 
 
-def is_context_reset(text: str) -> bool:
-    """Check if a message is a context reset command."""
-    return _is_magic_command(text, _RESET_VERBS, _RESET_NOUNS, _RESET_ALIASES)
+class LoggingConfig(BaseModel):
+    level: str = "INFO"
+
+    @field_validator("level")
+    @classmethod
+    def normalize_level(cls, v: str) -> str:
+        return v.upper()
 
 
-def is_end_session(text: str) -> bool:
-    """Check if a message is an end session command."""
-    return _is_magic_command(text, _END_SESSION_VERBS, _END_SESSION_NOUNS, _END_SESSION_ALIASES)
+class SecretsConfig(BaseModel):
+    anthropic_api_key: SecretStr | None = None
+    openai_api_key: SecretStr | None = None
+    gh_token: SecretStr | None = None
+    claude_code_oauth_token: SecretStr | None = None
 
 
-_REDEPLOY_ALIASES = {"r"}
-_REDEPLOY_VERBS = {"redeploy", "deploy"}
+class WorkspaceDefaultsConfig(BaseModel):
+    requires_trigger: bool = True
+    context_mode: Literal["group", "isolated"] = "group"
 
 
-def is_redeploy(text: str) -> bool:
-    """Check if a message is a manual redeploy command."""
-    word = text.strip().lower()
-    return word in _REDEPLOY_ALIASES or word in _REDEPLOY_VERBS
+class WorkspaceConfig(BaseModel):
+    is_god: bool = False
+    requires_trigger: bool | None = None  # None → use workspace_defaults
+    project_access: bool = False
+    name: str | None = None  # display name; defaults to folder titlecased
+    schedule: str | None = None  # cron expression
+    prompt: str | None = None  # prompt for scheduled tasks
+    context_mode: str | None = None  # None → use workspace_defaults
+
+    @field_validator("schedule")
+    @classmethod
+    def validate_cron(cls, v: str | None) -> str | None:
+        if v is not None and not croniter.is_valid(v):
+            msg = f"Invalid cron expression: {v}"
+            raise ValueError(msg)
+        return v
+
+    @property
+    def is_periodic(self) -> bool:
+        return self.schedule is not None and self.prompt is not None
 
 
-# Timezone for scheduled tasks — uses system IANA timezone by default.
-# TS equivalent: Intl.DateTimeFormat().resolvedOptions().timeZone
+class _ResetWords(BaseModel):
+    verbs: list[str] = ["reset", "restart", "clear", "new", "wipe"]
+    nouns: list[str] = ["context", "session", "chat", "conversation"]
+    aliases: list[str] = ["boom", "c"]
+
+
+class _EndSessionWords(BaseModel):
+    verbs: list[str] = ["end", "stop", "close", "finish"]
+    nouns: list[str] = ["session"]
+    aliases: list[str] = ["done", "bye", "goodbye", "cya"]
+
+
+class _RedeployWords(BaseModel):
+    aliases: list[str] = ["r"]
+    verbs: list[str] = ["redeploy", "deploy"]
+
+
+class CommandWordsConfig(BaseModel):
+    reset: _ResetWords = _ResetWords()
+    end_session: _EndSessionWords = _EndSessionWords()
+    redeploy: _RedeployWords = _RedeployWords()
+
+
+class SchedulerConfig(BaseModel):
+    poll_interval: float = 60.0  # seconds
+    timezone: str = ""  # empty → auto-detect
+
+
+class IntervalsConfig(BaseModel):
+    message_poll: float = 2.0  # seconds
+    ipc_poll: float = 1.0  # seconds
+
+
+class QueueConfig(BaseModel):
+    max_retries: int = 5
+    base_retry_seconds: float = 5.0
+
+
+class SecurityConfig(BaseModel):
+    blocked_patterns: list[str] = [
+        ".ssh",
+        ".gnupg",
+        ".gpg",
+        ".aws",
+        ".azure",
+        ".gcloud",
+        ".kube",
+        ".docker",
+        "credentials",
+        ".env",
+        ".netrc",
+        ".npmrc",
+        ".pypirc",
+        "id_rsa",
+        "id_ed25519",
+        "private_key",
+        ".secret",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Root Settings
+# ---------------------------------------------------------------------------
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        toml_file="config.toml",
+        env_nested_delimiter="__",
+        extra="ignore",
+    )
+
+    agent: AgentConfig = AgentConfig()
+    container: ContainerConfig = ContainerConfig()
+    server: ServerConfig = ServerConfig()
+    logging: LoggingConfig = LoggingConfig()
+    secrets: SecretsConfig = SecretsConfig()
+    workspace_defaults: WorkspaceDefaultsConfig = WorkspaceDefaultsConfig()
+    workspaces: dict[str, WorkspaceConfig] = {}  # [workspaces.<folder_name>]
+    commands: CommandWordsConfig = CommandWordsConfig()
+    scheduler: SchedulerConfig = SchedulerConfig()
+    intervals: IntervalsConfig = IntervalsConfig()
+    queue: QueueConfig = QueueConfig()
+    security: SecurityConfig = SecurityConfig()
+
+    # Sentinels (class-level, not fields)
+    OUTPUT_START_MARKER: ClassVar[str] = "---PYNCHY_OUTPUT_START---"
+    OUTPUT_END_MARKER: ClassVar[str] = "---PYNCHY_OUTPUT_END---"
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Use TOML + env vars only (.env intentionally unsupported)."""
+        return (
+            init_settings,
+            env_settings,
+            TomlConfigSettingsSource(settings_cls),
+            file_secret_settings,
+        )
+
+    # --- Computed properties ---
+
+    @cached_property
+    def container_timeout(self) -> float:
+        return self.container.timeout_ms / 1000
+
+    @cached_property
+    def idle_timeout(self) -> float:
+        return self.container.idle_timeout_ms / 1000
+
+    @cached_property
+    def trigger_pattern(self) -> re.Pattern[str]:
+        names = [re.escape(self.agent.name)] + [
+            re.escape(a.strip()) for a in self.agent.trigger_aliases
+        ]
+        return re.compile(rf"^@({'|'.join(names)})\b", re.IGNORECASE)
+
+    @cached_property
+    def timezone(self) -> str:
+        if self.scheduler.timezone:
+            return self.scheduler.timezone
+        return _detect_timezone()
+
+    @cached_property
+    def project_root(self) -> Path:
+        return Path.cwd()
+
+    @cached_property
+    def home_dir(self) -> Path:
+        return Path(os.environ.get("HOME", "/Users/user"))
+
+    @cached_property
+    def store_dir(self) -> Path:
+        return (self.project_root / "store").resolve()
+
+    @cached_property
+    def groups_dir(self) -> Path:
+        return (self.project_root / "groups").resolve()
+
+    @cached_property
+    def data_dir(self) -> Path:
+        return (self.project_root / "data").resolve()
+
+    @cached_property
+    def mount_allowlist_path(self) -> Path:
+        return self.home_dir / ".config" / "pynchy" / "mount-allowlist.toml"
+
+    @cached_property
+    def worktrees_dir(self) -> Path:
+        return self.home_dir / ".config" / "pynchy" / "worktrees"
+
+
+# ---------------------------------------------------------------------------
+# Timezone detection (shared with logger, runs before Settings)
+# ---------------------------------------------------------------------------
+
+
 def _detect_timezone() -> str:
     if tz := os.environ.get("TZ"):
         return tz
-    # Read /etc/localtime symlink → IANA name (works on Linux and macOS)
     try:
         link = os.readlink("/etc/localtime")
         parts = link.split("zoneinfo/")
@@ -123,4 +277,49 @@ def _detect_timezone() -> str:
     return "UTC"
 
 
-TIMEZONE: str = _detect_timezone()
+# ---------------------------------------------------------------------------
+# Singleton + TOML writer
+# ---------------------------------------------------------------------------
+
+_settings: Settings | None = None
+
+
+def get_settings() -> Settings:
+    """Lazy cached singleton."""
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings
+
+
+def reset_settings() -> None:
+    """Clear the cached singleton (for tests)."""
+    global _settings
+    _settings = None
+
+
+def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
+    """Programmatically add a workspace to config.toml using tomlkit.
+
+    Preserves existing comments and formatting. Creates [workspaces.<folder>]
+    section. Resets the settings cache so next get_settings() picks it up.
+    """
+    import tomlkit
+
+    toml_path = Path("config.toml")
+    doc = tomlkit.parse(toml_path.read_text()) if toml_path.exists() else tomlkit.document()
+
+    if "workspaces" not in doc:
+        doc.add("workspaces", tomlkit.table(is_super_table=True))
+
+    ws_table = tomlkit.table()
+    data = config.model_dump(exclude_none=True, exclude_defaults=True)
+    for key, value in data.items():
+        ws_table.add(key, value)
+
+    doc["workspaces"][folder] = ws_table  # type: ignore[index]
+
+    toml_path.write_text(tomlkit.dumps(doc))
+
+    # Reset so next get_settings() re-reads the file
+    reset_settings()

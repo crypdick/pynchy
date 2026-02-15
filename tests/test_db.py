@@ -1,7 +1,4 @@
-"""Tests for the database layer.
-
-Port of src/db.test.ts.
-"""
+"""Tests for the database layer."""
 
 from __future__ import annotations
 

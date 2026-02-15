@@ -13,6 +13,20 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from pynchy.config import (
+    AgentConfig,
+    CommandWordsConfig,
+    ContainerConfig,
+    IntervalsConfig,
+    LoggingConfig,
+    QueueConfig,
+    SchedulerConfig,
+    SecretsConfig,
+    SecurityConfig,
+    ServerConfig,
+    Settings,
+    WorkspaceDefaultsConfig,
+)
 from pynchy.service_installer import (
     _install_launchd_service,
     _install_systemd_service,
@@ -20,6 +34,26 @@ from pynchy.service_installer import (
     is_launchd_loaded,
     is_launchd_managed,
 )
+
+
+def _test_settings(*, project_root: Path):
+    s = Settings.model_construct(
+        agent=AgentConfig(),
+        container=ContainerConfig(),
+        server=ServerConfig(),
+        logging=LoggingConfig(),
+        secrets=SecretsConfig(),
+        workspace_defaults=WorkspaceDefaultsConfig(),
+        workspaces={},
+        commands=CommandWordsConfig(),
+        scheduler=SchedulerConfig(),
+        intervals=IntervalsConfig(),
+        queue=QueueConfig(),
+        security=SecurityConfig(),
+    )
+    s.__dict__["project_root"] = project_root
+    return s
+
 
 # ---------------------------------------------------------------------------
 # is_launchd_managed
@@ -104,7 +138,10 @@ class TestInstallLaunchdService:
 
     def test_skips_when_plist_source_does_not_exist(self, tmp_path: Path):
         """Should log warning and return when source plist is missing."""
-        with patch("pynchy.service_installer.PROJECT_ROOT", tmp_path):
+        with patch(
+            "pynchy.service_installer.get_settings",
+            return_value=_test_settings(project_root=tmp_path),
+        ):
             # Source file does not exist
             _install_launchd_service()
             # No error, just skipped
@@ -120,7 +157,10 @@ class TestInstallLaunchdService:
         dest_dir = tmp_path / "Library" / "LaunchAgents"
 
         with (
-            patch("pynchy.service_installer.PROJECT_ROOT", tmp_path),
+            patch(
+                "pynchy.service_installer.get_settings",
+                return_value=_test_settings(project_root=tmp_path),
+            ),
             patch("pynchy.service_installer.Path.home", return_value=tmp_path),
             patch("pynchy.service_installer.is_launchd_loaded", return_value=False),
             patch("pynchy.service_installer.is_launchd_managed", return_value=False),
@@ -147,7 +187,10 @@ class TestInstallLaunchdService:
         (dest_dir / "com.pynchy.plist").write_text(plist_content)
 
         with (
-            patch("pynchy.service_installer.PROJECT_ROOT", tmp_path),
+            patch(
+                "pynchy.service_installer.get_settings",
+                return_value=_test_settings(project_root=tmp_path),
+            ),
             patch("pynchy.service_installer.Path.home", return_value=tmp_path),
             patch("pynchy.service_installer.is_launchd_loaded", return_value=True),
             patch("subprocess.run") as mock_run,
@@ -168,7 +211,10 @@ class TestInstallLaunchdService:
         (dest_dir / "com.pynchy.plist").write_text("<plist>old</plist>")
 
         with (
-            patch("pynchy.service_installer.PROJECT_ROOT", tmp_path),
+            patch(
+                "pynchy.service_installer.get_settings",
+                return_value=_test_settings(project_root=tmp_path),
+            ),
             patch("pynchy.service_installer.Path.home", return_value=tmp_path),
             patch("pynchy.service_installer.is_launchd_loaded", return_value=True),
             patch("pynchy.service_installer.is_launchd_managed", return_value=False),
@@ -194,7 +240,10 @@ class TestInstallLaunchdService:
         (src_dir / "com.pynchy.plist").write_text("<plist>test</plist>")
 
         with (
-            patch("pynchy.service_installer.PROJECT_ROOT", tmp_path),
+            patch(
+                "pynchy.service_installer.get_settings",
+                return_value=_test_settings(project_root=tmp_path),
+            ),
             patch("pynchy.service_installer.Path.home", return_value=tmp_path),
             patch("pynchy.service_installer.is_launchd_loaded", return_value=False),
             patch("pynchy.service_installer.is_launchd_managed", return_value=True),
@@ -224,7 +273,10 @@ class TestInstallSystemdService:
         """Should create systemd unit file with correct content."""
         with (
             patch("shutil.which", return_value="/usr/local/bin/uv"),
-            patch("pynchy.service_installer.PROJECT_ROOT", tmp_path),
+            patch(
+                "pynchy.service_installer.get_settings",
+                return_value=_test_settings(project_root=tmp_path),
+            ),
             patch("pynchy.service_installer.Path.home", return_value=tmp_path),
             patch("subprocess.run"),
         ):
@@ -243,7 +295,10 @@ class TestInstallSystemdService:
         """Should reload daemon, enable service, and enable lingering."""
         with (
             patch("shutil.which", return_value="/usr/local/bin/uv"),
-            patch("pynchy.service_installer.PROJECT_ROOT", tmp_path),
+            patch(
+                "pynchy.service_installer.get_settings",
+                return_value=_test_settings(project_root=tmp_path),
+            ),
             patch("pynchy.service_installer.Path.home", return_value=tmp_path),
             patch("subprocess.run") as mock_run,
         ):
@@ -259,7 +314,10 @@ class TestInstallSystemdService:
         """Should return early when unit file content matches."""
         with (
             patch("shutil.which", return_value="/usr/local/bin/uv"),
-            patch("pynchy.service_installer.PROJECT_ROOT", tmp_path),
+            patch(
+                "pynchy.service_installer.get_settings",
+                return_value=_test_settings(project_root=tmp_path),
+            ),
             patch("pynchy.service_installer.Path.home", return_value=tmp_path),
             patch("subprocess.run") as mock_run,
         ):
@@ -279,7 +337,10 @@ class TestInstallSystemdService:
 
         with (
             patch("shutil.which", return_value="/usr/local/bin/uv"),
-            patch("pynchy.service_installer.PROJECT_ROOT", tmp_path),
+            patch(
+                "pynchy.service_installer.get_settings",
+                return_value=_test_settings(project_root=tmp_path),
+            ),
             patch("pynchy.service_installer.Path.home", return_value=tmp_path),
             patch("subprocess.run") as mock_run,
         ):

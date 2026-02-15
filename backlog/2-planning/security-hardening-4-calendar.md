@@ -336,7 +336,7 @@ Add calendar configuration:
     "caldav": {
       "url": "https://caldav.icloud.com",
       "username": "user@icloud.com",
-      "password": "app-specific-password",
+      "password": "app-specific-password", // pragma: allowlist secret
       "calendar_name": "Personal"
     }
   }
@@ -385,7 +385,7 @@ def calendar_config():
         "caldav": {
             "url": "https://caldav.example.com",
             "username": "test@example.com",
-            "password": "password",
+            "password": "password", // pragma: allowlist secret
             "calendar_name": "Test Calendar",
         },
     }

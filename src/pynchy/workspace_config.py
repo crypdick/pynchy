@@ -1,24 +1,20 @@
-"""Workspace configuration — unified YAML schema, loader, and reconciliation.
+"""Workspace configuration — reads from config.toml via Settings.
 
-Each group can have a groups/{name}/workspace.yaml that defines both workspace
-identity (is_god, requires_trigger) and optional periodic scheduling. This
-replaces the old periodic.yaml which only handled scheduling.
+Workspaces are defined in [workspaces.<folder_name>] sections of config.toml.
+Runtime creation (e.g. via IPC) writes new sections using add_workspace_to_toml().
 """
 
 from __future__ import annotations
 
 import uuid
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
-import yaml
 from croniter import croniter
 
-from pynchy.config import ASSISTANT_NAME, GROUPS_DIR, TIMEZONE
+from pynchy.config import WorkspaceConfig, add_workspace_to_toml, get_settings
 from pynchy.db import create_task, get_active_task_for_group, update_task
 from pynchy.logger import logger
 
@@ -26,109 +22,38 @@ if TYPE_CHECKING:
     from pynchy.types import Channel, RegisteredGroup
 
 
-@dataclass
-class WorkspaceConfig:
-    is_god: bool = False
-    requires_trigger: bool = True
-    project_access: bool = False
-    name: str | None = None  # defaults to folder name titlecased
-    # Periodic scheduling (optional)
-    schedule: str | None = None  # cron expression
-    prompt: str | None = None
-    context_mode: Literal["group", "isolated"] = "group"
-
-    @property
-    def is_periodic(self) -> bool:
-        return self.schedule is not None and self.prompt is not None
-
-
 def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
-    """Read groups/{folder}/workspace.yaml, return None if not present."""
-    path = GROUPS_DIR / group_folder / "workspace.yaml"
-    if not path.exists():
+    """Read workspace config for a group from Settings.
+
+    Returns None if the group has no [workspaces.<folder>] section in config.toml.
+    """
+    s = get_settings()
+    config = s.workspaces.get(group_folder)
+    if config is None:
         return None
 
-    try:
-        raw = yaml.safe_load(path.read_text())
-    except (yaml.YAMLError, OSError) as exc:
-        logger.warning("Failed to parse workspace.yaml", folder=group_folder, err=str(exc))
-        return None
+    # Apply workspace defaults for None fields
+    if config.requires_trigger is None:
+        config = config.model_copy(
+            update={"requires_trigger": s.workspace_defaults.requires_trigger}
+        )
+    if config.context_mode is None:
+        config = config.model_copy(update={"context_mode": s.workspace_defaults.context_mode})
 
-    if not isinstance(raw, dict):
-        # Empty file is valid — all defaults
-        return WorkspaceConfig() if raw is None else None
-
-    # Workspace identity fields
-    is_god = bool(raw.get("is_god", False))
-    requires_trigger = bool(raw.get("requires_trigger", True))
-    project_access = bool(raw.get("project_access", False))
-    name = raw.get("name")
-    if name is not None:
-        name = str(name)
-
-    # Periodic scheduling fields (optional)
-    schedule = raw.get("schedule")
-    prompt = raw.get("prompt")
-
-    if schedule is not None:
-        schedule = str(schedule)
-        if not croniter.is_valid(schedule):
-            schedule = None
-
-    if prompt is not None:
-        prompt = str(prompt)
-
-    context_mode = raw.get("context_mode", "group")
-    if context_mode not in ("group", "isolated"):
-        context_mode = "group"
-
-    config = WorkspaceConfig(
-        is_god=is_god,
-        requires_trigger=requires_trigger,
-        project_access=project_access,
-        name=name,
-        schedule=schedule,
-        prompt=prompt,
-        context_mode=context_mode,
-    )
     logger.debug(
         "Loaded workspace config",
         folder=group_folder,
-        is_god=is_god,
-        project_access=project_access,
+        is_god=config.is_god,
+        project_access=config.project_access,
         is_periodic=config.is_periodic,
     )
     return config
 
 
-def write_workspace_config(group_folder: str, config: WorkspaceConfig) -> Path:
-    """Write a workspace.yaml file for a group. Returns the path written."""
-    path = GROUPS_DIR / group_folder / "workspace.yaml"
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    data: dict[str, Any] = {}
-
-    # Workspace identity fields — only write non-defaults
-    if config.is_god:
-        data["is_god"] = True
-    if not config.requires_trigger:
-        data["requires_trigger"] = False
-    if config.project_access:
-        data["project_access"] = True
-    if config.name is not None:
-        data["name"] = config.name
-
-    # Periodic scheduling fields
-    if config.schedule is not None:
-        data["schedule"] = config.schedule
-    if config.prompt is not None:
-        data["prompt"] = config.prompt
-    if config.context_mode != "group":
-        data["context_mode"] = config.context_mode
-
-    path.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False) if data else "")
-    logger.debug("Wrote workspace config", folder=group_folder, fields=list(data.keys()))
-    return path
+def write_workspace_config(group_folder: str, config: WorkspaceConfig) -> None:
+    """Write a workspace config to config.toml."""
+    add_workspace_to_toml(group_folder, config)
+    logger.debug("Wrote workspace config to config.toml", folder=group_folder)
 
 
 def has_project_access(group: RegisteredGroup) -> bool:
@@ -163,32 +88,30 @@ async def reconcile_workspaces(
     channels: list[Channel],
     register_fn: Callable[[str, RegisteredGroup], Awaitable[None]],
 ) -> None:
-    """Scan groups/ for workspace.yaml files and ensure tasks + chat groups exist.
+    """Ensure tasks + chat groups exist for workspaces defined in config.toml.
 
     Idempotent — safe to run on every startup. Creates WhatsApp groups for
-    any folder with a workspace.yaml but no DB entry, and manages scheduled
-    tasks for periodic agents.
+    any workspace with no DB entry, and manages scheduled tasks for periodic agents.
     """
     from pynchy.types import RegisteredGroup as RG
 
+    s = get_settings()
     folder_to_jid: dict[str, str] = {g.folder: jid for jid, g in registered_groups.items()}
 
-    if not GROUPS_DIR.exists():
-        return
-
     reconciled = 0
-    for folder in sorted(GROUPS_DIR.iterdir()):
-        if not folder.is_dir():
-            continue
+    for folder, config in s.workspaces.items():
+        # Apply defaults
+        requires_trigger = (
+            config.requires_trigger
+            if config.requires_trigger is not None
+            else s.workspace_defaults.requires_trigger
+        )
+        context_mode = config.context_mode or s.workspace_defaults.context_mode
 
-        config = load_workspace_config(folder.name)
-        if config is None:
-            continue
-
-        display_name = config.name or folder.name.replace("-", " ").title()
+        display_name = config.name or folder.replace("-", " ").title()
 
         # 1. Ensure the group is registered (create chat group if needed)
-        jid = folder_to_jid.get(folder.name)
+        jid = folder_to_jid.get(folder)
         if jid is None:
             channel = next(
                 (ch for ch in channels if hasattr(ch, "create_group")),
@@ -197,25 +120,25 @@ async def reconcile_workspaces(
             if channel is None:
                 logger.warning(
                     "No channel supports create_group, skipping workspace",
-                    folder=folder.name,
+                    folder=folder,
                 )
                 continue
 
             jid = await channel.create_group(display_name)
             group = RG(
                 name=display_name,
-                folder=folder.name,
-                trigger=f"@{ASSISTANT_NAME}",
+                folder=folder,
+                trigger=f"@{s.agent.name}",
                 added_at=datetime.now(UTC).isoformat(),
-                requires_trigger=config.requires_trigger,
+                requires_trigger=requires_trigger,
                 is_god=config.is_god,
             )
             await register_fn(jid, group)
-            folder_to_jid[folder.name] = jid
+            folder_to_jid[folder] = jid
             logger.info(
                 "Created chat group for workspace",
                 name=display_name,
-                folder=folder.name,
+                folder=folder,
                 is_god=config.is_god,
             )
 
@@ -224,23 +147,23 @@ async def reconcile_workspaces(
             reconciled += 1
             continue
 
-        existing_task = await get_active_task_for_group(folder.name)
+        existing_task = await get_active_task_for_group(folder)
 
         if existing_task is None:
-            tz = ZoneInfo(TIMEZONE)
+            tz = ZoneInfo(s.timezone)
             cron = croniter(config.schedule, datetime.now(tz))
             next_run = cron.get_next(datetime).isoformat()
 
-            task_id = f"periodic-{folder.name}-{uuid.uuid4().hex[:8]}"
+            task_id = f"periodic-{folder}-{uuid.uuid4().hex[:8]}"
             await create_task(
                 {
                     "id": task_id,
-                    "group_folder": folder.name,
+                    "group_folder": folder,
                     "chat_jid": jid,
                     "prompt": config.prompt,
                     "schedule_type": "cron",
                     "schedule_value": config.schedule,
-                    "context_mode": config.context_mode,
+                    "context_mode": context_mode,
                     "project_access": config.project_access,
                     "next_run": next_run,
                     "status": "active",
@@ -250,14 +173,14 @@ async def reconcile_workspaces(
             logger.info(
                 "Created scheduled task for periodic agent",
                 task_id=task_id,
-                folder=folder.name,
+                folder=folder,
                 schedule=config.schedule,
             )
         else:
             updates: dict[str, Any] = {}
             if existing_task.schedule_value != config.schedule:
                 updates["schedule_value"] = config.schedule
-                tz = ZoneInfo(TIMEZONE)
+                tz = ZoneInfo(s.timezone)
                 cron = croniter(config.schedule, datetime.now(tz))
                 updates["next_run"] = cron.get_next(datetime).isoformat()
             if existing_task.prompt != config.prompt:
@@ -269,7 +192,7 @@ async def reconcile_workspaces(
                 logger.info(
                     "Updated periodic agent task",
                     task_id=existing_task.id,
-                    folder=folder.name,
+                    folder=folder,
                     changed=list(updates.keys()),
                 )
 

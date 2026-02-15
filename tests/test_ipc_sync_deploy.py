@@ -20,6 +20,20 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from pynchy.config import (
+    AgentConfig,
+    CommandWordsConfig,
+    ContainerConfig,
+    IntervalsConfig,
+    LoggingConfig,
+    QueueConfig,
+    SchedulerConfig,
+    SecretsConfig,
+    SecurityConfig,
+    ServerConfig,
+    Settings,
+    WorkspaceDefaultsConfig,
+)
 from pynchy.db import _init_test_database
 from pynchy.ipc import _handle_deploy, process_task_ipc
 from pynchy.types import RegisteredGroup
@@ -38,6 +52,28 @@ OTHER_GROUP = RegisteredGroup(
     trigger="@pynchy",
     added_at="2024-01-01T00:00:00.000Z",
 )
+
+
+def _test_settings(*, data_dir=None, project_root=None):
+    s = Settings.model_construct(
+        agent=AgentConfig(),
+        container=ContainerConfig(),
+        server=ServerConfig(),
+        logging=LoggingConfig(),
+        secrets=SecretsConfig(),
+        workspace_defaults=WorkspaceDefaultsConfig(),
+        workspaces={},
+        commands=CommandWordsConfig(),
+        scheduler=SchedulerConfig(),
+        intervals=IntervalsConfig(),
+        queue=QueueConfig(),
+        security=SecurityConfig(),
+    )
+    if data_dir is not None:
+        s.__dict__["data_dir"] = data_dir
+    if project_root is not None:
+        s.__dict__["project_root"] = project_root
+    return s
 
 
 class MockDeps:
@@ -120,7 +156,10 @@ class TestSyncWorktreeToMain:
         merge_results_dir.mkdir(parents=True)
 
         with (
-            patch("pynchy.ipc.DATA_DIR", tmp_path / "data"),
+            patch(
+                "pynchy.ipc.get_settings",
+                return_value=_test_settings(data_dir=tmp_path / "data"),
+            ),
             patch(
                 "pynchy.ipc.host_sync_worktree",
                 return_value={"success": True, "message": "Merged 1 commit(s)"},
@@ -149,7 +188,10 @@ class TestSyncWorktreeToMain:
         merge_results_dir.mkdir(parents=True)
 
         with (
-            patch("pynchy.ipc.DATA_DIR", tmp_path / "data"),
+            patch(
+                "pynchy.ipc.get_settings",
+                return_value=_test_settings(data_dir=tmp_path / "data"),
+            ),
             patch(
                 "pynchy.ipc.host_sync_worktree",
                 return_value={"success": False, "message": "uncommitted changes"},
@@ -177,7 +219,10 @@ class TestSyncWorktreeToMain:
         merge_results_dir.mkdir(parents=True)
 
         with (
-            patch("pynchy.ipc.DATA_DIR", tmp_path / "data"),
+            patch(
+                "pynchy.ipc.get_settings",
+                return_value=_test_settings(data_dir=tmp_path / "data"),
+            ),
             patch(
                 "pynchy.ipc.host_sync_worktree",
                 return_value={"success": True, "message": "done"},
@@ -204,7 +249,10 @@ class TestSyncWorktreeToMain:
         merge_results_dir.mkdir(parents=True)
 
         with (
-            patch("pynchy.ipc.DATA_DIR", tmp_path / "data"),
+            patch(
+                "pynchy.ipc.get_settings",
+                return_value=_test_settings(data_dir=tmp_path / "data"),
+            ),
             patch(
                 "pynchy.ipc.host_sync_worktree",
                 return_value={"success": False, "message": "conflict"},
@@ -269,7 +317,10 @@ class TestDeployEdgeCases:
     async def test_deploy_with_rebuild_but_no_build_script(self, deps: MockDeps, tmp_path: Path):
         """Deploy requesting rebuild when build.sh doesn't exist should still finalize."""
         with (
-            patch("pynchy.ipc.PROJECT_ROOT", tmp_path),
+            patch(
+                "pynchy.ipc.get_settings",
+                return_value=_test_settings(project_root=tmp_path),
+            ),
             patch("pynchy.ipc.finalize_deploy", new_callable=AsyncMock) as mock_finalize,
         ):
             await _handle_deploy(

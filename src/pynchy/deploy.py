@@ -8,7 +8,7 @@ import os
 import signal
 from collections.abc import Awaitable, Callable
 
-from pynchy.config import DATA_DIR
+from pynchy.config import get_settings
 from pynchy.logger import logger
 
 
@@ -43,7 +43,7 @@ async def finalize_deploy(
         "commit_sha": commit_sha,
         "previous_commit_sha": previous_sha,
     }
-    continuation_path = DATA_DIR / "deploy_continuation.json"
+    continuation_path = get_settings().data_dir / "deploy_continuation.json"
     continuation_path.parent.mkdir(parents=True, exist_ok=True)
     continuation_path.write_text(json.dumps(continuation, indent=2))
 

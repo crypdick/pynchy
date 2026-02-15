@@ -1,7 +1,5 @@
 """Pynchy Agent Runner — runs inside a container.
 
-Port of container/agent-runner/src/index.ts.
-
 This is the framework-agnostic runner. It handles stdin/stdout framing, IPC
 polling, and output marker wrapping. The actual LLM agent logic is delegated
 to AgentCore implementations (Claude SDK, OpenAI, etc.).

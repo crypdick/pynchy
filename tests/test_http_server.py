@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,20 @@ from unittest.mock import Mock, patch
 from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
 
+from pynchy.config import (
+    AgentConfig,
+    CommandWordsConfig,
+    ContainerConfig,
+    IntervalsConfig,
+    LoggingConfig,
+    QueueConfig,
+    SchedulerConfig,
+    SecretsConfig,
+    SecurityConfig,
+    ServerConfig,
+    Settings,
+    WorkspaceDefaultsConfig,
+)
 from pynchy.git_utils import get_head_sha, is_repo_dirty, push_local_commits
 from pynchy.http_server import (
     _get_head_commit_message,
@@ -17,6 +32,28 @@ from pynchy.http_server import (
     deps_key,
 )
 from pynchy.types import NewMessage
+
+
+@contextlib.contextmanager
+def _patch_settings(*, data_dir: Path):
+    s = Settings.model_construct(
+        agent=AgentConfig(),
+        container=ContainerConfig(),
+        server=ServerConfig(),
+        logging=LoggingConfig(),
+        secrets=SecretsConfig(),
+        workspace_defaults=WorkspaceDefaultsConfig(),
+        workspaces={},
+        commands=CommandWordsConfig(),
+        scheduler=SchedulerConfig(),
+        intervals=IntervalsConfig(),
+        queue=QueueConfig(),
+        security=SecurityConfig(),
+    )
+    s.__dict__["data_dir"] = data_dir
+    with patch("pynchy.http_server.get_settings", return_value=s):
+        yield
+
 
 # ---------------------------------------------------------------------------
 # Git utility tests
@@ -28,9 +65,9 @@ def test_get_head_sha_success():
     with patch("pynchy.git_utils.run_git") as mock_run:
         mock_run.return_value = Mock(
             returncode=0,
-            stdout="abc123def456\n",
+            stdout="head-sha-001\n",
         )
-        assert get_head_sha() == "abc123def456"
+        assert get_head_sha() == "head-sha-001"
 
 
 def test_get_head_sha_failure():
@@ -196,7 +233,7 @@ def testpush_local_commits_exception():
 
 def test_write_boot_warning_creates_file(tmp_path: Path):
     """_write_boot_warning creates boot_warnings.json with message."""
-    with patch("pynchy.http_server.DATA_DIR", tmp_path):
+    with _patch_settings(data_dir=tmp_path):
         _write_boot_warning("Test warning")
         warnings_file = tmp_path / "boot_warnings.json"
         assert warnings_file.exists()
@@ -206,7 +243,7 @@ def test_write_boot_warning_creates_file(tmp_path: Path):
 
 def test_write_boot_warning_appends_to_existing(tmp_path: Path):
     """_write_boot_warning appends to existing warnings."""
-    with patch("pynchy.http_server.DATA_DIR", tmp_path):
+    with _patch_settings(data_dir=tmp_path):
         # First warning
         _write_boot_warning("Warning 1")
         # Second warning
@@ -219,7 +256,7 @@ def test_write_boot_warning_appends_to_existing(tmp_path: Path):
 
 def test_write_boot_warning_handles_corrupted_file(tmp_path: Path):
     """_write_boot_warning creates new array if file is corrupted."""
-    with patch("pynchy.http_server.DATA_DIR", tmp_path):
+    with _patch_settings(data_dir=tmp_path):
         warnings_file = tmp_path / "boot_warnings.json"
         warnings_file.write_text("{invalid json}")
 

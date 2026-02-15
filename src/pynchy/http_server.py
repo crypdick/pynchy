@@ -17,7 +17,7 @@ from typing import Any, Protocol
 
 from aiohttp import web
 
-from pynchy.config import DATA_DIR, DEPLOY_PORT, PROJECT_ROOT
+from pynchy.config import get_settings
 from pynchy.deploy import finalize_deploy
 from pynchy.git_utils import (
     files_changed_between,
@@ -50,7 +50,7 @@ def _get_head_commit_message(max_length: int = 72) -> str:
 
 def _write_boot_warning(message: str) -> None:
     """Append a warning to boot_warnings.json, picked up by _send_boot_notification on restart."""
-    path = DATA_DIR / "boot_warnings.json"
+    path = get_settings().data_dir / "boot_warnings.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         warnings = json.loads(path.read_text()) if path.exists() else []
@@ -139,9 +139,10 @@ async def _handle_deploy(request: web.Request) -> web.Response:
 
     # 4. Validate import (only when new code was pulled)
     if has_new_code:
+        s = get_settings()
         validate = subprocess.run(
             ["uv", "run", "python", "-c", "import pynchy"],
-            cwd=str(PROJECT_ROOT),
+            cwd=str(s.project_root),
             capture_output=True,
             text=True,
         )
@@ -160,11 +161,11 @@ async def _handle_deploy(request: web.Request) -> web.Response:
 
     # 5. Rebuild container image if container/ files changed
     if has_new_code and files_changed_between(old_sha, new_sha, "container/"):
-        build_script = PROJECT_ROOT / "container" / "build.sh"
+        build_script = get_settings().project_root / "container" / "build.sh"
         logger.info("Container files changed, rebuilding image...")
         result = subprocess.run(
             [str(build_script)],
-            cwd=str(PROJECT_ROOT / "container"),
+            cwd=str(get_settings().project_root / "container"),
             capture_output=True,
             text=True,
             timeout=600,
@@ -313,7 +314,8 @@ async def start_http_server(deps: HttpDeps) -> web.AppRunner:
 
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", DEPLOY_PORT)
+    port = get_settings().server.port
+    site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    logger.info("HTTP server listening", port=DEPLOY_PORT)
+    logger.info("HTTP server listening", port=port)
     return runner

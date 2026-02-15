@@ -7,6 +7,7 @@ leave the service in a broken state or lose deploy context.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import signal
@@ -15,13 +16,48 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from pynchy.config import (
+    AgentConfig,
+    CommandWordsConfig,
+    ContainerConfig,
+    IntervalsConfig,
+    LoggingConfig,
+    QueueConfig,
+    SchedulerConfig,
+    SecretsConfig,
+    SecurityConfig,
+    ServerConfig,
+    Settings,
+    WorkspaceDefaultsConfig,
+)
 from pynchy.deploy import finalize_deploy
+
+
+@contextlib.contextmanager
+def _patch_settings(*, data_dir: Path):
+    s = Settings.model_construct(
+        agent=AgentConfig(),
+        container=ContainerConfig(),
+        server=ServerConfig(),
+        logging=LoggingConfig(),
+        secrets=SecretsConfig(),
+        workspace_defaults=WorkspaceDefaultsConfig(),
+        workspaces={},
+        commands=CommandWordsConfig(),
+        scheduler=SchedulerConfig(),
+        intervals=IntervalsConfig(),
+        queue=QueueConfig(),
+        security=SecurityConfig(),
+    )
+    s.__dict__["data_dir"] = data_dir
+    with patch("pynchy.deploy.get_settings", return_value=s):
+        yield
 
 
 @pytest.fixture
 def deploy_dir(tmp_path: Path):
-    """Patch DATA_DIR to a temp directory for isolated deploy tests."""
-    with patch("pynchy.deploy.DATA_DIR", tmp_path):
+    """Patch settings data_dir for isolated deploy tests."""
+    with _patch_settings(data_dir=tmp_path):
         yield tmp_path
 
 
@@ -35,16 +71,16 @@ class TestFinalizeDeploy:
             await finalize_deploy(
                 broadcast_host_message=broadcast,
                 chat_jid="group@g.us",
-                commit_sha="abc123def456",
-                previous_sha="000111222333",
+                commit_sha="commit-sha-001",
+                previous_sha="previous-sha-001",
                 session_id="session-42",
                 resume_prompt="Deploy complete.",
             )
 
         continuation = json.loads((deploy_dir / "deploy_continuation.json").read_text())
         assert continuation["chat_jid"] == "group@g.us"
-        assert continuation["commit_sha"] == "abc123def456"
-        assert continuation["previous_commit_sha"] == "000111222333"
+        assert continuation["commit_sha"] == "commit-sha-001"
+        assert continuation["previous_commit_sha"] == "previous-sha-001"
         assert continuation["session_id"] == "session-42"
         assert continuation["resume_prompt"] == "Deploy complete."
 
@@ -55,14 +91,14 @@ class TestFinalizeDeploy:
             await finalize_deploy(
                 broadcast_host_message=broadcast,
                 chat_jid="group@g.us",
-                commit_sha="abc123def456",
+                commit_sha="commit-sha-001",
                 previous_sha="000",
             )
 
         broadcast.assert_called_once()
         jid, text = broadcast.call_args[0]
         assert jid == "group@g.us"
-        assert "abc123de" in text  # First 8 chars of SHA
+        assert "commit-s" in text  # First 8 chars of SHA
 
     async def test_skips_broadcast_when_no_chat_jid(self, deploy_dir: Path):
         broadcast = AsyncMock()

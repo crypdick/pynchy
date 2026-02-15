@@ -7,11 +7,26 @@ Errors here could corrupt workspace state or strand data.
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+from pynchy.config import (
+    AgentConfig,
+    CommandWordsConfig,
+    ContainerConfig,
+    IntervalsConfig,
+    LoggingConfig,
+    QueueConfig,
+    SchedulerConfig,
+    SecretsConfig,
+    SecurityConfig,
+    ServerConfig,
+    Settings,
+    WorkspaceDefaultsConfig,
+)
 from pynchy.db import (
     _init_test_database,
     create_task,
@@ -22,6 +37,29 @@ from pynchy.db import (
 )
 from pynchy.types import RegisteredGroup
 from pynchy.workspace_ops import RenameError, _rename_dir, rename_workspace
+
+
+@contextlib.contextmanager
+def _patch_settings(*, groups_dir: Path, data_dir: Path, worktrees_dir: Path):
+    s = Settings.model_construct(
+        agent=AgentConfig(),
+        container=ContainerConfig(),
+        server=ServerConfig(),
+        logging=LoggingConfig(),
+        secrets=SecretsConfig(),
+        workspace_defaults=WorkspaceDefaultsConfig(),
+        workspaces={},
+        commands=CommandWordsConfig(),
+        scheduler=SchedulerConfig(),
+        intervals=IntervalsConfig(),
+        queue=QueueConfig(),
+        security=SecurityConfig(),
+    )
+    s.__dict__["groups_dir"] = groups_dir
+    s.__dict__["data_dir"] = data_dir
+    s.__dict__["worktrees_dir"] = worktrees_dir
+    with patch("pynchy.workspace_ops.get_settings", return_value=s):
+        yield
 
 
 class TestRenameDir:
@@ -108,10 +146,10 @@ class TestRenameWorkspace:
             ),
         )
 
-        with (
-            patch("pynchy.workspace_ops.GROUPS_DIR", tmp_path / "groups"),
-            patch("pynchy.workspace_ops.DATA_DIR", tmp_path / "data"),
-            patch("pynchy.workspace_ops.WORKTREES_DIR", tmp_path / "worktrees"),
+        with _patch_settings(
+            groups_dir=tmp_path / "groups",
+            data_dir=tmp_path / "data",
+            worktrees_dir=tmp_path / "worktrees",
         ):
             await rename_workspace("old-group", "new-group")
 
@@ -135,10 +173,10 @@ class TestRenameWorkspace:
             ),
         )
 
-        with (
-            patch("pynchy.workspace_ops.GROUPS_DIR", tmp_path / "groups"),
-            patch("pynchy.workspace_ops.DATA_DIR", tmp_path / "data"),
-            patch("pynchy.workspace_ops.WORKTREES_DIR", tmp_path / "worktrees"),
+        with _patch_settings(
+            groups_dir=tmp_path / "groups",
+            data_dir=tmp_path / "data",
+            worktrees_dir=tmp_path / "worktrees",
         ):
             await rename_workspace("old-group", "new-group", new_name="New Name")
 
@@ -165,10 +203,10 @@ class TestRenameWorkspace:
             }
         )
 
-        with (
-            patch("pynchy.workspace_ops.GROUPS_DIR", tmp_path / "groups"),
-            patch("pynchy.workspace_ops.DATA_DIR", tmp_path / "data"),
-            patch("pynchy.workspace_ops.WORKTREES_DIR", tmp_path / "worktrees"),
+        with _patch_settings(
+            groups_dir=tmp_path / "groups",
+            data_dir=tmp_path / "data",
+            worktrees_dir=tmp_path / "worktrees",
         ):
             await rename_workspace("old-group", "new-group")
 
@@ -180,10 +218,10 @@ class TestRenameWorkspace:
         """Session entries get their group_folder updated."""
         await set_session("old-group", "session-abc")
 
-        with (
-            patch("pynchy.workspace_ops.GROUPS_DIR", tmp_path / "groups"),
-            patch("pynchy.workspace_ops.DATA_DIR", tmp_path / "data"),
-            patch("pynchy.workspace_ops.WORKTREES_DIR", tmp_path / "worktrees"),
+        with _patch_settings(
+            groups_dir=tmp_path / "groups",
+            data_dir=tmp_path / "data",
+            worktrees_dir=tmp_path / "worktrees",
         ):
             await rename_workspace("old-group", "new-group")
 
@@ -201,10 +239,10 @@ class TestRenameWorkspace:
         (groups_dir / "old-group").mkdir(parents=True)
         (groups_dir / "old-group" / "CLAUDE.md").write_text("# Old")
 
-        with (
-            patch("pynchy.workspace_ops.GROUPS_DIR", groups_dir),
-            patch("pynchy.workspace_ops.DATA_DIR", tmp_path / "data"),
-            patch("pynchy.workspace_ops.WORKTREES_DIR", tmp_path / "worktrees"),
+        with _patch_settings(
+            groups_dir=groups_dir,
+            data_dir=tmp_path / "data",
+            worktrees_dir=tmp_path / "worktrees",
         ):
             await rename_workspace("old-group", "new-group")
 
@@ -217,10 +255,10 @@ class TestRenameWorkspace:
         (sessions_dir / "old-group").mkdir(parents=True)
         (sessions_dir / "old-group" / "session.json").write_text("{}")
 
-        with (
-            patch("pynchy.workspace_ops.GROUPS_DIR", tmp_path / "groups"),
-            patch("pynchy.workspace_ops.DATA_DIR", tmp_path / "data"),
-            patch("pynchy.workspace_ops.WORKTREES_DIR", tmp_path / "worktrees"),
+        with _patch_settings(
+            groups_dir=tmp_path / "groups",
+            data_dir=tmp_path / "data",
+            worktrees_dir=tmp_path / "worktrees",
         ):
             await rename_workspace("old-group", "new-group")
 
@@ -233,10 +271,10 @@ class TestRenameWorkspace:
         (ipc_dir / "old-group").mkdir(parents=True)
         (ipc_dir / "old-group" / "messages").mkdir()
 
-        with (
-            patch("pynchy.workspace_ops.GROUPS_DIR", tmp_path / "groups"),
-            patch("pynchy.workspace_ops.DATA_DIR", tmp_path / "data"),
-            patch("pynchy.workspace_ops.WORKTREES_DIR", tmp_path / "worktrees"),
+        with _patch_settings(
+            groups_dir=tmp_path / "groups",
+            data_dir=tmp_path / "data",
+            worktrees_dir=tmp_path / "worktrees",
         ):
             await rename_workspace("old-group", "new-group")
 
@@ -245,10 +283,10 @@ class TestRenameWorkspace:
 
     async def test_skips_worktree_when_not_present(self, db, tmp_path: Path):
         """No error when the old worktree directory doesn't exist."""
-        with (
-            patch("pynchy.workspace_ops.GROUPS_DIR", tmp_path / "groups"),
-            patch("pynchy.workspace_ops.DATA_DIR", tmp_path / "data"),
-            patch("pynchy.workspace_ops.WORKTREES_DIR", tmp_path / "worktrees"),
+        with _patch_settings(
+            groups_dir=tmp_path / "groups",
+            data_dir=tmp_path / "data",
+            worktrees_dir=tmp_path / "worktrees",
         ):
             # Should not raise even though worktrees/old-group doesn't exist
             await rename_workspace("old-group", "new-group")
@@ -269,9 +307,11 @@ class TestRenameWorkspace:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
 
         with (
-            patch("pynchy.workspace_ops.GROUPS_DIR", tmp_path / "groups"),
-            patch("pynchy.workspace_ops.DATA_DIR", tmp_path / "data"),
-            patch("pynchy.workspace_ops.WORKTREES_DIR", worktrees_dir),
+            _patch_settings(
+                groups_dir=tmp_path / "groups",
+                data_dir=tmp_path / "data",
+                worktrees_dir=worktrees_dir,
+            ),
             patch("pynchy.workspace_ops.run_git", side_effect=fake_run_git),
             pytest.raises(RenameError, match="worktree move failed"),
         ):
@@ -295,10 +335,10 @@ class TestRenameWorkspace:
                 }
             )
 
-        with (
-            patch("pynchy.workspace_ops.GROUPS_DIR", tmp_path / "groups"),
-            patch("pynchy.workspace_ops.DATA_DIR", tmp_path / "data"),
-            patch("pynchy.workspace_ops.WORKTREES_DIR", tmp_path / "worktrees"),
+        with _patch_settings(
+            groups_dir=tmp_path / "groups",
+            data_dir=tmp_path / "data",
+            worktrees_dir=tmp_path / "worktrees",
         ):
             await rename_workspace("old-group", "new-group")
 

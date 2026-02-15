@@ -1,0 +1,17 @@
+non_god_read_only = true
+blocked_patterns = ["password", "secret", "token"]
+
+[[allowed_roots]]
+path = "~/projects"
+allow_read_write = true
+description = "Development projects"
+
+[[allowed_roots]]
+path = "~/src"
+allow_read_write = true
+description = "Git repositories"
+
+[[allowed_roots]]
+path = "~/Documents/work"
+allow_read_write = false
+description = "Work documents (read-only)"

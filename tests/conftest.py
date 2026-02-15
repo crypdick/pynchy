@@ -7,6 +7,12 @@ import pytest
 from pynchy.types import NewMessage
 
 
+@pytest.fixture(autouse=True)
+def reset_settings(monkeypatch):
+    """Ensure each test starts with a fresh settings singleton."""
+    monkeypatch.setattr("pynchy.config._settings", None)
+
+
 @pytest.fixture
 def make_msg():
     """Factory fixture for creating test messages with defaults."""

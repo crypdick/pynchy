@@ -6,11 +6,26 @@ Uses real git repos via tmp_path to validate actual git behavior.
 from __future__ import annotations
 
 import subprocess
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+from pynchy.config import (
+    AgentConfig,
+    CommandWordsConfig,
+    ContainerConfig,
+    IntervalsConfig,
+    LoggingConfig,
+    QueueConfig,
+    SchedulerConfig,
+    SecretsConfig,
+    SecurityConfig,
+    ServerConfig,
+    Settings,
+    WorkspaceDefaultsConfig,
+)
 from pynchy.worktree import (
     WorktreeError,
     ensure_worktree,
@@ -63,15 +78,31 @@ def _make_project(tmp_path: Path, origin: Path) -> Path:
 
 @pytest.fixture
 def git_env(tmp_path: Path):
-    """Set up origin + project repos, patching PROJECT_ROOT and WORKTREES_DIR."""
+    """Set up origin + project repos with patched settings."""
     origin = _make_bare_origin(tmp_path)
     project = _make_project(tmp_path, origin)
     worktrees_dir = tmp_path / "worktrees"
 
-    with (
-        patch("pynchy.git_utils.PROJECT_ROOT", project),
-        patch("pynchy.worktree.WORKTREES_DIR", worktrees_dir),
-    ):
+    s = Settings.model_construct(
+        agent=AgentConfig(),
+        container=ContainerConfig(),
+        server=ServerConfig(),
+        logging=LoggingConfig(),
+        secrets=SecretsConfig(),
+        workspace_defaults=WorkspaceDefaultsConfig(),
+        workspaces={},
+        commands=CommandWordsConfig(),
+        scheduler=SchedulerConfig(),
+        intervals=IntervalsConfig(),
+        queue=QueueConfig(),
+        security=SecurityConfig(),
+    )
+    s.__dict__["project_root"] = project
+    s.__dict__["worktrees_dir"] = worktrees_dir
+
+    with ExitStack() as stack:
+        stack.enter_context(patch("pynchy.git_utils.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.worktree.get_settings", return_value=s))
         yield {
             "origin": origin,
             "project": project,

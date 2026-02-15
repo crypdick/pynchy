@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pynchy.config import DATA_DIR, GROUPS_DIR, WORKTREES_DIR
+from pynchy.config import get_settings
 from pynchy.git_utils import run_git
 from pynchy.logger import logger
 
@@ -66,21 +66,22 @@ async def rename_workspace(
     await db.commit()
 
     # --- Filesystem renames ---
-    _rename_dir(GROUPS_DIR / old_folder, GROUPS_DIR / new_folder, "group")
+    s = get_settings()
+    _rename_dir(s.groups_dir / old_folder, s.groups_dir / new_folder, "group")
     _rename_dir(
-        DATA_DIR / "sessions" / old_folder,
-        DATA_DIR / "sessions" / new_folder,
+        s.data_dir / "sessions" / old_folder,
+        s.data_dir / "sessions" / new_folder,
         "sessions",
     )
     _rename_dir(
-        DATA_DIR / "ipc" / old_folder,
-        DATA_DIR / "ipc" / new_folder,
+        s.data_dir / "ipc" / old_folder,
+        s.data_dir / "ipc" / new_folder,
         "ipc",
     )
 
     # --- Git worktree ---
-    old_worktree = WORKTREES_DIR / old_folder
-    new_worktree = WORKTREES_DIR / new_folder
+    old_worktree = s.worktrees_dir / old_folder
+    new_worktree = s.worktrees_dir / new_folder
     if old_worktree.exists():
         # git worktree move updates git's internal registry
         result = run_git("worktree", "move", str(old_worktree), str(new_worktree))

@@ -8,10 +8,24 @@ a complex multi-step operation where partial failures need careful handling.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from pynchy.config import (
+    AgentConfig,
+    CommandWordsConfig,
+    ContainerConfig,
+    IntervalsConfig,
+    LoggingConfig,
+    QueueConfig,
+    SchedulerConfig,
+    SecretsConfig,
+    SecurityConfig,
+    ServerConfig,
+    Settings,
+    WorkspaceDefaultsConfig,
+)
 from pynchy.db import _init_test_database, get_all_tasks
 from pynchy.ipc import _move_to_error_dir, process_task_ipc
 from pynchy.types import RegisteredGroup
@@ -92,36 +106,56 @@ async def deps():
 class TestCreatePeriodicAgent:
     """Tests for the create_periodic_agent IPC command."""
 
+    @staticmethod
+    def _settings(tmp_path):
+        s = Settings.model_construct(
+            agent=AgentConfig(),
+            container=ContainerConfig(),
+            server=ServerConfig(),
+            logging=LoggingConfig(),
+            secrets=SecretsConfig(),
+            workspace_defaults=WorkspaceDefaultsConfig(),
+            workspaces={},
+            commands=CommandWordsConfig(),
+            scheduler=SchedulerConfig(),
+            intervals=IntervalsConfig(),
+            queue=QueueConfig(),
+            security=SecurityConfig(),
+        )
+        s.__dict__["groups_dir"] = tmp_path
+        s.__dict__["project_root"] = tmp_path
+        return s
+
     async def test_creates_full_periodic_agent(self, deps, tmp_path, monkeypatch):
         """Should create folder, config, CLAUDE.md, chat group, and task."""
-        monkeypatch.setattr("pynchy.ipc.GROUPS_DIR", tmp_path)
-        monkeypatch.setattr("pynchy.workspace_config.GROUPS_DIR", tmp_path)
-
         mock_channel = AsyncMock()
         mock_channel.create_group = AsyncMock(return_value="agent@g.us")
         deps._channels = [mock_channel]
 
-        await process_task_ipc(
-            {
-                "type": "create_periodic_agent",
-                "name": "daily-briefing",
-                "schedule": "0 9 * * *",
-                "prompt": "Compile a daily briefing",
-            },
-            "god",
-            True,
-            deps,
-        )
+        with (
+            pytest.MonkeyPatch.context() as mp,
+            patch("pynchy.ipc.get_settings", return_value=self._settings(tmp_path)),
+            patch("pynchy.config.add_workspace_to_toml") as add_ws,
+        ):
+            mp.setenv("TZ", "UTC")
+            await process_task_ipc(
+                {
+                    "type": "create_periodic_agent",
+                    "name": "daily-briefing",
+                    "schedule": "0 9 * * *",
+                    "prompt": "Compile a daily briefing",
+                },
+                "god",
+                True,
+                deps,
+            )
+            add_ws.assert_called_once()
 
         # 1. Folder created
         agent_dir = tmp_path / "daily-briefing"
         assert agent_dir.exists()
 
-        # 2. workspace.yaml created
-        workspace_yaml = agent_dir / "workspace.yaml"
-        assert workspace_yaml.exists()
-
-        # 3. CLAUDE.md created
+        # 2. CLAUDE.md created
         claude_md = agent_dir / "CLAUDE.md"
         assert claude_md.exists()
         assert "daily-briefing" in claude_md.read_text()
@@ -145,25 +179,26 @@ class TestCreatePeriodicAgent:
 
     async def test_custom_claude_md(self, deps, tmp_path, monkeypatch):
         """Custom claude_md content should be written to CLAUDE.md."""
-        monkeypatch.setattr("pynchy.ipc.GROUPS_DIR", tmp_path)
-        monkeypatch.setattr("pynchy.workspace_config.GROUPS_DIR", tmp_path)
-
         mock_channel = AsyncMock()
         mock_channel.create_group = AsyncMock(return_value="custom@g.us")
         deps._channels = [mock_channel]
 
-        await process_task_ipc(
-            {
-                "type": "create_periodic_agent",
-                "name": "custom-agent",
-                "schedule": "0 8 * * 1",
-                "prompt": "Weekly report",
-                "claude_md": "# Custom Agent\nYou are a custom agent.",
-            },
-            "god",
-            True,
-            deps,
-        )
+        with (
+            patch("pynchy.ipc.get_settings", return_value=self._settings(tmp_path)),
+            patch("pynchy.config.add_workspace_to_toml"),
+        ):
+            await process_task_ipc(
+                {
+                    "type": "create_periodic_agent",
+                    "name": "custom-agent",
+                    "schedule": "0 8 * * 1",
+                    "prompt": "Weekly report",
+                    "claude_md": "# Custom Agent\nYou are a custom agent.",
+                },
+                "god",
+                True,
+                deps,
+            )
 
         claude_md = tmp_path / "custom-agent" / "CLAUDE.md"
         assert claude_md.exists()
@@ -171,9 +206,6 @@ class TestCreatePeriodicAgent:
 
     async def test_preserves_existing_claude_md(self, deps, tmp_path, monkeypatch):
         """Should not overwrite existing CLAUDE.md."""
-        monkeypatch.setattr("pynchy.ipc.GROUPS_DIR", tmp_path)
-        monkeypatch.setattr("pynchy.workspace_config.GROUPS_DIR", tmp_path)
-
         # Pre-create CLAUDE.md
         agent_dir = tmp_path / "existing-agent"
         agent_dir.mkdir(parents=True)
@@ -183,42 +215,47 @@ class TestCreatePeriodicAgent:
         mock_channel.create_group = AsyncMock(return_value="existing@g.us")
         deps._channels = [mock_channel]
 
-        await process_task_ipc(
-            {
-                "type": "create_periodic_agent",
-                "name": "existing-agent",
-                "schedule": "0 9 * * *",
-                "prompt": "Test",
-            },
-            "god",
-            True,
-            deps,
-        )
+        with (
+            patch("pynchy.ipc.get_settings", return_value=self._settings(tmp_path)),
+            patch("pynchy.config.add_workspace_to_toml"),
+        ):
+            await process_task_ipc(
+                {
+                    "type": "create_periodic_agent",
+                    "name": "existing-agent",
+                    "schedule": "0 9 * * *",
+                    "prompt": "Test",
+                },
+                "god",
+                True,
+                deps,
+            )
 
         # CLAUDE.md should be preserved
         assert (agent_dir / "CLAUDE.md").read_text() == "# Keep this content"
 
     async def test_respects_context_mode(self, deps, tmp_path, monkeypatch):
         """context_mode should be passed through to the task."""
-        monkeypatch.setattr("pynchy.ipc.GROUPS_DIR", tmp_path)
-        monkeypatch.setattr("pynchy.workspace_config.GROUPS_DIR", tmp_path)
-
         mock_channel = AsyncMock()
         mock_channel.create_group = AsyncMock(return_value="iso@g.us")
         deps._channels = [mock_channel]
 
-        await process_task_ipc(
-            {
-                "type": "create_periodic_agent",
-                "name": "isolated-agent",
-                "schedule": "0 9 * * *",
-                "prompt": "Isolated task",
-                "context_mode": "isolated",
-            },
-            "god",
-            True,
-            deps,
-        )
+        with (
+            patch("pynchy.ipc.get_settings", return_value=self._settings(tmp_path)),
+            patch("pynchy.config.add_workspace_to_toml"),
+        ):
+            await process_task_ipc(
+                {
+                    "type": "create_periodic_agent",
+                    "name": "isolated-agent",
+                    "schedule": "0 9 * * *",
+                    "prompt": "Isolated task",
+                    "context_mode": "isolated",
+                },
+                "god",
+                True,
+                deps,
+            )
 
         tasks = await get_all_tasks()
         assert len(tasks) == 1
@@ -226,25 +263,26 @@ class TestCreatePeriodicAgent:
 
     async def test_invalid_context_mode_defaults_to_group(self, deps, tmp_path, monkeypatch):
         """Invalid context_mode should default to 'group'."""
-        monkeypatch.setattr("pynchy.ipc.GROUPS_DIR", tmp_path)
-        monkeypatch.setattr("pynchy.workspace_config.GROUPS_DIR", tmp_path)
-
         mock_channel = AsyncMock()
         mock_channel.create_group = AsyncMock(return_value="bad@g.us")
         deps._channels = [mock_channel]
 
-        await process_task_ipc(
-            {
-                "type": "create_periodic_agent",
-                "name": "bad-context",
-                "schedule": "0 9 * * *",
-                "prompt": "Test",
-                "context_mode": "invalid",
-            },
-            "god",
-            True,
-            deps,
-        )
+        with (
+            patch("pynchy.ipc.get_settings", return_value=self._settings(tmp_path)),
+            patch("pynchy.config.add_workspace_to_toml"),
+        ):
+            await process_task_ipc(
+                {
+                    "type": "create_periodic_agent",
+                    "name": "bad-context",
+                    "schedule": "0 9 * * *",
+                    "prompt": "Test",
+                    "context_mode": "invalid",
+                },
+                "god",
+                True,
+                deps,
+            )
 
         tasks = await get_all_tasks()
         assert len(tasks) == 1
@@ -252,26 +290,27 @@ class TestCreatePeriodicAgent:
 
     async def test_no_channel_support(self, deps, tmp_path, monkeypatch):
         """Without create_group support, should create config but no task."""
-        monkeypatch.setattr("pynchy.ipc.GROUPS_DIR", tmp_path)
-        monkeypatch.setattr("pynchy.workspace_config.GROUPS_DIR", tmp_path)
-
         # No channels at all
         deps._channels = []
 
-        await process_task_ipc(
-            {
-                "type": "create_periodic_agent",
-                "name": "no-channel-agent",
-                "schedule": "0 9 * * *",
-                "prompt": "Test",
-            },
-            "god",
-            True,
-            deps,
-        )
+        with (
+            patch("pynchy.ipc.get_settings", return_value=self._settings(tmp_path)),
+            patch("pynchy.config.add_workspace_to_toml"),
+        ):
+            await process_task_ipc(
+                {
+                    "type": "create_periodic_agent",
+                    "name": "no-channel-agent",
+                    "schedule": "0 9 * * *",
+                    "prompt": "Test",
+                },
+                "god",
+                True,
+                deps,
+            )
 
-        # Folder and config should exist
-        assert (tmp_path / "no-channel-agent" / "workspace.yaml").exists()
+        # Folder should exist even without chat group creation
+        assert (tmp_path / "no-channel-agent").exists()
         # But no task (since group wasn't created)
         tasks = await get_all_tasks()
         assert len(tasks) == 0

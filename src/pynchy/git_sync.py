@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Protocol
 
-from pynchy.config import WORKTREES_DIR
+from pynchy.config import get_settings
 from pynchy.git_utils import (
     detect_main_branch,
     files_changed_between,
@@ -55,7 +55,7 @@ def host_sync_worktree(group_folder: str) -> dict[str, Any]:
 
     Returns {"success": bool, "message": str}.
     """
-    worktree_path = WORKTREES_DIR / group_folder
+    worktree_path = get_settings().worktrees_dir / group_folder
     branch_name = f"worktree/{group_folder}"
     main_branch = detect_main_branch()
 
@@ -226,7 +226,7 @@ async def host_notify_worktree_updates(
     - Clean + rebase fails: DON'T abort — notify "conflicts, run git status to fix"
     - Dirty (uncommitted): skip rebase, notify "commit or stash, then sync"
     """
-    if not WORKTREES_DIR.exists():
+    if not get_settings().worktrees_dir.exists():
         return
 
     main_branch = detect_main_branch()
@@ -235,7 +235,7 @@ async def host_notify_worktree_updates(
     # Build folder->jid lookup
     folder_to_jid: dict[str, str] = {g.folder: jid for jid, g in registered.items()}
 
-    for entry in sorted(WORKTREES_DIR.iterdir()):
+    for entry in sorted(get_settings().worktrees_dir.iterdir()):
         if not entry.is_dir():
             continue
 
