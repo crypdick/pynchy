@@ -23,6 +23,7 @@ from pynchy.git_utils import (
     run_git,
 )
 from pynchy.logger import logger
+from pynchy.types import RegisteredGroup
 
 # Authenticated GitHub API rate limit: 5000 req/hr (83/min).
 # git ls-remote every 5s = 720 req/hr — well within limits.
@@ -34,7 +35,7 @@ class GitSyncDeps(Protocol):
 
     async def broadcast_system_notice(self, jid: str, text: str) -> None: ...
 
-    def registered_groups(self) -> dict[str, Any]: ...
+    def registered_groups(self) -> dict[str, RegisteredGroup]: ...
 
     async def trigger_deploy(self, previous_sha: str) -> None: ...
 

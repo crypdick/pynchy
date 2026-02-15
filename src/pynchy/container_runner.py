@@ -16,7 +16,10 @@ import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import pluggy
 
 from pynchy.config import (
     CONTAINER_IMAGE,
@@ -40,7 +43,7 @@ from pynchy.types import ContainerInput, ContainerOutput, RegisteredGroup, Volum
 # ---------------------------------------------------------------------------
 
 
-def resolve_agent_core(plugin_manager: Any) -> tuple[str, str]:
+def resolve_agent_core(plugin_manager: pluggy.PluginManager | None) -> tuple[str, str]:
     """Look up the agent core module and class from plugins.
 
     Returns (module_path, class_name) for the configured agent core.
@@ -117,7 +120,7 @@ def _parse_container_output(json_str: str) -> ContainerOutput:
 # ---------------------------------------------------------------------------
 
 
-def _sync_skills(session_dir: Path, plugin_manager: Any = None) -> None:
+def _sync_skills(session_dir: Path, plugin_manager: pluggy.PluginManager | None = None) -> None:
     """Copy container/skills/ and plugin skills into the session's .claude/skills/ directory.
 
     Args:
@@ -356,7 +359,7 @@ def _write_settings_json(session_dir: Path) -> None:
 def _build_volume_mounts(
     group: RegisteredGroup,
     is_god: bool,
-    plugin_manager: Any = None,
+    plugin_manager: pluggy.PluginManager | None = None,
     project_access: bool = False,
     worktree_path: Path | None = None,
 ) -> list[VolumeMount]:
@@ -638,7 +641,7 @@ async def run_container_agent(
     input_data: ContainerInput,
     on_process: OnProcess,
     on_output: OnOutput | None = None,
-    plugin_manager: Any = None,
+    plugin_manager: pluggy.PluginManager | None = None,
 ) -> ContainerOutput:
     """Spawn a container agent, stream output, manage timeouts, and return result.
 

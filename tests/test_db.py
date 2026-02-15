@@ -46,7 +46,6 @@ from pynchy.types import (
     McpToolConfig,
     NewMessage,
     RegisteredGroup,
-    ScheduledTask,
     TaskRunLog,
     WorkspaceProfile,
     WorkspaceSecurity,

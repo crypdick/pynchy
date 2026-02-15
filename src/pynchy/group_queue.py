@@ -16,7 +16,6 @@ import random
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
 
 from pynchy.config import DATA_DIR, MAX_CONCURRENT_CONTAINERS
 from pynchy.logger import logger
@@ -38,7 +37,7 @@ class GroupState:
     active_is_task: bool = False  # True when active container is a scheduled task
     pending_messages: bool = False
     pending_tasks: list[QueuedTask] = field(default_factory=list)
-    process: Any = None  # asyncio.subprocess.Process or similar
+    process: asyncio.subprocess.Process | None = None
     container_name: str | None = None
     group_folder: str | None = None
     retry_count: int = 0
@@ -135,7 +134,7 @@ class GroupQueue:
     def register_process(
         self,
         group_jid: str,
-        proc: Any,
+        proc: asyncio.subprocess.Process | None,
         container_name: str,
         group_folder: str | None = None,
     ) -> None:
@@ -335,7 +334,7 @@ class GroupQueue:
     async def shutdown(self, grace_period_seconds: float) -> None:
         self._shutting_down = True
 
-        active: list[tuple[Any, str]] = []
+        active: list[tuple[asyncio.subprocess.Process, str]] = []
         for _jid, state in self._groups.items():
             proc_alive = getattr(state.process, "returncode", None) is None
             if state.process and state.container_name and proc_alive:

@@ -11,6 +11,7 @@ import subprocess
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Protocol
 from zoneinfo import ZoneInfo
 
@@ -66,6 +67,13 @@ class IpcDeps(Protocol):
 
 
 _ipc_watcher_running = False
+
+
+def _move_to_error_dir(ipc_base_dir: Path, source_group: str, file_path: Path) -> None:
+    """Move a failed IPC file to the errors/ directory for later inspection."""
+    error_dir = ipc_base_dir / "errors"
+    error_dir.mkdir(parents=True, exist_ok=True)
+    file_path.rename(error_dir / f"{source_group}-{file_path.name}")
 
 
 async def start_ipc_watcher(deps: IpcDeps) -> None:
@@ -135,9 +143,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
                                 source_group=source_group,
                                 err=str(exc),
                             )
-                            error_dir = ipc_base_dir / "errors"
-                            error_dir.mkdir(parents=True, exist_ok=True)
-                            file_path.rename(error_dir / f"{source_group}-{file_path.name}")
+                            _move_to_error_dir(ipc_base_dir, source_group, file_path)
             except Exception as exc:
                 logger.error(
                     "Error reading IPC messages directory",
@@ -161,9 +167,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
                                 source_group=source_group,
                                 err=str(exc),
                             )
-                            error_dir = ipc_base_dir / "errors"
-                            error_dir.mkdir(parents=True, exist_ok=True)
-                            file_path.rename(error_dir / f"{source_group}-{file_path.name}")
+                            _move_to_error_dir(ipc_base_dir, source_group, file_path)
             except Exception as exc:
                 logger.error(
                     "Error reading IPC tasks directory",

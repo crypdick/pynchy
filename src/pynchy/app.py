@@ -8,12 +8,16 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 import signal
 import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import pluggy
 
 from pynchy.adapters import (
     EventBusAdapter,
@@ -120,7 +124,7 @@ class PynchyApp:
         self.event_bus: EventBus = EventBus()
         self._shutting_down: bool = False
         self._http_runner: Any | None = None
-        self.plugin_manager: Any = None  # pluggy.PluginManager, set during startup
+        self.plugin_manager: pluggy.PluginManager | None = None
 
     # ------------------------------------------------------------------
     # State persistence
@@ -270,8 +274,6 @@ class PynchyApp:
         Returns:
             List of missing credential names (empty if all present)
         """
-        import os
-
         if not hasattr(plugin, "requires_credentials"):
             return []
 
@@ -1335,8 +1337,6 @@ class PynchyApp:
         """Graceful shutdown handler. Second signal force-exits."""
         if self._shutting_down:
             logger.info("Force shutdown")
-            import os
-
             os._exit(1)
         self._shutting_down = True
         logger.info("Shutdown signal received", signal=sig_name)
@@ -1344,8 +1344,6 @@ class PynchyApp:
         # Hard-exit watchdog: if graceful shutdown hangs, force-exit after 12s.
         # This ensures launchd/systemd can restart us even if a container or
         # channel disconnect blocks indefinitely.
-        import os
-
         loop = asyncio.get_running_loop()
         loop.call_later(12, lambda: os._exit(1))
 
@@ -1561,8 +1559,6 @@ class PynchyApp:
                 # Rebuild container image
                 build_script = PROJECT_ROOT / "container" / "build.sh"
                 if build_script.exists():
-                    import subprocess
-
                     result = subprocess.run(
                         [str(build_script)],
                         cwd=str(PROJECT_ROOT / "container"),
