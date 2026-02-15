@@ -26,7 +26,7 @@ Single source of truth for all pynchy work items.
 - [X integration port](1-approved/x-integration-port.md) — Port the archived TypeScript X/Twitter skill to Python plugins
 - [Periodic agents](1-approved/periodic-agents.md) — Background agents for security sweeps, code quality, SDK updates, etc.
 - [Project ideas](1-approved/project-ideas.md) — Standalone integration ideas (calendar, voice, Cloudflare, AWS, etc.)
-- [Small improvements](1-approved/small-improvements.md) — Distinct system messages, external pull & restart, dossier logging, ruff hooks, slack-tools check
+- [Small improvements](1-approved/small-improvements.md) — Dossier logging audit, slack-tools migration check
 - [Ray resource orchestration](1-approved/ray-resource-orchestration.md) — Thin Ray integration for resource-aware container scaling, blocking queues, multi-node distribution, and GPU routing
 - implement 'handoff' tool calls as well as 'delegate' tool calls. handoff causes current agent to cease to exist; it decides what context to give to the next agent. the delegate tool is a blocking call that spawns a new agent to complete a task before passing it back. in reality, this tool call can abstract away a more complex system, like a deep research agent which has many subagents.
 - add support for multiple accounts/subscriptions. allow user to designate different workplaces to different accounts (e.g. corporate claude sub, personal claude sub, etc).
@@ -71,13 +71,10 @@ Single source of truth for all pynchy work items.
 *Plan approved or not needed. Ready for an agent to pick up.*
 
 - [Provider-agnostic agents](3-ready/provider-agnostic-agents.md) — Generic `AgentCore` protocol to swap in other LLM frameworks (OpenAI, Ollama, LangChain)
-- rename the 'main container' to the 'God container' in code and docs. this is to disambiguate from 'main' branch.
 
 #### Bugs
 - messaging is broken. when I send a message, sometimes I see no response in the chat. then when i send a follow up message, it responds to the previous message. the system is desynchronized somehow. update: the message the agents send (as well as tool calls, other messages) seem to be sending to whatsapp more reliably than the tui.
-- previously, the messages sent to the channels were prefixes by emoticons to denote the sender (system, bot, tool call, tool response, host). theyve been reverted to text prefixes like [system]
 - we need to improve the robustness of synchronization. deploys keep failing because the remote does not push their local commits.
-- when I woke up today, pynchy had created a new Pynchy whatsapp group instead of using the existing one. fix this bug.
 
 
 ### 4 - In Progress
