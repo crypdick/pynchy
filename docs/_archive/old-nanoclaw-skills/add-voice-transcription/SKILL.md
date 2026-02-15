@@ -75,7 +75,7 @@ echo ".transcription.config.json" >> .gitignore
 > I've created `.transcription.config.json` in the project root. You'll need to add your OpenAI API key to it manually:
 >
 > 1. Open `.transcription.config.json`
-> 2. Replace the empty `"apiKey": ""` with your key: `"apiKey": "sk-proj-..."`
+> 2. Replace the empty `"apiKey": ""` with your key: `"apiKey": "sk-proj-..."`  <!-- pragma: allowlist secret -->
 > 3. Save the file
 >
 > Let me know when you've added it.
