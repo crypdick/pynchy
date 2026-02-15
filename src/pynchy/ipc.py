@@ -275,19 +275,29 @@ async def process_task_ipc(
 
         case "pause_task":
             await _authorized_task_action(
-                data, source_group, is_god, "pause",
+                data,
+                source_group,
+                is_god,
+                "pause",
                 lambda tid: update_task(tid, {"status": "paused"}),
             )
 
         case "resume_task":
             await _authorized_task_action(
-                data, source_group, is_god, "resume",
+                data,
+                source_group,
+                is_god,
+                "resume",
                 lambda tid: update_task(tid, {"status": "active"}),
             )
 
         case "cancel_task":
             await _authorized_task_action(
-                data, source_group, is_god, "cancel", delete_task,
+                data,
+                source_group,
+                is_god,
+                "cancel",
+                delete_task,
             )
 
         case "refresh_groups":

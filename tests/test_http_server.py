@@ -10,10 +10,9 @@ from unittest.mock import Mock, patch
 from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
 
+from pynchy.git_utils import get_head_sha, is_repo_dirty
 from pynchy.http_server import (
     _get_head_commit_message,
-    _get_head_sha,
-    _is_repo_dirty,
     _push_local_commits,
     _write_boot_warning,
     deps_key,
@@ -26,56 +25,44 @@ from pynchy.types import NewMessage
 
 
 def test_get_head_sha_success():
-    """_get_head_sha returns SHA when git succeeds."""
-    with patch("subprocess.run") as mock_run:
+    """get_head_sha returns SHA when git succeeds."""
+    with patch("pynchy.git_utils.run_git") as mock_run:
         mock_run.return_value = Mock(
             returncode=0,
             stdout="abc123def456\n",
         )
-        assert _get_head_sha() == "abc123def456"
+        assert get_head_sha() == "abc123def456"
 
 
 def test_get_head_sha_failure():
-    """_get_head_sha returns 'unknown' when git fails."""
-    with patch("subprocess.run") as mock_run:
+    """get_head_sha returns 'unknown' when git fails."""
+    with patch("pynchy.git_utils.run_git") as mock_run:
         mock_run.return_value = Mock(returncode=1, stdout="")
-        assert _get_head_sha() == "unknown"
-
-
-def test_get_head_sha_exception():
-    """_get_head_sha returns 'unknown' when subprocess raises."""
-    with patch("subprocess.run", side_effect=OSError("git not found")):
-        assert _get_head_sha() == "unknown"
+        assert get_head_sha() == "unknown"
 
 
 def test_is_repo_dirty_clean():
-    """_is_repo_dirty returns False when no uncommitted changes."""
-    with patch("subprocess.run") as mock_run:
+    """is_repo_dirty returns False when no uncommitted changes."""
+    with patch("pynchy.git_utils.run_git") as mock_run:
         mock_run.return_value = Mock(returncode=0, stdout="")
-        assert _is_repo_dirty() is False
+        assert is_repo_dirty() is False
 
 
 def test_is_repo_dirty_has_changes():
-    """_is_repo_dirty returns True when uncommitted changes exist."""
-    with patch("subprocess.run") as mock_run:
+    """is_repo_dirty returns True when uncommitted changes exist."""
+    with patch("pynchy.git_utils.run_git") as mock_run:
         mock_run.return_value = Mock(
             returncode=0,
             stdout=" M src/pynchy/app.py\n?? newfile.txt\n",
         )
-        assert _is_repo_dirty() is True
+        assert is_repo_dirty() is True
 
 
 def test_is_repo_dirty_failure():
-    """_is_repo_dirty returns False when git fails."""
-    with patch("subprocess.run") as mock_run:
+    """is_repo_dirty returns False when git fails."""
+    with patch("pynchy.git_utils.run_git") as mock_run:
         mock_run.return_value = Mock(returncode=1, stdout="")
-        assert _is_repo_dirty() is False
-
-
-def test_is_repo_dirty_exception():
-    """_is_repo_dirty returns False when subprocess raises."""
-    with patch("subprocess.run", side_effect=OSError):
-        assert _is_repo_dirty() is False
+        assert is_repo_dirty() is False
 
 
 def test_get_head_commit_message_success():
@@ -305,9 +292,9 @@ class TestHealthEndpoint(AioHTTPTestCase):
 
     async def test_health_returns_status_ok(self):
         """Health endpoint returns ok status."""
-        with patch("pynchy.http_server._get_head_sha", return_value="abc123"):
+        with patch("pynchy.http_server.get_head_sha", return_value="abc123"):
             with patch("pynchy.http_server._get_head_commit_message", return_value="Test commit"):
-                with patch("pynchy.http_server._is_repo_dirty", return_value=False):
+                with patch("pynchy.http_server.is_repo_dirty", return_value=False):
                     resp = await self.client.get("/health")
                     assert resp.status == 200
                     data = await resp.json()
@@ -320,9 +307,9 @@ class TestHealthEndpoint(AioHTTPTestCase):
 
     async def test_health_includes_uptime(self):
         """Health endpoint includes uptime_seconds."""
-        with patch("pynchy.http_server._get_head_sha", return_value="abc123"):
+        with patch("pynchy.http_server.get_head_sha", return_value="abc123"):
             with patch("pynchy.http_server._get_head_commit_message", return_value="Test"):
-                with patch("pynchy.http_server._is_repo_dirty", return_value=False):
+                with patch("pynchy.http_server.is_repo_dirty", return_value=False):
                     resp = await self.client.get("/health")
                     data = await resp.json()
                     assert isinstance(data["uptime_seconds"], int)

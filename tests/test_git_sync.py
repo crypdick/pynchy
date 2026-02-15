@@ -73,7 +73,6 @@ def git_env(tmp_path: Path):
     with (
         patch("pynchy.git_utils.PROJECT_ROOT", project),
         patch("pynchy.worktree.WORKTREES_DIR", worktrees_dir),
-        patch("pynchy.git_sync.PROJECT_ROOT", project),
         patch("pynchy.git_sync.WORKTREES_DIR", worktrees_dir),
         # _push_local_commits uses its own PROJECT_ROOT — patch it too
         patch("pynchy.http_server.PROJECT_ROOT", project),
