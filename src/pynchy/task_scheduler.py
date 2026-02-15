@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 from zoneinfo import ZoneInfo
 
 from croniter import croniter
@@ -35,6 +35,9 @@ from pynchy.logger import logger
 from pynchy.router import format_tool_preview
 from pynchy.types import ContainerInput, ContainerOutput, RegisteredGroup, ScheduledTask, TaskRunLog
 
+if TYPE_CHECKING:
+    import pluggy
+
 
 class SchedulerDependencies(Protocol):
     """Dependencies for the task scheduler."""
@@ -47,13 +50,17 @@ class SchedulerDependencies(Protocol):
     def queue(self) -> GroupQueue: ...
 
     def on_process(
-        self, group_jid: str, proc: Any, container_name: str, group_folder: str
+        self,
+        group_jid: str,
+        proc: asyncio.subprocess.Process | None,
+        container_name: str,
+        group_folder: str,
     ) -> None: ...
 
     async def broadcast_to_channels(self, jid: str, text: str) -> None: ...
 
     @property
-    def plugin_manager(self) -> Any: ...
+    def plugin_manager(self) -> pluggy.PluginManager | None: ...
 
 
 _scheduler_running = False
