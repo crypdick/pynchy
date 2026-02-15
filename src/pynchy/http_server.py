@@ -24,6 +24,9 @@ from pynchy.types import NewMessage
 
 _start_time = time.monotonic()
 
+# Typed app key avoids aiohttp NotAppKeyWarning from plain-string lookups.
+deps_key = web.AppKey("deps", "HttpDeps")
+
 
 def _get_head_sha() -> str:
     """Return the current git HEAD SHA, or 'unknown' on failure."""
@@ -194,7 +197,7 @@ class HttpDeps(Protocol):
 
 
 async def _handle_health(request: web.Request) -> web.Response:
-    deps: HttpDeps = request.app["deps"]
+    deps: HttpDeps = request.app[deps_key]
     return web.json_response(
         {
             "status": "ok",
@@ -208,7 +211,7 @@ async def _handle_health(request: web.Request) -> web.Response:
 
 
 async def _handle_deploy(request: web.Request) -> web.Response:
-    deps: HttpDeps = request.app["deps"]
+    deps: HttpDeps = request.app[deps_key]
     old_sha = _get_head_sha()
 
     # 1. Push any local commits before pulling (prevents divergence)
@@ -353,13 +356,13 @@ async def _handle_deploy(request: web.Request) -> web.Response:
 
 async def _handle_api_groups(request: web.Request) -> web.Response:
     """Return registered groups."""
-    deps: HttpDeps = request.app["deps"]
+    deps: HttpDeps = request.app[deps_key]
     return web.json_response(deps.get_groups())
 
 
 async def _handle_api_messages(request: web.Request) -> web.Response:
     """Return chat history for a group."""
-    deps: HttpDeps = request.app["deps"]
+    deps: HttpDeps = request.app[deps_key]
     jid = request.query.get("jid", "")
     if not jid:
         return web.json_response({"error": "jid parameter required"}, status=400)
@@ -380,7 +383,7 @@ async def _handle_api_messages(request: web.Request) -> web.Response:
 
 async def _handle_api_send(request: web.Request) -> web.Response:
     """Send a message from the TUI client."""
-    deps: HttpDeps = request.app["deps"]
+    deps: HttpDeps = request.app[deps_key]
     body = await request.json()
     jid = body.get("jid", "")
     content = body.get("content", "")
@@ -392,7 +395,7 @@ async def _handle_api_send(request: web.Request) -> web.Response:
 
 async def _handle_api_events(request: web.Request) -> web.StreamResponse:
     """SSE stream for real-time events (messages, agent activity)."""
-    deps: HttpDeps = request.app["deps"]
+    deps: HttpDeps = request.app[deps_key]
 
     response = web.StreamResponse(
         status=200,
@@ -427,7 +430,7 @@ async def _handle_api_events(request: web.Request) -> web.StreamResponse:
 
 async def _handle_api_periodic(request: web.Request) -> web.Response:
     """Return periodic agent status."""
-    deps: HttpDeps = request.app["deps"]
+    deps: HttpDeps = request.app[deps_key]
     agents = await deps.get_periodic_agents()
     return web.json_response(agents)
 
@@ -440,7 +443,7 @@ async def _handle_api_periodic(request: web.Request) -> web.Response:
 async def start_http_server(deps: HttpDeps) -> web.AppRunner:
     """Create, start, and return the HTTP server runner."""
     app = web.Application()
-    app["deps"] = deps
+    app[deps_key] = deps
     app.router.add_get("/health", _handle_health)
     app.router.add_post("/deploy", _handle_deploy)
     app.router.add_get("/api/groups", _handle_api_groups)

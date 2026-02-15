@@ -16,6 +16,7 @@ from pynchy.http_server import (
     _is_repo_dirty,
     _push_local_commits,
     _write_boot_warning,
+    deps_key,
 )
 from pynchy.types import NewMessage
 
@@ -298,7 +299,7 @@ class TestHealthEndpoint(AioHTTPTestCase):
 
         app = web.Application()
         self.deps = MockHttpDeps()
-        app["deps"] = self.deps
+        app[deps_key] = self.deps
         app.router.add_get("/health", _handle_health)
         return app
 
@@ -365,7 +366,7 @@ class TestTUIAPIEndpoints(AioHTTPTestCase):
             {"name": "test-agent", "status": "running"}
         ]
 
-        app["deps"] = self.deps
+        app[deps_key] = self.deps
         app.router.add_get("/api/groups", _handle_api_groups)
         app.router.add_get("/api/messages", _handle_api_messages)
         app.router.add_post("/api/send", _handle_api_send)
