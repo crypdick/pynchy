@@ -1,3 +1,8 @@
+---
+name: Debug Checklist
+description: Use when debugging Pynchy issues — service not running, agent not responding, container timeouts, WhatsApp auth problems, mount issues, or session transcript branching.
+---
+
 # Pynchy Debug Checklist
 
 ## Known Issues (2026-02-08)

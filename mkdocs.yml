@@ -53,8 +53,8 @@ plugins:
 
 nav:
   - Home: index.md
-  - Installation: INSTALL.md
-  - Security: SECURITY.md
+  - Installation: install.md
+  - Security: security.md
   - Architecture:
       - Overview: architecture/index.md
       - Container Isolation: architecture/container-isolation.md
@@ -64,7 +64,6 @@ nav:
       - Scheduled Tasks: architecture/scheduled-tasks.md
       - Groups: architecture/groups.md
       - Git Sync: architecture/git-sync.md
-  - Debugging: DEBUG_CHECKLIST.md
   - Contributing: contributing.md
 
 markdown_extensions:

@@ -21,7 +21,7 @@ Here is a comparison to related projects:
 ## Installation
 
 
-See **[docs/INSTALL.md](docs/INSTALL.md)**.
+See **[docs/install.md](docs/install.md)**.
 
 ## Philosophy
 
@@ -76,7 +76,7 @@ There are no configuration files to learn. Just tell Claude Code what you want:
 - [Apple Container](https://github.com/apple/container) (macOS, preferred) or [Docker](https://docker.com/products/docker-desktop) (macOS/Linux)
 - System libraries (libmagic)
 
-See **[docs/INSTALL.md](docs/INSTALL.md)** for detailed installation instructions and platform-specific dependencies.
+See **[docs/install.md](docs/install.md)** for detailed installation instructions and platform-specific dependencies.
 
 
 ## FAQ
@@ -91,7 +91,7 @@ On macOS, Apple Container is the preferred runtime — it's lightweight and opti
 
 **Is this secure?**
 
-Agents run in containers, not behind application-level permission checks. They can only access explicitly mounted directories. You should still review what you're running. See [docs/SECURITY.md](docs/SECURITY.md) for the full security model.
+Agents run in containers, not behind application-level permission checks. They can only access explicitly mounted directories. You should still review what you're running. See [docs/security.md](docs/security.md) for the full security model.
 
 **How do I debug issues?**
 
