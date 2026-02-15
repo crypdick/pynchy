@@ -34,9 +34,11 @@ from pynchy.types import Channel, ContainerConfig, RegisteredGroup
 class IpcDeps(Protocol):
     """Dependencies for IPC processing."""
 
-    async def send_message(self, jid: str, text: str) -> None: ...
+    async def broadcast_to_channels(self, jid: str, text: str) -> None: ...
 
     async def broadcast_host_message(self, jid: str, text: str) -> None: ...
+
+    async def broadcast_system_notice(self, jid: str, text: str) -> None: ...
 
     def registered_groups(self) -> dict[str, RegisteredGroup]: ...
 
@@ -108,7 +110,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
                             ):
                                 target_group = registered_groups.get(data["chatJid"])
                                 if is_god or (target_group and target_group.folder == source_group):
-                                    await deps.send_message(
+                                    await deps.broadcast_to_channels(
                                         data["chatJid"],
                                         f"{ASSISTANT_NAME}: {data['text']}",
                                     )
@@ -424,10 +426,10 @@ async def process_task_ipc(
             write_ipc_response(result_dir / f"{request_id}.json", result)
 
             if result.get("success"):
-                # Adapter: bridge IpcDeps.send_message to GitSyncDeps interface
+                # Adapter: bridge IpcDeps to GitSyncDeps interface
                 class _GitSyncAdapter:
-                    async def send_message(self, jid: str, text: str) -> None:
-                        await deps.send_message(jid, text)
+                    async def broadcast_system_notice(self, jid: str, text: str) -> None:
+                        await deps.broadcast_system_notice(jid, text)
 
                     def registered_groups(self) -> dict[str, RegisteredGroup]:
                         return deps.registered_groups()

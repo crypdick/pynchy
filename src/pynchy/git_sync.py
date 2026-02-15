@@ -27,7 +27,7 @@ HOST_GIT_SYNC_POLL_INTERVAL = 5.0
 class GitSyncDeps(Protocol):
     """Dependencies for the git sync loop."""
 
-    async def send_message(self, jid: str, text: str) -> None: ...
+    async def broadcast_system_notice(self, jid: str, text: str) -> None: ...
 
     def registered_groups(self) -> dict[str, Any]: ...
 
@@ -245,7 +245,7 @@ async def host_notify_worktree_updates(
                 "uncommitted changes. Commit or stash your work, then call "
                 "sync_worktree_to_main to get the latest changes."
             )
-            await deps.send_message(jid, notice)
+            await deps.broadcast_system_notice(jid, notice)
             logger.info(
                 "Skipped dirty worktree rebase, notified agent",
                 group=group_folder,
@@ -265,7 +265,7 @@ async def host_notify_worktree_updates(
                 "rebase conflicts. Run `git status` to see conflicted files, "
                 "resolve them, then `git add` and `git rebase --continue`."
             )
-            await deps.send_message(jid, notice)
+            await deps.broadcast_system_notice(jid, notice)
             logger.warning(
                 "Worktree rebase conflict during broadcast",
                 group=group_folder,
@@ -273,7 +273,7 @@ async def host_notify_worktree_updates(
             )
         else:
             notice = _build_rebase_notice(entry, head_before, behind_count)
-            await deps.send_message(jid, notice)
+            await deps.broadcast_system_notice(jid, notice)
             logger.info("Auto-rebased worktree", group=group_folder)
 
 

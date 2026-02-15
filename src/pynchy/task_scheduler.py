@@ -47,7 +47,7 @@ class SchedulerDependencies(Protocol):
         self, group_jid: str, proc: Any, container_name: str, group_folder: str
     ) -> None: ...
 
-    async def send_message(self, jid: str, text: str) -> None: ...
+    async def broadcast_to_channels(self, jid: str, text: str) -> None: ...
 
     @property
     def plugin_manager(self) -> Any: ...
@@ -207,7 +207,7 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
             nonlocal result, error
             if streamed.result:
                 result = streamed.result
-                await deps.send_message(task.chat_jid, streamed.result)
+                await deps.broadcast_to_channels(task.chat_jid, streamed.result)
                 _reset_idle_timer()
             if streamed.status == "error":
                 error = streamed.error or "Unknown error"

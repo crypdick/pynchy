@@ -186,7 +186,7 @@ class TestHostNotifyWorktreeUpdates:
         from pynchy.types import RegisteredGroup
 
         deps = Mock()
-        deps.send_message = AsyncMock()
+        deps.broadcast_system_notice = AsyncMock()
         deps.registered_groups.return_value = {
             "jid-1@g.us": RegisteredGroup(
                 name="Agent 1",
@@ -199,8 +199,8 @@ class TestHostNotifyWorktreeUpdates:
         await host_notify_worktree_updates(exclude_group=None, deps=deps)
 
         # Should have sent a notification
-        deps.send_message.assert_called_once()
-        call_args = deps.send_message.call_args
+        deps.broadcast_system_notice.assert_called_once()
+        call_args = deps.broadcast_system_notice.call_args
         assert "jid-1@g.us" in call_args[0]
         msg = call_args[0][1]
         assert "Auto-rebased 1 commit(s)" in msg
@@ -226,7 +226,7 @@ class TestHostNotifyWorktreeUpdates:
         from pynchy.types import RegisteredGroup
 
         deps = Mock()
-        deps.send_message = AsyncMock()
+        deps.broadcast_system_notice = AsyncMock()
         deps.registered_groups.return_value = {
             "jid-1@g.us": RegisteredGroup(
                 name="Agent 1",
@@ -238,8 +238,8 @@ class TestHostNotifyWorktreeUpdates:
 
         await host_notify_worktree_updates(exclude_group=None, deps=deps)
 
-        deps.send_message.assert_called_once()
-        msg = deps.send_message.call_args[0][1]
+        deps.broadcast_system_notice.assert_called_once()
+        msg = deps.broadcast_system_notice.call_args[0][1]
         assert "Auto-rebased 2 commit(s)" in msg
         assert "--oneline" in msg
         # Should show file stats
@@ -259,7 +259,7 @@ class TestHostNotifyWorktreeUpdates:
         from pynchy.types import RegisteredGroup
 
         deps = Mock()
-        deps.send_message = AsyncMock()
+        deps.broadcast_system_notice = AsyncMock()
         deps.registered_groups.return_value = {
             "jid-1@g.us": RegisteredGroup(
                 name="Agent 1",
@@ -272,7 +272,7 @@ class TestHostNotifyWorktreeUpdates:
         await host_notify_worktree_updates(exclude_group="agent-1", deps=deps)
 
         # Should NOT have sent any notifications
-        deps.send_message.assert_not_called()
+        deps.broadcast_system_notice.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_dirty_worktree_skip_rebase(self, git_env: dict):
@@ -290,7 +290,7 @@ class TestHostNotifyWorktreeUpdates:
         from pynchy.types import RegisteredGroup
 
         deps = Mock()
-        deps.send_message = AsyncMock()
+        deps.broadcast_system_notice = AsyncMock()
         deps.registered_groups.return_value = {
             "jid-1@g.us": RegisteredGroup(
                 name="Agent 1",
@@ -302,8 +302,8 @@ class TestHostNotifyWorktreeUpdates:
 
         await host_notify_worktree_updates(exclude_group=None, deps=deps)
 
-        deps.send_message.assert_called_once()
-        msg = deps.send_message.call_args[0][1]
+        deps.broadcast_system_notice.assert_called_once()
+        msg = deps.broadcast_system_notice.call_args[0][1]
         assert "uncommitted" in msg
 
     @pytest.mark.asyncio
@@ -314,7 +314,7 @@ class TestHostNotifyWorktreeUpdates:
         from pynchy.types import RegisteredGroup
 
         deps = Mock()
-        deps.send_message = AsyncMock()
+        deps.broadcast_system_notice = AsyncMock()
         deps.registered_groups.return_value = {
             "jid-1@g.us": RegisteredGroup(
                 name="Agent 1",
@@ -326,7 +326,7 @@ class TestHostNotifyWorktreeUpdates:
 
         await host_notify_worktree_updates(exclude_group=None, deps=deps)
 
-        deps.send_message.assert_not_called()
+        deps.broadcast_system_notice.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

@@ -22,20 +22,24 @@ if TYPE_CHECKING:
 
 
 class MessageBroadcaster:
-    """Broadcasts messages to all connected channels."""
+    """Broadcasts messages to all connected channels.
+
+    The public API is on HostMessageBroadcaster — typed methods with correct
+    emoji prefixes and DB persistence. Raw channel sends are private.
+    """
 
     def __init__(self, channels: list[Channel]) -> None:
         self.channels = channels
 
-    async def send_message(self, jid: str, text: str) -> None:
-        """Send message to all connected channels."""
+    async def _broadcast_to_channels(self, jid: str, text: str) -> None:
+        """Send message to all connected channels (internal use)."""
         for ch in self.channels:
             if ch.is_connected():
                 with contextlib.suppress(Exception):
                     await ch.send_message(jid, text)
 
-    async def send_formatted_message(self, jid: str, raw_text: str) -> None:
-        """Send message with per-channel formatting."""
+    async def _broadcast_formatted(self, jid: str, raw_text: str) -> None:
+        """Send message with per-channel formatting (internal use)."""
         for ch in self.channels:
             if ch.is_connected():
                 text = format_outbound(ch, raw_text)
@@ -80,11 +84,44 @@ class HostMessageBroadcaster:
             is_from_me=True,
         )
         channel_text = f"\U0001f3e0 {text}"
-        await self.broadcaster.send_message(chat_jid, channel_text)
+        await self.broadcaster._broadcast_to_channels(chat_jid, channel_text)
         self.emit_event(
             MessageEvent(
                 chat_jid=chat_jid,
                 sender_name="host",
+                content=text,
+                timestamp=ts,
+                is_bot=True,
+            )
+        )
+
+    async def broadcast_system_notice(self, chat_jid: str, text: str) -> None:
+        """Store a system notice for delivery to the LLM.
+
+        System notices are announcements from the host that the LLM needs to
+        see (e.g. worktree updates, config changes). They are:
+        - Stored in the DB so the polling loop delivers them to running agents
+        - Included in conversation context for future container launches
+        - Broadcast to channels with 📢 prefix for human visibility
+        """
+        from pynchy.event_bus import MessageEvent
+
+        ts = datetime.now(UTC).isoformat()
+        await self.store_message(
+            id=f"sys-notice-{int(datetime.now(UTC).timestamp() * 1000)}",
+            chat_jid=chat_jid,
+            sender="system_notice",
+            sender_name="system_notice",
+            content=text,
+            timestamp=ts,
+            is_from_me=True,
+        )
+        channel_text = f"\U0001f4e2 {text}"
+        await self.broadcaster._broadcast_to_channels(chat_jid, channel_text)
+        self.emit_event(
+            MessageEvent(
+                chat_jid=chat_jid,
+                sender_name="system_notice",
                 content=text,
                 timestamp=ts,
                 is_bot=True,
