@@ -24,34 +24,33 @@ Single source of truth for all pynchy work items.
 *Approved ideas. No plan yet.*
 
 - [X integration port](1-approved/x-integration-port.md) — Port the archived TypeScript X/Twitter skill to Python plugins
-- [Periodic agents](1-approved/periodic-agents.md) — Background agents for security sweeps, code quality, SDK updates, etc.
+- [Periodic agents](1-approved/periodic-agents.md) — Background agents for security sweeps, SDK updates, etc. (infra done: `task_scheduler.py`; 1 agent live: `code-improver`)
 - [Project ideas](1-approved/project-ideas.md) — Standalone integration ideas (calendar, voice, Cloudflare, AWS, etc.)
-- [Small improvements](1-approved/small-improvements.md) — Dossier logging audit, slack-tools migration check
+- [Small improvements](1-approved/small-improvements.md) — Remaining: dossier logging audit, slack-tools migration check (3/5 done)
 - [Ray resource orchestration](1-approved/ray-resource-orchestration.md) — Thin Ray integration for resource-aware container scaling, blocking queues, multi-node distribution, and GPU routing
 - implement 'handoff' tool calls as well as 'delegate' tool calls. handoff causes current agent to cease to exist; it decides what context to give to the next agent. the delegate tool is a blocking call that spawns a new agent to complete a task before passing it back. in reality, this tool call can abstract away a more complex system, like a deep research agent which has many subagents.
 - add support for multiple accounts/subscriptions. allow user to designate different workplaces to different accounts (e.g. corporate claude sub, personal claude sub, etc).
 - add a self-documenting hook to make the agent update its docs as it learns new things. it should run cmds and be sure that they work before writing docs (otherwise it's a hypothesis, not documetnation)
 - **[LOW PRIORITY]** Extract Apple Container runtime into standalone plugin (`pynchy-plugin-apple-container`). Requires plugin discovery system first. Serves as reference implementation for RuntimePlugin.
 - **[LOW PRIORITY]** Extract agent-browser skill into standalone plugin. Consider if container image size becomes an issue.
-- right now, each workspace is created using bespoke code. we should ideally have them all configured using a dataclass or similar, so that we can standardize workspaces a bit and enable templating
+- workspace templating — standardize creating new workspaces from templates (dataclass config done: `WorkspaceConfig` in `workspace_config.py`)
 - beginners tips. the tips print sometimes after a user sends a message. it has usage instructions and pro tips. plugin authors can optionally define tips for their plugins. there should be a global setting to disalbe tips. on by default.
-- we should have a design principle that no files from the host get mounted into any containers with write access. if an agent wants to edit a shared file (say, a .claude/ rule) then we should have a way for agents to spawn a new 'god' container with a feature request. the god container decides whether to implement it or not.
+- god container feature request workflow — agents that want to edit shared files (e.g. `.claude/` rules) should spawn a god container with a feature request. The god container decides whether to implement it. (read-only mount enforcement already done in `mount_security.py`)
 - we need a mechanism for spinning down containers. if the worktree is in sync with main, and there hasn't been activity in 10 minutes, the agent container gets killed. this prevents the sync workflow from sending system messages to an inactive container, causing the agent to passively burn tokens for no reason. similarly, deploy shouldn't redeploy the individual containers if they are killed; only active containers.
 - daily cron job that redeploys containers with a full container rebuild. make sure that the deploy script does not spin up containers if they are idle.
 - MCPs are known to burn lots of tokens. see whether it's feasible to migrate all MCPs to tools that are passed by the claude sdk. the key requirement is that they execute host-side, or that they have a special channel that can poke an endpoint on the host side that triggers a workflow. these can't be arbitrary code execution, just trigger a workflow.
-- abandon claude hookify hooks. openai does not support them. build a hook system into our own harness.
+- port `.claude/` hookify hooks to built-in harness hooks. Claude hookify is vendor-specific (OpenAI doesn't support it). Migrate existing hook logic into our own hook system.
 - **Rethink DB event cursor design** — The message polling loop uses a single `last_timestamp` cursor shared across all consumers (WhatsApp, TUI, running agents). This means advancing the cursor for one consumer silently advances it for all others, so events can be missed. Each subscriber (each channel, each running agent container) should have its own independent cursor into the DB event stream.
 - we want to be plugin maximalists. add that to the requirements.txt design doc. we want to make everything in this repo a plugin. ideally, we rip out non-essential code (whatsapp, openai, claude, etc.) and push them out into plugins. that way, users can disable unwanted functionality. this is how pytest lib works, for example
 - implement the progressive disclosure principle for skills. see the official claude docs on this
-- if container 1 syncs a change, the host recieves and pushes to the rest of the containers, and one of the container's worktree has a merge conflict, and that container is hibernating, that container ought to be spun up, sent a system message about the failed abortion, and a follow up message telling it to fix the broken rebase. that way, working in one container does not fuck up the work of a hibernating container. 
+- if container 1 syncs a change, the host recieves and pushes to the rest of the containers, and one of the container's worktree has a merge conflict, and that container is hibernating, that container ought to be spun up, sent a system message about the failed abortion, and a follow up message telling it to fix the broken rebase. that way, working in one container does not fuck up the work of a hibernating container.
 
 
 ### 2 - Planning
 *Draft plan exists. Awaiting human sign-off.*
 
-- [Pluggy Migration](2-planning/plugin-pluggy-migration.md) — Replace manual plugin system with pluggy (pytest's plugin framework) for type-safe, robust plugin management
 - [Plugin: Runtime](2-planning/plugin-runtime.md) — Alternative container runtimes (Apple Container, Podman) as plugins
-- [Plugin: Hook](2-planning/plugin-hook.md) — Agent lifecycle hooks provided by plugins (overview - see sub-plans below)
+- [Plugin: Hook](2-planning/plugin-hook.md) — Agent lifecycle hooks provided by plugins (partially superseded by AgentCore refactor — hook abstraction exists in `hooks.py`, remaining work is plugin-provided hook mounting)
   - [Hook Step 1: Base Class](2-planning/plugin-hook-1-base-class.md) — HookPlugin base class and discovery integration
   - [Hook Step 2: Container Input](2-planning/plugin-hook-2-container-input.md) — Extend ContainerInput to carry hook configs
   - [Hook Step 3: Mount Sources](2-planning/plugin-hook-3-mount-sources.md) — Collect configs and mount plugin sources
@@ -59,7 +58,7 @@ Single source of truth for all pynchy work items.
   - [Hook Step 5: Polish](2-planning/plugin-hook-5-polish.md) — Error handling, docs, and example plugin
 - [Security Hardening](2-planning/security-hardening.md) — Security improvements and hardening measures (overview - see sub-plans below)
   - [Security Step 0: IPC Surface](2-planning/security-hardening-0-ipc-surface.md) — Reduce IPC to signal-only protocol, Deputy mediation for data-carrying requests, replace polling with inotify
-  - [Security Step 1: Profiles](2-planning/security-hardening-1-profiles.md) — Workspace security profiles and config schema
+  - [Security Step 1: Profiles](2-planning/security-hardening-1-profiles.md) — Workspace security profiles and config schema (types partially done: `WorkspaceProfile`/`WorkspaceSecurity` in `types.py`)
   - [Security Step 2: MCP & Policy](2-planning/security-hardening-2-mcp-policy.md) — New MCP tools and basic policy enforcement
   - [Security Step 3: Email](2-planning/security-hardening-3-email.md) — Email service integration (IMAP/SMTP)
   - [Security Step 4: Calendar](2-planning/security-hardening-4-calendar.md) — Calendar service integration (CalDAV)
@@ -69,8 +68,6 @@ Single source of truth for all pynchy work items.
 
 ### 3 - Ready
 *Plan approved or not needed. Ready for an agent to pick up.*
-
-- [Provider-agnostic agents](3-ready/provider-agnostic-agents.md) — Generic `AgentCore` protocol to swap in other LLM frameworks (OpenAI, Ollama, LangChain)
 
 #### Bugs
 - messaging is broken. when I send a message, sometimes I see no response in the chat. then when i send a follow up message, it responds to the previous message. the system is desynchronized somehow. update: the message the agents send (as well as tool calls, other messages) seem to be sending to whatsapp more reliably than the tui.
