@@ -314,8 +314,13 @@ def _write_env_file() -> Path | None:
         env_vars["GIT_COMMITTER_EMAIL"] = git_email
 
     if not env_vars:
+        logger.warning(
+            "No credentials found — containers will fail to authenticate. "
+            "Run 'claude' to authenticate or set ANTHROPIC_API_KEY in .env"
+        )
         return None
 
+    logger.debug("Container env prepared", vars=list(env_vars.keys()))
     lines = [f"{k}={_shell_quote(v)}" for k, v in env_vars.items()]
     (env_dir / "env").write_text("\n".join(lines) + "\n")
     return env_dir

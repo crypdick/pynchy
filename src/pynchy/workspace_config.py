@@ -48,7 +48,12 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
     if not path.exists():
         return None
 
-    raw = yaml.safe_load(path.read_text())
+    try:
+        raw = yaml.safe_load(path.read_text())
+    except (yaml.YAMLError, OSError) as exc:
+        logger.warning("Failed to parse workspace.yaml", folder=group_folder, err=str(exc))
+        return None
+
     if not isinstance(raw, dict):
         # Empty file is valid — all defaults
         return WorkspaceConfig() if raw is None else None
@@ -77,7 +82,7 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
     if context_mode not in ("group", "isolated"):
         context_mode = "group"
 
-    return WorkspaceConfig(
+    config = WorkspaceConfig(
         is_god=is_god,
         requires_trigger=requires_trigger,
         project_access=project_access,
@@ -86,6 +91,14 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
         prompt=prompt,
         context_mode=context_mode,
     )
+    logger.debug(
+        "Loaded workspace config",
+        folder=group_folder,
+        is_god=is_god,
+        project_access=project_access,
+        is_periodic=config.is_periodic,
+    )
+    return config
 
 
 def write_workspace_config(group_folder: str, config: WorkspaceConfig) -> Path:
@@ -114,6 +127,7 @@ def write_workspace_config(group_folder: str, config: WorkspaceConfig) -> Path:
         data["context_mode"] = config.context_mode
 
     path.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False) if data else "")
+    logger.debug("Wrote workspace config", folder=group_folder, fields=list(data.keys()))
     return path
 
 
@@ -122,7 +136,13 @@ def has_project_access(group: RegisteredGroup) -> bool:
     if group.is_god:
         return True
     config = load_workspace_config(group.folder)
-    return bool(config and config.project_access)
+    has_access = bool(config and config.project_access)
+    logger.debug(
+        "Checked project access",
+        folder=group.folder,
+        has_access=has_access,
+    )
+    return has_access
 
 
 def get_project_access_folders(workspaces: dict[str, Any]) -> list[str]:

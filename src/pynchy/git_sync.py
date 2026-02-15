@@ -10,6 +10,7 @@ containers can't read host state (logs, config, etc.).
 from __future__ import annotations
 
 import asyncio
+import json
 import subprocess
 from pathlib import Path
 from typing import Any, Protocol
@@ -305,8 +306,6 @@ def write_ipc_response(path: Path, data: dict[str, Any]) -> None:
     """Write an IPC response file atomically."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
-    import json
-
     tmp.write_text(json.dumps(data))
     tmp.rename(path)
 
