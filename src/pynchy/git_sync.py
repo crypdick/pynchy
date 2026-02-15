@@ -172,7 +172,7 @@ def _build_rebase_notice(worktree_path: Path, old_head: str, commit_count: int) 
     Shows commit count, files changed, and — for single commits — the full
     commit message so the agent understands what landed without extra commands.
     """
-    parts = [f"[git-sync] Auto-rebased {commit_count} commit(s) onto your worktree."]
+    parts = [f"Auto-rebased {commit_count} commit(s) onto your worktree."]
 
     # File change stats (e.g. "3 files changed, 42 insertions(+), 10 deletions(-)")
     diffstat = _run_git("diff", "--stat", old_head, "HEAD", cwd=worktree_path)
@@ -241,7 +241,7 @@ async def host_notify_worktree_updates(
         status = _run_git("status", "--porcelain", cwd=entry)
         if status.returncode == 0 and status.stdout.strip():
             notice = (
-                "[git-sync] Main branch has been updated, but your worktree has "
+                "Main branch has been updated, but your worktree has "
                 "uncommitted changes. Commit or stash your work, then call "
                 "sync_worktree_to_main to get the latest changes."
             )
@@ -261,7 +261,7 @@ async def host_notify_worktree_updates(
         if rebase.returncode != 0:
             # Leave conflict markers for agent to resolve
             notice = (
-                "[git-sync] Main branch was updated but your worktree has "
+                "Main branch was updated but your worktree has "
                 "rebase conflicts. Run `git status` to see conflicted files, "
                 "resolve them, then `git add` and `git rebase --continue`."
             )
@@ -353,6 +353,21 @@ def _host_container_files_changed(old_sha: str, new_sha: str) -> bool:
     return bool(diff.stdout.strip()) if diff.returncode == 0 else False
 
 
+def _host_source_files_changed(old_sha: str, new_sha: str) -> bool:
+    """Check if host source files changed between two commits.
+
+    The running Python process has old modules in memory. A restart is needed
+    to pick up src/ changes — git pull alone doesn't hot-reload Python.
+    """
+    diff = subprocess.run(
+        ["git", "diff", "--name-only", old_sha, new_sha, "--", "src/"],
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    return bool(diff.stdout.strip()) if diff.returncode == 0 else False
+
+
 async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
     """Poll origin/main for external changes. Syncs host + all worktrees."""
     last_sha = await asyncio.to_thread(_host_get_origin_main_sha)
@@ -388,14 +403,20 @@ async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
             if not updated:
                 continue
 
+            # Sync all worktrees + notify agents first (before potential restart)
+            await host_notify_worktree_updates(exclude_group=None, deps=deps)
+
             # Check if container files changed — trigger rebuild + restart
             if old_sha and _host_container_files_changed(old_sha, current_sha):
                 logger.info("Container files changed, triggering deploy")
                 await deps.trigger_deploy(pre_update_sha)
                 return  # process will restart
 
-            # Sync all worktrees + notify agents
-            await host_notify_worktree_updates(exclude_group=None, deps=deps)
+            # Host source changes require a restart — Python doesn't hot-reload
+            if old_sha and _host_source_files_changed(old_sha, current_sha):
+                logger.info("Host source files changed, triggering deploy")
+                await deps.trigger_deploy(pre_update_sha)
+                return  # process will restart
 
         except Exception as exc:
             logger.error("git_sync poll error", err=str(exc))
