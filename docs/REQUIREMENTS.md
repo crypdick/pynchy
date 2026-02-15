@@ -86,12 +86,21 @@ Pynchy should log all of these, plus its own host-process messages, to the DB. T
 The goal: if something went wrong, you can reconstruct what the LLM saw by reading the chat.
 
 ### Message Routing
-- All channels send messages to the same code path.
-- Only messages from registered groups are processed
-- Trigger: `@Pynchy` prefix (case insensitive), configurable via `ASSISTANT_NAME` env var
+
+All channels send messages to the same code path. Only messages from registered groups are processed.
+
+**Trigger Pattern:**
+- Messages must start with `@Pynchy` prefix (case insensitive)
+- Configurable via `ASSISTANT_NAME` environment variable
+- Examples:
+  - ✅ `@Pynchy what's the weather?` - Triggers Claude
+  - ✅ `@pynchy help me` - Triggers (case insensitive)
+  - ❌ `Hey @Pynchy` - Ignored (trigger not at start)
+  - ❌ `What's up?` - Ignored (no trigger)
+
+**Routing Behavior:**
 - Unregistered groups are ignored completely
-- All channels are kept in sync. Ongoing conversations can be continued from different channels, and all
-  channels display the exact same message history.
+- All channels are kept in sync. Ongoing conversations can be continued from different channels, and all channels display the exact same message history.
 
 ### Memory System
 - **Per-group memory**: Each group has a folder with its own `CLAUDE.md` and `.claude`.
@@ -105,22 +114,79 @@ The goal: if something went wrong, you can reconstruct what the LLM saw by readi
 - Sessions auto-compact when context gets too long, preserving critical information
 
 ### Container Isolation
-- All agents run inside containers — Apple Container (macOS, preferred) or Docker (macOS/Linux)
-- Each agent invocation spawns a container with mounted directories
-- Containers provide filesystem isolation - agents can only see mounted paths
-- Bash access is safe because commands run inside the container, not on the host
+
+All agents run inside containers — Apple Container (macOS, preferred) or Docker (macOS/Linux). Each agent invocation spawns a container with mounted directories.
+
+**Container Mounts:**
+
+| Host Path | Container Path | Access | Groups |
+|-----------|---------------|---------|--------|
+| `groups/{name}/` | `/workspace/group` | Read-write | All |
+| `groups/global/` | `/workspace/global` | Readonly | Non-god only |
+| `data/sessions/{group}/.claude/` | `/home/agent/.claude` | Read-write | All (isolated per-group) |
+| `container/scripts/` | `/workspace/scripts` | Readonly | All |
+| `{additional mounts}` | `/workspace/extra/*` | Configurable | Per containerConfig |
+
+**Notes:**
+- Groups with `project_access` get worktree mounts instead of `groups/global/`
+- The `groups/global/` directory is shared readonly to all non-god groups for common files
+- Apple Container requires `--mount "type=bind,source=...,target=...,readonly"` syntax for readonly mounts (`:ro` suffix doesn't work)
+
+**Container Configuration:**
+
+Groups can have additional directories mounted via `containerConfig` in the SQLite `registered_groups` table:
+
+```json
+{
+  "additionalMounts": [
+    {
+      "hostPath": "~/projects/webapp",
+      "containerPath": "webapp",
+      "readonly": false
+    }
+  ],
+  "timeout": 600000
+}
+```
+
+**Isolation Features:**
+- Filesystem isolation - agents can only see mounted paths
+- Bash access is safe - commands run inside the container, not on the host
+- Process isolation - container processes can't affect the host
+- Non-root user - containers run as unprivileged user
 - Browser automation via agent-browser with Chromium in the container (if enabled)
-- Avoid the
 
 ### Scheduled Tasks
-- Users can ask Claude to schedule recurring or one-time tasks from any group
-- Tasks run as full agents in the context of the group that created them
+
+Users can ask Claude to schedule recurring or one-time tasks from any group. Tasks run as full agents in the context of the group that created them.
+
+**Schedule Types:**
+
+| Type | Value Format | Example |
+|------|--------------|---------|
+| `cron` | Cron expression | `0 9 * * 1` (Mondays at 9am) |
+| `interval` | Milliseconds | `3600000` (every hour) |
+| `once` | ISO timestamp | `2024-12-25T09:00:00Z` |
+
+**Task Capabilities:**
 - Tasks have access to all tools including Bash (safe in container)
 - Tasks can optionally send messages to their group via `send_message` tool, or complete silently
 - Task runs are logged to the database with duration and result
-- Schedule types: cron expressions, intervals (ms), or one-time (ISO timestamp)
 - From god container: can schedule tasks for any group, view/manage all tasks
 - From other groups: can only manage that group's tasks
+
+**MCP Tools (pynchy server):**
+
+| Tool | Purpose |
+|------|---------|
+| `schedule_task` | Schedule a recurring or one-time task |
+| `list_tasks` | Show tasks (group's tasks, or all if god) |
+| `get_task` | Get task details and run history |
+| `update_task` | Modify task prompt or schedule |
+| `pause_task` | Pause a task |
+| `resume_task` | Resume a paused task |
+| `cancel_task` | Delete a task |
+| `send_message` | Send a WhatsApp message to the group |
 
 ### Group Management
 - New groups are added explicitly via the god channel
@@ -150,7 +216,7 @@ Agents inside containers never push to main directly. The host mediates all merg
 ## Integration Points
 
 ### WhatsApp
-- Using baileys library for WhatsApp Web connection
+- Using neonize library for WhatsApp Web connection
 - Messages stored in SQLite, polled by router
 - QR code authentication during setup
 
@@ -174,6 +240,78 @@ Agents inside containers never push to main directly. The host mediates all merg
 
 ---
 
+## Environment & Configuration
+
+### Environment Variable Isolation
+
+For security, only authentication variables are exposed to containers. The `.env` file in the project root can contain various variables, but only specific ones are mounted:
+
+**Extracted Variables:**
+- `ANTHROPIC_API_KEY` - API key for Claude access (pay-per-use)
+- `CLAUDE_CODE_OAUTH_TOKEN` - OAuth token from `~/.claude/.credentials.json` (subscription)
+
+**Process:**
+1. Host reads `.env` and extracts only authentication variables
+2. Filtered variables are written to `data/env/env`
+3. This file is mounted into containers at `/workspace/env-dir/env`
+4. Container entrypoint sources the file
+
+**Why:** This ensures other environment variables in `.env` (API keys for other services, personal tokens, etc.) are not exposed to agents running in containers.
+
+---
+
+## Security Considerations
+
+### Container Isolation
+
+Agents run in Linux containers (Apple Container or Docker), providing OS-level isolation:
+
+**Isolation Features:**
+- **Filesystem isolation** - Agents can only access explicitly mounted directories
+- **Process isolation** - Container processes can't affect the host system
+- **Network isolation** - Can be configured per-container if needed
+- **Non-root execution** - Containers run as unprivileged user (uid 1000)
+- **Safe Bash access** - Commands execute inside the container, not on the host
+
+### Prompt Injection Risk
+
+WhatsApp messages could contain malicious instructions attempting to manipulate Claude's behavior.
+
+**Mitigations:**
+- Container isolation limits blast radius of successful attacks
+- Only registered groups are processed (explicit allowlist)
+- Trigger word required (reduces accidental processing)
+- Agents can only access their group's mounted directories
+- Additional directory mounts must be explicitly configured per group
+- Claude's built-in safety training helps resist manipulation
+
+**Recommendations:**
+- Only register trusted groups
+- Review additional directory mounts carefully before adding
+- Review scheduled tasks periodically for unexpected behavior
+- Monitor logs for unusual activity
+- Use `groups/global/` for shared readonly resources only
+
+### Credential Storage
+
+| Credential | Storage Location | Security |
+|------------|------------------|----------|
+| Claude API credentials | `data/env/env` (filtered from `.env`) | Not in version control, per-host |
+| WhatsApp session | `store/auth/` | Auto-created, persists ~30 days |
+| Per-group sessions | `data/sessions/{group}/.claude/` | Isolated per-group |
+
+### File Permissions
+
+The `groups/` folder contains personal memory and should be protected:
+
+```bash
+chmod 700 groups/
+```
+
+This prevents other users on the system from reading conversation history and memory.
+
+---
+
 ## Setup & Customization
 
 ### Philosophy
@@ -183,13 +321,10 @@ Agents inside containers never push to main directly. The host mediates all merg
 - Each user gets a custom setup matching their exact needs
 - Each user should fork the main repo and use that fork for their deployment. They can ask claude to use the `gh` cli tool to make it private, if they wish.
 
-### Skills
-- `/setup` - Install dependencies, authenticate WhatsApp, configure scheduler, start services
-- `/customize` - General-purpose skill for adding capabilities (new channels like Telegram, new integrations, behavior changes)
-
 ### Deployment
-- Runs on local Mac via launchd
-- Single Node.js process handles everything
+- macOS: launchd service
+- Linux: systemd user service
+- See [INSTALL.md](../INSTALL.md) for deployment instructions
 
 ---
 

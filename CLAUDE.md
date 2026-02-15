@@ -1,6 +1,6 @@
 # Pynchy
 
-Personal Claude assistant. See [README.md](README.md) for philosophy and setup. See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for architecture decisions.
+Personal Claude assistant. See [README.md](README.md) for philosophy. See [INSTALL.md](INSTALL.md) for installation. See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for architecture decisions.
 
 ## Quick Context
 
@@ -24,14 +24,6 @@ Python process that connects to WhatsApp, routes messages to Claude Agent SDK ru
 | `groups/{name}/CLAUDE.md` | Per-group memory (isolated) |
 | `container/skills/agent-browser.md` | Browser automation tool (available to all agents via Bash) |
 | `docs/backlog/TODO.md` | Work item index — one-line items linking to plan files in status folders |
-
-## Skills
-
-| Skill | When to Use |
-|-------|-------------|
-| `/setup` | First-time installation, authentication, service configuration |
-| `/customize` | Adding channels, integrations, changing behavior |
-| `/debug` | Container issues, logs, troubleshooting |
 
 ## Detailed Guides
 
