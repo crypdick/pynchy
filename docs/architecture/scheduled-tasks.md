@@ -24,9 +24,10 @@ Users can ask Claude to schedule recurring or one-time tasks from any group. Tas
 |------|---------|
 | `schedule_task` | Schedule a recurring or one-time task |
 | `list_tasks` | Show tasks (group's tasks, or all if god) |
-| `get_task` | Get task details and run history |
-| `update_task` | Modify task prompt or schedule |
 | `pause_task` | Pause a task |
 | `resume_task` | Resume a paused task |
 | `cancel_task` | Delete a task |
 | `send_message` | Send a WhatsApp message to the group |
+
+**Planned:** `get_task` and `update_task` MCP tools to let agents inspect task
+history and modify schedules programmatically.

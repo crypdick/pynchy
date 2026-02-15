@@ -69,6 +69,7 @@ RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/
 RUN printf '#!/bin/bash\nset -e\nif [ -f /workspace/env-dir/env ]; then set -a; . /workspace/env-dir/env; set +a; fi\ncat > /tmp/input.json\npython -m agent_runner < /tmp/input.json\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 # Create non-root user for security
+# NOTE: Update docs/security.md § Container Isolation if you change the username.
 RUN useradd -m -s /bin/bash agent
 RUN chown -R agent:agent /workspace
 
