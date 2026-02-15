@@ -1,0 +1,207 @@
+"""Tests for src/pynchy/system_checks.py.
+
+Tests Tailscale status checking and container system bootstrap logic.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from pynchy.system_checks import check_tailscale, ensure_container_system_running
+
+# ---------------------------------------------------------------------------
+# check_tailscale
+# ---------------------------------------------------------------------------
+
+
+class TestCheckTailscale:
+    """Test Tailscale connectivity checking (non-fatal, logging-only)."""
+
+    def test_tailscale_running(self):
+        """Connected and running — should log info, not warning."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({"BackendState": "Running"})
+        mock_result.stderr = ""
+
+        with patch("pynchy.system_checks.subprocess.run", return_value=mock_result):
+            # Should not raise
+            check_tailscale()
+
+    def test_tailscale_not_running_state(self):
+        """Tailscale returns success but state is not Running."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({"BackendState": "Stopped"})
+        mock_result.stderr = ""
+
+        with patch("pynchy.system_checks.subprocess.run", return_value=mock_result):
+            check_tailscale()  # Should not raise
+
+    def test_tailscale_command_fails(self):
+        """tailscale CLI returns non-zero exit."""
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stdout = ""
+        mock_result.stderr = "not connected"
+
+        with patch("pynchy.system_checks.subprocess.run", return_value=mock_result):
+            check_tailscale()  # Non-fatal, should not raise
+
+    def test_tailscale_not_installed(self):
+        """tailscale CLI not found."""
+        with patch(
+            "pynchy.system_checks.subprocess.run",
+            side_effect=FileNotFoundError("No such file"),
+        ):
+            check_tailscale()  # Non-fatal, should not raise
+
+    def test_tailscale_unexpected_error(self):
+        """Unexpected exception during check."""
+        with patch(
+            "pynchy.system_checks.subprocess.run",
+            side_effect=RuntimeError("boom"),
+        ):
+            check_tailscale()  # Non-fatal, should not raise
+
+    def test_tailscale_missing_backend_state(self):
+        """JSON response without BackendState key."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({"Health": "ok"})
+        mock_result.stderr = ""
+
+        with patch("pynchy.system_checks.subprocess.run", return_value=mock_result):
+            check_tailscale()  # Should handle gracefully
+
+
+# ---------------------------------------------------------------------------
+# ensure_container_system_running
+# ---------------------------------------------------------------------------
+
+
+class TestEnsureContainerSystemRunning:
+    """Test container runtime bootstrap and orphan cleanup."""
+
+    @pytest.fixture
+    def mock_runtime(self):
+        """Create a mock runtime object."""
+        runtime = MagicMock()
+        runtime.cli = "docker"
+        runtime.list_running_containers.return_value = []
+        return runtime
+
+    def test_image_exists_no_orphans(self, mock_runtime):
+        """Happy path: image exists, no orphaned containers."""
+        image_inspect = MagicMock(returncode=0)
+
+        with (
+            patch("pynchy.system_checks.get_runtime", return_value=mock_runtime),
+            patch("pynchy.system_checks.subprocess.run", return_value=image_inspect),
+        ):
+            ensure_container_system_running()
+
+        mock_runtime.ensure_running.assert_called_once()
+
+    def test_image_missing_builds(self, mock_runtime, tmp_path):
+        """Image not found — should trigger build."""
+        inspect_fail = MagicMock(returncode=1)
+        build_ok = MagicMock(returncode=0)
+
+        # Create a fake Dockerfile
+        container_dir = tmp_path / "container"
+        container_dir.mkdir()
+        (container_dir / "Dockerfile").touch()
+
+        with (
+            patch("pynchy.system_checks.get_runtime", return_value=mock_runtime),
+            patch(
+                "pynchy.system_checks.subprocess.run",
+                side_effect=[inspect_fail, build_ok],
+            ),
+            patch("pynchy.system_checks.PROJECT_ROOT", tmp_path),
+        ):
+            ensure_container_system_running()
+
+    def test_image_missing_no_dockerfile_raises(self, mock_runtime, tmp_path):
+        """Image not found and no Dockerfile — should raise RuntimeError."""
+        inspect_fail = MagicMock(returncode=1)
+
+        # No Dockerfile exists
+        container_dir = tmp_path / "container"
+        container_dir.mkdir()
+
+        with (
+            patch("pynchy.system_checks.get_runtime", return_value=mock_runtime),
+            patch("pynchy.system_checks.subprocess.run", return_value=inspect_fail),
+            patch("pynchy.system_checks.PROJECT_ROOT", tmp_path),
+            pytest.raises(RuntimeError, match="not found"),
+        ):
+            ensure_container_system_running()
+
+    def test_build_failure_raises(self, mock_runtime, tmp_path):
+        """Image build fails — should raise RuntimeError."""
+        inspect_fail = MagicMock(returncode=1)
+        build_fail = MagicMock(returncode=1)
+
+        container_dir = tmp_path / "container"
+        container_dir.mkdir()
+        (container_dir / "Dockerfile").touch()
+
+        with (
+            patch("pynchy.system_checks.get_runtime", return_value=mock_runtime),
+            patch(
+                "pynchy.system_checks.subprocess.run",
+                side_effect=[inspect_fail, build_fail],
+            ),
+            patch("pynchy.system_checks.PROJECT_ROOT", tmp_path),
+            pytest.raises(RuntimeError, match="Failed to build"),
+        ):
+            ensure_container_system_running()
+
+    def test_orphaned_containers_stopped(self, mock_runtime):
+        """Orphaned pynchy containers should be stopped."""
+        mock_runtime.list_running_containers.return_value = [
+            "pynchy-group-a",
+            "pynchy-group-b",
+        ]
+        image_inspect = MagicMock(returncode=0)
+
+        stop_calls = []
+
+        def track_run(cmd, **kwargs):
+            if cmd[0] == "docker" and "stop" in cmd:
+                stop_calls.append(cmd[-1])
+                return MagicMock(returncode=0)
+            return image_inspect
+
+        with (
+            patch("pynchy.system_checks.get_runtime", return_value=mock_runtime),
+            patch("pynchy.system_checks.subprocess.run", side_effect=track_run),
+        ):
+            ensure_container_system_running()
+
+        assert "pynchy-group-a" in stop_calls
+        assert "pynchy-group-b" in stop_calls
+
+    def test_orphan_stop_failure_suppressed(self, mock_runtime):
+        """Errors stopping orphans should not propagate."""
+        mock_runtime.list_running_containers.return_value = ["pynchy-stuck"]
+
+        call_count = [0]
+
+        def track_run(cmd, **kwargs):
+            call_count[0] += 1
+            if "stop" in cmd:
+                raise subprocess.SubprocessError("stop failed")
+            return MagicMock(returncode=0)
+
+        with (
+            patch("pynchy.system_checks.get_runtime", return_value=mock_runtime),
+            patch("pynchy.system_checks.subprocess.run", side_effect=track_run),
+        ):
+            ensure_container_system_running()  # Should not raise
