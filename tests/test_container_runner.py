@@ -25,7 +25,10 @@ from pynchy.container_runner import (
     _read_gh_token,
     _read_git_identity,
     _read_oauth_token,
+    _shell_quote,
+    _sync_skills,
     _write_env_file,
+    _write_settings_json,
     resolve_agent_core,
     run_container_agent,
     write_groups_snapshot,
@@ -896,3 +899,310 @@ class TestResolveAgentCore:
 
         assert module == "cores.custom"
         assert cls == "CustomCore"
+
+
+# ---------------------------------------------------------------------------
+# _sync_skills tests
+# ---------------------------------------------------------------------------
+
+
+class TestSyncSkills:
+    """Test skill syncing from built-in skills and plugin skills into session dir."""
+
+    def test_copies_builtin_skills(self, tmp_path: Path):
+        """Built-in skills are copied to the session .claude/skills/ dir."""
+        # Create a built-in skill
+        builtin_skill = tmp_path / "container" / "skills" / "my-skill"
+        builtin_skill.mkdir(parents=True)
+        (builtin_skill / "skill.md").write_text("# My Skill\nDo stuff.")
+        (builtin_skill / "config.json").write_text('{"name": "my-skill"}')
+
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with patch("pynchy.container_runner.PROJECT_ROOT", tmp_path):
+            _sync_skills(session_dir)
+
+        skills_dst = session_dir / "skills" / "my-skill"
+        assert skills_dst.exists()
+        assert (skills_dst / "skill.md").read_text() == "# My Skill\nDo stuff."
+        assert (skills_dst / "config.json").exists()
+
+    def test_no_skills_dir_is_safe(self, tmp_path: Path):
+        """Missing container/skills/ dir should not crash."""
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with patch("pynchy.container_runner.PROJECT_ROOT", tmp_path):
+            _sync_skills(session_dir)
+
+        # skills/ directory should still be created (empty)
+        assert (session_dir / "skills").exists()
+
+    def test_plugin_skills_are_synced(self, tmp_path: Path):
+        """Plugin manager skill paths are copied to session dir."""
+        plugin_skill = tmp_path / "plugins" / "ext-skill"
+        plugin_skill.mkdir(parents=True)
+        (plugin_skill / "skill.md").write_text("# External Skill")
+
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        class FakeHook:
+            def pynchy_skill_paths(self):
+                return [[str(plugin_skill)]]
+
+        class FakePM:
+            hook = FakeHook()
+
+        with patch("pynchy.container_runner.PROJECT_ROOT", tmp_path):
+            _sync_skills(session_dir, plugin_manager=FakePM())
+
+        ext_dst = session_dir / "skills" / "ext-skill"
+        assert ext_dst.exists()
+        assert (ext_dst / "skill.md").read_text() == "# External Skill"
+
+    def test_plugin_skill_name_collision_raises(self, tmp_path: Path):
+        """Plugin skill that shadows a built-in skill raises ValueError."""
+        # Create built-in skill
+        builtin_skill = tmp_path / "container" / "skills" / "my-skill"
+        builtin_skill.mkdir(parents=True)
+        (builtin_skill / "skill.md").write_text("built-in")
+
+        # Create plugin skill with same name
+        plugin_skill = tmp_path / "plugins" / "my-skill"
+        plugin_skill.mkdir(parents=True)
+        (plugin_skill / "skill.md").write_text("plugin")
+
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        class FakeHook:
+            def pynchy_skill_paths(self):
+                return [[str(plugin_skill)]]
+
+        class FakePM:
+            hook = FakeHook()
+
+        with (
+            patch("pynchy.container_runner.PROJECT_ROOT", tmp_path),
+            pytest.raises(ValueError, match="collision"),
+        ):
+            _sync_skills(session_dir, plugin_manager=FakePM())
+
+    def test_skips_nonexistent_plugin_skill_path(self, tmp_path: Path):
+        """Plugin skill paths that don't exist are skipped with a warning."""
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        class FakeHook:
+            def pynchy_skill_paths(self):
+                return [[str(tmp_path / "nonexistent-skill")]]
+
+        class FakePM:
+            hook = FakeHook()
+
+        with patch("pynchy.container_runner.PROJECT_ROOT", tmp_path):
+            # Should not crash
+            _sync_skills(session_dir, plugin_manager=FakePM())
+
+    def test_ignores_files_in_skills_dir(self, tmp_path: Path):
+        """Files (not directories) in container/skills/ are ignored."""
+        skills_dir = tmp_path / "container" / "skills"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "README.md").write_text("not a skill dir")
+
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with patch("pynchy.container_runner.PROJECT_ROOT", tmp_path):
+            _sync_skills(session_dir)
+
+        # Only the skills/ directory should exist, no README.md copied
+        assert not (session_dir / "skills" / "README.md").exists()
+
+
+# ---------------------------------------------------------------------------
+# _write_settings_json tests
+# ---------------------------------------------------------------------------
+
+
+class TestWriteSettingsJson:
+    """Test settings.json generation for Claude Code sessions."""
+
+    def test_writes_default_settings(self, tmp_path: Path):
+        session_dir = tmp_path / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with patch("pynchy.container_runner.PROJECT_ROOT", tmp_path):
+            _write_settings_json(session_dir)
+
+        settings_file = session_dir / "settings.json"
+        assert settings_file.exists()
+        settings = json.loads(settings_file.read_text())
+        assert "env" in settings
+        assert settings["env"]["CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"] == "1"
+
+    def test_merges_hook_config(self, tmp_path: Path):
+        """Hook settings from container/scripts/settings.json are merged."""
+        scripts_dir = tmp_path / "container" / "scripts"
+        scripts_dir.mkdir(parents=True)
+        (scripts_dir / "settings.json").write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "Bash": [
+                            {
+                                "matcher": "command",
+                                "pattern": "git push",
+                                "hook": "/workspace/scripts/guard_git.sh",
+                            }
+                        ]
+                    }
+                }
+            )
+        )
+
+        session_dir = tmp_path / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with patch("pynchy.container_runner.PROJECT_ROOT", tmp_path):
+            _write_settings_json(session_dir)
+
+        settings = json.loads((session_dir / "settings.json").read_text())
+        assert "hooks" in settings
+        assert "Bash" in settings["hooks"]
+
+    def test_survives_malformed_hook_config(self, tmp_path: Path):
+        """Invalid JSON in hook settings doesn't crash — falls back gracefully."""
+        scripts_dir = tmp_path / "container" / "scripts"
+        scripts_dir.mkdir(parents=True)
+        (scripts_dir / "settings.json").write_text("not valid json {{{")
+
+        session_dir = tmp_path / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with patch("pynchy.container_runner.PROJECT_ROOT", tmp_path):
+            _write_settings_json(session_dir)
+
+        settings = json.loads((session_dir / "settings.json").read_text())
+        # Should still have env but no hooks
+        assert "env" in settings
+        assert "hooks" not in settings
+
+    def test_overwrites_existing_settings(self, tmp_path: Path):
+        """Settings are regenerated on each call to pick up hook changes."""
+        session_dir = tmp_path / ".claude"
+        session_dir.mkdir(parents=True)
+        (session_dir / "settings.json").write_text('{"stale": true}')
+
+        with patch("pynchy.container_runner.PROJECT_ROOT", tmp_path):
+            _write_settings_json(session_dir)
+
+        settings = json.loads((session_dir / "settings.json").read_text())
+        assert "stale" not in settings
+        assert "env" in settings
+
+
+# ---------------------------------------------------------------------------
+# Shell quoting tests
+# ---------------------------------------------------------------------------
+
+
+class TestShellQuote:
+    """Test shell quoting for env file values."""
+
+    def test_simple_string(self):
+        assert _shell_quote("hello") == "'hello'"
+
+    def test_string_with_spaces(self):
+        assert _shell_quote("hello world") == "'hello world'"
+
+    def test_string_with_single_quotes(self):
+        # O'Brien → 'O'\''Brien'
+        result = _shell_quote("O'Brien")
+        assert result == "'" + "O" + "'\\''" + "Brien" + "'"
+
+    def test_empty_string(self):
+        assert _shell_quote("") == "''"
+
+    def test_string_with_special_chars(self):
+        """Special shell chars should be safely quoted."""
+        result = _shell_quote("$HOME && rm -rf /")
+        assert result.startswith("'")
+        assert result.endswith("'")
+        assert "$HOME" in result
+
+
+# ---------------------------------------------------------------------------
+# Container output parsing edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestOutputParsingEdgeCases:
+    """Edge cases for _parse_container_output and _parse_final_output."""
+
+    def test_parses_all_output_fields(self):
+        """Verify all ContainerOutput fields are correctly parsed."""
+        out = _parse_container_output(
+            json.dumps(
+                {
+                    "status": "success",
+                    "result": "done",
+                    "new_session_id": "s1",
+                    "type": "tool_use",
+                    "thinking": "Let me think...",
+                    "tool_name": "Read",
+                    "tool_input": {"file_path": "/test.py"},
+                    "text": "some text",
+                    "system_subtype": "compact",
+                    "system_data": {"key": "val"},
+                    "tool_result_id": "tr-1",
+                    "tool_result_content": "file contents",
+                    "tool_result_is_error": False,
+                    "result_metadata": {"duration_ms": 1234},
+                }
+            )
+        )
+        assert out.status == "success"
+        assert out.type == "tool_use"
+        assert out.thinking == "Let me think..."
+        assert out.tool_name == "Read"
+        assert out.tool_input == {"file_path": "/test.py"}
+        assert out.system_subtype == "compact"
+        assert out.tool_result_id == "tr-1"
+        assert out.tool_result_is_error is False
+        assert out.result_metadata == {"duration_ms": 1234}
+
+    def test_parse_final_output_empty_stdout(self):
+        """Empty stdout should return error output."""
+        result = _parse_final_output("", "test-container", "", 100)
+        assert result.status == "error"
+
+    def test_parse_final_output_markers_without_json(self):
+        """Markers present but content is not valid JSON."""
+        stdout = f"{OUTPUT_START_MARKER}\nnot json\n{OUTPUT_END_MARKER}"
+        result = _parse_final_output(stdout, "test-container", "", 100)
+        assert result.status == "error"
+        assert "Failed to parse" in (result.error or "")
+
+    def test_parse_final_output_multiple_marker_pairs(self):
+        """When multiple marker pairs exist, uses the first one."""
+        first = json.dumps({"status": "success", "result": "first"})
+        second = json.dumps({"status": "success", "result": "second"})
+        stdout = (
+            f"{OUTPUT_START_MARKER}\n{first}\n{OUTPUT_END_MARKER}\n"
+            f"{OUTPUT_START_MARKER}\n{second}\n{OUTPUT_END_MARKER}"
+        )
+        result = _parse_final_output(stdout, "test-container", "", 100)
+        assert result.status == "success"
+        # Uses the first marker pair
+        assert result.result == "first"
+
+    def test_parse_final_output_fallback_to_last_line(self):
+        """Without markers, falls back to last non-empty line."""
+        last_line = json.dumps({"status": "success", "result": "fallback"})
+        stdout = f"some noise\nmore noise\n{last_line}\n"
+        result = _parse_final_output(stdout, "test-container", "", 100)
+        assert result.status == "success"
+        assert result.result == "fallback"

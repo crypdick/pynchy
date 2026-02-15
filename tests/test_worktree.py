@@ -424,3 +424,69 @@ class TestMergeAndPushWorktree:
 
         # Should complete without error
         merge_and_push_worktree("code-improver")
+
+
+# ---------------------------------------------------------------------------
+# Sequential merge tests (multiple worktrees merging to main)
+# ---------------------------------------------------------------------------
+
+
+class TestSequentialMerges:
+    """Verify that multiple worktrees can merge sequentially without issues.
+
+    Critical scenario: agent-1 merges to main, then agent-2 (which diverged
+    from the pre-merge main) also merges. The rebase-then-merge strategy
+    must handle this correctly.
+    """
+
+    def test_two_worktrees_merge_sequentially(self, git_env: dict):
+        """Two worktrees with non-conflicting changes can merge one after another."""
+        project = git_env["project"]
+
+        # Create two worktrees
+        r1 = ensure_worktree("agent-1")
+        r2 = ensure_worktree("agent-2")
+
+        # Each modifies a different file
+        (r1.path / "agent1.txt").write_text("from agent 1")
+        _git(r1.path, "add", "agent1.txt")
+        _git(r1.path, "config", "user.email", "test@test.com")
+        _git(r1.path, "config", "user.name", "Test")
+        _git(r1.path, "commit", "-m", "agent 1 work")
+
+        (r2.path / "agent2.txt").write_text("from agent 2")
+        _git(r2.path, "add", "agent2.txt")
+        _git(r2.path, "config", "user.email", "test@test.com")
+        _git(r2.path, "config", "user.name", "Test")
+        _git(r2.path, "commit", "-m", "agent 2 work")
+
+        # First merge succeeds
+        assert merge_worktree("agent-1") is True
+        assert (project / "agent1.txt").read_text() == "from agent 1"
+
+        # Second merge succeeds (rebases onto new main first)
+        assert merge_worktree("agent-2") is True
+        assert (project / "agent2.txt").read_text() == "from agent 2"
+
+        # Both files on main
+        assert (project / "agent1.txt").exists()
+        assert (project / "agent2.txt").exists()
+
+    def test_multiple_commits_per_worktree(self, git_env: dict):
+        """A worktree with multiple commits merges all of them."""
+        project = git_env["project"]
+
+        result = ensure_worktree("agent-1")
+        wt_path = result.path
+
+        for i in range(3):
+            (wt_path / f"file{i}.txt").write_text(f"content {i}")
+            _git(wt_path, "add", f"file{i}.txt")
+            _git(wt_path, "config", "user.email", "test@test.com")
+            _git(wt_path, "config", "user.name", "Test")
+            _git(wt_path, "commit", "-m", f"commit {i}")
+
+        assert merge_worktree("agent-1") is True
+
+        for i in range(3):
+            assert (project / f"file{i}.txt").read_text() == f"content {i}"
