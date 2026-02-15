@@ -46,7 +46,7 @@ class ContainerInput:
         self.session_id: str | None = data.get("session_id")
         self.group_folder: str = data["group_folder"]
         self.chat_jid: str = data["chat_jid"]
-        self.is_main: bool = data["is_main"]
+        self.is_god: bool = data["is_god"]
         self.is_scheduled_task: bool = data.get("is_scheduled_task", False)
         self.system_notices: list[str] | None = data.get("system_notices")
         self.project_access: bool = data.get("project_access", False)
@@ -233,11 +233,11 @@ def build_sdk_messages(messages: list[dict[str, Any]]) -> str:
 
 def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
     """Build AgentCoreConfig from ContainerInput."""
-    # Load global CLAUDE.md as additional system context (non-main groups only)
+    # Load global CLAUDE.md as additional system context (non-god groups only)
     global_claude_md_path = Path("/workspace/global/CLAUDE.md")
     system_prompt_append: str | None = None
 
-    if not container_input.is_main and global_claude_md_path.exists():
+    if not container_input.is_god and global_claude_md_path.exists():
         system_prompt_append = global_claude_md_path.read_text()
 
     # Append system notices to system prompt (SDK system messages FOR the LLM)
@@ -262,7 +262,7 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
             "env": {
                 "PYNCHY_CHAT_JID": container_input.chat_jid,
                 "PYNCHY_GROUP_FOLDER": container_input.group_folder,
-                "PYNCHY_IS_MAIN": ("1" if container_input.is_main else "0"),
+                "PYNCHY_IS_GOD": ("1" if container_input.is_god else "0"),
                 "PYNCHY_SESSION_ID": (container_input.session_id or ""),
             },
         },
@@ -282,8 +282,8 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
 
     # Default cwd to the mounted project repo when available, so agents start
     # in the codebase they're working on rather than the group metadata dir.
-    # Main always has /workspace/project; non-main gets it via project_access.
-    has_project = container_input.is_main or container_input.project_access
+    # God always has /workspace/project; non-god gets it via project_access.
+    has_project = container_input.is_god or container_input.project_access
     agent_cwd = "/workspace/project" if has_project else "/workspace/group"
 
     # Build extra config from agent_core_config
@@ -294,7 +294,7 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
         session_id=container_input.session_id,
         group_folder=container_input.group_folder,
         chat_jid=container_input.chat_jid,
-        is_main=container_input.is_main,
+        is_god=container_input.is_god,
         is_scheduled_task=container_input.is_scheduled_task,
         system_prompt_append=system_prompt_append,
         mcp_servers=mcp_servers_dict,

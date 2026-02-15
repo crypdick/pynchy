@@ -25,9 +25,10 @@ WORKTREES_DIR: Path = HOME_DIR / ".config" / "pynchy" / "worktrees"
 STORE_DIR: Path = (PROJECT_ROOT / "store").resolve()
 GROUPS_DIR: Path = (PROJECT_ROOT / "groups").resolve()
 DATA_DIR: Path = (PROJECT_ROOT / "data").resolve()
-MAIN_GROUP_FOLDER: str = "main"
+GOD_GROUP_FOLDER: str = "god"
 
 # Container settings (time values converted from ms to seconds)
+DEFAULT_AGENT_CORE: str = os.environ.get("PYNCHY_AGENT_CORE", "claude")
 CONTAINER_IMAGE: str = os.environ.get("CONTAINER_IMAGE", "pynchy-agent:latest")
 CONTAINER_TIMEOUT: float = int(os.environ.get("CONTAINER_TIMEOUT", "1800000")) / 1000
 CONTAINER_MAX_OUTPUT_SIZE: int = int(
@@ -76,6 +77,16 @@ def is_context_reset(text: str) -> bool:
             a in _RESET_NOUNS and b in _RESET_VERBS
         )
     return False
+
+
+_REDEPLOY_ALIASES = {"r"}
+_REDEPLOY_VERBS = {"redeploy", "deploy"}
+
+
+def is_redeploy(text: str) -> bool:
+    """Check if a message is a manual redeploy command."""
+    word = text.strip().lower()
+    return word in _REDEPLOY_ALIASES or word in _REDEPLOY_VERBS
 
 
 # Timezone for scheduled tasks — uses system IANA timezone by default.

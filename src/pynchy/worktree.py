@@ -1,6 +1,6 @@
 """Git worktree management for container isolation.
 
-Non-main groups with project_access get their own git worktree instead of
+Non-god groups with project_access get their own git worktree instead of
 mounting the shared project root. Worktrees share the git object store
 (near-zero disk overhead) but have fully independent working trees and indexes.
 

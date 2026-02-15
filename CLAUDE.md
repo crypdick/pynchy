@@ -17,7 +17,7 @@ Python process that connects to WhatsApp, routes messages to Claude Agent SDK ru
 | `src/pynchy/group_queue.py` | Per-group queue with global concurrency limit |
 | `src/pynchy/runtime.py` | Container runtime detection (Apple Container / Docker) |
 | `src/pynchy/mount_security.py` | Mount path validation and allowlist |
-| `src/pynchy/worktree.py` | Git worktree isolation for non-main project_access groups |
+| `src/pynchy/worktree.py` | Git worktree isolation for non-god project_access groups |
 | `src/pynchy/task_scheduler.py` | Runs scheduled tasks |
 | `src/pynchy/types.py` | Data models (dataclasses) |
 | `src/pynchy/logger.py` | Structured logging (structlog) |
@@ -48,7 +48,7 @@ All plugin Python code runs on the host during discovery (`__init__`, `validate(
 
 ## Worktree Isolation
 
-Non-main groups with `project_access` (e.g. code-improver) get their own git worktree at `~/.config/pynchy/worktrees/{group}/` instead of mounting the shared project root. This prevents concurrent containers from editing the same files.
+Non-god groups with `project_access` (e.g. code-improver) get their own git worktree at `~/.config/pynchy/worktrees/{group}/` instead of mounting the shared project root. This prevents concurrent containers from editing the same files.
 
 **Sync behavior:** Existing worktrees use best-effort `git fetch` + `git merge`, never `git reset --hard`. A service restart kills all running containers, so agents may leave uncommitted work in their worktree. That state is preserved and reported via system notices so the agent can resume gracefully.
 
@@ -88,6 +88,10 @@ uv run ruff format src/ container/agent_runner/src/       # Format
 uvx pre-commit run --all-files  # Run all pre-commit hooks
 ./container/build.sh     # Rebuild agent container
 ```
+
+## Documentation Lookup
+
+When you need documentation for a library or framework, use the context7 MCP server to get up-to-date docs. Don't rely on training data for API details that may have changed.
 
 ## Testing Philosophy
 
@@ -154,8 +158,10 @@ journalctl --user -u pynchy -f          # Follow logs
 
 The pynchy service runs on `nuc-server` (Intel NUC, headless Ubuntu) over Tailscale. SSH: `ssh nuc-server`, user `ricardo`.
 
+Pushing to `main` is all that's needed — the prod server auto-pulls and restarts the service. No manual deploy required.
+
 ```bash
-# Deploy / restart
+# Manual deploy / restart from HOST only (not from containers — use mcp__pynchy__deploy_changes instead)
 curl -s -X POST http://nuc-server:8484/deploy
 
 # Service status & logs (run on NUC or via ssh)

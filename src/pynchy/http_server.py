@@ -171,7 +171,7 @@ class HttpDeps(Protocol):
 
     async def broadcast_host_message(self, jid: str, text: str) -> None: ...
 
-    def main_chat_jid(self) -> str: ...
+    def god_chat_jid(self) -> str: ...
 
     def channels_connected(self) -> bool: ...
 
@@ -282,7 +282,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
                 cwd=str(PROJECT_ROOT),
                 capture_output=True,
             )
-            chat_jid = deps.main_chat_jid()
+            chat_jid = deps.god_chat_jid()
             if chat_jid:
                 msg = f"Deploy failed — import validation error, rolled back to {old_sha[:8]}."
                 await deps.broadcast_host_message(chat_jid, msg)
@@ -314,7 +314,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
                     "Container rebuild failed",
                     stderr=result.stderr[-500:],
                 )
-                chat_jid = deps.main_chat_jid()
+                chat_jid = deps.god_chat_jid()
                 if chat_jid:
                     msg = "Deploy warning — container rebuild failed, continuing with old image."
                     await deps.broadcast_host_message(chat_jid, msg)
@@ -322,7 +322,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
                 logger.info("Container image rebuilt successfully")
 
     # 6. Restart (write continuation only when new code was deployed)
-    chat_jid = deps.main_chat_jid()
+    chat_jid = deps.god_chat_jid()
     if has_new_code:
         await finalize_deploy(
             broadcast_host_message=deps.broadcast_host_message,

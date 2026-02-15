@@ -1,7 +1,7 @@
 """Tests for mount security — allowed/blocked paths, readonly enforcement.
 
 Deferred from Phase 4. Covers allowlist loading, path validation, blocked patterns,
-and readonly enforcement for main vs. non-main groups.
+and readonly enforcement for god vs. non-god groups.
 """
 
 from __future__ import annotations
@@ -155,7 +155,7 @@ class TestLoadAllowlist:
                         {"path": "~/projects", "allowReadWrite": True, "description": "Dev"},
                     ],
                     "blockedPatterns": ["custom-secret"],
-                    "nonMainReadOnly": True,
+                    "nonGodReadOnly": True,
                 }
             )
         )
@@ -166,7 +166,7 @@ class TestLoadAllowlist:
         assert len(result.allowed_roots) == 1
         assert result.allowed_roots[0].path == "~/projects"
         assert result.allowed_roots[0].allow_read_write is True
-        assert result.non_main_read_only is True
+        assert result.non_god_read_only is True
         # Custom patterns are merged with defaults
         assert "custom-secret" in result.blocked_patterns
         assert ".ssh" in result.blocked_patterns  # default still present
@@ -197,7 +197,7 @@ class TestLoadAllowlist:
                 {
                     "allowedRoots": [],
                     "blockedPatterns": [],
-                    "nonMainReadOnly": True,
+                    "nonGodReadOnly": True,
                 }
             )
         )
@@ -214,7 +214,7 @@ class TestLoadAllowlist:
 
 class TestValidateMount:
     def _write_allowlist(
-        self, tmp_path: Path, *, roots: list[dict], non_main_read_only: bool = True
+        self, tmp_path: Path, *, roots: list[dict], non_god_read_only: bool = True
     ):
         """Write an allowlist file and return its path."""
         allowlist_file = tmp_path / "allowlist.json"
@@ -223,7 +223,7 @@ class TestValidateMount:
                 {
                     "allowedRoots": roots,
                     "blockedPatterns": [],
-                    "nonMainReadOnly": non_main_read_only,
+                    "nonGodReadOnly": non_god_read_only,
                 }
             )
         )
@@ -241,7 +241,7 @@ class TestValidateMount:
         with patch("pynchy.mount_security.MOUNT_ALLOWLIST_PATH", allowlist_file):
             result = validate_mount(
                 AdditionalMount(host_path=str(target), container_path="myfile"),
-                is_main=True,
+                is_god=True,
             )
         assert result.allowed is True
 
@@ -257,7 +257,7 @@ class TestValidateMount:
         with patch("pynchy.mount_security.MOUNT_ALLOWLIST_PATH", allowlist_file):
             result = validate_mount(
                 AdditionalMount(host_path=str(outside), container_path="outside"),
-                is_main=True,
+                is_god=True,
             )
         assert result.allowed is False
         assert "not under any allowed root" in result.reason
@@ -273,7 +273,7 @@ class TestValidateMount:
         with patch("pynchy.mount_security.MOUNT_ALLOWLIST_PATH", allowlist_file):
             result = validate_mount(
                 AdditionalMount(host_path=str(ssh_dir), container_path="ssh-keys"),
-                is_main=True,
+                is_god=True,
             )
         assert result.allowed is False
         assert ".ssh" in result.reason
@@ -285,7 +285,7 @@ class TestValidateMount:
         with patch("pynchy.mount_security.MOUNT_ALLOWLIST_PATH", allowlist_file):
             result = validate_mount(
                 AdditionalMount(host_path=str(tmp_path / "ghost"), container_path="ghost"),
-                is_main=True,
+                is_god=True,
             )
         assert result.allowed is False
         assert "does not exist" in result.reason
@@ -294,7 +294,7 @@ class TestValidateMount:
         with patch("pynchy.mount_security.MOUNT_ALLOWLIST_PATH", tmp_path / "nope.json"):
             result = validate_mount(
                 AdditionalMount(host_path="/some/path", container_path="x"),
-                is_main=True,
+                is_god=True,
             )
         assert result.allowed is False
         assert "No mount allowlist" in result.reason
@@ -308,7 +308,7 @@ class TestValidateMount:
         with patch("pynchy.mount_security.MOUNT_ALLOWLIST_PATH", allowlist_file):
             result = validate_mount(
                 AdditionalMount(host_path=str(target), container_path="../escape"),
-                is_main=True,
+                is_god=True,
             )
         assert result.allowed is False
         assert "Invalid container path" in result.reason
@@ -322,7 +322,7 @@ class TestValidateMount:
         with patch("pynchy.mount_security.MOUNT_ALLOWLIST_PATH", allowlist_file):
             result = validate_mount(
                 AdditionalMount(host_path=str(target)),  # no container_path
-                is_main=True,
+                is_god=True,
             )
         assert result.allowed is True
         assert result.resolved_container_path == "mydata"
@@ -334,7 +334,7 @@ class TestValidateMount:
 
 
 class TestReadonlyEnforcement:
-    def _setup_allowlist(self, tmp_path: Path, *, allow_read_write: bool, non_main_read_only: bool):
+    def _setup_allowlist(self, tmp_path: Path, *, allow_read_write: bool, non_god_read_only: bool):
         """Create dirs and allowlist for readonly tests."""
         target = tmp_path / "data"
         target.mkdir()
@@ -346,69 +346,69 @@ class TestReadonlyEnforcement:
                         {"path": str(tmp_path), "allowReadWrite": allow_read_write},
                     ],
                     "blockedPatterns": [],
-                    "nonMainReadOnly": non_main_read_only,
+                    "nonGodReadOnly": non_god_read_only,
                 }
             )
         )
         return target, allowlist_file
 
-    def test_main_group_can_get_readwrite_when_root_allows(self, tmp_path: Path):
+    def test_god_group_can_get_readwrite_when_root_allows(self, tmp_path: Path):
         target, allowlist_file = self._setup_allowlist(
-            tmp_path, allow_read_write=True, non_main_read_only=True
+            tmp_path, allow_read_write=True, non_god_read_only=True
         )
         with patch("pynchy.mount_security.MOUNT_ALLOWLIST_PATH", allowlist_file):
             result = validate_mount(
                 AdditionalMount(host_path=str(target), container_path="data", readonly=False),
-                is_main=True,
+                is_god=True,
             )
         assert result.allowed is True
         assert result.effective_readonly is False
 
-    def test_nonmain_forced_readonly_when_non_main_read_only_is_true(self, tmp_path: Path):
+    def test_nongod_forced_readonly_when_non_god_read_only_is_true(self, tmp_path: Path):
         target, allowlist_file = self._setup_allowlist(
-            tmp_path, allow_read_write=True, non_main_read_only=True
+            tmp_path, allow_read_write=True, non_god_read_only=True
         )
         with patch("pynchy.mount_security.MOUNT_ALLOWLIST_PATH", allowlist_file):
             result = validate_mount(
                 AdditionalMount(host_path=str(target), container_path="data", readonly=False),
-                is_main=False,
+                is_god=False,
             )
         assert result.allowed is True
-        assert result.effective_readonly is True  # Forced readonly for non-main
+        assert result.effective_readonly is True  # Forced readonly for non-god
 
-    def test_nonmain_can_get_readwrite_when_non_main_read_only_is_false(self, tmp_path: Path):
+    def test_nongod_can_get_readwrite_when_non_god_read_only_is_false(self, tmp_path: Path):
         target, allowlist_file = self._setup_allowlist(
-            tmp_path, allow_read_write=True, non_main_read_only=False
+            tmp_path, allow_read_write=True, non_god_read_only=False
         )
         with patch("pynchy.mount_security.MOUNT_ALLOWLIST_PATH", allowlist_file):
             result = validate_mount(
                 AdditionalMount(host_path=str(target), container_path="data", readonly=False),
-                is_main=False,
+                is_god=False,
             )
         assert result.allowed is True
         assert result.effective_readonly is False
 
     def test_root_without_readwrite_forces_readonly(self, tmp_path: Path):
         target, allowlist_file = self._setup_allowlist(
-            tmp_path, allow_read_write=False, non_main_read_only=False
+            tmp_path, allow_read_write=False, non_god_read_only=False
         )
         with patch("pynchy.mount_security.MOUNT_ALLOWLIST_PATH", allowlist_file):
             result = validate_mount(
                 AdditionalMount(host_path=str(target), container_path="data", readonly=False),
-                is_main=True,
+                is_god=True,
             )
         assert result.allowed is True
         assert result.effective_readonly is True  # Root doesn't allow rw
 
     def test_default_readonly_when_not_explicitly_readwrite(self, tmp_path: Path):
         target, allowlist_file = self._setup_allowlist(
-            tmp_path, allow_read_write=True, non_main_read_only=False
+            tmp_path, allow_read_write=True, non_god_read_only=False
         )
         with patch("pynchy.mount_security.MOUNT_ALLOWLIST_PATH", allowlist_file):
             # readonly=True (default)
             result = validate_mount(
                 AdditionalMount(host_path=str(target), container_path="data", readonly=True),
-                is_main=True,
+                is_god=True,
             )
         assert result.allowed is True
         assert result.effective_readonly is True
@@ -434,7 +434,7 @@ class TestValidateAdditionalMounts:
                         {"path": str(allowed_dir), "allowReadWrite": True},
                     ],
                     "blockedPatterns": [],
-                    "nonMainReadOnly": True,
+                    "nonGodReadOnly": True,
                 }
             )
         )
@@ -444,7 +444,7 @@ class TestValidateAdditionalMounts:
             AdditionalMount(host_path="/nonexistent/path", container_path="bad"),
         ]
         with patch("pynchy.mount_security.MOUNT_ALLOWLIST_PATH", allowlist_file):
-            result = validate_additional_mounts(mounts, "TestGroup", is_main=True)
+            result = validate_additional_mounts(mounts, "TestGroup", is_god=True)
 
         assert len(result) == 1
         assert result[0]["containerPath"] == "/workspace/extra/good"
@@ -456,12 +456,12 @@ class TestValidateAdditionalMounts:
                 {
                     "allowedRoots": [],
                     "blockedPatterns": [],
-                    "nonMainReadOnly": True,
+                    "nonGodReadOnly": True,
                 }
             )
         )
         with patch("pynchy.mount_security.MOUNT_ALLOWLIST_PATH", allowlist_file):
-            result = validate_additional_mounts([], "TestGroup", is_main=True)
+            result = validate_additional_mounts([], "TestGroup", is_god=True)
         assert result == []
 
 
@@ -476,4 +476,4 @@ class TestGenerateTemplate:
         data = json.loads(template)
         assert "allowedRoots" in data
         assert "blockedPatterns" in data
-        assert "nonMainReadOnly" in data
+        assert "nonGodReadOnly" in data

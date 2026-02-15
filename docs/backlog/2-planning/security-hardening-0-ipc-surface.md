@@ -26,7 +26,7 @@ The IPC channel is an intentional hole through container isolation. Currently it
 - `register_group`: container creates new groups with arbitrary config
 - `create_periodic_agent`: container creates persistent agents with arbitrary persona
 
-The authorization checks only verify source group, not content. A jailbroken agent in the main group could craft malicious IPC payloads with no content validation.
+The authorization checks only verify source group, not content. A jailbroken agent in the god group could craft malicious IPC payloads with no content validation.
 
 ### Design principle
 

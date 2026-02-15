@@ -30,9 +30,9 @@ class TestAgentCoreProtocol:
         config = AgentCoreConfig(
             cwd="/workspace/project",
             session_id="test-session-123",
-            group_folder="main",
+            group_folder="god",
             chat_jid="test@g.us",
-            is_main=True,
+            is_god=True,
             is_scheduled_task=False,
             system_prompt_append="Test system prompt",
             mcp_servers={"pynchy": {"command": "python", "args": ["-m", "test"], "env": {}}},
@@ -42,7 +42,7 @@ class TestAgentCoreProtocol:
 
         assert config.cwd == "/workspace/project"
         assert config.session_id == "test-session-123"
-        assert config.is_main is True
+        assert config.is_god is True
         assert config.extra["model"] == "claude-3-5-sonnet-20241022"
 
     def test_agent_core_config_defaults(self):
@@ -52,7 +52,7 @@ class TestAgentCoreProtocol:
             session_id=None,
             group_folder="test-group",
             chat_jid="test@g.us",
-            is_main=False,
+            is_god=False,
             is_scheduled_task=True,
         )
 
@@ -94,9 +94,9 @@ class TestAgentCoreRegistry:
         config = AgentCoreConfig(
             cwd="/workspace/project",
             session_id=None,
-            group_folder="main",
+            group_folder="god",
             chat_jid="test@g.us",
-            is_main=True,
+            is_god=True,
             is_scheduled_task=False,
         )
 
@@ -112,9 +112,9 @@ class TestAgentCoreRegistry:
         config = AgentCoreConfig(
             cwd="/workspace/project",
             session_id=None,
-            group_folder="main",
+            group_folder="god",
             chat_jid="test@g.us",
-            is_main=True,
+            is_god=True,
             is_scheduled_task=False,
         )
 
@@ -126,9 +126,9 @@ class TestAgentCoreRegistry:
         config = AgentCoreConfig(
             cwd="/workspace/project",
             session_id=None,
-            group_folder="main",
+            group_folder="god",
             chat_jid="test@g.us",
-            is_main=True,
+            is_god=True,
             is_scheduled_task=False,
         )
 
@@ -179,7 +179,7 @@ class TestContainerInputAgentCore:
             messages=[],
             group_folder="test",
             chat_jid="test@g.us",
-            is_main=True,
+            is_god=True,
             agent_core_module="pynchy_core_openai.core",
             agent_core_class="OpenAIAgentCore",
             agent_core_config={"model": "gpt-4"},
@@ -197,7 +197,7 @@ class TestContainerInputAgentCore:
             messages=[],
             group_folder="test",
             chat_jid="test@g.us",
-            is_main=True,
+            is_god=True,
         )
 
         assert input_data.agent_core_module == "agent_runner.cores.claude"
@@ -217,7 +217,7 @@ class TestAgentCorePlugin:
 
         # Test that hook is callable
         cores = pm.hook.pynchy_agent_core_info()
-        assert len(cores) >= 1
+        assert len(cores) >= 2
 
         # Verify Claude plugin is registered
         claude_core = next((c for c in cores if c["name"] == "claude"), None)

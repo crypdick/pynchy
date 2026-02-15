@@ -77,8 +77,8 @@ def load_mount_allowlist() -> MountAllowlist | None:
             raise ValueError("allowedRoots must be an array")
         if not isinstance(data.get("blockedPatterns"), list):
             raise ValueError("blockedPatterns must be an array")
-        if not isinstance(data.get("nonMainReadOnly"), bool):
-            raise ValueError("nonMainReadOnly must be a boolean")
+        if not isinstance(data.get("nonGodReadOnly"), bool):
+            raise ValueError("nonGodReadOnly must be a boolean")
 
         allowed_roots = [
             AllowedRoot(
@@ -95,7 +95,7 @@ def load_mount_allowlist() -> MountAllowlist | None:
         allowlist = MountAllowlist(
             allowed_roots=allowed_roots,
             blocked_patterns=merged_blocked,
-            non_main_read_only=data["nonMainReadOnly"],
+            non_god_read_only=data["nonGodReadOnly"],
         )
 
         _cached_allowlist = allowlist
@@ -186,7 +186,7 @@ class MountValidationResult:
     effective_readonly: bool | None = None
 
 
-def validate_mount(mount: AdditionalMount, is_main: bool) -> MountValidationResult:
+def validate_mount(mount: AdditionalMount, is_god: bool) -> MountValidationResult:
     """Validate a single additional mount against the allowlist."""
     allowlist = load_mount_allowlist()
 
@@ -237,10 +237,10 @@ def validate_mount(mount: AdditionalMount, is_main: bool) -> MountValidationResu
     effective_readonly = True  # Default to readonly
 
     if requested_read_write:
-        if not is_main and allowlist.non_main_read_only:
+        if not is_god and allowlist.non_god_read_only:
             effective_readonly = True
             logger.info(
-                "Mount forced to read-only for non-main group",
+                "Mount forced to read-only for non-god group",
                 mount=mount.host_path,
             )
         elif not allowed_root.allow_read_write:
@@ -264,7 +264,7 @@ def validate_mount(mount: AdditionalMount, is_main: bool) -> MountValidationResu
 
 
 def validate_additional_mounts(
-    mounts: list[AdditionalMount], group_name: str, is_main: bool
+    mounts: list[AdditionalMount], group_name: str, is_god: bool
 ) -> list[dict[str, str | bool]]:
     """Validate all additional mounts for a group.
 
@@ -273,7 +273,7 @@ def validate_additional_mounts(
     validated: list[dict[str, str | bool]] = []
 
     for mount in mounts:
-        result = validate_mount(mount, is_main)
+        result = validate_mount(mount, is_god)
 
         if result.allowed:
             validated.append(
@@ -324,6 +324,6 @@ def generate_allowlist_template() -> str:
             },
         ],
         "blockedPatterns": ["password", "secret", "token"],
-        "nonMainReadOnly": True,
+        "nonGodReadOnly": True,
     }
     return json.dumps(template, indent=2)

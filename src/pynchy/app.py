@@ -30,14 +30,16 @@ from pynchy.adapters import (
 from pynchy.config import (
     ASSISTANT_NAME,
     DATA_DIR,
+    DEFAULT_AGENT_CORE,
     DEPLOY_PORT,
+    GOD_GROUP_FOLDER,
     GROUPS_DIR,
     IDLE_TIMEOUT,
-    MAIN_GROUP_FOLDER,
     POLL_INTERVAL,
     PROJECT_ROOT,
     TRIGGER_PATTERN,
     is_context_reset,
+    is_redeploy,
 )
 from pynchy.container_runner import (
     run_container_agent,
@@ -382,8 +384,8 @@ class PynchyApp:
     # First-run setup
     # ------------------------------------------------------------------
 
-    async def _setup_main_group(self, whatsapp: Any) -> None:
-        """Create a new WhatsApp group and register it as the main channel.
+    async def _setup_god_group(self, whatsapp: Any) -> None:
+        """Create a new WhatsApp group and register it as the god channel.
 
         Called on first run when no groups are registered. Creates a private
         group so the user has a dedicated space to talk to the agent.
@@ -393,11 +395,11 @@ class PynchyApp:
 
         jid = await whatsapp.create_group(group_name)
 
-        # Create main workspace with default security profile
+        # Create god workspace with default security profile
         profile = WorkspaceProfile(
             jid=jid,
             name=group_name,
-            folder=MAIN_GROUP_FOLDER,
+            folder=GOD_GROUP_FOLDER,
             trigger=f"@{ASSISTANT_NAME}",
             added_at=datetime.now(UTC).isoformat(),
             requires_trigger=False,
@@ -405,7 +407,7 @@ class PynchyApp:
         )
         await self._register_workspace(profile)
         logger.info(
-            "Main channel created! Open the group in WhatsApp to start chatting.",
+            "God channel created! Open the group in WhatsApp to start chatting.",
             group=group_name,
             jid=jid,
         )
@@ -523,7 +525,7 @@ class PynchyApp:
             )
             return True
 
-        is_main_group = group.folder == MAIN_GROUP_FOLDER
+        is_god_group = group.folder == GOD_GROUP_FOLDER
         since_timestamp = self.last_agent_timestamp.get(chat_jid, "")
         missed_messages = await get_messages_since(chat_jid, since_timestamp)
 
@@ -531,7 +533,7 @@ class PynchyApp:
             return True
 
         # For non-main groups, check if trigger is required and present
-        if not is_main_group and group.requires_trigger is not False:
+        if not is_god_group and group.requires_trigger is not False:
             has_trigger = any(TRIGGER_PATTERN.search(m.content.strip()) for m in missed_messages)
             if not has_trigger:
                 return True
@@ -542,7 +544,7 @@ class PynchyApp:
             from pynchy.periodic import load_periodic_config as _load_periodic
 
             _periodic = _load_periodic(group.folder)
-            if is_main_group or (_periodic and _periodic.project_access):
+            if is_god_group or (_periodic and _periodic.project_access):
                 asyncio.create_task(asyncio.to_thread(_merge_and_push_worktree, group.folder))
 
             self.sessions.pop(group.folder, None)
@@ -553,6 +555,13 @@ class PynchyApp:
             await self._save_state()
             await self._send_clear_confirmation(chat_jid)
             logger.info("Context reset", group=group.name)
+            return True
+
+        # Check if the last message is a manual redeploy command
+        if is_redeploy(missed_messages[-1].content):
+            self.last_agent_timestamp[chat_jid] = missed_messages[-1].timestamp
+            await self._save_state()
+            await self._trigger_manual_redeploy(chat_jid)
             return True
 
         # Check if the last message is a direct command execution (!command syntax)
@@ -573,7 +582,7 @@ class PynchyApp:
         # Check if we need to add dirty repo warning after context reset
         reset_system_notices: list[str] = []
         dirty_check_file = DATA_DIR / "ipc" / group.folder / "needs_dirty_check.json"
-        if dirty_check_file.exists() and is_main_group:
+        if dirty_check_file.exists() and is_god_group:
             try:
                 dirty_check_file.unlink()
                 # Check if repo is dirty
@@ -684,7 +693,7 @@ class PynchyApp:
         from pynchy.periodic import load_periodic_config as _load_periodic
 
         _periodic = _load_periodic(group.folder)
-        _project_access = is_main_group or (_periodic.project_access if _periodic else False)
+        _project_access = is_god_group or (_periodic.project_access if _periodic else False)
         if _project_access:
             asyncio.create_task(asyncio.to_thread(_merge_and_push_worktree, group.folder))
 
@@ -963,16 +972,16 @@ class PynchyApp:
         """Run the container agent for a group. Returns 'success' or 'error'."""
         from pynchy.periodic import load_periodic_config
 
-        is_main = group.folder == MAIN_GROUP_FOLDER
+        is_god = group.folder == GOD_GROUP_FOLDER
         periodic_config = load_periodic_config(group.folder)
-        project_access = is_main or (periodic_config.project_access if periodic_config else False)
+        project_access = is_god or (periodic_config.project_access if periodic_config else False)
         session_id = self.sessions.get(group.folder)
 
         # Update snapshots for container to read
         tasks = await get_all_tasks()
         write_tasks_snapshot(
             group.folder,
-            is_main,
+            is_god,
             [
                 {
                     "id": t.id,
@@ -990,7 +999,7 @@ class PynchyApp:
         available_groups = await self.get_available_groups()
         write_groups_snapshot(
             group.folder,
-            is_main,
+            is_god,
             available_groups,
             set(self.registered_groups.keys()),
         )
@@ -1006,7 +1015,7 @@ class PynchyApp:
         # Build system notices for the LLM (SDK system messages, NOT host messages)
         # These are sent TO the LLM as context, distinct from operational host messages
         system_notices: list[str] = []
-        if is_main:
+        if is_god:
             dirty = subprocess.run(
                 ["git", "status", "--porcelain"],
                 cwd=str(PROJECT_ROOT),
@@ -1049,14 +1058,16 @@ class PynchyApp:
         # messages contains the persistent conversation history (with message types)
         # The container appends system_notices to the SDK system_prompt parameter
 
-        # Look up agent core plugin (default to Claude if not found)
+        # Look up agent core plugin by configured name
         agent_core_module = "agent_runner.cores.claude"
         agent_core_class = "ClaudeAgentCore"
         if self.plugin_manager:
-            # Use first agent core plugin (in the future, support per-group config)
             cores = self.plugin_manager.hook.pynchy_agent_core_info()
-            if cores:
+            desired = DEFAULT_AGENT_CORE
+            core_info = next((c for c in cores if c["name"] == desired), None)
+            if core_info is None and cores:
                 core_info = cores[0]
+            if core_info:
                 agent_core_module = core_info["module"]
                 agent_core_class = core_info["class_name"]
 
@@ -1068,7 +1079,7 @@ class PynchyApp:
                     session_id=session_id,
                     group_folder=group.folder,
                     chat_jid=chat_jid,
-                    is_main=is_main,
+                    is_god=is_god,
                     system_notices=system_notices or None,
                     project_access=project_access,
                     agent_core_module=agent_core_module,
@@ -1133,8 +1144,8 @@ class PynchyApp:
                         if not group:
                             continue
 
-                        is_main_group = group.folder == MAIN_GROUP_FOLDER
-                        needs_trigger = not is_main_group and group.requires_trigger is not False
+                        is_god_group = group.folder == GOD_GROUP_FOLDER
+                        needs_trigger = not is_god_group and group.requires_trigger is not False
 
                         if needs_trigger:
                             has_trigger = any(
@@ -1160,7 +1171,7 @@ class PynchyApp:
                             from pynchy.periodic import load_periodic_config as _lpc
 
                             _pc = _lpc(group.folder)
-                            if is_main_group or (_pc and _pc.project_access):
+                            if is_god_group or (_pc and _pc.project_access):
                                 asyncio.create_task(
                                     asyncio.to_thread(_merge_and_push_worktree, group.folder)
                                 )
@@ -1173,6 +1184,13 @@ class PynchyApp:
                             await self._save_state()
                             await self._send_clear_confirmation(chat_jid)
                             logger.info("Context reset (active container)", group=group.name)
+                            continue
+
+                        # Intercept redeploy commands
+                        if is_redeploy(all_pending[-1].content):
+                            self.last_agent_timestamp[chat_jid] = all_pending[-1].timestamp
+                            await self._save_state()
+                            await self._trigger_manual_redeploy(chat_jid)
                             continue
 
                         # Format messages as plain text for IPC piping
@@ -1203,12 +1221,12 @@ class PynchyApp:
             await asyncio.sleep(POLL_INTERVAL)
 
     async def _send_boot_notification(self) -> None:
-        """Send a system message to the main channel on startup."""
-        main_jid = next(
-            (jid for jid, g in self.registered_groups.items() if g.folder == MAIN_GROUP_FOLDER),
+        """Send a system message to the god channel on startup."""
+        god_jid = next(
+            (jid for jid, g in self.registered_groups.items() if g.folder == GOD_GROUP_FOLDER),
             None,
         )
-        if not main_jid:
+        if not god_jid:
             return
 
         sha = _get_head_sha()[:8]
@@ -1238,7 +1256,7 @@ class PynchyApp:
             except Exception:
                 boot_warnings_path.unlink(missing_ok=True)
 
-        await self._broadcast_host_message(main_jid, "\n".join(parts))
+        await self._broadcast_host_message(god_jid, "\n".join(parts))
         logger.info("Boot notification sent")
 
     async def _recover_pending_messages(self) -> None:
@@ -1444,6 +1462,20 @@ class PynchyApp:
 
         await self._broadcast_host_message(chat_jid, "🗑️")
 
+    async def _trigger_manual_redeploy(self, chat_jid: str) -> None:
+        """Handle a manual redeploy command — restart the service in-place."""
+        from pynchy.deploy import finalize_deploy
+        from pynchy.http_server import _get_head_sha
+
+        sha = _get_head_sha()
+        logger.info("Manual redeploy triggered via magic word", chat_jid=chat_jid)
+        await finalize_deploy(
+            broadcast_host_message=self._broadcast_host_message,
+            chat_jid=chat_jid,
+            commit_sha=sha,
+            previous_sha=sha,
+        )
+
     def _find_channel(self, jid: str) -> Channel | None:
         """Find the channel that owns a given JID."""
         for c in self.channels:
@@ -1580,9 +1612,9 @@ class PynchyApp:
                 await self._auto_rollback(continuation_path, exc)
             raise
 
-        # First-run: create a private group and register as main channel
+        # First-run: create a private group and register as god channel
         if not self.registered_groups:
-            await self._setup_main_group(whatsapp)
+            await self._setup_god_group(whatsapp)
 
         # Create and connect plugin channels
         await self._connect_plugin_channels()
@@ -1660,7 +1692,7 @@ class PynchyApp:
         class HttpDeps:
             send_message = broadcaster.send_message
             broadcast_host_message = host_broadcaster.broadcast_host_message
-            main_chat_jid = group_registry.main_chat_jid
+            god_chat_jid = group_registry.god_chat_jid
             channels_connected = metadata_manager.channels_connected
             get_groups = metadata_manager.get_groups
             get_messages = user_message_handler.get_messages
@@ -1726,8 +1758,8 @@ class PynchyApp:
             def registered_groups(self_inner) -> dict[str, Any]:
                 return group_registry.registered_groups()
 
-            async def trigger_deploy(self_inner) -> None:
-                chat_jid = group_registry.main_chat_jid()
+            async def trigger_deploy(self_inner, previous_sha: str) -> None:
+                chat_jid = group_registry.god_chat_jid()
                 if chat_jid:
                     await host_broadcaster.broadcast_host_message(
                         chat_jid,
@@ -1759,7 +1791,7 @@ class PynchyApp:
                     broadcast_host_message=host_broadcaster.broadcast_host_message,
                     chat_jid=chat_jid,
                     commit_sha=_get_head_sha(),
-                    previous_sha=_get_head_sha(),
+                    previous_sha=previous_sha,
                 )
 
         return GitSyncDeps()

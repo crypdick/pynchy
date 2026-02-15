@@ -115,8 +115,8 @@ Expected structure:
 /workspace/
 ├── env-dir/env           # Environment file (CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY)
 ├── group/                # Current group folder (cwd)
-├── project/              # Project root (main channel only)
-├── global/               # Global CLAUDE.md (non-main only)
+├── project/              # Project root (god channel only)
+├── global/               # Global CLAUDE.md (non-god only)
 ├── ipc/                  # Inter-process communication
 │   ├── messages/         # Outgoing WhatsApp messages
 │   ├── tasks/            # Scheduled task commands
@@ -300,7 +300,7 @@ ls -la data/ipc/tasks/
 # Read a specific IPC file
 cat data/ipc/messages/*.json
 
-# Check available groups (main channel only)
+# Check available groups (god channel only)
 cat data/ipc/main/available_groups.json
 
 # Check current tasks snapshot

@@ -109,7 +109,7 @@ uv run pynchy
 ```
 
 On first run, Pynchy will:
-- Create a private WhatsApp group for your main channel
+- Create a private WhatsApp group for your god channel
 - Install a systemd user service (`~/.config/systemd/user/pynchy.service`)
 - Enable the service for auto-start on boot
 - Enable user lingering (so the service runs without an active login session)

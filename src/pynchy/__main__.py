@@ -57,6 +57,11 @@ def _build() -> None:
 
 
 def main() -> None:
+    # Load .env before any config imports read os.environ
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
     parser = argparse.ArgumentParser(
         prog="pynchy",
         description="Personal Claude assistant on WhatsApp",

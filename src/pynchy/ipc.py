@@ -18,9 +18,9 @@ from croniter import croniter
 from pynchy.config import (
     ASSISTANT_NAME,
     DATA_DIR,
+    GOD_GROUP_FOLDER,
     GROUPS_DIR,
     IPC_POLL_INTERVAL,
-    MAIN_GROUP_FOLDER,
     PROJECT_ROOT,
     TIMEZONE,
 )
@@ -49,7 +49,7 @@ class IpcDeps(Protocol):
     def write_groups_snapshot(
         self,
         group_folder: str,
-        is_main: bool,
+        is_god: bool,
         available_groups: list[Any],
         registered_jids: set[str],
     ) -> None: ...
@@ -90,7 +90,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
         registered_groups = deps.registered_groups()
 
         for source_group in group_folders:
-            is_main = source_group == MAIN_GROUP_FOLDER
+            is_god = source_group == GOD_GROUP_FOLDER
             messages_dir = ipc_base_dir / source_group / "messages"
             tasks_dir = ipc_base_dir / source_group / "tasks"
 
@@ -107,9 +107,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
                                 and data.get("text")
                             ):
                                 target_group = registered_groups.get(data["chatJid"])
-                                if is_main or (
-                                    target_group and target_group.folder == source_group
-                                ):
+                                if is_god or (target_group and target_group.folder == source_group):
                                     await deps.send_message(
                                         data["chatJid"],
                                         f"{ASSISTANT_NAME}: {data['text']}",
@@ -150,7 +148,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
                     for file_path in task_files:
                         try:
                             data = json.loads(file_path.read_text())
-                            await process_task_ipc(data, source_group, is_main, deps)
+                            await process_task_ipc(data, source_group, is_god, deps)
                             file_path.unlink()
                         except Exception as exc:
                             logger.error(
@@ -177,7 +175,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
 async def process_task_ipc(
     data: dict[str, Any],
     source_group: str,
-    is_main: bool,
+    is_god: bool,
     deps: IpcDeps,
 ) -> None:
     """Process a single IPC task command."""
@@ -203,8 +201,8 @@ async def process_task_ipc(
 
             target_folder = target_group_entry.folder
 
-            # Authorization: non-main groups can only schedule for themselves
-            if not is_main and target_folder != source_group:
+            # Authorization: non-god groups can only schedule for themselves
+            if not is_god and target_folder != source_group:
                 logger.warning(
                     "Unauthorized schedule_task attempt blocked",
                     source_group=source_group,
@@ -275,7 +273,7 @@ async def process_task_ipc(
             task_id = data.get("taskId")
             if task_id:
                 task = await get_task_by_id(task_id)
-                if task and (is_main or task.group_folder == source_group):
+                if task and (is_god or task.group_folder == source_group):
                     await update_task(task_id, {"status": "paused"})
                     logger.info(
                         "Task paused via IPC",
@@ -293,7 +291,7 @@ async def process_task_ipc(
             task_id = data.get("taskId")
             if task_id:
                 task = await get_task_by_id(task_id)
-                if task and (is_main or task.group_folder == source_group):
+                if task and (is_god or task.group_folder == source_group):
                     await update_task(task_id, {"status": "active"})
                     logger.info(
                         "Task resumed via IPC",
@@ -311,7 +309,7 @@ async def process_task_ipc(
             task_id = data.get("taskId")
             if task_id:
                 task = await get_task_by_id(task_id)
-                if task and (is_main or task.group_folder == source_group):
+                if task and (is_god or task.group_folder == source_group):
                     await delete_task(task_id)
                     logger.info(
                         "Task cancelled via IPC",
@@ -326,7 +324,7 @@ async def process_task_ipc(
                     )
 
         case "refresh_groups":
-            if is_main:
+            if is_god:
                 logger.info(
                     "Group metadata refresh requested via IPC",
                     source_group=source_group,
@@ -346,7 +344,7 @@ async def process_task_ipc(
                 )
 
         case "deploy":
-            if not is_main:
+            if not is_god:
                 logger.warning(
                     "Unauthorized deploy attempt",
                     source_group=source_group,
@@ -409,7 +407,7 @@ async def process_task_ipc(
             )
 
         case "create_periodic_agent":
-            if not is_main:
+            if not is_god:
                 logger.warning(
                     "Unauthorized create_periodic_agent attempt blocked",
                     source_group=source_group,
@@ -434,7 +432,7 @@ async def process_task_ipc(
                     def registered_groups(self) -> dict[str, RegisteredGroup]:
                         return deps.registered_groups()
 
-                    async def trigger_deploy(self) -> None:
+                    async def trigger_deploy(self, previous_sha: str) -> None:
                         pass  # not used for post-sync broadcast
 
                 await host_notify_worktree_updates(source_group, _GitSyncAdapter())
@@ -552,7 +550,7 @@ async def process_task_ipc(
                 )
 
         case "register_group":
-            if not is_main:
+            if not is_god:
                 logger.warning(
                     "Unauthorized register_group attempt blocked",
                     source_group=source_group,
@@ -592,7 +590,7 @@ async def _handle_deploy(
     source_group: str,
     deps: IpcDeps,
 ) -> None:
-    """Handle a deploy request from the main group agent.
+    """Handle a deploy request from the god group agent.
 
     The agent is responsible for git add/commit before calling deploy.
     This handler reads the current HEAD (for rollback), optionally rebuilds
@@ -607,20 +605,20 @@ async def _handle_deploy(
     session_id = data.get("sessionId", "")
     chat_jid = data.get("chatJid", "")
 
-    # Fall back to looking up the main group's JID from registered groups.
+    # Fall back to looking up the god group's JID from registered groups.
     # The container's MCP env may not propagate PYNCHY_CHAT_JID reliably,
-    # and deploys are already restricted to the main group (checked above).
+    # and deploys are already restricted to the god group (checked above).
     if not chat_jid:
         groups = deps.registered_groups()
         chat_jid = next(
-            (jid for jid, g in groups.items() if g.folder == MAIN_GROUP_FOLDER),
+            (jid for jid, g in groups.items() if g.folder == GOD_GROUP_FOLDER),
             "",
         )
         if not chat_jid:
-            logger.error("Deploy request missing chatJid and no main group registered")
+            logger.error("Deploy request missing chatJid and no god group registered")
             return
         logger.warning(
-            "Deploy request missing chatJid, resolved from main group",
+            "Deploy request missing chatJid, resolved from god group",
             chat_jid=chat_jid,
         )
 
@@ -663,7 +661,7 @@ async def _deploy_error(
     chat_jid: str,
     message: str,
 ) -> None:
-    """Send a deploy error message back to the main group."""
+    """Send a deploy error message back to the god group."""
     logger.error("Deploy failed", error=message)
     await deps.broadcast_host_message(chat_jid, f"Deploy failed: {message}")
 
