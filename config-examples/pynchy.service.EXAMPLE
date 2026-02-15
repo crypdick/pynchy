@@ -1,0 +1,17 @@
+# Example systemd service file for Pynchy. Replace <PROJECT_DIR> and <USER_HOME> with the actual values.
+[Unit]
+Description=Pynchy personal assistant
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=<PROJECT_DIR>
+ExecStart=<USER_HOME>/.local/bin/uv run pynchy
+Restart=always
+RestartSec=10
+Environment=HOME=<USER_HOME>
+Environment=PATH=<USER_HOME>/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target

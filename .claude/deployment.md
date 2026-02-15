@@ -35,6 +35,8 @@ systemctl --user restart pynchy
 journalctl --user -u pynchy -f          # Follow logs
 ```
 
+Systemd unit template: `config-examples/pynchy.service.EXAMPLE`
+
 ## Container GitHub Access
 
 Container agents get GitHub credentials auto-forwarded from the host's `gh` CLI. To set up on a new host:
