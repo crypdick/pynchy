@@ -63,7 +63,7 @@ def ensure_container_system_running() -> None:
     # Kill orphaned containers from previous runs
     orphans = runtime.list_running_containers("pynchy-")
     for name in orphans:
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
             subprocess.run(
                 [runtime.cli, "stop", name],
                 capture_output=True,

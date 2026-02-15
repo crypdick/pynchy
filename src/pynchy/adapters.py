@@ -8,16 +8,22 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from pynchy.db import clear_session, get_active_task_for_group, get_chat_history
 from pynchy.router import format_outbound
+from pynchy.utils import generate_message_id
 
 if TYPE_CHECKING:
     from pynchy.event_bus import EventBus
     from pynchy.group_queue import GroupQueue
     from pynchy.types import Channel, NewMessage, RegisteredGroup
+
+# Type aliases for callback signatures used across adapters
+StoreMessageFn = Callable[..., Awaitable[None]]
+EmitEventFn = Callable[..., None]
 
 
 class MessageBroadcaster:
@@ -34,7 +40,7 @@ class MessageBroadcaster:
         """Send message to all connected channels (internal use)."""
         for ch in self.channels:
             if ch.is_connected():
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(OSError, TimeoutError, ConnectionError):
                     await ch.send_message(jid, text)
 
     async def _broadcast_formatted(self, jid: str, raw_text: str) -> None:
@@ -43,7 +49,7 @@ class MessageBroadcaster:
             if ch.is_connected():
                 text = format_outbound(ch, raw_text)
                 if text:
-                    with contextlib.suppress(Exception):
+                    with contextlib.suppress(OSError, TimeoutError, ConnectionError):
                         await ch.send_message(jid, text)
 
 
@@ -53,8 +59,8 @@ class HostMessageBroadcaster:
     def __init__(
         self,
         broadcaster: MessageBroadcaster,
-        store_message_fn: Any,  # async (id, jid, sender, content, timestamp) -> None
-        emit_event_fn: Any,  # (MessageEvent) -> None
+        store_message_fn: StoreMessageFn,
+        emit_event_fn: EmitEventFn,
     ) -> None:
         self.broadcaster = broadcaster
         self.store_message = store_message_fn
@@ -74,7 +80,7 @@ class HostMessageBroadcaster:
 
         ts = datetime.now(UTC).isoformat()
         await self.store_message(
-            id=f"host-{int(datetime.now(UTC).timestamp() * 1000)}",
+            id=generate_message_id("host"),
             chat_jid=chat_jid,
             sender="host",
             sender_name="host",
@@ -107,7 +113,7 @@ class HostMessageBroadcaster:
 
         ts = datetime.now(UTC).isoformat()
         await self.store_message(
-            id=f"sys-notice-{int(datetime.now(UTC).timestamp() * 1000)}",
+            id=generate_message_id("sys-notice"),
             chat_jid=chat_jid,
             sender="system_notice",
             sender_name="system_notice",
@@ -183,7 +189,13 @@ class QueueManager:
         """Enqueue a message check for a group."""
         self._queue.enqueue_message_check(group_jid)
 
-    def on_process(self, group_jid: str, proc: Any, container_name: str, group_folder: str) -> None:
+    def on_process(
+        self,
+        group_jid: str,
+        proc: asyncio.subprocess.Process,
+        container_name: str,
+        group_folder: str,
+    ) -> None:
         """Register a container process with the queue."""
         self._queue.register_process(group_jid, proc, container_name, group_folder)
 
@@ -194,7 +206,9 @@ class EventBusAdapter:
     def __init__(self, event_bus: EventBus) -> None:
         self.event_bus = event_bus
 
-    def subscribe_events(self, callback: Any) -> Any:
+    def subscribe_events(
+        self, callback: Callable[[dict[str, Any]], Awaitable[None]]
+    ) -> Callable[[], None]:
         """Subscribe to all event types and convert to callback format.
 
         Args:
@@ -265,17 +279,17 @@ class GroupMetadataManager:
         self,
         groups_dict: dict[str, RegisteredGroup],
         channels: list[Channel],
-        get_available_groups_fn: Any,
+        get_available_groups_fn: Callable[[], Awaitable[list[dict[str, Any]]]],
     ) -> None:
         self._groups = groups_dict
         self._channels = channels
         self._get_available_groups = get_available_groups_fn
 
-    def get_groups(self) -> list[dict[str, Any]]:
+    def get_groups(self) -> list[dict[str, str]]:
         """Return list of registered groups for API."""
         return [{"jid": jid, "name": g.name, "folder": g.folder} for jid, g in self._groups.items()]
 
-    async def get_available_groups(self) -> list[Any]:
+    async def get_available_groups(self) -> list[dict[str, Any]]:
         """Get list of all available groups."""
         return await self._get_available_groups()
 
@@ -329,8 +343,8 @@ class UserMessageHandler:
 
     def __init__(
         self,
-        ingest_message_fn: Any,  # async (msg, source_channel) -> None
-        enqueue_check_fn: Any,  # (jid) -> None
+        ingest_message_fn: Callable[..., Awaitable[None]],
+        enqueue_check_fn: Callable[[str], None],
     ) -> None:
         self._ingest_message = ingest_message_fn
         self._enqueue_check = enqueue_check_fn
@@ -340,7 +354,7 @@ class UserMessageHandler:
         from pynchy.types import NewMessage
 
         msg = NewMessage(
-            id=f"tui-{int(datetime.now(UTC).timestamp() * 1000)}",
+            id=generate_message_id("tui"),
             chat_jid=jid,
             sender="tui-user",
             sender_name="You",
@@ -363,8 +377,8 @@ class GroupRegistrationManager:
     def __init__(
         self,
         groups_dict: dict[str, RegisteredGroup],
-        register_group_fn: Any,  # async (jid, group) -> None
-        send_clear_confirmation_fn: Any,  # async (jid) -> None
+        register_group_fn: Callable[..., Awaitable[None]],
+        send_clear_confirmation_fn: Callable[[str], Awaitable[None]],
     ) -> None:
         self._groups = groups_dict
         self._register_group = register_group_fn
