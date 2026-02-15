@@ -39,6 +39,7 @@ All plugin Python code runs on the **host** during discovery. Installing a plugi
 
 ## Next Steps
 
+- [**Cookiecutter template**](quickstart.md#1-scaffold-the-plugin) — Use `cookiecutter-pynchy-plugin` for a ready-made scaffold
 - [**Quickstart**](quickstart.md) — Build your first plugin in 5 minutes
 - [**Hook Reference**](hooks.md) — All 4 hooks with return value schemas
 - [**Packaging**](packaging.md) — Entry points, distribution, installation
