@@ -19,7 +19,7 @@ git clone https://github.com/crypdick/pynchy.git
 cd pynchy
 ```
 
-See **[INSTALL.md](INSTALL.md)** for complete installation instructions, including automated setup via Claude Code, manual installation, headless server deployment, and troubleshooting.
+See **[docs/INSTALL.md](docs/INSTALL.md)** for complete installation instructions, including automated setup via Claude Code, manual installation, headless server deployment, and troubleshooting.
 
 ## Philosophy
 
@@ -90,7 +90,7 @@ If you want to add Telegram support, don't create a PR that adds Telegram alongs
 - [Apple Container](https://github.com/apple/container) (macOS, preferred) or [Docker](https://docker.com/products/docker-desktop) (macOS/Linux)
 - System libraries (libmagic)
 
-See **[INSTALL.md](INSTALL.md)** for detailed installation instructions and platform-specific dependencies.
+See **[docs/INSTALL.md](docs/INSTALL.md)** for detailed installation instructions and platform-specific dependencies.
 
 ## Architecture
 
