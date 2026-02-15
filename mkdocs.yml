@@ -36,6 +36,21 @@ theme:
 exclude_docs: |
   archive/
 
+plugins:
+  - search
+  - include-markdown:
+      rewrite_relative_urls: true
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: timeago
+  - minify:
+      minify_html: true
+      minify_js: true
+      minify_css: true
+  # Future: Consider adding mkdocs-mermaid2-plugin for architecture diagrams
+  # Install: uv add --dev mkdocs-mermaid2-plugin
+  # Config: - mermaid2
+
 nav:
   - Home: index.md
   - Installation: INSTALL.md
@@ -53,6 +68,8 @@ markdown_extensions:
   - pymdownx.superfences
   - pymdownx.tabbed:
       alternate_style: true
+  - pymdownx.snippets:
+      base_path: ['.']
   - tables
   - toc:
       permalink: true
