@@ -205,6 +205,7 @@ class ClaudeAgentCore:
 
         # Build options
         options = ClaudeAgentOptions(
+            model="opus",
             cwd=self.config.cwd,
             resume=self.config.session_id,
             system_prompt=system_prompt,
