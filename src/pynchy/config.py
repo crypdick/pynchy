@@ -79,6 +79,16 @@ def is_context_reset(text: str) -> bool:
     return False
 
 
+_REDEPLOY_ALIASES = {"r"}
+_REDEPLOY_VERBS = {"redeploy", "deploy"}
+
+
+def is_redeploy(text: str) -> bool:
+    """Check if a message is a manual redeploy command."""
+    word = text.strip().lower()
+    return word in _REDEPLOY_ALIASES or word in _REDEPLOY_VERBS
+
+
 # Timezone for scheduled tasks — uses system IANA timezone by default.
 # TS equivalent: Intl.DateTimeFormat().resolvedOptions().timeZone
 def _detect_timezone() -> str:
