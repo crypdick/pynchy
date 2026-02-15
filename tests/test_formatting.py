@@ -328,3 +328,48 @@ class TestFormatToolPreview:
     def test_multiline_command(self):
         result = format_tool_preview("Bash", {"command": "echo foo\necho bar"})
         assert result == "Bash: echo foo\necho bar"
+
+    # WebFetch tool
+    def test_webfetch_with_url(self):
+        result = format_tool_preview("WebFetch", {"url": "https://example.com"})
+        assert result == "WebFetch: https://example.com"
+
+    def test_webfetch_truncates_long_url(self):
+        long_url = "https://example.com/very/long/" + "path/" * 20
+        result = format_tool_preview("WebFetch", {"url": long_url})
+        assert result.startswith("WebFetch: ")
+        assert result.endswith("...")
+        assert len(result) <= 60  # "WebFetch: " (10) + 47 chars + "..." (3)
+
+    def test_webfetch_without_url(self):
+        result = format_tool_preview("WebFetch", {})
+        assert result == "WebFetch"
+
+    # WebSearch tool
+    def test_websearch_with_query(self):
+        result = format_tool_preview("WebSearch", {"query": "python async tutorial"})
+        assert result == "WebSearch: python async tutorial"
+
+    def test_websearch_truncates_long_query(self):
+        long_query = "how to " + "very " * 30 + "thing"
+        result = format_tool_preview("WebSearch", {"query": long_query})
+        assert result.startswith("WebSearch: ")
+        assert result.endswith("...")
+        assert len(result) <= 61  # "WebSearch: " (11) + 47 chars + "..." (3)
+
+    def test_websearch_without_query(self):
+        result = format_tool_preview("WebSearch", {})
+        assert result == "WebSearch"
+
+    # Task tool
+    def test_task_with_description(self):
+        result = format_tool_preview("Task", {"description": "Explore codebase"})
+        assert result == "Task: Explore codebase"
+
+    def test_task_without_description(self):
+        result = format_tool_preview("Task", {})
+        assert result == "Task"
+
+    def test_task_with_other_fields(self):
+        result = format_tool_preview("Task", {"description": "Run tests", "prompt": "test all"})
+        assert result == "Task: Run tests"

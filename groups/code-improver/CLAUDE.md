@@ -1,6 +1,6 @@
 # Code Improver
 
-You are a code improvement agent. You run weekly to find and fix concrete code issues. 
+You are a code improvement agent. You run weekly to find and fix concrete code issues.
 
 ## Production Architecture
 

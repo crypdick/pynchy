@@ -148,6 +148,7 @@ class TestDetectRuntimeEdgeCases:
 
     def test_darwin_falls_back_to_docker_when_no_apple_container(self):
         """On macOS without Apple Container, falls back to Docker if available."""
+
         def which_side_effect(cmd):
             return "/usr/local/bin/docker" if cmd == "docker" else None
 
@@ -278,7 +279,7 @@ class TestListContainerErrors:
     def test_docker_handles_blank_lines(self):
         """Docker container list handles blank lines in output."""
         rt = ContainerRuntime(name="docker", cli="docker")
-        ndjson = f'{json.dumps({"Names": "pynchy-test-123"})}\n\n\n'
+        ndjson = f"{json.dumps({'Names': 'pynchy-test-123'})}\n\n\n"
         with patch("pynchy.runtime.subprocess.run") as mock_run:
             mock_run.return_value.stdout = ndjson
             result = rt.list_running_containers("pynchy-")
@@ -287,11 +288,13 @@ class TestListContainerErrors:
     def test_custom_prefix_filter(self):
         """list_running_containers filters by custom prefix."""
         rt = ContainerRuntime(name="docker", cli="docker")
-        ndjson = "\n".join([
-            json.dumps({"Names": "custom-app-1"}),
-            json.dumps({"Names": "pynchy-test"}),
-            json.dumps({"Names": "custom-app-2"}),
-        ])
+        ndjson = "\n".join(
+            [
+                json.dumps({"Names": "custom-app-1"}),
+                json.dumps({"Names": "pynchy-test"}),
+                json.dumps({"Names": "custom-app-2"}),
+            ]
+        )
         with patch("pynchy.runtime.subprocess.run") as mock_run:
             mock_run.return_value.stdout = ndjson
             result = rt.list_running_containers("custom-")

@@ -25,6 +25,26 @@ def run_git(
     )
 
 
+class GitCommandError(Exception):
+    """Raised when a git command fails."""
+
+    def __init__(self, command: str, stderr: str, returncode: int) -> None:
+        self.command = command
+        self.stderr = stderr
+        self.returncode = returncode
+        super().__init__(f"git {command} failed (exit {returncode}): {stderr}")
+
+
+def require_success(result: subprocess.CompletedProcess[str], command: str) -> str:
+    """Assert that a git command succeeded, raising GitCommandError otherwise.
+
+    Returns the stripped stdout on success.
+    """
+    if result.returncode != 0:
+        raise GitCommandError(command, result.stderr.strip(), result.returncode)
+    return result.stdout.strip()
+
+
 def detect_main_branch() -> str:
     """Detect the main branch name via origin/HEAD, fallback to 'main'."""
     result = run_git("symbolic-ref", "refs/remotes/origin/HEAD")

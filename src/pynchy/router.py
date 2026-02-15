@@ -117,6 +117,28 @@ def format_tool_preview(tool_name: str, tool_input: dict) -> str:
             return f"Glob: {pattern}"
         return "Glob"
 
+    if tool_name == "WebFetch":
+        url = tool_input.get("url", "")
+        if url:
+            if len(url) > 50:
+                url = url[:47] + "..."
+            return f"WebFetch: {url}"
+        return "WebFetch"
+
+    if tool_name == "WebSearch":
+        query = tool_input.get("query", "")
+        if query:
+            if len(query) > 50:
+                query = query[:47] + "..."
+            return f"WebSearch: {query}"
+        return "WebSearch"
+
+    if tool_name == "Task":
+        desc = tool_input.get("description", "")
+        if desc:
+            return f"Task: {desc}"
+        return "Task"
+
     # Fallback: show first 50 chars of input
     preview = str(tool_input)
     if len(preview) > 50:

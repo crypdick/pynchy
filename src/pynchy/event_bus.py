@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections import defaultdict
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
@@ -61,7 +62,12 @@ class EventBus:
     def subscribe(self, event_type: type, listener: Listener) -> Callable[[], None]:
         """Subscribe to an event type. Returns an unsubscribe function."""
         self._listeners[event_type].append(listener)
-        return lambda: self._listeners[event_type].remove(listener)
+
+        def _unsubscribe() -> None:
+            with contextlib.suppress(ValueError):
+                self._listeners[event_type].remove(listener)
+
+        return _unsubscribe
 
     def emit(self, event: Event) -> None:
         """Emit an event to all subscribers. Non-blocking, fire-and-forget."""

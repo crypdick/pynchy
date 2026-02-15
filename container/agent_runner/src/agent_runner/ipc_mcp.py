@@ -516,53 +516,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolR
                     )
                 ]
 
-        case "pause_task":
-            data = {
-                "type": "pause_task",
-                "taskId": arguments["task_id"],
-                "groupFolder": group_folder,
-                "isGod": is_god,
-                "timestamp": _now_iso(),
-            }
-            write_ipc_file(TASKS_DIR, data)
-            return [
-                TextContent(
-                    type="text",
-                    text=f"Task {arguments['task_id']} pause requested.",
-                )
-            ]
-
-        case "resume_task":
-            data = {
-                "type": "resume_task",
-                "taskId": arguments["task_id"],
-                "groupFolder": group_folder,
-                "isGod": is_god,
-                "timestamp": _now_iso(),
-            }
-            write_ipc_file(TASKS_DIR, data)
-            return [
-                TextContent(
-                    type="text",
-                    text=f"Task {arguments['task_id']} resume requested.",
-                )
-            ]
-
-        case "cancel_task":
-            data = {
-                "type": "cancel_task",
-                "taskId": arguments["task_id"],
-                "groupFolder": group_folder,
-                "isGod": is_god,
-                "timestamp": _now_iso(),
-            }
-            write_ipc_file(TASKS_DIR, data)
-            return [
-                TextContent(
-                    type="text",
-                    text=(f"Task {arguments['task_id']} cancellation requested."),
-                )
-            ]
+        case "pause_task" | "resume_task" | "cancel_task":
+            return _task_action(name, arguments["task_id"])
 
         case "register_group":
             if not is_god:
@@ -732,6 +687,25 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolR
                     text=f"Unknown tool: {name}",
                 )
             ]
+
+
+def _task_action(action: str, task_id: str) -> list[TextContent]:
+    """Write a pause/resume/cancel IPC file and return confirmation."""
+    write_ipc_file(
+        TASKS_DIR,
+        {
+            "type": action,
+            "taskId": task_id,
+            "groupFolder": group_folder,
+            "isGod": is_god,
+            "timestamp": _now_iso(),
+        },
+    )
+    # "pause_task" → "pause", "cancel_task" → "cancellation"
+    verb = action.replace("_task", "")
+    if verb == "cancel":
+        verb = "cancellation"
+    return [TextContent(type="text", text=f"Task {task_id} {verb} requested.")]
 
 
 def _now_iso() -> str:

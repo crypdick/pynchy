@@ -99,12 +99,25 @@ def load_hooks(plugin_hooks: list[dict[str, str]]) -> dict[HookEvent, list[Calla
             spec_obj.loader.exec_module(module)
 
             # Look for hook functions matching event names
+            registered_events: list[str] = []
             for event in HookEvent:
                 func_name = event.value  # e.g., "before_compact"
                 if hasattr(module, func_name):
                     func = getattr(module, func_name)
                     if callable(func):
                         hooks[event].append(func)
+                        registered_events.append(func_name)
+
+            if registered_events:
+                print(
+                    f"[agent-runner] Loaded hook '{name}': {', '.join(registered_events)}",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"[agent-runner] Hook '{name}' loaded but has no event handlers",
+                    file=sys.stderr,
+                )
 
         except Exception as exc:
             print(f"[agent-runner] Failed to load hook '{name}': {exc}", file=sys.stderr)

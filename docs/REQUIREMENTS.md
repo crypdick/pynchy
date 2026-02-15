@@ -90,7 +90,7 @@ The goal: if something went wrong, you can reconstruct what the LLM saw by readi
 - Only messages from registered groups are processed
 - Trigger: `@Pynchy` prefix (case insensitive), configurable via `ASSISTANT_NAME` env var
 - Unregistered groups are ignored completely
-- All channels are kept in sync. Ongoing conversations can be continued from different channels, and all 
+- All channels are kept in sync. Ongoing conversations can be continued from different channels, and all
   channels display the exact same message history.
 
 ### Memory System
@@ -110,7 +110,7 @@ The goal: if something went wrong, you can reconstruct what the LLM saw by readi
 - Containers provide filesystem isolation - agents can only see mounted paths
 - Bash access is safe because commands run inside the container, not on the host
 - Browser automation via agent-browser with Chromium in the container (if enabled)
-- Avoid the 
+- Avoid the
 
 ### Scheduled Tasks
 - Users can ask Claude to schedule recurring or one-time tasks from any group

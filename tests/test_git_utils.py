@@ -10,13 +10,17 @@ from __future__ import annotations
 import subprocess
 from unittest.mock import patch
 
+import pytest
+
 from pynchy.git_utils import (
+    GitCommandError,
     count_unpushed_commits,
     detect_main_branch,
     files_changed_between,
     get_head_sha,
     is_repo_dirty,
     push_local_commits,
+    require_success,
 )
 
 
@@ -268,3 +272,45 @@ class TestPushLocalCommits:
         """Catch-all exception handler prevents crashes."""
         with patch("pynchy.git_utils.run_git", side_effect=RuntimeError("boom")):
             assert push_local_commits() is False
+
+
+# ---------------------------------------------------------------------------
+# require_success and GitCommandError
+# ---------------------------------------------------------------------------
+
+
+class TestRequireSuccess:
+    """Tests for the require_success helper that enforces git command success."""
+
+    def test_returns_stripped_stdout_on_success(self):
+        result = _ok("  abc123  \n")
+        assert require_success(result, "rev-parse") == "abc123"
+
+    def test_returns_empty_string_for_empty_stdout(self):
+        result = _ok("")
+        assert require_success(result, "status") == ""
+
+    def test_raises_git_command_error_on_failure(self):
+        result = _fail("fatal: not a git repo")
+        with pytest.raises(GitCommandError) as exc_info:
+            require_success(result, "status --porcelain")
+        assert exc_info.value.command == "status --porcelain"
+        assert exc_info.value.stderr == "fatal: not a git repo"
+        assert exc_info.value.returncode == 1
+
+    def test_error_message_formatting(self):
+        result = _fail("error: pathspec 'x' did not match")
+        with pytest.raises(GitCommandError) as exc_info:
+            require_success(result, "checkout x")
+        msg = str(exc_info.value)
+        assert "git checkout x failed" in msg
+        assert "exit 1" in msg
+        assert "pathspec" in msg
+
+    def test_non_zero_exit_codes(self):
+        """Test various non-zero exit codes."""
+        for code in (1, 2, 128):
+            result = subprocess.CompletedProcess([], code, stdout="", stderr="err")
+            with pytest.raises(GitCommandError) as exc_info:
+                require_success(result, "test")
+            assert exc_info.value.returncode == code
