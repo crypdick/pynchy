@@ -1035,7 +1035,7 @@ class PynchyApp:
         try:
             continuation = json.loads(continuation_path.read_text())
         except Exception:
-            logger.error("Failed to read continuation for rollback")
+            logger.exception("Failed to read continuation for rollback")
             return
 
         previous_sha = continuation.get("previous_commit_sha", "")

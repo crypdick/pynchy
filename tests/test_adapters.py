@@ -221,6 +221,56 @@ class TestMessageBroadcaster:
         await broadcaster._broadcast_to_channels("group@g.us", "hello")
         assert len(working.sent) == 1
 
+    async def test_broadcast_formatted_applies_format(self):
+        """_broadcast_formatted applies per-channel formatting."""
+        ch = FakeChannel()
+        broadcaster = MessageBroadcaster([ch])
+
+        # format_outbound strips internal tags and may adjust text
+        from unittest.mock import patch as _patch
+
+        with _patch("pynchy.adapters.format_outbound", return_value="formatted text"):
+            await broadcaster._broadcast_formatted("group@g.us", "raw text")
+
+        assert len(ch.sent) == 1
+        assert ch.sent[0][1] == "formatted text"
+
+    async def test_broadcast_formatted_skips_when_formatter_returns_empty(self):
+        """_broadcast_formatted skips send when format_outbound returns empty string."""
+        ch = FakeChannel()
+        broadcaster = MessageBroadcaster([ch])
+
+        from unittest.mock import patch as _patch
+
+        with _patch("pynchy.adapters.format_outbound", return_value=""):
+            await broadcaster._broadcast_formatted("group@g.us", "raw text")
+
+        assert len(ch.sent) == 0
+
+    async def test_broadcast_formatted_suppresses_channel_errors(self):
+        """_broadcast_formatted suppresses channel send errors like _broadcast_to_channels."""
+
+        class FailingChannel(FakeChannel):
+            async def send_message(self, jid: str, text: str) -> None:
+                raise OSError("send failed")
+
+        failing = FailingChannel()
+        working = FakeChannel()
+        broadcaster = MessageBroadcaster([failing, working])
+
+        from unittest.mock import patch as _patch
+
+        with _patch("pynchy.adapters.format_outbound", return_value="ok"):
+            await broadcaster._broadcast_formatted("group@g.us", "raw")
+
+        assert len(working.sent) == 1
+
+    async def test_broadcast_to_empty_channel_list(self):
+        """Broadcasting to empty channel list is a no-op."""
+        broadcaster = MessageBroadcaster([])
+        # Should not raise
+        await broadcaster._broadcast_to_channels("group@g.us", "hello")
+
 
 # ---------------------------------------------------------------------------
 # EventBusAdapter
