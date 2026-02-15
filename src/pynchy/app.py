@@ -71,11 +71,10 @@ from pynchy.event_bus import (
     MessageEvent,
 )
 from pynchy.git_sync import start_host_git_sync_loop
+from pynchy.git_utils import count_unpushed_commits, get_head_sha, is_repo_dirty, run_git
 from pynchy.group_queue import GroupQueue
 from pynchy.http_server import (
     _get_head_commit_message,
-    _get_head_sha,
-    _is_repo_dirty,
     _push_local_commits,
     start_http_server,
 )
@@ -398,14 +397,7 @@ class PynchyApp:
         if dirty_check_file.exists() and is_god_group:
             try:
                 dirty_check_file.unlink()
-                # Check if repo is dirty
-                dirty = subprocess.run(
-                    ["git", "status", "--porcelain"],
-                    cwd=str(PROJECT_ROOT),
-                    capture_output=True,
-                    text=True,
-                )
-                if dirty.returncode == 0 and dirty.stdout.strip():
+                if is_repo_dirty():
                     # Add system notice about uncommitted changes
                     reset_system_notices.append(
                         "WARNING: Uncommitted changes detected in the repository. "
@@ -826,24 +818,12 @@ class PynchyApp:
         # These are sent TO the LLM as context, distinct from operational host messages
         system_notices: list[str] = []
         if is_god:
-            dirty = subprocess.run(
-                ["git", "status", "--porcelain"],
-                cwd=str(PROJECT_ROOT),
-                capture_output=True,
-                text=True,
-            )
-            if dirty.returncode == 0 and dirty.stdout.strip():
+            if is_repo_dirty():
                 system_notices.append(
                     "There are uncommitted local changes. Run `git status` and `git diff` "
                     "to review them. If they are good, commit and push. If not, discard them."
                 )
-            unpushed = subprocess.run(
-                ["git", "rev-list", "origin/main..HEAD", "--count"],
-                cwd=str(PROJECT_ROOT),
-                capture_output=True,
-                text=True,
-            )
-            if unpushed.returncode == 0 and int(unpushed.stdout.strip() or "0") > 0:
+            if count_unpushed_commits() > 0:
                 system_notices.append(
                     "There are local commits that haven't been pushed. "
                     "Run `git push` or `git rebase origin/main && git push` to sync them."
@@ -1038,9 +1018,9 @@ class PynchyApp:
         if not god_jid:
             return
 
-        sha = _get_head_sha()[:8]
+        sha = get_head_sha()[:8]
         commit_msg = _get_head_commit_message(50)
-        dirty = " (dirty)" if _is_repo_dirty() else ""
+        dirty = " (dirty)" if is_repo_dirty() else ""
         label = f"{sha}{dirty} {commit_msg}".strip() if commit_msg else f"{sha}{dirty}"
         parts = [f"{ASSISTANT_NAME} online — {label}"]
 
@@ -1104,12 +1084,7 @@ class PynchyApp:
             error=str(exc),
         )
 
-        result = subprocess.run(
-            ["git", "reset", "--hard", previous_sha],
-            cwd=str(PROJECT_ROOT),
-            capture_output=True,
-            text=True,
-        )
+        result = run_git("reset", "--hard", previous_sha)
         if result.returncode != 0:
             logger.error("Rollback git reset failed", stderr=result.stderr)
             return
@@ -1274,9 +1249,8 @@ class PynchyApp:
     async def _trigger_manual_redeploy(self, chat_jid: str) -> None:
         """Handle a manual redeploy command — restart the service in-place."""
         from pynchy.deploy import finalize_deploy
-        from pynchy.http_server import _get_head_sha
 
-        sha = _get_head_sha()
+        sha = get_head_sha()
         logger.info("Manual redeploy triggered via magic word", chat_jid=chat_jid)
         await finalize_deploy(
             broadcast_host_message=self._broadcast_host_message,
@@ -1605,12 +1579,11 @@ class PynchyApp:
                         )
 
                 from pynchy.deploy import finalize_deploy
-                from pynchy.http_server import _get_head_sha
 
                 await finalize_deploy(
                     broadcast_host_message=host_broadcaster.broadcast_host_message,
                     chat_jid=chat_jid,
-                    commit_sha=_get_head_sha(),
+                    commit_sha=get_head_sha(),
                     previous_sha=previous_sha,
                 )
 

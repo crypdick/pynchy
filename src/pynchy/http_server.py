@@ -19,6 +19,12 @@ from aiohttp import web
 
 from pynchy.config import DATA_DIR, DEPLOY_PORT, PROJECT_ROOT
 from pynchy.deploy import finalize_deploy
+from pynchy.git_utils import (
+    files_changed_between,
+    get_head_sha,
+    is_repo_dirty,
+    run_git,
+)
 from pynchy.logger import logger
 from pynchy.types import NewMessage
 
@@ -28,43 +34,10 @@ _start_time = time.monotonic()
 deps_key = web.AppKey("deps", "HttpDeps")
 
 
-def _get_head_sha() -> str:
-    """Return the current git HEAD SHA, or 'unknown' on failure."""
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=str(PROJECT_ROOT),
-            capture_output=True,
-            text=True,
-        )
-        return result.stdout.strip() if result.returncode == 0 else "unknown"
-    except Exception:
-        return "unknown"
-
-
-def _is_repo_dirty() -> bool:
-    """Check if the working tree has uncommitted changes."""
-    try:
-        result = subprocess.run(
-            ["git", "status", "--porcelain"],
-            cwd=str(PROJECT_ROOT),
-            capture_output=True,
-            text=True,
-        )
-        return bool(result.stdout.strip()) if result.returncode == 0 else False
-    except Exception:
-        return False
-
-
 def _get_head_commit_message(max_length: int = 72) -> str:
     """Return the subject line of the HEAD commit, truncated if needed."""
     try:
-        result = subprocess.run(
-            ["git", "log", "-1", "--format=%s"],
-            cwd=str(PROJECT_ROOT),
-            capture_output=True,
-            text=True,
-        )
+        result = run_git("log", "-1", "--format=%s")
         msg = result.stdout.strip() if result.returncode == 0 else ""
         if len(msg) > max_length:
             return msg[: max_length - 1] + "…"
@@ -83,48 +56,24 @@ def _push_local_commits(*, skip_fetch: bool = False) -> bool:
     """
     try:
         if not skip_fetch:
-            fetch = subprocess.run(
-                ["git", "fetch", "origin"],
-                cwd=str(PROJECT_ROOT),
-                capture_output=True,
-                text=True,
-            )
+            fetch = run_git("fetch", "origin")
             if fetch.returncode != 0:
                 logger.warning("push_local: git fetch failed", stderr=fetch.stderr.strip())
                 return False
 
-        count = subprocess.run(
-            ["git", "rev-list", "origin/main..HEAD", "--count"],
-            cwd=str(PROJECT_ROOT),
-            capture_output=True,
-            text=True,
-        )
+        count = run_git("rev-list", "origin/main..HEAD", "--count")
         if count.returncode != 0 or int(count.stdout.strip() or "0") == 0:
             return True  # nothing to push (or can't tell)
 
         # Try rebase+push, retry once if origin advanced mid-operation
         for attempt in range(2):
-            rebase = subprocess.run(
-                ["git", "rebase", "origin/main"],
-                cwd=str(PROJECT_ROOT),
-                capture_output=True,
-                text=True,
-            )
+            rebase = run_git("rebase", "origin/main")
             if rebase.returncode != 0:
-                subprocess.run(
-                    ["git", "rebase", "--abort"],
-                    cwd=str(PROJECT_ROOT),
-                    capture_output=True,
-                )
+                run_git("rebase", "--abort")
                 if attempt == 0:
                     # Re-fetch and retry — origin may have advanced
                     logger.info("push_local: rebase failed, retrying after fresh fetch")
-                    retry_fetch = subprocess.run(
-                        ["git", "fetch", "origin"],
-                        cwd=str(PROJECT_ROOT),
-                        capture_output=True,
-                        text=True,
-                    )
+                    retry_fetch = run_git("fetch", "origin")
                     if retry_fetch.returncode != 0:
                         logger.warning(
                             "push_local: retry fetch failed", stderr=retry_fetch.stderr.strip()
@@ -136,12 +85,7 @@ def _push_local_commits(*, skip_fetch: bool = False) -> bool:
                 )
                 return False
 
-            push = subprocess.run(
-                ["git", "push"],
-                cwd=str(PROJECT_ROOT),
-                capture_output=True,
-                text=True,
-            )
+            push = run_git("push")
             if push.returncode != 0:
                 logger.warning("push_local: git push failed", stderr=push.stderr.strip())
                 return False
@@ -202,9 +146,9 @@ async def _handle_health(request: web.Request) -> web.Response:
         {
             "status": "ok",
             "uptime_seconds": round(time.monotonic() - _start_time),
-            "head_sha": _get_head_sha(),
+            "head_sha": get_head_sha(),
             "head_commit": _get_head_commit_message(),
-            "dirty": _is_repo_dirty(),
+            "dirty": is_repo_dirty(),
             "channels_connected": deps.channels_connected(),
         }
     )
@@ -212,41 +156,22 @@ async def _handle_health(request: web.Request) -> web.Response:
 
 async def _handle_deploy(request: web.Request) -> web.Response:
     deps: HttpDeps = request.app[deps_key]
-    old_sha = _get_head_sha()
+    old_sha = get_head_sha()
 
     # 1. Push any local commits before pulling (prevents divergence)
-    subprocess.run(
-        ["git", "fetch", "origin"],
-        cwd=str(PROJECT_ROOT),
-        capture_output=True,
-        text=True,
-    )
+    run_git("fetch", "origin")
     if not _push_local_commits(skip_fetch=True):
         logger.warning("Pre-deploy push failed, continuing with rebase")
 
     # 2. Stash dirty files so they don't block the rebase
-    stash = subprocess.run(
-        ["git", "stash"],
-        cwd=str(PROJECT_ROOT),
-        capture_output=True,
-        text=True,
-    )
+    stash = run_git("stash")
     stashed = stash.returncode == 0 and "No local changes" not in stash.stdout
 
     # 3. Rebase to incorporate incoming remote changes
-    pull = subprocess.run(
-        ["git", "rebase", "origin/main"],
-        cwd=str(PROJECT_ROOT),
-        capture_output=True,
-        text=True,
-    )
+    pull = run_git("rebase", "origin/main")
     if pull.returncode != 0:
         # Abort failed rebase to leave repo clean, then continue with current code
-        subprocess.run(
-            ["git", "rebase", "--abort"],
-            cwd=str(PROJECT_ROOT),
-            capture_output=True,
-        )
+        run_git("rebase", "--abort")
         logger.warning(
             "git rebase failed, restarting with current code", stderr=pull.stderr.strip()
         )
@@ -257,14 +182,9 @@ async def _handle_deploy(request: web.Request) -> web.Response:
 
     # Restore stashed files regardless of rebase outcome
     if stashed:
-        subprocess.run(
-            ["git", "stash", "pop"],
-            cwd=str(PROJECT_ROOT),
-            capture_output=True,
-            text=True,
-        )
+        run_git("stash", "pop")
 
-    new_sha = _get_head_sha()
+    new_sha = get_head_sha()
     has_new_code = new_sha != old_sha
 
     # 4. Validate import (only when new code was pulled)
@@ -278,11 +198,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
         if validate.returncode != 0:
             err = validate.stderr.strip()[-300:]
             logger.error("Deploy validation failed, rolling back", error=err)
-            subprocess.run(
-                ["git", "reset", "--hard", old_sha],
-                cwd=str(PROJECT_ROOT),
-                capture_output=True,
-            )
+            run_git("reset", "--hard", old_sha)
             chat_jid = deps.god_chat_jid()
             if chat_jid:
                 msg = f"Deploy failed — import validation error, rolled back to {old_sha[:8]}."
@@ -293,34 +209,27 @@ async def _handle_deploy(request: web.Request) -> web.Response:
             )
 
     # 5. Rebuild container image if container/ files changed
-    if has_new_code:
-        container_diff = subprocess.run(
-            ["git", "diff", "--name-only", old_sha, new_sha, "--", "container/"],
-            cwd=str(PROJECT_ROOT),
+    if has_new_code and files_changed_between(old_sha, new_sha, "container/"):
+        build_script = PROJECT_ROOT / "container" / "build.sh"
+        logger.info("Container files changed, rebuilding image...")
+        result = subprocess.run(
+            [str(build_script)],
+            cwd=str(PROJECT_ROOT / "container"),
             capture_output=True,
             text=True,
+            timeout=600,
         )
-        if container_diff.stdout.strip():
-            build_script = PROJECT_ROOT / "container" / "build.sh"
-            logger.info("Container files changed, rebuilding image...")
-            result = subprocess.run(
-                [str(build_script)],
-                cwd=str(PROJECT_ROOT / "container"),
-                capture_output=True,
-                text=True,
-                timeout=600,
+        if result.returncode != 0:
+            logger.error(
+                "Container rebuild failed",
+                stderr=result.stderr[-500:],
             )
-            if result.returncode != 0:
-                logger.error(
-                    "Container rebuild failed",
-                    stderr=result.stderr[-500:],
-                )
-                chat_jid = deps.god_chat_jid()
-                if chat_jid:
-                    msg = "Deploy warning — container rebuild failed, continuing with old image."
-                    await deps.broadcast_host_message(chat_jid, msg)
-            else:
-                logger.info("Container image rebuilt successfully")
+            chat_jid = deps.god_chat_jid()
+            if chat_jid:
+                msg = "Deploy warning — container rebuild failed, continuing with old image."
+                await deps.broadcast_host_message(chat_jid, msg)
+        else:
+            logger.info("Container image rebuilt successfully")
 
     # 6. Restart (write continuation only when new code was deployed)
     chat_jid = deps.god_chat_jid()
@@ -343,7 +252,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
             "status": "restarting",
             "sha": new_sha,
             "commit": _get_head_commit_message(),
-            "dirty": _is_repo_dirty(),
+            "dirty": is_repo_dirty(),
             "previous_sha": old_sha,
         }
     )

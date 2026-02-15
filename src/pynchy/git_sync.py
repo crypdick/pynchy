@@ -14,8 +14,8 @@ import subprocess
 from pathlib import Path
 from typing import Any, Protocol
 
-from pynchy.config import PROJECT_ROOT, WORKTREES_DIR
-from pynchy.git_utils import detect_main_branch, run_git
+from pynchy.config import WORKTREES_DIR
+from pynchy.git_utils import detect_main_branch, files_changed_between, get_head_sha, run_git
 from pynchy.http_server import _push_local_commits
 from pynchy.logger import logger
 
@@ -299,25 +299,14 @@ def write_ipc_response(path: Path, data: dict[str, Any]) -> None:
 
 def _get_local_head_sha() -> str:
     """Get the local HEAD SHA."""
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=str(PROJECT_ROOT),
-        capture_output=True,
-        text=True,
-    )
-    return result.stdout.strip() if result.returncode == 0 else ""
+    sha = get_head_sha()
+    return "" if sha == "unknown" else sha
 
 
 def _host_get_origin_main_sha() -> str | None:
     """Lightweight check: get origin/main SHA via ls-remote."""
     try:
-        result = subprocess.run(
-            ["git", "ls-remote", "origin", "refs/heads/main"],
-            cwd=str(PROJECT_ROOT),
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
+        result = run_git("ls-remote", "origin", "refs/heads/main")
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip().split()[0]
     except (subprocess.TimeoutExpired, OSError):
@@ -344,13 +333,7 @@ def _host_update_main() -> bool:
 
 def _host_container_files_changed(old_sha: str, new_sha: str) -> bool:
     """Check if container/ files changed between two commits."""
-    diff = subprocess.run(
-        ["git", "diff", "--name-only", old_sha, new_sha, "--", "container/"],
-        cwd=str(PROJECT_ROOT),
-        capture_output=True,
-        text=True,
-    )
-    return bool(diff.stdout.strip()) if diff.returncode == 0 else False
+    return files_changed_between(old_sha, new_sha, "container/")
 
 
 def _host_source_files_changed(old_sha: str, new_sha: str) -> bool:
@@ -359,13 +342,7 @@ def _host_source_files_changed(old_sha: str, new_sha: str) -> bool:
     The running Python process has old modules in memory. A restart is needed
     to pick up src/ changes — git pull alone doesn't hot-reload Python.
     """
-    diff = subprocess.run(
-        ["git", "diff", "--name-only", old_sha, new_sha, "--", "src/"],
-        cwd=str(PROJECT_ROOT),
-        capture_output=True,
-        text=True,
-    )
-    return bool(diff.stdout.strip()) if diff.returncode == 0 else False
+    return files_changed_between(old_sha, new_sha, "src/")
 
 
 async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
