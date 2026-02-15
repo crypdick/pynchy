@@ -12,6 +12,7 @@ and notify the agent via system notices so it can resume gracefully.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -83,7 +84,20 @@ def ensure_worktree(group_folder: str) -> WorktreeResult:
     main_branch = _detect_main_branch()
 
     if worktree_path.exists():
-        return _sync_existing_worktree(worktree_path, group_folder, main_branch)
+        # Health check: verify the worktree is a functional git repo.
+        # A stale .git reference (e.g. from a group rename) makes the
+        # directory look like a worktree but git commands silently fail.
+        health = _run_git("rev-parse", "--git-dir", cwd=worktree_path)
+        if health.returncode != 0:
+            logger.warning(
+                "Broken worktree detected, recreating",
+                group=group_folder,
+                error=health.stderr.strip(),
+            )
+            shutil.rmtree(worktree_path)
+            # Fall through to create path below
+        else:
+            return _sync_existing_worktree(worktree_path, group_folder, main_branch)
 
     return _create_new_worktree(worktree_path, group_folder, branch_name, main_branch)
 
@@ -168,14 +182,25 @@ def _create_new_worktree(
     return WorktreeResult(path=worktree_path)
 
 
-def cleanup_stale_worktrees() -> None:
-    """Prune stale git worktree entries and rebase diverged branches onto main.
+def reconcile_worktrees_at_startup(
+    project_access_folders: list[str] | None = None,
+) -> None:
+    """Ensure worktrees exist for all project_access groups, then rebase diverged branches.
 
-    Called at startup before any containers launch. Ensures worktrees are
-    ready for clean ff-merges after the next container run.
+    Called at startup before any containers launch. Creates missing worktrees
+    so the git sync loop can notify all groups from boot, and rebases diverged
+    branches for clean ff-merges after the next container run.
     """
     # Clean git's internal stale entries (worktree dirs that no longer exist)
     _run_git("worktree", "prune")
+
+    # Create missing worktrees for known project_access groups.
+    # ensure_worktree's health check handles broken worktrees automatically.
+    for folder in project_access_folders or []:
+        try:
+            ensure_worktree(folder)
+        except WorktreeError:
+            logger.warning("Failed to create worktree at startup", group=folder)
 
     if not WORKTREES_DIR.exists():
         return
