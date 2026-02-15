@@ -1,4 +1,4 @@
 project_access: true
-schedule: "0 2 * * 0"
+schedule: "0 4 * * *"
 prompt: "This is a scheduled code improvement run. Follow the workflow in your CLAUDE.md."
 context_mode: isolated
