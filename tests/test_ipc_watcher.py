@@ -14,6 +14,20 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from pynchy.config import (
+    AgentConfig,
+    CommandWordsConfig,
+    ContainerConfig,
+    IntervalsConfig,
+    LoggingConfig,
+    QueueConfig,
+    SchedulerConfig,
+    SecretsConfig,
+    SecurityConfig,
+    ServerConfig,
+    Settings,
+    WorkspaceDefaultsConfig,
+)
 from pynchy.db import _init_test_database
 from pynchy.ipc import _move_to_error_dir
 from pynchy.types import RegisteredGroup
@@ -32,6 +46,26 @@ OTHER_GROUP = RegisteredGroup(
     trigger="@pynchy",
     added_at="2024-01-01",
 )
+
+
+def _test_settings(*, data_dir=None):
+    s = Settings.model_construct(
+        agent=AgentConfig(),
+        container=ContainerConfig(),
+        server=ServerConfig(),
+        logging=LoggingConfig(),
+        secrets=SecretsConfig(),
+        workspace_defaults=WorkspaceDefaultsConfig(),
+        workspaces={},
+        commands=CommandWordsConfig(),
+        scheduler=SchedulerConfig(),
+        intervals=IntervalsConfig(),
+        queue=QueueConfig(),
+        security=SecurityConfig(),
+    )
+    if data_dir is not None:
+        s.__dict__["data_dir"] = data_dir
+    return s
 
 
 class MockDeps:
@@ -292,7 +326,9 @@ class TestSyncWorktreeIpc:
         from pynchy.ipc import process_task_ipc
 
         with (
-            patch("pynchy.ipc.DATA_DIR", tmp_path / "data"),
+            patch(
+                "pynchy.ipc.get_settings", return_value=_test_settings(data_dir=tmp_path / "data")
+            ),
             patch(
                 "pynchy.ipc.host_sync_worktree",
                 return_value={"success": True, "message": "Merged 1 commit(s)"},
@@ -319,7 +355,9 @@ class TestSyncWorktreeIpc:
         from pynchy.ipc import process_task_ipc
 
         with (
-            patch("pynchy.ipc.DATA_DIR", tmp_path / "data"),
+            patch(
+                "pynchy.ipc.get_settings", return_value=_test_settings(data_dir=tmp_path / "data")
+            ),
             patch(
                 "pynchy.ipc.host_sync_worktree",
                 return_value={"success": True, "message": "done"},
@@ -345,7 +383,9 @@ class TestSyncWorktreeIpc:
         from pynchy.ipc import process_task_ipc
 
         with (
-            patch("pynchy.ipc.DATA_DIR", tmp_path / "data"),
+            patch(
+                "pynchy.ipc.get_settings", return_value=_test_settings(data_dir=tmp_path / "data")
+            ),
             patch(
                 "pynchy.ipc.host_sync_worktree",
                 return_value={"success": False, "message": "conflict"},

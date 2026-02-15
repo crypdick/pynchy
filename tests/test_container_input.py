@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 sys.modules.setdefault("claude_agent_sdk", MagicMock())
 
 sys.path.insert(0, "container/agent_runner/src")
-from agent_runner.main import ContainerInput
+from agent_runner.main import ContainerInput  # noqa: E402
 
 
 class TestContainerInput:

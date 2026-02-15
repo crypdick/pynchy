@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -47,7 +47,8 @@ class TestOpenAIPluginInfo:
         """OpenAI plugin is auto-discovered alongside Claude plugin."""
         from pynchy.plugin import get_plugin_manager
 
-        pm = get_plugin_manager()
+        with patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0):
+            pm = get_plugin_manager()
         cores = pm.hook.pynchy_agent_core_info()
 
         names = [c["name"] for c in cores]
@@ -58,7 +59,8 @@ class TestOpenAIPluginInfo:
         """Selecting a core by name returns the correct info."""
         from pynchy.plugin import get_plugin_manager
 
-        pm = get_plugin_manager()
+        with patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0):
+            pm = get_plugin_manager()
         cores = pm.hook.pynchy_agent_core_info()
 
         openai_core = next((c for c in cores if c["name"] == "openai"), None)
@@ -217,27 +219,17 @@ class TestEventMapping:
 
 
 class TestDefaultAgentCoreConfig:
-    """Test DEFAULT_AGENT_CORE config value."""
+    """Test agent core selection from Settings."""
 
     def test_default_is_claude(self):
-        """DEFAULT_AGENT_CORE defaults to 'claude'."""
-        from pynchy.config import DEFAULT_AGENT_CORE
+        """Default agent core comes from Settings with valid value."""
+        from pynchy.config import get_settings
 
-        # Unless PYNCHY_AGENT_CORE env var is set, default is claude
-        assert DEFAULT_AGENT_CORE in ("claude", "openai")
+        assert get_settings().agent.core in ("claude", "openai")
 
     def test_env_override(self):
-        """PYNCHY_AGENT_CORE env var overrides default."""
-        import importlib
+        """Nested env override maps to settings.agent.core."""
+        from pynchy.config import Settings
 
-        import pynchy.config
-
-        with patch.dict("os.environ", {"PYNCHY_AGENT_CORE": "openai"}):
-            importlib.reload(pynchy.config)
-            assert pynchy.config.DEFAULT_AGENT_CORE == "openai"
-
-        # Restore
-        with patch.dict("os.environ", {}, clear=False):
-            if "PYNCHY_AGENT_CORE" in sys.modules.get("os", MagicMock()).environ:
-                del sys.modules["os"].environ["PYNCHY_AGENT_CORE"]
-            importlib.reload(pynchy.config)
+        with patch.dict("os.environ", {"AGENT__CORE": "openai"}, clear=False):
+            assert Settings().agent.core == "openai"

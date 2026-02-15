@@ -13,7 +13,10 @@ Python process that connects to WhatsApp, routes messages to Claude Agent SDK ru
 | `src/pynchy/db.py` | SQLite operations (async, aiosqlite) |
 | `src/pynchy/ipc.py` | IPC watcher and task processing |
 | `src/pynchy/router.py` | Message formatting and outbound routing |
-| `src/pynchy/config.py` | Trigger pattern, paths, intervals |
+| `src/pynchy/config.py` | Pydantic BaseSettings config (TOML + env overrides) |
+| `src/pynchy/commands.py` | Special command matching (reset/end/redeploy) |
+| `src/pynchy/message_handler.py` | Message processing pipeline and loop |
+| `src/pynchy/output_handler.py` | Streamed output/trace persistence and broadcast |
 | `src/pynchy/group_queue.py` | Per-group queue with global concurrency limit |
 | `src/pynchy/runtime.py` | Container runtime detection (Apple Container / Docker) |
 | `src/pynchy/mount_security.py` | Mount path validation and allowlist |

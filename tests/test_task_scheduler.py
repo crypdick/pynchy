@@ -20,6 +20,20 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from pynchy.config import (
+    AgentConfig,
+    CommandWordsConfig,
+    ContainerConfig,
+    IntervalsConfig,
+    LoggingConfig,
+    QueueConfig,
+    SchedulerConfig,
+    SecretsConfig,
+    SecurityConfig,
+    ServerConfig,
+    Settings,
+    WorkspaceDefaultsConfig,
+)
 from pynchy.group_queue import GroupQueue
 from pynchy.task_scheduler import start_scheduler_loop
 from pynchy.types import (
@@ -28,6 +42,28 @@ from pynchy.types import (
     ScheduledTask,
     TaskRunLog,
 )
+
+
+@contextlib.contextmanager
+def _patch_settings(*, poll_interval: float = 5.0, groups_dir=None):
+    s = Settings.model_construct(
+        agent=AgentConfig(),
+        container=ContainerConfig(),
+        server=ServerConfig(),
+        logging=LoggingConfig(),
+        secrets=SecretsConfig(),
+        workspace_defaults=WorkspaceDefaultsConfig(),
+        workspaces={},
+        commands=CommandWordsConfig(),
+        scheduler=SchedulerConfig(poll_interval=poll_interval),
+        intervals=IntervalsConfig(),
+        queue=QueueConfig(),
+        security=SecurityConfig(),
+    )
+    if groups_dir is not None:
+        s.__dict__["groups_dir"] = groups_dir
+    with patch("pynchy.task_scheduler.get_settings", return_value=s):
+        yield
 
 
 class TestScheduledTaskSnapshotDict:
@@ -128,10 +164,8 @@ class MockSchedulerDeps:
         self.queue = GroupQueue()
         self.processes: list = []
         self.messages: list = []
-        # Plugin manager for agent core lookup
-        from pynchy.plugin import get_plugin_manager
-
-        self.plugin_manager = get_plugin_manager()
+        # Avoid global plugin discovery side effects in scheduler unit tests.
+        self.plugin_manager = None
 
     def registered_groups(self) -> dict[str, RegisteredGroup]:
         return self.groups
@@ -229,7 +263,7 @@ class TestStartSchedulerLoop:
             return []
 
         with patch("pynchy.task_scheduler.get_due_tasks", side_effect=mock_get_due):
-            with patch("pynchy.task_scheduler.SCHEDULER_POLL_INTERVAL", 0.01):
+            with _patch_settings(poll_interval=0.01):
                 with contextlib.suppress(asyncio.CancelledError):
                     await start_scheduler_loop(mock_deps)
 
@@ -250,7 +284,7 @@ class TestStartSchedulerLoop:
             return []
 
         with patch("pynchy.task_scheduler.get_due_tasks", side_effect=mock_get_due):
-            with patch("pynchy.task_scheduler.SCHEDULER_POLL_INTERVAL", 0.01):
+            with _patch_settings(poll_interval=0.01):
                 with contextlib.suppress(asyncio.CancelledError):
                     await start_scheduler_loop(mock_deps)
 
@@ -283,7 +317,7 @@ class TestStartSchedulerLoop:
 
         with patch("pynchy.task_scheduler.get_due_tasks", side_effect=mock_get_due):
             with patch("pynchy.task_scheduler.get_task_by_id", side_effect=mock_get_task):
-                with patch("pynchy.task_scheduler.SCHEDULER_POLL_INTERVAL", 0.01):
+                with _patch_settings(poll_interval=0.01):
                     with contextlib.suppress(asyncio.CancelledError):
                         await start_scheduler_loop(mock_deps)
 
@@ -331,7 +365,7 @@ class TestStartSchedulerLoop:
 
         with patch("pynchy.task_scheduler.get_due_tasks", side_effect=mock_get_due):
             with patch("pynchy.task_scheduler.get_task_by_id", side_effect=mock_get_task):
-                with patch("pynchy.task_scheduler.SCHEDULER_POLL_INTERVAL", 0.01):
+                with _patch_settings(poll_interval=0.01):
                     with contextlib.suppress(asyncio.CancelledError):
                         await start_scheduler_loop(mock_deps)
 
@@ -343,12 +377,8 @@ class TestRunTask:
     """Test task execution logic."""
 
     @pytest.mark.asyncio
-    async def test_logs_error_when_group_not_found(
-        self, mock_deps, sample_task, tmp_path, monkeypatch
-    ):
+    async def test_logs_error_when_group_not_found(self, mock_deps, sample_task, tmp_path):
         """Should log error when group is not registered."""
-        monkeypatch.setattr("pynchy.task_scheduler.GROUPS_DIR", tmp_path)
-
         logged_runs = []
 
         async def mock_log_run(log: TaskRunLog):
@@ -360,9 +390,10 @@ class TestRunTask:
             ) as mock_get_all:
                 mock_get_all.return_value = []
                 # Import and call _run_task directly
-                from pynchy.task_scheduler import _run_task
+                with _patch_settings(groups_dir=tmp_path):
+                    from pynchy.task_scheduler import _run_task
 
-                await _run_task(sample_task, mock_deps)
+                    await _run_task(sample_task, mock_deps)
 
         # Should have logged an error
         assert len(logged_runs) == 1
@@ -371,10 +402,9 @@ class TestRunTask:
 
     @pytest.mark.asyncio
     async def test_uses_group_session_for_group_context_mode(
-        self, mock_deps, sample_task, sample_group, tmp_path, monkeypatch
+        self, mock_deps, sample_task, sample_group, tmp_path
     ):
         """Should use group's session when context_mode is 'group'."""
-        monkeypatch.setattr("pynchy.task_scheduler.GROUPS_DIR", tmp_path)
         sample_task.context_mode = "group"
         mock_deps.groups["test-jid"] = sample_group
         mock_deps.sessions["test-group"] = "session-123"
@@ -395,9 +425,10 @@ class TestRunTask:
                         with patch(
                             "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
                         ):
-                            from pynchy.task_scheduler import _run_task
+                            with _patch_settings(groups_dir=tmp_path):
+                                from pynchy.task_scheduler import _run_task
 
-                            await _run_task(sample_task, mock_deps)
+                                await _run_task(sample_task, mock_deps)
 
         # Should have used the group's session
         assert len(container_inputs) == 1
@@ -405,10 +436,9 @@ class TestRunTask:
 
     @pytest.mark.asyncio
     async def test_uses_no_session_for_isolated_context_mode(
-        self, mock_deps, sample_task, sample_group, tmp_path, monkeypatch
+        self, mock_deps, sample_task, sample_group, tmp_path
     ):
         """Should not use session when context_mode is 'isolated'."""
-        monkeypatch.setattr("pynchy.task_scheduler.GROUPS_DIR", tmp_path)
         sample_task.context_mode = "isolated"
         mock_deps.groups["test-jid"] = sample_group
         mock_deps.sessions["test-group"] = "session-123"
@@ -429,9 +459,10 @@ class TestRunTask:
                         with patch(
                             "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
                         ):
-                            from pynchy.task_scheduler import _run_task
+                            with _patch_settings(groups_dir=tmp_path):
+                                from pynchy.task_scheduler import _run_task
 
-                            await _run_task(sample_task, mock_deps)
+                                await _run_task(sample_task, mock_deps)
 
         # Should NOT have used any session
         assert len(container_inputs) == 1
@@ -439,10 +470,9 @@ class TestRunTask:
 
     @pytest.mark.asyncio
     async def test_sends_result_message_on_success(
-        self, mock_deps, sample_task, sample_group, tmp_path, monkeypatch
+        self, mock_deps, sample_task, sample_group, tmp_path
     ):
         """Should send result message when task succeeds."""
-        monkeypatch.setattr("pynchy.task_scheduler.GROUPS_DIR", tmp_path)
         mock_deps.groups["test-jid"] = sample_group
 
         async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
@@ -460,9 +490,10 @@ class TestRunTask:
                         with patch(
                             "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
                         ):
-                            from pynchy.task_scheduler import _run_task
+                            with _patch_settings(groups_dir=tmp_path):
+                                from pynchy.task_scheduler import _run_task
 
-                            await _run_task(sample_task, mock_deps)
+                                await _run_task(sample_task, mock_deps)
 
         # Should have sent the start notification and the result message
         assert len(mock_deps.messages) == 2
@@ -471,10 +502,9 @@ class TestRunTask:
 
     @pytest.mark.asyncio
     async def test_calculates_next_run_for_cron_schedule(
-        self, mock_deps, sample_task, sample_group, tmp_path, monkeypatch
+        self, mock_deps, sample_task, sample_group, tmp_path
     ):
         """Should calculate next run time for cron schedules."""
-        monkeypatch.setattr("pynchy.task_scheduler.GROUPS_DIR", tmp_path)
         mock_deps.groups["test-jid"] = sample_group
         sample_task.schedule_type = "cron"
         sample_task.schedule_value = "0 9 * * *"  # Daily at 9am
@@ -497,9 +527,10 @@ class TestRunTask:
                         with patch(
                             "pynchy.task_scheduler.update_task_after_run", side_effect=mock_update
                         ):
-                            from pynchy.task_scheduler import _run_task
+                            with _patch_settings(groups_dir=tmp_path):
+                                from pynchy.task_scheduler import _run_task
 
-                            await _run_task(sample_task, mock_deps)
+                                await _run_task(sample_task, mock_deps)
 
         # Should have calculated next run
         assert len(updates) == 1
@@ -510,10 +541,9 @@ class TestRunTask:
 
     @pytest.mark.asyncio
     async def test_calculates_next_run_for_interval_schedule(
-        self, mock_deps, sample_task, sample_group, tmp_path, monkeypatch
+        self, mock_deps, sample_task, sample_group, tmp_path
     ):
         """Should calculate next run time for interval schedules."""
-        monkeypatch.setattr("pynchy.task_scheduler.GROUPS_DIR", tmp_path)
         mock_deps.groups["test-jid"] = sample_group
         sample_task.schedule_type = "interval"
         sample_task.schedule_value = "300000"  # 5 minutes in ms
@@ -536,9 +566,10 @@ class TestRunTask:
                         with patch(
                             "pynchy.task_scheduler.update_task_after_run", side_effect=mock_update
                         ):
-                            from pynchy.task_scheduler import _run_task
+                            with _patch_settings(groups_dir=tmp_path):
+                                from pynchy.task_scheduler import _run_task
 
-                            await _run_task(sample_task, mock_deps)
+                                await _run_task(sample_task, mock_deps)
 
         # Should have calculated next run
         assert len(updates) == 1
@@ -551,10 +582,9 @@ class TestRunTask:
 
     @pytest.mark.asyncio
     async def test_no_next_run_for_once_schedule(
-        self, mock_deps, sample_task, sample_group, tmp_path, monkeypatch
+        self, mock_deps, sample_task, sample_group, tmp_path
     ):
         """Should not calculate next run for 'once' schedules."""
-        monkeypatch.setattr("pynchy.task_scheduler.GROUPS_DIR", tmp_path)
         mock_deps.groups["test-jid"] = sample_group
         sample_task.schedule_type = "once"
         sample_task.schedule_value = "2024-12-31T23:59:59"
@@ -577,9 +607,10 @@ class TestRunTask:
                         with patch(
                             "pynchy.task_scheduler.update_task_after_run", side_effect=mock_update
                         ):
-                            from pynchy.task_scheduler import _run_task
+                            with _patch_settings(groups_dir=tmp_path):
+                                from pynchy.task_scheduler import _run_task
 
-                            await _run_task(sample_task, mock_deps)
+                                await _run_task(sample_task, mock_deps)
 
         # Should have no next run for 'once' tasks
         assert len(updates) == 1
@@ -587,10 +618,9 @@ class TestRunTask:
 
     @pytest.mark.asyncio
     async def test_logs_error_on_task_exception(
-        self, mock_deps, sample_task, sample_group, tmp_path, monkeypatch
+        self, mock_deps, sample_task, sample_group, tmp_path
     ):
         """Should log error when task execution fails."""
-        monkeypatch.setattr("pynchy.task_scheduler.GROUPS_DIR", tmp_path)
         mock_deps.groups["test-jid"] = sample_group
 
         async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
@@ -611,9 +641,10 @@ class TestRunTask:
                         with patch(
                             "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
                         ):
-                            from pynchy.task_scheduler import _run_task
+                            with _patch_settings(groups_dir=tmp_path):
+                                from pynchy.task_scheduler import _run_task
 
-                            await _run_task(sample_task, mock_deps)
+                                await _run_task(sample_task, mock_deps)
 
         # Should have logged the error
         assert len(logged_runs) == 1
@@ -622,10 +653,9 @@ class TestRunTask:
 
     @pytest.mark.asyncio
     async def test_passes_project_access_flag_to_container(
-        self, mock_deps, sample_task, sample_group, tmp_path, monkeypatch
+        self, mock_deps, sample_task, sample_group, tmp_path
     ):
         """Should pass project_access flag from task to container input."""
-        monkeypatch.setattr("pynchy.task_scheduler.GROUPS_DIR", tmp_path)
         mock_deps.groups["test-jid"] = sample_group
         sample_task.project_access = True
 
@@ -645,9 +675,10 @@ class TestRunTask:
                         with patch(
                             "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
                         ):
-                            from pynchy.task_scheduler import _run_task
+                            with _patch_settings(groups_dir=tmp_path):
+                                from pynchy.task_scheduler import _run_task
 
-                            await _run_task(sample_task, mock_deps)
+                                await _run_task(sample_task, mock_deps)
 
         # Should have passed project_access=True
         assert len(container_inputs) == 1
@@ -655,10 +686,9 @@ class TestRunTask:
 
     @pytest.mark.asyncio
     async def test_writes_tasks_snapshot_before_execution(
-        self, mock_deps, sample_task, sample_group, tmp_path, monkeypatch
+        self, mock_deps, sample_task, sample_group, tmp_path
     ):
         """Should write tasks snapshot so container can read current task state."""
-        monkeypatch.setattr("pynchy.task_scheduler.GROUPS_DIR", tmp_path)
         mock_deps.groups["test-jid"] = sample_group
 
         other_task = ScheduledTask(
@@ -692,9 +722,10 @@ class TestRunTask:
                         with patch(
                             "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
                         ):
-                            from pynchy.task_scheduler import _run_task
+                            with _patch_settings(groups_dir=tmp_path):
+                                from pynchy.task_scheduler import _run_task
 
-                            await _run_task(sample_task, mock_deps)
+                                await _run_task(sample_task, mock_deps)
 
         # Should have written snapshot with all tasks
         assert len(snapshots) == 1

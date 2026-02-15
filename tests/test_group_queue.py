@@ -1,21 +1,60 @@
-"""Tests for the group queue.
-
-Port of src/group-queue.test.ts.
-"""
+"""Tests for the group queue."""
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from pynchy.config import (
+    AgentConfig,
+    CommandWordsConfig,
+    ContainerConfig,
+    IntervalsConfig,
+    LoggingConfig,
+    QueueConfig,
+    SchedulerConfig,
+    SecretsConfig,
+    SecurityConfig,
+    ServerConfig,
+    Settings,
+    WorkspaceDefaultsConfig,
+)
 from pynchy.group_queue import GroupQueue
+
+
+@contextlib.contextmanager
+def _patch_settings(
+    *,
+    max_concurrent: int = 2,
+    base_retry_seconds: float = 5.0,
+    data_dir=None,
+):
+    s = Settings.model_construct(
+        agent=AgentConfig(),
+        container=ContainerConfig(max_concurrent=max_concurrent),
+        server=ServerConfig(),
+        logging=LoggingConfig(),
+        secrets=SecretsConfig(),
+        workspace_defaults=WorkspaceDefaultsConfig(),
+        workspaces={},
+        commands=CommandWordsConfig(),
+        scheduler=SchedulerConfig(),
+        intervals=IntervalsConfig(),
+        queue=QueueConfig(base_retry_seconds=base_retry_seconds),
+        security=SecurityConfig(),
+    )
+    if data_dir is not None:
+        s.__dict__["data_dir"] = data_dir
+    with patch("pynchy.group_queue.get_settings", return_value=s):
+        yield
 
 
 @pytest.fixture
 def queue():
-    with patch("pynchy.group_queue.MAX_CONCURRENT_CONTAINERS", 2):
+    with _patch_settings(max_concurrent=2):
         yield GroupQueue()
 
 
@@ -130,7 +169,7 @@ class TestGroupQueue:
         # First retry after ~5s (BASE_RETRY_SECONDS * 2^0)
         # We use shorter sleeps in test by patching, but let's just verify
         # the retry happened. We'll wait for the first retry.
-        with patch("pynchy.group_queue.BASE_RETRY_SECONDS", 0.05):
+        with _patch_settings(max_concurrent=2, base_retry_seconds=0.05):
             # Reset and re-test with shorter timeouts
             pass
 
@@ -311,7 +350,7 @@ class TestSendMessage:
         # Register process with a group_folder
         queue.register_process("group1@g.us", None, "container-1", "test-group")
 
-        with patch("pynchy.group_queue.DATA_DIR", tmp_path):
+        with _patch_settings(max_concurrent=2, data_dir=tmp_path):
             result = queue.send_message("group1@g.us", "hello world")
 
         assert result is True
@@ -381,10 +420,7 @@ class TestGroupQueueRetry:
     """Test retry behavior with shorter timeouts."""
 
     async def test_retries_with_backoff(self):
-        with (
-            patch("pynchy.group_queue.MAX_CONCURRENT_CONTAINERS", 2),
-            patch("pynchy.group_queue.BASE_RETRY_SECONDS", 0.1),
-        ):
+        with _patch_settings(max_concurrent=2, base_retry_seconds=0.1):
             queue = GroupQueue()
             call_count = 0
 
@@ -409,10 +445,7 @@ class TestGroupQueueRetry:
             assert call_count == 3
 
     async def test_stops_retrying_after_max_retries(self):
-        with (
-            patch("pynchy.group_queue.MAX_CONCURRENT_CONTAINERS", 2),
-            patch("pynchy.group_queue.BASE_RETRY_SECONDS", 0.01),
-        ):
+        with _patch_settings(max_concurrent=2, base_retry_seconds=0.01):
             queue = GroupQueue()
             call_count = 0
 
@@ -451,7 +484,7 @@ class TestCloseStdin:
 
         queue.register_process("group1@g.us", None, "container-1", "test-group")
 
-        with patch("pynchy.group_queue.DATA_DIR", tmp_path):
+        with _patch_settings(max_concurrent=2, data_dir=tmp_path):
             queue.close_stdin("group1@g.us")
 
         close_file = tmp_path / "ipc" / "test-group" / "input" / "_close"
@@ -463,7 +496,7 @@ class TestCloseStdin:
 
     async def test_noop_when_not_active(self, queue: GroupQueue, tmp_path):
         """close_stdin does nothing when group is not active."""
-        with patch("pynchy.group_queue.DATA_DIR", tmp_path):
+        with _patch_settings(max_concurrent=2, data_dir=tmp_path):
             queue.close_stdin("group1@g.us")
 
         # No IPC directory should be created
@@ -485,7 +518,7 @@ class TestCloseStdin:
         await asyncio.sleep(0.02)
 
         # Active but no group_folder registered
-        with patch("pynchy.group_queue.DATA_DIR", tmp_path):
+        with _patch_settings(max_concurrent=2, data_dir=tmp_path):
             queue.close_stdin("group1@g.us")
 
         ipc_dir = tmp_path / "ipc"
@@ -578,7 +611,7 @@ class TestTaskExceptionHandling:
                 raise RuntimeError("boom")
             return True
 
-        with patch("pynchy.group_queue.BASE_RETRY_SECONDS", 0.05):
+        with _patch_settings(max_concurrent=2, base_retry_seconds=0.05):
             queue.set_process_messages_fn(process_messages)
             queue.enqueue_message_check("group1@g.us")
 
@@ -598,7 +631,7 @@ class TestDrainGroupTaskOrdering:
 
     async def test_tasks_queued_at_concurrency_limit_drain_correctly(self):
         """Tasks queued when at concurrency limit drain when slots free up."""
-        with patch("pynchy.group_queue.MAX_CONCURRENT_CONTAINERS", 1):
+        with _patch_settings(max_concurrent=1):
             queue = GroupQueue()
             execution: list[str] = []
             completions: list[asyncio.Event] = []

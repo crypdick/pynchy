@@ -1,0 +1,228 @@
+"""Streamed output handling — processes container output and broadcasts to channels.
+
+Extracted from app.py to keep the orchestrator focused on wiring.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, Protocol
+
+from pynchy.config import get_settings
+from pynchy.db import store_message_direct
+from pynchy.event_bus import AgentTraceEvent, MessageEvent
+from pynchy.logger import logger
+from pynchy.router import format_tool_preview, parse_host_tag
+
+if TYPE_CHECKING:
+    from pynchy.types import ContainerOutput, RegisteredGroup
+
+_trace_counter = 0
+
+
+def _next_trace_id(prefix: str) -> str:
+    global _trace_counter
+    _trace_counter += 1
+    ts_ms = int(datetime.now(UTC).timestamp() * 1000)
+    return f"{prefix}-{ts_ms}-{_trace_counter}"
+
+
+class OutputDeps(Protocol):
+    """Dependencies for output handling."""
+
+    async def broadcast_to_channels(
+        self, chat_jid: str, text: str, *, suppress_errors: bool = True
+    ) -> None: ...
+
+    def emit(self, event: Any) -> None: ...
+
+
+async def broadcast_trace(
+    deps: OutputDeps,
+    chat_jid: str,
+    trace_type: str,
+    data: dict[str, Any],
+    channel_text: str,
+    *,
+    db_id_prefix: str,
+    db_sender: str,
+    message_type: str = "assistant",
+) -> None:
+    """Store a trace event, send to channels, and emit to EventBus."""
+    ts = datetime.now(UTC).isoformat()
+    await store_message_direct(
+        id=_next_trace_id(db_id_prefix),
+        chat_jid=chat_jid,
+        sender=db_sender,
+        sender_name=db_sender,
+        content=json.dumps(data),
+        timestamp=ts,
+        is_from_me=True,
+        message_type=message_type,
+    )
+    await deps.broadcast_to_channels(chat_jid, channel_text)
+    deps.emit(AgentTraceEvent(chat_jid=chat_jid, trace_type=trace_type, data=data))
+
+
+async def handle_streamed_output(
+    deps: OutputDeps,
+    chat_jid: str,
+    group: RegisteredGroup,
+    result: ContainerOutput,
+) -> bool:
+    """Handle a streamed output from the container agent.
+
+    Broadcasts trace events and results to channels/TUI.
+    Returns True if a user-visible result was sent.
+    """
+    from pynchy.router import strip_internal_tags
+
+    s = get_settings()
+    ts = datetime.now(UTC).isoformat()
+
+    # --- Trace events: persist to DB + broadcast ---
+    if result.type == "thinking":
+        await broadcast_trace(
+            deps,
+            chat_jid,
+            "thinking",
+            {"thinking": result.thinking or ""},
+            "\U0001f4ad thinking...",
+            db_id_prefix="think",
+            db_sender="thinking",
+            message_type="assistant",
+        )
+        return False
+    if result.type == "tool_use":
+        tool_name = result.tool_name or "tool"
+        tool_input = result.tool_input or {}
+        data = {"tool_name": tool_name, "tool_input": tool_input}
+        preview = format_tool_preview(tool_name, tool_input)
+        await broadcast_trace(
+            deps,
+            chat_jid,
+            "tool_use",
+            data,
+            f"\U0001f527 {preview}",
+            db_id_prefix="tool",
+            db_sender="tool_use",
+            message_type="assistant",
+        )
+        return False
+    if result.type == "tool_result":
+        await broadcast_trace(
+            deps,
+            chat_jid,
+            "tool_result",
+            {
+                "tool_use_id": result.tool_result_id or "",
+                "content": result.tool_result_content or "",
+                "is_error": result.tool_result_is_error or False,
+            },
+            "\U0001f4cb tool result",
+            db_id_prefix="toolr",
+            db_sender="tool_result",
+            message_type="assistant",
+        )
+        return False
+    if result.type == "system":
+        await broadcast_trace(
+            deps,
+            chat_jid,
+            "system",
+            {
+                "subtype": result.system_subtype or "",
+                "data": result.system_data or {},
+            },
+            f"\u2699\ufe0f system: {result.system_subtype or 'unknown'}",
+            db_id_prefix="sys",
+            db_sender="system",
+            message_type="system",
+        )
+        return False
+    if result.type == "text":
+        deps.emit(
+            AgentTraceEvent(
+                chat_jid=chat_jid,
+                trace_type="text",
+                data={"text": result.text or ""},
+            )
+        )
+        return False
+
+    # Persist result metadata if present (cost, usage, duration)
+    if result.result_metadata:
+        meta = result.result_metadata
+        await store_message_direct(
+            id=_next_trace_id("meta"),
+            chat_jid=chat_jid,
+            sender="result_meta",
+            sender_name="result_meta",
+            content=json.dumps(meta),
+            timestamp=ts,
+            is_from_me=True,
+            message_type="assistant",
+        )
+        cost = meta.get("total_cost_usd")
+        duration = meta.get("duration_ms")
+        turns = meta.get("num_turns")
+        parts = []
+        if cost is not None:
+            parts.append(f"{cost:.2f} USD")
+        if duration is not None:
+            parts.append(f"{duration / 1000:.1f}s")
+        if turns is not None:
+            parts.append(f"{turns} turns")
+        if parts:
+            trace_text = f"\U0001f4ca {' \u00b7 '.join(parts)}"
+            await deps.broadcast_to_channels(chat_jid, trace_text)
+        deps.emit(
+            AgentTraceEvent(
+                chat_jid=chat_jid,
+                trace_type="result_meta",
+                data=meta,
+            )
+        )
+
+    if result.result:
+        raw = result.result if isinstance(result.result, str) else json.dumps(result.result)
+        text = strip_internal_tags(raw)
+        if text:
+            is_host, content = parse_host_tag(text)
+            if is_host:
+                sender = "host"
+                sender_name = "host"
+                db_content = content
+                channel_text = f"\U0001f3e0 {content}"
+                logger.info("Host message", group=group.name, text=content[:200])
+            else:
+                sender = "bot"
+                sender_name = s.agent.name
+                db_content = text
+                channel_text = f"{s.agent.name}: {text}"
+                logger.info("Agent output", group=group.name, text=raw[:200])
+            msg_type = "host" if sender == "host" else "assistant"
+            await store_message_direct(
+                id=f"bot-{int(datetime.now(UTC).timestamp() * 1000)}",
+                chat_jid=chat_jid,
+                sender=sender,
+                sender_name=sender_name,
+                content=db_content,
+                timestamp=ts,
+                is_from_me=True,
+                message_type=msg_type,
+            )
+            await deps.broadcast_to_channels(chat_jid, channel_text, suppress_errors=False)
+            deps.emit(
+                MessageEvent(
+                    chat_jid=chat_jid,
+                    sender_name=sender_name,
+                    content=db_content,
+                    timestamp=ts,
+                    is_bot=True,
+                )
+            )
+            return True
+
+    return False

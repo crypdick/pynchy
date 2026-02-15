@@ -8,11 +8,26 @@ from __future__ import annotations
 
 import json
 import subprocess
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from pynchy.config import (
+    AgentConfig,
+    CommandWordsConfig,
+    ContainerConfig,
+    IntervalsConfig,
+    LoggingConfig,
+    QueueConfig,
+    SchedulerConfig,
+    SecretsConfig,
+    SecurityConfig,
+    ServerConfig,
+    Settings,
+    WorkspaceDefaultsConfig,
+)
 from pynchy.git_sync import (
     _host_container_files_changed,
     _host_get_origin_main_sha,
@@ -65,16 +80,32 @@ def _make_project(tmp_path: Path, origin: Path) -> Path:
 
 @pytest.fixture
 def git_env(tmp_path: Path):
-    """Set up origin + project repos, patching PROJECT_ROOT and WORKTREES_DIR."""
+    """Set up origin + project repos with patched settings."""
     origin = _make_bare_origin(tmp_path)
     project = _make_project(tmp_path, origin)
     worktrees_dir = tmp_path / "worktrees"
 
-    with (
-        patch("pynchy.git_utils.PROJECT_ROOT", project),
-        patch("pynchy.worktree.WORKTREES_DIR", worktrees_dir),
-        patch("pynchy.git_sync.WORKTREES_DIR", worktrees_dir),
-    ):
+    s = Settings.model_construct(
+        agent=AgentConfig(),
+        container=ContainerConfig(),
+        server=ServerConfig(),
+        logging=LoggingConfig(),
+        secrets=SecretsConfig(),
+        workspace_defaults=WorkspaceDefaultsConfig(),
+        workspaces={},
+        commands=CommandWordsConfig(),
+        scheduler=SchedulerConfig(),
+        intervals=IntervalsConfig(),
+        queue=QueueConfig(),
+        security=SecurityConfig(),
+    )
+    s.__dict__["project_root"] = project
+    s.__dict__["worktrees_dir"] = worktrees_dir
+
+    with ExitStack() as stack:
+        stack.enter_context(patch("pynchy.git_utils.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.worktree.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.git_sync.get_settings", return_value=s))
         yield {
             "origin": origin,
             "project": project,
@@ -414,10 +445,10 @@ class TestPollingHelpers:
     def test_host_get_origin_main_sha_success(self):
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
-                args=[], returncode=0, stdout="abc123def456\trefs/heads/main\n"
+                args=[], returncode=0, stdout="main-sha-001\trefs/heads/main\n"
             )
             sha = _host_get_origin_main_sha()
-            assert sha == "abc123def456"
+            assert sha == "main-sha-001"
 
     def test_host_get_origin_main_sha_failure(self):
         with patch("subprocess.run") as mock_run:

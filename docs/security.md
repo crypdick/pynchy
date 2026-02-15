@@ -23,7 +23,7 @@ This is the primary security boundary. Rather than relying on application-level 
 
 ### 2. Mount Security
 
-**External Allowlist** - Mount permissions stored at `~/.config/pynchy/mount-allowlist.json`, which is:
+**External Allowlist** - Mount permissions stored at `~/.config/pynchy/mount-allowlist.toml`, which is:
 - Outside project root
 - Never mounted into containers
 - Cannot be modified by agents
@@ -38,7 +38,7 @@ private_key, .secret
 **Protections:**
 - Symlink resolution before validation (prevents traversal attacks)
 - Container path validation (rejects `..` and absolute paths)
-- `nonGodReadOnly` option forces read-only for non-god groups
+- `non_god_read_only` option forces read-only for non-god groups
 
 ### 3. Session Isolation
 
@@ -63,7 +63,7 @@ Messages and task operations are verified against group identity:
 ### 5. Credential Handling
 
 **Mounted Credentials:**
-- Claude auth tokens, GitHub token, and OpenAI key (filtered from `.env`, read-only via `data/env/`)
+- Claude auth tokens, GitHub token, and OpenAI key (from `config.toml` `[secrets]`, read-only via `data/env/`)
 - Git identity (`GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, etc.) auto-discovered from host git config
 
 **NOT Mounted:**
@@ -72,7 +72,7 @@ Messages and task operations are verified against group identity:
 - Any credentials matching blocked patterns
 
 **Credential Filtering:**
-Only these environment variables are extracted from `.env` and exposed to containers:
+Only these environment variables are exposed to containers:
 ```python
 allowed_vars = [
     "CLAUDE_CODE_OAUTH_TOKEN",
@@ -82,7 +82,7 @@ allowed_vars = [
 ]
 ```
 
-Additionally, `GH_TOKEN` is auto-discovered from `gh auth token` if not in `.env`, and git identity vars (`GIT_AUTHOR_NAME`, `GIT_COMMITTER_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_EMAIL`) are auto-discovered from host git config.
+Additionally, `GH_TOKEN` is auto-discovered from `gh auth token` if not configured in `[secrets]`, and git identity vars (`GIT_AUTHOR_NAME`, `GIT_COMMITTER_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_EMAIL`) are auto-discovered from host git config.
 
 > **Note:** Anthropic credentials are mounted so that Claude Code can authenticate when the agent runs. However, this means the agent itself can discover these credentials via Bash or file operations. Ideally, Claude Code would authenticate without exposing credentials to the agent's execution environment, but I couldn't figure this out. **PRs welcome** if you have ideas for credential isolation.
 

@@ -1,6 +1,5 @@
 """Stdio MCP Server for Pynchy.
 
-Port of container/agent-runner/src/ipc-mcp-stdio.ts.
 Standalone process that agent teams subagents can inherit.
 Reads context from environment variables, writes IPC files for the host.
 """

@@ -1,6 +1,6 @@
 """Container runner — spawns agent execution in Apple Container.
 
-Port of src/container-runner.ts. Spawns subprocesses, writes JSON input to stdin,
+Spawns subprocesses, writes JSON input to stdin,
 parses streaming output using sentinel markers, manages activity-based timeouts,
 and writes log files.
 """
@@ -21,18 +21,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import pluggy
 
-from pynchy.config import (
-    CONTAINER_IMAGE,
-    CONTAINER_MAX_OUTPUT_SIZE,
-    CONTAINER_TIMEOUT,
-    DATA_DIR,
-    DEFAULT_AGENT_CORE,
-    GROUPS_DIR,
-    IDLE_TIMEOUT,
-    OUTPUT_END_MARKER,
-    OUTPUT_START_MARKER,
-    PROJECT_ROOT,
-)
+from pynchy.config import Settings, get_settings
 from pynchy.logger import logger
 from pynchy.mount_security import validate_additional_mounts
 from pynchy.runtime import get_runtime
@@ -53,7 +42,7 @@ def resolve_agent_core(plugin_manager: pluggy.PluginManager | None) -> tuple[str
     class_name = "ClaudeAgentCore"
     if plugin_manager:
         cores = plugin_manager.hook.pynchy_agent_core_info()
-        core_info = next((c for c in cores if c["name"] == DEFAULT_AGENT_CORE), None)
+        core_info = next((c for c in cores if c["name"] == get_settings().agent.core), None)
         if core_info is None and cores:
             core_info = cores[0]
         if core_info:
@@ -127,11 +116,12 @@ def _sync_skills(session_dir: Path, plugin_manager: pluggy.PluginManager | None 
         session_dir: Path to the .claude directory for this session
         plugin_manager: Optional pluggy.PluginManager for plugin skills
     """
+    s = get_settings()
     skills_dst = session_dir / "skills"
     skills_dst.mkdir(parents=True, exist_ok=True)
 
     # Copy built-in skills
-    skills_src = PROJECT_ROOT / "container" / "skills"
+    skills_src = s.project_root / "container" / "skills"
     if skills_src.exists():
         for skill_dir in skills_src.iterdir():
             if not skill_dir.is_dir():
@@ -272,26 +262,22 @@ def _write_env_file() -> Path | None:
     # full gh token. Each container should have least-privilege credentials scoped
     # to only the repos/permissions it needs.
     """
-    env_dir = DATA_DIR / "env"
+    s = get_settings()
+    env_dir = s.data_dir / "env"
     env_dir.mkdir(parents=True, exist_ok=True)
 
     env_vars: dict[str, str] = {}
 
-    # --- Parse .env overrides ---
-    # NOTE: Update docs/security.md § Credential Handling and
-    # docs/architecture/container-isolation.md § Environment Variable Isolation
-    # if you change this list.
-    allowed_vars = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "GH_TOKEN", "OPENAI_API_KEY"]
-    env_file = PROJECT_ROOT / ".env"
-    if env_file.exists():
-        for line in env_file.read_text().splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            for var in allowed_vars:
-                if line.startswith(f"{var}="):
-                    env_vars[var] = line[len(var) + 1 :]
-                    break
+    # --- Read secrets from Settings ---
+    secret_map = {
+        "ANTHROPIC_API_KEY": s.secrets.anthropic_api_key,
+        "OPENAI_API_KEY": s.secrets.openai_api_key,
+        "GH_TOKEN": s.secrets.gh_token,
+        "CLAUDE_CODE_OAUTH_TOKEN": s.secrets.claude_code_oauth_token,
+    }
+    for env_name, secret_val in secret_map.items():
+        if secret_val is not None:
+            env_vars[env_name] = secret_val.get_secret_value()
 
     # --- Auto-discover Claude credentials ---
     if "CLAUDE_CODE_OAUTH_TOKEN" not in env_vars and "ANTHROPIC_API_KEY" not in env_vars:
@@ -319,7 +305,7 @@ def _write_env_file() -> Path | None:
     if not env_vars:
         logger.warning(
             "No credentials found — containers will fail to authenticate. "
-            "Run 'claude' to authenticate or set ANTHROPIC_API_KEY in .env"
+            "Run 'claude' to authenticate or set [secrets].anthropic_api_key in config.toml"
         )
         return None
 
@@ -344,7 +330,7 @@ def _write_settings_json(session_dir: Path) -> None:
     }
 
     # Merge hook config from container/scripts/settings.json
-    hook_settings_file = PROJECT_ROOT / "container" / "scripts" / "settings.json"
+    hook_settings_file = get_settings().project_root / "container" / "scripts" / "settings.json"
     if hook_settings_file.exists():
         try:
             hook_settings = json.loads(hook_settings_file.read_text())
@@ -380,39 +366,40 @@ def _build_volume_mounts(
     Returns:
         List of volume mounts for the container
     """
+    s = get_settings()
     mounts: list[VolumeMount] = []
 
-    group_dir = GROUPS_DIR / group.folder
+    group_dir = s.groups_dir / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
 
     if worktree_path:
         mounts.append(VolumeMount(str(worktree_path), "/workspace/project", readonly=False))
         # Worktree .git file references the main repo's .git dir via absolute path.
         # Mount it at the same host path so git resolves the reference inside the container.
-        git_dir = PROJECT_ROOT / ".git"
+        git_dir = s.project_root / ".git"
         mounts.append(VolumeMount(str(git_dir), str(git_dir), readonly=False))
         mounts.append(VolumeMount(str(group_dir), "/workspace/group", readonly=False))
     else:
         mounts.append(VolumeMount(str(group_dir), "/workspace/group", readonly=False))
-        global_dir = GROUPS_DIR / "global"
+        global_dir = s.groups_dir / "global"
         if global_dir.exists():
             mounts.append(VolumeMount(str(global_dir), "/workspace/global", readonly=True))
 
     # Per-group Claude sessions directory (isolated from other groups)
-    session_dir = DATA_DIR / "sessions" / group.folder / ".claude"
+    session_dir = s.data_dir / "sessions" / group.folder / ".claude"
     session_dir.mkdir(parents=True, exist_ok=True)
     _write_settings_json(session_dir)
     _sync_skills(session_dir, plugin_manager)
     mounts.append(VolumeMount(str(session_dir), "/home/agent/.claude", readonly=False))
 
     # Per-group IPC namespace
-    group_ipc_dir = DATA_DIR / "ipc" / group.folder
+    group_ipc_dir = s.data_dir / "ipc" / group.folder
     for sub in ("messages", "tasks", "input", "merge_results"):
         (group_ipc_dir / sub).mkdir(parents=True, exist_ok=True)
     mounts.append(VolumeMount(str(group_ipc_dir), "/workspace/ipc", readonly=False))
 
     # Guard scripts (read-only: hook script + settings overlay)
-    scripts_dir = PROJECT_ROOT / "container" / "scripts"
+    scripts_dir = s.project_root / "container" / "scripts"
     if scripts_dir.exists():
         mounts.append(VolumeMount(str(scripts_dir), "/workspace/scripts", readonly=True))
 
@@ -422,7 +409,7 @@ def _build_volume_mounts(
         mounts.append(VolumeMount(str(env_dir), "/workspace/env-dir", readonly=True))
 
     # Agent-runner source (read-only, Python source for container)
-    agent_runner_src = PROJECT_ROOT / "container" / "agent_runner" / "src"
+    agent_runner_src = s.project_root / "container" / "agent_runner" / "src"
     mounts.append(VolumeMount(str(agent_runner_src), "/app/src", readonly=True))
 
     # Additional mounts validated against external allowlist
@@ -476,7 +463,7 @@ def _build_container_args(mounts: list[VolumeMount], container_name: str) -> lis
             )
         else:
             args.extend(["-v", f"{m.host_path}:{m.container_path}"])
-    args.append(CONTAINER_IMAGE)
+    args.append(get_settings().container.image)
     return args
 
 
@@ -613,11 +600,11 @@ def _parse_final_output(
     stdout: str, container_name: str, stderr: str, duration_ms: float
 ) -> ContainerOutput:
     """Parse the last marker pair from accumulated stdout (legacy mode)."""
-    start_idx = stdout.find(OUTPUT_START_MARKER)
-    end_idx = stdout.find(OUTPUT_END_MARKER)
+    start_idx = stdout.find(Settings.OUTPUT_START_MARKER)
+    end_idx = stdout.find(Settings.OUTPUT_END_MARKER)
 
     if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-        json_str = stdout[start_idx + len(OUTPUT_START_MARKER) : end_idx].strip()
+        json_str = stdout[start_idx + len(Settings.OUTPUT_START_MARKER) : end_idx].strip()
     else:
         # Fallback: last non-empty line
         lines = stdout.strip().splitlines()
@@ -669,7 +656,8 @@ async def run_container_agent(
     start_time = time.monotonic()
     loop = asyncio.get_running_loop()
 
-    group_dir = GROUPS_DIR / group.folder
+    s = get_settings()
+    group_dir = s.groups_dir / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
 
     # Resolve worktree for all project_access groups (including god).
@@ -721,7 +709,7 @@ async def run_container_agent(
         is_god=input_data.is_god,
     )
 
-    logs_dir = GROUPS_DIR / group.folder / "logs"
+    logs_dir = s.groups_dir / group.folder / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -757,10 +745,10 @@ async def run_container_agent(
     config_timeout = (
         group.container_config.timeout
         if group.container_config and group.container_config.timeout
-        else CONTAINER_TIMEOUT
+        else s.container_timeout
     )
-    # Grace period: hard timeout must be at least IDLE_TIMEOUT + 30s
-    timeout_secs = max(config_timeout, IDLE_TIMEOUT + 30.0)
+    # Grace period: hard timeout must be at least idle_timeout + 30s
+    timeout_secs = max(config_timeout, s.idle_timeout + 30.0)
     timeout_handle: asyncio.TimerHandle | None = None
 
     def kill_on_timeout() -> None:
@@ -793,7 +781,7 @@ async def run_container_agent(
 
             # Accumulate for logging (with truncation)
             if not stdout_truncated:
-                remaining = CONTAINER_MAX_OUTPUT_SIZE - len(stdout_buf)
+                remaining = s.container.max_output_size - len(stdout_buf)
                 if len(text) > remaining:
                     stdout_buf += text[:remaining]
                     stdout_truncated = True
@@ -809,15 +797,17 @@ async def run_container_agent(
             if on_output is not None:
                 parse_buffer += text
                 while True:
-                    start_idx = parse_buffer.find(OUTPUT_START_MARKER)
+                    start_idx = parse_buffer.find(Settings.OUTPUT_START_MARKER)
                     if start_idx == -1:
                         break
-                    end_idx = parse_buffer.find(OUTPUT_END_MARKER, start_idx)
+                    end_idx = parse_buffer.find(Settings.OUTPUT_END_MARKER, start_idx)
                     if end_idx == -1:
                         break  # Incomplete pair, wait for more data
 
-                    json_str = parse_buffer[start_idx + len(OUTPUT_START_MARKER) : end_idx].strip()
-                    parse_buffer = parse_buffer[end_idx + len(OUTPUT_END_MARKER) :]
+                    json_str = parse_buffer[
+                        start_idx + len(Settings.OUTPUT_START_MARKER) : end_idx
+                    ].strip()
+                    parse_buffer = parse_buffer[end_idx + len(Settings.OUTPUT_END_MARKER) :]
 
                     try:
                         parsed = _parse_container_output(json_str)
@@ -849,7 +839,7 @@ async def run_container_agent(
                     logger.debug(line, container=group.folder)
 
             if not stderr_truncated:
-                remaining = CONTAINER_MAX_OUTPUT_SIZE - len(stderr_buf)
+                remaining = s.container.max_output_size - len(stderr_buf)
                 if len(text) > remaining:
                     stderr_buf += text[:remaining]
                     stderr_truncated = True
@@ -951,7 +941,7 @@ def write_tasks_snapshot(
     tasks: list[dict[str, Any]],
 ) -> None:
     """Write current_tasks.json to the group's IPC directory."""
-    group_ipc_dir = DATA_DIR / "ipc" / folder
+    group_ipc_dir = get_settings().data_dir / "ipc" / folder
     group_ipc_dir.mkdir(parents=True, exist_ok=True)
 
     # God sees all tasks, others only see their own
@@ -966,7 +956,7 @@ def write_groups_snapshot(
     registered_jids: set[str],
 ) -> None:
     """Write available_groups.json to the group's IPC directory."""
-    group_ipc_dir = DATA_DIR / "ipc" / folder
+    group_ipc_dir = get_settings().data_dir / "ipc" / folder
     group_ipc_dir.mkdir(parents=True, exist_ok=True)
 
     # God sees all groups; others see nothing (they can't activate groups)

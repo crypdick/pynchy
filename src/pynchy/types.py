@@ -1,7 +1,4 @@
-"""Data models for Pynchy.
-
-Port of src/types.ts — interfaces become dataclasses, Channel becomes Protocol.
-"""
+"""Data models for Pynchy."""
 
 from __future__ import annotations
 

@@ -16,7 +16,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from pynchy.config import WORKTREES_DIR
+from pynchy.config import get_settings
 from pynchy.git_utils import detect_main_branch, push_local_commits, run_git
 from pynchy.logger import logger
 
@@ -63,7 +63,7 @@ def ensure_worktree(group_folder: str) -> WorktreeResult:
     Raises:
         WorktreeError: If creating a new worktree fails
     """
-    worktree_path = WORKTREES_DIR / group_folder
+    worktree_path = get_settings().worktrees_dir / group_folder
     # Use worktree/ prefix to avoid ref conflicts (e.g. "main/workspace" would
     # conflict with the "main" branch since git refs are path-based).
     branch_name = f"worktree/{group_folder}"
@@ -142,7 +142,7 @@ def _create_new_worktree(
     if fetch.returncode != 0:
         raise WorktreeError(f"git fetch failed: {fetch.stderr.strip()}")
 
-    WORKTREES_DIR.mkdir(parents=True, exist_ok=True)
+    get_settings().worktrees_dir.mkdir(parents=True, exist_ok=True)
 
     # Clean up stale worktree entries and branches from previous runs
     run_git("worktree", "prune")
@@ -188,12 +188,12 @@ def reconcile_worktrees_at_startup(
         except WorktreeError:
             logger.warning("Failed to create worktree at startup", group=folder)
 
-    if not WORKTREES_DIR.exists():
+    if not get_settings().worktrees_dir.exists():
         return
 
     main_branch = detect_main_branch()
 
-    for entry in sorted(WORKTREES_DIR.iterdir()):
+    for entry in sorted(get_settings().worktrees_dir.iterdir()):
         if not entry.is_dir():
             continue
 
@@ -259,7 +259,7 @@ def merge_worktree(group_folder: str) -> bool:
         True if merge succeeded or nothing to merge, False on conflict
     """
     branch_name = f"worktree/{group_folder}"
-    worktree_path = WORKTREES_DIR / group_folder
+    worktree_path = get_settings().worktrees_dir / group_folder
     main_branch = detect_main_branch()
 
     # Check if worktree branch has commits ahead of HEAD

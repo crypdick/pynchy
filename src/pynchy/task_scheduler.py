@@ -1,7 +1,4 @@
-"""Task scheduler — runs scheduled tasks on their due dates.
-
-Port of src/task-scheduler.ts — async polling loop using asyncio.
-"""
+"""Task scheduler — runs scheduled tasks on their due dates."""
 
 from __future__ import annotations
 
@@ -9,12 +6,7 @@ import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol
 
-from pynchy.config import (
-    GROUPS_DIR,
-    IDLE_TIMEOUT,
-    SCHEDULER_POLL_INTERVAL,
-    TIMEZONE,
-)
+from pynchy.config import get_settings
 from pynchy.container_runner import (
     resolve_agent_core,
     run_container_agent,
@@ -96,13 +88,14 @@ async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
         except Exception as exc:
             logger.error("Error in scheduler loop", err=str(exc))
 
-        await asyncio.sleep(SCHEDULER_POLL_INTERVAL)
+        await asyncio.sleep(get_settings().scheduler.poll_interval)
 
 
 async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
     """Execute a single scheduled task."""
     start_time = datetime.now(UTC)
-    group_dir = GROUPS_DIR / task.group_folder
+    s = get_settings()
+    group_dir = s.groups_dir / task.group_folder
     group_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info("Running scheduled task", task_id=task.id, group=task.group_folder)
@@ -164,7 +157,7 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
         nonlocal idle_handle
         if idle_handle is not None:
             idle_handle.cancel()
-        idle_handle = loop.call_later(IDLE_TIMEOUT, _idle_timeout_callback)
+        idle_handle = loop.call_later(s.idle_timeout, _idle_timeout_callback)
 
     try:
         # Convert task prompt to SDK message format
@@ -253,7 +246,7 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
     )
 
     # Calculate next run
-    next_run = compute_next_run(task.schedule_type, task.schedule_value, TIMEZONE)
+    next_run = compute_next_run(task.schedule_type, task.schedule_value, s.timezone)
 
     result_summary = f"Error: {error}" if error else (result[:200] if result else "Completed")
     await update_task_after_run(task.id, next_run, result_summary)

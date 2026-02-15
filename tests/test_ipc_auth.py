@@ -1,7 +1,4 @@
-"""Tests for IPC authorization and task scheduling.
-
-Port of src/ipc-auth.test.ts.
-"""
+"""Tests for IPC authorization and task scheduling."""
 
 from __future__ import annotations
 
@@ -10,6 +7,20 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from pynchy.config import (
+    AgentConfig,
+    CommandWordsConfig,
+    ContainerConfig,
+    IntervalsConfig,
+    LoggingConfig,
+    QueueConfig,
+    SchedulerConfig,
+    SecretsConfig,
+    SecurityConfig,
+    ServerConfig,
+    Settings,
+    WorkspaceDefaultsConfig,
+)
 from pynchy.db import (
     _init_test_database,
     create_task,
@@ -41,6 +52,26 @@ THIRD_GROUP = RegisteredGroup(
     trigger="@pynchy",
     added_at="2024-01-01T00:00:00.000Z",
 )
+
+
+def _test_settings(*, data_dir=None):
+    s = Settings.model_construct(
+        agent=AgentConfig(),
+        container=ContainerConfig(),
+        server=ServerConfig(),
+        logging=LoggingConfig(),
+        secrets=SecretsConfig(),
+        workspace_defaults=WorkspaceDefaultsConfig(),
+        workspaces={},
+        commands=CommandWordsConfig(),
+        scheduler=SchedulerConfig(),
+        intervals=IntervalsConfig(),
+        queue=QueueConfig(),
+        security=SecurityConfig(),
+    )
+    if data_dir is not None:
+        s.__dict__["data_dir"] = data_dir
+    return s
 
 
 class MockDeps:
@@ -865,7 +896,10 @@ class TestResetContextExecution:
 
     async def test_reset_context_clears_session_and_chat(self, deps, tmp_path):
         with (
-            patch("pynchy.ipc.DATA_DIR", tmp_path / "data"),
+            patch(
+                "pynchy.ipc.get_settings",
+                return_value=_test_settings(data_dir=tmp_path / "data"),
+            ),
             patch("pynchy.worktree.merge_and_push_worktree"),
         ):
             (tmp_path / "data" / "ipc" / "god").mkdir(parents=True)
@@ -887,7 +921,10 @@ class TestResetContextExecution:
 
     async def test_reset_context_writes_reset_prompt_file(self, deps, tmp_path):
         with (
-            patch("pynchy.ipc.DATA_DIR", tmp_path / "data"),
+            patch(
+                "pynchy.ipc.get_settings",
+                return_value=_test_settings(data_dir=tmp_path / "data"),
+            ),
             patch("pynchy.worktree.merge_and_push_worktree"),
         ):
             (tmp_path / "data" / "ipc" / "god").mkdir(parents=True)
@@ -946,7 +983,10 @@ class TestResetContextExecution:
     async def test_reset_context_survives_merge_failure(self, deps, tmp_path):
         """reset_context should continue even if worktree merge fails."""
         with (
-            patch("pynchy.ipc.DATA_DIR", tmp_path / "data"),
+            patch(
+                "pynchy.ipc.get_settings",
+                return_value=_test_settings(data_dir=tmp_path / "data"),
+            ),
             patch(
                 "pynchy.worktree.merge_and_push_worktree",
                 side_effect=Exception("merge failed"),

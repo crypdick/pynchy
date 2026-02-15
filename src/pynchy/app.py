@@ -1,7 +1,4 @@
-"""Main orchestrator — wires all subsystems together.
-
-Port of src/index.ts. Module-level globals become instance state on PynchyApp.
-"""
+"""Main orchestrator — wires all subsystems together."""
 
 from __future__ import annotations
 
@@ -10,7 +7,6 @@ import json
 import os
 import signal
 import subprocess
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -18,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import pluggy
 
+from pynchy import message_handler, output_handler, startup_handler
 from pynchy.adapters import (
     EventBusAdapter,
     GroupMetadataManager,
@@ -30,19 +27,7 @@ from pynchy.adapters import (
     SessionManager,
     UserMessageHandler,
 )
-from pynchy.config import (
-    ASSISTANT_NAME,
-    DATA_DIR,
-    DEPLOY_PORT,
-    GROUPS_DIR,
-    IDLE_TIMEOUT,
-    POLL_INTERVAL,
-    PROJECT_ROOT,
-    TRIGGER_PATTERN,
-    is_context_reset,
-    is_end_session,
-    is_redeploy,
-)
+from pynchy.config import get_settings
 from pynchy.container_runner import (
     resolve_agent_core,
     run_container_agent,
@@ -55,8 +40,6 @@ from pynchy.db import (
     get_all_sessions,
     get_all_tasks,
     get_all_workspace_profiles,
-    get_messages_since,
-    get_new_messages,
     get_router_state,
     init_database,
     set_chat_cleared_at,
@@ -68,22 +51,18 @@ from pynchy.db import (
     store_message_direct,
 )
 from pynchy.event_bus import (
-    AgentActivityEvent,
-    AgentTraceEvent,
     ChatClearedEvent,
     EventBus,
     MessageEvent,
 )
 from pynchy.git_sync import start_host_git_sync_loop
-from pynchy.git_utils import count_unpushed_commits, get_head_sha, is_repo_dirty, run_git
+from pynchy.git_utils import count_unpushed_commits, get_head_sha, is_repo_dirty
 from pynchy.group_queue import GroupQueue
 from pynchy.http_server import (
-    _get_head_commit_message,
     start_http_server,
 )
 from pynchy.ipc import start_ipc_watcher
 from pynchy.logger import logger
-from pynchy.router import format_tool_preview, parse_host_tag
 from pynchy.service_installer import install_service
 from pynchy.system_checks import check_tailscale, ensure_container_system_running
 from pynchy.task_scheduler import start_scheduler_loop
@@ -96,15 +75,6 @@ from pynchy.types import (
     WorkspaceProfile,
 )
 from pynchy.utils import generate_message_id
-
-_trace_counter = 0
-
-
-def _next_trace_id(prefix: str) -> str:
-    global _trace_counter
-    _trace_counter += 1
-    ts_ms = int(datetime.now(UTC).timestamp() * 1000)
-    return f"{prefix}-{ts_ms}-{_trace_counter}"
 
 
 class PynchyApp:
@@ -162,6 +132,36 @@ class PynchyApp:
             json.dumps(self.last_agent_timestamp),
         )
 
+    # Adapter methods for extracted handler protocols
+    async def save_state(self) -> None:
+        await self._save_state()
+
+    async def handle_context_reset(
+        self, chat_jid: str, group: RegisteredGroup, timestamp: str
+    ) -> None:
+        await self._handle_context_reset(chat_jid, group, timestamp)
+
+    async def handle_end_session(
+        self, chat_jid: str, group: RegisteredGroup, timestamp: str
+    ) -> None:
+        await self._handle_end_session(chat_jid, group, timestamp)
+
+    async def trigger_manual_redeploy(self, chat_jid: str) -> None:
+        await self._trigger_manual_redeploy(chat_jid)
+
+    async def run_agent(
+        self,
+        group: RegisteredGroup,
+        chat_jid: str,
+        messages: list[dict],
+        on_output: Any | None = None,
+        extra_system_notices: list[str] | None = None,
+    ) -> str:
+        return await self._run_agent(group, chat_jid, messages, on_output, extra_system_notices)
+
+    def emit(self, event: Any) -> None:
+        self.event_bus.emit(event)
+
     # ------------------------------------------------------------------
     # Group management
     # ------------------------------------------------------------------
@@ -172,7 +172,7 @@ class PynchyApp:
         self.registered_groups[profile.jid] = profile.to_registered_group()  # Backward compat
         await set_workspace_profile(profile)
 
-        workspace_dir = GROUPS_DIR / profile.folder
+        workspace_dir = get_settings().groups_dir / profile.folder
         (workspace_dir / "logs").mkdir(parents=True, exist_ok=True)
 
         logger.info(
@@ -223,7 +223,8 @@ class PynchyApp:
         Called on first run when no groups are registered. Creates a private
         group so the user has a dedicated space to talk to the agent.
         """
-        group_name = ASSISTANT_NAME.title()
+        s = get_settings()
+        group_name = s.agent.name.title()
         logger.info("No groups registered. Creating WhatsApp group...", name=group_name)
 
         jid = await whatsapp.create_group(group_name)
@@ -232,8 +233,8 @@ class PynchyApp:
         profile = WorkspaceProfile(
             jid=jid,
             name=group_name,
-            folder=ASSISTANT_NAME,
-            trigger=f"@{ASSISTANT_NAME}",
+            folder=s.agent.name,
+            trigger=f"@{s.agent.name}",
             added_at=datetime.now(UTC).isoformat(),
             requires_trigger=False,
             is_god=True,
@@ -287,306 +288,18 @@ class PynchyApp:
     async def _intercept_special_command(
         self, chat_jid: str, group: RegisteredGroup, message: NewMessage
     ) -> bool:
-        """Check for and handle special commands (reset, end session, redeploy, !cmd).
-
-        Returns True if a command was intercepted and handled, False otherwise.
-        Centralizes command interception so both _process_group_messages and
-        _start_message_loop share the same logic and stay in sync.
-        """
-        content = message.content.strip()
-
-        if is_context_reset(content):
-            await self._handle_context_reset(chat_jid, group, message.timestamp)
-            logger.info("Context reset", group=group.name)
-            return True
-
-        if is_end_session(content):
-            await self._handle_end_session(chat_jid, group, message.timestamp)
-            logger.info("End session", group=group.name)
-            return True
-
-        if is_redeploy(content):
-            self.last_agent_timestamp[chat_jid] = message.timestamp
-            await self._save_state()
-            await self._trigger_manual_redeploy(chat_jid)
-            return True
-
-        if content.startswith("!"):
-            command = content[1:]
-            if command:
-                await self._execute_direct_command(chat_jid, group, message, command)
-                self.last_agent_timestamp[chat_jid] = message.timestamp
-                await self._save_state()
-                return True
-
-        return False
+        """Delegates special-command handling to the message handler module."""
+        return await message_handler.intercept_special_command(self, chat_jid, group, message)
 
     async def _process_group_messages(self, chat_jid: str) -> bool:
-        """Process all pending messages for a group. Called by GroupQueue."""
-        group = self.registered_groups.get(chat_jid)
-        if not group:
-            return True
-
-        # Check for agent-initiated context reset prompt
-        reset_file = DATA_DIR / "ipc" / group.folder / "reset_prompt.json"
-        if reset_file.exists():
-            try:
-                reset_data = json.loads(reset_file.read_text())
-                reset_file.unlink()
-            except (json.JSONDecodeError, OSError) as exc:
-                logger.warning(
-                    "Failed to read reset prompt file",
-                    group=group.name,
-                    path=str(reset_file),
-                    err=str(exc),
-                )
-                reset_file.unlink(missing_ok=True)
-                return True
-
-            reset_message = reset_data.get("message", "")
-            if reset_message:
-                logger.info("Processing reset handoff", group=group.name)
-
-                async def handoff_on_output(result: ContainerOutput) -> None:
-                    await self._handle_streamed_output(chat_jid, group, result)
-
-                # Convert plain text message to SDK format
-                reset_messages = [
-                    {
-                        "message_type": "user",
-                        "sender": "system",
-                        "sender_name": "System",
-                        "content": reset_message,
-                        "timestamp": datetime.now(UTC).isoformat(),
-                        "metadata": {"source": "reset_handoff"},
-                    }
-                ]
-
-                result = await self._run_agent(group, chat_jid, reset_messages, handoff_on_output)
-
-                # If dirty repo check is needed after reset, write marker for next message
-                if reset_data.get("needsDirtyRepoCheck"):
-                    dirty_check_file = DATA_DIR / "ipc" / group.folder / "needs_dirty_check.json"
-                    dirty_check_file.write_text(
-                        json.dumps({"timestamp": datetime.now(UTC).isoformat()})
-                    )
-
-                return result != "error"
-            return True
-
-        is_god_group = group.is_god
-        since_timestamp = self.last_agent_timestamp.get(chat_jid, "")
-        missed_messages = await get_messages_since(chat_jid, since_timestamp)
-
-        if not missed_messages:
-            return True
-
-        # For non-god groups, check if trigger is required and present
-        if not is_god_group and group.requires_trigger is not False:
-            has_trigger = any(TRIGGER_PATTERN.search(m.content.strip()) for m in missed_messages)
-            if not has_trigger:
-                return True
-
-        # Intercept special commands (context reset, redeploy, !command)
-        if await self._intercept_special_command(chat_jid, group, missed_messages[-1]):
-            return True
-
-        from pynchy.router import format_messages_for_sdk
-
-        messages = format_messages_for_sdk(missed_messages)
-
-        # Check if we need to add dirty repo warning after context reset
-        reset_system_notices: list[str] = []
-        dirty_check_file = DATA_DIR / "ipc" / group.folder / "needs_dirty_check.json"
-        if dirty_check_file.exists() and is_god_group:
-            try:
-                dirty_check_file.unlink()
-                if is_repo_dirty():
-                    # Add system notice about uncommitted changes
-                    reset_system_notices.append(
-                        "WARNING: Uncommitted changes detected in the repository. "
-                        "Please review and commit these changes so that you may work "
-                        "with a clean slate. "
-                        "Run `git status` and `git diff` to see what has changed."
-                    )
-                    logger.info(
-                        "Added dirty repo warning after reset",
-                        group=group.name,
-                    )
-            except Exception as exc:
-                logger.error(
-                    "Error checking for dirty repo after reset",
-                    err=str(exc),
-                )
-                dirty_check_file.unlink(missing_ok=True)
-
-        # Advance cursor; save old cursor for rollback on error
-        previous_cursor = self.last_agent_timestamp.get(chat_jid, "")
-        self.last_agent_timestamp[chat_jid] = missed_messages[-1].timestamp
-        await self._save_state()
-
-        logger.info(
-            "Processing messages",
-            group=group.name,
-            message_count=len(missed_messages),
-            preview=missed_messages[-1].content[:200],
-        )
-
-        # Track idle timer for closing stdin when agent is idle
-        loop = asyncio.get_running_loop()
-        idle_handle: asyncio.TimerHandle | None = None
-
-        def reset_idle_timer() -> None:
-            nonlocal idle_handle
-            if idle_handle is not None:
-                idle_handle.cancel()
-            idle_handle = loop.call_later(
-                IDLE_TIMEOUT,
-                lambda: self.queue.close_stdin(chat_jid),
-            )
-
-        # Send emoji reaction on the last message to indicate agent is reading
-        last_msg = missed_messages[-1]
-        await self._send_reaction_to_channels(chat_jid, last_msg.id, last_msg.sender, "👀")
-
-        # Set typing indicator on all channels that support it
-        await self._set_typing_on_channels(chat_jid, True)
-
-        self.event_bus.emit(AgentActivityEvent(chat_jid=chat_jid, active=True))
-
-        had_error = False
-        output_sent_to_user = False
-
-        async def on_output(result: ContainerOutput) -> None:
-            nonlocal had_error, output_sent_to_user
-
-            sent = await self._handle_streamed_output(chat_jid, group, result)
-            if sent:
-                output_sent_to_user = True
-            # Only reset idle timer on actual results, not session-update markers
-            if result.type == "result":
-                reset_idle_timer()
-            if result.status == "error":
-                had_error = True
-
-        agent_result = await self._run_agent(
-            group, chat_jid, messages, on_output, reset_system_notices or None
-        )
-
-        await self._set_typing_on_channels(chat_jid, False)
-        self.event_bus.emit(AgentActivityEvent(chat_jid=chat_jid, active=False))
-        if idle_handle is not None:
-            idle_handle.cancel()
-
-        if agent_result == "error" or had_error:
-            if output_sent_to_user:
-                logger.warning(
-                    "Agent error after output was sent, skipping cursor rollback",
-                    group=group.name,
-                )
-                return True
-            # Send error notification to user
-            await self._broadcast_host_message(
-                chat_jid, "⚠️ Agent error occurred. Will retry on next message."
-            )
-            # Roll back cursor for retry
-            self.last_agent_timestamp[chat_jid] = previous_cursor
-            await self._save_state()
-            logger.warning(
-                "Agent error, rolled back message cursor for retry",
-                group=group.name,
-            )
-            return False
-
-        # Merge worktree commits into main and push for all project_access groups
-        from pynchy.workspace_config import has_project_access
-        from pynchy.worktree import merge_and_push_worktree
-
-        if has_project_access(group):
-            asyncio.create_task(asyncio.to_thread(merge_and_push_worktree, group.folder))
-
-        return True
+        """Delegates group processing to the message handler module."""
+        return await message_handler.process_group_messages(self, chat_jid)
 
     async def _execute_direct_command(
         self, chat_jid: str, group: RegisteredGroup, message: NewMessage, command: str
     ) -> None:
-        """Execute a user command directly without LLM approval.
-
-        Stores both the command and its output in the message history so the LLM
-        can see it when triggered by a subsequent message.
-        """
-        logger.info("Executing direct command", group=group.name, command=command[:100])
-
-        try:
-            # Execute command with a timeout
-            result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=30,
-                cwd=str(GROUPS_DIR / group.folder),
-            )
-
-            # Format output
-            if result.returncode == 0:
-                output = result.stdout if result.stdout else "(no output)"
-                status_emoji = "✅"
-            else:
-                output = result.stderr if result.stderr else result.stdout or "(no output)"
-                status_emoji = "❌"
-
-            # Store command output in message history (shown to user and LLM)
-            # Note: This is stored as a regular message with sender="command_output",
-            # NOT as an SDK system message. It becomes part of the chat history that
-            # the LLM sees on subsequent turns.
-            ts = datetime.now(UTC).isoformat()
-            output_text = (
-                f"{status_emoji} Command output (exit {result.returncode}):\n```\n{output}\n```"
-            )
-
-            await store_message_direct(
-                id=f"cmd-{int(datetime.now(UTC).timestamp() * 1000)}",
-                chat_jid=chat_jid,
-                sender="command_output",
-                sender_name="command",
-                content=output_text,
-                timestamp=ts,
-                is_from_me=True,
-                message_type="tool_result",
-                metadata={"exit_code": result.returncode},
-            )
-
-            # Send to channels
-            channel_text = f"🔧 {output_text}"
-            await self._broadcast_to_channels(chat_jid, channel_text)
-
-            # Emit event for TUI
-            self.event_bus.emit(
-                MessageEvent(
-                    chat_jid=chat_jid,
-                    sender_name="command",
-                    content=output_text,
-                    timestamp=ts,
-                    is_bot=True,
-                )
-            )
-
-            logger.info(
-                "Direct command executed",
-                group=group.name,
-                exit_code=result.returncode,
-                output_len=len(output),
-            )
-
-        except subprocess.TimeoutExpired:
-            error_msg = "⏱️ Command timed out (30s limit)"
-            await self._broadcast_host_message(chat_jid, error_msg)
-            logger.warning("Direct command timeout", group=group.name, command=command[:100])
-        except Exception as exc:
-            error_msg = f"❌ Command failed: {str(exc)}"
-            await self._broadcast_host_message(chat_jid, error_msg)
-            logger.error("Direct command error", group=group.name, error=str(exc))
+        """Delegates direct command execution to the message handler module."""
+        await message_handler.execute_direct_command(self, chat_jid, group, message, command)
 
     async def _broadcast_trace(
         self,
@@ -599,175 +312,28 @@ class PynchyApp:
         db_sender: str,
         message_type: str = "assistant",
     ) -> None:
-        """Store a trace event, send to channels, and emit to EventBus."""
-        ts = datetime.now(UTC).isoformat()
-        await store_message_direct(
-            id=_next_trace_id(db_id_prefix),
-            chat_jid=chat_jid,
-            sender=db_sender,
-            sender_name=db_sender,
-            content=json.dumps(data),
-            timestamp=ts,
-            is_from_me=True,
+        """Delegates trace broadcasting to the output handler module."""
+        await output_handler.broadcast_trace(
+            self,
+            chat_jid,
+            trace_type,
+            data,
+            channel_text,
+            db_id_prefix=db_id_prefix,
+            db_sender=db_sender,
             message_type=message_type,
         )
-        await self._broadcast_to_channels(chat_jid, channel_text)
-        self.event_bus.emit(AgentTraceEvent(chat_jid=chat_jid, trace_type=trace_type, data=data))
 
     async def _handle_streamed_output(
         self, chat_jid: str, group: RegisteredGroup, result: ContainerOutput
     ) -> bool:
-        """Handle a streamed output from the container agent.
+        """Delegates streamed output handling to the output handler module."""
+        return await output_handler.handle_streamed_output(self, chat_jid, group, result)
 
-        Broadcasts trace events and results to channels/TUI.
-        Returns True if a user-visible result was sent.
-        """
-        from pynchy.router import strip_internal_tags
-
-        ts = datetime.now(UTC).isoformat()
-
-        # --- Trace events: persist to DB + broadcast ---
-        if result.type == "thinking":
-            await self._broadcast_trace(
-                chat_jid,
-                "thinking",
-                {"thinking": result.thinking or ""},
-                "\U0001f4ad thinking...",
-                db_id_prefix="think",
-                db_sender="thinking",
-                message_type="assistant",  # Thinking is part of assistant turn
-            )
-            return False
-        if result.type == "tool_use":
-            tool_name = result.tool_name or "tool"
-            tool_input = result.tool_input or {}
-            data = {"tool_name": tool_name, "tool_input": tool_input}
-            preview = format_tool_preview(tool_name, tool_input)
-            await self._broadcast_trace(
-                chat_jid,
-                "tool_use",
-                data,
-                f"\U0001f527 {preview}",
-                db_id_prefix="tool",
-                db_sender="tool_use",
-                message_type="assistant",  # Tool use is part of assistant turn
-            )
-            return False
-        if result.type == "tool_result":
-            await self._broadcast_trace(
-                chat_jid,
-                "tool_result",
-                {
-                    "tool_use_id": result.tool_result_id or "",
-                    "content": result.tool_result_content or "",
-                    "is_error": result.tool_result_is_error or False,
-                },
-                "\U0001f4cb tool result",
-                db_id_prefix="toolr",
-                db_sender="tool_result",
-                message_type="assistant",  # Tool result is part of assistant turn
-            )
-            return False
-        if result.type == "system":
-            await self._broadcast_trace(
-                chat_jid,
-                "system",
-                {
-                    "subtype": result.system_subtype or "",
-                    "data": result.system_data or {},
-                },
-                f"\u2699\ufe0f system: {result.system_subtype or 'unknown'}",
-                db_id_prefix="sys",
-                db_sender="system",
-                message_type="system",  # System messages from SDK
-            )
-            return False
-        if result.type == "text":
-            self.event_bus.emit(
-                AgentTraceEvent(
-                    chat_jid=chat_jid,
-                    trace_type="text",
-                    data={"text": result.text or ""},
-                )
-            )
-            return False
-
-        # Persist result metadata if present (cost, usage, duration)
-        if result.result_metadata:
-            meta = result.result_metadata
-            await store_message_direct(
-                id=_next_trace_id("meta"),
-                chat_jid=chat_jid,
-                sender="result_meta",
-                sender_name="result_meta",
-                content=json.dumps(meta),
-                timestamp=ts,
-                is_from_me=True,
-                message_type="assistant",  # Result metadata is part of assistant turn
-            )
-            cost = meta.get("total_cost_usd")
-            duration = meta.get("duration_ms")
-            turns = meta.get("num_turns")
-            parts = []
-            if cost is not None:
-                parts.append(f"{cost:.2f} USD")
-            if duration is not None:
-                parts.append(f"{duration / 1000:.1f}s")
-            if turns is not None:
-                parts.append(f"{turns} turns")
-            if parts:
-                trace_text = f"\U0001f4ca {' \u00b7 '.join(parts)}"
-                await self._broadcast_to_channels(chat_jid, trace_text)
-            self.event_bus.emit(
-                AgentTraceEvent(
-                    chat_jid=chat_jid,
-                    trace_type="result_meta",
-                    data=meta,
-                )
-            )
-
-        if result.result:
-            raw = result.result if isinstance(result.result, str) else json.dumps(result.result)
-            text = strip_internal_tags(raw)
-            if text:
-                is_host, content = parse_host_tag(text)
-                if is_host:
-                    sender = "host"
-                    sender_name = "host"
-                    db_content = content
-                    channel_text = f"\U0001f3e0 {content}"
-                    logger.info("Host message", group=group.name, text=content[:200])
-                else:
-                    sender = "bot"
-                    sender_name = ASSISTANT_NAME
-                    db_content = text
-                    channel_text = f"{ASSISTANT_NAME}: {text}"
-                    logger.info("Agent output", group=group.name, text=raw[:200])
-                # Determine message type based on sender
-                msg_type = "host" if sender == "host" else "assistant"
-                await store_message_direct(
-                    id=f"bot-{int(datetime.now(UTC).timestamp() * 1000)}",
-                    chat_jid=chat_jid,
-                    sender=sender,
-                    sender_name=sender_name,
-                    content=db_content,
-                    timestamp=ts,
-                    is_from_me=True,
-                    message_type=msg_type,
-                )
-                await self._broadcast_to_channels(chat_jid, channel_text, suppress_errors=False)
-                self.event_bus.emit(
-                    MessageEvent(
-                        chat_jid=chat_jid,
-                        sender_name=sender_name,
-                        content=db_content,
-                        timestamp=ts,
-                        is_bot=True,
-                    )
-                )
-                return True
-
-        return False
+    async def handle_streamed_output(
+        self, chat_jid: str, group: RegisteredGroup, result: ContainerOutput
+    ) -> bool:
+        return await self._handle_streamed_output(chat_jid, group, result)
 
     async def _run_agent(
         self,
@@ -887,252 +453,36 @@ class PynchyApp:
     # ------------------------------------------------------------------
 
     async def _start_message_loop(self) -> None:
-        """Main polling loop — checks for new messages every POLL_INTERVAL."""
+        """Main polling loop — delegated to message_handler."""
         if self.message_loop_running:
             logger.debug("Message loop already running, skipping duplicate start")
             return
         self.message_loop_running = True
-
-        logger.info(f"Pynchy running (trigger: @{ASSISTANT_NAME})")
-
-        while not self._shutting_down:
-            try:
-                jids = list(self.registered_groups.keys())
-                messages, new_timestamp = await get_new_messages(jids, self.last_timestamp)
-
-                if messages:
-                    logger.info("New messages", count=len(messages))
-
-                    # Advance "seen" cursor immediately
-                    self.last_timestamp = new_timestamp
-                    await self._save_state()
-
-                    # Group by chat JID
-                    messages_by_group: dict[str, list[NewMessage]] = {}
-                    for msg in messages:
-                        messages_by_group.setdefault(msg.chat_jid, []).append(msg)
-
-                    for chat_jid, group_messages in messages_by_group.items():
-                        group = self.registered_groups.get(chat_jid)
-                        if not group:
-                            continue
-
-                        is_god_group = group.is_god
-                        needs_trigger = not is_god_group and group.requires_trigger is not False
-
-                        if needs_trigger:
-                            has_trigger = any(
-                                TRIGGER_PATTERN.search(m.content.strip()) for m in group_messages
-                            )
-                            if not has_trigger:
-                                continue
-
-                        # Pull all messages since lastAgentTimestamp for context
-                        all_pending = await get_messages_since(
-                            chat_jid,
-                            self.last_agent_timestamp.get(chat_jid, ""),
-                        )
-                        if not all_pending:
-                            # Already consumed by _process_group_messages
-                            continue
-
-                        # Intercept special commands (context reset, end session,
-                        # redeploy, !command) before piping to active containers
-                        # — they must be handled by the host, not forwarded as
-                        # regular user messages.
-                        if await self._intercept_special_command(chat_jid, group, all_pending[-1]):
-                            continue
-
-                        # Don't pipe messages to scheduled-task containers —
-                        # the agent is doing autonomous work and won't answer
-                        # user questions. Queue for processing after the task.
-                        if self.queue.is_active_task(chat_jid):
-                            self.queue.enqueue_message_check(chat_jid)
-                            continue
-
-                        # Format messages as plain text for IPC piping
-                        formatted = "\n".join(
-                            f"{msg.sender_name}: {msg.content}" for msg in all_pending
-                        )
-
-                        if self.queue.send_message(chat_jid, formatted):
-                            logger.debug(
-                                "Piped messages to active container",
-                                chat_jid=chat_jid,
-                                count=len(all_pending),
-                            )
-                            # Send emoji reaction to indicate reading
-                            last_msg = all_pending[-1]
-                            await self._send_reaction_to_channels(
-                                chat_jid, last_msg.id, last_msg.sender, "👀"
-                            )
-
-                            self.last_agent_timestamp[chat_jid] = all_pending[-1].timestamp
-                            await self._save_state()
-                        else:
-                            self.queue.enqueue_message_check(chat_jid)
-
-            except Exception as exc:
-                logger.error("Error in message loop", err=str(exc))
-
-            await asyncio.sleep(POLL_INTERVAL)
+        await message_handler.start_message_loop(self, lambda: self._shutting_down)
 
     async def _send_boot_notification(self) -> None:
-        """Send a system message to the god channel on startup."""
-        god_jid = next(
-            (jid for jid, g in self.registered_groups.items() if g.is_god),
-            None,
-        )
-        if not god_jid:
-            return
-
-        sha = get_head_sha()[:8]
-        commit_msg = _get_head_commit_message(50)
-        dirty = " (dirty)" if is_repo_dirty() else ""
-        label = f"{sha}{dirty} {commit_msg}".strip() if commit_msg else f"{sha}{dirty}"
-        parts = [f"{ASSISTANT_NAME} online — {label}"]
-
-        # Check for API credentials and warn if missing
-        from pynchy.container_runner import _write_env_file
-
-        if _write_env_file() is None:
-            parts.append(
-                "⚠️ No API credentials found — messages will fail. "
-                "Run 'claude' to authenticate or set ANTHROPIC_API_KEY in .env"
-            )
-            logger.warning("No API credentials found at startup")
-
-        # Check for boot warnings left by a previous deploy
-        boot_warnings_path = DATA_DIR / "boot_warnings.json"
-        if boot_warnings_path.exists():
-            try:
-                warnings = json.loads(boot_warnings_path.read_text())
-                boot_warnings_path.unlink()
-                for warning in warnings:
-                    parts.append(f"⚠️ {warning}")
-            except Exception as exc:
-                logger.warning("Failed to read boot warnings", err=str(exc))
-                boot_warnings_path.unlink(missing_ok=True)
-
-        await self._broadcast_host_message(god_jid, "\n".join(parts))
-        logger.info("Boot notification sent")
+        """Delegates startup boot message handling."""
+        await startup_handler.send_boot_notification(self)
 
     async def _recover_pending_messages(self) -> None:
-        """Startup recovery: check for unprocessed messages in registered groups."""
-        for chat_jid, group in self.registered_groups.items():
-            since_timestamp = self.last_agent_timestamp.get(chat_jid, "")
-            pending = await get_messages_since(chat_jid, since_timestamp)
-            if pending:
-                logger.info(
-                    "Recovery: found unprocessed messages",
-                    group=group.name,
-                    pending_count=len(pending),
-                )
-                self.queue.enqueue_message_check(chat_jid)
+        """Delegates startup message recovery."""
+        await startup_handler.recover_pending_messages(self)
 
     # ------------------------------------------------------------------
     # Deploy rollback
     # ------------------------------------------------------------------
 
     async def _auto_rollback(self, continuation_path: Path, exc: Exception) -> None:
-        """Roll back to the previous commit if startup fails after a deploy."""
-        try:
-            continuation = json.loads(continuation_path.read_text())
-        except (json.JSONDecodeError, OSError) as read_exc:
-            logger.exception(
-                "Failed to read continuation for rollback",
-                path=str(continuation_path),
-                error=str(read_exc),
-            )
-            return
-
-        previous_sha = continuation.get("previous_commit_sha", "")
-        if not previous_sha:
-            logger.warning("No previous_commit_sha in continuation, cannot rollback")
-            return
-
-        logger.warning(
-            "Startup failed after deploy, rolling back",
-            previous_sha=previous_sha,
-            error=str(exc),
-        )
-
-        result = run_git("reset", "--hard", previous_sha)
-        if result.returncode != 0:
-            logger.error("Rollback git reset failed", stderr=result.stderr)
-            return
-
-        # Rewrite continuation with rollback info (clear previous_commit_sha to prevent loops)
-        error_short = str(exc)[:200]
-        continuation["resume_prompt"] = (
-            f"ROLLBACK: Startup failed ({error_short}). Rolled back to {previous_sha[:8]}."
-        )
-        continuation["previous_commit_sha"] = ""
-        continuation_path.write_text(json.dumps(continuation, indent=2))
-
-        logger.info("Rollback complete, exiting for service restart")
-
-        sys.exit(1)
+        """Delegates rollback logic."""
+        await startup_handler.auto_rollback(continuation_path, exc)
 
     # ------------------------------------------------------------------
     # Deploy continuation
     # ------------------------------------------------------------------
 
     async def _check_deploy_continuation(self) -> None:
-        """Check for a deploy continuation file and inject a resume message."""
-        continuation_path = DATA_DIR / "deploy_continuation.json"
-        if not continuation_path.exists():
-            return
-
-        try:
-            continuation = json.loads(continuation_path.read_text())
-            continuation_path.unlink()
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.error(
-                "Failed to read deploy continuation",
-                path=str(continuation_path),
-                err=str(exc),
-            )
-            return
-
-        chat_jid = continuation.get("chat_jid", "")
-        session_id = continuation.get("session_id", "")
-        resume_prompt = continuation.get("resume_prompt", "Deploy complete.")
-        commit_sha = continuation.get("commit_sha", "unknown")
-
-        if not chat_jid:
-            logger.warning("Deploy continuation missing chat_jid, skipping")
-            return
-
-        # Only inject a resume message if an agent session needs to continue.
-        # Plain HTTP deploys have no session_id — the boot notification suffices.
-        if not session_id:
-            logger.info(
-                "Deploy continuation has no session_id, skipping agent resume",
-                commit_sha=commit_sha,
-            )
-            return
-
-        logger.info(
-            "Deploy continuation found, injecting resume message",
-            commit_sha=commit_sha,
-            chat_jid=chat_jid,
-        )
-
-        # Inject a synthetic message to resume the agent session.
-        # Uses sender="deploy" so it passes get_messages_since filters
-        # (sender="host" is excluded to prevent host messages triggering the agent).
-        synthetic_msg = NewMessage(
-            id=generate_message_id(f"deploy-{commit_sha[:8]}"),
-            chat_jid=chat_jid,
-            sender="deploy",
-            sender_name="deploy",
-            content=f"[DEPLOY COMPLETE — {commit_sha[:8]}] {resume_prompt}",
-            timestamp=datetime.now(UTC).isoformat(),
-            is_from_me=False,
-        )
-        await store_message(synthetic_msg)
-        self.queue.enqueue_message_check(chat_jid)
+        """Delegates deploy continuation handling."""
+        await startup_handler.check_deploy_continuation(self)
 
     # ------------------------------------------------------------------
     # Channel broadcast helpers
@@ -1161,6 +511,11 @@ class PynchyApp:
                     except Exception as exc:
                         logger.warning("Channel send failed", channel=ch.name, err=str(exc))
 
+    async def broadcast_to_channels(
+        self, chat_jid: str, text: str, *, suppress_errors: bool = True
+    ) -> None:
+        await self._broadcast_to_channels(chat_jid, text, suppress_errors=suppress_errors)
+
     async def _send_reaction_to_channels(
         self, chat_jid: str, message_id: str, sender: str, emoji: str
     ) -> None:
@@ -1172,6 +527,11 @@ class PynchyApp:
                 except (OSError, TimeoutError, ConnectionError) as exc:
                     logger.debug("Reaction send failed", channel=ch.name, err=str(exc))
 
+    async def send_reaction_to_channels(
+        self, chat_jid: str, message_id: str, sender: str, emoji: str
+    ) -> None:
+        await self._send_reaction_to_channels(chat_jid, message_id, sender, emoji)
+
     async def _set_typing_on_channels(self, chat_jid: str, is_typing: bool) -> None:
         """Set typing indicator on all channels that support it."""
         for ch in self.channels:
@@ -1180,6 +540,9 @@ class PynchyApp:
                     await ch.set_typing(chat_jid, is_typing)
                 except (OSError, TimeoutError, ConnectionError) as exc:
                     logger.debug("Typing indicator send failed", channel=ch.name, err=str(exc))
+
+    async def set_typing_on_channels(self, chat_jid: str, is_typing: bool) -> None:
+        await self._set_typing_on_channels(chat_jid, is_typing)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -1221,6 +584,9 @@ class PynchyApp:
                 is_bot=True,
             )
         )
+
+    async def broadcast_host_message(self, chat_jid: str, text: str) -> None:
+        await self._broadcast_host_message(chat_jid, text)
 
     async def _handle_context_reset(
         self, chat_jid: str, group: RegisteredGroup, timestamp: str
@@ -1366,7 +732,8 @@ class PynchyApp:
 
     async def run(self) -> None:
         """Main entry point — startup sequence."""
-        continuation_path = DATA_DIR / "deploy_continuation.json"
+        s = get_settings()
+        continuation_path = s.data_dir / "deploy_continuation.json"
 
         try:
             install_service()
@@ -1446,7 +813,7 @@ class PynchyApp:
         # HTTP server for remote health checks, deploys, and TUI API
         check_tailscale()
         self._http_runner = await start_http_server(self._make_http_deps())
-        logger.info("HTTP server ready", port=DEPLOY_PORT)
+        logger.info("HTTP server ready", port=s.server.port)
 
         await self._send_boot_notification()
         await self._recover_pending_messages()
@@ -1556,10 +923,11 @@ class PynchyApp:
         class GitSyncDeps:
             broadcast_system_notice = host_broadcaster.broadcast_system_notice
 
-            def registered_groups(self_inner) -> dict[str, Any]:
+            def registered_groups(self) -> dict[str, Any]:
                 return group_registry.registered_groups()
 
-            async def trigger_deploy(self_inner, previous_sha: str) -> None:
+            async def trigger_deploy(self, previous_sha: str) -> None:
+                s = get_settings()
                 chat_jid = group_registry.god_chat_jid()
                 if chat_jid:
                     await host_broadcaster.broadcast_host_message(
@@ -1568,11 +936,11 @@ class PynchyApp:
                     )
 
                 # Rebuild container image
-                build_script = PROJECT_ROOT / "container" / "build.sh"
+                build_script = s.project_root / "container" / "build.sh"
                 if build_script.exists():
                     result = subprocess.run(
                         [str(build_script)],
-                        cwd=str(PROJECT_ROOT / "container"),
+                        cwd=str(s.project_root / "container"),
                         capture_output=True,
                         text=True,
                         timeout=600,

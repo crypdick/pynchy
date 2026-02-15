@@ -1,8 +1,6 @@
 """Per-group concurrency queue with global limits.
 
-Port of src/group-queue.ts — uses asyncio instead of Node.js event loop.
-
-Key difference from TS: asyncio.ensure_future doesn't run the coroutine
+asyncio.ensure_future doesn't run the coroutine
 synchronously up to the first await (unlike JS promises). So we must eagerly
 set state.active and bump active_count in the synchronous caller, then clean
 up in the async finally block.
@@ -18,11 +16,8 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
-from pynchy.config import DATA_DIR, MAX_CONCURRENT_CONTAINERS
+from pynchy.config import get_settings
 from pynchy.logger import logger
-
-MAX_RETRIES = 5
-BASE_RETRY_SECONDS = 5.0
 
 
 @dataclass
@@ -79,7 +74,7 @@ class GroupQueue:
             logger.debug("Container active, message queued", group_jid=group_jid)
             return
 
-        if self._active_count >= MAX_CONCURRENT_CONTAINERS:
+        if self._active_count >= get_settings().container.max_concurrent:
             state.pending_messages = True
             if group_jid not in self._waiting_groups:
                 self._waiting_groups.append(group_jid)
@@ -120,7 +115,7 @@ class GroupQueue:
             )
             return
 
-        if self._active_count >= MAX_CONCURRENT_CONTAINERS:
+        if self._active_count >= get_settings().container.max_concurrent:
             state.pending_tasks.append(QueuedTask(id=task_id, group_jid=group_jid, fn=fn))
             if group_jid not in self._waiting_groups:
                 self._waiting_groups.append(group_jid)
@@ -164,7 +159,7 @@ class GroupQueue:
         if not state.active or not state.group_folder:
             return False
 
-        input_dir = DATA_DIR / "ipc" / state.group_folder / "input"
+        input_dir = get_settings().data_dir / "ipc" / state.group_folder / "input"
         try:
             input_dir.mkdir(parents=True, exist_ok=True)
             filename = f"{int(time.time() * 1000)}-{random.randbytes(3).hex()}.json"
@@ -187,7 +182,7 @@ class GroupQueue:
         if not state.active or not state.group_folder:
             return
 
-        input_dir = DATA_DIR / "ipc" / state.group_folder / "input"
+        input_dir = get_settings().data_dir / "ipc" / state.group_folder / "input"
         try:
             input_dir.mkdir(parents=True, exist_ok=True)
             (input_dir / "_close").write_text("")
@@ -261,8 +256,9 @@ class GroupQueue:
             self._drain_group(group_jid)
 
     def _schedule_retry(self, group_jid: str, state: GroupState) -> None:
+        s = get_settings()
         state.retry_count += 1
-        if state.retry_count > MAX_RETRIES:
+        if state.retry_count > s.queue.max_retries:
             logger.error(
                 "Max retries exceeded, dropping messages (will retry on next incoming message)",
                 group_jid=group_jid,
@@ -271,7 +267,7 @@ class GroupQueue:
             state.retry_count = 0
             return
 
-        delay = BASE_RETRY_SECONDS * (2 ** (state.retry_count - 1))
+        delay = s.queue.base_retry_seconds * (2 ** (state.retry_count - 1))
         logger.info(
             "Scheduling retry with backoff",
             group_jid=group_jid,
@@ -314,7 +310,7 @@ class GroupQueue:
         self._drain_waiting()
 
     def _drain_waiting(self) -> None:
-        while self._waiting_groups and self._active_count < MAX_CONCURRENT_CONTAINERS:
+        while self._waiting_groups and self._active_count < get_settings().container.max_concurrent:
             next_jid = self._waiting_groups.popleft()
             state = self._get_group(next_jid)
 

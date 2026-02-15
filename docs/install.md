@@ -48,19 +48,18 @@ cd pynchy
 uv sync                                      # Install Python dependencies
 ```
 
-### 2. Configure Environment (Optional)
+### 2. Configure
 
-Most environment variables have sensible defaults. If you need to customize configuration:
+To customize configuration, copy the example configuration and edit it:
 
 ```bash
-cp .env.EXAMPLE .env                         # Create .env from example
-# Edit .env with your preferred settings
+cp config.toml.EXAMPLE config.toml
+# Edit config.toml with your preferred settings
 ```
 
 Common configurations:
-- **API key authentication:** Set `ANTHROPIC_API_KEY` instead of using Claude Code OAuth
-- **OpenAI instead of Claude:** Set `PYNCHY_AGENT_CORE=openai` and `OPENAI_API_KEY`
-- **Custom timeouts or logging:** See `.env.EXAMPLE` for all available options
+- **API key authentication:** Set `[secrets].anthropic_api_key` instead of Claude Code OAuth
+- **OpenAI instead of Claude:** Set `[agent] core = "openai"` and `[secrets].openai_api_key`
 
 > **Note:** For most desktop setups, you can skip this step and authenticate using Claude Code OAuth (see step 4 in Headless Server Deployment).
 
@@ -187,10 +186,11 @@ ssh your-server "claude -p 'say hello'"
 
 **Alternative: API key instead of OAuth**
 
-If you prefer using an API key directly, skip the `claude` authentication and create a `.env` file:
+If you prefer using an API key directly, skip the `claude` authentication and create `config.toml`:
 
 ```bash
-echo "ANTHROPIC_API_KEY=sk-ant-..." > ~/src/pynchy/.env
+cp ~/src/pynchy/config.toml.EXAMPLE ~/src/pynchy/config.toml
+# Then set [secrets].anthropic_api_key in config.toml
 ```
 
 > **Warning:** Without credentials, Pynchy will start and connect to WhatsApp, but all messages to the agent will fail. The boot notification will warn you if credentials are missing.
@@ -258,7 +258,7 @@ This pulls the latest code, validates the import, and restarts the service. If t
 
 ### "No API credentials found" in boot message
 
-Run `claude` on the server to authenticate, or set `ANTHROPIC_API_KEY` in `.env`. Then restart: `systemctl --user restart pynchy`
+Run `claude` on the server to authenticate, or set `[secrets].anthropic_api_key` in `config.toml`. Then restart: `systemctl --user restart pynchy`
 
 ### WhatsApp QR code not scanning
 

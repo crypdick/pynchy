@@ -1,13 +1,23 @@
-"""Tests for trigger pattern, outbound formatting, and tool previews.
-
-Port of src/formatting.test.ts.
-"""
+"""Tests for trigger pattern, outbound formatting, and tool previews."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pynchy.config import ASSISTANT_NAME, TRIGGER_PATTERN
+from pynchy.config import (
+    AgentConfig,
+    CommandWordsConfig,
+    ContainerConfig,
+    IntervalsConfig,
+    LoggingConfig,
+    QueueConfig,
+    SchedulerConfig,
+    SecretsConfig,
+    SecurityConfig,
+    ServerConfig,
+    Settings,
+    WorkspaceDefaultsConfig,
+)
 from pynchy.router import (
     format_outbound,
     format_tool_preview,
@@ -15,6 +25,23 @@ from pynchy.router import (
     strip_internal_tags,
 )
 from pynchy.types import NewMessage
+
+s = Settings.model_construct(
+    agent=AgentConfig(),
+    container=ContainerConfig(),
+    server=ServerConfig(),
+    logging=LoggingConfig(),
+    secrets=SecretsConfig(),
+    workspace_defaults=WorkspaceDefaultsConfig(),
+    workspaces={},
+    commands=CommandWordsConfig(),
+    scheduler=SchedulerConfig(),
+    intervals=IntervalsConfig(),
+    queue=QueueConfig(),
+    security=SecurityConfig(),
+)
+ASSISTANT_NAME = s.agent.name
+TRIGGER_PATTERN = s.trigger_pattern
 
 # --- TRIGGER_PATTERN ---
 

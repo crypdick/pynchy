@@ -7,7 +7,6 @@ helpers for system startup checks and listing running containers.
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -154,9 +153,11 @@ class ContainerRuntime:
 def detect_runtime() -> ContainerRuntime:
     """Detect the container runtime to use.
 
-    Priority: CONTAINER_RUNTIME env var → platform → shutil.which().
+    Priority: settings.container.runtime → platform → shutil.which().
     """
-    override = os.environ.get("CONTAINER_RUNTIME", "").lower()
+    from pynchy.config import get_settings
+
+    override = (get_settings().container.runtime or "").lower()
     if override == "apple":
         return ContainerRuntime(name="apple", cli="container")
     if override == "docker":

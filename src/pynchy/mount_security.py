@@ -1,16 +1,15 @@
 """Mount security — validates additional mounts against an allowlist.
 
-Port of src/mount-security.ts.
-Allowlist location: ~/.config/pynchy/mount-allowlist.json
+Allowlist location: ~/.config/pynchy/mount-allowlist.toml
 """
 
 from __future__ import annotations
 
-import json
 import os
+import tomllib
 from dataclasses import dataclass
 
-from pynchy.config import MOUNT_ALLOWLIST_PATH
+from pynchy.config import get_settings
 from pynchy.logger import logger
 from pynchy.types import AdditionalMount, AllowedRoot, MountAllowlist
 
@@ -18,29 +17,8 @@ from pynchy.types import AdditionalMount, AllowedRoot, MountAllowlist
 _cached_allowlist: MountAllowlist | None = None
 _allowlist_load_error: str | None = None
 
-# NOTE: Update docs/security.md § Mount Security if you change this list.
-DEFAULT_BLOCKED_PATTERNS = [
-    ".ssh",
-    ".gnupg",
-    ".gpg",
-    ".aws",
-    ".azure",
-    ".gcloud",
-    ".kube",
-    ".docker",
-    "credentials",
-    ".env",
-    ".netrc",
-    ".npmrc",
-    ".pypirc",
-    "id_rsa",
-    "id_ed25519",
-    "private_key",
-    ".secret",
-]
 
-
-def _reset_cache() -> None:
+def _reset_cache() -> None:  # pyright: ignore[reportUnusedFunction]
     """Reset allowlist cache (for tests)."""
     global _cached_allowlist, _allowlist_load_error
     _cached_allowlist = None
@@ -61,48 +39,52 @@ def load_mount_allowlist() -> MountAllowlist | None:
     if _allowlist_load_error is not None:
         return None
 
+    s = get_settings()
+    allowlist_path = s.mount_allowlist_path
+
     try:
-        if not MOUNT_ALLOWLIST_PATH.exists():
-            _allowlist_load_error = f"Mount allowlist not found at {MOUNT_ALLOWLIST_PATH}"
+        if not allowlist_path.exists():
+            _allowlist_load_error = f"Mount allowlist not found at {allowlist_path}"
             logger.warning(
                 "Mount allowlist not found - additional mounts will be BLOCKED. "
                 "Create the file to enable additional mounts.",
-                path=str(MOUNT_ALLOWLIST_PATH),
+                path=str(allowlist_path),
             )
             return None
 
-        content = MOUNT_ALLOWLIST_PATH.read_text()
-        data = json.loads(content)
+        content = allowlist_path.read_text()
+        data = tomllib.loads(content)
 
-        if not isinstance(data.get("allowedRoots"), list):
-            raise ValueError("allowedRoots must be an array")
-        if not isinstance(data.get("blockedPatterns"), list):
-            raise ValueError("blockedPatterns must be an array")
-        if not isinstance(data.get("nonGodReadOnly"), bool):
-            raise ValueError("nonGodReadOnly must be a boolean")
+        if not isinstance(data.get("allowed_roots"), list):
+            raise ValueError("allowed_roots must be an array")
+        if not isinstance(data.get("blocked_patterns"), list):
+            raise ValueError("blocked_patterns must be an array")
+        if not isinstance(data.get("non_god_read_only"), bool):
+            raise ValueError("non_god_read_only must be a boolean")
 
         allowed_roots = [
             AllowedRoot(
                 path=r["path"],
-                allow_read_write=r.get("allowReadWrite", False),
+                allow_read_write=r.get("allow_read_write", False),
                 description=r.get("description"),
             )
-            for r in data["allowedRoots"]
+            for r in data["allowed_roots"]
         ]
 
-        # Merge with default blocked patterns
-        merged_blocked = list(dict.fromkeys(DEFAULT_BLOCKED_PATTERNS + data["blockedPatterns"]))
+        # Merge with default blocked patterns from config
+        default_blocked = s.security.blocked_patterns
+        merged_blocked = list(dict.fromkeys(default_blocked + data["blocked_patterns"]))
 
         allowlist = MountAllowlist(
             allowed_roots=allowed_roots,
             blocked_patterns=merged_blocked,
-            non_god_read_only=data["nonGodReadOnly"],
+            non_god_read_only=data["non_god_read_only"],
         )
 
         _cached_allowlist = allowlist
         logger.info(
             "Mount allowlist loaded successfully",
-            path=str(MOUNT_ALLOWLIST_PATH),
+            path=str(allowlist_path),
             allowed_roots=len(allowlist.allowed_roots),
             blocked_patterns=len(allowlist.blocked_patterns),
         )
@@ -112,7 +94,7 @@ def load_mount_allowlist() -> MountAllowlist | None:
         _allowlist_load_error = str(exc)
         logger.error(
             "Failed to load mount allowlist - additional mounts will be BLOCKED",
-            path=str(MOUNT_ALLOWLIST_PATH),
+            path=str(allowlist_path),
             error=_allowlist_load_error,
         )
         return None
@@ -126,14 +108,6 @@ def _expand_path(p: str) -> str:
     if p == "~":
         return home_dir
     return os.path.abspath(p)
-
-
-def _get_real_path(p: str) -> str | None:
-    """Get the real path, resolving symlinks. Returns None if path doesn't exist."""
-    try:
-        return os.path.realpath(p)
-    except OSError:
-        return None
 
 
 def _matches_blocked_pattern(real_path: str, blocked_patterns: list[str]) -> str | None:
@@ -189,12 +163,13 @@ class MountValidationResult:
 
 def validate_mount(mount: AdditionalMount, is_god: bool) -> MountValidationResult:
     """Validate a single additional mount against the allowlist."""
+    s = get_settings()
     allowlist = load_mount_allowlist()
 
     if allowlist is None:
         return MountValidationResult(
             allowed=False,
-            reason=f"No mount allowlist configured at {MOUNT_ALLOWLIST_PATH}",
+            reason=f"No mount allowlist configured at {s.mount_allowlist_path}",
         )
 
     # Derive containerPath from hostPath basename if not specified
@@ -305,26 +280,23 @@ def validate_additional_mounts(
 
 
 def generate_allowlist_template() -> str:
-    """Generate a template allowlist file for users to customize."""
-    template = {
-        "allowedRoots": [
-            {
-                "path": "~/projects",
-                "allowReadWrite": True,
-                "description": "Development projects",
-            },
-            {
-                "path": "~/repos",
-                "allowReadWrite": True,
-                "description": "Git repositories",
-            },
-            {
-                "path": "~/Documents/work",
-                "allowReadWrite": False,
-                "description": "Work documents (read-only)",
-            },
-        ],
-        "blockedPatterns": ["password", "secret", "token"],
-        "nonGodReadOnly": True,
-    }
-    return json.dumps(template, indent=2)
+    """Generate a template allowlist file in TOML format for users to customize."""
+    return """\
+non_god_read_only = true
+blocked_patterns = ["password", "secret", "token"]
+
+[[allowed_roots]]
+path = "~/projects"
+allow_read_write = true
+description = "Development projects"
+
+[[allowed_roots]]
+path = "~/repos"
+allow_read_write = true
+description = "Git repositories"
+
+[[allowed_roots]]
+path = "~/Documents/work"
+allow_read_write = false
+description = "Work documents (read-only)"
+"""

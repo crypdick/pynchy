@@ -1,14 +1,11 @@
-"""Message formatting and outbound routing.
-
-Port of src/router.ts.
-"""
+"""Message formatting and outbound routing."""
 
 from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING
 
-from pynchy.config import ASSISTANT_NAME
+from pynchy.config import get_settings
 
 if TYPE_CHECKING:
     from pynchy.types import Channel, NewMessage
@@ -74,7 +71,7 @@ def format_outbound(channel: Channel, raw_text: str) -> str:
     if not text:
         return ""
     prefix_name = getattr(channel, "prefix_assistant_name", None)
-    prefix = f"{ASSISTANT_NAME}: " if prefix_name is not False else ""
+    prefix = f"{get_settings().agent.name}: " if prefix_name is not False else ""
     return f"{prefix}{text}"
 
 

@@ -267,7 +267,7 @@ class TestPluginErrors:
         pm = get_plugin_manager()
 
         # Pluggy catches signature mismatches
-        with pytest.raises(Exception):
+        with pytest.raises(pluggy.PluginValidationError):
             pm.register(BadPlugin(), name="bad-plugin")
             # Trigger validation by calling the hook
             pm.hook.pynchy_agent_core_info()

@@ -1,12 +1,4 @@
-"""WhatsApp channel using neonize (whatsmeow Python bindings).
-
-Port of src/channels/whatsapp.ts — neonize's API differs substantially from baileys.
-Key differences:
-  - Auth is SQLite-based, not file-based (no saveCreds callback)
-  - Reconnection is handled internally by whatsmeow with exponential backoff
-  - JIDs are protobuf objects, not strings — use Jid2String() for DB operations
-  - Events are separate typed classes, not a single connection.update event
-"""
+"""WhatsApp channel using neonize (whatsmeow Python bindings)."""
 
 from __future__ import annotations
 
@@ -32,7 +24,7 @@ from neonize.events import (
 from neonize.proto.Neonize_pb2 import JID
 from neonize.utils.jid import Jid2String
 
-from pynchy.config import ASSISTANT_NAME, STORE_DIR
+from pynchy.config import get_settings
 from pynchy.db import get_last_group_sync, set_last_group_sync, update_chat_name
 from pynchy.logger import logger
 from pynchy.types import NewMessage, RegisteredGroup
@@ -80,8 +72,9 @@ class WhatsAppChannel:
         neonize_client.event_global_loop = loop
 
         # Auth stored in SQLite — neonize manages this internally
-        auth_db = str(STORE_DIR / "neonize.db")
-        STORE_DIR.mkdir(parents=True, exist_ok=True)
+        store_dir = get_settings().store_dir
+        auth_db = str(store_dir / "neonize.db")
+        store_dir.mkdir(parents=True, exist_ok=True)
         self._client = NewAClient(auth_db)
 
         self._register_events()
@@ -205,7 +198,7 @@ class WhatsAppChannel:
             )
 
         # Skip echoed bot responses — these are stored by the broadcast path in app.py
-        if source.IsFromMe and content.startswith(f"{ASSISTANT_NAME}:"):
+        if source.IsFromMe and content.startswith(f"{get_settings().agent.name}:"):
             return
 
         # Sender JID

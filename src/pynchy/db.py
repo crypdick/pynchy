@@ -1,6 +1,6 @@
 """SQLite database layer.
 
-Port of src/db.ts — all functions are async using aiosqlite.
+all functions are async using aiosqlite.
 Module-level connection, initialized by init_database().
 """
 
@@ -13,7 +13,7 @@ from typing import Any
 
 import aiosqlite
 
-from pynchy.config import DATA_DIR, STORE_DIR
+from pynchy.config import get_settings
 from pynchy.logger import logger
 from pynchy.types import (
     ContainerConfig,
@@ -117,7 +117,7 @@ async def _create_schema(database: aiosqlite.Connection) -> None:
 async def init_database() -> None:
     """Initialize the database connection and schema."""
     global _db
-    db_path = STORE_DIR / "messages.db"
+    db_path = get_settings().store_dir / "messages.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
     _db = await aiosqlite.connect(str(db_path))
@@ -711,7 +711,7 @@ async def _migrate_json_state() -> None:
     """Migrate state from legacy JSON files to SQLite."""
 
     def _read_and_archive(filename: str) -> Any | None:
-        filepath = DATA_DIR / filename
+        filepath = get_settings().data_dir / filename
         if not filepath.exists():
             return None
         try:

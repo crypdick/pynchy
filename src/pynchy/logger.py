@@ -1,6 +1,7 @@
 """Structured logging singleton.
 
-Port of src/logger.ts — structlog replaces pino.
+Intentionally reads os.environ directly — logger must initialize before
+pydantic Settings to avoid circular imports and ensure early logging.
 """
 
 from __future__ import annotations

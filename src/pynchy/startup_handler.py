@@ -1,0 +1,182 @@
+"""Startup and deploy continuation helpers for the main app."""
+
+from __future__ import annotations
+
+import json
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Protocol
+
+from pynchy.config import get_settings
+from pynchy.db import get_messages_since, store_message
+from pynchy.git_utils import get_head_sha, is_repo_dirty, run_git
+from pynchy.http_server import _get_head_commit_message
+from pynchy.logger import logger
+from pynchy.types import NewMessage
+from pynchy.utils import generate_message_id
+
+if TYPE_CHECKING:
+    from pynchy.group_queue import GroupQueue
+    from pynchy.types import RegisteredGroup
+
+
+class StartupDeps(Protocol):
+    @property
+    def registered_groups(self) -> dict[str, RegisteredGroup]: ...
+
+    @property
+    def last_agent_timestamp(self) -> dict[str, str]: ...
+
+    @property
+    def queue(self) -> GroupQueue: ...
+
+    async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
+
+
+async def send_boot_notification(deps: StartupDeps) -> None:
+    """Send a system message to the god channel on startup."""
+    s = get_settings()
+    god_jid = next((jid for jid, g in deps.registered_groups.items() if g.is_god), None)
+    if not god_jid:
+        return
+
+    sha = get_head_sha()[:8]
+    commit_msg = _get_head_commit_message(50)
+    dirty = " (dirty)" if is_repo_dirty() else ""
+    label = f"{sha}{dirty} {commit_msg}".strip() if commit_msg else f"{sha}{dirty}"
+    parts = [f"{s.agent.name} online -- {label}"]
+
+    # Check for API credentials and warn if missing
+    from pynchy.container_runner import _write_env_file
+
+    if _write_env_file() is None:
+        parts.append(
+            "WARNING: No API credentials found -- messages will fail. "
+            "Run 'claude' to authenticate or set ANTHROPIC_API_KEY in config.toml."
+        )
+        logger.warning("No API credentials found at startup")
+
+    # Check for boot warnings left by a previous deploy
+    boot_warnings_path = s.data_dir / "boot_warnings.json"
+    if boot_warnings_path.exists():
+        try:
+            warnings = json.loads(boot_warnings_path.read_text())
+            boot_warnings_path.unlink()
+            for warning in warnings:
+                parts.append(f"WARNING: {warning}")
+        except Exception as exc:
+            logger.warning("Failed to read boot warnings", err=str(exc))
+            boot_warnings_path.unlink(missing_ok=True)
+
+    await deps.broadcast_host_message(god_jid, "\n".join(parts))
+    logger.info("Boot notification sent")
+
+
+async def recover_pending_messages(deps: StartupDeps) -> None:
+    """Startup recovery: check for unprocessed messages in registered groups."""
+    for chat_jid, group in deps.registered_groups.items():
+        since_timestamp = deps.last_agent_timestamp.get(chat_jid, "")
+        pending = await get_messages_since(chat_jid, since_timestamp)
+        if pending:
+            logger.info(
+                "Recovery: found unprocessed messages",
+                group=group.name,
+                pending_count=len(pending),
+            )
+            deps.queue.enqueue_message_check(chat_jid)
+
+
+async def auto_rollback(continuation_path: Path, exc: Exception) -> None:
+    """Roll back to the previous commit if startup fails after a deploy."""
+    try:
+        continuation = json.loads(continuation_path.read_text())
+    except (json.JSONDecodeError, OSError) as read_exc:
+        logger.exception(
+            "Failed to read continuation for rollback",
+            path=str(continuation_path),
+            error=str(read_exc),
+        )
+        return
+
+    previous_sha = continuation.get("previous_commit_sha", "")
+    if not previous_sha:
+        logger.warning("No previous_commit_sha in continuation, cannot rollback")
+        return
+
+    logger.warning(
+        "Startup failed after deploy, rolling back",
+        previous_sha=previous_sha,
+        error=str(exc),
+    )
+
+    result = run_git("reset", "--hard", previous_sha)
+    if result.returncode != 0:
+        logger.error("Rollback git reset failed", stderr=result.stderr)
+        return
+
+    # Rewrite continuation with rollback info (clear previous_commit_sha to prevent loops)
+    error_short = str(exc)[:200]
+    continuation["resume_prompt"] = (
+        f"ROLLBACK: Startup failed ({error_short}). Rolled back to {previous_sha[:8]}."
+    )
+    continuation["previous_commit_sha"] = ""
+    continuation_path.write_text(json.dumps(continuation, indent=2))
+
+    logger.info("Rollback complete, exiting for service restart")
+    sys.exit(1)
+
+
+async def check_deploy_continuation(deps: StartupDeps) -> None:
+    """Check for a deploy continuation file and inject a resume message."""
+    continuation_path = get_settings().data_dir / "deploy_continuation.json"
+    if not continuation_path.exists():
+        return
+
+    try:
+        continuation = json.loads(continuation_path.read_text())
+        continuation_path.unlink()
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.error(
+            "Failed to read deploy continuation",
+            path=str(continuation_path),
+            err=str(exc),
+        )
+        return
+
+    chat_jid = continuation.get("chat_jid", "")
+    session_id = continuation.get("session_id", "")
+    resume_prompt = continuation.get("resume_prompt", "Deploy complete.")
+    commit_sha = continuation.get("commit_sha", "unknown")
+
+    if not chat_jid:
+        logger.warning("Deploy continuation missing chat_jid, skipping")
+        return
+
+    # Only inject a resume message if an agent session needs to continue.
+    # Plain HTTP deploys have no session_id -- the boot notification suffices.
+    if not session_id:
+        logger.info(
+            "Deploy continuation has no session_id, skipping agent resume",
+            commit_sha=commit_sha,
+        )
+        return
+
+    logger.info(
+        "Deploy continuation found, injecting resume message",
+        commit_sha=commit_sha,
+        chat_jid=chat_jid,
+    )
+
+    # Uses sender="deploy" so it passes get_messages_since filters.
+    synthetic_msg = NewMessage(
+        id=generate_message_id(f"deploy-{commit_sha[:8]}"),
+        chat_jid=chat_jid,
+        sender="deploy",
+        sender_name="deploy",
+        content=f"[DEPLOY COMPLETE -- {commit_sha[:8]}] {resume_prompt}",
+        timestamp=datetime.now(UTC).isoformat(),
+        is_from_me=False,
+    )
+    await store_message(synthetic_msg)
+    deps.queue.enqueue_message_check(chat_jid)

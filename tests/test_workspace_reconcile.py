@@ -11,21 +11,30 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
-import yaml
 
+from pynchy.config import (
+    AgentConfig,
+    CommandWordsConfig,
+    ContainerConfig,
+    IntervalsConfig,
+    LoggingConfig,
+    QueueConfig,
+    SchedulerConfig,
+    SecretsConfig,
+    SecurityConfig,
+    ServerConfig,
+    Settings,
+    WorkspaceConfig,
+    WorkspaceDefaultsConfig,
+)
 from pynchy.db import _init_test_database, create_task, get_active_task_for_group, get_all_tasks
 from pynchy.types import RegisteredGroup
 from pynchy.workspace_config import reconcile_workspaces
 
 
-def _write_workspace_yaml(groups_dir, folder_name, data):
-    """Write a workspace.yaml file for testing."""
-    group_dir = groups_dir / folder_name
-    group_dir.mkdir(parents=True, exist_ok=True)
-    if data is None:
-        (group_dir / "workspace.yaml").write_text("")
-    else:
-        (group_dir / "workspace.yaml").write_text(yaml.dump(data, default_flow_style=False))
+def _write_workspace_yaml(workspaces, folder_name, data):
+    """Compat helper: populate Settings.workspaces for tests."""
+    workspaces[folder_name] = WorkspaceConfig.model_validate(data or {})
 
 
 class TestReconcileWorkspaces:
@@ -36,11 +45,24 @@ class TestReconcileWorkspaces:
         await _init_test_database()
 
     @pytest.fixture
-    def groups_dir(self, tmp_path, monkeypatch):
-        gdir = tmp_path / "groups"
-        gdir.mkdir()
-        monkeypatch.setattr("pynchy.workspace_config.GROUPS_DIR", gdir)
-        return gdir
+    def groups_dir(self, monkeypatch):
+        workspaces: dict[str, WorkspaceConfig] = {}
+        s = Settings.model_construct(
+            agent=AgentConfig(),
+            container=ContainerConfig(),
+            server=ServerConfig(),
+            logging=LoggingConfig(),
+            secrets=SecretsConfig(),
+            workspace_defaults=WorkspaceDefaultsConfig(),
+            workspaces=workspaces,
+            commands=CommandWordsConfig(),
+            scheduler=SchedulerConfig(),
+            intervals=IntervalsConfig(),
+            queue=QueueConfig(),
+            security=SecurityConfig(),
+        )
+        monkeypatch.setattr("pynchy.workspace_config.get_settings", lambda: s)
+        return workspaces
 
     async def test_creates_task_for_periodic_workspace(self, db, groups_dir):
         """Periodic workspace.yaml should create a scheduled task."""
@@ -290,10 +312,8 @@ class TestReconcileWorkspaces:
         # Should not raise
         await reconcile_workspaces(registered, [], register_fn)
 
-    async def test_nonexistent_groups_dir(self, db, tmp_path, monkeypatch):
-        """Non-existent groups directory should not crash."""
-        monkeypatch.setattr("pynchy.workspace_config.GROUPS_DIR", tmp_path / "nonexistent")
-
+    async def test_nonexistent_groups_dir(self, db):
+        """No configured workspaces should not crash."""
         registered: dict[str, RegisteredGroup] = {}
         register_fn = AsyncMock()
 
