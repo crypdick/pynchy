@@ -129,8 +129,15 @@ class TestCountUnpushedCommits:
             ]
             assert count_unpushed_commits() == 0
 
-    def test_returns_zero_on_exception(self):
+    def test_returns_zero_on_os_error(self):
         with patch("pynchy.git_utils.run_git", side_effect=OSError):
+            assert count_unpushed_commits() == 0
+
+    def test_returns_zero_on_subprocess_timeout(self):
+        with patch(
+            "pynchy.git_utils.run_git",
+            side_effect=subprocess.TimeoutExpired(cmd="git", timeout=30),
+        ):
             assert count_unpushed_commits() == 0
 
     def test_handles_empty_stdout(self):
@@ -268,9 +275,17 @@ class TestPushLocalCommits:
             assert mock.call_count == 1
             assert "rev-list" in mock.call_args[0]
 
-    def test_unexpected_exception_returns_false(self):
-        """Catch-all exception handler prevents crashes."""
-        with patch("pynchy.git_utils.run_git", side_effect=RuntimeError("boom")):
+    def test_subprocess_timeout_returns_false(self):
+        """Subprocess errors (e.g. timeout) are caught and return False."""
+        with patch(
+            "pynchy.git_utils.run_git",
+            side_effect=subprocess.TimeoutExpired(cmd="git", timeout=30),
+        ):
+            assert push_local_commits() is False
+
+    def test_os_error_returns_false(self):
+        """OS-level errors (e.g. git not found) are caught and return False."""
+        with patch("pynchy.git_utils.run_git", side_effect=OSError("No such file")):
             assert push_local_commits() is False
 
 

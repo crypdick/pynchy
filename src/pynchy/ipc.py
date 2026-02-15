@@ -92,7 +92,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
             group_folders = [
                 f.name for f in ipc_base_dir.iterdir() if f.is_dir() and f.name != "errors"
             ]
-        except Exception as exc:
+        except OSError as exc:
             logger.error("Error reading IPC base directory", err=str(exc))
             await asyncio.sleep(IPC_POLL_INTERVAL)
             return
@@ -144,7 +144,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
                                 err=str(exc),
                             )
                             _move_to_error_dir(ipc_base_dir, source_group, file_path)
-            except Exception as exc:
+            except OSError as exc:
                 logger.error(
                     "Error reading IPC messages directory",
                     err=str(exc),
@@ -168,7 +168,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
                                 err=str(exc),
                             )
                             _move_to_error_dir(ipc_base_dir, source_group, file_path)
-            except Exception as exc:
+            except OSError as exc:
                 logger.error(
                     "Error reading IPC tasks directory",
                     err=str(exc),

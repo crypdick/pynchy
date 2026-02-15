@@ -25,6 +25,18 @@ class WorktreeError(Exception):
     """Failed to create or sync a git worktree."""
 
 
+def _safe_rebase(target_branch: str, *, cwd: Path) -> bool:
+    """Rebase onto target_branch, aborting on conflict.
+
+    Returns True if rebase succeeded, False if it conflicted (and was aborted).
+    """
+    rebase = run_git("rebase", target_branch, cwd=cwd)
+    if rebase.returncode != 0:
+        run_git("rebase", "--abort", cwd=cwd)
+        return False
+    return True
+
+
 @dataclass
 class WorktreeResult:
     """Result of ensure_worktree — path plus any notices for the agent."""
@@ -222,16 +234,13 @@ def reconcile_worktrees_at_startup(
 
         # Rebase from within the worktree (git won't check out a branch
         # that's already checked out in another worktree)
-        rebase = run_git("rebase", main_branch, cwd=entry)
-        if rebase.returncode != 0:
-            run_git("rebase", "--abort", cwd=entry)
+        if _safe_rebase(main_branch, cwd=entry):
+            logger.info("Worktree rebased onto main at startup", group=group_folder)
+        else:
             logger.warning(
                 "Startup worktree rebase failed (needs manual resolution)",
                 group=group_folder,
-                error=rebase.stderr.strip(),
             )
-        else:
-            logger.info("Worktree rebased onto main at startup", group=group_folder)
 
 
 def merge_worktree(group_folder: str) -> bool:
@@ -279,14 +288,8 @@ def merge_worktree(group_folder: str) -> bool:
 
     # Rebase from within the worktree so the branch is already checked out
     # (git refuses to check out a branch used by another worktree)
-    rebase = run_git("rebase", main_branch, cwd=worktree_path)
-    if rebase.returncode != 0:
-        run_git("rebase", "--abort", cwd=worktree_path)
-        logger.warning(
-            "Worktree rebase failed",
-            group=group_folder,
-            error=rebase.stderr.strip(),
-        )
+    if not _safe_rebase(main_branch, cwd=worktree_path):
+        logger.warning("Worktree rebase failed", group=group_folder)
         return False
 
     # Now ff-only merge is guaranteed to succeed
