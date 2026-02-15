@@ -8,9 +8,10 @@ version: 0.1.0
 
 Helps decide where to document things and maintain consistency across Pynchy docs.
 
-## Core Principle
+## Style Guide
 
-Write from the **user's goal**, not chronologically. Bad: "First we added X, then switched to Y..." Good: "To accomplish [goal], do [steps]."
+- Write for a **user trying to achieve a goal**. Don't chronicle the evolution of the codebase. Don't go into unnecessary technical details that are not relevant to the user's goal.
+- Follow the [Google Style Guide](https://developers.google.com/style). Write in the present tense. Don't use "we" or "they". Write in the active voice. Don't use "is" or "are".
 
 ## Where to Document What
 

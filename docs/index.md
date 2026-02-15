@@ -51,9 +51,7 @@ From the God channel (your self-chat), you can manage groups and tasks:
 
 ## Philosophy
 
-- **Small enough to understand** — One Python process, a few source files
 - **Secure by isolation** — OS-level container isolation, not permission checks
-- **Built for one user** — Fork it, customize the code
 - **AI-native** — Claude Code guides setup, debugging, and customization
 - **Plugins over features** — Contribute plugins, not features
 

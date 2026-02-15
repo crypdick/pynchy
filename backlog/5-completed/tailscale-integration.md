@@ -57,7 +57,7 @@ On restart, the existing `_auto_rollback` in `app.py` handles startup failures (
 
 ## Design Decisions
 
-**Why `aiohttp` over FastAPI/Starlette?** Minimal dependency, native asyncio, no ASGI complexity. Two endpoints don't need OpenAPI/Pydantic validation. Fits the "small enough to understand" philosophy.
+**Why `aiohttp` over FastAPI/Starlette?** Minimal dependency, native asyncio, no ASGI complexity. Two endpoints don't need OpenAPI/Pydantic validation.
 
 **Why `--ff-only`?** Prevents merge commits from remote edits conflicting with local state. If the pull can't fast-forward, it fails cleanly rather than creating a mess.
 
