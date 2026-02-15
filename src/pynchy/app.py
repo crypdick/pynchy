@@ -343,20 +343,9 @@ class PynchyApp:
 
         # Check if the last message is a context reset command
         if is_context_reset(missed_messages[-1].content):
-            # Merge worktree commits before clearing session so work isn't stranded
-            from pynchy.workspace_config import has_project_access
-            from pynchy.worktree import merge_and_push_worktree
-
-            if has_project_access(group):
-                asyncio.create_task(asyncio.to_thread(merge_and_push_worktree, group.folder))
-
-            self.sessions.pop(group.folder, None)
-            self._session_cleared.add(group.folder)
-            await clear_session(group.folder)
-            self.queue.close_stdin(chat_jid)
-            self.last_agent_timestamp[chat_jid] = missed_messages[-1].timestamp
-            await self._save_state()
-            await self._send_clear_confirmation(chat_jid)
+            await self._handle_context_reset(
+                chat_jid, group, missed_messages[-1].timestamp
+            )
             logger.info("Context reset", group=group.name)
             return True
 
@@ -949,22 +938,9 @@ class PynchyApp:
                         # active containers — they must be handled by the host,
                         # not forwarded as regular user messages.
                         if is_context_reset(all_pending[-1].content):
-                            # Merge worktree commits before clearing session
-                            from pynchy.workspace_config import has_project_access
-                            from pynchy.worktree import merge_and_push_worktree
-
-                            if has_project_access(group):
-                                asyncio.create_task(
-                                    asyncio.to_thread(merge_and_push_worktree, group.folder)
-                                )
-
-                            self.sessions.pop(group.folder, None)
-                            self._session_cleared.add(group.folder)
-                            await clear_session(group.folder)
-                            self.queue.close_stdin(chat_jid)
-                            self.last_agent_timestamp[chat_jid] = all_pending[-1].timestamp
-                            await self._save_state()
-                            await self._send_clear_confirmation(chat_jid)
+                            await self._handle_context_reset(
+                                chat_jid, group, all_pending[-1].timestamp
+                            )
                             logger.info("Context reset (active container)", group=group.name)
                             continue
 
@@ -1229,6 +1205,25 @@ class PynchyApp:
                 is_bot=True,
             )
         )
+
+    async def _handle_context_reset(
+        self, chat_jid: str, group: RegisteredGroup, timestamp: str
+    ) -> None:
+        """Clear session state, merge worktree, and confirm context reset."""
+        from pynchy.workspace_config import has_project_access
+        from pynchy.worktree import merge_and_push_worktree
+
+        # Merge worktree commits before clearing session so work isn't stranded
+        if has_project_access(group):
+            asyncio.create_task(asyncio.to_thread(merge_and_push_worktree, group.folder))
+
+        self.sessions.pop(group.folder, None)
+        self._session_cleared.add(group.folder)
+        await clear_session(group.folder)
+        self.queue.close_stdin(chat_jid)
+        self.last_agent_timestamp[chat_jid] = timestamp
+        await self._save_state()
+        await self._send_clear_confirmation(chat_jid)
 
     async def _send_clear_confirmation(self, chat_jid: str) -> None:
         """Set cleared_at, store and broadcast a system confirmation."""
