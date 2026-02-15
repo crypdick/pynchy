@@ -108,7 +108,9 @@ class TestGroupQueue:
         await asyncio.sleep(0.1)
 
         assert execution_order[0] == "messages"  # first call
-        assert execution_order[1] == "task"  # task runs first in drain
+        # Messages drain before tasks — a human is waiting, tasks are autonomous
+        assert execution_order[1] == "messages"  # pending messages drain first
+        assert execution_order[2] == "task"  # then pending task
 
     async def test_retries_with_exponential_backoff(self, queue: GroupQueue):
         call_count = 0
