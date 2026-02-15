@@ -13,13 +13,19 @@ The sender vocabulary in the database:
 | `bot` | Yes | Claude's responses (`AssistantMessage`) |
 | `deploy` | Yes | Deploy continuation markers |
 | `tui-user` | Yes | Messages from the TUI client (`UserMessage`) |
+| `command_output` | Yes | Tool/command results stored in DB |
+| `thinking` | Stored | Claude's thinking traces (internal, stored for debugging) |
+| `tool_use` | Stored | Tool invocation records (internal) |
+| `tool_result` | Stored | Tool result records (internal) |
+| `result_meta` | Stored | Result metadata (internal) |
+| `system_notice` | No | Ephemeral system notices (not stored in DB) |
 | `{phone_jid}` | Yes | WhatsApp user messages (`UserMessage`) |
 
 The goal: if something went wrong, you can reconstruct what the LLM saw by reading the chat.
 
 ## Trigger Pattern
 
-Messages must start with the `@Pynchy` prefix (case insensitive, configurable via `ASSISTANT_NAME`):
+Messages must start with the `@Pynchy` prefix (case insensitive, configurable via `ASSISTANT_NAME`). The `TRIGGER_ALIASES` setting (default: `ghost`) also triggers the bot:
 
 - `@Pynchy what's the weather?` — triggers
 - `@pynchy help me` — triggers (case insensitive)

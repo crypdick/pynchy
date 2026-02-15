@@ -13,11 +13,10 @@ The god channel is the admin/control group (typically your WhatsApp self-chat).
 
 | Capability | God | Non-God |
 |------------|-----|---------|
-| Write to global memory (`groups/CLAUDE.md`) | Yes | No |
+| Write to global memory (`groups/global/CLAUDE.md`) | Yes | No |
 | Schedule tasks for any group | Yes | Own group only |
 | View and manage all tasks | Yes | Own group only |
 | Configure additional directory mounts | Yes | No |
 | Send messages to other chats | Yes | No |
-| Receive and approve agent requests | Yes | N/A |
 
-Agent requests to the god channel are mediated by a Deputy agent which blocks malicious requests.
+Non-god groups can have `project_access` (configured in `workspace.yaml`), which gives them a read-write worktree mount at `/workspace/project` instead of the readonly `groups/global/` mount. IPC commands from non-god groups are restricted by the host (see [IPC Authorization](../security.md#4-ipc-authorization)).

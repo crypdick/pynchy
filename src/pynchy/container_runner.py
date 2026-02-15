@@ -278,6 +278,9 @@ def _write_env_file() -> Path | None:
     env_vars: dict[str, str] = {}
 
     # --- Parse .env overrides ---
+    # NOTE: Update docs/security.md § Credential Handling and
+    # docs/architecture/container-isolation.md § Environment Variable Isolation
+    # if you change this list.
     allowed_vars = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "GH_TOKEN", "OPENAI_API_KEY"]
     env_file = PROJECT_ROOT / ".env"
     if env_file.exists():

@@ -37,6 +37,17 @@ Each file covers **one topic**. If a page grows to cover multiple concerns, spli
 - Prefer cross-linking over repeating information.
 - A file that requires scrolling through unrelated sections to find what you need is too big or too broad.
 
+## Doc-Code Coupling
+
+When a specific value in code is also documented (env var allowlists, blocked patterns,
+mount tables, user names, etc.), add a comment at the code site:
+
+    # NOTE: Update docs/security.md § Credential Handling if you change this list
+    allowed_vars = [...]
+
+This keeps docs in sync without requiring developers to memorize which docs reference which code.
+The comment should reference the specific doc file and section.
+
 ## Code Comments: Capture User Reasoning
 
 When the user gives an instruction or makes a design decision **and explains their reasoning**, capture that reasoning as a comment in the code — right where the decision is implemented. Future maintainers should be able to understand the intent without leaving the code context.

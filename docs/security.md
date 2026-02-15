@@ -13,10 +13,10 @@
 
 ### 1. Container Isolation (Primary Boundary)
 
-Agents execute in Apple Container (lightweight Linux VMs), providing:
+Agents execute in Apple Container (macOS) or Docker (Linux), providing:
 - **Process isolation** - Container processes cannot affect the host
 - **Filesystem isolation** - Only explicitly mounted directories are visible
-- **Non-root execution** - Runs as unprivileged `node` user (uid 1000)
+- **Non-root execution** - Runs as unprivileged `agent` user
 - **Ephemeral containers** - Fresh environment per invocation (`--rm`)
 
 This is the primary security boundary. Rather than relying on application-level permission checks, the attack surface is limited by what's mounted.
@@ -30,8 +30,8 @@ This is the primary security boundary. Rather than relying on application-level 
 
 **Default Blocked Patterns:**
 ```
-.ssh, .gnupg, .aws, .azure, .gcloud, .kube, .docker,
-credentials, .env, .netrc, .npmrc, id_rsa, id_ed25519,
+.ssh, .gnupg, .gpg, .aws, .azure, .gcloud, .kube, .docker,
+credentials, .env, .netrc, .npmrc, .pypirc, id_rsa, id_ed25519,
 private_key, .secret
 ```
 
@@ -63,7 +63,8 @@ Messages and task operations are verified against group identity:
 ### 5. Credential Handling
 
 **Mounted Credentials:**
-- Claude auth tokens (filtered from `.env`, read-only)
+- Claude auth tokens, GitHub token, and OpenAI key (filtered from `.env`, read-only via `data/env/`)
+- Git identity (`GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, etc.) auto-discovered from host git config
 
 **NOT Mounted:**
 - WhatsApp session (`store/auth/`) - host only
@@ -71,10 +72,17 @@ Messages and task operations are verified against group identity:
 - Any credentials matching blocked patterns
 
 **Credential Filtering:**
-Only these environment variables are exposed to containers:
+Only these environment variables are extracted from `.env` and exposed to containers:
 ```python
-ALLOWED_ENV_VARS = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]
+allowed_vars = [
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "ANTHROPIC_API_KEY",
+    "GH_TOKEN",
+    "OPENAI_API_KEY",
+]
 ```
+
+Additionally, `GH_TOKEN` is auto-discovered from `gh auth token` if not in `.env`, and git identity vars (`GIT_AUTHOR_NAME`, `GIT_COMMITTER_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_EMAIL`) are auto-discovered from host git config.
 
 > **Note:** Anthropic credentials are mounted so that Claude Code can authenticate when the agent runs. However, this means the agent itself can discover these credentials via Bash or file operations. Ideally, Claude Code would authenticate without exposing credentials to the agent's execution environment, but I couldn't figure this out. **PRs welcome** if you have ideas for credential isolation.
 
@@ -101,7 +109,7 @@ WhatsApp messages could contain malicious instructions attempting to manipulate 
 
 | Capability | God Group | Non-God Group |
 |------------|------------|----------------|
-| Project root access | `/workspace/project` (rw) | None |
+| Project root access | `/workspace/project` (rw) | Via `project_access` (worktree, rw) |
 | Group folder | `/workspace/group` (rw) | `/workspace/group` (rw) |
 | Global memory | Implicit via project | `/workspace/global` (ro) |
 | Additional mounts | Configurable | Read-only unless allowed |

@@ -18,6 +18,7 @@ from pynchy.types import AdditionalMount, AllowedRoot, MountAllowlist
 _cached_allowlist: MountAllowlist | None = None
 _allowlist_load_error: str | None = None
 
+# NOTE: Update docs/security.md § Mount Security if you change this list.
 DEFAULT_BLOCKED_PATTERNS = [
     ".ssh",
     ".gnupg",

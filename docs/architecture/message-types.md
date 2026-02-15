@@ -40,7 +40,7 @@ CREATE TABLE messages (
     content TEXT,
     timestamp TEXT,
     is_from_me INTEGER,
-    message_type TEXT NOT NULL DEFAULT 'user',
+    message_type TEXT DEFAULT 'user',
     metadata TEXT,  -- JSON
     PRIMARY KEY (id, chat_jid)
 );
@@ -53,7 +53,6 @@ CREATE INDEX idx_messages_by_chat ON messages(chat_jid, timestamp);
 The `metadata` column stores structured JSON data for additional context:
 
 - **tool_result**: `{"exit_code": 0}`
-- **system notices**: `{"source": "system_notice"}`
 - Future: tool_use_id, error details, etc.
 
 ## Data Flow
@@ -103,24 +102,15 @@ sdk_messages = format_messages_for_sdk(messages)
 ### Container Integration
 
 ```python
-# Host sends both legacy prompt and SDK messages
+# Host sends SDK messages and ephemeral system notices
 ContainerInput(
-    prompt=format_messages(messages),  # Legacy XML format
-    messages=sdk_messages,              # New SDK format (host filtered)
+    messages=sdk_messages,              # SDK message list (host messages filtered)
     system_notices=["Git warning..."],  # Ephemeral context
     ...
 )
-
-# Container prefers SDK messages when available
-if container_input.messages:
-    prompt = build_sdk_messages(container_input.messages)
-else:
-    prompt = container_input.prompt  # Fallback to legacy
-
-# System notices appended to system_prompt
-if container_input.system_notices:
-    system_prompt["append"] += "\n\n" + "\n\n".join(system_notices)
 ```
+
+The container receives `messages` (a list of SDK-format messages with host messages already filtered out) and `system_notices` (ephemeral context appended to the system prompt).
 
 ## Key Adapters
 
