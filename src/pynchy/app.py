@@ -32,7 +32,6 @@ from pynchy.config import (
     DATA_DIR,
     DEFAULT_AGENT_CORE,
     DEPLOY_PORT,
-    GOD_GROUP_FOLDER,
     GROUPS_DIR,
     IDLE_TIMEOUT,
     POLL_INTERVAL,
@@ -361,11 +360,11 @@ class PynchyApp:
         profile = WorkspaceProfile(
             jid=jid,
             name=group_name,
-            folder=GOD_GROUP_FOLDER,
+            folder=ASSISTANT_NAME,
             trigger=f"@{ASSISTANT_NAME}",
             added_at=datetime.now(UTC).isoformat(),
             requires_trigger=False,
-            # Default security: all tools require human approval
+            is_god=True,
         )
         await self._register_workspace(profile)
         logger.info(
@@ -462,14 +461,14 @@ class PynchyApp:
                 return result != "error"
             return True
 
-        is_god_group = group.folder == GOD_GROUP_FOLDER
+        is_god_group = group.is_god
         since_timestamp = self.last_agent_timestamp.get(chat_jid, "")
         missed_messages = await get_messages_since(chat_jid, since_timestamp)
 
         if not missed_messages:
             return True
 
-        # For non-main groups, check if trigger is required and present
+        # For non-god groups, check if trigger is required and present
         if not is_god_group and group.requires_trigger is not False:
             has_trigger = any(TRIGGER_PATTERN.search(m.content.strip()) for m in missed_messages)
             if not has_trigger:
@@ -909,7 +908,7 @@ class PynchyApp:
         """Run the container agent for a group. Returns 'success' or 'error'."""
         from pynchy.periodic import load_periodic_config
 
-        is_god = group.folder == GOD_GROUP_FOLDER
+        is_god = group.is_god
         periodic_config = load_periodic_config(group.folder)
         project_access = is_god or (periodic_config.project_access if periodic_config else False)
         session_id = self.sessions.get(group.folder)
@@ -1081,7 +1080,7 @@ class PynchyApp:
                         if not group:
                             continue
 
-                        is_god_group = group.folder == GOD_GROUP_FOLDER
+                        is_god_group = group.is_god
                         needs_trigger = not is_god_group and group.requires_trigger is not False
 
                         if needs_trigger:
@@ -1160,7 +1159,7 @@ class PynchyApp:
     async def _send_boot_notification(self) -> None:
         """Send a system message to the god channel on startup."""
         god_jid = next(
-            (jid for jid, g in self.registered_groups.items() if g.folder == GOD_GROUP_FOLDER),
+            (jid for jid, g in self.registered_groups.items() if g.is_god),
             None,
         )
         if not god_jid:
@@ -1563,9 +1562,8 @@ class PynchyApp:
 
         project_access_folders: list[str] = []
         for profile in self.workspaces.values():
-            is_god = profile.folder == GOD_GROUP_FOLDER
             periodic = load_periodic_config(profile.folder)
-            if is_god or (periodic and periodic.project_access):
+            if profile.is_god or (periodic and periodic.project_access):
                 project_access_folders.append(profile.folder)
 
         await asyncio.to_thread(

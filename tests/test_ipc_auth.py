@@ -24,6 +24,7 @@ GOD_GROUP = RegisteredGroup(
     folder="god",
     trigger="always",
     added_at="2024-01-01T00:00:00.000Z",
+    is_god=True,
 )
 
 OTHER_GROUP = RegisteredGroup(

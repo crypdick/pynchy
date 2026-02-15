@@ -18,7 +18,6 @@ from croniter import croniter
 from pynchy.config import (
     ASSISTANT_NAME,
     DATA_DIR,
-    GOD_GROUP_FOLDER,
     GROUPS_DIR,
     IPC_POLL_INTERVAL,
     PROJECT_ROOT,
@@ -90,9 +89,11 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
             return
 
         registered_groups = deps.registered_groups()
+        # Build folder→is_god lookup from registered group profiles
+        _god_folders = {g.folder for g in registered_groups.values() if g.is_god}
 
         for source_group in group_folders:
-            is_god = source_group == GOD_GROUP_FOLDER
+            is_god = source_group in _god_folders
             messages_dir = ipc_base_dir / source_group / "messages"
             tasks_dir = ipc_base_dir / source_group / "tasks"
 
@@ -507,7 +508,7 @@ async def _handle_deploy(
     if not chat_jid:
         groups = deps.registered_groups()
         chat_jid = next(
-            (jid for jid, g in groups.items() if g.folder == GOD_GROUP_FOLDER),
+            (jid for jid, g in groups.items() if g.is_god),
             "",
         )
         if not chat_jid:
