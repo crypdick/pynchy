@@ -5,7 +5,9 @@ Tests critical business logic in config.py: context reset, end session, and rede
 
 from __future__ import annotations
 
-from pynchy.config import is_context_reset, is_end_session, is_redeploy
+from unittest.mock import patch
+
+from pynchy.config import _detect_timezone, is_context_reset, is_end_session, is_redeploy
 
 
 class TestIsContextReset:
@@ -308,3 +310,75 @@ class TestIsRedeploy:
         """Single letter 'r' shouldn't match within longer words."""
         assert not is_redeploy("run")
         assert not is_redeploy("read")
+
+
+# ---------------------------------------------------------------------------
+# _detect_timezone
+# ---------------------------------------------------------------------------
+
+
+class TestDetectTimezone:
+    """Test timezone auto-detection from environment and system config.
+
+    Correct timezone detection is critical for scheduled tasks —
+    wrong timezone causes tasks to fire at unexpected times.
+    """
+
+    def test_tz_env_var_takes_priority(self):
+        with patch.dict("os.environ", {"TZ": "America/New_York"}):
+            assert _detect_timezone() == "America/New_York"
+
+    def test_tz_env_var_empty_falls_through(self):
+        """Empty TZ env var is falsy, should fall through to readlink."""
+        with (
+            patch.dict("os.environ", {"TZ": ""}, clear=False),
+            patch("pynchy.config.os.readlink", side_effect=OSError("not a link")),
+        ):
+            assert _detect_timezone() == "UTC"
+
+    def test_reads_localtime_symlink(self):
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(
+                "pynchy.config.os.readlink",
+                return_value="/usr/share/zoneinfo/Europe/London",
+            ),
+        ):
+            assert _detect_timezone() == "Europe/London"
+
+    def test_localtime_symlink_deep_path(self):
+        """Handles zoneinfo paths with multiple components after zoneinfo/."""
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(
+                "pynchy.config.os.readlink",
+                return_value="/usr/share/zoneinfo/America/Argentina/Buenos_Aires",
+            ),
+        ):
+            assert _detect_timezone() == "America/Argentina/Buenos_Aires"
+
+    def test_localtime_not_a_symlink(self):
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch("pynchy.config.os.readlink", side_effect=OSError("not a symlink")),
+        ):
+            assert _detect_timezone() == "UTC"
+
+    def test_localtime_symlink_without_zoneinfo(self):
+        """Symlink target that doesn't contain 'zoneinfo/' falls back to UTC."""
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(
+                "pynchy.config.os.readlink",
+                return_value="/some/other/path/timezone",
+            ),
+        ):
+            assert _detect_timezone() == "UTC"
+
+    def test_defaults_to_utc(self):
+        """No TZ and no /etc/localtime → defaults to UTC."""
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch("pynchy.config.os.readlink", side_effect=FileNotFoundError),
+        ):
+            assert _detect_timezone() == "UTC"
