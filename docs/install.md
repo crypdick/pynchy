@@ -53,7 +53,7 @@ uv sync                                      # Install Python dependencies
 To customize configuration, copy the example configuration and edit it:
 
 ```bash
-cp config.toml.EXAMPLE config.toml
+cp config-examples/config.toml.EXAMPLE config.toml
 # Edit config.toml with your preferred settings
 ```
 
@@ -189,7 +189,7 @@ ssh your-server "claude -p 'say hello'"
 If you prefer using an API key directly, skip the `claude` authentication and create `config.toml`:
 
 ```bash
-cp ~/src/pynchy/config.toml.EXAMPLE ~/src/pynchy/config.toml
+cp ~/src/pynchy/config-examples/config.toml.EXAMPLE ~/src/pynchy/config.toml
 # Then set [secrets].anthropic_api_key in config.toml
 ```
 
@@ -217,6 +217,8 @@ The first run already installed and enabled the systemd service. Start it:
 ```bash
 systemctl --user start pynchy
 ```
+
+For a reference unit file template, see `config-examples/pynchy.service.EXAMPLE`.
 
 Check status:
 
