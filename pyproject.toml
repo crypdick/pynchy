@@ -23,7 +23,8 @@ dependencies = [
 [project.scripts]
 pynchy = "pynchy.__main__:main"
 
-[project.entry-points."pynchy.plugins"]
+# NOTE: Update docs/plugins/packaging.md § Entry Point Registration if you change this group
+[project.entry-points."pynchy"]
 claude = "pynchy.plugin.builtin_agent_claude:ClaudeAgentCorePlugin"
 
 [dependency-groups]
