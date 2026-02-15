@@ -16,7 +16,6 @@ from pynchy.router import (
 )
 from pynchy.types import NewMessage
 
-
 # --- TRIGGER_PATTERN ---
 
 
