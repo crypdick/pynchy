@@ -84,6 +84,8 @@ class HttpDeps(Protocol):
 
     async def get_periodic_agents(self) -> list[dict[str, Any]]: ...
 
+    def is_shutting_down(self) -> bool: ...
+
 
 # ------------------------------------------------------------------
 # Existing endpoints
@@ -277,7 +279,12 @@ async def _handle_api_events(request: web.Request) -> web.StreamResponse:
 
     try:
         while True:
-            event = await queue.get()
+            if deps.is_shutting_down():
+                break
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=0.2)
+            except TimeoutError:
+                continue
             data = json.dumps(event)
             await response.write(f"data: {data}\n\n".encode())
     except (asyncio.CancelledError, ConnectionResetError):
