@@ -414,5 +414,5 @@ async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
                 await deps.trigger_deploy(pre_update_sha)
                 return  # process will restart
 
-        except Exception as exc:
-            logger.error("git_sync poll error", err=str(exc))
+        except Exception:
+            logger.exception("git_sync poll error")

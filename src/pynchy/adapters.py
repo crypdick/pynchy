@@ -66,6 +66,45 @@ class HostMessageBroadcaster:
         self.store_message = store_message_fn
         self.emit_event = emit_event_fn
 
+    async def _store_broadcast_and_emit(
+        self,
+        *,
+        chat_jid: str,
+        text: str,
+        id_prefix: str,
+        sender: str,
+        channel_emoji: str,
+    ) -> None:
+        """Store a message, broadcast to channels, and emit an event.
+
+        Shared implementation for broadcast_host_message and broadcast_system_notice.
+        The only differences between them are the id prefix, sender identity,
+        and the emoji prepended to the channel-facing text.
+        """
+        from pynchy.event_bus import MessageEvent
+
+        ts = datetime.now(UTC).isoformat()
+        await self.store_message(
+            id=generate_message_id(id_prefix),
+            chat_jid=chat_jid,
+            sender=sender,
+            sender_name=sender,
+            content=text,
+            timestamp=ts,
+            is_from_me=True,
+        )
+        channel_text = f"{channel_emoji} {text}"
+        await self.broadcaster._broadcast_to_channels(chat_jid, channel_text)
+        self.emit_event(
+            MessageEvent(
+                chat_jid=chat_jid,
+                sender_name=sender,
+                content=text,
+                timestamp=ts,
+                is_bot=True,
+            )
+        )
+
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None:
         """Send operational notification from host/platform to user.
 
@@ -76,28 +115,12 @@ class HostMessageBroadcaster:
         - NOT sent to the LLM as system messages or user messages
         - NOT part of the SDK conversation flow
         """
-        from pynchy.event_bus import MessageEvent
-
-        ts = datetime.now(UTC).isoformat()
-        await self.store_message(
-            id=generate_message_id("host"),
+        await self._store_broadcast_and_emit(
             chat_jid=chat_jid,
+            text=text,
+            id_prefix="host",
             sender="host",
-            sender_name="host",
-            content=text,
-            timestamp=ts,
-            is_from_me=True,
-        )
-        channel_text = f"\U0001f3e0 {text}"
-        await self.broadcaster._broadcast_to_channels(chat_jid, channel_text)
-        self.emit_event(
-            MessageEvent(
-                chat_jid=chat_jid,
-                sender_name="host",
-                content=text,
-                timestamp=ts,
-                is_bot=True,
-            )
+            channel_emoji="\U0001f3e0",
         )
 
     async def broadcast_system_notice(self, chat_jid: str, text: str) -> None:
@@ -109,28 +132,12 @@ class HostMessageBroadcaster:
         - Included in conversation context for future container launches
         - Broadcast to channels with 📢 prefix for human visibility
         """
-        from pynchy.event_bus import MessageEvent
-
-        ts = datetime.now(UTC).isoformat()
-        await self.store_message(
-            id=generate_message_id("sys-notice"),
+        await self._store_broadcast_and_emit(
             chat_jid=chat_jid,
+            text=text,
+            id_prefix="sys-notice",
             sender="system_notice",
-            sender_name="system_notice",
-            content=text,
-            timestamp=ts,
-            is_from_me=True,
-        )
-        channel_text = f"\U0001f4e2 {text}"
-        await self.broadcaster._broadcast_to_channels(chat_jid, channel_text)
-        self.emit_event(
-            MessageEvent(
-                chat_jid=chat_jid,
-                sender_name="system_notice",
-                content=text,
-                timestamp=ts,
-                is_bot=True,
-            )
+            channel_emoji="\U0001f4e2",
         )
 
 

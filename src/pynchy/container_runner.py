@@ -172,11 +172,8 @@ def _sync_skills(session_dir: Path, plugin_manager: pluggy.PluginManager | None 
                     )
             except ValueError:
                 raise  # Re-raise name collisions — these must not be silenced
-            except Exception as e:
-                logger.warning(
-                    "Failed to sync plugin skills",
-                    error=str(e),
-                )
+            except Exception:
+                logger.exception("Failed to sync plugin skills")
 
 
 def _read_oauth_token() -> str | None:
@@ -448,11 +445,8 @@ def _build_volume_mounts(
                             readonly=True,
                         )
                     )
-            except Exception as e:
-                logger.warning(
-                    "Failed to mount plugin MCP source",
-                    error=str(e),
-                )
+            except Exception:
+                logger.exception("Failed to mount plugin MCP source")
 
     return mounts
 
@@ -498,7 +492,7 @@ async def _graceful_stop(proc: asyncio.subprocess.Process, container_name: str) 
             )
             proc.kill()
     except Exception:
-        logger.warning("Graceful stop failed, force killing", container=container_name)
+        logger.exception("Graceful stop failed, force killing", container=container_name)
         proc.kill()
 
 
@@ -691,11 +685,8 @@ async def run_container_agent(
                     "args": spec["args"],
                     "env": spec["env"],
                 }
-            except Exception as e:
-                logger.warning(
-                    "Failed to get MCP spec from plugin",
-                    error=str(e),
-                )
+            except Exception:
+                logger.exception("Failed to get MCP spec from plugin")
         if plugin_mcp_specs:
             input_data.plugin_mcp_servers = plugin_mcp_specs
 
