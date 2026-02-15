@@ -147,7 +147,10 @@ class WhatsAppChannel:
             try:
                 await self._handle_message(message)
             except Exception:
-                logger.exception("Unhandled error in message handler")
+                logger.exception(
+                    "Unhandled error in message handler",
+                    message_id=getattr(getattr(message, "Info", None), "ID", "unknown"),
+                )
 
     async def _handle_message(self, message: MessageEv) -> None:
         """Process an incoming WhatsApp message."""
@@ -177,7 +180,7 @@ class WhatsAppChannel:
         try:
             self._on_chat_metadata(chat_jid, timestamp)
         except Exception:
-            logger.exception("Failed to store chat metadata")
+            logger.exception("Failed to store chat metadata", chat_jid=chat_jid)
 
         # Only deliver full message for registered groups
         groups = self._registered_groups()
@@ -221,7 +224,11 @@ class WhatsAppChannel:
         try:
             self._on_message(chat_jid, new_msg)
         except Exception:
-            logger.exception("Failed to store message")
+            logger.exception(
+                "Failed to store message",
+                chat_jid=chat_jid,
+                message_id=info.ID,
+            )
         logger.debug(
             "Message processed",
             chat_jid=chat_jid,

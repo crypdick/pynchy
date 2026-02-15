@@ -451,7 +451,11 @@ def _build_volume_mounts(
                         )
                     )
             except Exception:
-                logger.exception("Failed to mount plugin MCP source")
+                logger.exception(
+                    "Failed to mount plugin MCP source",
+                    plugin_name=spec.get("name", "unknown"),
+                    host_source=str(spec.get("host_source", "")),
+                )
 
     return mounts
 
@@ -496,8 +500,12 @@ async def _graceful_stop(proc: asyncio.subprocess.Process, container_name: str) 
                 container=container_name,
             )
             proc.kill()
-    except Exception:
-        logger.exception("Graceful stop failed, force killing", container=container_name)
+    except Exception as exc:
+        logger.exception(
+            "Graceful stop failed, force killing",
+            container=container_name,
+            error=str(exc),
+        )
         proc.kill()
 
 
@@ -691,7 +699,10 @@ async def run_container_agent(
                     "env": spec["env"],
                 }
             except Exception:
-                logger.exception("Failed to get MCP spec from plugin")
+                logger.exception(
+                    "Failed to get MCP spec from plugin",
+                    spec_keys=list(spec.keys()) if isinstance(spec, dict) else str(type(spec)),
+                )
         if plugin_mcp_specs:
             input_data.plugin_mcp_servers = plugin_mcp_specs
 

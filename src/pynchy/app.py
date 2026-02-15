@@ -333,8 +333,13 @@ class PynchyApp:
             try:
                 reset_data = json.loads(reset_file.read_text())
                 reset_file.unlink()
-            except Exception as exc:
-                logger.warning("Failed to read reset prompt file", group=group.name, err=str(exc))
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.warning(
+                    "Failed to read reset prompt file",
+                    group=group.name,
+                    path=str(reset_file),
+                    err=str(exc),
+                )
                 reset_file.unlink(missing_ok=True)
                 return True
 
@@ -1033,8 +1038,12 @@ class PynchyApp:
         """Roll back to the previous commit if startup fails after a deploy."""
         try:
             continuation = json.loads(continuation_path.read_text())
-        except Exception:
-            logger.exception("Failed to read continuation for rollback")
+        except (json.JSONDecodeError, OSError) as read_exc:
+            logger.exception(
+                "Failed to read continuation for rollback",
+                path=str(continuation_path),
+                error=str(read_exc),
+            )
             return
 
         previous_sha = continuation.get("previous_commit_sha", "")
@@ -1078,8 +1087,12 @@ class PynchyApp:
         try:
             continuation = json.loads(continuation_path.read_text())
             continuation_path.unlink()
-        except Exception as exc:
-            logger.error("Failed to read deploy continuation", err=str(exc))
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.error(
+                "Failed to read deploy continuation",
+                path=str(continuation_path),
+                err=str(exc),
+            )
             return
 
         chat_jid = continuation.get("chat_jid", "")
