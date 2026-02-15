@@ -42,6 +42,8 @@ Single source of truth for all pynchy work items.
 - abandon claude hookify hooks. openai does not support them. build a hook system into our own harness.
 - **Rethink DB event cursor design** — The message polling loop uses a single `last_timestamp` cursor shared across all consumers (WhatsApp, TUI, running agents). This means advancing the cursor for one consumer silently advances it for all others, so events can be missed. Each subscriber (each channel, each running agent container) should have its own independent cursor into the DB event stream.
 - we want to be plugin maximalists. add that to the requirements.txt design doc. we want to make everything in this repo a plugin. ideally, we rip out non-essential code (whatsapp, openai, claude, etc.) and push them out into plugins. that way, users can disable unwanted functionality. this is how pytest lib works, for example
+- implement the progressive disclosure principle for skills. see the official claude docs on this
+- if container 1 syncs a change, the host recieves and pushes to the rest of the containers, and one of the container's worktree has a merge conflict, and that container is hibernating, that container ought to be spun up, sent a system message about the failed abortion, and a follow up message telling it to fix the broken rebase. that way, working in one container does not fuck up the work of a hibernating container. 
 
 
 ### 2 - Planning
