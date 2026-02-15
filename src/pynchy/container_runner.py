@@ -172,7 +172,7 @@ def _sync_skills(session_dir: Path, plugin_manager: pluggy.PluginManager | None 
                     )
             except ValueError:
                 raise  # Re-raise name collisions — these must not be silenced
-            except Exception:
+            except (OSError, TypeError):
                 logger.exception("Failed to sync plugin skills")
 
 
@@ -698,7 +698,7 @@ async def run_container_agent(
                     "args": spec["args"],
                     "env": spec["env"],
                 }
-            except Exception:
+            except (KeyError, TypeError):
                 logger.exception(
                     "Failed to get MCP spec from plugin",
                     spec_keys=list(spec.keys()) if isinstance(spec, dict) else str(type(spec)),

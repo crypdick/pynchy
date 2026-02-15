@@ -60,7 +60,7 @@ def get_head_sha() -> str:
     try:
         result = run_git("rev-parse", "HEAD")
         return result.stdout.strip() if result.returncode == 0 else "unknown"
-    except Exception as exc:
+    except (OSError, subprocess.SubprocessError) as exc:
         logger.debug("get_head_sha failed", error=str(exc))
         return "unknown"
 
@@ -70,7 +70,7 @@ def is_repo_dirty(cwd: Path | None = None) -> bool:
     try:
         result = run_git("status", "--porcelain", cwd=cwd)
         return bool(result.stdout.strip()) if result.returncode == 0 else False
-    except Exception as exc:
+    except (OSError, subprocess.SubprocessError) as exc:
         logger.debug("is_repo_dirty failed", error=str(exc), cwd=str(cwd))
         return False
 
@@ -82,7 +82,7 @@ def count_unpushed_commits() -> int:
         result = run_git("rev-list", f"origin/{main}..HEAD", "--count")
         if result.returncode == 0:
             return int(result.stdout.strip() or "0")
-    except Exception as exc:
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
         logger.debug("count_unpushed_commits failed", error=str(exc))
     return 0
 
@@ -141,6 +141,6 @@ def push_local_commits(*, skip_fetch: bool = False) -> bool:
             return True
 
         return False  # exhausted attempts
-    except Exception as exc:
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
         logger.warning("push_local: unexpected error", err=str(exc))
         return False
