@@ -1,6 +1,6 @@
 # Pynchy
 
-Personal Claude assistant. See [README.md](README.md) for philosophy. See [docs/INSTALL.md](docs/INSTALL.md) for installation. See [docs/architecture/](docs/architecture/index.md) for architecture.
+Personal Claude assistant. See [README.md](README.md) for philosophy. See [docs/install.md](docs/install.md) for installation. See [docs/architecture/](docs/architecture/index.md) for architecture.
 
 ## Quick Context
 
@@ -30,7 +30,7 @@ Python process that connects to WhatsApp, routes messages to Claude Agent SDK ru
 | Guide | When to Read |
 |-------|-------------|
 | [Architecture](docs/architecture/index.md) | System design, container isolation, message routing, groups, tasks |
-| [Security model](docs/SECURITY.md) | Trust model, security boundaries, credential handling |
+| [Security model](docs/security.md) | Trust model, security boundaries, credential handling |
 | [Development & testing](.claude/development.md) | Running commands, writing tests, linting |
 | [Deployment](.claude/deployment.md) | Service management, deploy workflow, container builds, GitHub access |
 | [Plugin security](.claude/plugins.md) | Understanding plugin trust model and sandbox levels |

@@ -20,12 +20,12 @@ Quick decision tree:
 
 **New feature?**
 - Architecture decision → `docs/architecture/` (find the relevant topic file, or create a new one)
-- Installation requirement → `docs/INSTALL.md`
-- Security implication → `docs/SECURITY.md`
+- Installation requirement → `docs/install.md`
+- Security implication → `docs/security.md`
 - Development workflow change → `.claude/development.md`
 
 **Bug fix?**
-- If it needs install change → `docs/INSTALL.md`
+- If it needs install change → `docs/install.md`
 - Usually: No doc update needed
 
 **Refactoring?**
@@ -37,8 +37,8 @@ Quick decision tree:
 | File | What Goes There |
 |------|-----------------|
 | `README.md` | Philosophy, quick start, high-level overview |
-| `docs/INSTALL.md` | Complete installation guide |
-| `docs/SECURITY.md` | Security model, threat analysis |
+| `docs/install.md` | Complete installation guide |
+| `docs/security.md` | Security model, threat analysis |
 | `docs/architecture/index.md` | Architecture overview and links to topic pages |
 | `docs/architecture/*.md` | One topic per file (containers, routing, tasks, etc.) |
 | `.claude/*.md` | Development context for Claude Code agents |
