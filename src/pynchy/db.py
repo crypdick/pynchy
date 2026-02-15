@@ -31,7 +31,8 @@ _SCHEMA = """\
 CREATE TABLE IF NOT EXISTS chats (
     jid TEXT PRIMARY KEY,
     name TEXT,
-    last_message_time TEXT
+    last_message_time TEXT,
+    cleared_at TEXT
 );
 CREATE TABLE IF NOT EXISTS messages (
     id TEXT,
@@ -41,6 +42,8 @@ CREATE TABLE IF NOT EXISTS messages (
     content TEXT,
     timestamp TEXT,
     is_from_me INTEGER,
+    message_type TEXT DEFAULT 'user',
+    metadata TEXT,
     PRIMARY KEY (id, chat_jid),
     FOREIGN KEY (chat_jid) REFERENCES chats(jid)
 );
@@ -58,7 +61,9 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
     last_run TEXT,
     last_result TEXT,
     status TEXT DEFAULT 'active',
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    context_mode TEXT DEFAULT 'isolated',
+    project_access INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_next_run ON scheduled_tasks(next_run);
 CREATE INDEX IF NOT EXISTS idx_status ON scheduled_tasks(status);
@@ -105,61 +110,6 @@ def _get_db() -> aiosqlite.Connection:
 
 async def _create_schema(database: aiosqlite.Connection) -> None:
     await database.executescript(_SCHEMA)
-    # Migration: add context_mode column if missing
-    try:
-        await database.execute(
-            "ALTER TABLE scheduled_tasks ADD COLUMN context_mode TEXT DEFAULT 'isolated'"
-        )
-        await database.commit()
-    except Exception:
-        pass
-    # Migration: add project_access column if missing
-    try:
-        await database.execute(
-            "ALTER TABLE scheduled_tasks ADD COLUMN project_access INTEGER DEFAULT 0"
-        )
-        await database.commit()
-    except Exception:
-        pass
-    # Migration: add cleared_at column to chats
-    try:
-        await database.execute("ALTER TABLE chats ADD COLUMN cleared_at TEXT")
-        await database.commit()
-    except Exception:
-        pass
-    # Migration: add message_type column (Phase 1 of message types refactor)
-    try:
-        await database.execute("ALTER TABLE messages ADD COLUMN message_type TEXT DEFAULT 'user'")
-        await database.commit()
-    except Exception:
-        pass
-    # Migration: add metadata JSON column (Phase 1 of message types refactor)
-    try:
-        await database.execute("ALTER TABLE messages ADD COLUMN metadata TEXT")
-        await database.commit()
-    except Exception:
-        pass
-    # Migration: backfill message_type based on sender patterns
-    try:
-        # Host messages
-        await database.execute(
-            "UPDATE messages SET message_type = 'host' "
-            "WHERE sender = 'host' AND message_type = 'user'"
-        )
-        # Tool result messages (command outputs)
-        await database.execute(
-            "UPDATE messages SET message_type = 'tool_result' "
-            "WHERE sender = 'command_output' AND message_type = 'user'"
-        )
-        # Assistant messages (bot responses)
-        await database.execute(
-            "UPDATE messages SET message_type = 'assistant' "
-            "WHERE sender IN ('bot', 'pynchy') AND message_type = 'user'"
-        )
-        # Everything else stays as 'user' (already the default)
-        await database.commit()
-    except Exception:
-        pass
 
 
 async def init_database() -> None:
@@ -805,23 +755,10 @@ async def _migrate_json_state() -> None:
 
 
 def _row_to_message(row: aiosqlite.Row) -> NewMessage:
-    """Convert a database row to a NewMessage.
+    """Convert a database row to a NewMessage."""
+    metadata_str = row["metadata"]
 
-    Handles optional columns (message_type, metadata) gracefully for backward
-    compatibility with rows written before those columns existed.
-    """
-    try:
-        message_type = row["message_type"] or "user"
-    except (KeyError, IndexError):
-        message_type = "user"
-
-    try:
-        metadata_str = row["metadata"]
-        metadata = json.loads(metadata_str) if metadata_str else None
-    except (KeyError, IndexError):
-        metadata = None
-
-    # is_from_me is only present in get_chat_history queries
+    # is_from_me is only in get_chat_history queries, not in get_messages_since
     try:
         is_from_me: bool | None = bool(row["is_from_me"])
     except (KeyError, IndexError):
@@ -835,18 +772,12 @@ def _row_to_message(row: aiosqlite.Row) -> NewMessage:
         content=row["content"],
         timestamp=row["timestamp"],
         is_from_me=is_from_me,
-        message_type=message_type,
-        metadata=metadata,
+        message_type=row["message_type"] or "user",
+        metadata=json.loads(metadata_str) if metadata_str else None,
     )
 
 
 def _row_to_task(row: aiosqlite.Row) -> ScheduledTask:
-    # project_access may not exist in old rows before migration
-    try:
-        project_access = bool(row["project_access"])
-    except (IndexError, KeyError):
-        project_access = False
-
     return ScheduledTask(
         id=row["id"],
         group_folder=row["group_folder"],
@@ -860,7 +791,7 @@ def _row_to_task(row: aiosqlite.Row) -> ScheduledTask:
         last_result=row["last_result"],
         status=row["status"],
         created_at=row["created_at"],
-        project_access=project_access,
+        project_access=bool(row["project_access"]),
     )
 
 
