@@ -77,6 +77,27 @@ def is_context_reset(text: str) -> bool:
     return False
 
 
+# Magic words to end session without clearing context.
+# Syncs worktree and spins down container, but preserves conversation history.
+# Next message will start a fresh container with the existing session context.
+_END_SESSION_VERBS = {"end", "stop", "close", "finish"}
+_END_SESSION_NOUNS = {"session"}
+_END_SESSION_ALIASES = {"done", "bye", "goodbye", "cya"}
+
+
+def is_end_session(text: str) -> bool:
+    """Check if a message is an end session command."""
+    words = text.strip().lower().split()
+    if len(words) == 1:
+        return words[0] in _END_SESSION_ALIASES
+    if len(words) == 2:
+        a, b = words
+        return (a in _END_SESSION_VERBS and b in _END_SESSION_NOUNS) or (
+            a in _END_SESSION_NOUNS and b in _END_SESSION_VERBS
+        )
+    return False
+
+
 _REDEPLOY_ALIASES = {"r"}
 _REDEPLOY_VERBS = {"redeploy", "deploy"}
 

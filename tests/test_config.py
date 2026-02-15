@@ -1,11 +1,11 @@
 """Tests for configuration logic.
 
-Tests critical business logic in config.py: context reset and redeploy detection.
+Tests critical business logic in config.py: context reset, end session, and redeploy detection.
 """
 
 from __future__ import annotations
 
-from pynchy.config import is_context_reset, is_redeploy
+from pynchy.config import is_context_reset, is_end_session, is_redeploy
 
 
 class TestIsContextReset:
@@ -158,6 +158,93 @@ class TestIsContextReset:
 
     def test_c_alias_with_whitespace(self):
         assert is_context_reset("  c  ")
+
+
+class TestIsEndSession:
+    """Test the is_end_session() function which determines if a message
+    should trigger a graceful session end (sync + spindown, no context wipe).
+    """
+
+    # Single-word aliases
+    def test_recognizes_done_alias(self):
+        assert is_end_session("done")
+
+    def test_recognizes_bye_alias(self):
+        assert is_end_session("bye")
+
+    def test_recognizes_goodbye_alias(self):
+        assert is_end_session("goodbye")
+
+    def test_recognizes_cya_alias(self):
+        assert is_end_session("cya")
+
+    # Two-word combinations: verb + noun
+    def test_end_session(self):
+        assert is_end_session("end session")
+
+    def test_stop_session(self):
+        assert is_end_session("stop session")
+
+    def test_close_session(self):
+        assert is_end_session("close session")
+
+    def test_finish_session(self):
+        assert is_end_session("finish session")
+
+    # Reversed order
+    def test_session_end(self):
+        assert is_end_session("session end")
+
+    def test_session_stop(self):
+        assert is_end_session("session stop")
+
+    def test_session_close(self):
+        assert is_end_session("session close")
+
+    # Case insensitivity
+    def test_case_insensitive(self):
+        assert is_end_session("END SESSION")
+        assert is_end_session("End Session")
+        assert is_end_session("DONE")
+        assert is_end_session("Bye")
+
+    # Whitespace handling
+    def test_handles_extra_whitespace(self):
+        assert is_end_session("  done  ")
+        assert is_end_session("  end   session  ")
+
+    # Negative cases
+    def test_does_not_match_wrong_noun(self):
+        assert not is_end_session("end context")
+        assert not is_end_session("stop chat")
+        assert not is_end_session("close conversation")
+
+    def test_does_not_match_three_words(self):
+        assert not is_end_session("end the session")
+        assert not is_end_session("please end session")
+
+    def test_does_not_match_single_keywords(self):
+        assert not is_end_session("end")
+        assert not is_end_session("stop")
+        assert not is_end_session("session")
+
+    def test_empty_string(self):
+        assert not is_end_session("")
+
+    def test_whitespace_only(self):
+        assert not is_end_session("   ")
+
+    def test_does_not_overlap_with_context_reset(self):
+        """End session aliases should not trigger context reset and vice versa."""
+        # End session words should NOT trigger context reset
+        assert not is_context_reset("done")
+        assert not is_context_reset("bye")
+        assert not is_context_reset("end session")
+
+        # Context reset words should NOT trigger end session
+        assert not is_end_session("boom")
+        assert not is_end_session("reset context")
+        assert not is_end_session("new session")
 
 
 class TestIsRedeploy:
