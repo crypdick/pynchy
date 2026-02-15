@@ -645,3 +645,142 @@ class TestRegisterGroupSuccess:
         )
 
         assert deps.registered_groups().get("partial@g.us") is None
+
+
+# --- schedule_task missing fields ---
+
+
+class TestScheduleTaskMissingFields:
+    """schedule_task requires prompt, schedule_type, schedule_value, and targetJid.
+    Missing any one should silently bail without creating a task."""
+
+    async def test_missing_prompt_creates_no_task(self, deps):
+        await process_task_ipc(
+            {
+                "type": "schedule_task",
+                "schedule_type": "once",
+                "schedule_value": "2025-06-01T00:00:00.000Z",
+                "targetJid": "other@g.us",
+            },
+            "god",
+            True,
+            deps,
+        )
+        assert len(await get_all_tasks()) == 0
+
+    async def test_missing_schedule_type_creates_no_task(self, deps):
+        await process_task_ipc(
+            {
+                "type": "schedule_task",
+                "prompt": "do something",
+                "schedule_value": "2025-06-01T00:00:00.000Z",
+                "targetJid": "other@g.us",
+            },
+            "god",
+            True,
+            deps,
+        )
+        assert len(await get_all_tasks()) == 0
+
+    async def test_missing_schedule_value_creates_no_task(self, deps):
+        await process_task_ipc(
+            {
+                "type": "schedule_task",
+                "prompt": "do something",
+                "schedule_type": "once",
+                "targetJid": "other@g.us",
+            },
+            "god",
+            True,
+            deps,
+        )
+        assert len(await get_all_tasks()) == 0
+
+    async def test_missing_target_jid_creates_no_task(self, deps):
+        await process_task_ipc(
+            {
+                "type": "schedule_task",
+                "prompt": "do something",
+                "schedule_type": "once",
+                "schedule_value": "2025-06-01T00:00:00.000Z",
+            },
+            "god",
+            True,
+            deps,
+        )
+        assert len(await get_all_tasks()) == 0
+
+    async def test_rejects_negative_interval(self, deps):
+        await process_task_ipc(
+            {
+                "type": "schedule_task",
+                "prompt": "negative interval",
+                "schedule_type": "interval",
+                "schedule_value": "-1000",
+                "targetJid": "other@g.us",
+            },
+            "god",
+            True,
+            deps,
+        )
+        assert len(await get_all_tasks()) == 0
+
+
+# --- authorized_task_action edge cases ---
+
+
+class TestAuthorizedTaskActionEdges:
+    """Edge cases for _authorized_task_action used by pause/resume/cancel."""
+
+    async def test_missing_task_id_is_noop(self, deps):
+        """When taskId is missing from the data, nothing happens."""
+        # Create a task to verify it stays untouched
+        await create_task(
+            {
+                "id": "untouched",
+                "group_folder": "other-group",
+                "chat_jid": "other@g.us",
+                "prompt": "should not change",
+                "schedule_type": "once",
+                "schedule_value": "2025-06-01T00:00:00.000Z",
+                "context_mode": "isolated",
+                "next_run": "2025-06-01T00:00:00.000Z",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00.000Z",
+            }
+        )
+
+        # No taskId in data — should silently return
+        await process_task_ipc({"type": "pause_task"}, "god", True, deps)
+
+        task = await get_task_by_id("untouched")
+        assert task is not None
+        assert task.status == "active"
+
+    async def test_nonexistent_task_id_logs_warning(self, deps):
+        """Pausing a task that doesn't exist should not crash."""
+        await process_task_ipc(
+            {"type": "pause_task", "taskId": "does-not-exist"},
+            "god",
+            True,
+            deps,
+        )
+        # No exception raised — the function logs a warning and returns
+
+    async def test_cancel_nonexistent_task_is_safe(self, deps):
+        """Cancelling a task that doesn't exist should not crash."""
+        await process_task_ipc(
+            {"type": "cancel_task", "taskId": "ghost-task"},
+            "other-group",
+            False,
+            deps,
+        )
+
+    async def test_unknown_ipc_type_is_ignored(self, deps):
+        """Unrecognized IPC types should not crash."""
+        await process_task_ipc(
+            {"type": "totally_made_up"},
+            "god",
+            True,
+            deps,
+        )

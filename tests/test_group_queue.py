@@ -178,6 +178,203 @@ class TestGroupQueue:
         assert "group3@g.us" in processed
 
 
+class TestEnqueueTask:
+    """Tests for task enqueuing: deduplication, shutdown guard, and concurrency."""
+
+    async def test_duplicate_task_id_silently_dropped(self, queue: GroupQueue):
+        """Same task_id enqueued twice should not create duplicate entries."""
+        completions: list[asyncio.Event] = []
+
+        async def process_messages(group_jid: str) -> bool:
+            event = asyncio.Event()
+            completions.append(event)
+            await event.wait()
+            return True
+
+        queue.set_process_messages_fn(process_messages)
+
+        # Start a message to occupy the group's active slot
+        queue.enqueue_message_check("group1@g.us")
+        await asyncio.sleep(0.02)
+
+        # Enqueue the same task twice while group is active
+        task_calls = 0
+
+        async def task_fn():
+            nonlocal task_calls
+            task_calls += 1
+
+        queue.enqueue_task("group1@g.us", "task-1", task_fn)
+        queue.enqueue_task("group1@g.us", "task-1", task_fn)  # duplicate
+
+        # Release and let everything drain
+        completions[0].set()
+        await asyncio.sleep(0.15)
+
+        # Task should only have run once
+        assert task_calls == 1
+
+    async def test_different_task_ids_both_queued(self, queue: GroupQueue):
+        """Different task IDs for the same group should both be queued."""
+        completions: list[asyncio.Event] = []
+
+        async def process_messages(group_jid: str) -> bool:
+            event = asyncio.Event()
+            completions.append(event)
+            await event.wait()
+            return True
+
+        queue.set_process_messages_fn(process_messages)
+
+        queue.enqueue_message_check("group1@g.us")
+        await asyncio.sleep(0.02)
+
+        task_ids_run: list[str] = []
+
+        async def task_a():
+            task_ids_run.append("a")
+
+        async def task_b():
+            task_ids_run.append("b")
+
+        queue.enqueue_task("group1@g.us", "task-a", task_a)
+        queue.enqueue_task("group1@g.us", "task-b", task_b)
+
+        completions[0].set()
+        await asyncio.sleep(0.15)
+
+        assert set(task_ids_run) == {"a", "b"}
+
+    async def test_enqueue_task_blocked_after_shutdown(self, queue: GroupQueue):
+        """Tasks should be silently dropped after shutdown."""
+        process_messages = AsyncMock(return_value=True)
+        queue.set_process_messages_fn(process_messages)
+
+        await queue.shutdown(1.0)
+
+        task_called = False
+
+        async def task_fn():
+            nonlocal task_called
+            task_called = True
+
+        queue.enqueue_task("group1@g.us", "task-1", task_fn)
+        await asyncio.sleep(0.05)
+
+        assert task_called is False
+
+
+class TestSendMessage:
+    """Tests for send_message: IPC file write for active containers."""
+
+    async def test_returns_false_when_group_not_active(self, queue: GroupQueue):
+        assert queue.send_message("group1@g.us", "hello") is False
+
+    async def test_returns_false_when_no_group_folder(self, queue: GroupQueue):
+        """Even if active, send_message needs group_folder to know where to write."""
+        completions: list[asyncio.Event] = []
+
+        async def process_messages(group_jid: str) -> bool:
+            event = asyncio.Event()
+            completions.append(event)
+            await event.wait()
+            return True
+
+        queue.set_process_messages_fn(process_messages)
+        queue.enqueue_message_check("group1@g.us")
+        await asyncio.sleep(0.02)
+
+        # Active but no group_folder registered
+        assert queue.send_message("group1@g.us", "hello") is False
+
+        completions[0].set()
+        await asyncio.sleep(0.05)
+
+    async def test_writes_ipc_file_when_active_with_folder(self, queue: GroupQueue, tmp_path):
+        """Successful send_message writes an atomic JSON file to the IPC dir."""
+        import json
+
+        completions: list[asyncio.Event] = []
+
+        async def process_messages(group_jid: str) -> bool:
+            event = asyncio.Event()
+            completions.append(event)
+            await event.wait()
+            return True
+
+        queue.set_process_messages_fn(process_messages)
+        queue.enqueue_message_check("group1@g.us")
+        await asyncio.sleep(0.02)
+
+        # Register process with a group_folder
+        queue.register_process("group1@g.us", None, "container-1", "test-group")
+
+        with patch("pynchy.group_queue.DATA_DIR", tmp_path):
+            result = queue.send_message("group1@g.us", "hello world")
+
+        assert result is True
+
+        # Verify the IPC file was written
+        input_dir = tmp_path / "ipc" / "test-group" / "input"
+        files = list(input_dir.glob("*.json"))
+        assert len(files) == 1
+
+        content = json.loads(files[0].read_text())
+        assert content == {"type": "message", "text": "hello world"}
+
+        completions[0].set()
+        await asyncio.sleep(0.05)
+
+
+class TestRegisterProcess:
+    """Tests for register_process: stores container metadata."""
+
+    async def test_registers_process_and_folder(self, queue: GroupQueue):
+        completions: list[asyncio.Event] = []
+
+        async def process_messages(group_jid: str) -> bool:
+            event = asyncio.Event()
+            completions.append(event)
+            await event.wait()
+            return True
+
+        queue.set_process_messages_fn(process_messages)
+        queue.enqueue_message_check("group1@g.us")
+        await asyncio.sleep(0.02)
+
+        mock_proc = object()
+        queue.register_process("group1@g.us", mock_proc, "my-container", "my-folder")
+
+        state = queue._groups["group1@g.us"]
+        assert state.process is mock_proc
+        assert state.container_name == "my-container"
+        assert state.group_folder == "my-folder"
+
+        completions[0].set()
+        await asyncio.sleep(0.05)
+
+    async def test_skips_group_folder_when_none(self, queue: GroupQueue):
+        completions: list[asyncio.Event] = []
+
+        async def process_messages(group_jid: str) -> bool:
+            event = asyncio.Event()
+            completions.append(event)
+            await event.wait()
+            return True
+
+        queue.set_process_messages_fn(process_messages)
+        queue.enqueue_message_check("group1@g.us")
+        await asyncio.sleep(0.02)
+
+        queue.register_process("group1@g.us", None, "c1", None)
+
+        state = queue._groups["group1@g.us"]
+        assert state.group_folder is None
+
+        completions[0].set()
+        await asyncio.sleep(0.05)
+
+
 class TestGroupQueueRetry:
     """Test retry behavior with shorter timeouts."""
 

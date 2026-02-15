@@ -26,6 +26,7 @@ from pynchy.container_runner import (
     _read_git_identity,
     _read_oauth_token,
     _write_env_file,
+    resolve_agent_core,
     run_container_agent,
     write_groups_snapshot,
     write_tasks_snapshot,
@@ -800,3 +801,98 @@ class TestGroupsSnapshot:
             write_groups_snapshot("other", False, groups, {"a@g.us"})
             result = json.loads((tmp_path / "ipc" / "other" / "available_groups.json").read_text())
             assert len(result["groups"]) == 0
+
+
+# ---------------------------------------------------------------------------
+# resolve_agent_core
+# ---------------------------------------------------------------------------
+
+
+class TestResolveAgentCore:
+    """Test agent core resolution from plugin manager.
+
+    This selects which AI agent core (module + class) to use for container
+    execution. Getting this wrong silently breaks all agent runs.
+    """
+
+    def test_returns_defaults_when_no_plugin_manager(self):
+        module, cls = resolve_agent_core(None)
+        assert module == "agent_runner.cores.claude"
+        assert cls == "ClaudeAgentCore"
+
+    def test_returns_defaults_when_plugin_manager_is_falsy(self):
+        """Covers the `if plugin_manager:` guard for falsy values like False/0."""
+        module, cls = resolve_agent_core(False)
+        assert module == "agent_runner.cores.claude"
+        assert cls == "ClaudeAgentCore"
+
+    def test_returns_defaults_when_no_cores_registered(self):
+        """Plugin manager exists but no agent core plugins are installed."""
+
+        class FakeHook:
+            def pynchy_agent_core_info(self):
+                return []
+
+        class FakePM:
+            hook = FakeHook()
+
+        module, cls = resolve_agent_core(FakePM())
+        assert module == "agent_runner.cores.claude"
+        assert cls == "ClaudeAgentCore"
+
+    def test_uses_matching_core_by_name(self):
+        """When a core matches DEFAULT_AGENT_CORE, use it."""
+
+        class FakeHook:
+            def pynchy_agent_core_info(self):
+                return [
+                    {"name": "openai", "module": "cores.openai", "class_name": "OpenAICore"},
+                    {"name": "claude", "module": "cores.claude_v2", "class_name": "ClaudeV2Core"},
+                ]
+
+        class FakePM:
+            hook = FakeHook()
+
+        with patch("pynchy.container_runner.DEFAULT_AGENT_CORE", "claude"):
+            module, cls = resolve_agent_core(FakePM())
+
+        assert module == "cores.claude_v2"
+        assert cls == "ClaudeV2Core"
+
+    def test_falls_back_to_first_core_when_no_name_match(self):
+        """If the configured DEFAULT_AGENT_CORE doesn't match any plugin, use the first one."""
+
+        class FakeHook:
+            def pynchy_agent_core_info(self):
+                return [
+                    {"name": "openai", "module": "cores.openai", "class_name": "OpenAICore"},
+                    {"name": "gemini", "module": "cores.gemini", "class_name": "GeminiCore"},
+                ]
+
+        class FakePM:
+            hook = FakeHook()
+
+        with patch("pynchy.container_runner.DEFAULT_AGENT_CORE", "claude"):
+            module, cls = resolve_agent_core(FakePM())
+
+        assert module == "cores.openai"
+        assert cls == "OpenAICore"
+
+    def test_exact_match_takes_priority_over_first(self):
+        """When the desired core is second in the list, it still wins over first."""
+
+        class FakeHook:
+            def pynchy_agent_core_info(self):
+                return [
+                    {"name": "openai", "module": "cores.openai", "class_name": "OpenAICore"},
+                    {"name": "custom", "module": "cores.custom", "class_name": "CustomCore"},
+                ]
+
+        class FakePM:
+            hook = FakeHook()
+
+        with patch("pynchy.container_runner.DEFAULT_AGENT_CORE", "custom"):
+            module, cls = resolve_agent_core(FakePM())
+
+        assert module == "cores.custom"
+        assert cls == "CustomCore"
