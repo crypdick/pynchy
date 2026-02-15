@@ -302,12 +302,12 @@ class PeriodicAgentManager:
 
     async def get_periodic_agents(self) -> list[dict[str, Any]]:
         """Get status of all periodic agents."""
-        from pynchy.periodic import load_periodic_config
+        from pynchy.workspace_config import load_workspace_config
 
         results = []
         for group in self._groups.values():
-            config = load_periodic_config(group.folder)
-            if config is None:
+            config = load_workspace_config(group.folder)
+            if config is None or not config.is_periodic:
                 continue
             task = await get_active_task_for_group(group.folder)
             results.append(
