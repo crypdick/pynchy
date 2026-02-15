@@ -48,13 +48,29 @@ cd pynchy
 uv sync                                      # Install Python dependencies
 ```
 
-### 2. Build Container Image
+### 2. Configure Environment (Optional)
+
+Most environment variables have sensible defaults. If you need to customize configuration:
+
+```bash
+cp .env.EXAMPLE .env                         # Create .env from example
+# Edit .env with your preferred settings
+```
+
+Common configurations:
+- **API key authentication:** Set `ANTHROPIC_API_KEY` instead of using Claude Code OAuth
+- **OpenAI instead of Claude:** Set `PYNCHY_AGENT_CORE=openai` and `OPENAI_API_KEY`
+- **Custom timeouts or logging:** See `.env.EXAMPLE` for all available options
+
+> **Note:** For most desktop setups, you can skip this step and authenticate using Claude Code OAuth (see step 4 in Headless Server Deployment).
+
+### 3. Build Container Image
 
 ```bash
 ./container/build.sh                         # Build the agent container image
 ```
 
-### 3. Authenticate WhatsApp
+### 4. Authenticate WhatsApp
 
 ```bash
 uv run pynchy auth                           # Authenticate WhatsApp (scan QR code)
@@ -65,7 +81,7 @@ uv run pynchy auth                           # Authenticate WhatsApp (scan QR co
 3. Scan the QR code displayed in the terminal
 4. Wait for "Successfully authenticated" before pressing Ctrl+C
 
-### 4. Run Pynchy
+### 5. Run Pynchy
 
 ```bash
 uv run pynchy                                # Start Pynchy
