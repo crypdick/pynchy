@@ -71,7 +71,7 @@ def git_env(tmp_path: Path):
     worktrees_dir = tmp_path / "worktrees"
 
     with (
-        patch("pynchy.worktree.PROJECT_ROOT", project),
+        patch("pynchy.git_utils.PROJECT_ROOT", project),
         patch("pynchy.worktree.WORKTREES_DIR", worktrees_dir),
         patch("pynchy.git_sync.PROJECT_ROOT", project),
         patch("pynchy.git_sync.WORKTREES_DIR", worktrees_dir),

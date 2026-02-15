@@ -10,30 +10,15 @@ Running containers reference the old folder name in mounts and IPC paths.
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
-from pynchy.config import DATA_DIR, GROUPS_DIR, PROJECT_ROOT, WORKTREES_DIR
+from pynchy.config import DATA_DIR, GROUPS_DIR, WORKTREES_DIR
+from pynchy.git_utils import run_git
 from pynchy.logger import logger
-
-_SUBPROCESS_TIMEOUT = 30
 
 
 class RenameError(Exception):
     """Workspace rename failed."""
-
-
-def _run_git(
-    *args: str,
-    cwd: Path | None = None,
-) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", *args],
-        cwd=str(cwd or PROJECT_ROOT),
-        capture_output=True,
-        text=True,
-        timeout=_SUBPROCESS_TIMEOUT,
-    )
 
 
 async def rename_workspace(
@@ -98,14 +83,14 @@ async def rename_workspace(
     new_worktree = WORKTREES_DIR / new_folder
     if old_worktree.exists():
         # git worktree move updates git's internal registry
-        result = _run_git("worktree", "move", str(old_worktree), str(new_worktree))
+        result = run_git("worktree", "move", str(old_worktree), str(new_worktree))
         if result.returncode != 0:
             raise RenameError(f"git worktree move failed: {result.stderr.strip()}")
 
         # Rename the tracking branch
         old_branch = f"worktree/{old_folder}"
         new_branch = f"worktree/{new_folder}"
-        result = _run_git("branch", "-m", old_branch, new_branch)
+        result = run_git("branch", "-m", old_branch, new_branch)
         if result.returncode != 0:
             logger.warning(
                 "Branch rename failed (worktree moved but branch kept old name)",
