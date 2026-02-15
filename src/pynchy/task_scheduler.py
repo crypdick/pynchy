@@ -8,9 +8,6 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol
-from zoneinfo import ZoneInfo
-
-from croniter import croniter
 
 from pynchy.config import (
     GROUPS_DIR,
@@ -34,6 +31,7 @@ from pynchy.group_queue import GroupQueue
 from pynchy.logger import logger
 from pynchy.router import format_tool_preview
 from pynchy.types import ContainerInput, ContainerOutput, RegisteredGroup, ScheduledTask, TaskRunLog
+from pynchy.utils import compute_next_run
 
 if TYPE_CHECKING:
     import pluggy
@@ -255,18 +253,7 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
     )
 
     # Calculate next run
-    next_run: str | None = None
-    if task.schedule_type == "cron":
-        tz = ZoneInfo(TIMEZONE)
-        cron = croniter(task.schedule_value, datetime.now(tz))
-        next_run = cron.get_next(datetime).isoformat()
-    elif task.schedule_type == "interval":
-        ms = int(task.schedule_value)
-        next_run = datetime.fromtimestamp(
-            datetime.now(UTC).timestamp() + ms / 1000,
-            tz=UTC,
-        ).isoformat()
-    # 'once' tasks have no next run
+    next_run = compute_next_run(task.schedule_type, task.schedule_value, TIMEZONE)
 
     result_summary = f"Error: {error}" if error else (result[:200] if result else "Completed")
     await update_task_after_run(task.id, next_run, result_summary)

@@ -430,3 +430,199 @@ class TestGroupQueueRetry:
 
             # Should have called 6 times (initial + 5 retries) then stopped
             assert call_count == 6
+
+
+class TestCloseStdin:
+    """Tests for close_stdin: writing _close sentinel to active containers."""
+
+    async def test_writes_close_sentinel_when_active(self, queue: GroupQueue, tmp_path):
+        """close_stdin writes _close file to IPC input dir for active containers."""
+        completions: list[asyncio.Event] = []
+
+        async def process_messages(group_jid: str) -> bool:
+            event = asyncio.Event()
+            completions.append(event)
+            await event.wait()
+            return True
+
+        queue.set_process_messages_fn(process_messages)
+        queue.enqueue_message_check("group1@g.us")
+        await asyncio.sleep(0.02)
+
+        queue.register_process("group1@g.us", None, "container-1", "test-group")
+
+        with patch("pynchy.group_queue.DATA_DIR", tmp_path):
+            queue.close_stdin("group1@g.us")
+
+        close_file = tmp_path / "ipc" / "test-group" / "input" / "_close"
+        assert close_file.exists()
+        assert close_file.read_text() == ""
+
+        completions[0].set()
+        await asyncio.sleep(0.05)
+
+    async def test_noop_when_not_active(self, queue: GroupQueue, tmp_path):
+        """close_stdin does nothing when group is not active."""
+        with patch("pynchy.group_queue.DATA_DIR", tmp_path):
+            queue.close_stdin("group1@g.us")
+
+        # No IPC directory should be created
+        ipc_dir = tmp_path / "ipc"
+        assert not ipc_dir.exists()
+
+    async def test_noop_when_no_group_folder(self, queue: GroupQueue, tmp_path):
+        """close_stdin does nothing when group_folder is not set."""
+        completions: list[asyncio.Event] = []
+
+        async def process_messages(group_jid: str) -> bool:
+            event = asyncio.Event()
+            completions.append(event)
+            await event.wait()
+            return True
+
+        queue.set_process_messages_fn(process_messages)
+        queue.enqueue_message_check("group1@g.us")
+        await asyncio.sleep(0.02)
+
+        # Active but no group_folder registered
+        with patch("pynchy.group_queue.DATA_DIR", tmp_path):
+            queue.close_stdin("group1@g.us")
+
+        ipc_dir = tmp_path / "ipc"
+        assert not ipc_dir.exists()
+
+        completions[0].set()
+        await asyncio.sleep(0.05)
+
+
+class TestIsActiveTask:
+    """Tests for is_active_task: checking whether a scheduled task is active."""
+
+    async def test_returns_false_when_group_not_active(self, queue: GroupQueue):
+        """Not active when no container is running for the group."""
+        assert queue.is_active_task("group1@g.us") is False
+
+    async def test_returns_true_when_task_is_active(self, queue: GroupQueue):
+        """Returns True when the active container is a scheduled task."""
+        completions: list[asyncio.Event] = []
+
+        async def task_fn():
+            event = asyncio.Event()
+            completions.append(event)
+            await event.wait()
+
+        queue.enqueue_task("group1@g.us", "task-1", task_fn)
+        await asyncio.sleep(0.02)
+
+        assert queue.is_active_task("group1@g.us") is True
+
+        completions[0].set()
+        await asyncio.sleep(0.05)
+
+    async def test_returns_false_when_message_is_active(self, queue: GroupQueue):
+        """Returns False when the active container is processing messages (not a task)."""
+        completions: list[asyncio.Event] = []
+
+        async def process_messages(group_jid: str) -> bool:
+            event = asyncio.Event()
+            completions.append(event)
+            await event.wait()
+            return True
+
+        queue.set_process_messages_fn(process_messages)
+        queue.enqueue_message_check("group1@g.us")
+        await asyncio.sleep(0.02)
+
+        assert queue.is_active_task("group1@g.us") is False
+
+        completions[0].set()
+        await asyncio.sleep(0.05)
+
+    async def test_returns_false_after_task_completes(self, queue: GroupQueue):
+        """is_active_task returns False after a task completes."""
+        async def task_fn():
+            pass  # completes immediately
+
+        queue.enqueue_task("group1@g.us", "task-1", task_fn)
+        await asyncio.sleep(0.1)
+
+        assert queue.is_active_task("group1@g.us") is False
+
+
+class TestTaskExceptionHandling:
+    """Tests for error handling during task execution."""
+
+    async def test_task_exception_does_not_crash_queue(self, queue: GroupQueue):
+        """An exception in a task should be caught and not crash the queue."""
+        async def failing_task():
+            raise RuntimeError("task exploded")
+
+        queue.enqueue_task("group1@g.us", "task-crash", failing_task)
+        await asyncio.sleep(0.1)
+
+        # Queue should still be functional
+        assert queue._active_count == 0
+        state = queue._get_group("group1@g.us")
+        assert state.active is False
+
+    async def test_exception_in_process_messages_schedules_retry(self, queue: GroupQueue):
+        """When process_messages raises, the queue schedules a retry."""
+        call_count = 0
+
+        async def process_messages(group_jid: str) -> bool:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("boom")
+            return True
+
+        with patch("pynchy.group_queue.BASE_RETRY_SECONDS", 0.05):
+            queue.set_process_messages_fn(process_messages)
+            queue.enqueue_message_check("group1@g.us")
+
+            await asyncio.sleep(0.02)
+            assert call_count == 1
+            # State should be cleaned up after exception
+            state = queue._get_group("group1@g.us")
+            assert state.active is False
+
+            # Retry should fire
+            await asyncio.sleep(0.15)
+            assert call_count >= 2
+
+
+class TestDrainGroupTaskOrdering:
+    """Tests for _drain_group prioritization."""
+
+    async def test_tasks_queued_at_concurrency_limit_drain_correctly(self):
+        """Tasks queued when at concurrency limit drain when slots free up."""
+        with patch("pynchy.group_queue.MAX_CONCURRENT_CONTAINERS", 1):
+            queue = GroupQueue()
+            execution: list[str] = []
+            completions: list[asyncio.Event] = []
+
+            async def process_messages(group_jid: str) -> bool:
+                execution.append(f"msg-{group_jid}")
+                event = asyncio.Event()
+                completions.append(event)
+                await event.wait()
+                return True
+
+            queue.set_process_messages_fn(process_messages)
+
+            # Fill the single slot
+            queue.enqueue_message_check("group1@g.us")
+            await asyncio.sleep(0.02)
+
+            # Queue a task for a different group while at limit
+            async def task_fn():
+                execution.append("task-group2")
+
+            queue.enqueue_task("group2@g.us", "task-1", task_fn)
+
+            # Free the slot
+            completions[0].set()
+            await asyncio.sleep(0.1)
+
+            # Task should have been drained
+            assert "task-group2" in execution

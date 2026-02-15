@@ -13,7 +13,6 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
-from zoneinfo import ZoneInfo
 
 from croniter import croniter
 
@@ -30,6 +29,7 @@ from pynchy.deploy import finalize_deploy
 from pynchy.git_sync import host_notify_worktree_updates, host_sync_worktree, write_ipc_response
 from pynchy.logger import logger
 from pynchy.types import Channel, ContainerConfig, RegisteredGroup
+from pynchy.utils import compute_next_run
 
 
 class IpcDeps(Protocol):
@@ -218,36 +218,22 @@ async def process_task_ipc(
                 )
                 return
 
-            next_run: str | None = None
-            if schedule_type == "cron":
-                try:
-                    tz = ZoneInfo(TIMEZONE)
-                    cron = croniter(schedule_value, datetime.now(tz))
-                    next_run = cron.get_next(datetime).isoformat()
-                except (ValueError, KeyError):
-                    logger.warning(
-                        "Invalid cron expression",
-                        schedule_value=schedule_value,
-                    )
-                    return
-            elif schedule_type == "interval":
-                try:
-                    ms = int(schedule_value)
-                    if ms <= 0:
-                        raise ValueError("Interval must be positive")
-                except (ValueError, TypeError):
-                    logger.warning("Invalid interval", schedule_value=schedule_value)
-                    return
-                next_run = datetime.fromtimestamp(
-                    datetime.now(UTC).timestamp() + ms / 1000,
-                    tz=UTC,
-                ).isoformat()
-            elif schedule_type == "once":
+            # 'once' tasks use the schedule_value directly as next_run
+            if schedule_type == "once":
                 try:
                     scheduled = datetime.fromisoformat(schedule_value)
-                    next_run = scheduled.isoformat()
+                    next_run: str | None = scheduled.isoformat()
                 except (ValueError, TypeError):
                     logger.warning("Invalid timestamp", schedule_value=schedule_value)
+                    return
+            else:
+                try:
+                    next_run = compute_next_run(schedule_type, schedule_value, TIMEZONE)
+                except (ValueError, TypeError, KeyError):
+                    logger.warning(
+                        f"Invalid {schedule_type} value",
+                        schedule_value=schedule_value,
+                    )
                     return
 
             task_id = f"task-{int(datetime.now(UTC).timestamp() * 1000)}-{uuid.uuid4().hex[:8]}"
@@ -656,9 +642,7 @@ async def _handle_create_periodic_agent(data: dict[str, Any], deps: IpcDeps) -> 
     deps.register_group(jid, group)
 
     # 4. Create the scheduled task
-    tz = ZoneInfo(TIMEZONE)
-    cron = croniter(schedule, datetime.now(tz))
-    next_run = cron.get_next(datetime).isoformat()
+    next_run = compute_next_run("cron", schedule, TIMEZONE)
     task_id = f"periodic-{name}-{uuid.uuid4().hex[:8]}"
 
     await create_task(
