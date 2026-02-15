@@ -39,6 +39,7 @@ from pynchy.config import (
     PROJECT_ROOT,
     TRIGGER_PATTERN,
     is_context_reset,
+    is_redeploy,
 )
 from pynchy.container_runner import (
     run_container_agent,
@@ -491,6 +492,13 @@ class PynchyApp:
             await self._save_state()
             await self._send_clear_confirmation(chat_jid)
             logger.info("Context reset", group=group.name)
+            return True
+
+        # Check if the last message is a manual redeploy command
+        if is_redeploy(missed_messages[-1].content):
+            self.last_agent_timestamp[chat_jid] = missed_messages[-1].timestamp
+            await self._save_state()
+            await self._trigger_manual_redeploy(chat_jid)
             return True
 
         # Check if the last message is a direct command execution (!command syntax)
@@ -1115,6 +1123,13 @@ class PynchyApp:
                             logger.info("Context reset (active container)", group=group.name)
                             continue
 
+                        # Intercept redeploy commands
+                        if is_redeploy(all_pending[-1].content):
+                            self.last_agent_timestamp[chat_jid] = all_pending[-1].timestamp
+                            await self._save_state()
+                            await self._trigger_manual_redeploy(chat_jid)
+                            continue
+
                         # Format messages as plain text for IPC piping
                         formatted = "\n".join(
                             f"{msg.sender_name}: {msg.content}" for msg in all_pending
@@ -1383,6 +1398,20 @@ class PynchyApp:
         self.event_bus.emit(ChatClearedEvent(chat_jid=chat_jid))
 
         await self._broadcast_host_message(chat_jid, "🗑️")
+
+    async def _trigger_manual_redeploy(self, chat_jid: str) -> None:
+        """Handle a manual redeploy command — restart the service in-place."""
+        from pynchy.deploy import finalize_deploy
+        from pynchy.http_server import _get_head_sha
+
+        sha = _get_head_sha()
+        logger.info("Manual redeploy triggered via magic word", chat_jid=chat_jid)
+        await finalize_deploy(
+            broadcast_host_message=self._broadcast_host_message,
+            chat_jid=chat_jid,
+            commit_sha=sha,
+            previous_sha=sha,
+        )
 
     def _find_channel(self, jid: str) -> Channel | None:
         """Find the channel that owns a given JID."""
