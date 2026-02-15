@@ -14,6 +14,10 @@ Pynchy stays minimal by design. If you want to add Telegram support, don't creat
 
 This keeps the base system small and lets every user customize their installation without inheriting features they don't want.
 
+## Writing Plugins
+
+See the [Plugin Authoring Guide](plugins/index.md) for how to create, package, and distribute plugins.
+
 ## Development
 
 See `.claude/development.md` in the project root for running commands, writing tests, and linting.

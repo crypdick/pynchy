@@ -64,6 +64,11 @@ nav:
       - Scheduled Tasks: architecture/scheduled-tasks.md
       - Groups: architecture/groups.md
       - Git Sync: architecture/git-sync.md
+  - Plugins:
+      - Overview: plugins/index.md
+      - Quickstart: plugins/quickstart.md
+      - Hook Reference: plugins/hooks.md
+      - Packaging: plugins/packaging.md
   - Contributing: contributing.md
 
 markdown_extensions:

@@ -7,7 +7,7 @@ Architecture decisions and design rationale.
 - **Simplicity** — The entire codebase should be something you can read and understand. A handful of source files. No microservices, no message queues, no abstraction layers.
 - **Security through true isolation** — Agents run in Linux containers. Isolation is at the OS level, not application-level permission checks. See [Security Model](../security.md).
 - **AI-native development** — No installation wizard, monitoring dashboard, or debugging tools. Claude Code guides setup, reads logs, and fixes problems.
-- **Plugins over features** — Contributors write plugins, not PRs that add features to the base system.
+- **Plugins over features** — Contributors write plugins, not PRs that add features to the base system. See [Plugin Authoring Guide](../plugins/index.md).
 
 ## Topics
 
