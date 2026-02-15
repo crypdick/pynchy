@@ -130,7 +130,7 @@ class WhatsAppChannel:
         @self._client.event(LoggedOutEv)
         async def on_logged_out(_client: NewAClient, _ev: LoggedOutEv) -> None:
             self._connected = False
-            logger.error("Logged out from WhatsApp. Run /setup to re-authenticate.")
+            logger.error("Logged out from WhatsApp. Run 'uv run pynchy auth' to re-authenticate.")
             sys.exit(0)
 
         @self._client.event(ConnectFailureEv)
