@@ -1,6 +1,5 @@
 """Tests for WorkspaceProfile and workspace security features (Phase B.1)."""
 
-
 from pynchy.types import (
     ContainerConfig,
     McpToolConfig,

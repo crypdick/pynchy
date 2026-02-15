@@ -13,6 +13,7 @@ import os
 import shutil
 import subprocess
 import time
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -628,8 +629,8 @@ def _parse_final_output(
 # Main entry point
 # ---------------------------------------------------------------------------
 
-OnProcess = Any  # (proc, container_name) -> None
-OnOutput = Any  # async (output: ContainerOutput) -> None
+OnProcess = Callable[[asyncio.subprocess.Process, str], Any]
+OnOutput = Callable[[ContainerOutput], Awaitable[None]]
 
 
 async def run_container_agent(

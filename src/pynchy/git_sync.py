@@ -85,7 +85,16 @@ def host_sync_worktree(group_folder: str) -> dict[str, Any]:
                 "Verify your branch is valid with `git log --oneline`."
             ),
         }
-    ahead = int(count.stdout.strip())
+    try:
+        ahead = int(count.stdout.strip())
+    except (ValueError, TypeError):
+        return {
+            "success": False,
+            "message": (
+                f"Failed to parse commit count: {count.stdout.strip()!r}. "
+                "Verify your branch is valid with `git log --oneline`."
+            ),
+        }
     if ahead == 0:
         return {
             "success": True,
@@ -239,7 +248,11 @@ async def host_notify_worktree_updates(
         # Check if behind main
         branch_name = f"worktree/{group_folder}"
         behind = run_git("rev-list", f"{branch_name}..{main_branch}", "--count")
-        if behind.returncode != 0 or int(behind.stdout.strip()) == 0:
+        try:
+            behind_n = int(behind.stdout.strip())
+        except (ValueError, TypeError):
+            behind_n = 0
+        if behind.returncode != 0 or behind_n == 0:
             continue  # up to date or can't check
 
         # Check for uncommitted changes
@@ -258,7 +271,7 @@ async def host_notify_worktree_updates(
             continue
 
         # Gather stats before rebase for the notification
-        behind_count = int(behind.stdout.strip())
+        behind_count = behind_n
         head_before = run_git("rev-parse", "HEAD", cwd=entry).stdout.strip()
 
         # Attempt rebase

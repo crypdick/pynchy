@@ -128,7 +128,9 @@ class TestCustomPluginRegistration:
         assert len(skill_path_lists) >= 1
 
         # Find our plugin's paths
-        custom_paths = next((paths for paths in skill_path_lists if "/path/to/skills" in paths), None)
+        custom_paths = next(
+            (paths for paths in skill_path_lists if "/path/to/skills" in paths), None
+        )
         assert custom_paths is not None
 
     def test_register_multi_category_plugin(self):
@@ -173,12 +175,24 @@ class TestHookCalling:
         class Plugin1:
             @hookimpl
             def pynchy_agent_core_info(self):
-                return {"name": "core1", "module": "m1", "class_name": "C1", "packages": [], "host_source_path": None}
+                return {
+                    "name": "core1",
+                    "module": "m1",
+                    "class_name": "C1",
+                    "packages": [],
+                    "host_source_path": None,
+                }
 
         class Plugin2:
             @hookimpl
             def pynchy_agent_core_info(self):
-                return {"name": "core2", "module": "m2", "class_name": "C2", "packages": [], "host_source_path": None}
+                return {
+                    "name": "core2",
+                    "module": "m2",
+                    "class_name": "C2",
+                    "packages": [],
+                    "host_source_path": None,
+                }
 
         pm = get_plugin_manager()
         pm.register(Plugin1(), name="plugin1")
@@ -214,7 +228,13 @@ class TestHookCalling:
         class BlockablePlugin:
             @hookimpl
             def pynchy_agent_core_info(self):
-                return {"name": "blockable", "module": "m", "class_name": "C", "packages": [], "host_source_path": None}
+                return {
+                    "name": "blockable",
+                    "module": "m",
+                    "class_name": "C",
+                    "packages": [],
+                    "host_source_path": None,
+                }
 
         pm = get_plugin_manager()
         pm.register(BlockablePlugin(), name="blockable-plugin")

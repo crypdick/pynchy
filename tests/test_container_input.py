@@ -17,9 +17,7 @@ class TestContainerInput:
             "group_folder": "test",
             "chat_jid": "j@g.us",
             "is_god": False,
-            "plugin_mcp_servers": {
-                "weather": {"command": "python", "args": ["-m", "weather"]}
-            },
+            "plugin_mcp_servers": {"weather": {"command": "python", "args": ["-m", "weather"]}},
         }
         ci = ContainerInput(data)
         assert ci.plugin_mcp_servers == data["plugin_mcp_servers"]

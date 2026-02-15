@@ -14,6 +14,7 @@ import pytest
 from pynchy.worktree import (
     WorktreeError,
     ensure_worktree,
+    merge_and_push_worktree,
     merge_worktree,
     reconcile_worktrees_at_startup,
 )
@@ -365,3 +366,61 @@ class TestReconcileWorktreesAtStartup:
 
         assert _git(worktrees_dir / "god", "rev-parse", "HEAD").stdout.strip() == head_god
         assert _git(worktrees_dir / "code-improver", "rev-parse", "HEAD").stdout.strip() == head_ci
+
+
+# ---------------------------------------------------------------------------
+# merge_and_push_worktree tests
+# ---------------------------------------------------------------------------
+
+
+class TestMergeAndPushWorktree:
+    def test_merge_and_push_success(self, git_env: dict):
+        """Commits merge into main and push to origin in one call."""
+        project = git_env["project"]
+
+        result = ensure_worktree("code-improver")
+        wt_path = result.path
+        (wt_path / "feature.txt").write_text("new feature")
+        _git(wt_path, "add", "feature.txt")
+        _git(wt_path, "config", "user.email", "test@test.com")
+        _git(wt_path, "config", "user.name", "Test")
+        _git(wt_path, "commit", "-m", "add feature")
+
+        merge_and_push_worktree("code-improver")
+
+        # Verify on main
+        assert (project / "feature.txt").read_text() == "new feature"
+
+        # Verify pushed to origin
+        count = _git(project, "rev-list", "origin/main..HEAD", "--count")
+        assert int(count.stdout.strip()) == 0
+
+    def test_skips_push_when_merge_fails(self, git_env: dict):
+        """When merge fails (conflict), push is not attempted."""
+        project = git_env["project"]
+
+        result = ensure_worktree("code-improver")
+        wt_path = result.path
+        (wt_path / "README.md").write_text("worktree version")
+        _git(wt_path, "add", "README.md")
+        _git(wt_path, "config", "user.email", "test@test.com")
+        _git(wt_path, "config", "user.name", "Test")
+        _git(wt_path, "commit", "-m", "worktree edit README")
+
+        # Create conflict on main
+        (project / "README.md").write_text("main version")
+        _git(project, "add", "README.md")
+        _git(project, "commit", "-m", "main edit README")
+
+        # Should not raise, just skip push
+        merge_and_push_worktree("code-improver")
+
+        # Main should still have its version (merge failed, push skipped)
+        assert (project / "README.md").read_text() == "main version"
+
+    def test_nothing_to_merge(self, git_env: dict):
+        """No-op when worktree has no new commits."""
+        ensure_worktree("code-improver")
+
+        # Should complete without error
+        merge_and_push_worktree("code-improver")

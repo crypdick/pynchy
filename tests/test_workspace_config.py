@@ -38,10 +38,14 @@ class TestLoadWorkspaceConfig:
     def test_loads_periodic_config(self, tmp_path, monkeypatch):
         """Valid periodic config with schedule+prompt should load as periodic."""
         monkeypatch.setattr("pynchy.workspace_config.GROUPS_DIR", tmp_path)
-        _write_yaml(tmp_path, "test-group", {
-            "schedule": "0 9 * * *",
-            "prompt": "Check for updates",
-        })
+        _write_yaml(
+            tmp_path,
+            "test-group",
+            {
+                "schedule": "0 9 * * *",
+                "prompt": "Check for updates",
+            },
+        )
 
         result = load_workspace_config("test-group")
         assert result is not None
@@ -54,15 +58,19 @@ class TestLoadWorkspaceConfig:
     def test_loads_config_with_all_fields(self, tmp_path, monkeypatch):
         """Config with all fields should load correctly."""
         monkeypatch.setattr("pynchy.workspace_config.GROUPS_DIR", tmp_path)
-        _write_yaml(tmp_path, "test-group", {
-            "is_god": True,
-            "requires_trigger": False,
-            "project_access": True,
-            "name": "Custom Name",
-            "schedule": "*/5 * * * *",
-            "prompt": "Monitor system",
-            "context_mode": "isolated",
-        })
+        _write_yaml(
+            tmp_path,
+            "test-group",
+            {
+                "is_god": True,
+                "requires_trigger": False,
+                "project_access": True,
+                "name": "Custom Name",
+                "schedule": "*/5 * * * *",
+                "prompt": "Monitor system",
+                "context_mode": "isolated",
+            },
+        )
 
         result = load_workspace_config("test-group")
         assert result is not None
@@ -78,10 +86,14 @@ class TestLoadWorkspaceConfig:
     def test_loads_workspace_only_config(self, tmp_path, monkeypatch):
         """Config with only workspace fields (no schedule) should load with is_periodic=False."""
         monkeypatch.setattr("pynchy.workspace_config.GROUPS_DIR", tmp_path)
-        _write_yaml(tmp_path, "test-group", {
-            "is_god": True,
-            "requires_trigger": False,
-        })
+        _write_yaml(
+            tmp_path,
+            "test-group",
+            {
+                "is_god": True,
+                "requires_trigger": False,
+            },
+        )
 
         result = load_workspace_config("test-group")
         assert result is not None
@@ -145,10 +157,14 @@ class TestLoadWorkspaceConfig:
     def test_invalid_cron_nullifies_schedule(self, tmp_path, monkeypatch):
         """Invalid cron expression should result in schedule=None."""
         monkeypatch.setattr("pynchy.workspace_config.GROUPS_DIR", tmp_path)
-        _write_yaml(tmp_path, "test-group", {
-            "schedule": "not a valid cron",
-            "prompt": "Check for updates",
-        })
+        _write_yaml(
+            tmp_path,
+            "test-group",
+            {
+                "schedule": "not a valid cron",
+                "prompt": "Check for updates",
+            },
+        )
 
         result = load_workspace_config("test-group")
         assert result is not None
@@ -158,11 +174,15 @@ class TestLoadWorkspaceConfig:
     def test_defaults_to_group_context_mode_when_invalid(self, tmp_path, monkeypatch):
         """Should default to 'group' when context_mode is invalid."""
         monkeypatch.setattr("pynchy.workspace_config.GROUPS_DIR", tmp_path)
-        _write_yaml(tmp_path, "test-group", {
-            "schedule": "0 9 * * *",
-            "prompt": "Check for updates",
-            "context_mode": "invalid_mode",
-        })
+        _write_yaml(
+            tmp_path,
+            "test-group",
+            {
+                "schedule": "0 9 * * *",
+                "prompt": "Check for updates",
+                "context_mode": "invalid_mode",
+            },
+        )
 
         result = load_workspace_config("test-group")
         assert result is not None
@@ -181,10 +201,14 @@ class TestLoadWorkspaceConfig:
         ]
 
         for cron in valid_crons:
-            _write_yaml(tmp_path, "test-group", {
-                "schedule": cron,
-                "prompt": "Test",
-            })
+            _write_yaml(
+                tmp_path,
+                "test-group",
+                {
+                    "schedule": cron,
+                    "prompt": "Test",
+                },
+            )
             result = load_workspace_config("test-group")
             assert result is not None, f"Failed for cron: {cron}"
             assert result.schedule == cron
