@@ -30,7 +30,6 @@ from pynchy.adapters import (
 from pynchy.config import (
     ASSISTANT_NAME,
     DATA_DIR,
-    DEFAULT_AGENT_CORE,
     DEPLOY_PORT,
     GROUPS_DIR,
     IDLE_TIMEOUT,
@@ -41,6 +40,7 @@ from pynchy.config import (
     is_redeploy,
 )
 from pynchy.container_runner import (
+    resolve_agent_core,
     run_container_agent,
     write_groups_snapshot,
     write_tasks_snapshot,
@@ -343,9 +343,7 @@ class PynchyApp:
 
         # Check if the last message is a context reset command
         if is_context_reset(missed_messages[-1].content):
-            await self._handle_context_reset(
-                chat_jid, group, missed_messages[-1].timestamp
-            )
+            await self._handle_context_reset(chat_jid, group, missed_messages[-1].timestamp)
             logger.info("Context reset", group=group.name)
             return True
 
@@ -829,18 +827,7 @@ class PynchyApp:
         # messages contains the persistent conversation history (with message types)
         # The container appends system_notices to the SDK system_prompt parameter
 
-        # Look up agent core plugin by configured name
-        agent_core_module = "agent_runner.cores.claude"
-        agent_core_class = "ClaudeAgentCore"
-        if self.plugin_manager:
-            cores = self.plugin_manager.hook.pynchy_agent_core_info()
-            desired = DEFAULT_AGENT_CORE
-            core_info = next((c for c in cores if c["name"] == desired), None)
-            if core_info is None and cores:
-                core_info = cores[0]
-            if core_info:
-                agent_core_module = core_info["module"]
-                agent_core_class = core_info["class_name"]
+        agent_core_module, agent_core_class = resolve_agent_core(self.plugin_manager)
 
         try:
             output = await run_container_agent(
@@ -1246,13 +1233,6 @@ class PynchyApp:
             commit_sha=sha,
             previous_sha=sha,
         )
-
-    def _find_channel(self, jid: str) -> Channel | None:
-        """Find the channel that owns a given JID."""
-        for c in self.channels:
-            if c.owns_jid(jid):
-                return c
-        return None
 
     async def _ingest_user_message(
         self, msg: NewMessage, *, source_channel: str | None = None

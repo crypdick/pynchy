@@ -488,19 +488,6 @@ class TestStatePersistence:
         assert app2.last_agent_timestamp == {}
 
 
-class TestFindChannel:
-    def test_finds_channel_that_owns_jid(self):
-        app = PynchyApp()
-        channel = FakeChannel()
-        app.channels = [channel]
-        assert app._find_channel("group@g.us") is channel
-
-    def test_returns_none_for_unknown_jid(self):
-        app = PynchyApp()
-        app.channels = []
-        assert app._find_channel("group@g.us") is None
-
-
 class TestTracePersistence:
     """Verify that trace events (thinking, tool_use, system, result_meta) are
     persisted to the database with correct sender values."""

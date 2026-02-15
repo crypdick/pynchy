@@ -13,13 +13,16 @@ from zoneinfo import ZoneInfo
 from croniter import croniter
 
 from pynchy.config import (
-    DEFAULT_AGENT_CORE,
     GROUPS_DIR,
     IDLE_TIMEOUT,
     SCHEDULER_POLL_INTERVAL,
     TIMEZONE,
 )
-from pynchy.container_runner import run_container_agent, write_tasks_snapshot
+from pynchy.container_runner import (
+    resolve_agent_core,
+    run_container_agent,
+    write_tasks_snapshot,
+)
 from pynchy.db import (
     get_all_tasks,
     get_due_tasks,
@@ -177,18 +180,7 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
             }
         ]
 
-        # Look up agent core plugin by configured name
-        agent_core_module = "agent_runner.cores.claude"
-        agent_core_class = "ClaudeAgentCore"
-        if deps.plugin_manager:
-            cores = deps.plugin_manager.hook.pynchy_agent_core_info()
-            desired = DEFAULT_AGENT_CORE
-            core_info = next((c for c in cores if c["name"] == desired), None)
-            if core_info is None and cores:
-                core_info = cores[0]
-            if core_info:
-                agent_core_module = core_info["module"]
-                agent_core_class = core_info["class_name"]
+        agent_core_module, agent_core_class = resolve_agent_core(deps.plugin_manager)
 
         container_input = ContainerInput(
             messages=task_messages,
