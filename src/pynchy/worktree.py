@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from pynchy.config import WORKTREES_DIR
-from pynchy.git_utils import detect_main_branch, run_git
+from pynchy.git_utils import detect_main_branch, push_local_commits, run_git
 from pynchy.logger import logger
 
 
@@ -292,3 +292,13 @@ def merge_worktree(group_folder: str) -> bool:
         commits=ahead,
     )
     return True
+
+
+def merge_and_push_worktree(group_folder: str) -> None:
+    """Merge worktree commits into main and push to origin.
+
+    Combines merge_worktree() + push_local_commits() into a single call.
+    Designed to run in a thread via asyncio.to_thread().
+    """
+    if merge_worktree(group_folder):
+        push_local_commits()

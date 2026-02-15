@@ -75,7 +75,6 @@ from pynchy.git_utils import count_unpushed_commits, get_head_sha, is_repo_dirty
 from pynchy.group_queue import GroupQueue
 from pynchy.http_server import (
     _get_head_commit_message,
-    _push_local_commits,
     start_http_server,
 )
 from pynchy.ipc import start_ipc_watcher
@@ -92,15 +91,6 @@ from pynchy.types import (
     RegisteredGroup,
     WorkspaceProfile,
 )
-
-
-def _merge_and_push_worktree(group_folder: str) -> None:
-    """Merge worktree commits into main and push. Runs in a thread."""
-    from pynchy.worktree import merge_worktree
-
-    if merge_worktree(group_folder):
-        _push_local_commits()
-
 
 _trace_counter = 0
 
@@ -355,9 +345,10 @@ class PynchyApp:
         if is_context_reset(missed_messages[-1].content):
             # Merge worktree commits before clearing session so work isn't stranded
             from pynchy.workspace_config import has_project_access
+            from pynchy.worktree import merge_and_push_worktree
 
             if has_project_access(group):
-                asyncio.create_task(asyncio.to_thread(_merge_and_push_worktree, group.folder))
+                asyncio.create_task(asyncio.to_thread(merge_and_push_worktree, group.folder))
 
             self.sessions.pop(group.folder, None)
             self._session_cleared.add(group.folder)
@@ -496,9 +487,10 @@ class PynchyApp:
 
         # Merge worktree commits into main and push for all project_access groups
         from pynchy.workspace_config import has_project_access
+        from pynchy.worktree import merge_and_push_worktree
 
         if has_project_access(group):
-            asyncio.create_task(asyncio.to_thread(_merge_and_push_worktree, group.folder))
+            asyncio.create_task(asyncio.to_thread(merge_and_push_worktree, group.folder))
 
         return True
 
@@ -959,10 +951,11 @@ class PynchyApp:
                         if is_context_reset(all_pending[-1].content):
                             # Merge worktree commits before clearing session
                             from pynchy.workspace_config import has_project_access
+                            from pynchy.worktree import merge_and_push_worktree
 
                             if has_project_access(group):
                                 asyncio.create_task(
-                                    asyncio.to_thread(_merge_and_push_worktree, group.folder)
+                                    asyncio.to_thread(merge_and_push_worktree, group.folder)
                                 )
 
                             self.sessions.pop(group.folder, None)

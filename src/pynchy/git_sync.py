@@ -15,8 +15,13 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from pynchy.config import WORKTREES_DIR
-from pynchy.git_utils import detect_main_branch, files_changed_between, get_head_sha, run_git
-from pynchy.http_server import _push_local_commits
+from pynchy.git_utils import (
+    detect_main_branch,
+    files_changed_between,
+    get_head_sha,
+    push_local_commits,
+    run_git,
+)
 from pynchy.logger import logger
 
 # Authenticated GitHub API rate limit: 5000 req/hr (83/min).
@@ -139,7 +144,7 @@ def host_sync_worktree(group_folder: str) -> dict[str, Any]:
         }
 
     # 7. Push to origin (skip_fetch since we just fetched)
-    pushed = _push_local_commits(skip_fetch=True)
+    pushed = push_local_commits(skip_fetch=True)
     if not pushed:
         return {
             "success": False,

@@ -347,11 +347,9 @@ async def process_task_ipc(
                 group=group_folder,
             )
             try:
-                from pynchy.http_server import _push_local_commits
-                from pynchy.worktree import merge_worktree
+                from pynchy.worktree import merge_and_push_worktree
 
-                if merge_worktree(group_folder):
-                    _push_local_commits()
+                merge_and_push_worktree(group_folder)
             except Exception as exc:
                 logger.error(
                     "Worktree merge failed during context reset",
