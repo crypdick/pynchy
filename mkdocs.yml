@@ -3,6 +3,12 @@ site_description: Personal Claude assistant that runs securely in containers
 repo_url: https://github.com/crypdick/pynchy
 repo_name: crypdick/pynchy
 
+validation:
+  anchors: warn
+  links:
+    absolute_links: warn
+    anchors: warn
+
 theme:
   name: material
   palette:
