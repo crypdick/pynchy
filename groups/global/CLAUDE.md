@@ -61,6 +61,10 @@ When you learn something important:
 - Split files larger than 500 lines into folders
 - Keep an index in your memory for the files you create
 
+## Deploying Changes
+
+If you need to restart the service or deploy code changes, use the `mcp__pynchy__deploy_changes` MCP tool. Do NOT use `curl` or HTTP requests to the deploy endpoint — those won't work from inside the container since the host network is not accessible.
+
 ## Message Formatting
 
 NEVER use markdown. Only use WhatsApp/Telegram formatting:
