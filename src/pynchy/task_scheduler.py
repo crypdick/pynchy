@@ -143,18 +143,7 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
     write_tasks_snapshot(
         task.group_folder,
         _is_god,
-        [
-            {
-                "id": t.id,
-                "groupFolder": t.group_folder,
-                "prompt": t.prompt,
-                "schedule_type": t.schedule_type,
-                "schedule_value": t.schedule_value,
-                "status": t.status,
-                "next_run": t.next_run,
-            }
-            for t in all_tasks
-        ],
+        [t.to_snapshot_dict() for t in all_tasks],
     )
 
     result: str | None = None

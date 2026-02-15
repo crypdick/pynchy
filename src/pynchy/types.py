@@ -216,6 +216,22 @@ class ScheduledTask:
     created_at: str = ""
     project_access: bool = False
 
+    def to_snapshot_dict(self) -> dict[str, str | None]:
+        """Serialize to the dict format expected by write_tasks_snapshot.
+
+        Used by both app.py and task_scheduler.py to avoid duplicating the
+        field mapping when building the tasks snapshot for containers.
+        """
+        return {
+            "id": self.id,
+            "groupFolder": self.group_folder,
+            "prompt": self.prompt,
+            "schedule_type": self.schedule_type,
+            "schedule_value": self.schedule_value,
+            "status": self.status,
+            "next_run": self.next_run,
+        }
+
 
 @dataclass
 class TaskRunLog:

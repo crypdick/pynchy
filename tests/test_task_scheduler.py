@@ -30,6 +30,95 @@ from pynchy.types import (
 )
 
 
+class TestScheduledTaskSnapshotDict:
+    """Test ScheduledTask.to_snapshot_dict() serialization.
+
+    This method is used by both app.py and task_scheduler.py to build
+    the tasks snapshot written to IPC for containers. Getting the field
+    mapping wrong would break container task visibility.
+    """
+
+    def test_includes_all_required_fields(self):
+        task = ScheduledTask(
+            id="task-42",
+            group_folder="my-group",
+            chat_jid="jid@g.us",
+            prompt="Do something",
+            schedule_type="cron",
+            schedule_value="0 9 * * *",
+            context_mode="isolated",
+            next_run="2026-02-15T09:00:00+00:00",
+            status="active",
+        )
+        d = task.to_snapshot_dict()
+        assert d == {
+            "id": "task-42",
+            "groupFolder": "my-group",
+            "prompt": "Do something",
+            "schedule_type": "cron",
+            "schedule_value": "0 9 * * *",
+            "status": "active",
+            "next_run": "2026-02-15T09:00:00+00:00",
+        }
+
+    def test_next_run_none(self):
+        """Once tasks may have no next_run — ensure it serializes as None."""
+        task = ScheduledTask(
+            id="task-once",
+            group_folder="g",
+            chat_jid="j@g.us",
+            prompt="p",
+            schedule_type="once",
+            schedule_value="2026-01-01T00:00:00",
+            context_mode="isolated",
+            next_run=None,
+            status="completed",
+        )
+        d = task.to_snapshot_dict()
+        assert d["next_run"] is None
+        assert d["status"] == "completed"
+
+    def test_uses_camel_case_group_folder(self):
+        """Container expects 'groupFolder' (camelCase), not 'group_folder'."""
+        task = ScheduledTask(
+            id="t",
+            group_folder="test-folder",
+            chat_jid="j@g.us",
+            prompt="p",
+            schedule_type="interval",
+            schedule_value="60000",
+            context_mode="group",
+        )
+        d = task.to_snapshot_dict()
+        assert "groupFolder" in d
+        assert "group_folder" not in d
+        assert d["groupFolder"] == "test-folder"
+
+    def test_excludes_internal_fields(self):
+        """Fields like chat_jid, context_mode, project_access are internal
+        and should not leak into the snapshot dict."""
+        task = ScheduledTask(
+            id="t",
+            group_folder="g",
+            chat_jid="secret@g.us",
+            prompt="p",
+            schedule_type="cron",
+            schedule_value="* * * * *",
+            context_mode="group",
+            project_access=True,
+            last_run="2026-01-01",
+            last_result="ok",
+            created_at="2026-01-01",
+        )
+        d = task.to_snapshot_dict()
+        assert "chat_jid" not in d
+        assert "context_mode" not in d
+        assert "project_access" not in d
+        assert "last_run" not in d
+        assert "last_result" not in d
+        assert "created_at" not in d
+
+
 class MockSchedulerDeps:
     """Mock implementation of SchedulerDependencies protocol."""
 
