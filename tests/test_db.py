@@ -9,19 +9,48 @@ import pytest
 
 from pynchy.db import (
     _init_test_database,
+    clear_session,
     create_task,
     delete_task,
+    get_active_task_for_group,
     get_all_chats,
+    get_all_registered_groups,
+    get_all_sessions,
+    get_all_tasks,
+    get_all_workspace_profiles,
     get_chat_history,
+    get_due_tasks,
     get_messages_since,
     get_new_messages,
+    get_registered_group,
+    get_router_state,
+    get_session,
     get_task_by_id,
+    get_tasks_for_group,
+    get_workspace_profile,
+    log_task_run,
+    set_chat_cleared_at,
+    set_registered_group,
+    set_router_state,
+    set_session,
+    set_workspace_profile,
     store_chat_metadata,
     store_message,
     store_message_direct,
+    update_chat_name,
     update_task,
+    update_task_after_run,
 )
-from pynchy.types import NewMessage
+from pynchy.types import (
+    ContainerConfig,
+    McpToolConfig,
+    NewMessage,
+    RegisteredGroup,
+    ScheduledTask,
+    TaskRunLog,
+    WorkspaceProfile,
+    WorkspaceSecurity,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -442,3 +471,666 @@ class TestSenderFiltering:
         assert "host" in senders
         assert "thinking" in senders
         assert "tool_use" in senders
+
+
+# --- Sessions ---
+
+
+class TestSessions:
+    async def test_set_and_get_session(self):
+        await set_session("my-group", "session-abc")
+        result = await get_session("my-group")
+        assert result == "session-abc"
+
+    async def test_get_session_returns_none_when_missing(self):
+        result = await get_session("nonexistent")
+        assert result is None
+
+    async def test_set_session_upserts(self):
+        await set_session("my-group", "session-1")
+        await set_session("my-group", "session-2")
+        result = await get_session("my-group")
+        assert result == "session-2"
+
+    async def test_clear_session(self):
+        await set_session("my-group", "session-abc")
+        await clear_session("my-group")
+        result = await get_session("my-group")
+        assert result is None
+
+    async def test_clear_session_noop_when_missing(self):
+        """Clearing a nonexistent session should not raise."""
+        await clear_session("nonexistent")
+
+    async def test_get_all_sessions(self):
+        await set_session("group-a", "session-1")
+        await set_session("group-b", "session-2")
+        sessions = await get_all_sessions()
+        assert sessions == {"group-a": "session-1", "group-b": "session-2"}
+
+    async def test_get_all_sessions_empty(self):
+        sessions = await get_all_sessions()
+        assert sessions == {}
+
+
+# --- Router state ---
+
+
+class TestRouterState:
+    async def test_set_and_get_router_state(self):
+        await set_router_state("last_timestamp", "2024-01-01T00:00:00Z")
+        result = await get_router_state("last_timestamp")
+        assert result == "2024-01-01T00:00:00Z"
+
+    async def test_get_router_state_returns_none_when_missing(self):
+        result = await get_router_state("nonexistent_key")
+        assert result is None
+
+    async def test_set_router_state_upserts(self):
+        await set_router_state("key", "value-1")
+        await set_router_state("key", "value-2")
+        result = await get_router_state("key")
+        assert result == "value-2"
+
+
+# --- Chat cleared_at ---
+
+
+class TestChatClearedAt:
+    async def test_cleared_at_hides_old_messages(self):
+        """Messages before cleared_at should not appear in get_chat_history."""
+        await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
+        await store_message(
+            _store(
+                id="old-msg",
+                chat_jid="group@g.us",
+                sender="123@s.whatsapp.net",
+                sender_name="Alice",
+                content="old message",
+                timestamp="2024-01-01T00:00:01.000Z",
+            )
+        )
+        await store_message(
+            _store(
+                id="new-msg",
+                chat_jid="group@g.us",
+                sender="123@s.whatsapp.net",
+                sender_name="Alice",
+                content="new message",
+                timestamp="2024-01-01T00:00:05.000Z",
+            )
+        )
+
+        await set_chat_cleared_at("group@g.us", "2024-01-01T00:00:03.000Z")
+
+        messages = await get_chat_history("group@g.us", limit=50)
+        assert len(messages) == 1
+        assert messages[0].content == "new message"
+
+    async def test_no_cleared_at_returns_all(self):
+        """Without cleared_at, all messages are returned."""
+        await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
+        await store_message(
+            _store(
+                id="msg-1",
+                chat_jid="group@g.us",
+                sender="123@s.whatsapp.net",
+                sender_name="Alice",
+                content="first",
+                timestamp="2024-01-01T00:00:01.000Z",
+            )
+        )
+        await store_message(
+            _store(
+                id="msg-2",
+                chat_jid="group@g.us",
+                sender="123@s.whatsapp.net",
+                sender_name="Alice",
+                content="second",
+                timestamp="2024-01-01T00:00:02.000Z",
+            )
+        )
+
+        messages = await get_chat_history("group@g.us", limit=50)
+        assert len(messages) == 2
+
+
+# --- update_chat_name ---
+
+
+class TestUpdateChatName:
+    async def test_updates_existing_chat_name(self):
+        await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z", "Old Name")
+        await update_chat_name("group@g.us", "New Name")
+        chats = await get_all_chats()
+        assert chats[0]["name"] == "New Name"
+
+    async def test_creates_chat_if_not_exists(self):
+        await update_chat_name("new@g.us", "Brand New")
+        chats = await get_all_chats()
+        assert len(chats) == 1
+        assert chats[0]["name"] == "Brand New"
+
+
+# --- store_message_direct with metadata ---
+
+
+class TestStoreMessageDirect:
+    async def test_stores_metadata(self):
+        await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
+        await store_message_direct(
+            id="meta-msg",
+            chat_jid="group@g.us",
+            sender="123@s.whatsapp.net",
+            sender_name="Alice",
+            content="with metadata",
+            timestamp="2024-01-01T00:00:01.000Z",
+            is_from_me=False,
+            message_type="system",
+            metadata={"severity": "warning", "source": "deploy"},
+        )
+
+        messages = await get_chat_history("group@g.us", limit=50)
+        assert len(messages) == 1
+        assert messages[0].metadata == {"severity": "warning", "source": "deploy"}
+        assert messages[0].message_type == "system"
+
+    async def test_stores_without_metadata(self):
+        await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
+        await store_message_direct(
+            id="no-meta",
+            chat_jid="group@g.us",
+            sender="123@s.whatsapp.net",
+            sender_name="Alice",
+            content="no metadata",
+            timestamp="2024-01-01T00:00:01.000Z",
+            is_from_me=False,
+        )
+
+        messages = await get_chat_history("group@g.us", limit=50)
+        assert len(messages) == 1
+        assert messages[0].metadata is None
+
+
+# --- Advanced task operations ---
+
+
+class TestTaskAdvanced:
+    """Tests for task querying and lifecycle functions."""
+
+    _TASK_TEMPLATE = {
+        "group_folder": "main",
+        "chat_jid": "group@g.us",
+        "prompt": "test prompt",
+        "schedule_type": "cron",
+        "schedule_value": "0 * * * *",
+        "context_mode": "isolated",
+        "status": "active",
+        "created_at": "2024-01-01T00:00:00.000Z",
+    }
+
+    async def test_get_tasks_for_group(self):
+        await create_task({**self._TASK_TEMPLATE, "id": "t1", "next_run": None})
+        await create_task(
+            {**self._TASK_TEMPLATE, "id": "t2", "group_folder": "other", "next_run": None}
+        )
+        await create_task({**self._TASK_TEMPLATE, "id": "t3", "next_run": None})
+
+        tasks = await get_tasks_for_group("main")
+        assert len(tasks) == 2
+        assert all(t.group_folder == "main" for t in tasks)
+
+    async def test_get_all_tasks(self):
+        await create_task({**self._TASK_TEMPLATE, "id": "t1", "next_run": None})
+        await create_task(
+            {**self._TASK_TEMPLATE, "id": "t2", "group_folder": "other", "next_run": None}
+        )
+
+        tasks = await get_all_tasks()
+        assert len(tasks) == 2
+
+    async def test_get_due_tasks(self):
+        # Due task (next_run in the past)
+        await create_task(
+            {**self._TASK_TEMPLATE, "id": "due-1", "next_run": "2020-01-01T00:00:00Z"}
+        )
+        # Not due (next_run in the far future)
+        await create_task(
+            {**self._TASK_TEMPLATE, "id": "future-1", "next_run": "2099-01-01T00:00:00Z"}
+        )
+        # No next_run (should not be due)
+        await create_task({**self._TASK_TEMPLATE, "id": "no-next", "next_run": None})
+        # Paused task (should not be due even if next_run is past)
+        await create_task(
+            {
+                **self._TASK_TEMPLATE,
+                "id": "paused-1",
+                "next_run": "2020-01-01T00:00:00Z",
+                "status": "paused",
+            }
+        )
+
+        due = await get_due_tasks()
+        assert len(due) == 1
+        assert due[0].id == "due-1"
+
+    async def test_get_active_task_for_group(self):
+        await create_task({**self._TASK_TEMPLATE, "id": "active-1", "next_run": None})
+        await create_task(
+            {**self._TASK_TEMPLATE, "id": "paused-1", "status": "paused", "next_run": None}
+        )
+
+        task = await get_active_task_for_group("main")
+        assert task is not None
+        assert task.id == "active-1"
+
+    async def test_get_active_task_for_group_returns_none(self):
+        task = await get_active_task_for_group("nonexistent")
+        assert task is None
+
+    async def test_update_task_ignores_disallowed_fields(self):
+        await create_task({**self._TASK_TEMPLATE, "id": "t1", "next_run": None})
+
+        # Try updating a field that isn't in the allowed set
+        await update_task("t1", {"chat_jid": "hacked@g.us", "status": "paused"})
+        task = await get_task_by_id("t1")
+        assert task is not None
+        assert task.status == "paused"
+        assert task.chat_jid == "group@g.us"  # unchanged
+
+    async def test_update_task_noop_for_empty_fields(self):
+        await create_task({**self._TASK_TEMPLATE, "id": "t1", "next_run": None})
+        await update_task("t1", {"invalid_field": "value"})
+        task = await get_task_by_id("t1")
+        assert task is not None
+        assert task.status == "active"  # unchanged
+
+    async def test_update_task_after_run_sets_completed_for_once(self):
+        await create_task(
+            {
+                **self._TASK_TEMPLATE,
+                "id": "once-task",
+                "schedule_type": "once",
+                "next_run": "2024-06-01T00:00:00Z",
+            }
+        )
+
+        # next_run=None means 'once' task → should be marked 'completed'
+        await update_task_after_run("once-task", None, "Completed successfully")
+        task = await get_task_by_id("once-task")
+        assert task is not None
+        assert task.status == "completed"
+        assert task.last_result == "Completed successfully"
+        assert task.last_run is not None
+
+    async def test_update_task_after_run_preserves_active_for_cron(self):
+        await create_task(
+            {**self._TASK_TEMPLATE, "id": "cron-task", "next_run": "2024-06-01T00:00:00Z"}
+        )
+
+        # next_run is set → task stays 'active'
+        await update_task_after_run("cron-task", "2024-06-01T01:00:00Z", "Done")
+        task = await get_task_by_id("cron-task")
+        assert task is not None
+        assert task.status == "active"
+        assert task.next_run == "2024-06-01T01:00:00Z"
+
+    async def test_log_task_run(self):
+        await create_task({**self._TASK_TEMPLATE, "id": "logged-task", "next_run": None})
+
+        await log_task_run(
+            TaskRunLog(
+                task_id="logged-task",
+                run_at="2024-06-01T00:00:00Z",
+                duration_ms=1500,
+                status="success",
+                result="Done",
+                error=None,
+            )
+        )
+        await log_task_run(
+            TaskRunLog(
+                task_id="logged-task",
+                run_at="2024-06-01T01:00:00Z",
+                duration_ms=500,
+                status="error",
+                result=None,
+                error="Something went wrong",
+            )
+        )
+
+        # Verify logs exist by deleting the task (which also deletes logs)
+        await delete_task("logged-task")
+        assert await get_task_by_id("logged-task") is None
+
+    async def test_create_task_with_project_access(self):
+        await create_task(
+            {**self._TASK_TEMPLATE, "id": "pa-task", "next_run": None, "project_access": True}
+        )
+        task = await get_task_by_id("pa-task")
+        assert task is not None
+        assert task.project_access is True
+
+    async def test_create_task_without_project_access(self):
+        await create_task({**self._TASK_TEMPLATE, "id": "no-pa", "next_run": None})
+        task = await get_task_by_id("no-pa")
+        assert task is not None
+        assert task.project_access is False
+
+
+# --- Registered groups ---
+
+
+class TestRegisteredGroups:
+    async def test_set_and_get_registered_group(self):
+        group = RegisteredGroup(
+            name="Test Group",
+            folder="test-group",
+            trigger="@Test",
+            added_at="2024-01-01T00:00:00Z",
+        )
+        await set_registered_group("test-jid@g.us", group)
+
+        result = await get_registered_group("test-jid@g.us")
+        assert result is not None
+        assert result["name"] == "Test Group"
+        assert result["folder"] == "test-group"
+        assert result["trigger"] == "@Test"
+
+    async def test_get_registered_group_returns_none(self):
+        result = await get_registered_group("nonexistent@g.us")
+        assert result is None
+
+    async def test_registered_group_with_container_config(self):
+        group = RegisteredGroup(
+            name="Configured Group",
+            folder="configured",
+            trigger="@Bot",
+            added_at="2024-01-01T00:00:00Z",
+            container_config=ContainerConfig(timeout=600.0),
+        )
+        await set_registered_group("config-jid@g.us", group)
+
+        result = await get_registered_group("config-jid@g.us")
+        assert result is not None
+        assert result["container_config"] is not None
+        assert result["container_config"]["timeout"] == 600.0
+
+    async def test_get_all_registered_groups(self):
+        for i in range(3):
+            group = RegisteredGroup(
+                name=f"Group {i}",
+                folder=f"group-{i}",
+                trigger=f"@G{i}",
+                added_at="2024-01-01T00:00:00Z",
+            )
+            await set_registered_group(f"jid-{i}@g.us", group)
+
+        groups = await get_all_registered_groups()
+        assert len(groups) == 3
+        assert all(isinstance(g, RegisteredGroup) for g in groups.values())
+
+    async def test_registered_group_is_god_flag(self):
+        group = RegisteredGroup(
+            name="God Group",
+            folder="god",
+            trigger="@Pynchy",
+            added_at="2024-01-01T00:00:00Z",
+            is_god=True,
+        )
+        await set_registered_group("god@g.us", group)
+
+        result = await get_registered_group("god@g.us")
+        assert result is not None
+        assert result["is_god"] is True
+
+    async def test_registered_group_requires_trigger(self):
+        # Default (None) → stored as 1 (True)
+        group = RegisteredGroup(
+            name="Default",
+            folder="default",
+            trigger="@Bot",
+            added_at="2024-01-01T00:00:00Z",
+            requires_trigger=None,
+        )
+        await set_registered_group("default@g.us", group)
+        result = await get_registered_group("default@g.us")
+        assert result is not None
+        # None → stored as 1 → True
+        assert result["requires_trigger"] is True
+
+        # Explicit False
+        group2 = RegisteredGroup(
+            name="NoTrigger",
+            folder="no-trigger",
+            trigger="@Bot",
+            added_at="2024-01-01T00:00:00Z",
+            requires_trigger=False,
+        )
+        await set_registered_group("notrig@g.us", group2)
+        result2 = await get_registered_group("notrig@g.us")
+        assert result2 is not None
+        assert result2["requires_trigger"] is False
+
+
+# --- Workspace profiles ---
+
+
+class TestWorkspaceProfiles:
+    async def test_set_and_get_workspace_profile(self):
+        profile = WorkspaceProfile(
+            jid="test@g.us",
+            name="Test Workspace",
+            folder="test-ws",
+            trigger="@Test",
+            added_at="2024-01-01T00:00:00Z",
+        )
+        await set_workspace_profile(profile)
+
+        result = await get_workspace_profile("test@g.us")
+        assert result is not None
+        assert result.name == "Test Workspace"
+        assert result.folder == "test-ws"
+        assert result.trigger == "@Test"
+
+    async def test_workspace_profile_with_security(self):
+        security = WorkspaceSecurity(
+            mcp_tools={
+                "send_email": McpToolConfig(risk_tier="human-approval", enabled=True),
+                "read_file": McpToolConfig(risk_tier="read-only", enabled=True),
+            },
+            default_risk_tier="policy-check",
+            allow_filesystem_access=False,
+            allow_network_access=True,
+        )
+        profile = WorkspaceProfile(
+            jid="secure@g.us",
+            name="Secure Workspace",
+            folder="secure-ws",
+            trigger="@Secure",
+            security=security,
+            added_at="2024-01-01T00:00:00Z",
+        )
+        await set_workspace_profile(profile)
+
+        result = await get_workspace_profile("secure@g.us")
+        assert result is not None
+        assert result.security.default_risk_tier == "policy-check"
+        assert result.security.allow_filesystem_access is False
+        assert result.security.allow_network_access is True
+        assert "send_email" in result.security.mcp_tools
+        assert result.security.mcp_tools["send_email"].risk_tier == "human-approval"
+        assert "read_file" in result.security.mcp_tools
+
+    async def test_get_workspace_profile_returns_none(self):
+        result = await get_workspace_profile("nonexistent@g.us")
+        assert result is None
+
+    async def test_get_all_workspace_profiles(self):
+        for i in range(2):
+            profile = WorkspaceProfile(
+                jid=f"ws-{i}@g.us",
+                name=f"WS {i}",
+                folder=f"ws-{i}",
+                trigger=f"@WS{i}",
+                added_at="2024-01-01T00:00:00Z",
+            )
+            await set_workspace_profile(profile)
+
+        profiles = await get_all_workspace_profiles()
+        assert len(profiles) == 2
+        assert all(isinstance(p, WorkspaceProfile) for p in profiles.values())
+
+    async def test_workspace_profile_validation_rejects_invalid(self):
+        profile = WorkspaceProfile(
+            jid="bad@g.us",
+            name="",  # invalid: empty name
+            folder="bad-ws",
+            trigger="@Bad",
+            added_at="2024-01-01T00:00:00Z",
+        )
+        with pytest.raises(ValueError, match="Workspace name is required"):
+            await set_workspace_profile(profile)
+
+    async def test_workspace_profile_god_flag_roundtrip(self):
+        profile = WorkspaceProfile(
+            jid="god@g.us",
+            name="God",
+            folder="god",
+            trigger="@Pynchy",
+            is_god=True,
+            added_at="2024-01-01T00:00:00Z",
+        )
+        await set_workspace_profile(profile)
+
+        result = await get_workspace_profile("god@g.us")
+        assert result is not None
+        assert result.is_god is True
+
+    async def test_workspace_profile_defaults_security_on_missing(self):
+        """If security_profile column is NULL, defaults are used."""
+        group = RegisteredGroup(
+            name="Legacy",
+            folder="legacy",
+            trigger="@Legacy",
+            added_at="2024-01-01T00:00:00Z",
+        )
+        await set_registered_group("legacy@g.us", group)
+
+        # get_workspace_profile reads from the same table
+        result = await get_workspace_profile("legacy@g.us")
+        assert result is not None
+        assert result.security.default_risk_tier == "human-approval"
+        assert result.security.allow_filesystem_access is True
+        assert result.security.mcp_tools == {}
+
+
+# --- get_chat_history limit ---
+
+
+class TestChatHistoryLimit:
+    async def test_respects_limit(self):
+        await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
+        for i in range(10):
+            await store_message(
+                _store(
+                    id=f"msg-{i}",
+                    chat_jid="group@g.us",
+                    sender="123@s.whatsapp.net",
+                    sender_name="Alice",
+                    content=f"message {i}",
+                    timestamp=f"2024-01-01T00:00:{i:02d}.000Z",
+                )
+            )
+
+        messages = await get_chat_history("group@g.us", limit=3)
+        assert len(messages) == 3
+        # Newest last (reversed)
+        assert messages[0].content == "message 7"
+        assert messages[2].content == "message 9"
+
+    async def test_returns_newest_last(self):
+        """get_chat_history returns messages in chronological order (oldest first)."""
+        await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
+        await store_message(
+            _store(
+                id="old",
+                chat_jid="group@g.us",
+                sender="123@s.whatsapp.net",
+                sender_name="Alice",
+                content="old",
+                timestamp="2024-01-01T00:00:01.000Z",
+            )
+        )
+        await store_message(
+            _store(
+                id="new",
+                chat_jid="group@g.us",
+                sender="123@s.whatsapp.net",
+                sender_name="Alice",
+                content="new",
+                timestamp="2024-01-01T00:00:02.000Z",
+            )
+        )
+
+        messages = await get_chat_history("group@g.us", limit=50)
+        assert messages[0].content == "old"
+        assert messages[1].content == "new"
+
+
+# --- get_task_by_id edge case ---
+
+
+class TestGetTaskById:
+    async def test_returns_none_for_nonexistent(self):
+        result = await get_task_by_id("does-not-exist")
+        assert result is None
+
+    async def test_returns_full_task_fields(self):
+        await create_task(
+            {
+                "id": "full-task",
+                "group_folder": "my-group",
+                "chat_jid": "jid@g.us",
+                "prompt": "Do a thing",
+                "schedule_type": "interval",
+                "schedule_value": "3600000",
+                "context_mode": "group",
+                "next_run": "2024-06-01T00:00:00Z",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00Z",
+                "project_access": True,
+            }
+        )
+        task = await get_task_by_id("full-task")
+        assert task is not None
+        assert task.id == "full-task"
+        assert task.group_folder == "my-group"
+        assert task.chat_jid == "jid@g.us"
+        assert task.prompt == "Do a thing"
+        assert task.schedule_type == "interval"
+        assert task.schedule_value == "3600000"
+        assert task.context_mode == "group"
+        assert task.next_run == "2024-06-01T00:00:00Z"
+        assert task.status == "active"
+        assert task.project_access is True
+
+
+# --- get_last_group_sync / set_last_group_sync ---
+
+
+class TestGroupSync:
+    async def test_get_returns_none_initially(self):
+        from pynchy.db import get_last_group_sync
+
+        result = await get_last_group_sync()
+        assert result is None
+
+    async def test_set_and_get_group_sync(self):
+        from pynchy.db import get_last_group_sync, set_last_group_sync
+
+        await set_last_group_sync()
+        result = await get_last_group_sync()
+        assert result is not None
+        # Should be a valid ISO timestamp
+        assert "T" in result
