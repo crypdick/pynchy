@@ -28,6 +28,7 @@ TASKS_DIR = IPC_DIR / "tasks"
 chat_jid = os.environ.get("PYNCHY_CHAT_JID", "")
 group_folder = os.environ.get("PYNCHY_GROUP_FOLDER", "")
 is_god = os.environ.get("PYNCHY_IS_GOD") == "1"
+is_scheduled_task = os.environ.get("PYNCHY_IS_SCHEDULED_TASK") == "1"
 
 
 def write_ipc_file(directory: Path, data: dict) -> str:
@@ -270,6 +271,26 @@ async def list_tools() -> list[Tool]:
             inputSchema={"type": "object", "properties": {}},
         ),
     )
+
+    if is_scheduled_task:
+        tools.append(
+            Tool(
+                name="finished_work",
+                description=(
+                    "Signal that your scheduled task is complete and shut "
+                    "down this container. This will:\n"
+                    "1. Merge any un-synced worktree commits (safety net)\n"
+                    "2. Notify the chat that the task finished\n"
+                    "3. Terminate this container\n\n"
+                    "Call sync_worktree_to_main first if you have commits "
+                    "to push. This tool is a final safety net — it will "
+                    "merge anything you missed.\n\n"
+                    "After calling this tool, the container exits "
+                    "immediately. Do NOT attempt further work."
+                ),
+                inputSchema={"type": "object", "properties": {}},
+            ),
+        )
 
     tools.append(
         Tool(
@@ -633,6 +654,23 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolR
                 ],
                 isError=True,
             )
+
+        case "finished_work":
+            write_ipc_file(
+                TASKS_DIR,
+                {
+                    "type": "finished_work",
+                    "groupFolder": group_folder,
+                    "chatJid": chat_jid,
+                    "timestamp": _now_iso(),
+                },
+            )
+
+            # Write close sentinel and exit — same pattern as reset_context.
+            close_sentinel = Path("/workspace/ipc/input/_close")
+            close_sentinel.parent.mkdir(parents=True, exist_ok=True)
+            close_sentinel.write_text("")
+            os._exit(0)
 
         case "deploy_changes":
             if not is_god:

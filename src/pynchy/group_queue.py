@@ -35,6 +35,7 @@ class QueuedTask:
 @dataclass
 class GroupState:
     active: bool = False
+    active_is_task: bool = False  # True when active container is a scheduled task
     pending_messages: bool = False
     pending_tasks: list[QueuedTask] = field(default_factory=list)
     process: Any = None  # asyncio.subprocess.Process or similar
@@ -125,6 +126,7 @@ class GroupQueue:
 
         # Eagerly mark as active before scheduling
         state.active = True
+        state.active_is_task = True
         self._active_count += 1
         asyncio.ensure_future(
             self._run_task(group_jid, QueuedTask(id=task_id, group_jid=group_jid, fn=fn))
@@ -142,6 +144,11 @@ class GroupQueue:
         state.container_name = container_name
         if group_folder:
             state.group_folder = group_folder
+
+    def is_active_task(self, group_jid: str) -> bool:
+        """Check if the active container for this group is a scheduled task."""
+        state = self._get_group(group_jid)
+        return state.active and state.active_is_task
 
     def send_message(self, group_jid: str, text: str) -> bool:
         """Send a follow-up message to the active container via IPC file."""
@@ -205,6 +212,7 @@ class GroupQueue:
             self._schedule_retry(group_jid, state)
         finally:
             state.active = False
+            state.active_is_task = False
             state.process = None
             state.container_name = None
             state.group_folder = None
@@ -236,6 +244,7 @@ class GroupQueue:
             )
         finally:
             state.active = False
+            state.active_is_task = False
             state.process = None
             state.container_name = None
             state.group_folder = None
@@ -274,21 +283,22 @@ class GroupQueue:
 
         state = self._get_group(group_jid)
 
-        # Tasks first (they won't be re-discovered from SQLite like messages)
-        if state.pending_tasks:
-            task = state.pending_tasks.pop(0)
-            # Eagerly mark active before scheduling
-            state.active = True
-            self._active_count += 1
-            asyncio.ensure_future(self._run_task(group_jid, task))
-            return
-
-        # Then pending messages
+        # Messages first — a human is waiting; tasks are autonomous and can wait.
         if state.pending_messages:
             state.active = True
+            state.active_is_task = False
             state.pending_messages = False
             self._active_count += 1
             asyncio.ensure_future(self._run_for_group(group_jid, "drain"))
+            return
+
+        # Then pending tasks
+        if state.pending_tasks:
+            task = state.pending_tasks.pop(0)
+            state.active = True
+            state.active_is_task = True
+            self._active_count += 1
+            asyncio.ensure_future(self._run_task(group_jid, task))
             return
 
         # Nothing pending for this group; check if other groups are waiting
@@ -299,16 +309,19 @@ class GroupQueue:
             next_jid = self._waiting_groups.pop(0)
             state = self._get_group(next_jid)
 
-            if state.pending_tasks:
-                task = state.pending_tasks.pop(0)
+            # Messages first — same priority as _drain_group
+            if state.pending_messages:
                 state.active = True
-                self._active_count += 1
-                asyncio.ensure_future(self._run_task(next_jid, task))
-            elif state.pending_messages:
-                state.active = True
+                state.active_is_task = False
                 state.pending_messages = False
                 self._active_count += 1
                 asyncio.ensure_future(self._run_for_group(next_jid, "drain"))
+            elif state.pending_tasks:
+                task = state.pending_tasks.pop(0)
+                state.active = True
+                state.active_is_task = True
+                self._active_count += 1
+                asyncio.ensure_future(self._run_task(next_jid, task))
 
     async def shutdown(self, grace_period_seconds: float) -> None:
         self._shutting_down = True

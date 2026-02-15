@@ -50,9 +50,7 @@ class MockSchedulerDeps:
     def get_sessions(self) -> dict[str, str]:
         return self.sessions
 
-    def on_process(
-        self, group_jid: str, proc, container_name: str, group_folder: str
-    ) -> None:
+    def on_process(self, group_jid: str, proc, container_name: str, group_folder: str) -> None:
         self.processes.append((group_jid, proc, container_name, group_folder))
 
     async def broadcast_to_channels(self, jid: str, text: str) -> None:
@@ -98,6 +96,7 @@ class TestStartSchedulerLoop:
     def setup_method(self):
         """Reset scheduler state before each test."""
         import pynchy.task_scheduler
+
         pynchy.task_scheduler._scheduler_running = False
 
     @pytest.mark.asyncio
@@ -267,7 +266,9 @@ class TestRunTask:
             logged_runs.append(log)
 
         with patch("pynchy.task_scheduler.log_task_run", side_effect=mock_log_run):
-            with patch("pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock) as mock_get_all:
+            with patch(
+                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
+            ) as mock_get_all:
                 mock_get_all.return_value = []
                 # Import and call _run_task directly
                 from pynchy.task_scheduler import _run_task
@@ -296,11 +297,15 @@ class TestRunTask:
             return ContainerOutput(status="success", result="Done")
 
         with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
-            with patch("pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock) as mock_get_all:
+            with patch(
+                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
+            ) as mock_get_all:
                 mock_get_all.return_value = []
                 with patch("pynchy.task_scheduler.write_tasks_snapshot"):
                     with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
-                        with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
+                        with patch(
+                            "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
+                        ):
                             from pynchy.task_scheduler import _run_task
 
                             await _run_task(sample_task, mock_deps)
@@ -326,11 +331,15 @@ class TestRunTask:
             return ContainerOutput(status="success", result="Done")
 
         with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
-            with patch("pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock) as mock_get_all:
+            with patch(
+                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
+            ) as mock_get_all:
                 mock_get_all.return_value = []
                 with patch("pynchy.task_scheduler.write_tasks_snapshot"):
                     with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
-                        with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
+                        with patch(
+                            "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
+                        ):
                             from pynchy.task_scheduler import _run_task
 
                             await _run_task(sample_task, mock_deps)
@@ -353,18 +362,23 @@ class TestRunTask:
             return ContainerOutput(status="success", result="Task completed successfully")
 
         with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
-            with patch("pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock) as mock_get_all:
+            with patch(
+                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
+            ) as mock_get_all:
                 mock_get_all.return_value = []
                 with patch("pynchy.task_scheduler.write_tasks_snapshot"):
                     with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
-                        with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
+                        with patch(
+                            "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
+                        ):
                             from pynchy.task_scheduler import _run_task
 
                             await _run_task(sample_task, mock_deps)
 
-        # Should have sent the result message
-        assert len(mock_deps.messages) == 1
-        assert mock_deps.messages[0] == ("test@g.us", "Task completed successfully")
+        # Should have sent the start notification and the result message
+        assert len(mock_deps.messages) == 2
+        assert mock_deps.messages[0] == ("test@g.us", "\u23f1 Scheduled task starting.")
+        assert mock_deps.messages[1] == ("test@g.us", "Task completed successfully")
 
     @pytest.mark.asyncio
     async def test_calculates_next_run_for_cron_schedule(
@@ -385,11 +399,15 @@ class TestRunTask:
             return ContainerOutput(status="success", result="Done")
 
         with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
-            with patch("pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock) as mock_get_all:
+            with patch(
+                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
+            ) as mock_get_all:
                 mock_get_all.return_value = []
                 with patch("pynchy.task_scheduler.write_tasks_snapshot"):
                     with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
-                        with patch("pynchy.task_scheduler.update_task_after_run", side_effect=mock_update):
+                        with patch(
+                            "pynchy.task_scheduler.update_task_after_run", side_effect=mock_update
+                        ):
                             from pynchy.task_scheduler import _run_task
 
                             await _run_task(sample_task, mock_deps)
@@ -420,11 +438,15 @@ class TestRunTask:
             return ContainerOutput(status="success", result="Done")
 
         with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
-            with patch("pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock) as mock_get_all:
+            with patch(
+                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
+            ) as mock_get_all:
                 mock_get_all.return_value = []
                 with patch("pynchy.task_scheduler.write_tasks_snapshot"):
                     with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
-                        with patch("pynchy.task_scheduler.update_task_after_run", side_effect=mock_update):
+                        with patch(
+                            "pynchy.task_scheduler.update_task_after_run", side_effect=mock_update
+                        ):
                             from pynchy.task_scheduler import _run_task
 
                             await _run_task(sample_task, mock_deps)
@@ -457,11 +479,15 @@ class TestRunTask:
             return ContainerOutput(status="success", result="Done")
 
         with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
-            with patch("pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock) as mock_get_all:
+            with patch(
+                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
+            ) as mock_get_all:
                 mock_get_all.return_value = []
                 with patch("pynchy.task_scheduler.write_tasks_snapshot"):
                     with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
-                        with patch("pynchy.task_scheduler.update_task_after_run", side_effect=mock_update):
+                        with patch(
+                            "pynchy.task_scheduler.update_task_after_run", side_effect=mock_update
+                        ):
                             from pynchy.task_scheduler import _run_task
 
                             await _run_task(sample_task, mock_deps)
@@ -487,11 +513,15 @@ class TestRunTask:
             logged_runs.append(log)
 
         with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
-            with patch("pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock) as mock_get_all:
+            with patch(
+                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
+            ) as mock_get_all:
                 mock_get_all.return_value = []
                 with patch("pynchy.task_scheduler.write_tasks_snapshot"):
                     with patch("pynchy.task_scheduler.log_task_run", side_effect=mock_log_run):
-                        with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
+                        with patch(
+                            "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
+                        ):
                             from pynchy.task_scheduler import _run_task
 
                             await _run_task(sample_task, mock_deps)
@@ -517,11 +547,15 @@ class TestRunTask:
             return ContainerOutput(status="success", result="Done")
 
         with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
-            with patch("pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock) as mock_get_all:
+            with patch(
+                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
+            ) as mock_get_all:
                 mock_get_all.return_value = []
                 with patch("pynchy.task_scheduler.write_tasks_snapshot"):
                     with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
-                        with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
+                        with patch(
+                            "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
+                        ):
                             from pynchy.task_scheduler import _run_task
 
                             await _run_task(sample_task, mock_deps)
@@ -558,11 +592,17 @@ class TestRunTask:
             return ContainerOutput(status="success", result="Done")
 
         with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
-            with patch("pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock) as mock_get_all:
+            with patch(
+                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
+            ) as mock_get_all:
                 mock_get_all.return_value = [sample_task, other_task]
-                with patch("pynchy.task_scheduler.write_tasks_snapshot", side_effect=mock_write_snapshot):
+                with patch(
+                    "pynchy.task_scheduler.write_tasks_snapshot", side_effect=mock_write_snapshot
+                ):
                     with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
-                        with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
+                        with patch(
+                            "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
+                        ):
                             from pynchy.task_scheduler import _run_task
 
                             await _run_task(sample_task, mock_deps)

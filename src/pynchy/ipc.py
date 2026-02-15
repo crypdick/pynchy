@@ -381,6 +381,36 @@ async def process_task_ipc(
                 group=group_folder,
             )
 
+        case "finished_work":
+            chat_jid = data.get("chatJid", "")
+            if not chat_jid:
+                logger.warning("finished_work missing chatJid", source_group=source_group)
+                return
+
+            # Safety-net merge: catch any commits the agent forgot to sync
+            from pynchy.workspace_config import has_project_access
+            from pynchy.worktree import merge_and_push_worktree
+
+            group = next(
+                (g for g in deps.registered_groups().values() if g.folder == source_group),
+                None,
+            )
+            if group and has_project_access(group):
+                try:
+                    merge_and_push_worktree(source_group)
+                except Exception as exc:
+                    logger.warning(
+                        "finished_work merge failed (non-fatal)",
+                        group=source_group,
+                        err=str(exc),
+                    )
+
+            await deps.broadcast_host_message(
+                chat_jid,
+                "Scheduled task finished. Send a message to start a new conversation.",
+            )
+            logger.info("finished_work handled", group=source_group)
+
         case "create_periodic_agent":
             if not is_god:
                 logger.warning(

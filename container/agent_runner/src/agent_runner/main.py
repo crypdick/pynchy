@@ -264,6 +264,7 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
                 "PYNCHY_GROUP_FOLDER": container_input.group_folder,
                 "PYNCHY_IS_GOD": ("1" if container_input.is_god else "0"),
                 "PYNCHY_SESSION_ID": (container_input.session_id or ""),
+                "PYNCHY_IS_SCHEDULED_TASK": ("1" if container_input.is_scheduled_task else "0"),
             },
         },
     }
@@ -390,8 +391,16 @@ async def main() -> None:
 
     if container_input.is_scheduled_task:
         prompt = (
-            "[SCHEDULED TASK - The following message was sent automatically "
-            "and is not coming directly from the user or group.]\n\n" + prompt
+            "[SCHEDULED TASK]\n"
+            "This is an automated scheduled task — not a live user conversation. "
+            "Your container will be destroyed when you finish.\n\n"
+            "Lifecycle:\n"
+            "1. Complete the work described below\n"
+            "2. Commit and call sync_worktree_to_main (if you have project access)\n"
+            "3. Call finished_work() to shut down cleanly\n\n"
+            "Calling finished_work() merges any un-synced commits (safety net) "
+            "and terminates this container. Do NOT continue work after calling it.\n\n"
+            + prompt
         )
 
     # Drain any pending IPC messages into initial prompt

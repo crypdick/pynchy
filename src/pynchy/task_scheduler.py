@@ -105,6 +105,12 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
     groups = deps.registered_groups()
     group = next((g for g in groups.values() if g.folder == task.group_folder), None)
 
+    if group:
+        await deps.broadcast_to_channels(
+            task.chat_jid,
+            "⏱ Scheduled task starting.",
+        )
+
     if not group:
         logger.error(
             "Group not found for task",

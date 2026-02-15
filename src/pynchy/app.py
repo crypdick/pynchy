@@ -946,6 +946,13 @@ class PynchyApp:
                         if await self._intercept_special_command(chat_jid, group, all_pending[-1]):
                             continue
 
+                        # Don't pipe messages to scheduled-task containers —
+                        # the agent is doing autonomous work and won't answer
+                        # user questions. Queue for processing after the task.
+                        if self.queue.is_active_task(chat_jid):
+                            self.queue.enqueue_message_check(chat_jid)
+                            continue
+
                         # Format messages as plain text for IPC piping
                         formatted = "\n".join(
                             f"{msg.sender_name}: {msg.content}" for msg in all_pending
