@@ -17,13 +17,15 @@ groups/global/*
 !groups/admin/
 groups/admin/*
 !groups/admin/CLAUDE.md
+!groups/admin/workspace.yaml
 !groups/mr-pynchy/
 groups/mr-pynchy/*
 !groups/mr-pynchy/CLAUDE.md
+!groups/mr-pynchy/workspace.yaml
 !groups/code-improver/
 groups/code-improver/*
 !groups/code-improver/CLAUDE.md
-!groups/code-improver/periodic.yaml
+!groups/code-improver/workspace.yaml
 
 # Secrets
 *.keys.json

@@ -560,8 +560,8 @@ async def _deploy_error(
 
 
 async def _handle_create_periodic_agent(data: dict[str, Any], deps: IpcDeps) -> None:
-    """Create a periodic agent: folder, periodic.yaml, CLAUDE.md, chat group, and task."""
-    from pynchy.periodic import PeriodicAgentConfig, write_periodic_config
+    """Create a periodic agent: folder, workspace.yaml, CLAUDE.md, chat group, and task."""
+    from pynchy.workspace_config import WorkspaceConfig, write_workspace_config
 
     name = data.get("name")
     schedule = data.get("schedule")
@@ -584,8 +584,10 @@ async def _handle_create_periodic_agent(data: dict[str, Any], deps: IpcDeps) -> 
     group_dir = GROUPS_DIR / name
     group_dir.mkdir(parents=True, exist_ok=True)
 
-    config = PeriodicAgentConfig(schedule=schedule, prompt=prompt, context_mode=context_mode)
-    write_periodic_config(name, config)
+    config = WorkspaceConfig(
+        schedule=schedule, prompt=prompt, context_mode=context_mode, requires_trigger=False
+    )
+    write_workspace_config(name, config)
 
     claude_md_path = group_dir / "CLAUDE.md"
     if not claude_md_path.exists():
