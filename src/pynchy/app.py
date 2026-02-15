@@ -1598,7 +1598,7 @@ class PynchyApp:
             get_sessions = session_manager.get_sessions
             queue = queue_manager.queue
             on_process = queue_manager.on_process
-            send_message = broadcaster.send_formatted_message
+            broadcast_to_channels = broadcaster._broadcast_formatted
             plugin_manager = self.plugin_manager
 
         return SchedulerDeps()
@@ -1627,7 +1627,6 @@ class PynchyApp:
 
         # Return a composite object that provides all required deps
         class HttpDeps:
-            send_message = broadcaster.send_message
             broadcast_host_message = host_broadcaster.broadcast_host_message
             god_chat_jid = group_registry.god_chat_jid
             channels_connected = metadata_manager.channels_connected
@@ -1662,8 +1661,9 @@ class PynchyApp:
 
         # Return a composite object that provides all required deps
         class IpcDeps:
-            send_message = broadcaster.send_message
+            broadcast_to_channels = broadcaster._broadcast_to_channels
             broadcast_host_message = host_broadcaster.broadcast_host_message
+            broadcast_system_notice = host_broadcaster.broadcast_system_notice
             registered_groups = registration_manager.registered_groups
             register_group = registration_manager.register_group
             sync_group_metadata = metadata_manager.sync_group_metadata
@@ -1690,7 +1690,7 @@ class PynchyApp:
         group_registry = GroupRegistry(self.registered_groups)
 
         class GitSyncDeps:
-            send_message = broadcaster.send_message
+            broadcast_system_notice = host_broadcaster.broadcast_system_notice
 
             def registered_groups(self_inner) -> dict[str, Any]:
                 return group_registry.registered_groups()

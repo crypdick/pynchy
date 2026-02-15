@@ -55,7 +55,7 @@ class MockSchedulerDeps:
     ) -> None:
         self.processes.append((group_jid, proc, container_name, group_folder))
 
-    async def send_message(self, jid: str, text: str) -> None:
+    async def broadcast_to_channels(self, jid: str, text: str) -> None:
         self.messages.append((jid, text))
 
 
