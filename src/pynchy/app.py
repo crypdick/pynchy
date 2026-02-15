@@ -281,6 +281,38 @@ class PynchyApp:
     # Message processing
     # ------------------------------------------------------------------
 
+    async def _intercept_special_command(
+        self, chat_jid: str, group: RegisteredGroup, message: NewMessage
+    ) -> bool:
+        """Check for and handle special commands (reset, redeploy, direct !cmd).
+
+        Returns True if a command was intercepted and handled, False otherwise.
+        Centralizes command interception so both _process_group_messages and
+        _start_message_loop share the same logic and stay in sync.
+        """
+        content = message.content.strip()
+
+        if is_context_reset(content):
+            await self._handle_context_reset(chat_jid, group, message.timestamp)
+            logger.info("Context reset", group=group.name)
+            return True
+
+        if is_redeploy(content):
+            self.last_agent_timestamp[chat_jid] = message.timestamp
+            await self._save_state()
+            await self._trigger_manual_redeploy(chat_jid)
+            return True
+
+        if content.startswith("!"):
+            command = content[1:]
+            if command:
+                await self._execute_direct_command(chat_jid, group, message, command)
+                self.last_agent_timestamp[chat_jid] = message.timestamp
+                await self._save_state()
+                return True
+
+        return False
+
     async def _process_group_messages(self, chat_jid: str) -> bool:
         """Process all pending messages for a group. Called by GroupQueue."""
         group = self.registered_groups.get(chat_jid)
@@ -341,29 +373,9 @@ class PynchyApp:
             if not has_trigger:
                 return True
 
-        # Check if the last message is a context reset command
-        if is_context_reset(missed_messages[-1].content):
-            await self._handle_context_reset(chat_jid, group, missed_messages[-1].timestamp)
-            logger.info("Context reset", group=group.name)
+        # Intercept special commands (context reset, redeploy, !command)
+        if await self._intercept_special_command(chat_jid, group, missed_messages[-1]):
             return True
-
-        # Check if the last message is a manual redeploy command
-        if is_redeploy(missed_messages[-1].content):
-            self.last_agent_timestamp[chat_jid] = missed_messages[-1].timestamp
-            await self._save_state()
-            await self._trigger_manual_redeploy(chat_jid)
-            return True
-
-        # Check if the last message is a direct command execution (!command syntax)
-        last_msg_content = missed_messages[-1].content.strip()
-        if last_msg_content.startswith("!"):
-            command = last_msg_content[1:]  # Remove the ! prefix
-            if command:
-                await self._execute_direct_command(chat_jid, group, missed_messages[-1], command)
-                # Advance cursor but don't trigger agent
-                self.last_agent_timestamp[chat_jid] = missed_messages[-1].timestamp
-                await self._save_state()
-                return True
 
         from pynchy.router import format_messages_for_sdk
 
@@ -921,21 +933,10 @@ class PynchyApp:
                             # Already consumed by _process_group_messages
                             continue
 
-                        # Intercept context reset commands before piping to
-                        # active containers — they must be handled by the host,
-                        # not forwarded as regular user messages.
-                        if is_context_reset(all_pending[-1].content):
-                            await self._handle_context_reset(
-                                chat_jid, group, all_pending[-1].timestamp
-                            )
-                            logger.info("Context reset (active container)", group=group.name)
-                            continue
-
-                        # Intercept redeploy commands
-                        if is_redeploy(all_pending[-1].content):
-                            self.last_agent_timestamp[chat_jid] = all_pending[-1].timestamp
-                            await self._save_state()
-                            await self._trigger_manual_redeploy(chat_jid)
+                        # Intercept special commands (context reset, redeploy, !command)
+                        # before piping to active containers — they must be handled
+                        # by the host, not forwarded as regular user messages.
+                        if await self._intercept_special_command(chat_jid, group, all_pending[-1]):
                             continue
 
                         # Format messages as plain text for IPC piping
