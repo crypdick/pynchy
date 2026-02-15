@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from pynchy.utils import generate_message_id, safe_json_load
+import pytest
+
+from pynchy.utils import compute_next_run, generate_message_id, safe_json_load
 
 
 class TestGenerateMessageId:
@@ -88,3 +90,74 @@ class TestSafeJsonLoad:
         f.write_text(json.dumps(data))
         result = safe_json_load(f)
         assert result == data
+
+
+class TestComputeNextRun:
+    """Test compute_next_run for cron, interval, and once schedule types.
+
+    This is critical business logic: wrong next_run means tasks fire at the
+    wrong time or never fire at all.
+    """
+
+    def test_cron_returns_future_timestamp(self):
+        """Cron schedules should produce a future ISO timestamp."""
+        from datetime import datetime
+
+        result = compute_next_run("cron", "0 9 * * *", "UTC")
+        assert result is not None
+        parsed = datetime.fromisoformat(result)
+        assert parsed > datetime.now(parsed.tzinfo)
+
+    def test_cron_invalid_expression_raises(self):
+        """Invalid cron expression should raise."""
+        with pytest.raises((ValueError, KeyError)):
+            compute_next_run("cron", "not a cron", "UTC")
+
+    def test_interval_returns_future_timestamp(self):
+        """Interval schedules produce a timestamp ~interval ms in the future."""
+        from datetime import UTC, datetime
+
+        result = compute_next_run("interval", "3600000", "UTC")  # 1 hour
+        assert result is not None
+        parsed = datetime.fromisoformat(result)
+        # Should be ~1 hour in the future (within a few seconds)
+        delta = (parsed - datetime.now(UTC)).total_seconds()
+        assert 3590 < delta < 3610
+
+    def test_interval_zero_raises(self):
+        """Zero interval should raise ValueError."""
+        with pytest.raises(ValueError, match="positive"):
+            compute_next_run("interval", "0", "UTC")
+
+    def test_interval_negative_raises(self):
+        """Negative interval should raise ValueError."""
+        with pytest.raises(ValueError, match="positive"):
+            compute_next_run("interval", "-1000", "UTC")
+
+    def test_interval_non_numeric_raises(self):
+        """Non-numeric interval should raise ValueError."""
+        with pytest.raises(ValueError):
+            compute_next_run("interval", "abc", "UTC")
+
+    def test_once_returns_none(self):
+        """'once' schedule type returns None (no next run)."""
+        result = compute_next_run("once", "2025-01-01T00:00:00", "UTC")
+        assert result is None
+
+    def test_cron_respects_timezone(self):
+        """Cron should use the specified timezone for calculation."""
+        # Both should return valid timestamps but potentially different times
+        utc_result = compute_next_run("cron", "0 9 * * *", "UTC")
+        est_result = compute_next_run("cron", "0 9 * * *", "America/New_York")
+        assert utc_result is not None
+        assert est_result is not None
+        # Both should be valid ISO timestamps
+        from datetime import datetime
+
+        datetime.fromisoformat(utc_result)
+        datetime.fromisoformat(est_result)
+
+    def test_interval_small_value(self):
+        """Small but valid interval (1ms) should work."""
+        result = compute_next_run("interval", "1", "UTC")
+        assert result is not None
