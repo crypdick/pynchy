@@ -399,8 +399,7 @@ async def main() -> None:
             "2. Commit and call sync_worktree_to_main (if you have project access)\n"
             "3. Call finished_work() to shut down cleanly\n\n"
             "Calling finished_work() merges any un-synced commits (safety net) "
-            "and terminates this container. Do NOT continue work after calling it.\n\n"
-            + prompt
+            "and terminates this container. Do NOT continue work after calling it.\n\n" + prompt
         )
 
     # Drain any pending IPC messages into initial prompt

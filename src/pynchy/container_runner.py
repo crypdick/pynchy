@@ -191,8 +191,8 @@ def _read_oauth_token() -> str | None:
             token = data.get("claudeAiOauth", {}).get("accessToken")
             if token:
                 return token
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.debug("Failed to read legacy credentials file", err=str(exc))
 
     # 2. macOS keychain
     return _read_oauth_from_keychain()
@@ -228,8 +228,8 @@ def _read_gh_token() -> str | None:
         )
         if result.returncode == 0:
             return result.stdout.strip()
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        pass
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
+        logger.debug("Failed to read GitHub token from gh CLI", err=str(exc))
     return None
 
 
@@ -249,8 +249,8 @@ def _read_git_identity() -> tuple[str | None, str | None]:
                     name = r.stdout.strip()
                 else:
                     email = r.stdout.strip()
-        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-            pass
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
+            logger.debug("Failed to read git config", key=key, err=str(exc))
     return name, email
 
 
@@ -342,8 +342,8 @@ def _write_settings_json(session_dir: Path) -> None:
             hook_settings = json.loads(hook_settings_file.read_text())
             if "hooks" in hook_settings:
                 settings["hooks"] = hook_settings["hooks"]
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Failed to merge hook settings", err=str(exc))
 
     settings_file.write_text(json.dumps(settings, indent=2) + "\n")
 

@@ -165,7 +165,12 @@ class GroupQueue:
             temp_path.write_text(json.dumps({"type": "message", "text": text}))
             temp_path.rename(filepath)
             return True
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "Failed to write IPC message to container",
+                group_jid=group_jid,
+                err=str(exc),
+            )
             return False
 
     def close_stdin(self, group_jid: str) -> None:
@@ -178,8 +183,12 @@ class GroupQueue:
         try:
             input_dir.mkdir(parents=True, exist_ok=True)
             (input_dir / "_close").write_text("")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "Failed to write close sentinel to container",
+                group_jid=group_jid,
+                err=str(exc),
+            )
 
     async def _run_for_group(self, group_jid: str, reason: str) -> None:
         """Run the process_messages_fn for a group.

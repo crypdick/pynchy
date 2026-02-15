@@ -327,8 +327,8 @@ def _host_get_origin_main_sha() -> str | None:
         result = run_git("ls-remote", "origin", "refs/heads/main")
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip().split()[0]
-    except (subprocess.TimeoutExpired, OSError):
-        pass
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        logger.debug("Failed to get origin/main SHA", err=str(exc))
     return None
 
 

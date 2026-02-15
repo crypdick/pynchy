@@ -331,7 +331,8 @@ class PynchyApp:
             try:
                 reset_data = json.loads(reset_file.read_text())
                 reset_file.unlink()
-            except Exception:
+            except Exception as exc:
+                logger.warning("Failed to read reset prompt file", group=group.name, err=str(exc))
                 reset_file.unlink(missing_ok=True)
                 return True
 
@@ -1013,7 +1014,8 @@ class PynchyApp:
                 boot_warnings_path.unlink()
                 for warning in warnings:
                     parts.append(f"⚠️ {warning}")
-            except Exception:
+            except Exception as exc:
+                logger.warning("Failed to read boot warnings", err=str(exc))
                 boot_warnings_path.unlink(missing_ok=True)
 
         await self._broadcast_host_message(god_jid, "\n".join(parts))

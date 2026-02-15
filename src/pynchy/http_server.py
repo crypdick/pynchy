@@ -43,7 +43,8 @@ def _get_head_commit_message(max_length: int = 72) -> str:
         if len(msg) > max_length:
             return msg[: max_length - 1] + "…"
         return msg
-    except Exception:
+    except Exception as exc:
+        logger.debug("Failed to read HEAD commit message", err=str(exc))
         return ""
 
 
@@ -53,7 +54,8 @@ def _write_boot_warning(message: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         warnings = json.loads(path.read_text()) if path.exists() else []
-    except Exception:
+    except Exception as exc:
+        logger.debug("Failed to read boot warnings file, starting fresh", err=str(exc))
         warnings = []
     warnings.append(message)
     path.write_text(json.dumps(warnings))

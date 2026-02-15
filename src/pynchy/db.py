@@ -14,6 +14,7 @@ from typing import Any
 import aiosqlite
 
 from pynchy.config import DATA_DIR, STORE_DIR
+from pynchy.logger import logger
 from pynchy.types import (
     ContainerConfig,
     McpToolConfig,
@@ -717,7 +718,8 @@ async def _migrate_json_state() -> None:
             data = json.loads(filepath.read_text())
             filepath.rename(filepath.with_suffix(filepath.suffix + ".migrated"))
             return data
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to read/archive migration file", file=filename, err=str(exc))
             return None
 
     # Migrate router_state.json
@@ -841,9 +843,13 @@ def _row_to_workspace_profile(row: aiosqlite.Row) -> WorkspaceProfile:
                 allow_filesystem_access=sec_data.get("allow_filesystem_access", True),
                 allow_network_access=sec_data.get("allow_network_access", True),
             )
-    except (KeyError, json.JSONDecodeError):
+    except (KeyError, json.JSONDecodeError) as exc:
         # Fall back to default security if parsing fails
-        pass
+        logger.warning(
+            "Failed to parse security profile, using defaults",
+            folder=row["folder"],
+            err=str(exc),
+        )
 
     requires_trigger = True if row["requires_trigger"] is None else row["requires_trigger"] == 1
 
