@@ -32,6 +32,7 @@ from pynchy.db import (
 )
 from pynchy.group_queue import GroupQueue
 from pynchy.logger import logger
+from pynchy.router import format_tool_preview
 from pynchy.types import ContainerInput, ContainerOutput, RegisteredGroup, ScheduledTask, TaskRunLog
 
 
@@ -196,6 +197,11 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
 
         async def _on_streamed_output(streamed: ContainerOutput) -> None:
             nonlocal result, error
+            if streamed.type == "tool_use":
+                tool_name = streamed.tool_name or "tool"
+                tool_input = streamed.tool_input or {}
+                preview = format_tool_preview(tool_name, tool_input)
+                await deps.broadcast_to_channels(task.chat_jid, f"\U0001f527 {preview}")
             if streamed.result:
                 result = streamed.result
                 await deps.broadcast_to_channels(task.chat_jid, streamed.result)
