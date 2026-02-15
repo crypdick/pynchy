@@ -161,7 +161,7 @@ The pynchy service runs on `nuc-server` (Intel NUC, headless Ubuntu) over Tailsc
 Pushing to `main` is all that's needed — the prod server auto-pulls and restarts the service. No manual deploy required.
 
 ```bash
-# Manual deploy / restart (emergency only)
+# Manual deploy / restart from HOST only (not from containers — use mcp__pynchy__deploy_changes instead)
 curl -s -X POST http://nuc-server:8484/deploy
 
 # Service status & logs (run on NUC or via ssh)
