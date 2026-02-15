@@ -92,6 +92,7 @@ from pynchy.types import (
     RegisteredGroup,
     WorkspaceProfile,
 )
+from pynchy.utils import generate_message_id
 
 _trace_counter = 0
 
@@ -1119,7 +1120,7 @@ class PynchyApp:
         # Uses sender="deploy" so it passes get_messages_since filters
         # (sender="host" is excluded to prevent host messages triggering the agent).
         synthetic_msg = NewMessage(
-            id=f"deploy-{commit_sha[:8]}-{int(datetime.now(UTC).timestamp() * 1000)}",
+            id=generate_message_id(f"deploy-{commit_sha[:8]}"),
             chat_jid=chat_jid,
             sender="deploy",
             sender_name="deploy",
@@ -1147,7 +1148,7 @@ class PynchyApp:
         for ch in self.channels:
             if ch.is_connected():
                 if suppress_errors:
-                    with contextlib.suppress(Exception):
+                    with contextlib.suppress(OSError, TimeoutError, ConnectionError):
                         await ch.send_message(chat_jid, text)
                 else:
                     try:
@@ -1189,7 +1190,7 @@ class PynchyApp:
         """
         ts = datetime.now(UTC).isoformat()
         await store_message_direct(
-            id=f"host-{int(datetime.now(UTC).timestamp() * 1000)}",
+            id=generate_message_id("host"),
             chat_jid=chat_jid,
             sender="host",
             sender_name="host",
@@ -1312,7 +1313,7 @@ class PynchyApp:
 
                 # Format the message with sender name
                 formatted = f"{msg.sender_name}: {msg.content}"
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(OSError, TimeoutError, ConnectionError):
                     await ch.send_message(msg.chat_jid, formatted)
 
     async def _on_inbound(self, _jid: str, msg: NewMessage) -> None:
@@ -1447,6 +1448,23 @@ class PynchyApp:
     # Dependency adapters
     # ------------------------------------------------------------------
 
+    def _make_host_broadcaster(self) -> tuple[MessageBroadcaster, HostMessageBroadcaster]:
+        """Create a MessageBroadcaster and HostMessageBroadcaster pair.
+
+        Shared factory for dependency adapters that need to send host messages.
+        The store function injects message_type='host' so host messages are
+        filtered out of the LLM conversation context.
+        """
+        broadcaster = MessageBroadcaster(self.channels)
+
+        async def store_host_message(**kwargs: Any) -> None:
+            await store_message_direct(**kwargs, message_type="host")
+
+        host_broadcaster = HostMessageBroadcaster(
+            broadcaster, store_host_message, self.event_bus.emit
+        )
+        return broadcaster, host_broadcaster
+
     def _make_scheduler_deps(self) -> Any:
         """Create the dependency object for the task scheduler."""
         # Use composition of adapters instead of manual delegation
@@ -1468,16 +1486,7 @@ class PynchyApp:
 
     def _make_http_deps(self) -> Any:
         """Create the dependency object for the HTTP server."""
-        # Use composition of adapters instead of manual delegation
-        broadcaster = MessageBroadcaster(self.channels)
-
-        # Wrapper to inject message_type='host' for host messages
-        async def store_host_message(**kwargs: Any) -> None:
-            await store_message_direct(**kwargs, message_type="host")
-
-        host_broadcaster = HostMessageBroadcaster(
-            broadcaster, store_host_message, self.event_bus.emit
-        )
+        _broadcaster, host_broadcaster = self._make_host_broadcaster()
         group_registry = GroupRegistry(self.registered_groups)
         metadata_manager = GroupMetadataManager(
             self.registered_groups, self.channels, self.get_available_groups
@@ -1503,16 +1512,7 @@ class PynchyApp:
 
     def _make_ipc_deps(self) -> Any:
         """Create the dependency object for the IPC watcher."""
-        # Use composition of adapters instead of manual delegation
-        broadcaster = MessageBroadcaster(self.channels)
-
-        # Wrapper to inject message_type='host' for host messages
-        async def store_host_message(**kwargs: Any) -> None:
-            await store_message_direct(**kwargs, message_type="host")
-
-        host_broadcaster = HostMessageBroadcaster(
-            broadcaster, store_host_message, self.event_bus.emit
-        )
+        broadcaster, host_broadcaster = self._make_host_broadcaster()
         registration_manager = GroupRegistrationManager(
             self.registered_groups, self._register_group, self._send_clear_confirmation
         )
@@ -1541,15 +1541,7 @@ class PynchyApp:
 
     def _make_git_sync_deps(self) -> Any:
         """Create the dependency object for the git sync loop."""
-        broadcaster = MessageBroadcaster(self.channels)
-
-        # Wrapper to inject message_type='host' for host messages
-        async def store_host_message(**kwargs: Any) -> None:
-            await store_message_direct(**kwargs, message_type="host")
-
-        host_broadcaster = HostMessageBroadcaster(
-            broadcaster, store_host_message, self.event_bus.emit
-        )
+        _broadcaster, host_broadcaster = self._make_host_broadcaster()
         group_registry = GroupRegistry(self.registered_groups)
 
         class GitSyncDeps:
