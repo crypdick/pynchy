@@ -41,6 +41,7 @@ Single source of truth for all pynchy work items.
 - daily cron job that redeploys containers with a full container rebuild. make sure that the deploy script does not spin up containers if they are idle.
 - a new 'end session' magic word that spins down the container. it runs sync before container is stopped.
 - MCPs are known to burn lots of tokens. see whether it's feasible to migrate all MCPs to tools that are passed by the claude sdk. the key requirement is that they execute host-side, or that they have a special channel that can poke an endpoint on the host side that triggers a workflow. these can't be arbitrary code execution, just trigger a workflow.
+- abandon claude hookify hooks. openai does not support them. build a hook system into our own harness.
 
 
 ### 2 - Planning
