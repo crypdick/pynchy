@@ -34,7 +34,7 @@ theme:
     repo: fontawesome/brands/github
 
 exclude_docs: |
-  archive/
+  _archive/
 
 plugins:
   - search
