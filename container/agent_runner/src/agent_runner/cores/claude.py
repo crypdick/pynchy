@@ -231,6 +231,7 @@ class ClaudeAgentCore:
                 "mcp__pynchy__*",
             ],
             permission_mode="bypassPermissions",
+            settings='{"attribution": {"commit": "", "pr": ""}}',
             setting_sources=["project", "user"],
             mcp_servers=self.config.mcp_servers,
             hooks=claude_hooks if claude_hooks else None,
