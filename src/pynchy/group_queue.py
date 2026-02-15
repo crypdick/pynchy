@@ -14,6 +14,7 @@ import asyncio
 import json
 import random
 import time
+from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
@@ -36,18 +37,26 @@ class GroupState:
     active: bool = False
     active_is_task: bool = False  # True when active container is a scheduled task
     pending_messages: bool = False
-    pending_tasks: list[QueuedTask] = field(default_factory=list)
+    pending_tasks: deque[QueuedTask] = field(default_factory=deque)
     process: asyncio.subprocess.Process | None = None
     container_name: str | None = None
     group_folder: str | None = None
     retry_count: int = 0
+
+    def release(self) -> None:
+        """Reset transient per-run state when a container slot is freed."""
+        self.active = False
+        self.active_is_task = False
+        self.process = None
+        self.container_name = None
+        self.group_folder = None
 
 
 class GroupQueue:
     def __init__(self) -> None:
         self._groups: dict[str, GroupState] = {}
         self._active_count = 0
-        self._waiting_groups: list[str] = []
+        self._waiting_groups: deque[str] = deque()
         self._process_messages_fn: Callable[[str], Awaitable[bool]] | None = None
         self._shutting_down = False
 
@@ -219,11 +228,7 @@ class GroupQueue:
             )
             self._schedule_retry(group_jid, state)
         finally:
-            state.active = False
-            state.active_is_task = False
-            state.process = None
-            state.container_name = None
-            state.group_folder = None
+            state.release()
             self._active_count -= 1
             self._drain_group(group_jid)
 
@@ -251,11 +256,7 @@ class GroupQueue:
                 err=str(exc),
             )
         finally:
-            state.active = False
-            state.active_is_task = False
-            state.process = None
-            state.container_name = None
-            state.group_folder = None
+            state.release()
             self._active_count -= 1
             self._drain_group(group_jid)
 
@@ -302,7 +303,7 @@ class GroupQueue:
 
         # Then pending tasks
         if state.pending_tasks:
-            task = state.pending_tasks.pop(0)
+            task = state.pending_tasks.popleft()
             state.active = True
             state.active_is_task = True
             self._active_count += 1
@@ -314,7 +315,7 @@ class GroupQueue:
 
     def _drain_waiting(self) -> None:
         while self._waiting_groups and self._active_count < MAX_CONCURRENT_CONTAINERS:
-            next_jid = self._waiting_groups.pop(0)
+            next_jid = self._waiting_groups.popleft()
             state = self._get_group(next_jid)
 
             # Messages first — same priority as _drain_group
@@ -325,7 +326,7 @@ class GroupQueue:
                 self._active_count += 1
                 asyncio.ensure_future(self._run_for_group(next_jid, "drain"))
             elif state.pending_tasks:
-                task = state.pending_tasks.pop(0)
+                task = state.pending_tasks.popleft()
                 state.active = True
                 state.active_is_task = True
                 self._active_count += 1
