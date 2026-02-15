@@ -82,7 +82,7 @@ On first run, Pynchy will:
 
 Step-by-step guide to deploying Pynchy on a headless Linux server with systemd, accessible over Tailscale.
 
-For macOS desktop setup, use the [Quick Start](#quick-start-automated) above.
+For macOS desktop setup, see the [Installation Steps](#installation-steps) above.
 
 ### Prerequisites
 

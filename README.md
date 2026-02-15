@@ -23,13 +23,7 @@ See **[docs/INSTALL.md](docs/INSTALL.md)** for complete installation instruction
 
 ## Philosophy
 
-**Small enough to understand.** One Python process, a few source files. No microservices, no message queues, no abstraction layers. Have Claude Code walk you through it.
-
 **Secure by isolation.** Agents run in Linux containers (Docker, or Apple Container on macOS). They can only see what's explicitly mounted. Bash access is safe because commands run inside the container, not on your host.
-
-**Built for one user.** This isn't a framework. It's working software that fits my exact needs. You fork it and have Claude Code make it match your exact needs.
-
-**Customization = code changes.** No configuration sprawl. Want different behavior? Modify the code. The codebase is small enough that this is safe.
 
 **AI-native.** No installation wizard; Claude Code guides setup. No monitoring dashboard; ask Claude what's happening. No debugging tools; describe the problem, Claude fixes it.
 
@@ -72,8 +66,6 @@ There are no configuration files to learn. Just tell Claude Code what you want:
 - "Remember in the future to make responses shorter and more direct"
 - "Add a custom greeting when I say good morning"
 - "Store conversation summaries weekly"
-
-The codebase is small enough that Claude can safely modify it.
 
 ## Contributing
 
@@ -123,7 +115,7 @@ On macOS, Apple Container is the preferred runtime — it's lightweight and opti
 
 **Is this secure?**
 
-Agents run in containers, not behind application-level permission checks. They can only access explicitly mounted directories. You should still review what you're running, but the codebase is small enough that you actually can. See [docs/SECURITY.md](docs/SECURITY.md) for the full security model.
+Agents run in containers, not behind application-level permission checks. They can only access explicitly mounted directories. You should still review what you're running. See [docs/SECURITY.md](docs/SECURITY.md) for the full security model.
 
 **Why no configuration files?**
 
