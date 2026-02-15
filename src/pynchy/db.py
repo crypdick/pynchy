@@ -373,32 +373,7 @@ async def get_new_messages(jids: list[str], last_timestamp: str) -> tuple[list[N
     cursor = await db.execute(sql, [last_timestamp, *jids])
     rows = await cursor.fetchall()
 
-    messages = []
-    for row in rows:
-        # Handle optional columns gracefully for backward compatibility
-        try:
-            message_type = row["message_type"] or "user"
-        except (KeyError, IndexError):
-            message_type = "user"
-
-        try:
-            metadata_str = row["metadata"]
-            metadata = json.loads(metadata_str) if metadata_str else None
-        except (KeyError, IndexError):
-            metadata = None
-
-        messages.append(
-            NewMessage(
-                id=row["id"],
-                chat_jid=row["chat_jid"],
-                sender=row["sender"],
-                sender_name=row["sender_name"],
-                content=row["content"],
-                timestamp=row["timestamp"],
-                message_type=message_type,
-                metadata=metadata,
-            )
-        )
+    messages = [_row_to_message(row) for row in rows]
 
     new_timestamp = last_timestamp
     for msg in messages:
@@ -421,33 +396,7 @@ async def get_messages_since(chat_jid: str, since_timestamp: str) -> list[NewMes
     cursor = await db.execute(sql, (chat_jid, since_timestamp))
     rows = await cursor.fetchall()
 
-    messages = []
-    for row in rows:
-        # Handle optional columns gracefully for backward compatibility
-        try:
-            message_type = row["message_type"] or "user"
-        except (KeyError, IndexError):
-            message_type = "user"
-
-        try:
-            metadata_str = row["metadata"]
-            metadata = json.loads(metadata_str) if metadata_str else None
-        except (KeyError, IndexError):
-            metadata = None
-
-        messages.append(
-            NewMessage(
-                id=row["id"],
-                chat_jid=row["chat_jid"],
-                sender=row["sender"],
-                sender_name=row["sender_name"],
-                content=row["content"],
-                timestamp=row["timestamp"],
-                message_type=message_type,
-                metadata=metadata,
-            )
-        )
-    return messages
+    return [_row_to_message(row) for row in rows]
 
 
 async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
@@ -487,34 +436,7 @@ async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
         )
     rows = await cursor.fetchall()
 
-    messages = []
-    for row in reversed(rows):
-        # Handle optional columns gracefully for backward compatibility
-        try:
-            message_type = row["message_type"] or "user"
-        except (KeyError, IndexError):
-            message_type = "user"
-
-        try:
-            metadata_str = row["metadata"]
-            metadata = json.loads(metadata_str) if metadata_str else None
-        except (KeyError, IndexError):
-            metadata = None
-
-        messages.append(
-            NewMessage(
-                id=row["id"],
-                chat_jid=row["chat_jid"],
-                sender=row["sender"],
-                sender_name=row["sender_name"],
-                content=row["content"],
-                timestamp=row["timestamp"],
-                is_from_me=bool(row["is_from_me"]),
-                message_type=message_type,
-                metadata=metadata,
-            )
-        )
-    return messages
+    return [_row_to_message(row) for row in reversed(rows)]
 
 
 # --- Scheduled tasks ---
@@ -899,6 +821,42 @@ async def _migrate_json_state() -> None:
 
 
 # --- Helpers ---
+
+
+def _row_to_message(row: aiosqlite.Row) -> NewMessage:
+    """Convert a database row to a NewMessage.
+
+    Handles optional columns (message_type, metadata) gracefully for backward
+    compatibility with rows written before those columns existed.
+    """
+    try:
+        message_type = row["message_type"] or "user"
+    except (KeyError, IndexError):
+        message_type = "user"
+
+    try:
+        metadata_str = row["metadata"]
+        metadata = json.loads(metadata_str) if metadata_str else None
+    except (KeyError, IndexError):
+        metadata = None
+
+    # is_from_me is only present in get_chat_history queries
+    try:
+        is_from_me: bool | None = bool(row["is_from_me"])
+    except (KeyError, IndexError):
+        is_from_me = None
+
+    return NewMessage(
+        id=row["id"],
+        chat_jid=row["chat_jid"],
+        sender=row["sender"],
+        sender_name=row["sender_name"],
+        content=row["content"],
+        timestamp=row["timestamp"],
+        is_from_me=is_from_me,
+        message_type=message_type,
+        metadata=metadata,
+    )
 
 
 def _row_to_task(row: aiosqlite.Row) -> ScheduledTask:
