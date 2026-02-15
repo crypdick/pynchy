@@ -22,6 +22,7 @@ from pynchy.config import (
     CONTAINER_MAX_OUTPUT_SIZE,
     CONTAINER_TIMEOUT,
     DATA_DIR,
+    DEFAULT_AGENT_CORE,
     GROUPS_DIR,
     IDLE_TIMEOUT,
     OUTPUT_END_MARKER,
@@ -32,6 +33,30 @@ from pynchy.logger import logger
 from pynchy.mount_security import validate_additional_mounts
 from pynchy.runtime import get_runtime
 from pynchy.types import ContainerInput, ContainerOutput, RegisteredGroup, VolumeMount
+
+# ---------------------------------------------------------------------------
+# Agent core resolution
+# ---------------------------------------------------------------------------
+
+
+def resolve_agent_core(plugin_manager: Any) -> tuple[str, str]:
+    """Look up the agent core module and class from plugins.
+
+    Returns (module_path, class_name) for the configured agent core.
+    Falls back to the defaults in ContainerInput if no plugin provides one.
+    """
+    module = "agent_runner.cores.claude"
+    class_name = "ClaudeAgentCore"
+    if plugin_manager:
+        cores = plugin_manager.hook.pynchy_agent_core_info()
+        core_info = next((c for c in cores if c["name"] == DEFAULT_AGENT_CORE), None)
+        if core_info is None and cores:
+            core_info = cores[0]
+        if core_info:
+            module = core_info["module"]
+            class_name = core_info["class_name"]
+    return module, class_name
+
 
 # ---------------------------------------------------------------------------
 # Serialization helpers (camelCase ↔ snake_case boundary)

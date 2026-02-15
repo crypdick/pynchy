@@ -78,14 +78,6 @@ def format_outbound(channel: Channel, raw_text: str) -> str:
     return f"{prefix}{text}"
 
 
-async def route_outbound(channels: list[Channel], jid: str, text: str) -> None:
-    """Find the appropriate connected channel and send a message."""
-    channel = next((c for c in channels if c.owns_jid(jid) and c.is_connected()), None)
-    if channel is None:
-        raise RuntimeError(f"No channel for JID: {jid}")
-    await channel.send_message(jid, text)
-
-
 def format_tool_preview(tool_name: str, tool_input: dict) -> str:
     """Format a one-line preview of a tool invocation for channel messages.
 
@@ -130,11 +122,3 @@ def format_tool_preview(tool_name: str, tool_input: dict) -> str:
     if len(preview) > 50:
         preview = preview[:47] + "..."
     return f"{tool_name}: {preview}" if tool_input else tool_name
-
-
-def find_channel(channels: list[Channel], jid: str) -> Channel | None:
-    """Find the channel that owns a given JID."""
-    for c in channels:
-        if c.owns_jid(jid):
-            return c
-    return None
