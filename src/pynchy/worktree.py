@@ -13,14 +13,12 @@ and notify the agent via system notices so it can resume gracefully.
 from __future__ import annotations
 
 import shutil
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from pynchy.config import PROJECT_ROOT, WORKTREES_DIR
+from pynchy.config import WORKTREES_DIR
+from pynchy.git_utils import detect_main_branch, run_git
 from pynchy.logger import logger
-
-_SUBPROCESS_TIMEOUT = 30
 
 
 class WorktreeError(Exception):
@@ -33,30 +31,6 @@ class WorktreeResult:
 
     path: Path
     notices: list[str] = field(default_factory=list)
-
-
-def _run_git(
-    *args: str,
-    cwd: Path | None = None,
-) -> subprocess.CompletedProcess[str]:
-    """Run a git command with standard timeout and error capture."""
-    return subprocess.run(
-        ["git", *args],
-        cwd=str(cwd or PROJECT_ROOT),
-        capture_output=True,
-        text=True,
-        timeout=_SUBPROCESS_TIMEOUT,
-    )
-
-
-def _detect_main_branch() -> str:
-    """Detect the main branch name via origin/HEAD, fallback to 'main'."""
-    result = _run_git("symbolic-ref", "refs/remotes/origin/HEAD")
-    if result.returncode == 0:
-        # Output like "refs/remotes/origin/main"
-        ref = result.stdout.strip()
-        return ref.split("/")[-1]
-    return "main"
 
 
 def ensure_worktree(group_folder: str) -> WorktreeResult:
@@ -81,13 +55,13 @@ def ensure_worktree(group_folder: str) -> WorktreeResult:
     # Use worktree/ prefix to avoid ref conflicts (e.g. "main/workspace" would
     # conflict with the "main" branch since git refs are path-based).
     branch_name = f"worktree/{group_folder}"
-    main_branch = _detect_main_branch()
+    main_branch = detect_main_branch()
 
     if worktree_path.exists():
         # Health check: verify the worktree is a functional git repo.
         # A stale .git reference (e.g. from a group rename) makes the
         # directory look like a worktree but git commands silently fail.
-        health = _run_git("rev-parse", "--git-dir", cwd=worktree_path)
+        health = run_git("rev-parse", "--git-dir", cwd=worktree_path)
         if health.returncode != 0:
             logger.warning(
                 "Broken worktree detected, recreating",
@@ -109,7 +83,7 @@ def _sync_existing_worktree(
     notices: list[str] = []
 
     # Check for uncommitted changes
-    status = _run_git("status", "--porcelain", cwd=worktree_path)
+    status = run_git("status", "--porcelain", cwd=worktree_path)
     if status.returncode == 0 and status.stdout.strip():
         notices.append(
             "Your worktree has uncommitted changes from a previous run. "
@@ -119,7 +93,7 @@ def _sync_existing_worktree(
         logger.info("Worktree has uncommitted changes", group=group_folder)
 
     # Best-effort fetch + merge
-    fetch = _run_git("fetch", "origin")
+    fetch = run_git("fetch", "origin")
     if fetch.returncode != 0:
         notices.append(
             f"Failed to pull latest changes: git fetch failed ({fetch.stderr.strip()}). "
@@ -127,8 +101,8 @@ def _sync_existing_worktree(
         )
         logger.warning("Worktree fetch failed", group=group_folder, error=fetch.stderr.strip())
     else:
-        head_before = _run_git("rev-parse", "HEAD", cwd=worktree_path).stdout.strip()
-        merge = _run_git("merge", "--no-edit", f"origin/{main_branch}", cwd=worktree_path)
+        head_before = run_git("rev-parse", "HEAD", cwd=worktree_path).stdout.strip()
+        merge = run_git("merge", "--no-edit", f"origin/{main_branch}", cwd=worktree_path)
         if merge.returncode != 0:
             notices.append(
                 f"Failed to pull latest changes: merge of origin/{main_branch} failed "
@@ -136,7 +110,7 @@ def _sync_existing_worktree(
             )
             logger.warning("Worktree merge failed", group=group_folder, error=merge.stderr.strip())
         else:
-            head_after = _run_git("rev-parse", "HEAD", cwd=worktree_path).stdout.strip()
+            head_after = run_git("rev-parse", "HEAD", cwd=worktree_path).stdout.strip()
             if head_before != head_after:
                 notices.append(
                     f"Auto-pulled remote changes from origin/{main_branch} into your worktree. "
@@ -152,17 +126,17 @@ def _create_new_worktree(
 ) -> WorktreeResult:
     """Create a new worktree from origin/{main}. Raises WorktreeError on failure."""
     # Fetch is required for initial creation
-    fetch = _run_git("fetch", "origin")
+    fetch = run_git("fetch", "origin")
     if fetch.returncode != 0:
         raise WorktreeError(f"git fetch failed: {fetch.stderr.strip()}")
 
     WORKTREES_DIR.mkdir(parents=True, exist_ok=True)
 
     # Clean up stale worktree entries and branches from previous runs
-    _run_git("worktree", "prune")
-    _run_git("branch", "-D", branch_name)
+    run_git("worktree", "prune")
+    run_git("branch", "-D", branch_name)
 
-    add = _run_git(
+    add = run_git(
         "worktree",
         "add",
         "-b",
@@ -192,7 +166,7 @@ def reconcile_worktrees_at_startup(
     branches for clean ff-merges after the next container run.
     """
     # Clean git's internal stale entries (worktree dirs that no longer exist)
-    _run_git("worktree", "prune")
+    run_git("worktree", "prune")
 
     # Create missing worktrees for known project_access groups.
     # ensure_worktree's health check handles broken worktrees automatically.
@@ -205,7 +179,7 @@ def reconcile_worktrees_at_startup(
     if not WORKTREES_DIR.exists():
         return
 
-    main_branch = _detect_main_branch()
+    main_branch = detect_main_branch()
 
     for entry in sorted(WORKTREES_DIR.iterdir()):
         if not entry.is_dir():
@@ -215,14 +189,14 @@ def reconcile_worktrees_at_startup(
         branch_name = f"worktree/{group_folder}"
 
         # Check if branch exists
-        branch_check = _run_git("rev-parse", "--verify", branch_name)
+        branch_check = run_git("rev-parse", "--verify", branch_name)
         if branch_check.returncode != 0:
             logger.debug("Worktree branch missing, skipping", group=group_folder)
             continue
 
         # Check divergence: commits ahead and behind main
-        ahead = _run_git("rev-list", f"{main_branch}..{branch_name}", "--count")
-        behind = _run_git("rev-list", f"{branch_name}..{main_branch}", "--count")
+        ahead = run_git("rev-list", f"{main_branch}..{branch_name}", "--count")
+        behind = run_git("rev-list", f"{branch_name}..{main_branch}", "--count")
 
         if ahead.returncode != 0 or behind.returncode != 0:
             logger.warning("Failed to check worktree divergence", group=group_folder)
@@ -244,9 +218,9 @@ def reconcile_worktrees_at_startup(
 
         # Rebase from within the worktree (git won't check out a branch
         # that's already checked out in another worktree)
-        rebase = _run_git("rebase", main_branch, cwd=entry)
+        rebase = run_git("rebase", main_branch, cwd=entry)
         if rebase.returncode != 0:
-            _run_git("rebase", "--abort", cwd=entry)
+            run_git("rebase", "--abort", cwd=entry)
             logger.warning(
                 "Startup worktree rebase failed (needs manual resolution)",
                 group=group_folder,
@@ -273,10 +247,10 @@ def merge_worktree(group_folder: str) -> bool:
     """
     branch_name = f"worktree/{group_folder}"
     worktree_path = WORKTREES_DIR / group_folder
-    main_branch = _detect_main_branch()
+    main_branch = detect_main_branch()
 
     # Check if worktree branch has commits ahead of HEAD
-    count = _run_git("rev-list", f"HEAD..{branch_name}", "--count")
+    count = run_git("rev-list", f"HEAD..{branch_name}", "--count")
     if count.returncode != 0:
         logger.warning(
             "Failed to check worktree commits",
@@ -292,9 +266,9 @@ def merge_worktree(group_folder: str) -> bool:
 
     # Rebase from within the worktree so the branch is already checked out
     # (git refuses to check out a branch used by another worktree)
-    rebase = _run_git("rebase", main_branch, cwd=worktree_path)
+    rebase = run_git("rebase", main_branch, cwd=worktree_path)
     if rebase.returncode != 0:
-        _run_git("rebase", "--abort", cwd=worktree_path)
+        run_git("rebase", "--abort", cwd=worktree_path)
         logger.warning(
             "Worktree rebase failed",
             group=group_folder,
@@ -303,7 +277,7 @@ def merge_worktree(group_folder: str) -> bool:
         return False
 
     # Now ff-only merge is guaranteed to succeed
-    merge = _run_git("merge", "--ff-only", branch_name)
+    merge = run_git("merge", "--ff-only", branch_name)
     if merge.returncode != 0:
         logger.warning(
             "Worktree merge failed after rebase",

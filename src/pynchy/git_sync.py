@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from pynchy.config import PROJECT_ROOT, WORKTREES_DIR
+from pynchy.git_utils import detect_main_branch, run_git
 from pynchy.http_server import _push_local_commits
 from pynchy.logger import logger
-from pynchy.worktree import _detect_main_branch, _run_git
 
 # Authenticated GitHub API rate limit: 5000 req/hr (83/min).
 # git ls-remote every 5s = 720 req/hr — well within limits.
@@ -50,7 +50,7 @@ def host_sync_worktree(group_folder: str) -> dict[str, Any]:
     """
     worktree_path = WORKTREES_DIR / group_folder
     branch_name = f"worktree/{group_folder}"
-    main_branch = _detect_main_branch()
+    main_branch = detect_main_branch()
 
     if not worktree_path.exists():
         return {
@@ -59,7 +59,7 @@ def host_sync_worktree(group_folder: str) -> dict[str, Any]:
         }
 
     # 1. Check for uncommitted changes
-    status = _run_git("status", "--porcelain", cwd=worktree_path)
+    status = run_git("status", "--porcelain", cwd=worktree_path)
     if status.returncode == 0 and status.stdout.strip():
         return {
             "success": False,
@@ -71,7 +71,7 @@ def host_sync_worktree(group_folder: str) -> dict[str, Any]:
         }
 
     # 2. Check if there are commits to merge
-    count = _run_git("rev-list", f"{main_branch}..{branch_name}", "--count")
+    count = run_git("rev-list", f"{main_branch}..{branch_name}", "--count")
     if count.returncode != 0:
         return {
             "success": False,
@@ -88,7 +88,7 @@ def host_sync_worktree(group_folder: str) -> dict[str, Any]:
         }
 
     # 3. Fetch origin
-    fetch = _run_git("fetch", "origin")
+    fetch = run_git("fetch", "origin")
     if fetch.returncode != 0:
         return {
             "success": False,
@@ -99,9 +99,9 @@ def host_sync_worktree(group_folder: str) -> dict[str, Any]:
         }
 
     # 4. Rebase host main onto origin/main (catch up with remote)
-    rebase_main = _run_git("rebase", f"origin/{main_branch}")
+    rebase_main = run_git("rebase", f"origin/{main_branch}")
     if rebase_main.returncode != 0:
-        _run_git("rebase", "--abort")
+        run_git("rebase", "--abort")
         return {
             "success": False,
             "message": (
@@ -112,7 +112,7 @@ def host_sync_worktree(group_folder: str) -> dict[str, Any]:
         }
 
     # 5. Rebase worktree onto main (from within the worktree)
-    rebase_wt = _run_git("rebase", main_branch, cwd=worktree_path)
+    rebase_wt = run_git("rebase", main_branch, cwd=worktree_path)
     if rebase_wt.returncode != 0:
         # Leave conflict markers for agent to resolve
         return {
@@ -127,7 +127,7 @@ def host_sync_worktree(group_folder: str) -> dict[str, Any]:
         }
 
     # 6. FF-merge worktree branch into main
-    merge = _run_git("merge", "--ff-only", branch_name)
+    merge = run_git("merge", "--ff-only", branch_name)
     if merge.returncode != 0:
         return {
             "success": False,
@@ -175,7 +175,7 @@ def _build_rebase_notice(worktree_path: Path, old_head: str, commit_count: int) 
     parts = [f"Auto-rebased {commit_count} commit(s) onto your worktree."]
 
     # File change stats (e.g. "3 files changed, 42 insertions(+), 10 deletions(-)")
-    diffstat = _run_git("diff", "--stat", old_head, "HEAD", cwd=worktree_path)
+    diffstat = run_git("diff", "--stat", old_head, "HEAD", cwd=worktree_path)
     if diffstat.returncode == 0 and diffstat.stdout.strip():
         # Last line of --stat is the summary (e.g. "3 files changed, ...")
         stat_lines = diffstat.stdout.strip().splitlines()
@@ -184,7 +184,7 @@ def _build_rebase_notice(worktree_path: Path, old_head: str, commit_count: int) 
 
     if commit_count == 1:
         # Show full commit message for single commits
-        msg = _run_git("log", "-1", "--format=%B", cwd=worktree_path)
+        msg = run_git("log", "-1", "--format=%B", cwd=worktree_path)
         if msg.returncode == 0 and msg.stdout.strip():
             parts.append(f"Commit: {msg.stdout.strip()}")
     else:
@@ -213,7 +213,7 @@ async def host_notify_worktree_updates(
     if not WORKTREES_DIR.exists():
         return
 
-    main_branch = _detect_main_branch()
+    main_branch = detect_main_branch()
     registered = deps.registered_groups()
 
     # Build folder->jid lookup
@@ -233,12 +233,12 @@ async def host_notify_worktree_updates(
 
         # Check if behind main
         branch_name = f"worktree/{group_folder}"
-        behind = _run_git("rev-list", f"{branch_name}..{main_branch}", "--count")
+        behind = run_git("rev-list", f"{branch_name}..{main_branch}", "--count")
         if behind.returncode != 0 or int(behind.stdout.strip()) == 0:
             continue  # up to date or can't check
 
         # Check for uncommitted changes
-        status = _run_git("status", "--porcelain", cwd=entry)
+        status = run_git("status", "--porcelain", cwd=entry)
         if status.returncode == 0 and status.stdout.strip():
             notice = (
                 "Main branch has been updated, but your worktree has "
@@ -254,10 +254,10 @@ async def host_notify_worktree_updates(
 
         # Gather stats before rebase for the notification
         behind_count = int(behind.stdout.strip())
-        head_before = _run_git("rev-parse", "HEAD", cwd=entry).stdout.strip()
+        head_before = run_git("rev-parse", "HEAD", cwd=entry).stdout.strip()
 
         # Attempt rebase
-        rebase = _run_git("rebase", main_branch, cwd=entry)
+        rebase = run_git("rebase", main_branch, cwd=entry)
         if rebase.returncode != 0:
             # Leave conflict markers for agent to resolve
             notice = (
@@ -327,15 +327,15 @@ def _host_get_origin_main_sha() -> str | None:
 
 def _host_update_main() -> bool:
     """Fetch origin and rebase main onto origin/main. Returns True on success."""
-    fetch = _run_git("fetch", "origin")
+    fetch = run_git("fetch", "origin")
     if fetch.returncode != 0:
         logger.warning("git_sync poll: fetch failed", error=fetch.stderr.strip())
         return False
 
-    main_branch = _detect_main_branch()
-    rebase = _run_git("rebase", f"origin/{main_branch}")
+    main_branch = detect_main_branch()
+    rebase = run_git("rebase", f"origin/{main_branch}")
     if rebase.returncode != 0:
-        _run_git("rebase", "--abort")
+        run_git("rebase", "--abort")
         logger.warning("git_sync poll: rebase failed", error=rebase.stderr.strip())
         return False
 
