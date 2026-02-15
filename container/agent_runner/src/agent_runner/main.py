@@ -311,51 +311,51 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
 
 def event_to_output(event: AgentEvent, session_id: str | None) -> ContainerOutput:
     """Convert AgentEvent to ContainerOutput."""
-    if event.type == "thinking":
-        return ContainerOutput(
-            status="success",
-            type="thinking",
-            thinking=event.data.get("thinking"),
-        )
-    elif event.type == "tool_use":
-        return ContainerOutput(
-            status="success",
-            type="tool_use",
-            tool_name=event.data.get("tool_name"),
-            tool_input=event.data.get("tool_input"),
-        )
-    elif event.type == "tool_result":
-        return ContainerOutput(
-            status="success",
-            type="tool_result",
-            tool_result_id=event.data.get("tool_result_id"),
-            tool_result_content=event.data.get("tool_result_content"),
-            tool_result_is_error=event.data.get("tool_result_is_error"),
-        )
-    elif event.type == "text":
-        return ContainerOutput(
-            status="success",
-            type="text",
-            text=event.data.get("text"),
-        )
-    elif event.type == "system":
-        return ContainerOutput(
-            status="success",
-            type="system",
-            system_subtype=event.data.get("system_subtype"),
-            system_data=event.data.get("system_data", {}),
-        )
-    elif event.type == "result":
-        return ContainerOutput(
-            status="success",
-            result=event.data.get("result"),
-            new_session_id=session_id,
-            result_metadata=event.data.get("result_metadata"),
-        )
-    else:
-        # Unknown event type, log and skip
-        log(f"Unknown event type: {event.type}")
-        return ContainerOutput(status="success", type="text", text="")
+    match event.type:
+        case "thinking":
+            return ContainerOutput(
+                status="success",
+                type="thinking",
+                thinking=event.data.get("thinking"),
+            )
+        case "tool_use":
+            return ContainerOutput(
+                status="success",
+                type="tool_use",
+                tool_name=event.data.get("tool_name"),
+                tool_input=event.data.get("tool_input"),
+            )
+        case "tool_result":
+            return ContainerOutput(
+                status="success",
+                type="tool_result",
+                tool_result_id=event.data.get("tool_result_id"),
+                tool_result_content=event.data.get("tool_result_content"),
+                tool_result_is_error=event.data.get("tool_result_is_error"),
+            )
+        case "text":
+            return ContainerOutput(
+                status="success",
+                type="text",
+                text=event.data.get("text"),
+            )
+        case "system":
+            return ContainerOutput(
+                status="success",
+                type="system",
+                system_subtype=event.data.get("system_subtype"),
+                system_data=event.data.get("system_data", {}),
+            )
+        case "result":
+            return ContainerOutput(
+                status="success",
+                result=event.data.get("result"),
+                new_session_id=session_id,
+                result_metadata=event.data.get("result_metadata"),
+            )
+        case _:
+            log(f"Unknown event type: {event.type}")
+            return ContainerOutput(status="success", type="text", text="")
 
 
 # ---------------------------------------------------------------------------

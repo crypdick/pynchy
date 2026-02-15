@@ -63,20 +63,6 @@ _RESET_VERBS = {"reset", "restart", "clear", "new", "wipe"}
 _RESET_NOUNS = {"context", "session", "chat", "conversation"}
 _RESET_ALIASES = {"boom", "c"}
 
-
-def is_context_reset(text: str) -> bool:
-    """Check if a message is a context reset command."""
-    words = text.strip().lower().split()
-    if len(words) == 1:
-        return words[0] in _RESET_ALIASES
-    if len(words) == 2:
-        a, b = words
-        return (a in _RESET_VERBS and b in _RESET_NOUNS) or (
-            a in _RESET_NOUNS and b in _RESET_VERBS
-        )
-    return False
-
-
 # Magic words to end session without clearing context.
 # Syncs worktree and spins down container, but preserves conversation history.
 # Next message will start a fresh container with the existing session context.
@@ -85,17 +71,30 @@ _END_SESSION_NOUNS = {"session"}
 _END_SESSION_ALIASES = {"done", "bye", "goodbye", "cya"}
 
 
-def is_end_session(text: str) -> bool:
-    """Check if a message is an end session command."""
+def _is_magic_command(
+    text: str,
+    verbs: set[str],
+    nouns: set[str],
+    aliases: set[str],
+) -> bool:
+    """Check if text matches a verb+noun pair (either order) or a single alias."""
     words = text.strip().lower().split()
     if len(words) == 1:
-        return words[0] in _END_SESSION_ALIASES
+        return words[0] in aliases
     if len(words) == 2:
         a, b = words
-        return (a in _END_SESSION_VERBS and b in _END_SESSION_NOUNS) or (
-            a in _END_SESSION_NOUNS and b in _END_SESSION_VERBS
-        )
+        return (a in verbs and b in nouns) or (a in nouns and b in verbs)
     return False
+
+
+def is_context_reset(text: str) -> bool:
+    """Check if a message is a context reset command."""
+    return _is_magic_command(text, _RESET_VERBS, _RESET_NOUNS, _RESET_ALIASES)
+
+
+def is_end_session(text: str) -> bool:
+    """Check if a message is an end session command."""
+    return _is_magic_command(text, _END_SESSION_VERBS, _END_SESSION_NOUNS, _END_SESSION_ALIASES)
 
 
 _REDEPLOY_ALIASES = {"r"}
