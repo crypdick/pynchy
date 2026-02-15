@@ -56,8 +56,14 @@ nav:
   - Installation: INSTALL.md
   - Security: SECURITY.md
   - Architecture:
-      - Overview: SPEC.md
+      - Overview: architecture/index.md
+      - Container Isolation: architecture/container-isolation.md
+      - Message Routing: architecture/message-routing.md
       - Message Types: architecture/message-types.md
+      - Memory & Sessions: architecture/memory-and-sessions.md
+      - Scheduled Tasks: architecture/scheduled-tasks.md
+      - Groups: architecture/groups.md
+      - Git Sync: architecture/git-sync.md
   - Debugging: DEBUG_CHECKLIST.md
   - Contributing: contributing.md
 

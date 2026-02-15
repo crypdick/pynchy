@@ -15,23 +15,22 @@ Both timers fire at the same time, so containers always exit via hard SIGKILL (c
 
 ```bash
 # 1. Is the service running?
-launchctl list | grep pynchy
-# Expected: PID  0  com.pynchy (PID = running, "-" = not running, non-zero exit = crashed)
+systemctl --user status pynchy
 
 # 2. Any running containers?
-container ls --format '{{.Names}} {{.Status}}' 2>/dev/null | grep pynchy
+docker ps --filter name=pynchy
 
 # 3. Any stopped/orphaned containers?
-container ls -a --format '{{.Names}} {{.Status}}' 2>/dev/null | grep pynchy
+docker ps -a --filter name=pynchy
 
 # 4. Recent errors in service log?
-grep -E 'ERROR|WARN' logs/pynchy.log | tail -20
+journalctl --user -u pynchy -p err -n 20
 
 # 5. Is WhatsApp connected? (look for last connection event)
-grep -E 'Connected to WhatsApp|Connection closed|connection.*close' logs/pynchy.log | tail -5
+journalctl --user -u pynchy --grep 'Connected to WhatsApp|Connection closed' -n 5
 
 # 6. Are groups loaded?
-grep 'groupCount' logs/pynchy.log | tail -3
+journalctl --user -u pynchy --grep 'groupCount' -n 3
 ```
 
 ## Session Transcript Branching
@@ -120,24 +119,9 @@ grep 'QR\|authentication required\|qr' logs/pynchy.log | tail -5
 ls -la store/auth/
 
 # Re-authenticate if needed
-npm run auth
+uv run pynchy auth
 ```
 
 ## Service Management
 
-```bash
-# Restart the service
-launchctl kickstart -k gui/$(id -u)/com.pynchy
-
-# View live logs
-tail -f logs/pynchy.log
-
-# Stop the service (careful — running containers are detached, not killed)
-launchctl bootout gui/$(id -u)/com.pynchy
-
-# Start the service
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.pynchy.plist
-
-# Rebuild after code changes
-npm run build && launchctl kickstart -k gui/$(id -u)/com.pynchy
-```
+See `.claude/deployment.md` in the project root for service management commands.

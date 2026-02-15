@@ -72,11 +72,30 @@ Messages and task operations are verified against group identity:
 
 **Credential Filtering:**
 Only these environment variables are exposed to containers:
-```typescript
-const allowedVars = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'];
+```python
+ALLOWED_ENV_VARS = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]
 ```
 
 > **Note:** Anthropic credentials are mounted so that Claude Code can authenticate when the agent runs. However, this means the agent itself can discover these credentials via Bash or file operations. Ideally, Claude Code would authenticate without exposing credentials to the agent's execution environment, but I couldn't figure this out. **PRs welcome** if you have ideas for credential isolation.
+
+### 6. Prompt Injection
+
+WhatsApp messages could contain malicious instructions attempting to manipulate Claude's behavior.
+
+**Mitigations:**
+- Container isolation limits blast radius of successful attacks
+- Only registered groups are processed (explicit allowlist)
+- Trigger word required (reduces accidental processing)
+- Agents can only access their group's mounted directories
+- Additional directory mounts must be explicitly configured per group
+- Claude's built-in safety training helps resist manipulation
+
+**Recommendations:**
+- Only register trusted groups
+- Review additional directory mounts carefully before adding
+- Review scheduled tasks periodically for unexpected behavior
+- Monitor logs for unusual activity
+- Use `groups/global/` for shared readonly resources only
 
 ## Privilege Comparison
 
