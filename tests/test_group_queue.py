@@ -540,6 +540,7 @@ class TestIsActiveTask:
 
     async def test_returns_false_after_task_completes(self, queue: GroupQueue):
         """is_active_task returns False after a task completes."""
+
         async def task_fn():
             pass  # completes immediately
 
@@ -554,6 +555,7 @@ class TestTaskExceptionHandling:
 
     async def test_task_exception_does_not_crash_queue(self, queue: GroupQueue):
         """An exception in a task should be caught and not crash the queue."""
+
         async def failing_task():
             raise RuntimeError("task exploded")
 

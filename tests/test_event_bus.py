@@ -264,11 +264,9 @@ class TestEventBus:
 
         unsubscribe = bus.subscribe(MessageEvent, listener)
 
-        # Call unsubscribe twice
+        # Call unsubscribe twice — second call is a no-op (safe to call twice)
         unsubscribe()
-        # Second call should raise ValueError when trying to remove from list
-        with pytest.raises(ValueError):
-            unsubscribe()
+        unsubscribe()  # Should not raise
 
     @pytest.mark.asyncio
     async def test_fire_and_forget_behavior(self, bus: EventBus) -> None:

@@ -324,9 +324,7 @@ class TestSyncWorktreeIpc:
                 "pynchy.ipc.host_sync_worktree",
                 return_value={"success": True, "message": "done"},
             ),
-            patch(
-                "pynchy.ipc.host_notify_worktree_updates", new_callable=AsyncMock
-            ) as mock_notify,
+            patch("pynchy.ipc.host_notify_worktree_updates", new_callable=AsyncMock) as mock_notify,
         ):
             await process_task_ipc(
                 {
@@ -352,9 +350,7 @@ class TestSyncWorktreeIpc:
                 "pynchy.ipc.host_sync_worktree",
                 return_value={"success": False, "message": "conflict"},
             ),
-            patch(
-                "pynchy.ipc.host_notify_worktree_updates", new_callable=AsyncMock
-            ) as mock_notify,
+            patch("pynchy.ipc.host_notify_worktree_updates", new_callable=AsyncMock) as mock_notify,
         ):
             await process_task_ipc(
                 {

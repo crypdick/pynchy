@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import sys
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -66,7 +67,7 @@ class WhatsAppChannel:
 
         self._connected = False
         self._lid_to_phone: dict[str, str] = {}
-        self._outgoing_queue: list[_OutgoingMessage] = []
+        self._outgoing_queue: deque[_OutgoingMessage] = deque()
         self._flushing = False
         self._group_sync_task: asyncio.Task[None] | None = None
         self._idle_task: asyncio.Task[None] | None = None
@@ -193,6 +194,12 @@ class WhatsAppChannel:
             or msg.videoMessage.caption
             or ""
         )
+        if not content:
+            logger.debug(
+                "Message with no extractable text content",
+                chat_jid=chat_jid,
+                message_id=info.ID,
+            )
 
         # Skip echoed bot responses — these are stored by the broadcast path in app.py
         if source.IsFromMe and content.startswith(f"{ASSISTANT_NAME}:"):
@@ -401,7 +408,7 @@ class WhatsAppChannel:
         try:
             logger.info("Flushing outgoing message queue", count=len(self._outgoing_queue))
             while self._outgoing_queue:
-                item = self._outgoing_queue.pop(0)
+                item = self._outgoing_queue.popleft()
                 await self.send_message(item.jid, item.text)
         finally:
             self._flushing = False
