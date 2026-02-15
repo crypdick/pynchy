@@ -6,7 +6,6 @@ Port of src/index.ts. Module-level globals become instance state on PynchyApp.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import os
 import signal
@@ -1139,8 +1138,10 @@ class PynchyApp:
         for ch in self.channels:
             if ch.is_connected():
                 if suppress_errors:
-                    with contextlib.suppress(OSError, TimeoutError, ConnectionError):
+                    try:
                         await ch.send_message(chat_jid, text)
+                    except (OSError, TimeoutError, ConnectionError) as exc:
+                        logger.warning("Channel send failed", channel=ch.name, err=str(exc))
                 else:
                     try:
                         await ch.send_message(chat_jid, text)
@@ -1153,15 +1154,19 @@ class PynchyApp:
         """Send a reaction emoji to a message on all channels that support it."""
         for ch in self.channels:
             if ch.is_connected() and hasattr(ch, "send_reaction"):
-                with contextlib.suppress(OSError, TimeoutError, ConnectionError):
+                try:
                     await ch.send_reaction(chat_jid, message_id, sender, emoji)
+                except (OSError, TimeoutError, ConnectionError) as exc:
+                    logger.debug("Reaction send failed", channel=ch.name, err=str(exc))
 
     async def _set_typing_on_channels(self, chat_jid: str, is_typing: bool) -> None:
         """Set typing indicator on all channels that support it."""
         for ch in self.channels:
             if ch.is_connected() and hasattr(ch, "set_typing"):
-                with contextlib.suppress(OSError, TimeoutError, ConnectionError):
+                try:
                     await ch.set_typing(chat_jid, is_typing)
+                except (OSError, TimeoutError, ConnectionError) as exc:
+                    logger.debug("Typing indicator send failed", channel=ch.name, err=str(exc))
 
     # ------------------------------------------------------------------
     # Helpers
@@ -1306,8 +1311,10 @@ class PynchyApp:
 
                 # Format the message with sender name
                 formatted = f"{msg.sender_name}: {msg.content}"
-                with contextlib.suppress(OSError, TimeoutError, ConnectionError):
+                try:
                     await ch.send_message(msg.chat_jid, formatted)
+                except (OSError, TimeoutError, ConnectionError) as exc:
+                    logger.warning("Cross-channel broadcast failed", channel=ch.name, err=str(exc))
 
     async def _on_inbound(self, _jid: str, msg: NewMessage) -> None:
         """Handle inbound message from any channel — delegates to unified ingestion."""

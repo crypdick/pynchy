@@ -291,28 +291,32 @@ class TestHealthEndpoint(AioHTTPTestCase):
 
     async def test_health_returns_status_ok(self):
         """Health endpoint returns ok status."""
-        with patch("pynchy.http_server.get_head_sha", return_value="abc123"):
-            with patch("pynchy.http_server._get_head_commit_message", return_value="Test commit"):
-                with patch("pynchy.http_server.is_repo_dirty", return_value=False):
-                    resp = await self.client.get("/health")
-                    assert resp.status == 200
-                    data = await resp.json()
-                    assert data["status"] == "ok"
-                    assert data["head_sha"] == "abc123"
-                    assert data["head_commit"] == "Test commit"
-                    assert data["dirty"] is False
-                    assert data["channels_connected"] is True
-                    assert "uptime_seconds" in data
+        with (
+            patch("pynchy.http_server.get_head_sha", return_value="abc123"),
+            patch("pynchy.http_server._get_head_commit_message", return_value="Test commit"),
+            patch("pynchy.http_server.is_repo_dirty", return_value=False),
+        ):
+            resp = await self.client.get("/health")
+            assert resp.status == 200
+            data = await resp.json()
+            assert data["status"] == "ok"
+            assert data["head_sha"] == "abc123"
+            assert data["head_commit"] == "Test commit"
+            assert data["dirty"] is False
+            assert data["channels_connected"] is True
+            assert "uptime_seconds" in data
 
     async def test_health_includes_uptime(self):
         """Health endpoint includes uptime_seconds."""
-        with patch("pynchy.http_server.get_head_sha", return_value="abc123"):
-            with patch("pynchy.http_server._get_head_commit_message", return_value="Test"):
-                with patch("pynchy.http_server.is_repo_dirty", return_value=False):
-                    resp = await self.client.get("/health")
-                    data = await resp.json()
-                    assert isinstance(data["uptime_seconds"], int)
-                    assert data["uptime_seconds"] >= 0
+        with (
+            patch("pynchy.http_server.get_head_sha", return_value="abc123"),
+            patch("pynchy.http_server._get_head_commit_message", return_value="Test"),
+            patch("pynchy.http_server.is_repo_dirty", return_value=False),
+        ):
+            resp = await self.client.get("/health")
+            data = await resp.json()
+            assert isinstance(data["uptime_seconds"], int)
+            assert data["uptime_seconds"] >= 0
 
 
 class TestTUIAPIEndpoints(AioHTTPTestCase):

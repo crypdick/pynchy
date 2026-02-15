@@ -7,12 +7,12 @@ HTTP server, and IPC watcher. Reduces boilerplate delegation code in PynchyApp.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from pynchy.db import clear_session, get_active_task_for_group, get_chat_history
+from pynchy.logger import logger
 from pynchy.router import format_outbound
 from pynchy.utils import generate_message_id
 
@@ -40,8 +40,11 @@ class MessageBroadcaster:
         """Send message to all connected channels (internal use)."""
         for ch in self.channels:
             if ch.is_connected():
-                with contextlib.suppress(OSError, TimeoutError, ConnectionError):
+                try:
                     await ch.send_message(jid, text)
+                except (OSError, TimeoutError, ConnectionError) as exc:
+                    ch_name = getattr(ch, "name", "?")
+                    logger.warning("Channel send failed", channel=ch_name, err=str(exc))
 
     async def _broadcast_formatted(self, jid: str, raw_text: str) -> None:
         """Send message with per-channel formatting (internal use)."""
@@ -49,8 +52,11 @@ class MessageBroadcaster:
             if ch.is_connected():
                 text = format_outbound(ch, raw_text)
                 if text:
-                    with contextlib.suppress(OSError, TimeoutError, ConnectionError):
+                    try:
                         await ch.send_message(jid, text)
+                    except (OSError, TimeoutError, ConnectionError) as exc:
+                        ch_name = getattr(ch, "name", "?")
+                        logger.warning("Formatted send failed", channel=ch_name, err=str(exc))
 
 
 class HostMessageBroadcaster:
