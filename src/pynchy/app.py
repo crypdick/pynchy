@@ -785,18 +785,7 @@ class PynchyApp:
         write_tasks_snapshot(
             group.folder,
             is_god,
-            [
-                {
-                    "id": t.id,
-                    "groupFolder": t.group_folder,
-                    "prompt": t.prompt,
-                    "schedule_type": t.schedule_type,
-                    "schedule_value": t.schedule_value,
-                    "status": t.status,
-                    "next_run": t.next_run,
-                }
-                for t in tasks
-            ],
+            [t.to_snapshot_dict() for t in tasks],
         )
 
         available_groups = await self.get_available_groups()
@@ -1164,13 +1153,15 @@ class PynchyApp:
         """Send a reaction emoji to a message on all channels that support it."""
         for ch in self.channels:
             if ch.is_connected() and hasattr(ch, "send_reaction"):
-                await ch.send_reaction(chat_jid, message_id, sender, emoji)
+                with contextlib.suppress(OSError, TimeoutError, ConnectionError):
+                    await ch.send_reaction(chat_jid, message_id, sender, emoji)
 
     async def _set_typing_on_channels(self, chat_jid: str, is_typing: bool) -> None:
         """Set typing indicator on all channels that support it."""
         for ch in self.channels:
             if ch.is_connected() and hasattr(ch, "set_typing"):
-                await ch.set_typing(chat_jid, is_typing)
+                with contextlib.suppress(OSError, TimeoutError, ConnectionError):
+                    await ch.set_typing(chat_jid, is_typing)
 
     # ------------------------------------------------------------------
     # Helpers
