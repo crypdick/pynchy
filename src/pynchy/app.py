@@ -725,6 +725,9 @@ class PynchyApp:
         loop.call_later(12, lambda: os._exit(1))
 
         if self._http_runner:
+            # Give SSE handlers a brief chance to observe shutdown state and
+            # exit before aiohttp forcibly tears down request tasks.
+            await asyncio.sleep(0.3)
             await self._http_runner.cleanup()
         await self.queue.shutdown(10.0)
         for channel in self.channels:
@@ -862,6 +865,7 @@ class PynchyApp:
 
     def _make_http_deps(self) -> Any:
         """Create the dependency object for the HTTP server."""
+        app = self
         _broadcaster, host_broadcaster = self._make_host_broadcaster()
         group_registry = GroupRegistry(self.registered_groups)
         metadata_manager = GroupMetadataManager(
@@ -883,6 +887,9 @@ class PynchyApp:
             send_user_message = user_message_handler.send_user_message
             get_periodic_agents = periodic_agent_manager.get_periodic_agents
             subscribe_events = event_adapter.subscribe_events
+
+            def is_shutting_down(self) -> bool:
+                return app._shutting_down
 
         return HttpDeps()
 
