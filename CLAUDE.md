@@ -1,6 +1,6 @@
 # Pynchy
 
-Personal Claude assistant. See [README.md](README.md) for philosophy. See [INSTALL.md](INSTALL.md) for installation. See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for architecture decisions.
+Personal Claude assistant. See [README.md](README.md) for philosophy. See [docs/INSTALL.md](docs/INSTALL.md) for installation. See [docs/SPEC.md](docs/SPEC.md) for architecture decisions.
 
 ## Quick Context
 

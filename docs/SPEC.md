@@ -324,7 +324,7 @@ This prevents other users on the system from reading conversation history and me
 ### Deployment
 - macOS: launchd service
 - Linux: systemd user service
-- See [INSTALL.md](../INSTALL.md) for deployment instructions
+- See [INSTALL.md](INSTALL.md) for deployment instructions
 
 ---
 
