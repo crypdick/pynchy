@@ -10,7 +10,7 @@ These should run as subagents in the host. Need a claude rule with guidelines fo
 
 - **Security sweep:** Scan the repo for security concerns.
 - **Upstream feature check:** Check upstream repos for features to copy.
-- **OpenClaw feature check:** Check [OpenClaw](https://github.com/openclaw/openclaw) for ideas and suggestions.
+- **OpenClaw feature check:** Check [OpenClaw](https://github.com/openclaw/openclaw) for ideas and suggestions. Also, [ZeroClaw](https://github.com/theonlyhennygod/zeroclaw), "OpenClaw done right".
 - **Code simplifier:** Clean up code quality, think about how to simplify. Keep a rotating log of which files have been audited so future instances don't repeat work. Should detect janky code and fix it eagerly. Could extend to a list of repos pynchy manages — e.g. all plugin repos it has authored. Should be configurable so a repo doesn't get scanned again unless there's been a code edit since the last simplification check.
 - **Skill reformatter:** Reformat all skills to follow the progressive disclosure principle.
 - **Rule reviewer:** Review skills/rules in individual projects, decide if any should be promoted to global rules that all agents use. Gated behind Deputy agent + human review.
