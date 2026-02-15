@@ -9,6 +9,7 @@ import asyncio
 import json
 import subprocess
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any, Protocol
 from zoneinfo import ZoneInfo
@@ -273,58 +274,21 @@ async def process_task_ipc(
             )
 
         case "pause_task":
-            task_id = data.get("taskId")
-            if task_id:
-                task = await get_task_by_id(task_id)
-                if task and (is_god or task.group_folder == source_group):
-                    await update_task(task_id, {"status": "paused"})
-                    logger.info(
-                        "Task paused via IPC",
-                        task_id=task_id,
-                        source_group=source_group,
-                    )
-                else:
-                    logger.warning(
-                        "Unauthorized task pause attempt",
-                        task_id=task_id,
-                        source_group=source_group,
-                    )
+            await _authorized_task_action(
+                data, source_group, is_god, "pause",
+                lambda tid: update_task(tid, {"status": "paused"}),
+            )
 
         case "resume_task":
-            task_id = data.get("taskId")
-            if task_id:
-                task = await get_task_by_id(task_id)
-                if task and (is_god or task.group_folder == source_group):
-                    await update_task(task_id, {"status": "active"})
-                    logger.info(
-                        "Task resumed via IPC",
-                        task_id=task_id,
-                        source_group=source_group,
-                    )
-                else:
-                    logger.warning(
-                        "Unauthorized task resume attempt",
-                        task_id=task_id,
-                        source_group=source_group,
-                    )
+            await _authorized_task_action(
+                data, source_group, is_god, "resume",
+                lambda tid: update_task(tid, {"status": "active"}),
+            )
 
         case "cancel_task":
-            task_id = data.get("taskId")
-            if task_id:
-                task = await get_task_by_id(task_id)
-                if task and (is_god or task.group_folder == source_group):
-                    await delete_task(task_id)
-                    logger.info(
-                        "Task cancelled via IPC",
-                        task_id=task_id,
-                        source_group=source_group,
-                    )
-                else:
-                    logger.warning(
-                        "Unauthorized task cancel attempt",
-                        task_id=task_id,
-                        source_group=source_group,
-                    )
+            await _authorized_task_action(
+                data, source_group, is_god, "cancel", delete_task,
+            )
 
         case "refresh_groups":
             if is_god:
@@ -480,6 +444,38 @@ async def process_task_ipc(
 
         case _:
             logger.warning("Unknown IPC task type", type=data.get("type"))
+
+
+async def _authorized_task_action(
+    data: dict[str, Any],
+    source_group: str,
+    is_god: bool,
+    action_name: str,
+    action: Callable[[str], Awaitable[Any]],
+) -> None:
+    """Fetch a task, verify authorization, and execute an action on it.
+
+    Used by pause/resume/cancel to avoid repeating the same
+    lookup-then-authorize pattern three times.
+    """
+    task_id = data.get("taskId")
+    if not task_id:
+        return
+
+    task = await get_task_by_id(task_id)
+    if task and (is_god or task.group_folder == source_group):
+        await action(task_id)
+        logger.info(
+            f"Task {action_name}d via IPC",
+            task_id=task_id,
+            source_group=source_group,
+        )
+    else:
+        logger.warning(
+            f"Unauthorized task {action_name} attempt",
+            task_id=task_id,
+            source_group=source_group,
+        )
 
 
 async def _handle_deploy(
