@@ -162,17 +162,15 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
     idle_handle: asyncio.TimerHandle | None = None
     loop = asyncio.get_running_loop()
 
+    def _idle_timeout_callback() -> None:
+        logger.debug("Scheduled task idle timeout, closing stdin", task_id=task.id)
+        deps.queue.close_stdin(task.chat_jid)
+
     def _reset_idle_timer() -> None:
         nonlocal idle_handle
         if idle_handle is not None:
             idle_handle.cancel()
-        idle_handle = loop.call_later(
-            IDLE_TIMEOUT,
-            lambda: (
-                logger.debug("Scheduled task idle timeout, closing stdin", task_id=task.id),
-                deps.queue.close_stdin(task.chat_jid),
-            ),
-        )
+        idle_handle = loop.call_later(IDLE_TIMEOUT, _idle_timeout_callback)
 
     try:
         # Convert task prompt to SDK message format

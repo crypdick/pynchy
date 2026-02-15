@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 from pynchy.config import PROJECT_ROOT
+from pynchy.logger import logger
 
 _SUBPROCESS_TIMEOUT = 30
 
@@ -39,7 +40,8 @@ def get_head_sha() -> str:
     try:
         result = run_git("rev-parse", "HEAD")
         return result.stdout.strip() if result.returncode == 0 else "unknown"
-    except Exception:
+    except Exception as exc:
+        logger.debug("get_head_sha failed", error=str(exc))
         return "unknown"
 
 
@@ -48,7 +50,8 @@ def is_repo_dirty(cwd: Path | None = None) -> bool:
     try:
         result = run_git("status", "--porcelain", cwd=cwd)
         return bool(result.stdout.strip()) if result.returncode == 0 else False
-    except Exception:
+    except Exception as exc:
+        logger.debug("is_repo_dirty failed", error=str(exc), cwd=str(cwd))
         return False
 
 
@@ -59,8 +62,8 @@ def count_unpushed_commits() -> int:
         result = run_git("rev-list", f"origin/{main}..HEAD", "--count")
         if result.returncode == 0:
             return int(result.stdout.strip() or "0")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("count_unpushed_commits failed", error=str(exc))
     return 0
 
 
@@ -78,8 +81,6 @@ def push_local_commits(*, skip_fetch: bool = False) -> bool:
     between fetch and rebase when two worktrees push nearly simultaneously).
     Never raises — all failures are logged and return False.
     """
-    from pynchy.logger import logger
-
     try:
         if not skip_fetch:
             fetch = run_git("fetch", "origin")

@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
 );
 CREATE INDEX IF NOT EXISTS idx_next_run ON scheduled_tasks(next_run);
 CREATE INDEX IF NOT EXISTS idx_status ON scheduled_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_group_folder ON scheduled_tasks(group_folder);
 
 CREATE TABLE IF NOT EXISTS task_run_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

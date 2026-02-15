@@ -348,9 +348,7 @@ class TestTUIAPIEndpoints(AioHTTPTestCase):
                 is_from_me=True,
             ),
         ]
-        self.deps._periodic_agents = [
-            {"name": "test-agent", "status": "running"}
-        ]
+        self.deps._periodic_agents = [{"name": "test-agent", "status": "running"}]
 
         app[deps_key] = self.deps
         app.router.add_get("/api/groups", _handle_api_groups)

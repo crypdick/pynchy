@@ -103,9 +103,7 @@ class TestOpenAICoreInstantiation:
         """create_agent_core() loads and instantiates OpenAIAgentCore."""
         config = self._make_config()
         try:
-            core = create_agent_core(
-                "agent_runner.cores.openai", "OpenAIAgentCore", config
-            )
+            core = create_agent_core("agent_runner.cores.openai", "OpenAIAgentCore", config)
             assert isinstance(core, AgentCore)
             assert core.session_id is None
         except ImportError:
@@ -115,9 +113,7 @@ class TestOpenAICoreInstantiation:
         """Session ID is passed through from config."""
         config = self._make_config(session_id="resp_abc123")
         try:
-            core = create_agent_core(
-                "agent_runner.cores.openai", "OpenAIAgentCore", config
-            )
+            core = create_agent_core("agent_runner.cores.openai", "OpenAIAgentCore", config)
             assert core.session_id == "resp_abc123"
         except ImportError:
             pytest.skip("openai-agents not installed")

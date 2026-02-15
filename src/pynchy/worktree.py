@@ -202,8 +202,12 @@ def reconcile_worktrees_at_startup(
             logger.warning("Failed to check worktree divergence", group=group_folder)
             continue
 
-        ahead_count = int(ahead.stdout.strip())
-        behind_count = int(behind.stdout.strip())
+        try:
+            ahead_count = int(ahead.stdout.strip())
+            behind_count = int(behind.stdout.strip())
+        except (ValueError, TypeError):
+            logger.warning("Failed to parse worktree divergence count", group=group_folder)
+            continue
 
         if ahead_count == 0 or behind_count == 0:
             # Not diverged — either up to date or simply ahead (will ff-merge fine)
@@ -259,7 +263,16 @@ def merge_worktree(group_folder: str) -> bool:
         )
         return False
 
-    ahead = int(count.stdout.strip())
+    try:
+        ahead = int(count.stdout.strip())
+    except (ValueError, TypeError):
+        logger.warning(
+            "Failed to parse worktree commit count",
+            group=group_folder,
+            stdout=count.stdout.strip(),
+        )
+        return False
+
     if ahead == 0:
         logger.debug("Nothing to merge from worktree", group=group_folder)
         return True
