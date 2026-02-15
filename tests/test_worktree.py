@@ -13,9 +13,9 @@ import pytest
 
 from pynchy.worktree import (
     WorktreeError,
-    cleanup_stale_worktrees,
     ensure_worktree,
     merge_worktree,
+    reconcile_worktrees_at_startup,
 )
 
 # ---------------------------------------------------------------------------
@@ -159,6 +159,42 @@ class TestEnsureWorktree:
         with pytest.raises(WorktreeError, match="git fetch failed"):
             ensure_worktree("broken-group")
 
+    def test_broken_worktree_gets_recreated(self, git_env: dict):
+        """Corrupted .git file → worktree is deleted and recreated."""
+        result1 = ensure_worktree("code-improver")
+        wt_path = result1.path
+
+        # Corrupt the .git file (simulates stale gitdir from a rename)
+        git_file = wt_path / ".git"
+        git_file.write_text("gitdir: /nonexistent/path/.git/worktrees/old-name\n")
+
+        # Should detect broken state, delete, and recreate
+        result2 = ensure_worktree("code-improver")
+        assert result2.path == wt_path
+        assert result2.path.exists()
+        assert (result2.path / "README.md").read_text() == "initial"
+
+        # Verify it's a valid git repo now
+        status = _git(wt_path, "status")
+        assert status.returncode == 0
+
+    def test_broken_worktree_with_uncommitted_files_logs_warning(self, git_env: dict, caplog):
+        """Broken worktree with leftover files still gets recreated."""
+        result1 = ensure_worktree("code-improver")
+        wt_path = result1.path
+
+        # Add uncommitted files, then corrupt
+        (wt_path / "wip.txt").write_text("uncommitted work")
+        git_file = wt_path / ".git"
+        git_file.write_text("gitdir: /nonexistent/path\n")
+
+        # Should recreate — broken repo means uncommitted work is unrecoverable
+        result2 = ensure_worktree("code-improver")
+        assert result2.path.exists()
+        assert (result2.path / "README.md").read_text() == "initial"
+        # WIP file is gone (worktree was recreated from scratch)
+        assert not (wt_path / "wip.txt").exists()
+
 
 # ---------------------------------------------------------------------------
 # merge_worktree tests
@@ -242,11 +278,11 @@ class TestMergeWorktree:
 
 
 # ---------------------------------------------------------------------------
-# cleanup_stale_worktrees tests
+# reconcile_worktrees_at_startup tests
 # ---------------------------------------------------------------------------
 
 
-class TestCleanupStaleWorktrees:
+class TestReconcileWorktreesAtStartup:
     def test_rebases_diverged_worktree(self, git_env: dict):
         """Diverged worktree branch is rebased onto main at startup."""
         project = git_env["project"]
@@ -271,9 +307,9 @@ class TestCleanupStaleWorktrees:
         assert int(ahead.stdout.strip()) > 0
         assert int(behind.stdout.strip()) > 0
 
-        cleanup_stale_worktrees()
+        reconcile_worktrees_at_startup()
 
-        # After cleanup, worktree branch should be ahead of main (rebased), not diverged
+        # After reconcile, worktree branch should be ahead of main (rebased), not diverged
         behind_after = _git(project, "rev-list", "worktree/code-improver..main", "--count")
         assert int(behind_after.stdout.strip()) == 0
 
@@ -291,7 +327,7 @@ class TestCleanupStaleWorktrees:
 
         head_before = _git(wt_path, "rev-parse", "HEAD").stdout.strip()
 
-        cleanup_stale_worktrees()
+        reconcile_worktrees_at_startup()
 
         # HEAD unchanged — no rebase needed
         head_after = _git(wt_path, "rev-parse", "HEAD").stdout.strip()
@@ -300,4 +336,32 @@ class TestCleanupStaleWorktrees:
     def test_handles_no_worktrees_dir(self, git_env: dict):
         """Runs cleanly when worktrees dir doesn't exist."""
         # worktrees_dir doesn't exist yet — should not raise
-        cleanup_stale_worktrees()
+        reconcile_worktrees_at_startup()
+
+    def test_creates_missing_worktrees_at_startup(self, git_env: dict):
+        """Worktrees for project_access folders are created if missing."""
+        reconcile_worktrees_at_startup(project_access_folders=["god", "code-improver"])
+
+        worktrees_dir = git_env["worktrees_dir"]
+        assert (worktrees_dir / "god").exists()
+        assert (worktrees_dir / "code-improver").exists()
+
+        # Both should be valid git repos
+        _git(worktrees_dir / "god", "status")
+        _git(worktrees_dir / "code-improver", "status")
+
+    def test_idempotent(self, git_env: dict):
+        """Calling twice with same folders doesn't break anything."""
+        folders = ["god", "code-improver"]
+        reconcile_worktrees_at_startup(project_access_folders=folders)
+
+        # Record state
+        worktrees_dir = git_env["worktrees_dir"]
+        head_god = _git(worktrees_dir / "god", "rev-parse", "HEAD").stdout.strip()
+        head_ci = _git(worktrees_dir / "code-improver", "rev-parse", "HEAD").stdout.strip()
+
+        # Second call — should be a no-op
+        reconcile_worktrees_at_startup(project_access_folders=folders)
+
+        assert _git(worktrees_dir / "god", "rev-parse", "HEAD").stdout.strip() == head_god
+        assert _git(worktrees_dir / "code-improver", "rev-parse", "HEAD").stdout.strip() == head_ci

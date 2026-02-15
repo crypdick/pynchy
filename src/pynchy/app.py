@@ -1556,10 +1556,22 @@ class PynchyApp:
         # Create and connect plugin channels
         await self._connect_plugin_channels()
 
-        # Prune stale worktrees and rebase diverged branches before containers launch
-        from pynchy.worktree import cleanup_stale_worktrees
+        # Reconcile worktrees: create missing ones for project_access groups,
+        # fix broken worktrees, and rebase diverged branches before containers launch
+        from pynchy.periodic import load_periodic_config
+        from pynchy.worktree import reconcile_worktrees_at_startup
 
-        await asyncio.to_thread(cleanup_stale_worktrees)
+        project_access_folders: list[str] = []
+        for profile in self.workspaces.values():
+            is_god = profile.folder == GOD_GROUP_FOLDER
+            periodic = load_periodic_config(profile.folder)
+            if is_god or (periodic and periodic.project_access):
+                project_access_folders.append(profile.folder)
+
+        await asyncio.to_thread(
+            reconcile_worktrees_at_startup,
+            project_access_folders=project_access_folders,
+        )
 
         # Reconcile periodic agents (create chat groups + tasks from periodic.yaml)
         await self._reconcile_periodic_agents()
