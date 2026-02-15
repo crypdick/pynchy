@@ -37,6 +37,7 @@ from pynchy.config import (
     PROJECT_ROOT,
     TRIGGER_PATTERN,
     is_context_reset,
+    is_end_session,
     is_redeploy,
 )
 from pynchy.container_runner import (
@@ -284,7 +285,7 @@ class PynchyApp:
     async def _intercept_special_command(
         self, chat_jid: str, group: RegisteredGroup, message: NewMessage
     ) -> bool:
-        """Check for and handle special commands (reset, redeploy, direct !cmd).
+        """Check for and handle special commands (reset, end session, redeploy, !cmd).
 
         Returns True if a command was intercepted and handled, False otherwise.
         Centralizes command interception so both _process_group_messages and
@@ -295,6 +296,11 @@ class PynchyApp:
         if is_context_reset(content):
             await self._handle_context_reset(chat_jid, group, message.timestamp)
             logger.info("Context reset", group=group.name)
+            return True
+
+        if is_end_session(content):
+            await self._handle_end_session(chat_jid, group, message.timestamp)
+            logger.info("End session", group=group.name)
             return True
 
         if is_redeploy(content):
@@ -933,9 +939,10 @@ class PynchyApp:
                             # Already consumed by _process_group_messages
                             continue
 
-                        # Intercept special commands (context reset, redeploy, !command)
-                        # before piping to active containers — they must be handled
-                        # by the host, not forwarded as regular user messages.
+                        # Intercept special commands (context reset, end session,
+                        # redeploy, !command) before piping to active containers
+                        # — they must be handled by the host, not forwarded as
+                        # regular user messages.
                         if await self._intercept_special_command(chat_jid, group, all_pending[-1]):
                             continue
 
@@ -1212,6 +1219,27 @@ class PynchyApp:
         self.last_agent_timestamp[chat_jid] = timestamp
         await self._save_state()
         await self._send_clear_confirmation(chat_jid)
+
+    async def _handle_end_session(
+        self, chat_jid: str, group: RegisteredGroup, timestamp: str
+    ) -> None:
+        """Sync worktree and spin down the container without clearing context.
+
+        Unlike context reset, this preserves conversation history. The next
+        message will start a fresh container that picks up where it left off.
+        """
+        from pynchy.workspace_config import has_project_access
+        from pynchy.worktree import merge_and_push_worktree
+
+        # Merge worktree commits before stopping so work isn't stranded
+        if has_project_access(group):
+            asyncio.create_task(asyncio.to_thread(merge_and_push_worktree, group.folder))
+
+        # Stop the container but keep session state intact
+        self.queue.close_stdin(chat_jid)
+        self.last_agent_timestamp[chat_jid] = timestamp
+        await self._save_state()
+        await self._broadcast_host_message(chat_jid, "👋")
 
     async def _send_clear_confirmation(self, chat_jid: str) -> None:
         """Set cleared_at, store and broadcast a system confirmation."""
