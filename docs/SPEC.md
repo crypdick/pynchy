@@ -1,6 +1,6 @@
-# Pynchy Requirements
+# Pynchy Architecture
 
-Original requirements and design decisions from the project creator.
+Architecture decisions and design rationale from the project creator.
 
 ---
 

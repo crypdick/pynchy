@@ -1,25 +1,27 @@
 <p align="center">
-  <img src="assets/pynchy.png" alt="Pynchy" width="400">
+  <img src="assets/mr-pinchy.webp" alt="Pynchy" width="400">
 </p>
 
 <p align="center">
-  <em>Pynchy</em> — Personal Claude assistant that runs securely in containers.
+  <em>Pynchy</em> — Personal AI assistant with an emphasis on simplicity and security, written in Python.
 </p>
 
 
+## Why This Project Exists
 
-## Why This Exists
+Everyone is writing their own AI assistant. Why write another one? The biggest reason is that I wanted something written in Python, because that's what I'm most comfortable with.
 
-Pynchy gives you a personal AI assistant in a codebase you can understand in 8 minutes. One process. A handful of files. Agents run in actual Linux containers with filesystem isolation, not behind permission checks.
+Here is a comparison to related projects:
+
+- [ZeroClaw](https://github.com/theonlyhennygod/zeroclaw) looks great actually, but I don't know how to write in Rust. If I did, I would probably use that instead.
+- [NanoClaw](https://github.com/qwibitai/nanoclaw) is a bit too minimalist for my liking.
+- [OpenClaw](https://github.com/openclaw/openclaw) is a big inspiration, but it's a monstrosity. It's a security nightmare, and a massive pile of overcooked spaghetti code. Ain't no way I'm running that on my machine.
+- [pi mono](https://github.com/badlogic/pi-mono) is a less crazy project, which actually OpenClaw built on top of. It doesn't have the security features that I want.
 
 ## Installation
 
-```bash
-git clone https://github.com/crypdick/pynchy.git
-cd pynchy
-```
 
-See **[docs/INSTALL.md](docs/INSTALL.md)** for complete installation instructions, including automated setup via Claude Code, manual installation, headless server deployment, and troubleshooting.
+See **[docs/INSTALL.md](docs/INSTALL.md)**.
 
 ## Philosophy
 
@@ -27,9 +29,7 @@ See **[docs/INSTALL.md](docs/INSTALL.md)** for complete installation instruction
 
 **AI-native.** No installation wizard; Claude Code guides setup. No monitoring dashboard; ask Claude what's happening. No debugging tools; describe the problem, Claude fixes it.
 
-**Plugins over features.** Contributors shouldn't add features (e.g. support for Telegram) to the codebase. Instead, they contribute [claude code skills](https://code.claude.com/docs/en/skills) or plugins.
-
-**Best harness, best model.** This runs on Claude Agent SDK, which means you're running Claude Code directly. The harness matters. A bad harness makes even smart models seem dumb, a good harness gives them superpowers. Claude Code is (IMO) the best harness available.
+**Modularity.** Contributors shouldn't add features (e.g. support for Telegram) to the codebase. Instead, they contribute [claude code skills](https://code.claude.com/docs/en/skills) or plugins. See **[docs/contributing.md](docs/contributing.md)** for the full contributing guide.
 
 ## What It Supports
 
@@ -67,12 +67,6 @@ There are no configuration files to learn. Just tell Claude Code what you want:
 - "Add a custom greeting when I say good morning"
 - "Store conversation summaries weekly"
 
-## Contributing
-
-**Don't add features. Add plugins.**
-
-If you want to add Telegram support, don't create a PR that adds Telegram alongside WhatsApp. Instead, contribute a plugin. TODO link to plugins documentation.
-
 ## Requirements
 
 - macOS or Linux
@@ -84,24 +78,6 @@ If you want to add Telegram support, don't create a PR that adds Telegram alongs
 
 See **[docs/INSTALL.md](docs/INSTALL.md)** for detailed installation instructions and platform-specific dependencies.
 
-## Architecture
-
-```
-WhatsApp (neonize) --> SQLite --> Polling loop --> Container (Claude Agent SDK) --> Response
-```
-
-Single Python process. Agents execute in isolated Linux containers with mounted directories. Per-group message queue with concurrency control. IPC via filesystem.
-
-Key files:
-- `src/pynchy/app.py` - Orchestrator: state, message loop, agent invocation
-- `src/pynchy/channels/` - WhatsApp connection, auth, send/receive
-- `src/pynchy/ipc.py` - IPC watcher and task processing
-- `src/pynchy/router.py` - Message formatting and outbound routing
-- `src/pynchy/group_queue.py` - Per-group queue with global concurrency limit
-- `src/pynchy/container_runner.py` - Spawns streaming agent containers
-- `src/pynchy/task_scheduler.py` - Runs scheduled tasks
-- `src/pynchy/db.py` - SQLite operations (async, aiosqlite)
-- `groups/*/CLAUDE.md` - Per-group memory
 
 ## FAQ
 
@@ -116,10 +92,6 @@ On macOS, Apple Container is the preferred runtime — it's lightweight and opti
 **Is this secure?**
 
 Agents run in containers, not behind application-level permission checks. They can only access explicitly mounted directories. You should still review what you're running. See [docs/SECURITY.md](docs/SECURITY.md) for the full security model.
-
-**Why no configuration files?**
-
-We don't want configuration sprawl. Every user should customize it to so that the code matches exactly what they want rather than configuring a generic system. If you like having config files, tell Claude to add them.
 
 **How do I debug issues?**
 
