@@ -124,7 +124,7 @@ async def _handle_sync_worktree_to_main(
                 return deps.registered_groups()
 
             async def trigger_deploy(self, previous_sha: str) -> None:
-                pass
+                pass  # No deploy needed — worktree sync doesn't trigger restarts
 
         await host_notify_worktree_updates(source_group, _GitSyncAdapter())
 

@@ -16,7 +16,11 @@ def register(
     type_name: str,
     handler: Callable[[dict[str, Any], str, bool, IpcDeps], Awaitable[None]],
 ) -> None:
-    """Register a handler for an IPC task type."""
+    """Register a handler for an IPC task type.
+
+    Called at module import time by each handler module to wire up their
+    handlers.  Duplicate registrations silently overwrite (last-write-wins).
+    """
     HANDLERS[type_name] = handler
 
 

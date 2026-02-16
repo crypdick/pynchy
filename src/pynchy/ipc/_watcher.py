@@ -227,7 +227,7 @@ class _IpcEventHandler(FileSystemEventHandler):
             if len(parts) == 3 and parts[1] in ("messages", "tasks"):
                 self._loop.call_soon_threadsafe(self._queue.put_nowait, file_path)
         except (ValueError, IndexError):
-            pass
+            pass  # File not under IPC base dir or malformed path — ignore
 
     def on_created(self, event: Any) -> None:
         if isinstance(event, FileCreatedEvent):
