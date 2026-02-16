@@ -27,7 +27,8 @@ from pynchy.config import (
     WorkspaceDefaultsConfig,
 )
 from pynchy.db import _init_test_database, get_all_tasks
-from pynchy.ipc import _move_to_error_dir, process_task_ipc
+from pynchy.ipc import dispatch
+from pynchy.ipc._watcher import _move_to_error_dir
 from pynchy.types import RegisteredGroup
 
 
@@ -134,11 +135,13 @@ class TestCreatePeriodicAgent:
 
         with (
             pytest.MonkeyPatch.context() as mp,
-            patch("pynchy.ipc.get_settings", return_value=self._settings(tmp_path)),
+            patch(
+                "pynchy.ipc._handlers_groups.get_settings", return_value=self._settings(tmp_path)
+            ),
             patch("pynchy.config.add_workspace_to_toml") as add_ws,
         ):
             mp.setenv("TZ", "UTC")
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "create_periodic_agent",
                     "name": "daily-briefing",
@@ -184,10 +187,12 @@ class TestCreatePeriodicAgent:
         deps._channels = [mock_channel]
 
         with (
-            patch("pynchy.ipc.get_settings", return_value=self._settings(tmp_path)),
+            patch(
+                "pynchy.ipc._handlers_groups.get_settings", return_value=self._settings(tmp_path)
+            ),
             patch("pynchy.config.add_workspace_to_toml"),
         ):
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "create_periodic_agent",
                     "name": "custom-agent",
@@ -216,10 +221,12 @@ class TestCreatePeriodicAgent:
         deps._channels = [mock_channel]
 
         with (
-            patch("pynchy.ipc.get_settings", return_value=self._settings(tmp_path)),
+            patch(
+                "pynchy.ipc._handlers_groups.get_settings", return_value=self._settings(tmp_path)
+            ),
             patch("pynchy.config.add_workspace_to_toml"),
         ):
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "create_periodic_agent",
                     "name": "existing-agent",
@@ -241,10 +248,12 @@ class TestCreatePeriodicAgent:
         deps._channels = [mock_channel]
 
         with (
-            patch("pynchy.ipc.get_settings", return_value=self._settings(tmp_path)),
+            patch(
+                "pynchy.ipc._handlers_groups.get_settings", return_value=self._settings(tmp_path)
+            ),
             patch("pynchy.config.add_workspace_to_toml"),
         ):
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "create_periodic_agent",
                     "name": "isolated-agent",
@@ -268,10 +277,12 @@ class TestCreatePeriodicAgent:
         deps._channels = [mock_channel]
 
         with (
-            patch("pynchy.ipc.get_settings", return_value=self._settings(tmp_path)),
+            patch(
+                "pynchy.ipc._handlers_groups.get_settings", return_value=self._settings(tmp_path)
+            ),
             patch("pynchy.config.add_workspace_to_toml"),
         ):
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "create_periodic_agent",
                     "name": "bad-context",
@@ -294,10 +305,12 @@ class TestCreatePeriodicAgent:
         deps._channels = []
 
         with (
-            patch("pynchy.ipc.get_settings", return_value=self._settings(tmp_path)),
+            patch(
+                "pynchy.ipc._handlers_groups.get_settings", return_value=self._settings(tmp_path)
+            ),
             patch("pynchy.config.add_workspace_to_toml"),
         ):
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "create_periodic_agent",
                     "name": "no-channel-agent",

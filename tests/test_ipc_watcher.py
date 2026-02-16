@@ -29,7 +29,7 @@ from pynchy.config import (
     WorkspaceDefaultsConfig,
 )
 from pynchy.db import _init_test_database
-from pynchy.ipc import _move_to_error_dir
+from pynchy.ipc._watcher import _move_to_error_dir
 from pynchy.types import RegisteredGroup
 
 GOD_GROUP = RegisteredGroup(
@@ -180,7 +180,7 @@ class TestMoveToErrorDirInWatcherContext:
 
 
 # ---------------------------------------------------------------------------
-# IPC message file processing — integration-style tests using process_task_ipc
+# IPC message file processing — integration-style tests using dispatch
 # ---------------------------------------------------------------------------
 
 
@@ -244,22 +244,22 @@ class TestIpcTaskFileEdgeCases:
 
     async def test_empty_type_field_is_ignored(self, deps):
         """A task file with no type field should be logged and ignored."""
-        from pynchy.ipc import process_task_ipc
+        from pynchy.ipc import dispatch
 
         # Should not raise
-        await process_task_ipc({"no_type_field": True}, "god", True, deps)
+        await dispatch({"no_type_field": True}, "god", True, deps)
 
     async def test_none_type_field_is_ignored(self, deps):
         """A task file with type=None should be handled gracefully."""
-        from pynchy.ipc import process_task_ipc
+        from pynchy.ipc import dispatch
 
-        await process_task_ipc({"type": None}, "god", True, deps)
+        await dispatch({"type": None}, "god", True, deps)
 
     async def test_empty_data_dict_is_ignored(self, deps):
         """An empty data dict should not crash the processor."""
-        from pynchy.ipc import process_task_ipc
+        from pynchy.ipc import dispatch
 
-        await process_task_ipc({}, "god", True, deps)
+        await dispatch({}, "god", True, deps)
 
 
 # ---------------------------------------------------------------------------
@@ -272,9 +272,11 @@ class TestIpcDeployEdgeCases:
 
     async def test_deploy_without_chat_jid_uses_god_group(self, deps):
         """Deploy request missing chatJid should fall back to god group's JID."""
-        from pynchy.ipc import _handle_deploy
+        from pynchy.ipc._handlers_deploy import _handle_deploy
 
-        with patch("pynchy.ipc.finalize_deploy", new_callable=AsyncMock) as mock_finalize:
+        with patch(
+            "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
+        ) as mock_finalize:
             await _handle_deploy(
                 {
                     "rebuildContainer": False,
@@ -283,6 +285,7 @@ class TestIpcDeployEdgeCases:
                     # chatJid intentionally missing
                 },
                 "god",
+                True,
                 deps,
             )
             mock_finalize.assert_called_once()
@@ -291,7 +294,7 @@ class TestIpcDeployEdgeCases:
 
     async def test_deploy_without_chat_jid_and_no_god_group(self, deps):
         """Deploy request with no chatJid and no god group should not finalize."""
-        from pynchy.ipc import _handle_deploy
+        from pynchy.ipc._handlers_deploy import _handle_deploy
 
         # Remove god group from deps
         no_god_deps = MockDeps(
@@ -301,13 +304,16 @@ class TestIpcDeployEdgeCases:
         )
         await _init_test_database()
 
-        with patch("pynchy.ipc.finalize_deploy", new_callable=AsyncMock) as mock_finalize:
+        with patch(
+            "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
+        ) as mock_finalize:
             await _handle_deploy(
                 {
                     "rebuildContainer": False,
                     "headSha": "abc123",
                 },
                 "god",
+                True,
                 no_god_deps,
             )
             mock_finalize.assert_not_called()
@@ -323,19 +329,23 @@ class TestSyncWorktreeIpc:
 
     async def test_writes_result_file(self, deps, tmp_path: Path):
         """sync_worktree_to_main should write a result JSON for the blocking MCP tool."""
-        from pynchy.ipc import process_task_ipc
+        from pynchy.ipc import dispatch
 
         with (
             patch(
-                "pynchy.ipc.get_settings", return_value=_test_settings(data_dir=tmp_path / "data")
+                "pynchy.ipc._handlers_lifecycle.get_settings",
+                return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.ipc.host_sync_worktree",
+                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
                 return_value={"success": True, "message": "Merged 1 commit(s)"},
             ),
-            patch("pynchy.ipc.host_notify_worktree_updates", new_callable=AsyncMock),
+            patch(
+                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                new_callable=AsyncMock,
+            ),
         ):
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "sync_worktree_to_main",
                     "requestId": "req-123",
@@ -352,19 +362,23 @@ class TestSyncWorktreeIpc:
 
     async def test_notifies_other_worktrees_on_success(self, deps, tmp_path: Path):
         """On successful sync, other worktrees should be notified."""
-        from pynchy.ipc import process_task_ipc
+        from pynchy.ipc import dispatch
 
         with (
             patch(
-                "pynchy.ipc.get_settings", return_value=_test_settings(data_dir=tmp_path / "data")
+                "pynchy.ipc._handlers_lifecycle.get_settings",
+                return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.ipc.host_sync_worktree",
+                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
                 return_value={"success": True, "message": "done"},
             ),
-            patch("pynchy.ipc.host_notify_worktree_updates", new_callable=AsyncMock) as mock_notify,
+            patch(
+                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                new_callable=AsyncMock,
+            ) as mock_notify,
         ):
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "sync_worktree_to_main",
                     "requestId": "req-456",
@@ -380,19 +394,23 @@ class TestSyncWorktreeIpc:
 
     async def test_skips_notification_on_failure(self, deps, tmp_path: Path):
         """On failed sync, worktree notification should be skipped."""
-        from pynchy.ipc import process_task_ipc
+        from pynchy.ipc import dispatch
 
         with (
             patch(
-                "pynchy.ipc.get_settings", return_value=_test_settings(data_dir=tmp_path / "data")
+                "pynchy.ipc._handlers_lifecycle.get_settings",
+                return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.ipc.host_sync_worktree",
+                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
                 return_value={"success": False, "message": "conflict"},
             ),
-            patch("pynchy.ipc.host_notify_worktree_updates", new_callable=AsyncMock) as mock_notify,
+            patch(
+                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                new_callable=AsyncMock,
+            ) as mock_notify,
         ):
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "sync_worktree_to_main",
                     "requestId": "req-789",
