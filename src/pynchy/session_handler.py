@@ -37,6 +37,9 @@ class SessionDeps(Protocol):
     @property
     def channels(self) -> list[Channel]: ...
 
+    @property
+    def registered_groups(self) -> dict[str, RegisteredGroup]: ...
+
     async def save_state(self) -> None: ...
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
@@ -112,16 +115,23 @@ async def send_clear_confirmation(deps: SessionDeps, chat_jid: str) -> None:
 
 async def trigger_manual_redeploy(deps: SessionDeps, chat_jid: str) -> None:
     """Handle a manual redeploy command — restart the service in-place."""
+    from pynchy.adapters import SessionManager
     from pynchy.deploy import finalize_deploy
     from pynchy.git_utils import get_head_sha
 
     sha = get_head_sha()
     logger.info("Manual redeploy triggered via magic word", chat_jid=chat_jid)
+
+    # Build active_sessions so all groups resume after restart
+    sm = SessionManager(deps.sessions, deps._session_cleared)
+    active_sessions = sm.get_active_sessions(deps.registered_groups)
+
     await finalize_deploy(
         broadcast_host_message=deps.broadcast_host_message,
         chat_jid=chat_jid,
         commit_sha=sha,
         previous_sha=sha,
+        active_sessions=active_sessions,
     )
 
 

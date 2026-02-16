@@ -119,6 +119,9 @@ class MockDeps:
     def enqueue_message_check(self, group_jid: str) -> None:
         self.enqueued_checks.append(group_jid)
 
+    def get_active_sessions(self) -> dict[str, str]:
+        return {}
+
     def channels(self) -> list:
         return []
 

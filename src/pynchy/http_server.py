@@ -84,6 +84,8 @@ class HttpDeps(Protocol):
 
     async def get_periodic_agents(self) -> list[dict[str, Any]]: ...
 
+    def get_active_sessions(self) -> dict[str, str]: ...
+
     def is_shutting_down(self) -> bool: ...
 
 
@@ -193,6 +195,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
             commit_sha=new_sha,
             previous_sha=old_sha,
             sigterm_delay=0.5,
+            active_sessions=deps.get_active_sessions(),
         )
     else:
         # Plain restart — no continuation needed, boot notification handles "I'm back"

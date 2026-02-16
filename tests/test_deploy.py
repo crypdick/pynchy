@@ -83,6 +83,8 @@ class TestFinalizeDeploy:
         assert continuation["previous_commit_sha"] == "previous-sha-001"
         assert continuation["session_id"] == "session-42"
         assert continuation["resume_prompt"] == "Deploy complete."
+        # active_sessions should include the single session_id/chat_jid
+        assert continuation["active_sessions"] == {"group@g.us": "session-42"}
 
     async def test_broadcasts_notification_with_short_sha(self, deploy_dir: Path):
         broadcast = AsyncMock()
@@ -195,3 +197,60 @@ class TestFinalizeDeploy:
 
         continuation = json.loads((deploy_dir / "deploy_continuation.json").read_text())
         assert "Deploy complete" in continuation["resume_prompt"]
+
+    async def test_active_sessions_written_to_continuation(self, deploy_dir: Path):
+        """active_sessions dict should be written to the continuation file."""
+        broadcast = AsyncMock()
+        sessions = {
+            "god@g.us": "sess-god",
+            "team@g.us": "sess-team",
+            "project@g.us": "sess-project",
+        }
+
+        with patch("pynchy.deploy.os.kill"):
+            await finalize_deploy(
+                broadcast_host_message=broadcast,
+                chat_jid="god@g.us",
+                commit_sha="abc123",
+                previous_sha="000",
+                active_sessions=sessions,
+            )
+
+        continuation = json.loads((deploy_dir / "deploy_continuation.json").read_text())
+        assert continuation["active_sessions"] == sessions
+
+    async def test_active_sessions_merges_with_session_id(self, deploy_dir: Path):
+        """session_id/chat_jid should be merged into active_sessions."""
+        broadcast = AsyncMock()
+        sessions = {"team@g.us": "sess-team"}
+
+        with patch("pynchy.deploy.os.kill"):
+            await finalize_deploy(
+                broadcast_host_message=broadcast,
+                chat_jid="god@g.us",
+                commit_sha="abc",
+                previous_sha="000",
+                session_id="sess-god",
+                active_sessions=sessions,
+            )
+
+        continuation = json.loads((deploy_dir / "deploy_continuation.json").read_text())
+        assert continuation["active_sessions"] == {
+            "team@g.us": "sess-team",
+            "god@g.us": "sess-god",
+        }
+
+    async def test_active_sessions_empty_when_no_sessions(self, deploy_dir: Path):
+        """active_sessions should be empty dict when no sessions exist."""
+        broadcast = AsyncMock()
+
+        with patch("pynchy.deploy.os.kill"):
+            await finalize_deploy(
+                broadcast_host_message=broadcast,
+                chat_jid="god@g.us",
+                commit_sha="abc",
+                previous_sha="000",
+            )
+
+        continuation = json.loads((deploy_dir / "deploy_continuation.json").read_text())
+        assert continuation["active_sessions"] == {}

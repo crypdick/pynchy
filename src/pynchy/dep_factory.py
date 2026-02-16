@@ -75,10 +75,63 @@ def make_scheduler_deps(app: PynchyApp) -> Any:
     return SchedulerDeps()
 
 
+async def _rebuild_and_deploy(
+    *,
+    host_broadcaster: HostMessageBroadcaster,
+    group_registry: GroupRegistry,
+    session_manager: SessionManager,
+    previous_sha: str,
+    rebuild: bool = True,
+) -> None:
+    """Shared rebuild + deploy logic used by IPC and git-sync paths.
+
+    Optionally rebuilds the container image, then calls ``finalize_deploy``
+    with all active sessions so every group gets resume continuity.
+    """
+    from pynchy.deploy import finalize_deploy
+
+    s = get_settings()
+    chat_jid = group_registry.god_chat_jid()
+    if chat_jid:
+        msg = (
+            "Container files changed — rebuilding and restarting..."
+            if rebuild
+            else "Code/config changed — restarting..."
+        )
+        await host_broadcaster.broadcast_host_message(chat_jid, msg)
+
+    if rebuild:
+        build_script = s.project_root / "container" / "build.sh"
+        if build_script.exists():
+            result = subprocess.run(
+                [str(build_script)],
+                cwd=str(s.project_root / "container"),
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+            if result.returncode != 0:
+                logger.error(
+                    "Container rebuild failed during sync",
+                    stderr=result.stderr[-500:],
+                )
+
+    active_sessions = session_manager.get_active_sessions(group_registry.registered_groups())
+
+    await finalize_deploy(
+        broadcast_host_message=host_broadcaster.broadcast_host_message,
+        chat_jid=chat_jid,
+        commit_sha=get_head_sha(),
+        previous_sha=previous_sha,
+        active_sessions=active_sessions,
+    )
+
+
 def make_http_deps(app: PynchyApp) -> Any:
     """Create the dependency object for the HTTP server."""
     _broadcaster, host_broadcaster = make_host_broadcaster(app)
     group_registry = GroupRegistry(app.registered_groups)
+    session_manager = SessionManager(app.sessions, app._session_cleared)
     metadata_manager = GroupMetadataManager(
         app.registered_groups, app.channels, app.get_available_groups
     )
@@ -100,6 +153,9 @@ def make_http_deps(app: PynchyApp) -> Any:
 
         def is_shutting_down(self) -> bool:
             return app._shutting_down
+
+        def get_active_sessions(self) -> dict[str, str]:
+            return session_manager.get_active_sessions(group_registry.registered_groups())
 
     return HttpDeps()
 
@@ -131,40 +187,16 @@ def make_ipc_deps(app: PynchyApp) -> Any:
         enqueue_message_check = queue_manager.enqueue_message_check
         channels = metadata_manager.channels
 
+        def get_active_sessions(self) -> dict[str, str]:
+            return session_manager.get_active_sessions(group_registry.registered_groups())
+
         async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
-            s = get_settings()
-            chat_jid = group_registry.god_chat_jid()
-            if chat_jid:
-                msg = (
-                    "Container files changed — rebuilding and restarting..."
-                    if rebuild
-                    else "Code/config changed — restarting..."
-                )
-                await host_broadcaster.broadcast_host_message(chat_jid, msg)
-
-            if rebuild:
-                build_script = s.project_root / "container" / "build.sh"
-                if build_script.exists():
-                    result = subprocess.run(
-                        [str(build_script)],
-                        cwd=str(s.project_root / "container"),
-                        capture_output=True,
-                        text=True,
-                        timeout=600,
-                    )
-                    if result.returncode != 0:
-                        logger.error(
-                            "Container rebuild failed during sync",
-                            stderr=result.stderr[-500:],
-                        )
-
-            from pynchy.deploy import finalize_deploy
-
-            await finalize_deploy(
-                broadcast_host_message=host_broadcaster.broadcast_host_message,
-                chat_jid=chat_jid,
-                commit_sha=get_head_sha(),
+            await _rebuild_and_deploy(
+                host_broadcaster=host_broadcaster,
+                group_registry=group_registry,
+                session_manager=session_manager,
                 previous_sha=previous_sha,
+                rebuild=rebuild,
             )
 
     return IpcDeps()
@@ -174,42 +206,7 @@ def make_git_sync_deps(app: PynchyApp) -> Any:
     """Create the dependency object for the git sync loop."""
     _broadcaster, host_broadcaster = make_host_broadcaster(app)
     group_registry = GroupRegistry(app.registered_groups)
-
-    async def _trigger_deploy_impl(previous_sha: str, rebuild: bool = True) -> None:
-        s = get_settings()
-        chat_jid = group_registry.god_chat_jid()
-        if chat_jid:
-            msg = (
-                "Container files changed — rebuilding and restarting..."
-                if rebuild
-                else "Code/config changed — restarting..."
-            )
-            await host_broadcaster.broadcast_host_message(chat_jid, msg)
-
-        if rebuild:
-            build_script = s.project_root / "container" / "build.sh"
-            if build_script.exists():
-                result = subprocess.run(
-                    [str(build_script)],
-                    cwd=str(s.project_root / "container"),
-                    capture_output=True,
-                    text=True,
-                    timeout=600,
-                )
-                if result.returncode != 0:
-                    logger.error(
-                        "Container rebuild failed during sync",
-                        stderr=result.stderr[-500:],
-                    )
-
-        from pynchy.deploy import finalize_deploy
-
-        await finalize_deploy(
-            broadcast_host_message=host_broadcaster.broadcast_host_message,
-            chat_jid=chat_jid,
-            commit_sha=get_head_sha(),
-            previous_sha=previous_sha,
-        )
+    session_manager = SessionManager(app.sessions, app._session_cleared)
 
     class GitSyncDeps:
         broadcast_host_message = host_broadcaster.broadcast_host_message
@@ -219,6 +216,12 @@ def make_git_sync_deps(app: PynchyApp) -> Any:
             return group_registry.registered_groups()
 
         async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
-            await _trigger_deploy_impl(previous_sha, rebuild=rebuild)
+            await _rebuild_and_deploy(
+                host_broadcaster=host_broadcaster,
+                group_registry=group_registry,
+                session_manager=session_manager,
+                previous_sha=previous_sha,
+                rebuild=rebuild,
+            )
 
     return GitSyncDeps()

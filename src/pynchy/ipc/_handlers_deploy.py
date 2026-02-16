@@ -76,6 +76,11 @@ async def _handle_deploy(
                 "rebuild_container requested but build.sh not found",
             )
 
+    # Merge the god agent's explicit session with all other active sessions
+    active_sessions = deps.get_active_sessions()
+    if session_id and chat_jid:
+        active_sessions[chat_jid] = session_id
+
     await finalize_deploy(
         broadcast_host_message=deps.broadcast_host_message,
         chat_jid=chat_jid,
@@ -83,6 +88,7 @@ async def _handle_deploy(
         previous_sha=head_sha,
         session_id=session_id,
         resume_prompt=resume_prompt,
+        active_sessions=active_sessions,
     )
 
 
