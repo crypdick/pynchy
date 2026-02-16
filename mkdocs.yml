@@ -54,16 +54,19 @@ plugins:
 nav:
   - Home: index.md
   - Installation: install.md
-  - Security: security.md
+  - Usage:
+      - Overview: usage/index.md
+      - Groups: usage/groups.md
+      - Scheduled Tasks: usage/scheduled-tasks.md
   - Architecture:
       - Overview: architecture/index.md
       - Container Isolation: architecture/container-isolation.md
+      - IPC: architecture/ipc.md
       - Message Routing: architecture/message-routing.md
       - Message Types: architecture/message-types.md
       - Memory & Sessions: architecture/memory-and-sessions.md
-      - Scheduled Tasks: architecture/scheduled-tasks.md
-      - Groups: architecture/groups.md
       - Git Sync: architecture/git-sync.md
+      - Security: architecture/security.md
   - Plugins:
       - Overview: plugins/index.md
       - Available Plugins: plugins/available.md

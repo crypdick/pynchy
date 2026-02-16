@@ -2,7 +2,7 @@
 
 All agents run inside containers — Apple Container (macOS, preferred) or Docker (macOS/Linux). Each agent invocation spawns a fresh, ephemeral container with explicitly mounted directories.
 
-For security properties of container isolation, see [Security Model](../security.md).
+For security properties of container isolation, see [Security Model](security.md).
 
 ## Container Mounts
 

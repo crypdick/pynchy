@@ -33,7 +33,7 @@ Python process that connects to WhatsApp, routes messages to Claude Agent SDK ru
 | Guide | When to Read |
 |-------|-------------|
 | [Architecture](docs/architecture/index.md) | System design, container isolation, message routing, groups, tasks |
-| [Security model](docs/security.md) | Trust model, security boundaries, credential handling |
+| [Security model](docs/architecture/security.md) | Trust model, security boundaries, credential handling |
 | [Development & testing](.claude/development.md) | Running commands, writing tests, linting |
 | [Deployment](.claude/deployment.md) | Service management, deploy workflow, container builds, GitHub access |
 | [Plugin authoring](docs/plugins/index.md) | Writing plugins: hooks, packaging, distribution |

@@ -133,7 +133,7 @@ class Channel(Protocol):
 ```
 
 !!! warning
-    Channel plugins run **persistently on the host** with full filesystem and network access. This is the highest-risk plugin category. See [Security Model](../security.md).
+    Channel plugins run **persistently on the host** with full filesystem and network access. This is the highest-risk plugin category. See [Security Model](../architecture/security.md).
 
 ## pynchy_container_runtime
 

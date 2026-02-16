@@ -91,7 +91,7 @@ On macOS, Apple Container is the preferred runtime — it's lightweight and opti
 
 **Is this secure?**
 
-Agents run in containers, not behind application-level permission checks. They can only access explicitly mounted directories. You should still review what you're running. See [docs/security.md](docs/security.md) for the full security model.
+Agents run in containers, not behind application-level permission checks. They can only access explicitly mounted directories. You should still review what you're running. See [docs/architecture/security.md](docs/architecture/security.md) for the full security model.
 
 **How do I debug issues?**
 
