@@ -517,6 +517,138 @@ class TestTaskLifecycle:
 
 
 # ---------------------------------------------------------------------------
+# call_tool: list_todos / complete_todo
+# ---------------------------------------------------------------------------
+
+
+class TestTodoTools:
+    """Test list_todos and complete_todo MCP tools."""
+
+    @pytest.mark.asyncio
+    async def test_list_todos_empty(self, tmp_path):
+        from agent_runner.agent_tools._server import call_tool
+
+        with patch("agent_runner.agent_tools._tools_todos._TODOS_FILE", tmp_path / "todos.json"):
+            result = await call_tool("list_todos", {})
+        assert isinstance(result, list)
+        assert "no" in result[0].text.lower()
+
+    @pytest.mark.asyncio
+    async def test_list_todos_shows_pending(self, tmp_path):
+        from agent_runner.agent_tools._server import call_tool
+
+        todos_file = tmp_path / "todos.json"
+        todos_file.write_text(
+            json.dumps(
+                [
+                    {
+                        "id": "abc",
+                        "content": "rename x to y",
+                        "done": False,
+                        "created_at": "2026-01-01",
+                    },
+                ]
+            )
+        )
+
+        with patch("agent_runner.agent_tools._tools_todos._TODOS_FILE", todos_file):
+            result = await call_tool("list_todos", {})
+        text = result[0].text
+        assert "abc" in text
+        assert "rename x to y" in text
+
+    @pytest.mark.asyncio
+    async def test_list_todos_hides_done_by_default(self, tmp_path):
+        from agent_runner.agent_tools._server import call_tool
+
+        todos_file = tmp_path / "todos.json"
+        todos_file.write_text(
+            json.dumps(
+                [
+                    {"id": "abc", "content": "done item", "done": True, "created_at": "2026-01-01"},
+                    {
+                        "id": "def",
+                        "content": "pending item",
+                        "done": False,
+                        "created_at": "2026-01-01",
+                    },
+                ]
+            )
+        )
+
+        with patch("agent_runner.agent_tools._tools_todos._TODOS_FILE", todos_file):
+            result = await call_tool("list_todos", {})
+        text = result[0].text
+        assert "def" in text
+        assert "abc" not in text
+
+    @pytest.mark.asyncio
+    async def test_list_todos_include_done(self, tmp_path):
+        from agent_runner.agent_tools._server import call_tool
+
+        todos_file = tmp_path / "todos.json"
+        todos_file.write_text(
+            json.dumps(
+                [
+                    {"id": "abc", "content": "done item", "done": True, "created_at": "2026-01-01"},
+                    {
+                        "id": "def",
+                        "content": "pending item",
+                        "done": False,
+                        "created_at": "2026-01-01",
+                    },
+                ]
+            )
+        )
+
+        with patch("agent_runner.agent_tools._tools_todos._TODOS_FILE", todos_file):
+            result = await call_tool("list_todos", {"include_done": True})
+        text = result[0].text
+        assert "abc" in text
+        assert "def" in text
+
+    @pytest.mark.asyncio
+    async def test_complete_todo(self, tmp_path):
+        from agent_runner.agent_tools._server import call_tool
+
+        todos_file = tmp_path / "todos.json"
+        todos_file.write_text(
+            json.dumps(
+                [
+                    {
+                        "id": "abc",
+                        "content": "rename x to y",
+                        "done": False,
+                        "created_at": "2026-01-01",
+                    },
+                ]
+            )
+        )
+
+        with patch("agent_runner.agent_tools._tools_todos._TODOS_FILE", todos_file):
+            result = await call_tool("complete_todo", {"todo_id": "abc"})
+        assert isinstance(result, list)
+        assert "done" in result[0].text.lower()
+
+        # Verify the file was updated
+        updated = json.loads(todos_file.read_text())
+        assert updated[0]["done"] is True
+
+    @pytest.mark.asyncio
+    async def test_complete_todo_not_found(self, tmp_path):
+        from agent_runner.agent_tools._server import call_tool
+
+        todos_file = tmp_path / "todos.json"
+        todos_file.write_text(json.dumps([]))
+
+        with patch("agent_runner.agent_tools._tools_todos._TODOS_FILE", todos_file):
+            result = await call_tool("complete_todo", {"todo_id": "nope"})
+        assert hasattr(result, "isError")
+        assert result.isError is True
+        assert "not found" in result.content[0].text.lower()
+
+
+# ---------------------------------------------------------------------------
 # call_tool: unknown tool
 # ---------------------------------------------------------------------------
 
@@ -609,5 +741,7 @@ class TestListToolsVisibility:
             "register_group",
             "sync_worktree_to_main",
             "reset_context",
+            "list_todos",
+            "complete_todo",
         ]:
             assert expected in tool_names, f"Missing base tool: {expected}"

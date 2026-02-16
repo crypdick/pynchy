@@ -57,7 +57,8 @@ async def handle_context_reset(
     deps.sessions.pop(group.folder, None)
     deps._session_cleared.add(group.folder)
     await clear_session(group.folder)
-    deps.queue.close_stdin(chat_jid)
+    deps.queue.clear_pending_tasks(chat_jid)
+    asyncio.create_task(deps.queue.stop_active_process(chat_jid))
     deps.last_agent_timestamp[chat_jid] = timestamp
     await deps.save_state()
     await send_clear_confirmation(deps, chat_jid)
@@ -79,7 +80,8 @@ async def handle_end_session(
         asyncio.create_task(asyncio.to_thread(merge_and_push_worktree, group.folder))
 
     # Stop the container but keep session state intact
-    deps.queue.close_stdin(chat_jid)
+    deps.queue.clear_pending_tasks(chat_jid)
+    asyncio.create_task(deps.queue.stop_active_process(chat_jid))
     deps.last_agent_timestamp[chat_jid] = timestamp
     await deps.save_state()
     await deps.broadcast_host_message(chat_jid, "👋")

@@ -450,6 +450,7 @@ async def main() -> None:
                 if should_close():
                     log("Close sentinel detected during query")
                     closed_during_query = True
+                    break
 
                 # Track session ID from system init events
                 if event.type == "system":

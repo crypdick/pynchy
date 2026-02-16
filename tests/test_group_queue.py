@@ -626,6 +626,117 @@ class TestTaskExceptionHandling:
             assert call_count >= 2
 
 
+class TestStopActiveProcess:
+    """Tests for stop_active_process: force-stopping active containers."""
+
+    async def test_noop_when_not_active(self, queue: GroupQueue):
+        """stop_active_process does nothing when group is not active."""
+        await queue.stop_active_process("group1@g.us")
+        # Should not raise
+
+    async def test_calls_graceful_stop_on_active_process(self, queue: GroupQueue, tmp_path):
+        """stop_active_process writes _close sentinel and calls _graceful_stop."""
+        completions: list[asyncio.Event] = []
+
+        async def task_fn():
+            event = asyncio.Event()
+            completions.append(event)
+            await event.wait()
+
+        queue.enqueue_task("group1@g.us", "task-1", task_fn)
+        await asyncio.sleep(0.02)
+
+        # Register a mock process
+        mock_proc = AsyncMock()
+        mock_proc.returncode = None
+        queue.register_process("group1@g.us", mock_proc, "my-container", "test-group")
+
+        with (
+            _patch_settings(max_concurrent=2, data_dir=tmp_path),
+            patch(
+                "pynchy.container_runner._process._graceful_stop",
+                new_callable=AsyncMock,
+            ) as mock_stop,
+        ):
+            await queue.stop_active_process("group1@g.us")
+            mock_stop.assert_called_once_with(mock_proc, "my-container")
+
+        # Close sentinel should have been written
+        close_file = tmp_path / "ipc" / "test-group" / "input" / "_close"
+        assert close_file.exists()
+
+        completions[0].set()
+        await asyncio.sleep(0.05)
+
+    async def test_skips_graceful_stop_when_already_exited(self, queue: GroupQueue, tmp_path):
+        """stop_active_process skips _graceful_stop if process already exited."""
+        completions: list[asyncio.Event] = []
+
+        async def task_fn():
+            event = asyncio.Event()
+            completions.append(event)
+            await event.wait()
+
+        queue.enqueue_task("group1@g.us", "task-1", task_fn)
+        await asyncio.sleep(0.02)
+
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0  # already exited
+        queue.register_process("group1@g.us", mock_proc, "my-container", "test-group")
+
+        with (
+            _patch_settings(max_concurrent=2, data_dir=tmp_path),
+            patch(
+                "pynchy.container_runner._process._graceful_stop",
+                new_callable=AsyncMock,
+            ) as mock_stop,
+        ):
+            await queue.stop_active_process("group1@g.us")
+            mock_stop.assert_not_called()
+
+        completions[0].set()
+        await asyncio.sleep(0.05)
+
+
+class TestClearPendingTasks:
+    """Tests for clear_pending_tasks: dropping queued tasks."""
+
+    async def test_clears_pending_tasks(self, queue: GroupQueue):
+        """clear_pending_tasks removes all pending tasks for a group."""
+        completions: list[asyncio.Event] = []
+
+        async def process_messages(group_jid: str) -> bool:
+            event = asyncio.Event()
+            completions.append(event)
+            await event.wait()
+            return True
+
+        queue.set_process_messages_fn(process_messages)
+        queue.enqueue_message_check("group1@g.us")
+        await asyncio.sleep(0.02)
+
+        async def task_fn():
+            pass
+
+        queue.enqueue_task("group1@g.us", "task-1", task_fn)
+        queue.enqueue_task("group1@g.us", "task-2", task_fn)
+
+        state = queue._get_group("group1@g.us")
+        assert len(state.pending_tasks) == 2
+
+        queue.clear_pending_tasks("group1@g.us")
+        assert len(state.pending_tasks) == 0
+
+        completions[0].set()
+        await asyncio.sleep(0.05)
+
+    async def test_noop_when_no_pending_tasks(self, queue: GroupQueue):
+        """clear_pending_tasks does nothing when there are no pending tasks."""
+        queue.clear_pending_tasks("group1@g.us")
+        state = queue._get_group("group1@g.us")
+        assert len(state.pending_tasks) == 0
+
+
 class TestDrainGroupTaskOrdering:
     """Tests for _drain_group prioritization."""
 
