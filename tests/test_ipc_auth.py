@@ -30,7 +30,7 @@ from pynchy.db import (
     get_task_by_id,
     set_registered_group,
 )
-from pynchy.ipc import process_task_ipc
+from pynchy.ipc import dispatch
 from pynchy.types import RegisteredGroup
 
 GOD_GROUP = RegisteredGroup(
@@ -160,7 +160,7 @@ async def deps():
 
 class TestScheduleTaskAuth:
     async def test_god_group_can_schedule_for_another_group(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "do something",
@@ -178,7 +178,7 @@ class TestScheduleTaskAuth:
         assert tasks[0].group_folder == "other-group"
 
     async def test_non_god_group_can_schedule_for_itself(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "self task",
@@ -196,7 +196,7 @@ class TestScheduleTaskAuth:
         assert tasks[0].group_folder == "other-group"
 
     async def test_non_god_cannot_schedule_for_another_group(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "unauthorized",
@@ -213,7 +213,7 @@ class TestScheduleTaskAuth:
         assert len(tasks) == 0
 
     async def test_rejects_unregistered_target_jid(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "no target",
@@ -266,13 +266,13 @@ class TestPauseTaskAuth:
         )
 
     async def test_god_can_pause_any_task(self, deps):
-        await process_task_ipc({"type": "pause_task", "taskId": "task-other"}, "god", True, deps)
+        await dispatch({"type": "pause_task", "taskId": "task-other"}, "god", True, deps)
         task = await get_task_by_id("task-other")
         assert task is not None
         assert task.status == "paused"
 
     async def test_non_god_can_pause_own_task(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {"type": "pause_task", "taskId": "task-other"},
             "other-group",
             False,
@@ -283,7 +283,7 @@ class TestPauseTaskAuth:
         assert task.status == "paused"
 
     async def test_non_god_cannot_pause_other_groups_task(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {"type": "pause_task", "taskId": "task-god"},
             "other-group",
             False,
@@ -316,13 +316,13 @@ class TestResumeTaskAuth:
         )
 
     async def test_god_can_resume_any_task(self, deps):
-        await process_task_ipc({"type": "resume_task", "taskId": "task-paused"}, "god", True, deps)
+        await dispatch({"type": "resume_task", "taskId": "task-paused"}, "god", True, deps)
         task = await get_task_by_id("task-paused")
         assert task is not None
         assert task.status == "active"
 
     async def test_non_god_can_resume_own_task(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {"type": "resume_task", "taskId": "task-paused"},
             "other-group",
             False,
@@ -333,7 +333,7 @@ class TestResumeTaskAuth:
         assert task.status == "active"
 
     async def test_non_god_cannot_resume_other_groups_task(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {"type": "resume_task", "taskId": "task-paused"},
             "third-group",
             False,
@@ -364,9 +364,7 @@ class TestCancelTaskAuth:
             }
         )
 
-        await process_task_ipc(
-            {"type": "cancel_task", "taskId": "task-to-cancel"}, "god", True, deps
-        )
+        await dispatch({"type": "cancel_task", "taskId": "task-to-cancel"}, "god", True, deps)
         assert await get_task_by_id("task-to-cancel") is None
 
     async def test_non_god_can_cancel_own_task(self, deps):
@@ -385,7 +383,7 @@ class TestCancelTaskAuth:
             }
         )
 
-        await process_task_ipc(
+        await dispatch(
             {"type": "cancel_task", "taskId": "task-own"},
             "other-group",
             False,
@@ -409,7 +407,7 @@ class TestCancelTaskAuth:
             }
         )
 
-        await process_task_ipc(
+        await dispatch(
             {"type": "cancel_task", "taskId": "task-foreign"},
             "other-group",
             False,
@@ -423,7 +421,7 @@ class TestCancelTaskAuth:
 
 class TestRegisterGroupAuth:
     async def test_non_god_cannot_register_a_group(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "register_group",
                 "jid": "new@g.us",
@@ -445,7 +443,7 @@ class TestRegisterGroupAuth:
 class TestRefreshGroupsAuth:
     async def test_non_god_cannot_trigger_refresh(self, deps):
         # Should be silently blocked
-        await process_task_ipc({"type": "refresh_groups"}, "other-group", False, deps)
+        await dispatch({"type": "refresh_groups"}, "other-group", False, deps)
 
 
 # --- IPC message authorization ---
@@ -490,7 +488,7 @@ class TestIpcMessageAuth:
 
 class TestScheduleTaskTypes:
     async def test_creates_cron_task_with_next_run(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "cron task",
@@ -509,7 +507,7 @@ class TestScheduleTaskTypes:
         assert tasks[0].next_run is not None
 
     async def test_rejects_invalid_cron(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "bad cron",
@@ -525,7 +523,7 @@ class TestScheduleTaskTypes:
         assert len(await get_all_tasks()) == 0
 
     async def test_creates_interval_task(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "interval task",
@@ -544,7 +542,7 @@ class TestScheduleTaskTypes:
         assert tasks[0].next_run is not None
 
     async def test_rejects_invalid_interval_non_numeric(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "bad interval",
@@ -560,7 +558,7 @@ class TestScheduleTaskTypes:
         assert len(await get_all_tasks()) == 0
 
     async def test_rejects_invalid_interval_zero(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "zero interval",
@@ -576,7 +574,7 @@ class TestScheduleTaskTypes:
         assert len(await get_all_tasks()) == 0
 
     async def test_rejects_invalid_once_timestamp(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "bad once",
@@ -597,7 +595,7 @@ class TestScheduleTaskTypes:
 
 class TestContextMode:
     async def test_accepts_group_context(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "group context",
@@ -615,7 +613,7 @@ class TestContextMode:
         assert tasks[0].context_mode == "group"
 
     async def test_accepts_isolated_context(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "isolated context",
@@ -633,7 +631,7 @@ class TestContextMode:
         assert tasks[0].context_mode == "isolated"
 
     async def test_defaults_invalid_context_mode_to_isolated(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "bad context",
@@ -651,7 +649,7 @@ class TestContextMode:
         assert tasks[0].context_mode == "isolated"
 
     async def test_defaults_missing_context_mode_to_isolated(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "no context mode",
@@ -673,7 +671,7 @@ class TestContextMode:
 
 class TestRegisterGroupSuccess:
     async def test_god_can_register_new_group(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "register_group",
                 "jid": "new@g.us",
@@ -693,7 +691,7 @@ class TestRegisterGroupSuccess:
         assert group.trigger == "@pynchy"
 
     async def test_rejects_missing_fields(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "register_group",
                 "jid": "partial@g.us",
@@ -716,7 +714,7 @@ class TestScheduleTaskMissingFields:
     Missing any one should silently bail without creating a task."""
 
     async def test_missing_prompt_creates_no_task(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_task",
                 "schedule_type": "once",
@@ -730,7 +728,7 @@ class TestScheduleTaskMissingFields:
         assert len(await get_all_tasks()) == 0
 
     async def test_missing_schedule_type_creates_no_task(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "do something",
@@ -744,7 +742,7 @@ class TestScheduleTaskMissingFields:
         assert len(await get_all_tasks()) == 0
 
     async def test_missing_schedule_value_creates_no_task(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "do something",
@@ -758,7 +756,7 @@ class TestScheduleTaskMissingFields:
         assert len(await get_all_tasks()) == 0
 
     async def test_missing_target_jid_creates_no_task(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "do something",
@@ -772,7 +770,7 @@ class TestScheduleTaskMissingFields:
         assert len(await get_all_tasks()) == 0
 
     async def test_rejects_negative_interval(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "negative interval",
@@ -812,7 +810,7 @@ class TestAuthorizedTaskActionEdges:
         )
 
         # No taskId in data — should silently return
-        await process_task_ipc({"type": "pause_task"}, "god", True, deps)
+        await dispatch({"type": "pause_task"}, "god", True, deps)
 
         task = await get_task_by_id("untouched")
         assert task is not None
@@ -820,7 +818,7 @@ class TestAuthorizedTaskActionEdges:
 
     async def test_nonexistent_task_id_logs_warning(self, deps):
         """Pausing a task that doesn't exist should not crash."""
-        await process_task_ipc(
+        await dispatch(
             {"type": "pause_task", "taskId": "does-not-exist"},
             "god",
             True,
@@ -830,7 +828,7 @@ class TestAuthorizedTaskActionEdges:
 
     async def test_cancel_nonexistent_task_is_safe(self, deps):
         """Cancelling a task that doesn't exist should not crash."""
-        await process_task_ipc(
+        await dispatch(
             {"type": "cancel_task", "taskId": "ghost-task"},
             "other-group",
             False,
@@ -839,7 +837,7 @@ class TestAuthorizedTaskActionEdges:
 
     async def test_unknown_ipc_type_is_ignored(self, deps):
         """Unrecognized IPC types should not crash."""
-        await process_task_ipc(
+        await dispatch(
             {"type": "totally_made_up"},
             "god",
             True,
@@ -854,7 +852,7 @@ class TestDeployAuth:
     """Deploy IPC is god-only. Non-god attempts should be silently blocked."""
 
     async def test_non_god_cannot_deploy(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "deploy",
                 "rebuildContainer": False,
@@ -871,8 +869,10 @@ class TestDeployAuth:
 
     async def test_god_deploy_invokes_finalize(self, deps):
         """God deploy with valid data calls finalize_deploy."""
-        with patch("pynchy.ipc.finalize_deploy", new_callable=AsyncMock) as mock_finalize:
-            await process_task_ipc(
+        with patch(
+            "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
+        ) as mock_finalize:
+            await dispatch(
                 {
                     "type": "deploy",
                     "rebuildContainer": False,
@@ -899,13 +899,13 @@ class TestResetContextExecution:
     async def test_reset_context_clears_session_and_chat(self, deps, tmp_path):
         with (
             patch(
-                "pynchy.ipc.get_settings",
+                "pynchy.ipc._handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch("pynchy.worktree.merge_and_push_worktree"),
         ):
             (tmp_path / "data" / "ipc" / "god").mkdir(parents=True)
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "reset_context",
                     "chatJid": "god@g.us",
@@ -924,13 +924,13 @@ class TestResetContextExecution:
     async def test_reset_context_writes_reset_prompt_file(self, deps, tmp_path):
         with (
             patch(
-                "pynchy.ipc.get_settings",
+                "pynchy.ipc._handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch("pynchy.worktree.merge_and_push_worktree"),
         ):
             (tmp_path / "data" / "ipc" / "god").mkdir(parents=True)
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "reset_context",
                     "chatJid": "god@g.us",
@@ -953,7 +953,7 @@ class TestResetContextExecution:
 
     async def test_reset_context_rejects_missing_chat_jid(self, deps):
         """reset_context without chatJid should bail without clearing."""
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "reset_context",
                 "message": "Start fresh",
@@ -969,7 +969,7 @@ class TestResetContextExecution:
 
     async def test_reset_context_rejects_missing_message(self, deps):
         """reset_context without message should bail without clearing."""
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "reset_context",
                 "chatJid": "god@g.us",
@@ -986,7 +986,7 @@ class TestResetContextExecution:
         """reset_context should continue even if worktree merge fails."""
         with (
             patch(
-                "pynchy.ipc.get_settings",
+                "pynchy.ipc._handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
@@ -995,7 +995,7 @@ class TestResetContextExecution:
             ),
         ):
             (tmp_path / "data" / "ipc" / "god").mkdir(parents=True)
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "reset_context",
                     "chatJid": "god@g.us",
@@ -1019,7 +1019,7 @@ class TestFinishedWorkExecution:
 
     async def test_finished_work_sends_host_message(self, deps):
         with patch("pynchy.workspace_config.has_project_access", return_value=False):
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "finished_work",
                     "chatJid": "other@g.us",
@@ -1038,7 +1038,7 @@ class TestFinishedWorkExecution:
             patch("pynchy.workspace_config.has_project_access", return_value=True),
             patch("pynchy.worktree.merge_and_push_worktree") as mock_merge,
         ):
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "finished_work",
                     "chatJid": "other@g.us",
@@ -1055,7 +1055,7 @@ class TestFinishedWorkExecution:
             patch("pynchy.workspace_config.has_project_access", return_value=False),
             patch("pynchy.worktree.merge_and_push_worktree") as mock_merge,
         ):
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "finished_work",
                     "chatJid": "other@g.us",
@@ -1069,7 +1069,7 @@ class TestFinishedWorkExecution:
 
     async def test_finished_work_rejects_missing_chat_jid(self, deps):
         """finished_work without chatJid should bail."""
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "finished_work",
             },
@@ -1089,7 +1089,7 @@ class TestFinishedWorkExecution:
                 side_effect=Exception("merge boom"),
             ),
         ):
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "finished_work",
                     "chatJid": "other@g.us",
@@ -1114,7 +1114,7 @@ class TestRefreshGroupsExecution:
         deps.sync_group_metadata = AsyncMock()
         deps.get_available_groups = AsyncMock(return_value=[])
 
-        await process_task_ipc(
+        await dispatch(
             {"type": "refresh_groups"},
             "god",
             True,
@@ -1131,7 +1131,7 @@ class TestCreatePeriodicAgentAuth:
     """Tests for create_periodic_agent authorization and validation."""
 
     async def test_non_god_cannot_create_periodic_agent(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "create_periodic_agent",
                 "name": "my-agent",
@@ -1149,7 +1149,7 @@ class TestCreatePeriodicAgentAuth:
 
     async def test_rejects_missing_required_fields(self, deps):
         """create_periodic_agent without name/schedule/prompt should bail."""
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "create_periodic_agent",
                 "name": "my-agent",
@@ -1165,7 +1165,7 @@ class TestCreatePeriodicAgentAuth:
 
     async def test_rejects_invalid_cron_expression(self, deps):
         """create_periodic_agent with invalid cron should bail."""
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "create_periodic_agent",
                 "name": "bad-cron-agent",

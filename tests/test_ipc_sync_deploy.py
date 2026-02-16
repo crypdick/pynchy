@@ -1,6 +1,6 @@
 """Tests for IPC sync_worktree_to_main and deploy edge cases.
 
-These test the process_task_ipc match branches for sync_worktree_to_main and deploy
+These test the dispatch match branches for sync_worktree_to_main and deploy
 that aren't covered by test_ipc_auth.py (which focuses on authorization) or
 test_ipc_watcher.py (which focuses on the file scanning loop).
 
@@ -35,7 +35,8 @@ from pynchy.config import (
     WorkspaceDefaultsConfig,
 )
 from pynchy.db import _init_test_database
-from pynchy.ipc import _handle_deploy, process_task_ipc
+from pynchy.ipc import dispatch
+from pynchy.ipc._handlers_deploy import _handle_deploy
 from pynchy.types import RegisteredGroup
 
 GOD_GROUP = RegisteredGroup(
@@ -157,16 +158,19 @@ class TestSyncWorktreeToMain:
 
         with (
             patch(
-                "pynchy.ipc.get_settings",
+                "pynchy.ipc._handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.ipc.host_sync_worktree",
+                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
                 return_value={"success": True, "message": "Merged 1 commit(s)"},
             ),
-            patch("pynchy.ipc.host_notify_worktree_updates", new_callable=AsyncMock),
+            patch(
+                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                new_callable=AsyncMock,
+            ),
         ):
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "sync_worktree_to_main",
                     "requestId": "req-123",
@@ -189,16 +193,19 @@ class TestSyncWorktreeToMain:
 
         with (
             patch(
-                "pynchy.ipc.get_settings",
+                "pynchy.ipc._handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.ipc.host_sync_worktree",
+                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
                 return_value={"success": False, "message": "uncommitted changes"},
             ),
-            patch("pynchy.ipc.host_notify_worktree_updates", new_callable=AsyncMock),
+            patch(
+                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                new_callable=AsyncMock,
+            ),
         ):
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "sync_worktree_to_main",
                     "requestId": "req-fail",
@@ -220,16 +227,19 @@ class TestSyncWorktreeToMain:
 
         with (
             patch(
-                "pynchy.ipc.get_settings",
+                "pynchy.ipc._handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.ipc.host_sync_worktree",
+                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
                 return_value={"success": True, "message": "done"},
             ),
-            patch("pynchy.ipc.host_notify_worktree_updates", new_callable=AsyncMock) as mock_notify,
+            patch(
+                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                new_callable=AsyncMock,
+            ) as mock_notify,
         ):
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "sync_worktree_to_main",
                     "requestId": "req-456",
@@ -250,16 +260,19 @@ class TestSyncWorktreeToMain:
 
         with (
             patch(
-                "pynchy.ipc.get_settings",
+                "pynchy.ipc._handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.ipc.host_sync_worktree",
+                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
                 return_value={"success": False, "message": "conflict"},
             ),
-            patch("pynchy.ipc.host_notify_worktree_updates", new_callable=AsyncMock) as mock_notify,
+            patch(
+                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                new_callable=AsyncMock,
+            ) as mock_notify,
         ):
-            await process_task_ipc(
+            await dispatch(
                 {
                     "type": "sync_worktree_to_main",
                     "requestId": "req-789",
@@ -282,7 +295,9 @@ class TestDeployEdgeCases:
 
     async def test_deploy_without_chat_jid_uses_god_group(self, deps: MockDeps):
         """Deploy request missing chatJid should fall back to god group's JID."""
-        with patch("pynchy.ipc.finalize_deploy", new_callable=AsyncMock) as mock_finalize:
+        with patch(
+            "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
+        ) as mock_finalize:
             await _handle_deploy(
                 {
                     "rebuildContainer": False,
@@ -291,6 +306,7 @@ class TestDeployEdgeCases:
                     # chatJid intentionally missing
                 },
                 "god",
+                True,
                 deps,
             )
             mock_finalize.assert_called_once()
@@ -303,13 +319,16 @@ class TestDeployEdgeCases:
         # Deps with no god group
         no_god_deps = MockDeps({"other@g.us": OTHER_GROUP})
 
-        with patch("pynchy.ipc.finalize_deploy", new_callable=AsyncMock) as mock_finalize:
+        with patch(
+            "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
+        ) as mock_finalize:
             await _handle_deploy(
                 {
                     "rebuildContainer": False,
                     "headSha": "abc123",
                 },
                 "god",
+                True,
                 no_god_deps,
             )
             mock_finalize.assert_not_called()
@@ -318,10 +337,12 @@ class TestDeployEdgeCases:
         """Deploy requesting rebuild when build.sh doesn't exist should still finalize."""
         with (
             patch(
-                "pynchy.ipc.get_settings",
+                "pynchy.ipc._handlers_deploy.get_settings",
                 return_value=_test_settings(project_root=tmp_path),
             ),
-            patch("pynchy.ipc.finalize_deploy", new_callable=AsyncMock) as mock_finalize,
+            patch(
+                "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
+            ) as mock_finalize,
         ):
             await _handle_deploy(
                 {
@@ -331,6 +352,7 @@ class TestDeployEdgeCases:
                     "chatJid": "god@g.us",
                 },
                 "god",
+                True,
                 deps,
             )
             # Should still finalize since build.sh not found is non-fatal
@@ -338,7 +360,9 @@ class TestDeployEdgeCases:
 
     async def test_deploy_uses_default_resume_prompt(self, deps: MockDeps):
         """Deploy with no resumePrompt should use the default."""
-        with patch("pynchy.ipc.finalize_deploy", new_callable=AsyncMock) as mock_finalize:
+        with patch(
+            "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
+        ) as mock_finalize:
             await _handle_deploy(
                 {
                     "rebuildContainer": False,
@@ -347,6 +371,7 @@ class TestDeployEdgeCases:
                     # resumePrompt intentionally missing
                 },
                 "god",
+                True,
                 deps,
             )
             mock_finalize.assert_called_once()
@@ -364,16 +389,16 @@ class TestIpcTypeEdgeCases:
     async def test_empty_type_field_is_unknown(self, deps: MockDeps):
         """A task with no type field should be handled as unknown."""
         # Should not raise
-        await process_task_ipc({"no_type_field": True}, "god", True, deps)
+        await dispatch({"no_type_field": True}, "god", True, deps)
 
     async def test_none_type_field_is_unknown(self, deps: MockDeps):
         """A task with type=None should be handled gracefully."""
-        await process_task_ipc({"type": None}, "god", True, deps)
+        await dispatch({"type": None}, "god", True, deps)
 
     async def test_empty_data_dict_is_handled(self, deps: MockDeps):
         """An empty data dict should not crash the processor."""
-        await process_task_ipc({}, "god", True, deps)
+        await dispatch({}, "god", True, deps)
 
     async def test_unknown_type_does_not_raise(self, deps: MockDeps):
         """An unrecognized IPC type should be logged but not raise."""
-        await process_task_ipc({"type": "totally_made_up_command"}, "god", True, deps)
+        await dispatch({"type": "totally_made_up_command"}, "god", True, deps)

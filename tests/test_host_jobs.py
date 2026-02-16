@@ -13,7 +13,7 @@ from pynchy.db import (
     get_due_host_jobs,
     get_host_job_by_name,
 )
-from pynchy.ipc import process_task_ipc
+from pynchy.ipc import dispatch
 from pynchy.task_scheduler import _poll_database_host_jobs
 
 
@@ -48,7 +48,7 @@ class TestHostJobScheduling:
             "timestamp": datetime.now(UTC).isoformat(),
         }
 
-        await process_task_ipc(data, "god", True, mock_ipc_deps)
+        await dispatch(data, "god", True, mock_ipc_deps)
 
         # Verify job was created
         job = await get_host_job_by_name("test-backup")
@@ -76,7 +76,7 @@ class TestHostJobScheduling:
             "timestamp": datetime.now(UTC).isoformat(),
         }
 
-        await process_task_ipc(data, "user-group", False, mock_ipc_deps)
+        await dispatch(data, "user-group", False, mock_ipc_deps)
 
         # Verify job was NOT created
         job = await get_host_job_by_name("sneaky-job")
@@ -94,7 +94,7 @@ class TestHostJobScheduling:
             "timestamp": datetime.now(UTC).isoformat(),
         }
 
-        await process_task_ipc(data, "god", True, mock_ipc_deps)
+        await dispatch(data, "god", True, mock_ipc_deps)
 
         job = await get_host_job_by_name("year-end-report")
         assert job is not None
@@ -205,7 +205,7 @@ class TestHostJobScheduling:
             "timestamp": datetime.now(UTC).isoformat(),
         }
 
-        await process_task_ipc(data, "god", True, mock_ipc_deps)
+        await dispatch(data, "god", True, mock_ipc_deps)
 
         job = await get_host_job_by_name("bad-cron")
         assert job is None
@@ -221,7 +221,7 @@ class TestHostJobScheduling:
             "timestamp": datetime.now(UTC).isoformat(),
         }
 
-        await process_task_ipc(data, "god", True, mock_ipc_deps)
+        await dispatch(data, "god", True, mock_ipc_deps)
 
         job = await get_host_job_by_name("bad-timestamp")
         assert job is None

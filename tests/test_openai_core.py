@@ -92,7 +92,7 @@ class TestOpenAICoreInstantiation:
             mcp_servers={
                 "pynchy": {
                     "command": "python",
-                    "args": ["-m", "agent_runner.ipc_mcp"],
+                    "args": ["-m", "agent_runner.agent_tools"],
                     "env": {"PYNCHY_CHAT_JID": "test@g.us"},
                 }
             },
@@ -142,7 +142,7 @@ class TestMCPServerConversion:
             mcp_servers={
                 "pynchy": {
                     "command": "python",
-                    "args": ["-m", "agent_runner.ipc_mcp"],
+                    "args": ["-m", "agent_runner.agent_tools"],
                     "env": {"KEY": "val"},
                 },
                 "custom": {

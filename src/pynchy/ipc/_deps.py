@@ -1,0 +1,41 @@
+"""Dependency protocol for IPC processing."""
+
+from __future__ import annotations
+
+from typing import Any, Protocol
+
+from pynchy.types import Channel, RegisteredGroup
+
+
+class IpcDeps(Protocol):
+    """Dependencies for IPC processing."""
+
+    async def broadcast_to_channels(self, jid: str, text: str) -> None: ...
+
+    async def broadcast_host_message(self, jid: str, text: str) -> None: ...
+
+    async def broadcast_system_notice(self, jid: str, text: str) -> None: ...
+
+    def registered_groups(self) -> dict[str, RegisteredGroup]: ...
+
+    def register_group(self, jid: str, group: RegisteredGroup) -> None: ...
+
+    async def sync_group_metadata(self, force: bool) -> None: ...
+
+    async def get_available_groups(self) -> list[Any]: ...
+
+    def write_groups_snapshot(
+        self,
+        group_folder: str,
+        is_god: bool,
+        available_groups: list[Any],
+        registered_jids: set[str],
+    ) -> None: ...
+
+    async def clear_session(self, group_folder: str) -> None: ...
+
+    async def clear_chat_history(self, chat_jid: str) -> None: ...
+
+    def enqueue_message_check(self, group_jid: str) -> None: ...
+
+    def channels(self) -> list[Channel]: ...

@@ -1,4 +1,4 @@
-"""Tests for container/agent_runner/src/agent_runner/ipc_mcp.py.
+"""Tests for container/agent_runner/src/agent_runner/agent_tools/.
 
 Tests IPC file writing, schedule validation, tool authorization, and
 task listing logic.
@@ -15,7 +15,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "container" / "agent_runner" / "src"))
 
-from agent_runner.ipc_mcp import write_ipc_file
+from agent_runner.agent_tools._ipc import write_ipc_file
 
 # ---------------------------------------------------------------------------
 # write_ipc_file
@@ -76,19 +76,19 @@ class TestScheduleTaskValidation:
     def _patch_env(self, tmp_path):
         """Patch module-level state for testing."""
         with (
-            patch("agent_runner.ipc_mcp.chat_jid", "test@g.us"),
-            patch("agent_runner.ipc_mcp.group_folder", "test-group"),
-            patch("agent_runner.ipc_mcp.is_god", True),
-            patch("agent_runner.ipc_mcp.is_scheduled_task", False),
-            patch("agent_runner.ipc_mcp.TASKS_DIR", tmp_path / "tasks"),
+            patch("agent_runner.agent_tools._ipc.chat_jid", "test@g.us"),
+            patch("agent_runner.agent_tools._ipc.group_folder", "test-group"),
+            patch("agent_runner.agent_tools._ipc.is_god", True),
+            patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
+            patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
         ):
             yield
 
     @pytest.mark.asyncio
     async def test_valid_cron(self, tmp_path):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
-        with patch("agent_runner.ipc_mcp.TASKS_DIR", tmp_path / "tasks"):
+        with patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"):
             result = await call_tool(
                 "schedule_task",
                 {
@@ -103,7 +103,7 @@ class TestScheduleTaskValidation:
 
     @pytest.mark.asyncio
     async def test_invalid_cron_returns_error(self):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
         result = await call_tool(
             "schedule_task",
@@ -120,9 +120,9 @@ class TestScheduleTaskValidation:
 
     @pytest.mark.asyncio
     async def test_valid_interval(self, tmp_path):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
-        with patch("agent_runner.ipc_mcp.TASKS_DIR", tmp_path / "tasks"):
+        with patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"):
             result = await call_tool(
                 "schedule_task",
                 {
@@ -135,7 +135,7 @@ class TestScheduleTaskValidation:
 
     @pytest.mark.asyncio
     async def test_invalid_interval_negative(self):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
         result = await call_tool(
             "schedule_task",
@@ -151,7 +151,7 @@ class TestScheduleTaskValidation:
 
     @pytest.mark.asyncio
     async def test_invalid_interval_non_numeric(self):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
         result = await call_tool(
             "schedule_task",
@@ -165,7 +165,7 @@ class TestScheduleTaskValidation:
 
     @pytest.mark.asyncio
     async def test_invalid_interval_zero(self):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
         result = await call_tool(
             "schedule_task",
@@ -179,9 +179,9 @@ class TestScheduleTaskValidation:
 
     @pytest.mark.asyncio
     async def test_valid_once(self, tmp_path):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
-        with patch("agent_runner.ipc_mcp.TASKS_DIR", tmp_path / "tasks"):
+        with patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"):
             result = await call_tool(
                 "schedule_task",
                 {
@@ -194,7 +194,7 @@ class TestScheduleTaskValidation:
 
     @pytest.mark.asyncio
     async def test_invalid_once_timestamp(self):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
         result = await call_tool(
             "schedule_task",
@@ -210,11 +210,11 @@ class TestScheduleTaskValidation:
     @pytest.mark.asyncio
     async def test_non_god_cannot_set_target_group(self, tmp_path):
         """Non-god groups should have target_group_jid ignored."""
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
         with (
-            patch("agent_runner.ipc_mcp.is_god", False),
-            patch("agent_runner.ipc_mcp.TASKS_DIR", tmp_path / "tasks"),
+            patch("agent_runner.agent_tools._ipc.is_god", False),
+            patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
         ):
             result = await call_tool(
                 "schedule_task",
@@ -234,11 +234,11 @@ class TestScheduleTaskValidation:
     @pytest.mark.asyncio
     async def test_god_can_set_target_group(self, tmp_path):
         """God groups should be able to set target_group_jid."""
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
         with (
-            patch("agent_runner.ipc_mcp.is_god", True),
-            patch("agent_runner.ipc_mcp.TASKS_DIR", tmp_path / "tasks"),
+            patch("agent_runner.agent_tools._ipc.is_god", True),
+            patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
         ):
             result = await call_tool(
                 "schedule_task",
@@ -265,11 +265,11 @@ class TestRegisterGroupAuth:
 
     @pytest.mark.asyncio
     async def test_non_god_register_group_rejected(self):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
         with (
-            patch("agent_runner.ipc_mcp.is_god", False),
-            patch("agent_runner.ipc_mcp.group_folder", "non-god"),
+            patch("agent_runner.agent_tools._ipc.is_god", False),
+            patch("agent_runner.agent_tools._ipc.group_folder", "non-god"),
         ):
             result = await call_tool(
                 "register_group",
@@ -286,11 +286,11 @@ class TestRegisterGroupAuth:
 
     @pytest.mark.asyncio
     async def test_god_register_group_accepted(self, tmp_path):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
         with (
-            patch("agent_runner.ipc_mcp.is_god", True),
-            patch("agent_runner.ipc_mcp.TASKS_DIR", tmp_path / "tasks"),
+            patch("agent_runner.agent_tools._ipc.is_god", True),
+            patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
         ):
             result = await call_tool(
                 "register_group",
@@ -315,9 +315,9 @@ class TestDeployAuth:
 
     @pytest.mark.asyncio
     async def test_non_god_deploy_rejected(self):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
-        with patch("agent_runner.ipc_mcp.is_god", False):
+        with patch("agent_runner.agent_tools._ipc.is_god", False):
             result = await call_tool("deploy_changes", {})
         assert hasattr(result, "isError")
         assert result.isError is True
@@ -334,12 +334,12 @@ class TestSendMessage:
 
     @pytest.mark.asyncio
     async def test_basic_send(self, tmp_path):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
         with (
-            patch("agent_runner.ipc_mcp.chat_jid", "test@g.us"),
-            patch("agent_runner.ipc_mcp.group_folder", "test"),
-            patch("agent_runner.ipc_mcp.MESSAGES_DIR", tmp_path / "messages"),
+            patch("agent_runner.agent_tools._ipc.chat_jid", "test@g.us"),
+            patch("agent_runner.agent_tools._ipc.group_folder", "test"),
+            patch("agent_runner.agent_tools._ipc.MESSAGES_DIR", tmp_path / "messages"),
         ):
             result = await call_tool("send_message", {"text": "Hello world"})
 
@@ -355,12 +355,12 @@ class TestSendMessage:
 
     @pytest.mark.asyncio
     async def test_send_with_sender(self, tmp_path):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
         with (
-            patch("agent_runner.ipc_mcp.chat_jid", "test@g.us"),
-            patch("agent_runner.ipc_mcp.group_folder", "test"),
-            patch("agent_runner.ipc_mcp.MESSAGES_DIR", tmp_path / "messages"),
+            patch("agent_runner.agent_tools._ipc.chat_jid", "test@g.us"),
+            patch("agent_runner.agent_tools._ipc.group_folder", "test"),
+            patch("agent_runner.agent_tools._ipc.MESSAGES_DIR", tmp_path / "messages"),
         ):
             await call_tool("send_message", {"text": "Update", "sender": "Researcher"})
 
@@ -379,29 +379,29 @@ class TestListTasks:
 
     @pytest.mark.asyncio
     async def test_no_tasks_file(self, tmp_path):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
-        with patch("agent_runner.ipc_mcp.IPC_DIR", tmp_path):
+        with patch("agent_runner.agent_tools._ipc.IPC_DIR", tmp_path):
             result = await call_tool("list_tasks", {})
         assert isinstance(result, list)
         assert "no" in result[0].text.lower()
 
     @pytest.mark.asyncio
     async def test_empty_task_list(self, tmp_path):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
         tasks_file = tmp_path / "current_tasks.json"
         tasks_file.write_text("[]")
         with (
-            patch("agent_runner.ipc_mcp.IPC_DIR", tmp_path),
-            patch("agent_runner.ipc_mcp.is_god", True),
+            patch("agent_runner.agent_tools._ipc.IPC_DIR", tmp_path),
+            patch("agent_runner.agent_tools._ipc.is_god", True),
         ):
             result = await call_tool("list_tasks", {})
         assert "no" in result[0].text.lower()
 
     @pytest.mark.asyncio
     async def test_god_sees_all_tasks(self, tmp_path):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
         tasks = [
             {
@@ -424,8 +424,8 @@ class TestListTasks:
         tasks_file = tmp_path / "current_tasks.json"
         tasks_file.write_text(json.dumps(tasks))
         with (
-            patch("agent_runner.ipc_mcp.IPC_DIR", tmp_path),
-            patch("agent_runner.ipc_mcp.is_god", True),
+            patch("agent_runner.agent_tools._ipc.IPC_DIR", tmp_path),
+            patch("agent_runner.agent_tools._ipc.is_god", True),
         ):
             result = await call_tool("list_tasks", {})
         text = result[0].text
@@ -434,7 +434,7 @@ class TestListTasks:
 
     @pytest.mark.asyncio
     async def test_non_god_sees_own_tasks_only(self, tmp_path):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
         tasks = [
             {
@@ -457,9 +457,9 @@ class TestListTasks:
         tasks_file = tmp_path / "current_tasks.json"
         tasks_file.write_text(json.dumps(tasks))
         with (
-            patch("agent_runner.ipc_mcp.IPC_DIR", tmp_path),
-            patch("agent_runner.ipc_mcp.is_god", False),
-            patch("agent_runner.ipc_mcp.group_folder", "my-group"),
+            patch("agent_runner.agent_tools._ipc.IPC_DIR", tmp_path),
+            patch("agent_runner.agent_tools._ipc.is_god", False),
+            patch("agent_runner.agent_tools._ipc.group_folder", "my-group"),
         ):
             result = await call_tool("list_tasks", {})
         text = result[0].text
@@ -477,12 +477,12 @@ class TestTaskLifecycle:
 
     @pytest.mark.asyncio
     async def test_pause_task(self, tmp_path):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
         with (
-            patch("agent_runner.ipc_mcp.group_folder", "test"),
-            patch("agent_runner.ipc_mcp.is_god", False),
-            patch("agent_runner.ipc_mcp.TASKS_DIR", tmp_path / "tasks"),
+            patch("agent_runner.agent_tools._ipc.group_folder", "test"),
+            patch("agent_runner.agent_tools._ipc.is_god", False),
+            patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
         ):
             result = await call_tool("pause_task", {"task_id": "task-123"})
         assert "pause" in result[0].text.lower()
@@ -493,24 +493,24 @@ class TestTaskLifecycle:
 
     @pytest.mark.asyncio
     async def test_resume_task(self, tmp_path):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
         with (
-            patch("agent_runner.ipc_mcp.group_folder", "test"),
-            patch("agent_runner.ipc_mcp.is_god", False),
-            patch("agent_runner.ipc_mcp.TASKS_DIR", tmp_path / "tasks"),
+            patch("agent_runner.agent_tools._ipc.group_folder", "test"),
+            patch("agent_runner.agent_tools._ipc.is_god", False),
+            patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
         ):
             result = await call_tool("resume_task", {"task_id": "task-123"})
         assert "resume" in result[0].text.lower()
 
     @pytest.mark.asyncio
     async def test_cancel_task(self, tmp_path):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
         with (
-            patch("agent_runner.ipc_mcp.group_folder", "test"),
-            patch("agent_runner.ipc_mcp.is_god", False),
-            patch("agent_runner.ipc_mcp.TASKS_DIR", tmp_path / "tasks"),
+            patch("agent_runner.agent_tools._ipc.group_folder", "test"),
+            patch("agent_runner.agent_tools._ipc.is_god", False),
+            patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
         ):
             result = await call_tool("cancel_task", {"task_id": "task-123"})
         assert "cancel" in result[0].text.lower()
@@ -526,7 +526,7 @@ class TestUnknownTool:
 
     @pytest.mark.asyncio
     async def test_unknown_tool(self):
-        from agent_runner.ipc_mcp import call_tool
+        from agent_runner.agent_tools._server import call_tool
 
         result = await call_tool("nonexistent_tool", {})
         assert isinstance(result, list)
@@ -543,11 +543,11 @@ class TestListToolsVisibility:
 
     @pytest.mark.asyncio
     async def test_god_sees_deploy(self):
-        from agent_runner.ipc_mcp import list_tools
+        from agent_runner.agent_tools._server import list_tools
 
         with (
-            patch("agent_runner.ipc_mcp.is_god", True),
-            patch("agent_runner.ipc_mcp.is_scheduled_task", False),
+            patch("agent_runner.agent_tools._ipc.is_god", True),
+            patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
         ):
             tools = await list_tools()
         tool_names = [t.name for t in tools]
@@ -555,11 +555,11 @@ class TestListToolsVisibility:
 
     @pytest.mark.asyncio
     async def test_non_god_no_deploy(self):
-        from agent_runner.ipc_mcp import list_tools
+        from agent_runner.agent_tools._server import list_tools
 
         with (
-            patch("agent_runner.ipc_mcp.is_god", False),
-            patch("agent_runner.ipc_mcp.is_scheduled_task", False),
+            patch("agent_runner.agent_tools._ipc.is_god", False),
+            patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
         ):
             tools = await list_tools()
         tool_names = [t.name for t in tools]
@@ -567,11 +567,11 @@ class TestListToolsVisibility:
 
     @pytest.mark.asyncio
     async def test_scheduled_task_sees_finished_work(self):
-        from agent_runner.ipc_mcp import list_tools
+        from agent_runner.agent_tools._server import list_tools
 
         with (
-            patch("agent_runner.ipc_mcp.is_god", False),
-            patch("agent_runner.ipc_mcp.is_scheduled_task", True),
+            patch("agent_runner.agent_tools._ipc.is_god", False),
+            patch("agent_runner.agent_tools._ipc.is_scheduled_task", True),
         ):
             tools = await list_tools()
         tool_names = [t.name for t in tools]
@@ -579,11 +579,11 @@ class TestListToolsVisibility:
 
     @pytest.mark.asyncio
     async def test_non_scheduled_no_finished_work(self):
-        from agent_runner.ipc_mcp import list_tools
+        from agent_runner.agent_tools._server import list_tools
 
         with (
-            patch("agent_runner.ipc_mcp.is_god", False),
-            patch("agent_runner.ipc_mcp.is_scheduled_task", False),
+            patch("agent_runner.agent_tools._ipc.is_god", False),
+            patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
         ):
             tools = await list_tools()
         tool_names = [t.name for t in tools]
@@ -591,11 +591,11 @@ class TestListToolsVisibility:
 
     @pytest.mark.asyncio
     async def test_all_base_tools_present(self):
-        from agent_runner.ipc_mcp import list_tools
+        from agent_runner.agent_tools._server import list_tools
 
         with (
-            patch("agent_runner.ipc_mcp.is_god", False),
-            patch("agent_runner.ipc_mcp.is_scheduled_task", False),
+            patch("agent_runner.agent_tools._ipc.is_god", False),
+            patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
         ):
             tools = await list_tools()
         tool_names = [t.name for t in tools]

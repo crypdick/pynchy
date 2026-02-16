@@ -248,9 +248,9 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
         else:
             system_prompt_append = notices_text
 
-    # MCP server path for IPC tools
+    # MCP server path for agent tools
     mcp_server_command = "python"
-    mcp_server_args = ["-m", "agent_runner.ipc_mcp"]
+    mcp_server_args = ["-m", "agent_runner.agent_tools"]
 
     # Build mcp_servers dict starting with built-in pynchy server
     mcp_servers_dict = {
