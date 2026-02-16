@@ -8,6 +8,7 @@ logic — bugs here mean periodic agents silently don't run or get double-schedu
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -29,7 +30,7 @@ from pynchy.config import (
 )
 from pynchy.db import _init_test_database, create_task, get_active_task_for_group, get_all_tasks
 from pynchy.types import RegisteredGroup
-from pynchy.workspace_config import reconcile_workspaces
+from pynchy.workspace_config import configure_plugin_workspaces, reconcile_workspaces
 
 
 def _write_workspace_yaml(workspaces, folder_name, data):
@@ -45,7 +46,7 @@ class TestReconcileWorkspaces:
         await _init_test_database()
 
     @pytest.fixture
-    def groups_dir(self, monkeypatch):
+    def groups_dir(self, monkeypatch, tmp_path):
         workspaces: dict[str, WorkspaceConfig] = {}
         s = Settings.model_construct(
             agent=AgentConfig(),
@@ -61,8 +62,15 @@ class TestReconcileWorkspaces:
             queue=QueueConfig(),
             security=SecurityConfig(),
         )
+        s.__dict__["groups_dir"] = tmp_path / "groups"
         monkeypatch.setattr("pynchy.workspace_config.get_settings", lambda: s)
         return workspaces
+
+    @pytest.fixture(autouse=True)
+    def reset_plugin_workspaces(self):
+        configure_plugin_workspaces(None)
+        yield
+        configure_plugin_workspaces(None)
 
     async def test_creates_task_for_periodic_workspace(self, db, groups_dir):
         """Periodic workspace.yaml should create a scheduled task."""
@@ -375,3 +383,42 @@ class TestReconcileWorkspaces:
         tasks = await get_all_tasks()
         assert len(tasks) == 1
         assert tasks[0].context_mode == "isolated"
+
+    async def test_plugin_workspace_creates_task_and_seeds_claude_file(
+        self, db, groups_dir, tmp_path
+    ):
+        fake_pm = SimpleNamespace(
+            hook=SimpleNamespace(
+                pynchy_workspace_spec=lambda: [
+                    {
+                        "folder": "code-improver",
+                        "config": {
+                            "project_access": True,
+                            "schedule": "0 4 * * *",
+                            "prompt": "Run code improvements",
+                            "context_mode": "isolated",
+                        },
+                        "claude_md": "# Code Improver\\n\\nPlugin managed.",
+                    }
+                ]
+            )
+        )
+        configure_plugin_workspaces(fake_pm)
+
+        registered = {
+            "improver@g.us": RegisteredGroup(
+                name="Code Improver",
+                folder="code-improver",
+                trigger="@Pynchy",
+                added_at=datetime.now(UTC).isoformat(),
+            ),
+        }
+        register_fn = AsyncMock()
+        await reconcile_workspaces(registered, [], register_fn)
+
+        tasks = await get_all_tasks()
+        assert len(tasks) == 1
+        assert tasks[0].group_folder == "code-improver"
+        assert tasks[0].project_access is True
+        claude_path = tmp_path / "groups" / "code-improver" / "CLAUDE.md"
+        assert claude_path.exists()

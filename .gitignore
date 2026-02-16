@@ -21,9 +21,6 @@ groups/admin/*
 !groups/mr-pynchy/
 groups/mr-pynchy/*
 !groups/mr-pynchy/CLAUDE.md
-!groups/code-improver/
-groups/code-improver/*
-!groups/code-improver/CLAUDE.md
 
 # Secrets
 *.keys.json

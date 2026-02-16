@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
@@ -19,7 +20,71 @@ from pynchy.db import create_task, get_active_task_for_group, update_task
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
+    import pluggy
+
     from pynchy.types import Channel, RegisteredGroup
+
+
+@dataclass(frozen=True)
+class WorkspaceSpec:
+    """Resolved workspace definition with optional seeded CLAUDE.md."""
+
+    config: WorkspaceConfig
+    claude_md: str | None = None
+
+
+_plugin_workspace_specs: dict[str, WorkspaceSpec] = {}
+
+
+def configure_plugin_workspaces(plugin_manager: pluggy.PluginManager | None) -> None:
+    """Cache workspace specs exported by plugins.
+
+    Plugin workspace configs are merged with config.toml in `load_workspace_config`.
+    """
+    global _plugin_workspace_specs
+    _plugin_workspace_specs = {}
+    if plugin_manager is None:
+        return
+
+    for spec in plugin_manager.hook.pynchy_workspace_spec():
+        if not isinstance(spec, dict):
+            logger.warning("Ignoring invalid workspace plugin spec", spec_type=type(spec).__name__)
+            continue
+
+        folder = spec.get("folder")
+        config_data = spec.get("config")
+        if not isinstance(folder, str) or not isinstance(config_data, dict):
+            logger.warning("Ignoring malformed workspace plugin spec", spec=spec)
+            continue
+
+        try:
+            parsed = WorkspaceConfig.model_validate(config_data)
+        except Exception:
+            logger.exception("Invalid workspace config from plugin", folder=folder)
+            continue
+
+        claude_md = spec.get("claude_md")
+        if claude_md is not None and not isinstance(claude_md, str):
+            logger.warning("Ignoring non-string claude_md in workspace spec", folder=folder)
+            claude_md = None
+
+        _plugin_workspace_specs[folder] = WorkspaceSpec(config=parsed, claude_md=claude_md)
+
+
+def _workspace_specs() -> dict[str, WorkspaceSpec]:
+    """Return merged workspace specs from plugins and config.toml.
+
+    User config always wins for config fields. Plugin `claude_md` remains attached
+    so startup can seed missing files even when config is overridden by the user.
+    """
+    s = get_settings()
+    merged = dict(_plugin_workspace_specs)
+    for folder, cfg in s.workspaces.items():
+        plugin_spec = merged.get(folder)
+        merged[folder] = WorkspaceSpec(
+            config=cfg, claude_md=plugin_spec.claude_md if plugin_spec else None
+        )
+    return merged
 
 
 def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
@@ -27,10 +92,12 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
 
     Returns None if the group has no [workspaces.<folder>] section in config.toml.
     """
-    s = get_settings()
-    config = s.workspaces.get(group_folder)
-    if config is None:
+    specs = _workspace_specs()
+    spec = specs.get(group_folder)
+    if spec is None:
         return None
+    s = get_settings()
+    config = spec.config
 
     # Apply workspace defaults for None fields
     if config.requires_trigger is None:
@@ -96,10 +163,12 @@ async def reconcile_workspaces(
     from pynchy.types import RegisteredGroup as RG
 
     s = get_settings()
+    specs = _workspace_specs()
     folder_to_jid: dict[str, str] = {g.folder: jid for jid, g in registered_groups.items()}
 
     reconciled = 0
-    for folder, config in s.workspaces.items():
+    for folder, spec in specs.items():
+        config = spec.config
         # Apply defaults
         requires_trigger = (
             config.requires_trigger
@@ -109,6 +178,13 @@ async def reconcile_workspaces(
         context_mode = config.context_mode or s.workspace_defaults.context_mode
 
         display_name = config.name or folder.replace("-", " ").title()
+
+        if spec.claude_md:
+            claude_path = s.groups_dir / folder / "CLAUDE.md"
+            if not claude_path.exists():
+                claude_path.parent.mkdir(parents=True, exist_ok=True)
+                claude_path.write_text(spec.claude_md)
+                logger.info("Seeded workspace CLAUDE.md from plugin", folder=folder)
 
         # 1. Ensure the group is registered (create chat group if needed)
         jid = folder_to_jid.get(folder)

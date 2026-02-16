@@ -96,3 +96,17 @@ class PynchySpec:
             Channel instance implementing the Channel protocol, or None if this
             plugin doesn't provide channels
         """
+
+    @hookspec
+    def pynchy_workspace_spec(self) -> dict[str, Any]:
+        """Provide a managed workspace definition.
+
+        Workspace plugins can ship periodic agents or preconfigured workspaces
+        without requiring users to copy `[workspaces.*]` blocks manually.
+
+        Returns:
+            Dict with keys:
+                - folder: Workspace folder name (e.g., "code-improver")
+                - config: WorkspaceConfig-compatible dict (schedule, prompt, etc.)
+                - claude_md: Optional CLAUDE.md content to seed on first run
+        """

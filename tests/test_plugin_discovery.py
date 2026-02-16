@@ -18,7 +18,7 @@ class TestPluginManager:
         assert pm.project_name == "pynchy"
 
     def test_built_in_plugins_registered(self):
-        """Built-in Claude and OpenAI plugins are registered automatically."""
+        """Built-in plugins are registered automatically."""
         pm = get_plugin_manager()
 
         cores = pm.hook.pynchy_agent_core_info()
@@ -43,6 +43,7 @@ class TestPluginManager:
         assert hasattr(pm.hook, "pynchy_mcp_server_spec")
         assert hasattr(pm.hook, "pynchy_skill_paths")
         assert hasattr(pm.hook, "pynchy_create_channel")
+        assert hasattr(pm.hook, "pynchy_workspace_spec")
 
     def test_multiple_plugin_manager_calls(self):
         """Multiple calls to get_plugin_manager work correctly."""
@@ -281,7 +282,9 @@ class TestPluginErrors:
         mcp_specs = pm.hook.pynchy_mcp_server_spec()
         skill_paths = pm.hook.pynchy_skill_paths()
         channels = pm.hook.pynchy_create_channel(context=None)
+        workspace_specs = pm.hook.pynchy_workspace_spec()
 
         assert mcp_specs == []
         assert skill_paths == []
         assert channels == []
+        assert workspace_specs == []

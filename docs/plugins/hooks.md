@@ -157,6 +157,35 @@ def pynchy_container_runtime(self) -> Any | None:
 | `ensure_running()` | `() -> None` | Ensures daemon/service is running (or raises) |
 | `list_running_containers(prefix)` | `(str) -> list[str]` | Lists active container names for orphan cleanup |
 
+## pynchy_workspace_spec
+
+Provide a managed workspace definition (for example a periodic agent).
+
+**Calling strategy:** All results collected and merged with user `config.toml` workspaces.
+
+```python
+@hookimpl
+def pynchy_workspace_spec(self) -> dict[str, Any]:
+    return {
+        "folder": "code-improver",
+        "config": {
+            "project_access": True,
+            "schedule": "0 4 * * *",
+            "prompt": "Run scheduled code improvements",
+            "context_mode": "isolated",
+        },
+        "claude_md": "# Code Improver\\n\\nAgent instructions...",
+    }
+```
+
+**Return keys:**
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `folder` | `str` | Workspace folder name |
+| `config` | `dict[str, Any]` | `WorkspaceConfig`-compatible fields |
+| `claude_md` | `str \| None` | Optional `groups/{folder}/CLAUDE.md` content to seed when missing |
+
 ## Multi-Category Plugins
 
 A single plugin can implement multiple hooks:
