@@ -240,6 +240,12 @@ class PluginConfig(BaseModel):
     trusted: bool = False  # Skip verification — use for self-authored plugins
 
 
+# TODO: move this when we split out the slack plugin to its own repo.
+class SlackConfig(BaseModel):
+    bot_token: SecretStr | None = None  # xoxb-... Bot User OAuth Token
+    app_token: SecretStr | None = None  # xapp-... App-Level Token (Socket Mode)
+
+
 class CalDAVConfig(BaseModel):
     # TODO: Support multiple CalDAV servers — change to dict of named
     # server configs so agents can access calendars across accounts.
@@ -299,6 +305,7 @@ class Settings(BaseSettings):
     channels: ChannelsConfig = ChannelsConfig()
     plugins: dict[str, PluginConfig] = {}
     security: SecurityConfig = SecurityConfig()
+    slack: SlackConfig = SlackConfig()
     caldav: CalDAVConfig = CalDAVConfig()
 
     # Sentinels (class-level, not fields)
