@@ -73,6 +73,30 @@
 # port = 8484
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Gateway Configuration (LiteLLM)
+# ─────────────────────────────────────────────────────────────────────────────
+# LLM API gateway provides credential isolation for containers.
+# Two modes: LiteLLM (recommended) or builtin (simple single-key proxy).
+
+[gateway]
+# Path to LiteLLM config file (enables LiteLLM mode)
+# If not set, uses builtin mode with credentials from [secrets]
+# litellm_config = "litellm_config.yaml"
+
+# Gateway port (set to 4000 when using LiteLLM mode)
+# port = 4000
+
+# LiteLLM UI credentials (optional)
+# These are passed as UI_USERNAME and UI_PASSWORD environment variables.
+# If not set, LiteLLM will use default authentication (master_key).
+# ui_username = "admin"
+# ui_password = "your-secure-password-here"
+
+# LiteLLM Docker images (usually keep defaults)
+# litellm_image = "ghcr.io/berriai/litellm:main-latest"
+# postgres_image = "postgres:17-alpine"
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Scheduler & Intervals
 # ─────────────────────────────────────────────────────────────────────────────
 
