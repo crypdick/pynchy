@@ -221,6 +221,7 @@ class ScheduledTask:
         """
         return {
             "id": self.id,
+            "type": "agent",
             "groupFolder": self.group_folder,
             "prompt": self.prompt,
             "schedule_type": self.schedule_type,
@@ -261,6 +262,19 @@ class HostJob:
     cwd: str | None = None
     timeout_seconds: int = 600
     enabled: bool = True
+
+    def to_snapshot_dict(self) -> dict[str, str | None]:
+        """Serialize to the dict format expected by write_tasks_snapshot."""
+        return {
+            "id": self.id,
+            "type": "host",
+            "name": self.name,
+            "command": self.command,
+            "schedule_type": self.schedule_type,
+            "schedule_value": self.schedule_value,
+            "status": self.status,
+            "next_run": self.next_run,
+        }
 
 
 @dataclass

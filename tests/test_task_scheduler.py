@@ -91,6 +91,7 @@ class TestScheduledTaskSnapshotDict:
         d = task.to_snapshot_dict()
         assert d == {
             "id": "task-42",
+            "type": "agent",
             "groupFolder": "my-group",
             "prompt": "Do something",
             "schedule_type": "cron",
@@ -707,8 +708,8 @@ class TestRunTask:
 
         snapshots = []
 
-        def mock_write_snapshot(group_folder, is_god, tasks):
-            snapshots.append((group_folder, is_god, tasks))
+        def mock_write_snapshot(group_folder, is_god, tasks, host_jobs=None):
+            snapshots.append((group_folder, is_god, tasks, host_jobs))
 
         async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
             return ContainerOutput(status="success", result="Done")

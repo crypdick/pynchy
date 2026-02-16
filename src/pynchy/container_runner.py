@@ -939,13 +939,24 @@ def write_tasks_snapshot(
     folder: str,
     is_god: bool,
     tasks: list[dict[str, Any]],
+    host_jobs: list[dict[str, str | None]] | None = None,
 ) -> None:
-    """Write current_tasks.json to the group's IPC directory."""
+    """Write current_tasks.json to the group's IPC directory.
+
+    Merges agent tasks and host jobs into a single list. Each entry has
+    a "type" field ("agent" or "host") so the container can distinguish them.
+    Host jobs are only visible to the god group.
+    """
     group_ipc_dir = get_settings().data_dir / "ipc" / folder
     group_ipc_dir.mkdir(parents=True, exist_ok=True)
 
     # God sees all tasks, others only see their own
     filtered = tasks if is_god else [t for t in tasks if t.get("groupFolder") == folder]
+
+    # Host jobs are god-only
+    if is_god and host_jobs:
+        filtered = [*filtered, *host_jobs]
+
     (group_ipc_dir / "current_tasks.json").write_text(json.dumps(filtered, indent=2))
 
 

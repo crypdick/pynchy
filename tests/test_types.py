@@ -163,6 +163,7 @@ class TestScheduledTask:
         snapshot = task.to_snapshot_dict()
         assert snapshot == {
             "id": "task-1",
+            "type": "agent",
             "groupFolder": "my-group",
             "prompt": "Check for updates",
             "schedule_type": "cron",

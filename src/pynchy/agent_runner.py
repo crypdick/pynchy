@@ -13,7 +13,7 @@ from pynchy.container_runner import (
     write_groups_snapshot,
     write_tasks_snapshot,
 )
-from pynchy.db import get_all_tasks, set_session
+from pynchy.db import get_all_host_jobs, get_all_tasks, set_session
 from pynchy.git_utils import count_unpushed_commits, is_repo_dirty
 from pynchy.logger import logger
 from pynchy.types import ContainerInput, ContainerOutput
@@ -63,10 +63,12 @@ async def run_agent(
 
     # Update snapshots for container to read
     tasks = await get_all_tasks()
+    host_jobs = await get_all_host_jobs() if is_god else []
     write_tasks_snapshot(
         group.folder,
         is_god,
         [t.to_snapshot_dict() for t in tasks],
+        host_jobs=[j.to_snapshot_dict() for j in host_jobs],
     )
 
     available_groups = await deps.get_available_groups()

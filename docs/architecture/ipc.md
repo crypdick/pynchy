@@ -90,4 +90,4 @@ The host enforces permissions based on the source group's identity. See [Securit
 
 The agent interacts with IPC through MCP tools exposed by `ipc_mcp.py` (runs as an MCP server inside the container). These tools validate inputs and write the appropriate JSON files. The agent never writes IPC files directly.
 
-For the list of MCP tools available to agents, see [Scheduled Tasks](../usage/scheduled-tasks.md#mcp-tools-pynchy-server).
+For the list of MCP tools available to agents, see [Scheduled Tasks](../usage/scheduled-tasks.md#mcp-tools).
