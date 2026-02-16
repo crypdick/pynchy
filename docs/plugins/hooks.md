@@ -68,6 +68,49 @@ def pynchy_mcp_server_spec(self) -> dict[str, Any]:
 
 **Container behavior:** Plugin source is mounted at `/workspace/plugins/{name}/` with `PYTHONPATH` set so the module is importable.
 
+## pynchy_mcp_server_handler
+
+Provide host-side handlers for service tools. Unlike `pynchy_mcp_server_spec` (which runs MCP servers inside the container), this hook provides handler functions that run on the **host process** and are dispatched to via IPC when container agents invoke service tools.
+
+**Calling strategy:** All results collected; tool mappings are merged (last-write-wins on conflict).
+
+```python
+@hookimpl
+def pynchy_mcp_server_handler(self) -> dict[str, Any]:
+    return {
+        "tools": {
+            "list_calendar": _handle_list_calendar,
+            "create_event": _handle_create_event,
+            "delete_event": _handle_delete_event,
+        },
+    }
+```
+
+**Return keys:**
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `tools` | `dict[str, Callable]` | Mapping of tool_name to async handler function |
+
+**Handler function signature:**
+
+```python
+async def handler(data: dict) -> dict:
+    """Process a service tool request.
+
+    Args:
+        data: The full IPC request dict (includes type, request_id, and tool-specific fields)
+
+    Returns:
+        Dict with either {"result": ...} on success or {"error": "..."} on failure
+    """
+```
+
+**Request flow:** Container MCP tool → IPC request → host policy check → plugin handler → IPC response
+
+!!! warning
+    Host-side handlers run **in the host process** with full access to host resources. Policy middleware (risk tiers, rate limits, human-approval) is enforced by the service handler before dispatching to the plugin.
+
 ## pynchy_skill_paths
 
 Provide agent skills (markdown instruction files) that get mounted into the container.
