@@ -133,10 +133,36 @@ def _parse_final_output(
 
     try:
         return _parse_container_output(json_str)
+    except json.JSONDecodeError as exc:
+        # Truncate long output to avoid flooding logs
+        preview = json_str[:200] + "..." if len(json_str) > 200 else json_str
+        logger.error(
+            "Invalid JSON in container output",
+            container=container_name,
+            json_error=str(exc),
+            preview=preview,
+        )
+        return ContainerOutput(
+            status="error",
+            result=None,
+            error=f"Invalid JSON in container output: {exc}",
+        )
+    except KeyError as exc:
+        logger.error(
+            "Missing required field in container output",
+            container=container_name,
+            missing_key=str(exc),
+        )
+        return ContainerOutput(
+            status="error",
+            result=None,
+            error=f"Missing required field in container output: {exc}",
+        )
     except Exception as exc:
         logger.error(
             "Failed to parse container output",
             container=container_name,
+            error_type=type(exc).__name__,
             error=str(exc),
         )
         return ContainerOutput(

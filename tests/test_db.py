@@ -7,6 +7,7 @@ import pytest
 from pynchy.db import (
     _init_test_database,
     clear_session,
+    create_host_job,
     create_task,
     delete_task,
     get_active_task_for_group,
@@ -17,6 +18,7 @@ from pynchy.db import (
     get_all_workspace_profiles,
     get_chat_history,
     get_due_tasks,
+    get_host_job_by_id,
     get_messages_since,
     get_new_messages,
     get_registered_group,
@@ -35,6 +37,7 @@ from pynchy.db import (
     store_message,
     store_message_direct,
     update_chat_name,
+    update_host_job,
     update_task,
     update_task_after_run,
 )
@@ -1130,3 +1133,123 @@ class TestGroupSync:
         assert result is not None
         # Should be a valid ISO timestamp
         assert "T" in result
+
+
+# --- _update_by_id shared helper ---
+
+
+class TestUpdateById:
+    """Tests for the _update_by_id helper used by update_task and update_host_job."""
+
+    async def test_update_task_updates_allowed_fields(self):
+        """update_task should update fields in the allowlist."""
+        await create_task(
+            {
+                "id": "upd-1",
+                "group_folder": "test",
+                "chat_jid": "test@g.us",
+                "prompt": "original",
+                "schedule_type": "once",
+                "schedule_value": "2025-06-01T00:00:00.000Z",
+                "next_run": "2025-06-01T00:00:00.000Z",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00.000Z",
+            }
+        )
+
+        await update_task("upd-1", {"status": "paused", "prompt": "updated"})
+        task = await get_task_by_id("upd-1")
+        assert task is not None
+        assert task.status == "paused"
+        assert task.prompt == "updated"
+
+    async def test_update_task_ignores_disallowed_fields(self):
+        """update_task should silently skip fields not in the allowlist."""
+        await create_task(
+            {
+                "id": "upd-2",
+                "group_folder": "test",
+                "chat_jid": "test@g.us",
+                "prompt": "original",
+                "schedule_type": "once",
+                "schedule_value": "2025-06-01T00:00:00.000Z",
+                "next_run": "2025-06-01T00:00:00.000Z",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00.000Z",
+            }
+        )
+
+        # Try to update group_folder which is not in the allowlist
+        await update_task("upd-2", {"group_folder": "hacked", "status": "paused"})
+        task = await get_task_by_id("upd-2")
+        assert task is not None
+        assert task.group_folder == "test"  # unchanged
+        assert task.status == "paused"  # allowed field updated
+
+    async def test_update_task_noop_with_no_allowed_fields(self):
+        """update_task with only disallowed fields should be a safe no-op."""
+        await create_task(
+            {
+                "id": "upd-3",
+                "group_folder": "test",
+                "chat_jid": "test@g.us",
+                "prompt": "original",
+                "schedule_type": "once",
+                "schedule_value": "2025-06-01T00:00:00.000Z",
+                "next_run": "2025-06-01T00:00:00.000Z",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00.000Z",
+            }
+        )
+
+        await update_task("upd-3", {"id": "evil", "chat_jid": "evil@g.us"})
+        task = await get_task_by_id("upd-3")
+        assert task is not None
+        assert task.status == "active"
+
+    async def test_update_host_job_updates_allowed_fields(self):
+        """update_host_job should update fields in the allowlist."""
+        await create_host_job(
+            {
+                "id": "hj-upd-1",
+                "name": "test-job",
+                "command": "echo hi",
+                "schedule_type": "cron",
+                "schedule_value": "0 9 * * *",
+                "next_run": "2025-06-01T09:00:00Z",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00.000Z",
+                "created_by": "god",
+                "enabled": True,
+            }
+        )
+
+        await update_host_job("hj-upd-1", {"status": "paused", "enabled": 0})
+        job = await get_host_job_by_id("hj-upd-1")
+        assert job is not None
+        assert job.status == "paused"
+        assert job.enabled is False
+
+    async def test_update_host_job_ignores_disallowed_fields(self):
+        """update_host_job should silently skip fields not in the allowlist."""
+        await create_host_job(
+            {
+                "id": "hj-upd-2",
+                "name": "test-job-2",
+                "command": "echo hi",
+                "schedule_type": "cron",
+                "schedule_value": "0 9 * * *",
+                "next_run": "2025-06-01T09:00:00Z",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00.000Z",
+                "created_by": "god",
+                "enabled": True,
+            }
+        )
+
+        # Try to update command which is not in the allowlist
+        await update_host_job("hj-upd-2", {"command": "rm -rf /", "status": "paused"})
+        job = await get_host_job_by_id("hj-upd-2")
+        assert job is not None
+        assert job.command == "echo hi"  # unchanged
+        assert job.status == "paused"  # allowed field updated
