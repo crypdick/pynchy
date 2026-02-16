@@ -20,9 +20,11 @@ from pynchy.container_runner import (
 )
 from pynchy.db import (
     get_all_tasks,
+    get_due_host_jobs,
     get_due_tasks,
     get_task_by_id,
     log_task_run,
+    update_host_job_after_run,
     update_task_after_run,
 )
 from pynchy.group_queue import GroupQueue
@@ -75,6 +77,13 @@ async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
     while True:
         try:
             await _poll_host_cron_jobs()
+
+            # Only poll database host jobs if database is available
+            try:
+                await _poll_database_host_jobs()
+            except RuntimeError as exc:
+                if "Database not initialized" not in str(exc):
+                    raise
 
             due_tasks = await get_due_tasks()
             if due_tasks:
@@ -212,6 +221,77 @@ async def _poll_host_cron_jobs() -> None:
         await _run_host_cron_job(job_name)
 
 
+async def _poll_database_host_jobs() -> None:
+    """Run due host jobs from the database (created via MCP tool)."""
+    s = get_settings()
+    due_jobs = await get_due_host_jobs()
+
+    for job in due_jobs:
+        logger.info(
+            "Running database host job",
+            job_id=job.id,
+            name=job.name,
+            schedule_type=job.schedule_type,
+        )
+
+        command_cwd = _resolve_cron_job_cwd(job.cwd)
+
+        try:
+            process = await asyncio.create_subprocess_shell(
+                job.command,
+                cwd=command_cwd,
+                stdout=PIPE,
+                stderr=PIPE,
+            )
+        except Exception as exc:
+            logger.error("Failed to start database host job", job_id=job.id, err=str(exc))
+            continue
+
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(),
+                timeout=job.timeout_seconds,
+            )
+        except TimeoutError:
+            logger.error(
+                "Database host job timed out",
+                job_id=job.id,
+                timeout_seconds=job.timeout_seconds,
+            )
+            with contextlib.suppress(ProcessLookupError):
+                process.kill()
+            with contextlib.suppress(Exception):
+                await process.communicate()
+            continue
+        except Exception as exc:
+            logger.error("Database host job failed during execution", job_id=job.id, err=str(exc))
+            continue
+
+        stdout_text = stdout.decode(errors="replace").strip()
+        stderr_text = stderr.decode(errors="replace").strip()
+
+        if process.returncode == 0:
+            logger.info(
+                "Database host job completed",
+                job_id=job.id,
+                exit_code=process.returncode,
+                stdout_tail=stdout_text[-500:] if stdout_text else "",
+            )
+        else:
+            logger.error(
+                "Database host job failed",
+                job_id=job.id,
+                exit_code=process.returncode,
+                stdout_tail=stdout_text[-500:] if stdout_text else "",
+                stderr_tail=stderr_text[-500:] if stderr_text else "",
+            )
+
+        # Calculate next run
+        next_run = compute_next_run(job.schedule_type, job.schedule_value, s.timezone)
+        await update_host_job_after_run(job.id, next_run, process.returncode or 0)
+
+
+# TODO this should probably be renamed 'scheduled agent'
 async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
     """Execute a single scheduled task."""
     start_time = datetime.now(UTC)

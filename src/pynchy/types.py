@@ -241,6 +241,29 @@ class TaskRunLog:
 
 
 @dataclass
+class HostJob:
+    """Host-level cron job that runs shell commands directly (no LLM/container).
+
+    NOTE: Future improvement - these should be reviewed by deputy agent
+    before being persisted to ensure safety and prevent privilege escalation.
+    """
+
+    id: str
+    name: str
+    command: str
+    schedule_type: Literal["cron", "interval", "once"]
+    schedule_value: str
+    created_by: str
+    next_run: str | None = None
+    last_run: str | None = None
+    status: Literal["active", "paused", "completed"] = "active"
+    created_at: str = ""
+    cwd: str | None = None
+    timeout_seconds: int = 600
+    enabled: bool = True
+
+
+@dataclass
 class ContainerInput:
     messages: list[dict]  # SDK message list with message types
     group_folder: str
