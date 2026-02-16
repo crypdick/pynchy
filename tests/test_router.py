@@ -131,6 +131,55 @@ class TestFormatToolPreview:
         result = format_tool_preview("Task", {})
         assert result == "Task"
 
+    # --- AskUserQuestion ---
+    def test_ask_user_question_shows_full_text(self):
+        result = format_tool_preview(
+            "AskUserQuestion",
+            {
+                "questions": [
+                    {
+                        "question": "Which database should we use for the new feature?",
+                        "header": "Database",
+                        "options": [
+                            {"label": "PostgreSQL", "description": "Relational DB"},
+                            {"label": "MongoDB", "description": "Document DB"},
+                        ],
+                        "multiSelect": False,
+                    }
+                ]
+            },
+        )
+        assert result == "Asking: Which database should we use for the new feature?"
+
+    def test_ask_user_question_long_text_not_truncated(self):
+        long_question = "Should we " + "refactor " * 50 + "this module?"
+        result = format_tool_preview(
+            "AskUserQuestion",
+            {"questions": [{"question": long_question, "header": "Q", "options": [], "multiSelect": False}]},
+        )
+        assert long_question in result
+        assert "..." not in result
+
+    def test_ask_user_question_multiple_questions(self):
+        result = format_tool_preview(
+            "AskUserQuestion",
+            {
+                "questions": [
+                    {"question": "First question?", "header": "Q1", "options": [], "multiSelect": False},
+                    {"question": "Second question?", "header": "Q2", "options": [], "multiSelect": False},
+                ]
+            },
+        )
+        assert result == "Asking: First question? | Second question?"
+
+    def test_ask_user_question_empty_questions(self):
+        result = format_tool_preview("AskUserQuestion", {"questions": []})
+        assert result == "AskUserQuestion"
+
+    def test_ask_user_question_no_questions_key(self):
+        result = format_tool_preview("AskUserQuestion", {})
+        assert result == "AskUserQuestion"
+
     # --- Fallback (unknown tools) ---
     def test_unknown_tool_shows_input(self):
         result = format_tool_preview("CustomTool", {"key": "value"})

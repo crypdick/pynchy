@@ -135,6 +135,18 @@ def format_tool_preview(tool_name: str, tool_input: dict) -> str:
             return f"Task: {desc}"
         return "Task"
 
+    if tool_name == "AskUserQuestion":
+        questions = tool_input.get("questions", [])
+        if questions:
+            parts = []
+            for q in questions:
+                text = q.get("question", "") if isinstance(q, dict) else ""
+                if text:
+                    parts.append(text)
+            if parts:
+                return "Asking: " + " | ".join(parts)
+        return "AskUserQuestion"
+
     # Fallback: show first 150 chars of input
     preview = str(tool_input)
     if len(preview) > 150:
