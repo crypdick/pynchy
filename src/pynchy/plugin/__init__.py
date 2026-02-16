@@ -10,7 +10,7 @@ Usage:
 
     pm = get_plugin_manager()
     cores = pm.hook.pynchy_agent_core_info()  # List of agent core dicts
-    channel = pm.hook.pynchy_create_channel(context=ctx)  # First channel that matches
+    channels = pm.hook.pynchy_create_channel(context=ctx)  # All matching channels
 """
 
 from __future__ import annotations

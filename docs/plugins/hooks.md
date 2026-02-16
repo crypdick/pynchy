@@ -135,6 +135,28 @@ class Channel(Protocol):
 !!! warning
     Channel plugins run **persistently on the host** with full filesystem and network access. This is the highest-risk plugin category. See [Security Model](../security.md).
 
+## pynchy_container_runtime
+
+Provide a host container runtime implementation (for example Apple Container).
+
+**Calling strategy:** All results collected; runtime selection picks by config override (`[container].runtime`) or platform-aware auto-detection.
+
+```python
+@hookimpl
+def pynchy_container_runtime(self) -> Any | None:
+    return AppleContainerRuntime()
+```
+
+**Runtime object contract:**
+
+| Attribute / Method | Type | Description |
+|--------------------|------|-------------|
+| `name` | `str` | Runtime identifier (for config override), e.g. `"apple"` |
+| `cli` | `str` | CLI command used for container ops, e.g. `"container"` |
+| `is_available()` | `() -> bool` | Returns whether runtime can be used on this host |
+| `ensure_running()` | `() -> None` | Ensures daemon/service is running (or raises) |
+| `list_running_containers(prefix)` | `(str) -> list[str]` | Lists active container names for orphan cleanup |
+
 ## Multi-Category Plugins
 
 A single plugin can implement multiple hooks:

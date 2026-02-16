@@ -22,6 +22,21 @@ class PynchySpec:
     """
 
     @hookspec
+    def pynchy_container_runtime(self) -> Any | None:
+        """Provide a container runtime implementation.
+
+        Runtime plugins can return an object with:
+            - name (str): runtime identifier (e.g., "apple")
+            - cli (str): container CLI command (e.g., "container")
+            - is_available() -> bool
+            - ensure_running() -> None
+            - list_running_containers(prefix: str) -> list[str]
+
+        Returns:
+            Runtime object, or None if this plugin doesn't provide one.
+        """
+
+    @hookspec
     def pynchy_agent_core_info(self) -> dict[str, Any]:
         """Provide agent core implementation info.
 
@@ -72,7 +87,7 @@ class PynchySpec:
         """Create a communication channel instance.
 
         Channels are long-running services that receive messages from external
-        sources (WhatsApp, Discord, Slack) and route them to agents.
+        sources and route them to agents.
 
         Args:
             context: PluginContext with callbacks for message handling

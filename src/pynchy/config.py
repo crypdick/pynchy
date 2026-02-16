@@ -46,7 +46,7 @@ class ContainerConfig(BaseModel):
     max_output_size: int = 10485760  # 10MB
     idle_timeout_ms: int = 1800000  # 30 minutes
     max_concurrent: int = 5
-    runtime: str | None = None  # "apple" | "docker" | None (auto-detect)
+    runtime: str | None = None  # "docker" | plugin runtime name (e.g. "apple") | None
 
     @field_validator("max_concurrent")
     @classmethod
