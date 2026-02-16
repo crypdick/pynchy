@@ -40,3 +40,8 @@ Python process that connects to WhatsApp, routes messages to Claude Agent SDK ru
 | [Plugin security](.claude/plugins.md) | Understanding plugin trust model and sandbox levels |
 | [Worktree isolation](.claude/worktrees.md) | How non-god groups get isolated git worktrees |
 | [Style guide](.claude/style-guide.md) | Documentation philosophy, information architecture, code comments |
+
+## Python & Tool Usage
+
+- **Always use `uv run python`** instead of bare `python` or `python3`. This ensures the correct virtual environment and dependencies are used.
+- **Always use `uvx`** to run Python CLI tools (e.g., `uvx ruff`, `uvx pytest`). Do not install tools globally or use `pip install` for CLI tools.
