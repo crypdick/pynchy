@@ -232,6 +232,8 @@ class PluginConfig(BaseModel):
 
 
 class CalDAVConfig(BaseModel):
+    # TODO: Support multiple CalDAV servers — change to dict of named
+    # server configs so agents can access calendars across accounts.
     url: str = ""
     username: str = ""
     password: SecretStr | None = None

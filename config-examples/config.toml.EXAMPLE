@@ -182,6 +182,20 @@ requires_trigger = false
 # verbs = ["redeploy", "deploy"]
 
 # ─────────────────────────────────────────────────────────────────────────────
+# CalDAV (Calendar)
+# ─────────────────────────────────────────────────────────────────────────────
+# Built-in host-side plugin. Connects to any CalDAV server (Nextcloud, etc.)
+# and exposes list_calendar, create_event, delete_event tools to agents.
+# Multiple calendars on the same server are supported — agents pass the
+# calendar name. Only one server is supported currently.
+
+# [caldav]
+# url = "https://nextcloud.example.com/remote.php/dav/"
+# username = "user@example.com"
+# password = "app-password-here"
+# default_calendar = "personal"   # what "primary" resolves to
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Security
 # ─────────────────────────────────────────────────────────────────────────────
 # Default blocked patterns for mount security. These are merged with patterns
