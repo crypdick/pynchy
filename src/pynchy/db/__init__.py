@@ -34,8 +34,12 @@ from pynchy.db.groups import (
 )
 from pynchy.db.host_jobs import (
     create_host_job,
+    delete_host_job,
+    get_all_host_jobs,
     get_due_host_jobs,
+    get_host_job_by_id,
     get_host_job_by_name,
+    update_host_job,
     update_host_job_after_run,
 )
 from pynchy.db.messages import (
@@ -97,8 +101,12 @@ __all__ = [
     "update_task_after_run",
     # host_jobs
     "create_host_job",
+    "delete_host_job",
+    "get_all_host_jobs",
     "get_due_host_jobs",
+    "get_host_job_by_id",
     "get_host_job_by_name",
+    "update_host_job",
     "update_host_job_after_run",
     # sessions
     "clear_session",

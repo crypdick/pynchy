@@ -89,6 +89,16 @@ async def update_host_job_after_run(job_id: str, next_run: str | None, exit_code
     await db.commit()
 
 
+async def get_host_job_by_id(job_id: str) -> HostJob | None:
+    """Get a host job by its ID."""
+    db = _get_db()
+    cursor = await db.execute("SELECT * FROM host_jobs WHERE id = ?", (job_id,))
+    row = await cursor.fetchone()
+    if row is None:
+        return None
+    return _row_to_host_job(row)
+
+
 async def get_host_job_by_name(name: str) -> HostJob | None:
     """Get a host job by its unique name."""
     db = _get_db()
@@ -97,3 +107,41 @@ async def get_host_job_by_name(name: str) -> HostJob | None:
     if row is None:
         return None
     return _row_to_host_job(row)
+
+
+async def get_all_host_jobs() -> list[HostJob]:
+    """Get all host jobs, ordered by creation date."""
+    db = _get_db()
+    cursor = await db.execute("SELECT * FROM host_jobs ORDER BY created_at DESC")
+    rows = await cursor.fetchall()
+    return [_row_to_host_job(row) for row in rows]
+
+
+async def update_host_job(job_id: str, updates: dict[str, Any]) -> None:
+    """Update specific fields of a host job."""
+    allowed = {"status", "enabled", "next_run", "schedule_value"}
+    fields: list[str] = []
+    values: list[Any] = []
+
+    for key, value in updates.items():
+        if key in allowed:
+            fields.append(f"{key} = ?")
+            values.append(value)
+
+    if not fields:
+        return
+
+    values.append(job_id)
+    db = _get_db()
+    await db.execute(
+        f"UPDATE host_jobs SET {', '.join(fields)} WHERE id = ?",
+        values,
+    )
+    await db.commit()
+
+
+async def delete_host_job(job_id: str) -> None:
+    """Delete a host job."""
+    db = _get_db()
+    await db.execute("DELETE FROM host_jobs WHERE id = ?", (job_id,))
+    await db.commit()

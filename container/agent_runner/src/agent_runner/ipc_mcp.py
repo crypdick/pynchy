@@ -213,14 +213,16 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="list_tasks",
             description=(
-                "List all scheduled tasks. From god: shows all tasks. "
-                "From other groups: shows only that group's tasks."
+                "List all scheduled tasks (both agent tasks and host "
+                "jobs). Each entry is labelled [agent] or [host]. "
+                "From god: shows all tasks across all groups. "
+                "From other groups: shows only that group's agent tasks."
             ),
             inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
             name="pause_task",
-            description="Pause a scheduled task. It will not run until resumed.",
+            description="Pause a scheduled task or host job. It will not run until resumed.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -234,7 +236,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="resume_task",
-            description="Resume a paused task.",
+            description="Resume a paused task or host job.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -248,7 +250,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="cancel_task",
-            description="Cancel and delete a scheduled task.",
+            description="Cancel and delete a scheduled task or host job.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -614,17 +616,30 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolR
                         )
                     ]
 
-                formatted = "\n".join(
-                    f"- [{t['id']}] {t['prompt'][:50]}... "
-                    f"({t['schedule_type']}: {t['schedule_value']}) "
-                    f"- {t['status']}, "
-                    f"next: {t.get('next_run', 'N/A')}"
-                    for t in tasks
-                )
+                lines = []
+                for t in tasks:
+                    task_type = t.get("type", "agent")
+                    if task_type == "host":
+                        label = t.get("name") or t.get("command", "")[:50]
+                        lines.append(
+                            f"- [{t['id']}] [host] {label} "
+                            f"({t['schedule_type']}: {t['schedule_value']}) "
+                            f"- {t['status']}, "
+                            f"next: {t.get('next_run', 'N/A')}"
+                        )
+                    else:
+                        prompt = t.get("prompt", "")[:50]
+                        lines.append(
+                            f"- [{t['id']}] [agent] {prompt}... "
+                            f"({t['schedule_type']}: {t['schedule_value']}) "
+                            f"- {t['status']}, "
+                            f"next: {t.get('next_run', 'N/A')}"
+                        )
+
                 return [
                     TextContent(
                         type="text",
-                        text=f"Scheduled tasks:\n{formatted}",
+                        text=f"Scheduled tasks:\n{chr(10).join(lines)}",
                     )
                 ]
 

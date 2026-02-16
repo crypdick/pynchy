@@ -19,6 +19,7 @@ from pynchy.container_runner import (
     write_tasks_snapshot,
 )
 from pynchy.db import (
+    get_all_host_jobs,
     get_all_tasks,
     get_due_host_jobs,
     get_due_tasks,
@@ -332,10 +333,12 @@ async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:
 
     # Write tasks snapshot so the container can read current task state
     all_tasks = await get_all_tasks()
+    all_host_jobs = await get_all_host_jobs() if _is_god else []
     write_tasks_snapshot(
         task.group_folder,
         _is_god,
         [t.to_snapshot_dict() for t in all_tasks],
+        host_jobs=[j.to_snapshot_dict() for j in all_host_jobs],
     )
 
     result: str | None = None

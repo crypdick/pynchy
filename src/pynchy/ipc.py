@@ -17,7 +17,15 @@ from typing import Any, Protocol
 from croniter import croniter
 
 from pynchy.config import get_settings
-from pynchy.db import create_task, delete_task, get_task_by_id, update_task
+from pynchy.db import (
+    create_task,
+    delete_host_job,
+    delete_task,
+    get_host_job_by_id,
+    get_task_by_id,
+    update_host_job,
+    update_task,
+)
 from pynchy.deploy import finalize_deploy
 from pynchy.git_sync import host_notify_worktree_updates, host_sync_worktree, write_ipc_response
 from pynchy.logger import logger
@@ -321,31 +329,31 @@ async def process_task_ipc(
             )
 
         case "pause_task":
+            task_id = data.get("taskId", "")
+            _update = update_host_job if task_id.startswith("host-") else update_task
             await _authorized_task_action(
                 data,
                 source_group,
                 is_god,
                 "pause",
-                lambda tid: update_task(tid, {"status": "paused"}),
+                lambda tid: _update(tid, {"status": "paused"}),
             )
 
         case "resume_task":
+            task_id = data.get("taskId", "")
+            _update = update_host_job if task_id.startswith("host-") else update_task
             await _authorized_task_action(
                 data,
                 source_group,
                 is_god,
                 "resume",
-                lambda tid: update_task(tid, {"status": "active"}),
+                lambda tid: _update(tid, {"status": "active"}),
             )
 
         case "cancel_task":
-            await _authorized_task_action(
-                data,
-                source_group,
-                is_god,
-                "cancel",
-                delete_task,
-            )
+            task_id = data.get("taskId", "")
+            action = delete_host_job if task_id.startswith("host-") else delete_task
+            await _authorized_task_action(data, source_group, is_god, "cancel", action)
 
         case "refresh_groups":
             if is_god:
@@ -540,6 +548,8 @@ async def _authorized_task_action(
 ) -> None:
     """Fetch a task, verify authorization, and execute an action on it.
 
+    Routes to the correct table based on ID prefix: host jobs use "host-"
+    prefixed IDs and are god-only; agent tasks check group ownership.
     Used by pause/resume/cancel to avoid repeating the same
     lookup-then-authorize pattern three times.
     """
@@ -547,20 +557,43 @@ async def _authorized_task_action(
     if not task_id:
         return
 
-    task = await get_task_by_id(task_id)
-    if task and (is_god or task.group_folder == source_group):
-        await action(task_id)
-        logger.info(
-            f"Task {action_name}d via IPC",
-            task_id=task_id,
-            source_group=source_group,
-        )
+    is_host_job = task_id.startswith("host-")
+
+    if is_host_job:
+        # Host jobs are god-only
+        if not is_god:
+            logger.warning(
+                f"Unauthorized host job {action_name} attempt",
+                task_id=task_id,
+                source_group=source_group,
+            )
+            return
+
+        job = await get_host_job_by_id(task_id)
+        if job:
+            await action(task_id)
+            logger.info(
+                f"Host job {action_name}d via IPC",
+                task_id=task_id,
+                source_group=source_group,
+            )
+        else:
+            logger.warning("Host job not found", task_id=task_id)
     else:
-        logger.warning(
-            f"Unauthorized task {action_name} attempt",
-            task_id=task_id,
-            source_group=source_group,
-        )
+        task = await get_task_by_id(task_id)
+        if task and (is_god or task.group_folder == source_group):
+            await action(task_id)
+            logger.info(
+                f"Task {action_name}d via IPC",
+                task_id=task_id,
+                source_group=source_group,
+            )
+        else:
+            logger.warning(
+                f"Unauthorized task {action_name} attempt",
+                task_id=task_id,
+                source_group=source_group,
+            )
 
 
 async def _handle_deploy(
