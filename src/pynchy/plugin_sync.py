@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 from pynchy.config import PluginConfig, get_settings
@@ -79,10 +81,59 @@ def _sync_single_plugin(plugin_name: str, plugin_cfg: PluginConfig, root: Path) 
     return plugin_dir
 
 
+def _plugin_revision(plugin_dir: Path) -> str:
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=str(plugin_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        raise RuntimeError(f"git rev-parse HEAD failed: {stderr[-500:]}")
+    return (result.stdout or "").strip()
+
+
+def _install_state_path(root: Path) -> Path:
+    return root / ".host-install-state.json"
+
+
+def _load_install_state(root: Path) -> dict[str, dict[str, str]]:
+    state_path = _install_state_path(root)
+    if not state_path.exists():
+        return {}
+    try:
+        data = json.loads(state_path.read_text())
+        if isinstance(data, dict):
+            return data
+    except (OSError, json.JSONDecodeError):
+        logger.warning("Failed to read plugin host install state; resetting")
+    return {}
+
+
+def _save_install_state(root: Path, state: dict[str, dict[str, str]]) -> None:
+    state_path = _install_state_path(root)
+    state_path.write_text(json.dumps(state, indent=2, sort_keys=True))
+
+
+def _install_plugin_in_host_env(plugin_name: str, plugin_dir: Path) -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--no-cache-dir", str(plugin_dir)],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        raise RuntimeError(f"Host plugin install failed for '{plugin_name}': {stderr[-500:]}")
+
+
 def sync_configured_plugins() -> dict[str, Path]:
     """Ensure configured plugins are cloned and up-to-date at startup."""
     s = get_settings()
     s.plugins_dir.mkdir(parents=True, exist_ok=True)
+    install_state = _load_install_state(s.plugins_dir)
     synced: dict[str, Path] = {}
 
     for plugin_name, plugin_cfg in s.plugins.items():
@@ -90,6 +141,17 @@ def sync_configured_plugins() -> dict[str, Path]:
             continue
         try:
             plugin_dir = _sync_single_plugin(plugin_name, plugin_cfg, s.plugins_dir)
+            revision = _plugin_revision(plugin_dir)
+            installed_revision = (install_state.get(plugin_name) or {}).get("revision")
+            if installed_revision != revision:
+                logger.info(
+                    "Installing plugin into host environment",
+                    plugin=plugin_name,
+                    revision=revision,
+                )
+                _install_plugin_in_host_env(plugin_name, plugin_dir)
+                install_state[plugin_name] = {"revision": revision}
+                _save_install_state(s.plugins_dir, install_state)
             synced[plugin_name] = plugin_dir
             logger.info(
                 "Plugin repo ready",
