@@ -69,9 +69,17 @@ Single source of truth for all pynchy work items.
 ### 3 - Ready
 *Plan approved or not needed. Ready for an agent to pick up.*
 
+- factor out tailscale support into a separate plugin. make sure that at least one tunnel is always active. we might need to create a new tunnel plugin type, and update the cookiecutter template.
+- factor out openai backend as a separate plugin.
+- factor out claude backend as a separate plugin.
+- make the code improver plugin able to update the plugin repos as well as the core pynchy repo.()
+
 #### Bugs
 - messaging is broken. when I send a message, sometimes I see no response in the chat. then when i send a follow up message, it responds to the previous message. the system is desynchronized somehow. update: the message the agents send (as well as tool calls, other messages) seem to be sending to whatsapp more reliably than the tui.
-- we need to improve the robustness of synchronization. deploys keep failing because the remote does not push their local commits.
+
+#### Docs updates
+- we've iterated on our plugin system but havent updated the docs of all the individual plugins to keep them up to date
+- we need to improve the docs on the plugins and the and the cookiecutter template so that it says a bit about pynchy and links back to the main pynchy repo.
 
 
 ### 4 - In Progress
