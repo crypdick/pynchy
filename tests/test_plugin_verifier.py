@@ -38,14 +38,25 @@ class TestParseVerdict:
         assert verdict == "fail"
         assert "subprocess" in reasoning
 
-    def test_defaults_to_fail_on_garbage(self) -> None:
+    def test_defaults_to_error_on_garbage(self) -> None:
+        """No VERDICT line → error (agent didn't complete inspection)."""
         verdict, reasoning = _parse_verdict("totally random output with no structure")
-        assert verdict == "fail"
+        assert verdict == "error"
 
-    def test_defaults_to_fail_on_empty(self) -> None:
+    def test_defaults_to_error_on_empty(self) -> None:
         verdict, reasoning = _parse_verdict("")
-        assert verdict == "fail"
+        assert verdict == "error"
         assert "No response" in reasoning
+
+    def test_auth_failure_returns_error(self) -> None:
+        """Auth errors from the LLM gateway should not be mistaken for a fail verdict."""
+        text = (
+            'Failed to authenticate. API Error: 401 {"type":"error",'
+            '"error":{"type":"authentication_error","message":"OAuth '
+            'authentication is currently not supported."}}'
+        )
+        verdict, reasoning = _parse_verdict(text)
+        assert verdict == "error"
 
     def test_case_insensitive_verdict(self) -> None:
         text = "verdict: Pass\nreasoning: All good"
@@ -222,7 +233,8 @@ class TestAuditUnverifiedPlugins:
         assert cached is not None
         assert cached[0] == "fail"
 
-    async def test_exception_treated_as_fail(self, tmp_path: Path) -> None:
+    async def test_exception_not_cached(self, tmp_path: Path) -> None:
+        """Infrastructure errors should NOT be cached — retry next boot."""
         d = tmp_path / "p"
         d.mkdir()
 
@@ -236,9 +248,25 @@ class TestAuditUnverifiedPlugins:
             result = await audit_unverified_plugins(unverified, tmp_path)
 
         assert "p" not in result
-        cached = get_cached_verdict(tmp_path, "p", "sha1")
-        assert cached is not None
-        assert cached[0] == "fail"
+        # Must NOT be cached — so it gets retried next boot
+        assert get_cached_verdict(tmp_path, "p", "sha1") is None
+
+    async def test_error_verdict_not_cached(self, tmp_path: Path) -> None:
+        """When the agent runs but produces no VERDICT line (e.g. auth failure)."""
+        d = tmp_path / "p"
+        d.mkdir()
+
+        unverified = {"p": (d, "sha1")}
+
+        with patch(
+            "pynchy.plugin_verifier._audit_single_plugin",
+            new_callable=AsyncMock,
+            return_value=("error", "Auth failure: 401"),
+        ):
+            result = await audit_unverified_plugins(unverified, tmp_path)
+
+        assert "p" not in result
+        assert get_cached_verdict(tmp_path, "p", "sha1") is None
 
     async def test_mixed_results(self, tmp_path: Path) -> None:
         good_dir = tmp_path / "good"
