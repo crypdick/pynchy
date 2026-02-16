@@ -36,6 +36,8 @@ from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.router import format_tool_preview
 from pynchy.types import NewMessage, RegisteredGroup
 
+_CR_ORCH = "pynchy.container_runner._orchestrator"
+
 # ---------------------------------------------------------------------------
 # Helpers (shared patterns from test_app_integration.py)
 # ---------------------------------------------------------------------------
@@ -87,11 +89,17 @@ def _patch_test_settings(tmp_path: Path):
     s.__dict__["project_root"] = tmp_path
     s.__dict__["groups_dir"] = tmp_path / "groups"
     s.__dict__["data_dir"] = tmp_path / "data"
-    with (
-        patch("pynchy.container_runner.get_settings", return_value=s),
-        patch("pynchy.message_handler.get_settings", return_value=s),
-        patch("pynchy.output_handler.get_settings", return_value=s),
-    ):
+    with contextlib.ExitStack() as stack:
+        for mod in (
+            "pynchy.container_runner._credentials",
+            "pynchy.container_runner._mounts",
+            "pynchy.container_runner._session_prep",
+            "pynchy.container_runner._orchestrator",
+            "pynchy.container_runner._snapshots",
+            "pynchy.message_handler",
+            "pynchy.output_handler",
+        ):
+            stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         yield
 
 
@@ -229,7 +237,7 @@ async def _run_with_trace_sequence(
     capture = EventCapture(app.event_bus)
 
     with (
-        patch("pynchy.container_runner.asyncio.create_subprocess_exec", fake_create),
+        patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", fake_create),
         _patch_test_settings(tmp_path),
     ):
         (tmp_path / "groups" / "test-group").mkdir(parents=True)

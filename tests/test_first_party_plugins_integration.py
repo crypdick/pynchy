@@ -255,7 +255,11 @@ async def test_first_party_plugins_app_flow_with_llm_boundary_mocked(tmp_path: P
         patch("pynchy.workspace_config.get_settings", return_value=settings),
         patch("pynchy.message_handler.get_settings", return_value=settings),
         patch("pynchy.output_handler.get_settings", return_value=settings),
-        patch("pynchy.container_runner.get_settings", return_value=settings),
+        patch("pynchy.container_runner._credentials.get_settings", return_value=settings),
+        patch("pynchy.container_runner._mounts.get_settings", return_value=settings),
+        patch("pynchy.container_runner._session_prep.get_settings", return_value=settings),
+        patch("pynchy.container_runner._orchestrator.get_settings", return_value=settings),
+        patch("pynchy.container_runner._snapshots.get_settings", return_value=settings),
         patch("pynchy.app.get_settings", return_value=settings),
     ):
         pm = get_plugin_manager()
@@ -334,15 +338,15 @@ async def test_first_party_plugins_app_flow_with_llm_boundary_mocked(tmp_path: P
 
         with (
             patch(
-                "pynchy.container_runner.asyncio.create_subprocess_exec",
+                "pynchy.container_runner._orchestrator.asyncio.create_subprocess_exec",
                 fake_create_subprocess_exec,
             ),
-            patch("pynchy.container_runner._write_env_file", return_value=None),
+            patch("pynchy.container_runner._mounts._write_env_file", return_value=None),
             patch(
-                "pynchy.container_runner.get_runtime",
+                "pynchy.container_runner._orchestrator.get_runtime",
                 return_value=SimpleNamespace(cli="container"),
             ),
-            patch("pynchy.container_runner._sync_skills", return_value=None),
+            patch("pynchy.container_runner._mounts._sync_skills", return_value=None),
         ):
             (settings.groups_dir / "plugin-e2e").mkdir(parents=True, exist_ok=True)
             processed = await app._process_group_messages("group@g.us")
