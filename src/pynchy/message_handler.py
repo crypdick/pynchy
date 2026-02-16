@@ -464,9 +464,11 @@ async def start_message_loop(
                         f"{msg.sender_name}: {msg.content}" for msg in all_pending
                     )
 
+                    last_content = all_pending[-1].content.strip()
+                    is_btw = last_content.lower().startswith("btw ")
+
                     if deps.queue.is_active_task(group_jid):
-                        last_content = all_pending[-1].content.strip()
-                        if last_content.lower().startswith("btw "):
+                        if is_btw:
                             # Non-interrupting — best-effort forward to
                             # the running container via IPC.  The cursor
                             # is NOT advanced: the container may never
@@ -517,23 +519,30 @@ async def start_message_loop(
                         continue
 
                     if deps.queue.send_message(group_jid, formatted):
-                        logger.debug(
-                            "Piped messages to active container",
-                            chat_jid=group_jid,
-                            count=len(all_pending),
-                        )
-                        last_msg = all_pending[-1]
-                        await deps.send_reaction_to_channels(
-                            group_jid, last_msg.id, last_msg.sender, "👀"
-                        )
+                        if is_btw:
+                            # Non-interrupting — forward to active
+                            # container via IPC but don't advance the
+                            # cursor.  The message will be reprocessed
+                            # after the agent finishes its current turn.
+                            deps.queue.enqueue_message_check(group_jid)
+                        else:
+                            logger.debug(
+                                "Piped messages to active container",
+                                chat_jid=group_jid,
+                                count=len(all_pending),
+                            )
+                            last_msg = all_pending[-1]
+                            await deps.send_reaction_to_channels(
+                                group_jid, last_msg.id, last_msg.sender, "👀"
+                            )
 
-                        prev = deps.last_agent_timestamp.get(group_jid, "")
-                        deps.last_agent_timestamp[group_jid] = all_pending[-1].timestamp
-                        try:
-                            await deps.save_state()
-                        except Exception:
-                            deps.last_agent_timestamp[group_jid] = prev
-                            raise
+                            prev = deps.last_agent_timestamp.get(group_jid, "")
+                            deps.last_agent_timestamp[group_jid] = all_pending[-1].timestamp
+                            try:
+                                await deps.save_state()
+                            except Exception:
+                                deps.last_agent_timestamp[group_jid] = prev
+                                raise
                     else:
                         deps.queue.enqueue_message_check(group_jid)
 
