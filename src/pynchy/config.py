@@ -77,15 +77,23 @@ class SecretsConfig(BaseModel):
 
 
 class GatewayConfig(BaseModel):
-    """LLM API gateway — reverse proxy for credential isolation.
+    """LLM API gateway — credential isolation for containers.
 
-    Containers receive a gateway URL and ephemeral key instead of real
-    API credentials.  Real keys stay on the host.
+    Two modes:
+
+    **LiteLLM** (``litellm_config`` is set): Runs a LiteLLM proxy Docker
+    container.  All LLM routing config (models, keys, budgets, load
+    balancing) lives in the litellm YAML — no translation needed.
+
+    **Builtin** (``litellm_config`` is ``None``): Simple aiohttp reverse
+    proxy for single-key setups.  Uses keys from ``[secrets]``.
     """
 
-    port: int = 4010
+    port: int = 4010  # set to 4000 when using litellm mode
     host: str = "0.0.0.0"  # bind address
     container_host: str = "host.docker.internal"  # hostname containers use to reach host
+    litellm_config: str | None = None  # path to litellm_config.yaml; None = builtin mode
+    litellm_image: str = "ghcr.io/berriai/litellm:main-latest"
 
 
 class WorkspaceDefaultsConfig(BaseModel):

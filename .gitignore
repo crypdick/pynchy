@@ -29,6 +29,7 @@ groups/mr-pynchy/*
 *.keys.json
 .env
 config.toml
+litellm_config.yaml
 
 # OS
 .DS_Store

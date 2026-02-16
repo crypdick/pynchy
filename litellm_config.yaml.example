@@ -1,0 +1,84 @@
+# LiteLLM Proxy Configuration
+# ============================
+# Copy to litellm_config.yaml and fill in your API keys.
+# This file is the single source of truth for LLM routing — pynchy reads
+# it but never modifies it.
+#
+# Docs: https://docs.litellm.ai/docs/proxy/configs
+#
+# To enable: set gateway.litellm_config = "litellm_config.yaml" in config.toml
+
+# ---------------------------------------------------------------------------
+# Model deployments
+# ---------------------------------------------------------------------------
+# Multiple entries with the same model_name are load-balanced automatically.
+# The model_name must match what the agent sends (e.g. claude-sonnet-4-20250514).
+
+model_list:
+  # --- Anthropic account 1 (primary) ---
+  - model_name: claude-sonnet-4-20250514
+    litellm_params:
+      model: anthropic/claude-sonnet-4-20250514
+      api_key: sk-ant-api03-PRIMARY-KEY-HERE
+    model_info:
+      id: anthropic-primary
+
+  # --- Anthropic account 2 (secondary) ---
+  - model_name: claude-sonnet-4-20250514
+    litellm_params:
+      model: anthropic/claude-sonnet-4-20250514
+      api_key: sk-ant-api03-SECONDARY-KEY-HERE
+    model_info:
+      id: anthropic-secondary
+
+  # --- Add more models as needed ---
+  # Agents will get an error if they request a model not listed here.
+  #
+  # - model_name: claude-haiku-3-5-20241022
+  #   litellm_params:
+  #     model: anthropic/claude-haiku-3-5-20241022
+  #     api_key: sk-ant-api03-PRIMARY-KEY-HERE
+  #
+  # - model_name: claude-haiku-3-5-20241022
+  #   litellm_params:
+  #     model: anthropic/claude-haiku-3-5-20241022
+  #     api_key: sk-ant-api03-SECONDARY-KEY-HERE
+
+  # --- OpenAI (optional) ---
+  # - model_name: gpt-4o
+  #   litellm_params:
+  #     model: openai/gpt-4o
+  #     api_key: sk-proj-YOUR-OPENAI-KEY
+
+# ---------------------------------------------------------------------------
+# Router settings
+# ---------------------------------------------------------------------------
+router_settings:
+  # How to distribute requests across deployments with the same model_name.
+  # Options: simple-shuffle, least-busy, usage-based-routing,
+  #          latency-based-routing, cost-based-routing
+  routing_strategy: usage-based-routing
+
+  # Retry failed requests on a different deployment
+  num_retries: 2
+  timeout: 300
+
+  # Cool down a deployment for 60s after 3 consecutive failures
+  allowed_fails: 3
+  cooldown_time: 60
+
+  # Provider-level budget caps (combined across all keys for that provider).
+  # For per-key budgets, use litellm's virtual key system via the admin API.
+  #
+  # provider_budget_config:
+  #   anthropic:
+  #     budget_limit: 200.0   # USD
+  #     time_period: 30d
+
+# ---------------------------------------------------------------------------
+# General settings
+# ---------------------------------------------------------------------------
+general_settings:
+  # Master key is injected by pynchy via LITELLM_MASTER_KEY env var.
+  # Do NOT hardcode it here.
+  master_key: os.environ/LITELLM_MASTER_KEY
