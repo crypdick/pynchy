@@ -60,16 +60,23 @@ class MessageBroadcaster:
 
 
 class HostMessageBroadcaster:
-    """Broadcasts host operational messages and stores them in message history."""
+    """Broadcasts host operational messages and stores them in message history.
+
+    Uses separate store functions for host messages vs system notices so they
+    get different message_type values in the DB. Host messages are invisible
+    to the LLM; system notices are visible as pseudo-system user messages.
+    """
 
     def __init__(
         self,
         broadcaster: MessageBroadcaster,
-        store_message_fn: StoreMessageFn,
+        store_host_fn: StoreMessageFn,
+        store_notice_fn: StoreMessageFn,
         emit_event_fn: EmitEventFn,
     ) -> None:
         self.broadcaster = broadcaster
-        self.store_message = store_message_fn
+        self._store_host = store_host_fn
+        self._store_notice = store_notice_fn
         self.emit_event = emit_event_fn
 
     async def _store_broadcast_and_emit(
@@ -79,22 +86,23 @@ class HostMessageBroadcaster:
         text: str,
         id_prefix: str,
         sender: str,
+        sender_name: str,
         channel_emoji: str,
+        store_fn: StoreMessageFn,
     ) -> None:
         """Store a message, broadcast to channels, and emit an event.
 
         Shared implementation for broadcast_host_message and broadcast_system_notice.
-        The only differences between them are the id prefix, sender identity,
-        and the emoji prepended to the channel-facing text.
+        Each caller passes its own store_fn to control the message_type in the DB.
         """
         from pynchy.event_bus import MessageEvent
 
         ts = datetime.now(UTC).isoformat()
-        await self.store_message(
+        await store_fn(
             id=generate_message_id(id_prefix),
             chat_jid=chat_jid,
             sender=sender,
-            sender_name=sender,
+            sender_name=sender_name,
             content=text,
             timestamp=ts,
             is_from_me=True,
@@ -104,7 +112,7 @@ class HostMessageBroadcaster:
         self.emit_event(
             MessageEvent(
                 chat_jid=chat_jid,
-                sender_name=sender,
+                sender_name=sender_name,
                 content=text,
                 timestamp=ts,
                 is_bot=True,
@@ -126,7 +134,9 @@ class HostMessageBroadcaster:
             text=text,
             id_prefix="host",
             sender="host",
+            sender_name="host",
             channel_emoji="\U0001f3e0",
+            store_fn=self._store_host,
         )
 
     async def broadcast_system_notice(self, chat_jid: str, text: str) -> None:
@@ -134,16 +144,19 @@ class HostMessageBroadcaster:
 
         System notices are announcements from the host that the LLM needs to
         see (e.g. worktree updates, config changes). They are:
-        - Stored in the DB so the polling loop delivers them to running agents
+        - Stored in the DB as user messages so the polling loop delivers them
         - Included in conversation context for future container launches
         - Broadcast to channels with 📢 prefix for human visibility
+        - Prefixed with [System Notice] so the LLM can distinguish from humans
         """
         await self._store_broadcast_and_emit(
             chat_jid=chat_jid,
-            text=text,
+            text=f"[System Notice] {text}",
             id_prefix="sys-notice",
             sender="system_notice",
+            sender_name="System",
             channel_emoji="\U0001f4e2",
+            store_fn=self._store_notice,
         )
 
 
