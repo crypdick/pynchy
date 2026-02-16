@@ -280,8 +280,8 @@ class TestPluginErrors:
         # but should still be callable without errors
         mcp_specs = pm.hook.pynchy_mcp_server_spec()
         skill_paths = pm.hook.pynchy_skill_paths()
-        channel = pm.hook.pynchy_create_channel(context=None)
+        channels = pm.hook.pynchy_create_channel(context=None)
 
         assert mcp_specs == []
         assert skill_paths == []
-        assert channel is None  # firstresult returns None if no results
+        assert channels == []

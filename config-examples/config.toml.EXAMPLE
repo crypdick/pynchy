@@ -99,6 +99,17 @@
 # base_retry_seconds = 5.0
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Channel Selection
+# ─────────────────────────────────────────────────────────────────────────────
+# Channels are now provided only by plugins. Install the default WhatsApp plugin:
+#   uv pip install git+https://github.com/crypdick/pynchy-plugin-whatsapp.git
+
+[channels]
+# Default channel plugin name used for first-run group creation.
+# If omitted, defaults to "whatsapp".
+# default = "whatsapp"
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Workspace Defaults
 # ─────────────────────────────────────────────────────────────────────────────
 # Defaults applied to workspaces that don't override these fields.

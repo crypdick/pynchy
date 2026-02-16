@@ -67,13 +67,12 @@ class PynchySpec:
             List of absolute paths to skill directories
         """
 
-    @hookspec(firstresult=True)
+    @hookspec
     def pynchy_create_channel(self, context: Any) -> Any | None:
         """Create a communication channel instance.
 
         Channels are long-running services that receive messages from external
-        sources (WhatsApp, Discord, Slack) and route them to agents. Only one
-        channel plugin "wins" via pluggy's firstresult strategy.
+        sources (WhatsApp, Discord, Slack) and route them to agents.
 
         Args:
             context: PluginContext with callbacks for message handling
