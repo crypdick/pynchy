@@ -35,16 +35,21 @@ if TYPE_CHECKING:
 def make_host_broadcaster(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBroadcaster]:
     """Create a MessageBroadcaster and HostMessageBroadcaster pair.
 
-    Shared factory for dependency adapters that need to send host messages.
-    The store function injects message_type='host' so host messages are
-    filtered out of the LLM conversation context.
+    Uses two store functions with different message_type values:
+    - host messages → message_type='host' (filtered out of LLM context)
+    - system notices → message_type='user' (visible to LLM as pseudo-system messages)
     """
     broadcaster = MessageBroadcaster(app.channels)
 
     async def store_host_message(**kwargs: Any) -> None:
         await store_message_direct(**kwargs, message_type="host")
 
-    host_broadcaster = HostMessageBroadcaster(broadcaster, store_host_message, app.event_bus.emit)
+    async def store_system_notice(**kwargs: Any) -> None:
+        await store_message_direct(**kwargs, message_type="user")
+
+    host_broadcaster = HostMessageBroadcaster(
+        broadcaster, store_host_message, store_system_notice, app.event_bus.emit
+    )
     return broadcaster, host_broadcaster
 
 
@@ -123,6 +128,9 @@ def make_ipc_deps(app: PynchyApp) -> Any:
         write_groups_snapshot = staticmethod(_write_groups_snapshot)
         clear_session = session_manager.clear_session
         clear_chat_history = registration_manager.clear_chat_history
+
+        def has_session(self, group_folder: str) -> bool:
+            return group_folder in session_manager.get_sessions()
         enqueue_message_check = queue_manager.enqueue_message_check
         channels = metadata_manager.channels
 
@@ -207,10 +215,14 @@ def make_git_sync_deps(app: PynchyApp) -> Any:
         )
 
     class GitSyncDeps:
+        broadcast_host_message = host_broadcaster.broadcast_host_message
         broadcast_system_notice = host_broadcaster.broadcast_system_notice
 
         def registered_groups(self) -> dict[str, Any]:
             return group_registry.registered_groups()
+
+        def has_session(self, group_folder: str) -> bool:
+            return group_folder in app.sessions
 
         async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
             await _trigger_deploy_impl(previous_sha, rebuild=rebuild)

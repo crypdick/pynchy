@@ -107,20 +107,25 @@ class TestHostMessageBroadcaster:
     announcements. They must store to DB, send to channels, and emit events.
     """
 
-    def _make_broadcaster(self) -> tuple[HostMessageBroadcaster, FakeChannel, AsyncMock, list]:
+    def _make_broadcaster(
+        self,
+    ) -> tuple[HostMessageBroadcaster, FakeChannel, AsyncMock, AsyncMock, list]:
         channel = FakeChannel()
         msg_broadcaster = MessageBroadcaster([channel])
-        store_fn = AsyncMock()
+        store_host_fn = AsyncMock()
+        store_notice_fn = AsyncMock()
         emitted: list[Any] = []
-        host_broadcaster = HostMessageBroadcaster(msg_broadcaster, store_fn, emitted.append)
-        return host_broadcaster, channel, store_fn, emitted
+        host_broadcaster = HostMessageBroadcaster(
+            msg_broadcaster, store_host_fn, store_notice_fn, emitted.append
+        )
+        return host_broadcaster, channel, store_host_fn, store_notice_fn, emitted
 
     async def test_host_message_stores_in_db(self):
-        broadcaster, _, store_fn, _ = self._make_broadcaster()
+        broadcaster, _, store_host_fn, _, _ = self._make_broadcaster()
         await broadcaster.broadcast_host_message("group@g.us", "⚠️ Error occurred")
 
-        store_fn.assert_called_once()
-        kwargs = store_fn.call_args.kwargs
+        store_host_fn.assert_called_once()
+        kwargs = store_host_fn.call_args.kwargs
         assert kwargs["chat_jid"] == "group@g.us"
         assert kwargs["sender"] == "host"
         assert kwargs["sender_name"] == "host"
@@ -128,7 +133,7 @@ class TestHostMessageBroadcaster:
         assert kwargs["is_from_me"] is True
 
     async def test_host_message_sends_to_channel_with_emoji_prefix(self):
-        broadcaster, channel, _, _ = self._make_broadcaster()
+        broadcaster, channel, _, _, _ = self._make_broadcaster()
         await broadcaster.broadcast_host_message("group@g.us", "Test message")
 
         assert len(channel.sent) == 1
@@ -138,7 +143,7 @@ class TestHostMessageBroadcaster:
         assert "Test message" in text
 
     async def test_host_message_emits_event(self):
-        broadcaster, _, _, emitted = self._make_broadcaster()
+        broadcaster, _, _, _, emitted = self._make_broadcaster()
         await broadcaster.broadcast_host_message("group@g.us", "Test")
 
         assert len(emitted) == 1
@@ -150,15 +155,40 @@ class TestHostMessageBroadcaster:
         assert event.is_bot is True
 
     async def test_system_notice_stores_with_system_notice_sender(self):
-        broadcaster, _, store_fn, _ = self._make_broadcaster()
+        broadcaster, _, _, store_notice_fn, _ = self._make_broadcaster()
         await broadcaster.broadcast_system_notice("group@g.us", "Config changed")
 
-        kwargs = store_fn.call_args.kwargs
+        store_notice_fn.assert_called_once()
+        kwargs = store_notice_fn.call_args.kwargs
         assert kwargs["sender"] == "system_notice"
-        assert kwargs["sender_name"] == "system_notice"
+        assert kwargs["sender_name"] == "System"
+
+    async def test_system_notice_prefixes_content(self):
+        """System notices are prefixed with [System Notice] for LLM visibility."""
+        broadcaster, _, _, store_notice_fn, _ = self._make_broadcaster()
+        await broadcaster.broadcast_system_notice("group@g.us", "Config changed")
+
+        kwargs = store_notice_fn.call_args.kwargs
+        assert kwargs["content"] == "[System Notice] Config changed"
+
+    async def test_system_notice_uses_notice_store_fn(self):
+        """System notices use the notice store fn, not the host store fn."""
+        broadcaster, _, store_host_fn, store_notice_fn, _ = self._make_broadcaster()
+        await broadcaster.broadcast_system_notice("group@g.us", "Update")
+
+        store_host_fn.assert_not_called()
+        store_notice_fn.assert_called_once()
+
+    async def test_host_message_uses_host_store_fn(self):
+        """Host messages use the host store fn, not the notice store fn."""
+        broadcaster, _, store_host_fn, store_notice_fn, _ = self._make_broadcaster()
+        await broadcaster.broadcast_host_message("group@g.us", "Status update")
+
+        store_host_fn.assert_called_once()
+        store_notice_fn.assert_not_called()
 
     async def test_system_notice_sends_to_channel_with_megaphone_prefix(self):
-        broadcaster, channel, _, _ = self._make_broadcaster()
+        broadcaster, channel, _, _, _ = self._make_broadcaster()
         await broadcaster.broadcast_system_notice("group@g.us", "Update")
 
         assert len(channel.sent) == 1
@@ -166,17 +196,17 @@ class TestHostMessageBroadcaster:
         assert text.startswith("\U0001f4e2")  # 📢 emoji prefix
 
     async def test_host_message_id_starts_with_host_prefix(self):
-        broadcaster, _, store_fn, _ = self._make_broadcaster()
+        broadcaster, _, store_host_fn, _, _ = self._make_broadcaster()
         await broadcaster.broadcast_host_message("group@g.us", "Test")
 
-        msg_id = store_fn.call_args.kwargs["id"]
+        msg_id = store_host_fn.call_args.kwargs["id"]
         assert msg_id.startswith("host-")
 
     async def test_system_notice_id_starts_with_sys_notice_prefix(self):
-        broadcaster, _, store_fn, _ = self._make_broadcaster()
+        broadcaster, _, _, store_notice_fn, _ = self._make_broadcaster()
         await broadcaster.broadcast_system_notice("group@g.us", "Test")
 
-        msg_id = store_fn.call_args.kwargs["id"]
+        msg_id = store_notice_fn.call_args.kwargs["id"]
         assert msg_id.startswith("sys-notice-")
 
 

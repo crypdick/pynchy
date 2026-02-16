@@ -35,9 +35,13 @@ HOST_GIT_SYNC_POLL_INTERVAL = 5.0
 class GitSyncDeps(Protocol):
     """Dependencies for the git sync loop."""
 
+    async def broadcast_host_message(self, jid: str, text: str) -> None: ...
+
     async def broadcast_system_notice(self, jid: str, text: str) -> None: ...
 
     def registered_groups(self) -> dict[str, RegisteredGroup]: ...
+
+    def has_session(self, group_folder: str) -> bool: ...
 
     async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None: ...
 
@@ -226,6 +230,10 @@ async def host_notify_worktree_updates(
     - Clean + rebase succeeds: notify "auto-rebased, run git log to see changes"
     - Clean + rebase fails: DON'T abort — notify "conflicts, run git status to fix"
     - Dirty (uncommitted): skip rebase, notify "commit or stash, then sync"
+
+    Notification routing depends on session state:
+    - Active session → system_notice (visible to LLM as pseudo-system message)
+    - No session → host_message (human-only, avoids polluting future context)
     """
     if not get_settings().worktrees_dir.exists():
         return
@@ -258,6 +266,16 @@ async def host_notify_worktree_updates(
         if behind.returncode != 0 or behind_n == 0:
             continue  # up to date or can't check
 
+        # Route notification based on whether the group has an active session.
+        # System notices go to the LLM; host messages are human-only.
+        # Without a session, system notices would just accumulate as junk
+        # context for the next conversation.
+        notify = (
+            deps.broadcast_system_notice
+            if deps.has_session(group_folder)
+            else deps.broadcast_host_message
+        )
+
         # Check for uncommitted changes
         status = run_git("status", "--porcelain", cwd=entry)
         if status.returncode == 0 and status.stdout.strip():
@@ -266,7 +284,7 @@ async def host_notify_worktree_updates(
                 "uncommitted changes. Commit or stash your work, then call "
                 "sync_worktree_to_main to get the latest changes."
             )
-            await deps.broadcast_system_notice(jid, notice)
+            await notify(jid, notice)
             logger.info(
                 "Skipped dirty worktree rebase, notified agent",
                 group=group_folder,
@@ -286,7 +304,7 @@ async def host_notify_worktree_updates(
                 "rebase conflicts. Run `git status` to see conflicted files, "
                 "resolve them, then `git add` and `git rebase --continue`."
             )
-            await deps.broadcast_system_notice(jid, notice)
+            await notify(jid, notice)
             logger.warning(
                 "Worktree rebase conflict during broadcast",
                 group=group_folder,
@@ -294,7 +312,7 @@ async def host_notify_worktree_updates(
             )
         else:
             notice = _build_rebase_notice(entry, head_before, behind_count)
-            await deps.broadcast_system_notice(jid, notice)
+            await notify(jid, notice)
             logger.info("Auto-rebased worktree", group=group_folder)
 
 
