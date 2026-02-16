@@ -417,6 +417,47 @@ class TestMountBuilding:
             assert project_mount.host_path == str(worktree_path)
             assert project_mount.readonly is False
 
+    def test_god_gets_config_toml_mount(self, tmp_path: Path):
+        """God group gets config.toml mounted read-write when it exists."""
+        with _patch_settings(tmp_path):
+            (tmp_path / "groups" / "god").mkdir(parents=True)
+            (tmp_path / "config.toml").write_text("[agent]\nname = 'pynchy'\n")
+            group = RegisteredGroup(
+                name="God", folder="god", trigger="always", added_at="2024-01-01"
+            )
+            mounts = _build_volume_mounts(group, is_god=True)
+
+            config_mount = next(
+                m for m in mounts if m.container_path == "/workspace/project/config.toml"
+            )
+            assert config_mount.host_path == str(tmp_path / "config.toml")
+            assert config_mount.readonly is False
+
+    def test_nongod_does_not_get_config_toml(self, tmp_path: Path):
+        """Non-god groups never get config.toml mounted."""
+        with _patch_settings(tmp_path):
+            (tmp_path / "groups" / "other").mkdir(parents=True)
+            (tmp_path / "config.toml").write_text("[agent]\nname = 'pynchy'\n")
+            group = RegisteredGroup(
+                name="Other", folder="other", trigger="@pynchy", added_at="2024-01-01"
+            )
+            mounts = _build_volume_mounts(group, is_god=False)
+
+            paths = [m.container_path for m in mounts]
+            assert "/workspace/project/config.toml" not in paths
+
+    def test_god_no_config_toml_when_missing(self, tmp_path: Path):
+        """God group doesn't get config.toml mount if the file doesn't exist."""
+        with _patch_settings(tmp_path):
+            (tmp_path / "groups" / "god").mkdir(parents=True)
+            group = RegisteredGroup(
+                name="God", folder="god", trigger="always", added_at="2024-01-01"
+            )
+            mounts = _build_volume_mounts(group, is_god=True)
+
+            paths = [m.container_path for m in mounts]
+            assert "/workspace/project/config.toml" not in paths
+
 
 # ---------------------------------------------------------------------------
 # Integration tests — run_container_agent with FakeProcess
