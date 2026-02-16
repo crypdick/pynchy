@@ -1,5 +1,7 @@
 # Pynchy Security Model
 
+This page covers Pynchy's security boundaries, trust model, and credential handling. Read this to understand what agents can and cannot access, and how to evaluate the risk of adding mounts, plugins, or new groups.
+
 ## Trust Model
 
 | Entity | Trust Level | Rationale |
@@ -14,19 +16,19 @@
 ### 1. Container Isolation (Primary Boundary)
 
 Agents execute in Apple Container (macOS) or Docker (Linux), providing:
-- **Process isolation** - Container processes cannot affect the host
-- **Filesystem isolation** - Only explicitly mounted directories are visible
-- **Non-root execution** - Runs as unprivileged `agent` user
-- **Ephemeral containers** - Fresh environment per invocation (`--rm`)
+- **Process isolation** — container processes cannot affect the host
+- **Filesystem isolation** — only explicitly mounted directories appear inside the container
+- **Non-root execution** — runs as unprivileged `agent` user
+- **Ephemeral containers** — fresh environment per invocation (`--rm`)
 
-This is the primary security boundary. Rather than relying on application-level permission checks, the attack surface is limited by what's mounted.
+The container boundary limits the attack surface to what gets mounted, rather than relying on application-level permission checks.
 
 ### 2. Mount Security
 
-**External Allowlist** - Mount permissions stored at `~/.config/pynchy/mount-allowlist.toml`, which is:
-- Outside project root
+**External Allowlist** — Mount permissions live at `~/.config/pynchy/mount-allowlist.toml`:
+- Stored outside the project root
 - Never mounted into containers
-- Cannot be modified by agents
+- Agents cannot modify it
 
 **Default Blocked Patterns:**
 ```
@@ -38,18 +40,18 @@ private_key, .secret
 **Protections:**
 - Symlink resolution before validation (prevents traversal attacks)
 - Container path validation (rejects `..` and absolute paths)
-- `non_god_read_only` option forces read-only for non-god groups
+- `non_god_read_only` option enforces read-only for non-god groups
 
 ### 3. Session Isolation
 
 Each group has isolated Claude sessions at `data/sessions/{group}/.claude/`:
 - Groups cannot see other groups' conversation history
 - Session data includes full message history and file contents read
-- Prevents cross-group information disclosure
+- This prevents cross-group information disclosure
 
 ### 4. IPC Authorization
 
-Messages and task operations are verified against group identity:
+The host verifies messages and task operations against group identity:
 
 | Operation | God Group | Non-God Group |
 |-----------|------------|----------------|
@@ -64,7 +66,7 @@ Messages and task operations are verified against group identity:
 
 #### LLM Gateway (default)
 
-When `gateway.enabled = true` (the default), an LLM API gateway runs on the host process and proxies container API calls to real providers. Containers **never see real LLM API keys**.
+When `gateway.enabled = true` (the default), an LLM API gateway runs on the host and proxies container API calls to real providers. Containers **never see real LLM API keys**.
 
 **How it works:**
 
@@ -87,12 +89,12 @@ OPENAI_API_KEY=gw-<random>
 5. Required headers (`anthropic-beta`, `anthropic-version`) are forwarded to the provider.
 
 **Security properties:**
-- Real API keys exist only in the host process memory
-- Ephemeral keys are per-session (regenerated on restart), not real credentials
-- A compromised container cannot use the ephemeral key outside the gateway
+- Real API keys exist only in host process memory
+- Ephemeral keys regenerate on each restart and carry no value outside the gateway
+- A compromised container cannot use the ephemeral key to reach providers directly
 - Docker containers reach the host via `host.docker.internal` (with `--add-host` on Linux)
 
-**Non-LLM credentials** are written directly to per-group env files (`data/env/{group}/env`):
+**Non-LLM credentials** get written directly to per-group env files (`data/env/{group}/env`):
 
 | Credential | God | Non-God | Rationale |
 |-----------|-----|---------|-----------|
@@ -102,7 +104,7 @@ OPENAI_API_KEY=gw-<random>
 | `GIT_AUTHOR_EMAIL` | Yes | Yes | |
 | `GIT_COMMITTER_EMAIL` | Yes | Yes | |
 
-Each group gets its own env directory so concurrent containers don't share secrets. A compromised non-god container cannot access GitHub APIs or push to repositories directly.
+Each group gets its own env directory, so concurrent containers don't share secrets. A compromised non-god container cannot access GitHub APIs or push to repositories directly.
 
 **NOT Mounted:**
 - WhatsApp session (`store/auth/`) — host only
@@ -111,14 +113,14 @@ Each group gets its own env directory so concurrent containers don't share secre
 
 ### 6. Prompt Injection
 
-WhatsApp messages could contain malicious instructions attempting to manipulate Claude's behavior.
+WhatsApp messages can contain malicious instructions that attempt to manipulate Claude's behavior.
 
 **Mitigations:**
-- Container isolation limits blast radius of successful attacks
-- Only registered groups are processed (explicit allowlist)
-- Trigger word required (reduces accidental processing)
+- Container isolation limits the blast radius of successful attacks
+- Only registered groups get processed (explicit allowlist)
+- Trigger word requirement reduces accidental processing
 - Agents can only access their group's mounted directories
-- Additional directory mounts must be explicitly configured per group
+- Additional directory mounts require explicit per-group configuration
 - Claude's built-in safety training helps resist manipulation
 
 **Recommendations:**

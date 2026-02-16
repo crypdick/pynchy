@@ -2,7 +2,7 @@
 
 Pynchy stays minimal by design. New capabilities — channels, tools, skills, agent cores — are added as **plugins**, not features in the base codebase.
 
-Plugins are regular Python packages discovered automatically at startup. Install a plugin, restart pynchy, done.
+Plugins come as regular Python packages, discovered automatically at startup. Install a plugin, restart Pynchy, done.
 
 ## Plugin Categories
 
@@ -14,7 +14,7 @@ Plugins are regular Python packages discovered automatically at startup. Install
 | **Channel** | `pynchy_create_channel()` | Communication platform (Telegram, Slack, Discord) | Host |
 | **Workspace** | `pynchy_workspace_spec()` | Managed workspace/task definitions (e.g. periodic agents) | Host |
 
-A single plugin can implement multiple hooks. For example, a "voice" plugin could provide both an MCP server (transcription tools) and a skill (voice interaction patterns).
+A single plugin can implement multiple hooks. For example, a "voice" plugin might provide both an MCP server (transcription tools) and a skill (voice interaction patterns).
 
 ## How Discovery Works
 
@@ -26,11 +26,11 @@ App starts
   → Ready: pm.hook.pynchy_agent_core_info(), etc.
 ```
 
-Plugins register themselves via `pyproject.toml` entry points in the `"pynchy"` group. Installation = activation. Uninstall = removal. No config files needed.
+Plugins register via `pyproject.toml` entry points in the `"pynchy"` group. Installation activates them. Uninstalling removes them. No config files needed.
 
 ## Security Model
 
-All plugin Python code runs on the **host** during discovery. To mitigate the risk of malicious plugins, pynchy runs an automated [**plugin scanner**](plugin-scanner.md) that audits new plugin revisions inside an isolated container before installation. Plugins marked `trusted = true` in config bypass the scan. See [Security Model](../architecture/security.md) for the full trust model.
+All plugin Python code runs on the **host** during discovery. To mitigate the risk of malicious plugins, Pynchy runs an automated [**plugin scanner**](plugin-scanner.md) that audits new plugin revisions inside an isolated container before installation. Plugins marked `trusted = true` in config bypass the scan. See [Security Model](../architecture/security.md) for the full trust model.
 
 | Category | Sandbox Level | Risk |
 |----------|--------------|------|

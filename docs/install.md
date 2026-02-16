@@ -1,6 +1,6 @@
 # Installation Guide
 
-This guide covers installing Pynchy on macOS or Linux, for both desktop and headless server deployments.
+This guide walks through installing Pynchy on macOS or Linux, for both desktop and headless server deployments.
 
 ## Prerequisites
 
@@ -52,7 +52,7 @@ uv sync                                      # Install Python dependencies
 
 ### 2. Configure
 
-To customize configuration, copy the example configuration and edit it:
+To customize configuration, copy the example and edit it:
 
 ```bash
 cp config-examples/config.toml.EXAMPLE config.toml
@@ -159,7 +159,7 @@ sg docker -c './container/build.sh'
 
 ### 3. Authenticate WhatsApp
 
-This step requires scanning a QR code with your phone. The QR code renders as Unicode text and pipes cleanly over SSH:
+This step requires scanning a QR code with your phone. The QR code renders as Unicode text and pipes cleanly over SSH.
 
 ```bash
 cd ~/src/pynchy
@@ -174,14 +174,14 @@ Wait for "Successfully authenticated" before pressing Ctrl+C.
 
 ### 4. Install Claude Code and Authenticate
 
-Pynchy runs agents using the Claude Agent SDK, which requires Claude Code to be installed and authenticated.
+Pynchy runs agents using the Claude Agent SDK, which requires Claude Code installed and authenticated.
 
 ```bash
 # Install Claude Code on the server
 npm install -g @anthropic-ai/claude-code
 ```
 
-The easiest way to authenticate on a headless server is to copy credentials from a machine where you're already logged in:
+The easiest way to authenticate on a headless server: copy credentials from a machine where you already have them:
 
 ```bash
 # From your local machine (where claude is already authenticated):
@@ -197,7 +197,7 @@ ssh your-server "claude -p 'say hello'"
 
 **Alternative: API key instead of OAuth**
 
-If you prefer using an API key directly, skip the `claude` authentication and create `config.toml`:
+To use an API key directly instead, skip the `claude` authentication and create `config.toml`:
 
 ```bash
 cp ~/src/pynchy/config-examples/config.toml.EXAMPLE ~/src/pynchy/config.toml
@@ -223,7 +223,7 @@ Verify it's working, then press Ctrl+C.
 
 ### 6. Start as a Service
 
-The first run already installed and enabled the systemd service. Start it:
+The first run already installed and enabled the systemd service. Start it now:
 
 ```bash
 systemctl --user start pynchy
@@ -243,7 +243,7 @@ View logs:
 journalctl --user -u pynchy -f
 ```
 
-The service will auto-restart on crashes (`RestartSec=10`) and start on boot.
+The service auto-restarts on crashes (`RestartSec=10`) and starts on boot.
 
 ### 7. Connect the TUI (optional)
 
@@ -263,7 +263,7 @@ After pushing changes to the repo, trigger a remote deploy:
 curl -X POST http://your-server:8484/deploy
 ```
 
-This pulls the latest code, validates the import, and restarts the service. If the import fails, it automatically rolls back.
+This pulls the latest code, validates the import, and restarts the service. If the import fails, Pynchy automatically rolls back.
 
 ---
 
@@ -275,8 +275,8 @@ Run `claude` on the server to authenticate, or set `[secrets].anthropic_api_key`
 
 ### WhatsApp QR code not scanning
 
-- Ensure your phone and server are on networks that can reach each other (or use SSH tunneling)
-- The QR code renders as Unicode text in the terminal - it should be scannable directly from the SSH session
+- Ensure your phone and server can reach each other over the network (or use SSH tunneling)
+- The QR code renders as Unicode text in the terminal — scan it directly from the SSH session
 - If the QR code doesn't render properly, try a different terminal emulator
 
 ### Container build fails

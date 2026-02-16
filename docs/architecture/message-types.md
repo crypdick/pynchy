@@ -1,6 +1,6 @@
 # Message Types
 
-Messages are categorized by semantic type, enabling proper handling from storage to SDK integration. Operational notifications (host messages) are never sent to the LLM while conversation context is maintained.
+This page documents the message type system that determines how each message gets stored, filtered, and displayed. Understanding these types helps you debug missing messages, write channel plugins, and trace what the LLM receives in its context.
 
 ## Message Types
 
@@ -117,23 +117,14 @@ The container receives `messages` (a list of SDK-format messages with host messa
 ### HostMessageBroadcaster
 
 Handles operational notifications:
-- Stores message with `message_type='host'`
+- Stores the message with `message_type='host'`
 - Broadcasts to channels with 🏠 emoji
-- Emits event for TUI
-- Message NEVER reaches LLM
+- Emits an event for the TUI
+- Never forwards the message to the LLM
 
 ### UserMessageHandler
 
 Handles user message ingestion:
-- Stores message with `message_type='user'`
-- Emits to event bus
+- Stores the message with `message_type='user'`
+- Emits to the event bus
 - Broadcasts to all channels
-
-## Benefits
-
-1. **Type Safety**: Message type determines behavior, no ambiguity
-2. **SDK Native**: Uses Claude SDK as designed
-3. **Clear Separation**: Host messages vs conversation messages distinct
-4. **Extensibility**: Easy to add new message types
-5. **Debuggability**: Clear types in DB, logs, UI
-6. **Filtered Context**: Host messages never pollute LLM context

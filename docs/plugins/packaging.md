@@ -1,5 +1,7 @@
 # Packaging & Distribution
 
+This page covers how to package, distribute, and install pynchy plugins. Follow these conventions to make your plugin discoverable and installable by other users.
+
 ## Plugin Package Structure
 
 ```
@@ -16,14 +18,14 @@ pynchy-plugin-{name}/
 
 ## Entry Point Registration
 
-Plugins are discovered via Python entry points. In your `pyproject.toml`:
+Pynchy discovers plugins via Python entry points. In your `pyproject.toml`:
 
 ```toml
 [project.entry-points."pynchy"]
 my-plugin = "pynchy_plugin_name:MyPlugin"
 ```
 
-The group **must** be `"pynchy"`. The key (left side) is a human-readable name. The value points to your plugin class.
+The group **must** be `"pynchy"`. The key (left side) provides a human-readable name. The value points to your plugin class.
 
 ## Naming Conventions
 
@@ -59,7 +61,7 @@ uv pip install git+https://${GITHUB_TOKEN}@github.com/user/pynchy-plugin-voice.g
 uv pip install -e /path/to/pynchy-plugin-voice
 ```
 
-Editable installs reflect code changes immediately without reinstalling.
+Editable installs reflect code changes immediately — no reinstall needed.
 
 ## Verifying Installation
 
@@ -85,7 +87,7 @@ Plugins that provide container-side code (MCP servers, agent cores) need their d
 
 **Packages already in the container image:** `mcp`, `croniter`, Python standard library, Claude Agent SDK.
 
-**If your plugin needs additional packages**, document this in your README. Users must add them to their container Dockerfile:
+**If your plugin needs additional packages,** document this in your README. Users add them to their container Dockerfile:
 
 ```dockerfile
 RUN pip install openai-whisper
@@ -93,7 +95,7 @@ RUN pip install openai-whisper
 
 ## Version Management
 
-Plugin versions are tracked by your lockfile (`uv.lock`), just like any Python dependency:
+Your lockfile (`uv.lock`) tracks plugin versions, just like any Python dependency:
 
 ```bash
 # Pin a specific version

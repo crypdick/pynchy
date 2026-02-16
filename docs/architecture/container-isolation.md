@@ -1,8 +1,8 @@
 # Container Isolation
 
-All agents run inside containers — Apple Container (macOS, preferred) or Docker (macOS/Linux). Each agent invocation spawns a fresh, ephemeral container with explicitly mounted directories.
+This page describes how Pynchy isolates agents inside containers. Understanding the mount layout and environment variable setup helps you configure groups, debug mount issues, and write plugins that interact with the container filesystem.
 
-For security properties of container isolation, see [Security Model](security.md).
+Each agent invocation spawns a fresh, ephemeral container (Apple Container on macOS, Docker on Linux) with explicitly mounted directories. For the security properties of this isolation, see [Security Model](security.md).
 
 ## Container Mounts
 
@@ -18,12 +18,12 @@ For security properties of container isolation, see [Security Model](security.md
 | `{additional mounts}` | `/workspace/extra/*` | Configurable | Per containerConfig |
 
 **Notes:**
-- Groups with `project_access` get worktree mounts instead of `groups/global/` (see `.claude/worktrees.md`)
-- Apple Container requires `--mount "type=bind,source=...,target=...,readonly"` syntax for readonly mounts (`:ro` suffix doesn't work)
+- Groups with `project_access` receive worktree mounts instead of `groups/global/` (see `.claude/worktrees.md`)
+- Apple Container requires `--mount "type=bind,source=...,target=...,readonly"` syntax for readonly mounts (the `:ro` suffix does not work)
 
 ## Container Configuration
 
-Groups can have additional directories mounted via `containerConfig` in the SQLite `registered_groups` table:
+Configure additional directory mounts via `containerConfig` in the SQLite `registered_groups` table:
 
 ```json
 {
@@ -40,13 +40,13 @@ Groups can have additional directories mounted via `containerConfig` in the SQLi
 
 ## Environment Variable Isolation
 
-Each group gets its own env file at `data/env/{group}/env`. Only allowlisted variables are exposed.
+Each group gets its own env file at `data/env/{group}/env`. Only allowlisted variables pass through.
 
-**LLM credentials** are proxied through the host gateway (see [Security Model](security.md#5-credential-handling)). Containers receive gateway URLs and an ephemeral key — never real API keys:
+**LLM credentials** flow through the host gateway (see [Security Model](security.md#5-credential-handling)). Containers receive gateway URLs and an ephemeral key — never real API keys:
 - `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` — points to host gateway
 - `OPENAI_BASE_URL` / `OPENAI_API_KEY` — points to host gateway
 
-**Non-LLM credentials** are written directly, scoped by trust level:
+**Non-LLM credentials** get written directly, scoped by trust level:
 - `GH_TOKEN` — **god containers only.** Auto-discovered from `gh auth token` or `config.toml [secrets]`. Non-god containers don't receive this; their git operations are routed through host IPC.
 - `GIT_AUTHOR_NAME` / `GIT_COMMITTER_NAME` — from host git config (all groups)
 - `GIT_AUTHOR_EMAIL` / `GIT_COMMITTER_EMAIL` — from host git config (all groups)
