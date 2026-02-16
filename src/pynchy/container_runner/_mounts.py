@@ -81,6 +81,16 @@ def _build_volume_mounts(
     agent_runner_src = s.project_root / "container" / "agent_runner" / "src"
     mounts.append(VolumeMount(str(agent_runner_src), "/app/src", readonly=True))
 
+    # Host config.toml — only the god (admin) container gets access to this.
+    # config.toml is .gitignored so it's absent from worktrees; mounting it
+    # directly lets the admin agent edit settings without host-side access.
+    if is_god:
+        config_toml = s.project_root / "config.toml"
+        if config_toml.exists():
+            mounts.append(
+                VolumeMount(str(config_toml), "/workspace/project/config.toml", readonly=False)
+            )
+
     # Additional mounts validated against external allowlist
     if group.container_config and group.container_config.additional_mounts:
         validated = validate_additional_mounts(
