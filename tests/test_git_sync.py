@@ -201,12 +201,11 @@ class TestHostSyncWorktree:
 
 
 class TestHostNotifyWorktreeUpdates:
-    def _make_deps(self, groups: dict, *, has_session: bool = True) -> Mock:
-        """Create a mock deps with session-aware routing support."""
+    def _make_deps(self, groups: dict) -> Mock:
+        """Create a mock deps."""
         deps = Mock()
         deps.broadcast_host_message = AsyncMock()
         deps.broadcast_system_notice = AsyncMock()
-        deps.has_session.return_value = has_session
         deps.registered_groups.return_value = groups
         return deps
 
@@ -236,7 +235,7 @@ class TestHostNotifyWorktreeUpdates:
 
         await host_notify_worktree_updates(exclude_group=None, deps=deps)
 
-        # Should have sent a notification via system_notice (has_session=True)
+        # Should have sent a notification via system_notice
         deps.broadcast_system_notice.assert_called_once()
         call_args = deps.broadcast_system_notice.call_args
         assert "jid-1@g.us" in call_args[0]
@@ -361,8 +360,8 @@ class TestHostNotifyWorktreeUpdates:
         deps.broadcast_host_message.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_no_session_uses_host_message(self, git_env: dict):
-        """Without an active session, notifications go via host_message (human-only)."""
+    async def test_always_uses_system_notice(self, git_env: dict):
+        """All worktree notifications use system_notice (pseudo system messages)."""
         project = git_env["project"]
 
         ensure_worktree("agent-1")
@@ -373,29 +372,26 @@ class TestHostNotifyWorktreeUpdates:
 
         from pynchy.types import RegisteredGroup
 
-        deps = self._make_deps(
-            {
-                "jid-1@g.us": RegisteredGroup(
-                    name="Agent 1",
-                    folder="agent-1",
-                    trigger="@test",
-                    added_at="2024-01-01",
-                ),
-            },
-            has_session=False,
-        )
+        deps = self._make_deps({
+            "jid-1@g.us": RegisteredGroup(
+                name="Agent 1",
+                folder="agent-1",
+                trigger="@test",
+                added_at="2024-01-01",
+            ),
+        })
 
         await host_notify_worktree_updates(exclude_group=None, deps=deps)
 
-        # Should have used host_message, NOT system_notice
-        deps.broadcast_host_message.assert_called_once()
-        deps.broadcast_system_notice.assert_not_called()
-        msg = deps.broadcast_host_message.call_args[0][1]
+        # Always system_notice, never host_message
+        deps.broadcast_system_notice.assert_called_once()
+        deps.broadcast_host_message.assert_not_called()
+        msg = deps.broadcast_system_notice.call_args[0][1]
         assert "Auto-rebased 1 commit(s)" in msg
 
     @pytest.mark.asyncio
-    async def test_dirty_worktree_no_session_uses_host_message(self, git_env: dict):
-        """Dirty worktree notification without session goes via host_message."""
+    async def test_dirty_worktree_always_uses_system_notice(self, git_env: dict):
+        """Dirty worktree notifications always use system_notice."""
         project = git_env["project"]
 
         result = ensure_worktree("agent-1")
@@ -408,23 +404,20 @@ class TestHostNotifyWorktreeUpdates:
 
         from pynchy.types import RegisteredGroup
 
-        deps = self._make_deps(
-            {
-                "jid-1@g.us": RegisteredGroup(
-                    name="Agent 1",
-                    folder="agent-1",
-                    trigger="@test",
-                    added_at="2024-01-01",
-                ),
-            },
-            has_session=False,
-        )
+        deps = self._make_deps({
+            "jid-1@g.us": RegisteredGroup(
+                name="Agent 1",
+                folder="agent-1",
+                trigger="@test",
+                added_at="2024-01-01",
+            ),
+        })
 
         await host_notify_worktree_updates(exclude_group=None, deps=deps)
 
-        deps.broadcast_host_message.assert_called_once()
-        deps.broadcast_system_notice.assert_not_called()
-        msg = deps.broadcast_host_message.call_args[0][1]
+        deps.broadcast_system_notice.assert_called_once()
+        deps.broadcast_host_message.assert_not_called()
+        msg = deps.broadcast_system_notice.call_args[0][1]
         assert "uncommitted" in msg
 
 

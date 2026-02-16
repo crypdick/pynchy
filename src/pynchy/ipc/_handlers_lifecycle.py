@@ -135,9 +135,6 @@ async def _handle_sync_worktree_to_main(
             def registered_groups(self) -> dict[str, RegisteredGroup]:
                 return deps.registered_groups()
 
-            def has_session(self, group_folder: str) -> bool:
-                return deps.has_session(group_folder)
-
             async def trigger_deploy(
                 self, previous_sha: str, rebuild: bool = True
             ) -> None:
