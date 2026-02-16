@@ -94,6 +94,7 @@ class GatewayConfig(BaseModel):
     container_host: str = "host.docker.internal"  # hostname containers use to reach host
     litellm_config: str | None = None  # path to litellm_config.yaml; None = builtin mode
     litellm_image: str = "ghcr.io/berriai/litellm:main-latest"
+    postgres_image: str = "postgres:17-alpine"
 
 
 class WorkspaceDefaultsConfig(BaseModel):
