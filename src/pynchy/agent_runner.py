@@ -1,0 +1,159 @@
+"""Agent execution orchestration — snapshot writes, session tracking, container launch.
+
+Extracted from app.py to keep the orchestrator focused on wiring.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Protocol
+
+from pynchy.container_runner import (
+    resolve_agent_core,
+    run_container_agent,
+    write_groups_snapshot,
+    write_tasks_snapshot,
+)
+from pynchy.db import get_all_tasks, set_session
+from pynchy.git_utils import count_unpushed_commits, is_repo_dirty
+from pynchy.logger import logger
+from pynchy.types import ContainerInput, ContainerOutput
+
+if TYPE_CHECKING:
+    import pluggy
+
+    from pynchy.group_queue import GroupQueue
+    from pynchy.types import RegisteredGroup
+
+
+class AgentRunnerDeps(Protocol):
+    """Dependencies for agent execution."""
+
+    @property
+    def sessions(self) -> dict[str, str]: ...
+
+    @property
+    def _session_cleared(self) -> set[str]: ...
+
+    @property
+    def registered_groups(self) -> dict[str, RegisteredGroup]: ...
+
+    @property
+    def queue(self) -> GroupQueue: ...
+
+    @property
+    def plugin_manager(self) -> pluggy.PluginManager | None: ...
+
+    async def get_available_groups(self) -> list[dict[str, Any]]: ...
+
+
+async def run_agent(
+    deps: AgentRunnerDeps,
+    group: RegisteredGroup,
+    chat_jid: str,
+    messages: list[dict],
+    on_output: Any | None = None,
+    extra_system_notices: list[str] | None = None,
+) -> str:
+    """Run the container agent for a group. Returns 'success' or 'error'."""
+    from pynchy.workspace_config import has_project_access
+
+    is_god = group.is_god
+    project_access = has_project_access(group)
+    session_id = deps.sessions.get(group.folder)
+
+    # Update snapshots for container to read
+    tasks = await get_all_tasks()
+    write_tasks_snapshot(
+        group.folder,
+        is_god,
+        [t.to_snapshot_dict() for t in tasks],
+    )
+
+    available_groups = await deps.get_available_groups()
+    write_groups_snapshot(
+        group.folder,
+        is_god,
+        available_groups,
+        set(deps.registered_groups.keys()),
+    )
+
+    # Wrap on_output to track session ID from streamed results
+    async def wrapped_on_output(output: ContainerOutput) -> None:
+        if output.new_session_id and group.folder not in deps._session_cleared:
+            deps.sessions[group.folder] = output.new_session_id
+            await set_session(group.folder, output.new_session_id)
+        if on_output:
+            await on_output(output)
+
+    # Build system notices for the LLM (SDK system messages, NOT host messages)
+    # These are sent TO the LLM as context, distinct from operational host messages
+    system_notices: list[str] = []
+    if is_god:
+        if is_repo_dirty():
+            system_notices.append(
+                "There are uncommitted local changes. Run `git status` and `git diff` "
+                "to review them. If they are good, commit and push. If not, discard them."
+            )
+        if count_unpushed_commits() > 0:
+            system_notices.append(
+                "There are local commits that haven't been pushed. "
+                "Run `git push` or `git rebase origin/main && git push` to sync them."
+            )
+        if system_notices:
+            system_notices.append(
+                "Consider whether to address these issues before or after handling the new message."
+            )
+
+    # Add any extra system notices passed in
+    if extra_system_notices:
+        if system_notices:
+            system_notices.extend(extra_system_notices)
+        else:
+            system_notices = extra_system_notices[:]
+
+    # Clear the guard — this container run starts fresh
+    deps._session_cleared.discard(group.folder)
+
+    # system_notices are handled via system_prompt in the container (ephemeral context)
+    # messages contains the persistent conversation history (with message types)
+    # The container appends system_notices to the SDK system_prompt parameter
+
+    agent_core_module, agent_core_class = resolve_agent_core(deps.plugin_manager)
+
+    try:
+        output = await run_container_agent(
+            group=group,
+            input_data=ContainerInput(
+                messages=messages,
+                session_id=session_id,
+                group_folder=group.folder,
+                chat_jid=chat_jid,
+                is_god=is_god,
+                system_notices=system_notices or None,
+                project_access=project_access,
+                agent_core_module=agent_core_module,
+                agent_core_class=agent_core_class,
+            ),
+            on_process=lambda proc, name: deps.queue.register_process(
+                chat_jid, proc, name, group.folder
+            ),
+            on_output=wrapped_on_output if on_output else None,
+            plugin_manager=deps.plugin_manager,
+        )
+
+        if output.new_session_id and group.folder not in deps._session_cleared:
+            deps.sessions[group.folder] = output.new_session_id
+            await set_session(group.folder, output.new_session_id)
+
+        if output.status == "error":
+            logger.error(
+                "Container agent error",
+                group=group.name,
+                error=output.error,
+            )
+            return "error"
+
+        return "success"
+    except Exception as exc:
+        logger.error("Agent error", group=group.name, err=str(exc))
+        return "error"

@@ -1,0 +1,172 @@
+"""Dependency adapter factories — compose subsystem dependencies from app state.
+
+Extracted from app.py to keep the orchestrator focused on wiring.
+These factory functions are called once during app startup to build
+the composite dependency objects that subsystems require.
+"""
+
+from __future__ import annotations
+
+import subprocess
+from typing import TYPE_CHECKING, Any
+
+from pynchy.adapters import (
+    EventBusAdapter,
+    GroupMetadataManager,
+    GroupRegistrationManager,
+    GroupRegistry,
+    HostMessageBroadcaster,
+    MessageBroadcaster,
+    PeriodicAgentManager,
+    QueueManager,
+    SessionManager,
+    UserMessageHandler,
+)
+from pynchy.config import get_settings
+from pynchy.container_runner import write_groups_snapshot as _write_groups_snapshot
+from pynchy.db import store_message_direct
+from pynchy.git_utils import get_head_sha
+from pynchy.logger import logger
+
+if TYPE_CHECKING:
+    from pynchy.app import PynchyApp
+
+
+def make_host_broadcaster(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBroadcaster]:
+    """Create a MessageBroadcaster and HostMessageBroadcaster pair.
+
+    Shared factory for dependency adapters that need to send host messages.
+    The store function injects message_type='host' so host messages are
+    filtered out of the LLM conversation context.
+    """
+    broadcaster = MessageBroadcaster(app.channels)
+
+    async def store_host_message(**kwargs: Any) -> None:
+        await store_message_direct(**kwargs, message_type="host")
+
+    host_broadcaster = HostMessageBroadcaster(broadcaster, store_host_message, app.event_bus.emit)
+    return broadcaster, host_broadcaster
+
+
+def make_scheduler_deps(app: PynchyApp) -> Any:
+    """Create the dependency object for the task scheduler."""
+    group_registry = GroupRegistry(app.registered_groups)
+    session_manager = SessionManager(app.sessions, app._session_cleared)
+    queue_manager = QueueManager(app.queue)
+    broadcaster = MessageBroadcaster(app.channels)
+
+    class SchedulerDeps:
+        registered_groups = group_registry.registered_groups
+        get_sessions = session_manager.get_sessions
+        queue = queue_manager.queue
+        on_process = queue_manager.on_process
+        broadcast_to_channels = broadcaster._broadcast_formatted
+        plugin_manager = app.plugin_manager
+
+    return SchedulerDeps()
+
+
+def make_http_deps(app: PynchyApp) -> Any:
+    """Create the dependency object for the HTTP server."""
+    _broadcaster, host_broadcaster = make_host_broadcaster(app)
+    group_registry = GroupRegistry(app.registered_groups)
+    metadata_manager = GroupMetadataManager(
+        app.registered_groups, app.channels, app.get_available_groups
+    )
+    periodic_agent_manager = PeriodicAgentManager(app.registered_groups)
+    user_message_handler = UserMessageHandler(
+        app._ingest_user_message, app.queue.enqueue_message_check
+    )
+    event_adapter = EventBusAdapter(app.event_bus)
+
+    class HttpDeps:
+        broadcast_host_message = host_broadcaster.broadcast_host_message
+        god_chat_jid = group_registry.god_chat_jid
+        channels_connected = metadata_manager.channels_connected
+        get_groups = metadata_manager.get_groups
+        get_messages = user_message_handler.get_messages
+        send_user_message = user_message_handler.send_user_message
+        get_periodic_agents = periodic_agent_manager.get_periodic_agents
+        subscribe_events = event_adapter.subscribe_events
+
+        def is_shutting_down(self) -> bool:
+            return app._shutting_down
+
+    return HttpDeps()
+
+
+def make_ipc_deps(app: PynchyApp) -> Any:
+    """Create the dependency object for the IPC watcher."""
+    broadcaster, host_broadcaster = make_host_broadcaster(app)
+    registration_manager = GroupRegistrationManager(
+        app.registered_groups, app._register_group, app._send_clear_confirmation
+    )
+    session_manager = SessionManager(app.sessions, app._session_cleared)
+    metadata_manager = GroupMetadataManager(
+        app.registered_groups, app.channels, app.get_available_groups
+    )
+    queue_manager = QueueManager(app.queue)
+
+    class IpcDeps:
+        broadcast_to_channels = broadcaster._broadcast_to_channels
+        broadcast_host_message = host_broadcaster.broadcast_host_message
+        broadcast_system_notice = host_broadcaster.broadcast_system_notice
+        registered_groups = registration_manager.registered_groups
+        register_group = registration_manager.register_group
+        sync_group_metadata = metadata_manager.sync_group_metadata
+        get_available_groups = metadata_manager.get_available_groups
+        write_groups_snapshot = staticmethod(_write_groups_snapshot)
+        clear_session = session_manager.clear_session
+        clear_chat_history = registration_manager.clear_chat_history
+        enqueue_message_check = queue_manager.enqueue_message_check
+        channels = metadata_manager.channels
+
+    return IpcDeps()
+
+
+def make_git_sync_deps(app: PynchyApp) -> Any:
+    """Create the dependency object for the git sync loop."""
+    _broadcaster, host_broadcaster = make_host_broadcaster(app)
+    group_registry = GroupRegistry(app.registered_groups)
+
+    class GitSyncDeps:
+        broadcast_system_notice = host_broadcaster.broadcast_system_notice
+
+        def registered_groups(self) -> dict[str, Any]:
+            return group_registry.registered_groups()
+
+        async def trigger_deploy(self, previous_sha: str) -> None:
+            s = get_settings()
+            chat_jid = group_registry.god_chat_jid()
+            if chat_jid:
+                await host_broadcaster.broadcast_host_message(
+                    chat_jid,
+                    "Container files changed on origin — rebuilding and restarting...",
+                )
+
+            # Rebuild container image
+            build_script = s.project_root / "container" / "build.sh"
+            if build_script.exists():
+                result = subprocess.run(
+                    [str(build_script)],
+                    cwd=str(s.project_root / "container"),
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                )
+                if result.returncode != 0:
+                    logger.error(
+                        "Container rebuild failed during sync",
+                        stderr=result.stderr[-500:],
+                    )
+
+            from pynchy.deploy import finalize_deploy
+
+            await finalize_deploy(
+                broadcast_host_message=host_broadcaster.broadcast_host_message,
+                chat_jid=chat_jid,
+                commit_sha=get_head_sha(),
+                previous_sha=previous_sha,
+            )
+
+    return GitSyncDeps()
