@@ -436,3 +436,86 @@ class TestHandleStreamedOutput:
 
         call_kwargs = mock_store.call_args[1]
         assert call_kwargs["message_type"] == "system"
+
+    # -----------------------------------------------------------------------
+    # Verbose tool result (ExitPlanMode, EnterPlanMode)
+    # -----------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_exit_plan_mode_tool_result_broadcasts_full_content(self):
+        """tool_result following ExitPlanMode should broadcast full content."""
+        deps = _make_deps()
+        group = _make_group()
+        plan_content = "## Plan\n1. Do thing A\n2. Do thing B\n3. Verify"
+
+        # First: send the tool_use for ExitPlanMode
+        tool_use_output = _make_output(
+            type="tool_use", tool_name="ExitPlanMode", tool_input={}
+        )
+        with patch("pynchy.output_handler.store_message_direct", new_callable=AsyncMock):
+            await handle_streamed_output(deps, "plan@g.us", group, tool_use_output)
+
+        # Then: send the tool_result
+        tool_result_output = _make_output(
+            type="tool_result",
+            tool_result_id="t-plan",
+            tool_result_content=plan_content,
+            tool_result_is_error=False,
+        )
+        with patch("pynchy.output_handler.store_message_direct", new_callable=AsyncMock):
+            result = await handle_streamed_output(deps, "plan@g.us", group, tool_result_output)
+
+        assert result is False
+        channel_text = deps.broadcast_to_channels.call_args[0][1]
+        assert "ExitPlanMode" in channel_text
+        assert plan_content in channel_text
+
+    @pytest.mark.asyncio
+    async def test_normal_tool_result_still_generic(self):
+        """tool_result for a normal tool should still show generic placeholder."""
+        deps = _make_deps()
+        group = _make_group()
+
+        # First: send a tool_use for Bash
+        tool_use_output = _make_output(
+            type="tool_use", tool_name="Bash", tool_input={"command": "ls"}
+        )
+        with patch("pynchy.output_handler.store_message_direct", new_callable=AsyncMock):
+            await handle_streamed_output(deps, "normal@g.us", group, tool_use_output)
+
+        # Then: send the tool_result
+        tool_result_output = _make_output(
+            type="tool_result",
+            tool_result_id="t-bash",
+            tool_result_content="file1.txt\nfile2.txt",
+            tool_result_is_error=False,
+        )
+        with patch("pynchy.output_handler.store_message_direct", new_callable=AsyncMock):
+            await handle_streamed_output(deps, "normal@g.us", group, tool_result_output)
+
+        channel_text = deps.broadcast_to_channels.call_args[0][1]
+        assert channel_text == "📋 tool result"
+
+    @pytest.mark.asyncio
+    async def test_verbose_tool_result_with_empty_content_stays_generic(self):
+        """ExitPlanMode with empty tool_result content falls back to generic."""
+        deps = _make_deps()
+        group = _make_group()
+
+        tool_use_output = _make_output(
+            type="tool_use", tool_name="ExitPlanMode", tool_input={}
+        )
+        with patch("pynchy.output_handler.store_message_direct", new_callable=AsyncMock):
+            await handle_streamed_output(deps, "empty@g.us", group, tool_use_output)
+
+        tool_result_output = _make_output(
+            type="tool_result",
+            tool_result_id="t-plan",
+            tool_result_content="",
+            tool_result_is_error=False,
+        )
+        with patch("pynchy.output_handler.store_message_direct", new_callable=AsyncMock):
+            await handle_streamed_output(deps, "empty@g.us", group, tool_result_output)
+
+        channel_text = deps.broadcast_to_channels.call_args[0][1]
+        assert channel_text == "📋 tool result"

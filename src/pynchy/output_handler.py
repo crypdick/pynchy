@@ -21,6 +21,13 @@ if TYPE_CHECKING:
 
 _trace_counter = count(1)
 
+# Tool names whose tool_result content should be broadcast in full
+# instead of the generic "📋 tool result" placeholder.
+_VERBOSE_RESULT_TOOLS = frozenset({"ExitPlanMode", "EnterPlanMode"})
+
+# Tracks the last tool_use name per chat so we can enrich the subsequent tool_result.
+_last_tool_name: dict[str, str] = {}
+
 
 def _next_trace_id(prefix: str) -> str:
     """Generate a unique monotonic ID for trace DB rows.
@@ -100,6 +107,7 @@ async def handle_streamed_output(
     if result.type == "tool_use":
         tool_name = result.tool_name or "tool"
         tool_input = result.tool_input or {}
+        _last_tool_name[chat_jid] = tool_name
         data = {"tool_name": tool_name, "tool_input": tool_input}
         preview = format_tool_preview(tool_name, tool_input)
         await broadcast_trace(
@@ -114,16 +122,26 @@ async def handle_streamed_output(
         )
         return False
     if result.type == "tool_result":
+        content = result.tool_result_content or ""
+        preceding_tool = _last_tool_name.pop(chat_jid, "")
+
+        # For select tools, broadcast the full result content instead of
+        # the generic placeholder so users can review it (e.g. plan files).
+        if preceding_tool in _VERBOSE_RESULT_TOOLS and content:
+            channel_text = f"\U0001f4cb {preceding_tool}:\n{content}"
+        else:
+            channel_text = "\U0001f4cb tool result"
+
         await broadcast_trace(
             deps,
             chat_jid,
             "tool_result",
             {
                 "tool_use_id": result.tool_result_id or "",
-                "content": result.tool_result_content or "",
+                "content": content,
                 "is_error": result.tool_result_is_error or False,
             },
-            "\U0001f4cb tool result",
+            channel_text,
             db_id_prefix="toolr",
             db_sender="tool_result",
             message_type="assistant",
