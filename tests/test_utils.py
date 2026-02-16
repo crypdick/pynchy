@@ -163,6 +163,35 @@ class TestComputeNextRun:
         datetime.fromisoformat(utc_result)
         datetime.fromisoformat(est_result)
 
+    def test_cron_always_returns_utc(self):
+        """Cron next_run must always be UTC so SQLite string comparison works.
+
+        Regression test: non-UTC offsets (e.g. -08:00) sort incorrectly against
+        UTC timestamps in SQLite's lexicographic comparison, causing tasks to
+        appear perpetually due.
+        """
+        from datetime import UTC, datetime
+
+        result = compute_next_run("cron", "0 4 * * *", "America/Los_Angeles")
+        assert result is not None
+        parsed = datetime.fromisoformat(result)
+        # Must be UTC (offset +00:00), not local timezone offset
+        assert parsed.utcoffset().total_seconds() == 0, (
+            f"Expected UTC offset but got {parsed.isoformat()}"
+        )
+        # String comparison with a UTC now must work correctly
+        now_str = datetime.now(UTC).isoformat()
+        assert (result <= now_str) == (parsed <= datetime.now(UTC))
+
+    def test_interval_returns_utc(self):
+        """Interval next_run must be in UTC."""
+        from datetime import datetime
+
+        result = compute_next_run("interval", "3600000", "America/Los_Angeles")
+        assert result is not None
+        parsed = datetime.fromisoformat(result)
+        assert parsed.utcoffset().total_seconds() == 0
+
     def test_interval_small_value(self):
         """Small but valid interval (1ms) should work."""
         result = compute_next_run("interval", "1", "UTC")
@@ -191,6 +220,7 @@ class TestCreateBackgroundTask:
     @pytest.mark.asyncio
     async def test_failed_task_logs_error(self, caplog):
         """A failing coroutine should log the exception via the done callback."""
+
         async def fail():
             raise RuntimeError("intentional failure")
 
@@ -207,6 +237,7 @@ class TestCreateBackgroundTask:
     @pytest.mark.asyncio
     async def test_cancelled_task_does_not_log_error(self):
         """A cancelled task should not trigger error logging."""
+
         async def hang():
             await asyncio.sleep(999)
 
@@ -219,6 +250,7 @@ class TestCreateBackgroundTask:
     @pytest.mark.asyncio
     async def test_task_has_name(self):
         """The created task should have the specified name."""
+
         async def noop():
             pass
 
@@ -229,6 +261,7 @@ class TestCreateBackgroundTask:
     @pytest.mark.asyncio
     async def test_task_without_name(self):
         """Creating a task without a name should still work."""
+
         async def noop():
             pass
 
