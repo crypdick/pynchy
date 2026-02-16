@@ -98,6 +98,19 @@ class PynchySpec:
         """
 
     @hookspec
+    def pynchy_mcp_server_handler(self) -> dict[str, Any]:
+        """Provide host-side MCP server handler for service tools.
+
+        Host-side handlers process IPC service requests from container MCP tools.
+        Each handler receives the request data dict and returns a result or error.
+
+        Returns:
+            Dict with keys:
+                - tools: dict mapping tool_name → async handler function
+                  Each handler takes (data: dict) and returns dict with "result" or "error"
+        """
+
+    @hookspec
     def pynchy_workspace_spec(self) -> dict[str, Any]:
         """Provide a managed workspace definition.
 

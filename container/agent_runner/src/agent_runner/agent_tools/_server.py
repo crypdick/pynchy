@@ -12,10 +12,8 @@ from mcp.types import CallToolResult, TextContent, Tool
 # Import tool modules to trigger self-registration
 import agent_runner.agent_tools._tools_admin  # noqa: F401
 import agent_runner.agent_tools._tools_calendar  # noqa: F401
-import agent_runner.agent_tools._tools_email  # noqa: F401
 import agent_runner.agent_tools._tools_lifecycle  # noqa: F401
 import agent_runner.agent_tools._tools_messaging  # noqa: F401
-import agent_runner.agent_tools._tools_passwords  # noqa: F401
 import agent_runner.agent_tools._tools_tasks  # noqa: F401
 import agent_runner.agent_tools._tools_todos  # noqa: F401
 from agent_runner.agent_tools._registry import all_tools, get_handler
