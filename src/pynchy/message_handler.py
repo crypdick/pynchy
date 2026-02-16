@@ -294,10 +294,17 @@ async def process_group_messages(
             )
             dirty_check_file.unlink(missing_ok=True)
 
-    # Advance cursor; save old cursor for rollback on error
+    # Advance cursor; save old cursor for rollback on error.
+    # Persist to DB first — if save_state fails, keep in-memory cursor
+    # at the old position so we don't silently skip messages.
     previous_cursor = deps.last_agent_timestamp.get(chat_jid, "")
-    deps.last_agent_timestamp[chat_jid] = missed_messages[-1].timestamp
-    await deps.save_state()
+    new_cursor = missed_messages[-1].timestamp
+    deps.last_agent_timestamp[chat_jid] = new_cursor
+    try:
+        await deps.save_state()
+    except Exception:
+        deps.last_agent_timestamp[chat_jid] = previous_cursor
+        raise
 
     logger.info(
         "Processing messages",
@@ -477,12 +484,17 @@ async def start_message_loop(
                             group_jid, last_msg.id, last_msg.sender, "👀"
                         )
 
+                        prev = deps.last_agent_timestamp.get(group_jid, "")
                         deps.last_agent_timestamp[group_jid] = all_pending[-1].timestamp
-                        await deps.save_state()
+                        try:
+                            await deps.save_state()
+                        except Exception:
+                            deps.last_agent_timestamp[group_jid] = prev
+                            raise
                     else:
                         deps.queue.enqueue_message_check(group_jid)
 
-        except Exception as exc:
-            logger.error("Error in message loop", err=str(exc))
+        except Exception:
+            logger.exception("Error in message loop")
 
         await asyncio.sleep(s.intervals.message_poll)

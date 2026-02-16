@@ -63,6 +63,7 @@ class SchedulerDependencies(Protocol):
     def plugin_manager(self) -> pluggy.PluginManager | None: ...
 
 
+_scheduler_lock = asyncio.Lock()
 _scheduler_running = False
 _cron_job_next_runs: dict[str, str] = {}
 
@@ -70,10 +71,11 @@ _cron_job_next_runs: dict[str, str] = {}
 async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
     """Start the scheduler polling loop."""
     global _scheduler_running
-    if _scheduler_running:
-        logger.debug("Scheduler loop already running, skipping duplicate start")
-        return
-    _scheduler_running = True
+    async with _scheduler_lock:
+        if _scheduler_running:
+            logger.debug("Scheduler loop already running, skipping duplicate start")
+            return
+        _scheduler_running = True
     logger.info("Scheduler loop started")
 
     while True:

@@ -25,20 +25,27 @@ def _is_magic_command(
     return False
 
 
+def _word_sets(w: object) -> tuple[set[str], set[str], set[str]]:
+    """Return (verbs, nouns, aliases) as frozen sets, avoiding repeated conversion."""
+    return set(w.verbs), set(w.nouns), set(w.aliases)  # type: ignore[attr-defined]
+
+
 def is_context_reset(text: str) -> bool:
     """Check if a message is a context reset command."""
-    w = get_settings().commands.reset
-    return _is_magic_command(text, set(w.verbs), set(w.nouns), set(w.aliases))
+    verbs, nouns, aliases = _word_sets(get_settings().commands.reset)
+    return _is_magic_command(text, verbs, nouns, aliases)
 
 
 def is_end_session(text: str) -> bool:
     """Check if a message is an end session command."""
-    w = get_settings().commands.end_session
-    return _is_magic_command(text, set(w.verbs), set(w.nouns), set(w.aliases))
+    verbs, nouns, aliases = _word_sets(get_settings().commands.end_session)
+    return _is_magic_command(text, verbs, nouns, aliases)
 
 
 def is_redeploy(text: str) -> bool:
     """Check if a message is a manual redeploy command."""
     w = get_settings().commands.redeploy
     word = text.strip().lower()
-    return word in set(w.aliases) or word in set(w.verbs)
+    aliases = set(w.aliases)
+    verbs = set(w.verbs)
+    return word in aliases or word in verbs
