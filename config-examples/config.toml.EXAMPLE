@@ -151,11 +151,8 @@ requires_trigger = false
 is_god = true
 requires_trigger = false
 
-[workspaces.code-improver]
-project_access = true
-schedule = "0 4 * * *"
-prompt = "This is a scheduled code improvement run. Follow the workflow in your CLAUDE.md."
-context_mode = "isolated"
+# Plugins can provide additional managed workspaces automatically
+# (for example, the `code-improver` periodic agent for pynchy core).
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Command Words (magic commands)

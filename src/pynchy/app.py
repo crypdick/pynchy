@@ -755,8 +755,10 @@ class PynchyApp:
 
             # Initialize plugin manager after plugin sync so runtime/channel hooks are available.
             from pynchy.plugin import get_plugin_manager
+            from pynchy.workspace_config import configure_plugin_workspaces
 
             self.plugin_manager = get_plugin_manager()
+            configure_plugin_workspaces(self.plugin_manager)
             ensure_container_system_running()
             await init_database()
             logger.info("Database initialized")

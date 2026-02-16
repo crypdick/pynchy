@@ -1,6 +1,6 @@
 ---
 name: Pynchy Plugin Authoring
-description: Use when creating, scaffolding, or updating a pynchy plugin, including channels, MCP servers, skills, agent cores, and container runtime plugins. Also use when users ask how to register plugins via config.toml, add entry points, or validate plugin hook wiring.
+description: Use when creating, scaffolding, or updating a pynchy plugin, including channels, MCP servers, skills, agent cores, workspace specs, and container runtime plugins. Also use when users ask how to register plugins via config.toml, add entry points, or validate plugin hook wiring.
 ---
 
 # Pynchy Plugin Authoring
@@ -66,12 +66,14 @@ uvx cookiecutter --no-input \
   include_agent_core="no" \
   include_channel="no" \
   include_container_runtime="no" \
+  include_workspace="no" \
   include_tests="yes"
 ```
 
 You can also replace the URL with a local template path when iterating on template changes.
 
 Enable the needed `include_*` flags for the plugin type.
+Set `include_workspace="yes"` for periodic agent/workspace plugins.
 
 ## Hook Map
 
@@ -80,6 +82,7 @@ Enable the needed `include_*` flags for the plugin type.
 - `pynchy_skill_paths`: Skill directories mounted into container
 - `pynchy_agent_core_info`: Agent core implementation metadata
 - `pynchy_container_runtime`: Host container runtime provider
+- `pynchy_workspace_spec`: Managed workspace/task definitions (e.g., periodic agents)
 
 Hook reference:
 - `docs/plugins/hooks.md`
@@ -96,6 +99,8 @@ enabled = true
 ```
 
 Then restart `pynchy`. Startup sync handles clone/update and host install.
+
+If the host is remote, don't forget to ssh into it and add the plugin to the `config.toml` file.
 
 ## Validation Commands
 

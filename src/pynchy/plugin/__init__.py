@@ -1,7 +1,7 @@
 """Plugin system for pynchy.
 
 Plugins extend pynchy with external capabilities like agent cores,
-communication channels, MCP tools, and skills.
+communication channels, MCP tools, skills, and managed workspaces.
 
 Built on pluggy (pytest's plugin framework) for robust, type-safe plugin management.
 

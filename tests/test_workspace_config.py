@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from pynchy.config import (
@@ -21,6 +22,7 @@ from pynchy.config import (
     WorkspaceDefaultsConfig,
 )
 from pynchy.workspace_config import (
+    configure_plugin_workspaces,
     get_project_access_folders,
     has_project_access,
     load_workspace_config,
@@ -50,6 +52,9 @@ def _settings_with_workspaces(
 
 
 class TestLoadWorkspaceConfig:
+    def teardown_method(self):
+        configure_plugin_workspaces(None)
+
     def test_returns_none_when_missing(self):
         s = _settings_with_workspaces(workspaces={})
         with patch("pynchy.workspace_config.get_settings", return_value=s):
@@ -89,6 +94,32 @@ class TestLoadWorkspaceConfig:
         assert cfg.is_god is True
         assert cfg.project_access is True
         assert cfg.name == "Daily Agent"
+        assert cfg.is_periodic is True
+
+    def test_loads_workspace_from_plugin_spec(self):
+        s = _settings_with_workspaces(workspaces={})
+        fake_pm = SimpleNamespace(
+            hook=SimpleNamespace(
+                pynchy_workspace_spec=lambda: [
+                    {
+                        "folder": "code-improver",
+                        "config": {
+                            "project_access": True,
+                            "schedule": "0 4 * * *",
+                            "prompt": "Improve code",
+                            "context_mode": "isolated",
+                        },
+                    }
+                ]
+            )
+        )
+        configure_plugin_workspaces(fake_pm)
+
+        with patch("pynchy.workspace_config.get_settings", return_value=s):
+            cfg = load_workspace_config("code-improver")
+
+        assert cfg is not None
+        assert cfg.project_access is True
         assert cfg.is_periodic is True
 
 

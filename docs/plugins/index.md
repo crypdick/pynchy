@@ -12,6 +12,7 @@ Plugins are regular Python packages discovered automatically at startup. Install
 | **MCP Server** | `pynchy_mcp_server_spec()` | Tools for the agent via Model Context Protocol | Container |
 | **Skill** | `pynchy_skill_paths()` | Agent instructions and capabilities (markdown) | Container |
 | **Channel** | `pynchy_create_channel()` | Communication platform (Telegram, Slack, Discord) | Host |
+| **Workspace** | `pynchy_workspace_spec()` | Managed workspace/task definitions (e.g. periodic agents) | Host |
 
 A single plugin can implement multiple hooks. For example, a "voice" plugin could provide both an MCP server (transcription tools) and a skill (voice interaction patterns).
 
