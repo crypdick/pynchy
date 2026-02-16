@@ -26,7 +26,7 @@ Single source of truth for all pynchy work items.
 - [X integration port](1-approved/x-integration-port.md) — Port the archived TypeScript X/Twitter skill to Python plugins
 - [Periodic agents ideas](1-approved/periodic-agents.md) — Background agents for security sweeps, SDK updates, etc. (infra done: `task_scheduler.py`; 1 agent live: `code-improver`)
 - [Project ideas](1-approved/project-ideas.md) — Standalone integration ideas (calendar, voice, Cloudflare, AWS, etc.)
-- [Small improvements](1-approved/small-improvements.md) — Remaining: dossier logging audit, slack-tools migration check (3/5 done)
+- [Small improvements](1-approved/small-improvements.md) — Remaining: slack-tools migration check (3/5 done)
 - [LiteLLM Gateway](1-approved/litellm-gateway.md) — Host-side LLM proxy for credential isolation, per-group budgets, and provider-agnostic routing. Prerequisite for extracting Claude/OpenAI backends into plugins.
 - [Ray resource orchestration](1-approved/ray-resource-orchestration.md) — Thin Ray integration for resource-aware container scaling, blocking queues, multi-node distribution, and GPU routing
 - implement 'handoff' tool calls as well as 'delegate' tool calls. handoff causes current agent to cease to exist; it decides what context to give to the next agent. the delegate tool is a blocking call that spawns a new agent to complete a task before passing it back. in reality, this tool call can abstract away a more complex system, like a deep research agent which has many subagents.
@@ -41,7 +41,6 @@ Single source of truth for all pynchy work items.
 - port `.claude/` hookify hooks to built-in harness hooks. Claude hookify is vendor-specific (OpenAI doesn't support it). Migrate existing hook logic into our own hook system.
 - **Rethink DB event cursor design** — The message polling loop uses a single `last_timestamp` cursor shared across all consumers (WhatsApp, TUI, running agents). This means advancing the cursor for one consumer silently advances it for all others, so events can be missed. Each subscriber (each channel, each running agent container) should have its own independent cursor into the DB event stream.
 - we want to be plugin maximalists. add that to the requirements.txt design doc. we want to make everything in this repo a plugin. ideally, we rip out non-essential code (whatsapp, openai, claude, etc.) and push them out into plugins. that way, users can disable unwanted functionality. this is how pytest lib works, for example
-- implement the progressive disclosure principle for skills. see the official claude docs on this
 - if container 1 syncs a change, the host recieves and pushes to the rest of the containers, and one of the container's worktree has a merge conflict, and that container is hibernating, that container ought to be spun up, sent a system message about the failed abortion, and a follow up message telling it to fix the broken rebase. that way, working in one container does not fuck up the work of a hibernating container.
 - rename subsystems:
   - Providers (AI models)
