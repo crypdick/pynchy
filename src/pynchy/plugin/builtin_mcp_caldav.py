@@ -6,6 +6,13 @@ create_event, delete_event) backed by CalDAV (e.g. Nextcloud).
 The container-side IPC relay (_tools_calendar.py) sends service requests
 through IPC; the host service handler dispatches to these handlers after
 policy enforcement.
+
+TODO: Support multiple CalDAV servers. Currently config has a single
+[caldav] block. Change to a dict of named servers (e.g.
+[caldav.servers.work], [caldav.servers.personal]) so agents can fetch
+from different CalDAV accounts with separate credentials. The
+``calendar`` parameter would become ``server/calendar`` or we add
+a ``server`` parameter to each tool.
 """
 
 from __future__ import annotations
