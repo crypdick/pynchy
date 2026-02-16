@@ -17,6 +17,7 @@ from pynchy.config import (
     AgentConfig,
     CommandWordsConfig,
     ContainerConfig,
+    GatewayConfig,
     IntervalsConfig,
     LoggingConfig,
     QueueConfig,
@@ -89,6 +90,20 @@ def _marker_wrap(output: dict[str, Any]) -> bytes:
 
 _CR_CREDS = "pynchy.container_runner._credentials"
 _CR_ORCH = "pynchy.container_runner._orchestrator"
+_GATEWAY = "pynchy.gateway"
+
+
+class _MockGateway:
+    """Lightweight stand-in for ``gateway.Gateway`` in credential tests."""
+
+    def __init__(self, providers: set[str] | None = None) -> None:
+        self.base_url = "http://host.docker.internal:4010"
+        self.key = "gw-test-key"
+        self._providers = providers or set()
+
+    def has_provider(self, name: str) -> bool:
+        return name in self._providers
+
 
 _SETTINGS_MODULES = [
     _CR_CREDS,
@@ -116,6 +131,7 @@ def _patch_settings(
         server=ServerConfig(),
         logging=LoggingConfig(),
         secrets=SecretsConfig(),
+        gateway=GatewayConfig(),
         workspace_defaults=WorkspaceDefaultsConfig(),
         workspaces={},
         commands=CommandWordsConfig(),
@@ -615,43 +631,38 @@ class TestWriteEnvFile:
         """Return a combined context manager patching dirs and subprocess auto-discovery."""
         return contextlib.ExitStack()
 
-    def test_prefers_settings_secret_over_oauth(self, tmp_path: Path):
-        """Configured settings secret takes priority over OAuth credentials."""
-        creds = tmp_path / ".claude" / ".credentials.json"
-        creds.parent.mkdir(parents=True)
-        creds.write_text(json.dumps({"claudeAiOauth": {"accessToken": "oauth-token"}}))
-        with (
-            _patch_settings(
-                tmp_path,
-                secret_overrides={
-                    "anthropic_api_key": "sk-ant-test"  # pragma: allowlist secret
-                },
-            ),
-            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
-            patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
-            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
-        ):
-            env_dir = _write_env_file()
-            assert env_dir is not None
-            content = (env_dir / "env").read_text()
-            assert "ANTHROPIC_API_KEY='sk-ant-test'" in content  # pragma: allowlist secret
-            assert "oauth-token" not in content
-
-    def test_falls_back_to_oauth_token(self, tmp_path: Path):
-        """No .env file → reads OAuth token from credentials."""
-        creds = tmp_path / ".claude" / ".credentials.json"
-        creds.parent.mkdir(parents=True)
-        creds.write_text(json.dumps({"claudeAiOauth": {"accessToken": "my-oauth-token"}}))
+    def test_gateway_writes_anthropic_proxy_vars(self, tmp_path: Path):
+        """When gateway has anthropic, env gets ANTHROPIC_BASE_URL + AUTH_TOKEN."""
+        gw = _MockGateway(providers={"anthropic"})
         with (
             _patch_settings(tmp_path),
-            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
+            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
             patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            env_dir = _write_env_file()
+            env_dir = _write_env_file(is_god=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
-            assert "CLAUDE_CODE_OAUTH_TOKEN='my-oauth-token'" in content
+            assert f"ANTHROPIC_BASE_URL='{gw.base_url}'" in content
+            assert f"ANTHROPIC_AUTH_TOKEN='{gw.key}'" in content
+            # Real keys must never appear
+            assert "sk-ant" not in content
+            assert "oauth" not in content
+
+    def test_gateway_writes_openai_proxy_vars(self, tmp_path: Path):
+        """When gateway has openai, env gets OPENAI_BASE_URL + OPENAI_API_KEY."""
+        gw = _MockGateway(providers={"openai"})
+        with (
+            _patch_settings(tmp_path),
+            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
+            patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
+            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
+        ):
+            env_dir = _write_env_file(is_god=True, group_folder="test")
+            assert env_dir is not None
+            content = (env_dir / "env").read_text()
+            assert f"OPENAI_BASE_URL='{gw.base_url}'" in content
+            assert f"OPENAI_API_KEY='{gw.key}'" in content
 
     def test_returns_none_when_no_credentials(self, tmp_path: Path):
         with (
@@ -661,10 +672,10 @@ class TestWriteEnvFile:
             patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            assert _write_env_file() is None
+            assert _write_env_file(is_god=True, group_folder="test") is None
 
-    def test_auto_discovers_gh_token(self, tmp_path: Path):
-        """GH_TOKEN is auto-discovered from gh CLI when not in .env."""
+    def test_auto_discovers_gh_token_for_god(self, tmp_path: Path):
+        """GH_TOKEN is auto-discovered from gh CLI for god containers."""
         with (
             _patch_settings(tmp_path),
             patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
@@ -672,10 +683,25 @@ class TestWriteEnvFile:
             patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_abc123"),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            env_dir = _write_env_file()
+            env_dir = _write_env_file(is_god=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert "GH_TOKEN='gho_abc123'" in content
+
+    def test_non_god_excludes_gh_token(self, tmp_path: Path):
+        """Non-god containers never receive GH_TOKEN, even when available."""
+        with (
+            _patch_settings(tmp_path, secret_overrides={"gh_token": "explicit-token"}),
+            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
+            patch(f"{_CR_CREDS}._read_oauth_from_keychain", return_value="oauth-tok"),
+            patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_abc123"),
+            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
+        ):
+            env_dir = _write_env_file(is_god=False, group_folder="untrusted")
+            assert env_dir is not None
+            content = (env_dir / "env").read_text()
+            assert "GH_TOKEN" not in content
+            assert "CLAUDE_CODE_OAUTH_TOKEN='oauth-tok'" in content
 
     def test_settings_gh_token_overrides_auto_discovery(self, tmp_path: Path):
         """Configured GH_TOKEN takes priority over gh CLI auto-discovery."""
@@ -686,7 +712,7 @@ class TestWriteEnvFile:
             patch(f"{_CR_CREDS}._read_gh_token", return_value="auto-token"),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            env_dir = _write_env_file()
+            env_dir = _write_env_file(is_god=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert "GH_TOKEN='explicit-token'" in content
@@ -704,7 +730,7 @@ class TestWriteEnvFile:
                 return_value=("Jane Doe", "jane@example.com"),
             ),
         ):
-            env_dir = _write_env_file()
+            env_dir = _write_env_file(is_god=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert "GIT_AUTHOR_NAME='Jane Doe'" in content
@@ -726,12 +752,27 @@ class TestWriteEnvFile:
                 return_value=("Bob", "bob@test.com"),
             ),
         ):
-            env_dir = _write_env_file()
+            env_dir = _write_env_file(is_god=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert "CLAUDE_CODE_OAUTH_TOKEN='oauth-tok'" in content
             assert "GH_TOKEN='gho_xyz'" in content
             assert "GIT_AUTHOR_NAME='Bob'" in content
+
+    def test_per_group_env_dirs_are_isolated(self, tmp_path: Path):
+        """Each group gets its own env directory."""
+        with (
+            _patch_settings(tmp_path),
+            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
+            patch(f"{_CR_CREDS}._read_oauth_from_keychain", return_value="oauth-tok"),
+            patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_xyz"),
+            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
+        ):
+            god_dir = _write_env_file(is_god=True, group_folder="god-group")
+            nongod_dir = _write_env_file(is_god=False, group_folder="other-group")
+            assert god_dir != nongod_dir
+            assert "GH_TOKEN" in (god_dir / "env").read_text()
+            assert "GH_TOKEN" not in (nongod_dir / "env").read_text()
 
     def test_values_are_shell_quoted(self, tmp_path: Path):
         """Names with spaces and apostrophes are safely shell-quoted."""
@@ -745,7 +786,7 @@ class TestWriteEnvFile:
                 return_value=("O'Brien Smith", None),
             ),
         ):
-            env_dir = _write_env_file()
+            env_dir = _write_env_file(is_god=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             # Shell quoting escapes single quotes: O'Brien → 'O'\''Brien Smith'
