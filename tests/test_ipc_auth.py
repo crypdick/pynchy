@@ -1205,13 +1205,13 @@ class TestHostJobPauseAuth:
         )
 
     async def test_god_can_pause_host_job(self, deps):
-        await process_task_ipc({"type": "pause_task", "taskId": "host-job-1"}, "god", True, deps)
+        await dispatch({"type": "pause_task", "taskId": "host-job-1"}, "god", True, deps)
         job = await get_host_job_by_id("host-job-1")
         assert job is not None
         assert job.status == "paused"
 
     async def test_non_god_cannot_pause_host_job(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {"type": "pause_task", "taskId": "host-job-1"},
             "other-group",
             False,
@@ -1243,15 +1243,13 @@ class TestHostJobResumeAuth:
         )
 
     async def test_god_can_resume_host_job(self, deps):
-        await process_task_ipc(
-            {"type": "resume_task", "taskId": "host-paused-1"}, "god", True, deps
-        )
+        await dispatch({"type": "resume_task", "taskId": "host-paused-1"}, "god", True, deps)
         job = await get_host_job_by_id("host-paused-1")
         assert job is not None
         assert job.status == "active"
 
     async def test_non_god_cannot_resume_host_job(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {"type": "resume_task", "taskId": "host-paused-1"},
             "other-group",
             False,
@@ -1281,9 +1279,7 @@ class TestHostJobCancelAuth:
             }
         )
 
-        await process_task_ipc(
-            {"type": "cancel_task", "taskId": "host-cancel-1"}, "god", True, deps
-        )
+        await dispatch({"type": "cancel_task", "taskId": "host-cancel-1"}, "god", True, deps)
         assert await get_host_job_by_id("host-cancel-1") is None
 
     async def test_non_god_cannot_cancel_host_job(self, deps):
@@ -1302,7 +1298,7 @@ class TestHostJobCancelAuth:
             }
         )
 
-        await process_task_ipc(
+        await dispatch(
             {"type": "cancel_task", "taskId": "host-cancel-2"},
             "other-group",
             False,
@@ -1318,7 +1314,7 @@ class TestScheduleHostJobMissingFields:
     """schedule_host_job requires name, command, schedule_type, and schedule_value."""
 
     async def test_missing_name_creates_no_job(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_host_job",
                 "command": "echo hi",
@@ -1334,7 +1330,7 @@ class TestScheduleHostJobMissingFields:
         assert len(await get_all_host_jobs()) == 0
 
     async def test_missing_command_creates_no_job(self, deps):
-        await process_task_ipc(
+        await dispatch(
             {
                 "type": "schedule_host_job",
                 "name": "no-cmd",
