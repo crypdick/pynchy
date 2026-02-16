@@ -84,17 +84,16 @@ def format_tool_preview(tool_name: str, tool_input: dict) -> str:
     if tool_name == "Bash":
         cmd = tool_input.get("command", "")
         if cmd:
-            if len(cmd) > 60:
-                cmd = cmd[:57] + "..."
+            if len(cmd) > 180:
+                cmd = cmd[:177] + "..."
             return f"Bash: {cmd}"
         return "Bash"
 
     if tool_name in ("Read", "Edit", "Write"):
         path = tool_input.get("file_path", "")
         if path:
-            # Show just the filename or last 50 chars of path
-            if len(path) > 50:
-                path = "..." + path[-47:]
+            if len(path) > 150:
+                path = "..." + path[-147:]
             return f"{tool_name}: {path}"
         return tool_name
 
@@ -117,16 +116,16 @@ def format_tool_preview(tool_name: str, tool_input: dict) -> str:
     if tool_name == "WebFetch":
         url = tool_input.get("url", "")
         if url:
-            if len(url) > 50:
-                url = url[:47] + "..."
+            if len(url) > 150:
+                url = url[:147] + "..."
             return f"WebFetch: {url}"
         return "WebFetch"
 
     if tool_name == "WebSearch":
         query = tool_input.get("query", "")
         if query:
-            if len(query) > 50:
-                query = query[:47] + "..."
+            if len(query) > 150:
+                query = query[:147] + "..."
             return f"WebSearch: {query}"
         return "WebSearch"
 
@@ -136,8 +135,8 @@ def format_tool_preview(tool_name: str, tool_input: dict) -> str:
             return f"Task: {desc}"
         return "Task"
 
-    # Fallback: show first 50 chars of input
+    # Fallback: show first 150 chars of input
     preview = str(tool_input)
-    if len(preview) > 50:
-        preview = preview[:47] + "..."
+    if len(preview) > 150:
+        preview = preview[:147] + "..."
     return f"{tool_name}: {preview}" if tool_input else tool_name
