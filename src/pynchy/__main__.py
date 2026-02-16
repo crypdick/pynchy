@@ -3,7 +3,6 @@
 Subcommands:
     pynchy              Run the service (default)
     pynchy --tui        Attach TUI client to a running instance
-    pynchy auth         Authenticate with WhatsApp
     pynchy build        Build the container image
 """
 
@@ -31,17 +30,14 @@ def _tui(host: str) -> None:
     run_tui(host)
 
 
-def _auth() -> None:
-    from pynchy.auth.whatsapp import main as auth_main
-
-    auth_main()
-
-
 def _build() -> None:
     from pynchy.config import get_settings
+    from pynchy.plugin_sync import sync_configured_plugins
     from pynchy.runtime import get_runtime
 
     s = get_settings()
+    # Runtime plugins may come from config-managed repositories.
+    sync_configured_plugins()
     runtime = get_runtime()
     container_dir = s.project_root / "container"
 
@@ -60,7 +56,7 @@ def _build() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="pynchy",
-        description="Personal Claude assistant on WhatsApp",
+        description="Personal Claude assistant",
     )
     parser.add_argument(
         "--tui", action="store_true", help="Attach TUI client to a running pynchy instance"
@@ -71,14 +67,11 @@ def main() -> None:
         help=f"Host:port of the pynchy server (default: {_DEFAULT_HOST})",
     )
     sub = parser.add_subparsers(dest="command")
-    sub.add_parser("auth", help="Authenticate with WhatsApp")
     sub.add_parser("build", help="Build the container image")
 
     args = parser.parse_args()
 
     match args.command:
-        case "auth":
-            _auth()
         case "build":
             _build()
         case _:

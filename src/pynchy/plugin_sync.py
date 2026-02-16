@@ -144,6 +144,21 @@ def sync_configured_plugins() -> dict[str, Path]:
             revision = _plugin_revision(plugin_dir)
             installed_revision = (install_state.get(plugin_name) or {}).get("revision")
             if installed_revision != revision:
+                if installed_revision:
+                    logger.info(
+                        "Plugin revision changed",
+                        plugin=plugin_name,
+                        from_revision=installed_revision,
+                        to_revision=revision,
+                        ref=plugin_cfg.ref,
+                    )
+                else:
+                    logger.info(
+                        "Plugin revision discovered",
+                        plugin=plugin_name,
+                        revision=revision,
+                        ref=plugin_cfg.ref,
+                    )
                 logger.info(
                     "Installing plugin into host environment",
                     plugin=plugin_name,
@@ -152,6 +167,13 @@ def sync_configured_plugins() -> dict[str, Path]:
                 _install_plugin_in_host_env(plugin_name, plugin_dir)
                 install_state[plugin_name] = {"revision": revision}
                 _save_install_state(s.plugins_dir, install_state)
+            else:
+                logger.info(
+                    "Plugin already up to date",
+                    plugin=plugin_name,
+                    revision=revision,
+                    ref=plugin_cfg.ref,
+                )
             synced[plugin_name] = plugin_dir
             logger.info(
                 "Plugin repo ready",
