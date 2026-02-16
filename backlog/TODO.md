@@ -35,12 +35,8 @@ Single source of truth for all pynchy work items.
 - **[LOW PRIORITY]** Extract agent-browser skill into standalone plugin. Consider if container image size becomes an issue.
 - beginners tips. the tips print sometimes after a user sends a message. it has usage instructions and pro tips. plugin authors can optionally define tips for their plugins. there should be a global setting to disalbe tips. on by default.
 - god container feature request workflow — agents that want to edit shared files (e.g. `.claude/` rules) should spawn a god container with a feature request. The god container decides whether to implement it. (read-only mount enforcement already done in `mount_security.py`)
-- we need a mechanism for spinning down containers. if the worktree is in sync with main, and there hasn't been activity in 10 minutes, the agent container gets killed. this prevents the sync workflow from sending system messages to an inactive container, causing the agent to passively burn tokens for no reason. similarly, deploy shouldn't redeploy the individual containers if they are killed; only active containers.
-- daily cron job that redeploys containers with a full container rebuild. make sure that the deploy script does not spin up containers if they are idle.
-- MCPs are known to burn lots of tokens. see whether it's feasible to migrate all MCPs to tools that are passed by the claude sdk. the key requirement is that they execute host-side, or that they have a special channel that can poke an endpoint on the host side that triggers a workflow. these can't be arbitrary code execution, just trigger a workflow.
 - port `.claude/` hookify hooks to built-in harness hooks. Claude hookify is vendor-specific (OpenAI doesn't support it). Migrate existing hook logic into our own hook system.
 - **Rethink DB event cursor design** — The message polling loop uses a single `last_timestamp` cursor shared across all consumers (WhatsApp, TUI, running agents). This means advancing the cursor for one consumer silently advances it for all others, so events can be missed. Each subscriber (each channel, each running agent container) should have its own independent cursor into the DB event stream.
-- we want to be plugin maximalists. add that to the requirements.txt design doc. we want to make everything in this repo a plugin. ideally, we rip out non-essential code (whatsapp, openai, claude, etc.) and push them out into plugins. that way, users can disable unwanted functionality. this is how pytest lib works, for example
 - if container 1 syncs a change, the host recieves and pushes to the rest of the containers, and one of the container's worktree has a merge conflict, and that container is hibernating, that container ought to be spun up, sent a system message about the failed abortion, and a follow up message telling it to fix the broken rebase. that way, working in one container does not fuck up the work of a hibernating container.
 - rename subsystems:
   - Providers (AI models)
@@ -71,8 +67,8 @@ Single source of truth for all pynchy work items.
 *Plan approved or not needed. Ready for an agent to pick up.*
 
 - factor out tailscale support into a separate plugin. make sure that at least one tunnel is always active. we might need to create a new tunnel plugin type, and update the cookiecutter template.
-- factor out openai backend as a separate plugin. (blocked on litellm-gateway)
-- factor out claude backend as a separate plugin. (blocked on litellm-gateway)
+- factor out openai backend as a separate plugin
+- factor out claude backend as a separate plugin
 - make the code improver plugin able to update the plugin repos as well as the core pynchy repo.
 
 #### Bugs
