@@ -218,16 +218,30 @@ requires_trigger = false
 # ─────────────────────────────────────────────────────────────────────────────
 # CalDAV (Calendar)
 # ─────────────────────────────────────────────────────────────────────────────
-# Built-in host-side plugin. Connects to any CalDAV server (Nextcloud, etc.)
-# and exposes list_calendar, create_event, delete_event tools to agents.
-# Multiple calendars on the same server are supported — agents pass the
-# calendar name. Only one server is supported currently.
+# Built-in host-side plugin. Connects to CalDAV servers (Nextcloud, etc.)
+# and exposes list_calendars, list_calendar, create_event, delete_event tools.
+# Multiple servers with separate credentials are supported. Calendar names
+# are auto-discovered from each server.
+#
+# Agents reference calendars as "server/calendar_name" or just "calendar_name"
+# (resolved against the default server). "primary" maps to default_calendar.
 
 # [caldav]
-# url = "https://nextcloud.example.com/remote.php/dav/"
-# username = "user@example.com"
-# password = "app-password-here"
-# default_calendar = "personal"   # what "primary" resolves to
+# default_server = "work"  # which server when no prefix given
+
+# [caldav.servers.work]
+# url = "https://work.nextcloud.com/remote.php/dav/"
+# username = "user@work.com"
+# password = "work-app-password"
+# default_calendar = "meetings"    # optional: what "primary" resolves to
+# allow = ["meetings", "standup"]  # optional: only expose these calendars
+# ignore = ["trash"]               # optional: hide these (ignored if allow is set)
+
+# [caldav.servers.personal]
+# url = "https://personal.nextcloud.com/remote.php/dav/"
+# username = "me@example.com"
+# password = "personal-app-password"
+# ignore = ["contact_birthdays"]   # hide auto-generated calendars
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Security

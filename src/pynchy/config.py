@@ -248,13 +248,18 @@ class SlackConfig(BaseModel):
     app_token: SecretStr | None = None  # xapp-... App-Level Token (Socket Mode)
 
 
-class CalDAVConfig(BaseModel):
-    # TODO: Support multiple CalDAV servers — change to dict of named
-    # server configs so agents can access calendars across accounts.
-    url: str = ""
-    username: str = ""
+class CalDAVServerConfig(BaseModel):
+    url: str
+    username: str
     password: SecretStr | None = None
-    default_calendar: str = "personal"
+    default_calendar: str | None = None  # what "primary" resolves to; None → first discovered
+    allow: list[str] | None = None  # only expose these calendars (case-insensitive)
+    ignore: list[str] | None = None  # hide these (case-insensitive; ignored if allow set)
+
+
+class CalDAVConfig(BaseModel):
+    default_server: str = ""  # which server to use when no server prefix given
+    servers: dict[str, CalDAVServerConfig] = {}
 
 
 class SecurityConfig(BaseModel):
