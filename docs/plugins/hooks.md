@@ -95,7 +95,7 @@ skills/
 
 Provide a communication channel (Telegram, Slack, Discord, etc.).
 
-**Calling strategy:** `firstresult=True` — only the first non-`None` return wins.
+**Calling strategy:** All non-`None` channels are collected; host config chooses the default channel.
 
 ```python
 @hookimpl

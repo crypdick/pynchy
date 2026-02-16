@@ -139,6 +139,10 @@ class QueueConfig(BaseModel):
     base_retry_seconds: float = 5.0
 
 
+class ChannelsConfig(BaseModel):
+    default: str | None = None
+
+
 class SecurityConfig(BaseModel):
     blocked_patterns: list[str] = [
         ".ssh",
@@ -184,6 +188,7 @@ class Settings(BaseSettings):
     scheduler: SchedulerConfig = SchedulerConfig()
     intervals: IntervalsConfig = IntervalsConfig()
     queue: QueueConfig = QueueConfig()
+    channels: ChannelsConfig = ChannelsConfig()
     security: SecurityConfig = SecurityConfig()
 
     # Sentinels (class-level, not fields)

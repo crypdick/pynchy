@@ -27,6 +27,7 @@ from pynchy.adapters import (
     SessionManager,
     UserMessageHandler,
 )
+from pynchy.channel_runtime import ChannelPluginContext, load_channels, resolve_default_channel
 from pynchy.config import get_settings
 from pynchy.container_runner import (
     resolve_agent_core,
@@ -217,17 +218,17 @@ class PynchyApp:
     # First-run setup
     # ------------------------------------------------------------------
 
-    async def _setup_god_group(self, whatsapp: Any) -> None:
-        """Create a new WhatsApp group and register it as the god channel.
+    async def _setup_god_group(self, default_channel: Any) -> None:
+        """Create a new group and register it as the god channel.
 
         Called on first run when no groups are registered. Creates a private
         group so the user has a dedicated space to talk to the agent.
         """
         s = get_settings()
         group_name = s.agent.name.title()
-        logger.info("No groups registered. Creating WhatsApp group...", name=group_name)
+        logger.info("No groups registered. Creating default channel group...", name=group_name)
 
-        jid = await whatsapp.create_group(group_name)
+        jid = await default_channel.create_group(group_name)
 
         # Create god workspace with default security profile
         profile = WorkspaceProfile(
@@ -240,30 +241,7 @@ class PynchyApp:
             is_god=True,
         )
         await self._register_workspace(profile)
-        logger.info(
-            "God channel created! Open the group in WhatsApp to start chatting.",
-            group=group_name,
-            jid=jid,
-        )
-
-    async def _connect_plugin_channels(self) -> None:
-        """Create and connect channels from plugins.
-
-        Called during startup after WhatsApp is connected. Creates a channel
-        for each ChannelPlugin and connects it.
-        """
-        # TODO: Implement channel hook and plugin context for pluggy
-        # For now, channels are not implemented via pluggy hooks
-        # The hookspec exists but no built-in channel plugins yet
-        logger.debug("Channel plugin support via pluggy not yet implemented")
-
-    async def _plugin_send_message(self, jid: str, text: str) -> None:
-        """Send message helper for plugin context.
-
-        Sends to all connected channels (used by plugins that need to
-        broadcast messages).
-        """
-        await self._broadcast_to_channels(jid, text)
+        logger.info("God channel created", group=group_name, jid=jid)
 
     def _validate_plugin_credentials(self, plugin: Any) -> list[str]:
         """Check if plugin has required environment variables.
@@ -764,18 +742,20 @@ class PynchyApp:
                 lambda s=sig: asyncio.ensure_future(self._shutdown(s.name)),
             )
 
-        # Create and connect WhatsApp channel
-        from pynchy.channels.whatsapp import WhatsAppChannel
-
-        whatsapp = WhatsAppChannel(
-            on_message=lambda jid, msg: asyncio.ensure_future(self._on_inbound(jid, msg)),
-            on_chat_metadata=lambda jid, ts: asyncio.ensure_future(store_chat_metadata(jid, ts)),
+        context = ChannelPluginContext(
+            on_message_callback=lambda jid, msg: asyncio.ensure_future(self._on_inbound(jid, msg)),
+            on_chat_metadata_callback=lambda jid, ts, name=None: asyncio.ensure_future(
+                store_chat_metadata(jid, ts, name)
+            ),
             registered_groups=lambda: self.registered_groups,
+            send_message=self._broadcast_to_channels,
         )
-        self.channels.append(whatsapp)
+        self.channels = load_channels(self.plugin_manager, context)
+        default_channel = resolve_default_channel(self.channels)
 
         try:
-            await whatsapp.connect()
+            for channel in self.channels:
+                await channel.connect()
         except Exception as exc:
             if continuation_path.exists():
                 await self._auto_rollback(continuation_path, exc)
@@ -783,10 +763,7 @@ class PynchyApp:
 
         # First-run: create a private group and register as god channel
         if not self.registered_groups:
-            await self._setup_god_group(whatsapp)
-
-        # Create and connect plugin channels
-        await self._connect_plugin_channels()
+            await self._setup_god_group(default_channel)
 
         # Reconcile worktrees: create missing ones for project_access groups,
         # fix broken worktrees, and rebase diverged branches before containers launch

@@ -46,6 +46,7 @@ sudo dnf install file-libs         # Required by neonize (WhatsApp) for MIME det
 git clone https://github.com/crypdick/pynchy.git
 cd pynchy
 uv sync                                      # Install Python dependencies
+uv pip install git+https://github.com/crypdick/pynchy-plugin-whatsapp.git
 ```
 
 ### 2. Configure
@@ -141,6 +142,7 @@ cd ~/src/pynchy
 
 # Install Python dependencies
 uv sync
+uv pip install git+https://github.com/crypdick/pynchy-plugin-whatsapp.git
 
 # Build the agent container image
 sg docker -c './container/build.sh'

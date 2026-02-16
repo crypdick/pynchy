@@ -38,16 +38,6 @@ from pynchy.types import NewMessage, RegisteredGroup
 # ---------------------------------------------------------------------------
 
 
-def _has_libmagic() -> bool:
-    """Check if libmagic is available (required by neonize)."""
-    try:
-        import magic  # noqa: F401
-
-        return True
-    except ImportError:
-        return False
-
-
 def _make_message(
     *,
     chat_jid: str = "group@g.us",
@@ -202,13 +192,9 @@ async def app(tmp_path: Path):
 class TestAppImports:
     """Verify lazy imports in app.run() resolve correctly."""
 
-    @pytest.mark.skipif(
-        not _has_libmagic(),
-        reason="libmagic library not installed (required by neonize dependency)",
-    )
-    def test_whatsapp_channel_import(self):
-        """The WhatsApp channel import in app.run() must resolve."""
-        from pynchy.channels.whatsapp import WhatsAppChannel  # noqa: F401
+    def test_channel_runtime_import(self):
+        """Channel runtime helper import in app.run() must resolve."""
+        from pynchy.channel_runtime import ChannelPluginContext  # noqa: F401
 
 
 class TestProcessGroupMessages:
