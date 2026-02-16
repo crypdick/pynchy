@@ -149,8 +149,16 @@ async def handle_streamed_output(
         return False
     if result.type == "system":
         subtype = result.system_subtype or ""
-        data = {"subtype": subtype, "data": result.system_data or {}}
-        channel_text = f"\u2699\ufe0f system: {subtype or 'unknown'}"
+        sys_data = result.system_data or {}
+        data = {"subtype": subtype, "data": sys_data}
+
+        # Build a descriptive log line per subtype
+        if subtype == "init":
+            sid = sys_data.get("session_id", "")
+            sid_short = sid[:12] if sid else "none"
+            channel_text = f"\u2699\ufe0f session {sid_short} (resumed)"
+        else:
+            channel_text = f"\u2699\ufe0f system: {subtype or 'unknown'}"
 
         # Always persist to DB and emit to EventBus
         ts = datetime.now(UTC).isoformat()
@@ -166,8 +174,9 @@ async def handle_streamed_output(
         )
         deps.emit(AgentTraceEvent(chat_jid=chat_jid, trace_type="system", data=data))
 
-        # Suppress noisy "init" from channels — it fires on every resumed
-        # session and adds no value for the user.
+        # Suppress init from channels — it fires on every query and adds
+        # no value for the user.  The descriptive text above is still
+        # persisted to DB for debugging.
         if subtype != "init":
             await deps.broadcast_to_channels(chat_jid, channel_text)
 
