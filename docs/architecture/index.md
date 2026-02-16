@@ -1,6 +1,6 @@
 # Architecture
 
-This section explains how Pynchy works under the hood. Understanding these concepts helps you troubleshoot issues, reason about security boundaries, and extend the system with plugins.
+This section explains how Pynchy works under the hood. Understanding these concepts helps you troubleshoot issues, reason about security boundaries, and extend the system through plugins.
 
 ## Topics
 

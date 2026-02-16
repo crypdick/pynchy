@@ -1,8 +1,10 @@
 # Message Routing
 
+This page explains how messages flow from channels to agents and back. Understanding the routing model helps you debug message delivery, configure trigger patterns, and reason about what the LLM sees in its context.
+
 ## Transparent Token Stream
 
-The chat history is a faithful representation of the LLM's token stream. A user reading the conversation can reconstruct the exact contents of the LLM context. Nothing is hidden; every message type is visible and distinguishable.
+The chat history faithfully represents the LLM's token stream. A user reading the conversation can reconstruct the exact contents of the LLM context. Nothing hides; every message type appears visible and distinguishable.
 
 The sender vocabulary in the database:
 
@@ -25,7 +27,7 @@ The goal: if something went wrong, you can reconstruct what the LLM saw by readi
 
 ## Trigger Pattern
 
-Messages must start with the `@Pynchy` prefix (case insensitive, configurable via `ASSISTANT_NAME`). The `TRIGGER_ALIASES` setting (default: `ghost`) also triggers the bot:
+Messages must start with the `@Pynchy` prefix (case insensitive, configurable via `ASSISTANT_NAME`). The `TRIGGER_ALIASES` setting (default: `ghost`) also triggers the bot. Examples:
 
 - `@Pynchy what's the weather?` — triggers
 - `@pynchy help me` — triggers (case insensitive)
@@ -34,9 +36,9 @@ Messages must start with the `@Pynchy` prefix (case insensitive, configurable vi
 
 ## Routing Behavior
 
-- All channels send messages to the same code path
-- Only messages from registered groups are processed; unregistered groups are ignored
-- All channels are kept in sync — ongoing conversations can be continued from different channels, and all channels display the same message history
-- Messages that arrive while a task is already running follow escalation rules — see [Messaging During Active Tasks](../usage/index.md#messaging-during-active-tasks)
+- All channels send messages through the same code path
+- Only messages from registered groups get processed; the router ignores unregistered groups
+- All channels stay in sync — continue conversations from any channel, and every channel displays the same message history
+- Messages that arrive while a task runs follow escalation rules — see [Messaging During Active Tasks](../usage/index.md#messaging-during-active-tasks)
 
 For how messages are typed and stored, see [Message types](message-types.md).

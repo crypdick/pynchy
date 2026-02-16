@@ -1,10 +1,10 @@
 # Inter-Process Communication (IPC)
 
-Containers are isolated from the host, so they communicate through a file-based IPC channel. The container writes JSON files to shared directories; the host uses filesystem events (watchdog/inotify) to detect and process them immediately.
+Containers communicate with the host through a file-based IPC channel. The container writes JSON files to shared directories; the host watches for filesystem events (watchdog/inotify) and processes them immediately.
 
 ## Why File-Based
 
-Containers have no network route back to the host. File mounts are the only shared surface, so IPC uses atomic file writes (temp file + rename) to safely pass structured messages between the two processes without sockets, HTTP, or message queues.
+Containers have no network route back to the host. File mounts provide the only shared surface, so IPC uses atomic file writes (temp file + rename) to pass structured messages between the two processes without sockets, HTTP, or message queues.
 
 ## Directory Layout
 
@@ -52,7 +52,7 @@ IPC files use one of two formats depending on their tier:
 
 ### Tier 1: Signals
 
-Signals carry no payload. The host derives behavior from the signal type and which group sent it.
+Signals carry no payload. The host derives behavior from the signal type and the sending group.
 
 ```json
 {"signal": "refresh_groups"}
@@ -64,11 +64,11 @@ Signals carry no payload. The host derives behavior from the signal type and whi
 
 ### Tier 2: Data-carrying requests
 
-Requests carry payload data via the `type` field. Future steps will add Deputy mediation for these.
+Requests carry payload data via the `type` field.
 
 #### Messages (`messages/`)
 
-Outbound chat messages. The agent can send messages mid-run without ending its turn.
+Outbound chat messages. The agent sends messages mid-run without ending its turn.
 
 ```json
 {
@@ -81,7 +81,7 @@ Outbound chat messages. The agent can send messages mid-run without ending its t
 }
 ```
 
-`sender` is optional — used for multi-bot display in Telegram.
+`sender` — optional, used for multi-bot display in Telegram.
 
 #### Tasks (`tasks/`)
 
@@ -107,6 +107,6 @@ The host enforces permissions based on the source group's identity. See [Securit
 
 ## Container-Side MCP Server
 
-The agent interacts with IPC through MCP tools exposed by the agent tools MCP server (runs inside the container). These tools validate inputs and write the appropriate JSON files. The agent never writes IPC files directly.
+The agent interacts with IPC through MCP tools exposed by the agent tools MCP server (running inside the container). These tools validate inputs and write the appropriate JSON files. The agent never writes IPC files directly.
 
 For the list of MCP tools available to agents, see [Scheduled Tasks](../usage/scheduled-tasks.md#mcp-tools).

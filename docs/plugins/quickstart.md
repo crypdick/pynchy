@@ -65,7 +65,7 @@ class HelloPlugin:
         }
 ```
 
-That's the entire plugin class. The `@hookimpl` decorator tells pluggy this class implements the `pynchy_mcp_server_spec` hook. No base classes, no registration boilerplate.
+That covers the entire plugin class. The `@hookimpl` decorator tells pluggy this class implements the `pynchy_mcp_server_spec` hook. No base classes, no registration boilerplate.
 
 ## 3. Write the MCP Server
 

@@ -1,6 +1,6 @@
 # Hook Reference
 
-Pynchy plugins implement hooks defined in `src/pynchy/plugin/hookspecs.py`. Each hook corresponds to a plugin category. A plugin can implement any combination of hooks.
+Pynchy plugins implement hooks defined in `src/pynchy/plugin/hookspecs.py`. Each hook corresponds to a plugin category, and a plugin can implement any combination of hooks.
 
 All hooks use pluggy's `@hookimpl` decorator:
 
@@ -252,7 +252,7 @@ class VoicePlugin:
         return [str(Path(__file__).parent / "skills" / "voice")]
 ```
 
-No categories attribute needed — pluggy determines capabilities by which hooks are implemented.
+No categories attribute needed — pluggy determines capabilities from which hooks the class implements.
 
 ## Hook Execution Order
 
@@ -263,4 +263,4 @@ Pluggy supports ordering hints:
 @hookimpl(tryfirst=True)  # Run before other plugins
 ```
 
-Most plugins don't need this. It's useful when one plugin needs to see or modify another plugin's results.
+Most plugins don't need this. Use it when one plugin needs to see or modify another plugin's results.
