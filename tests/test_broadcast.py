@@ -262,12 +262,17 @@ class TestFormatToolPreview:
         assert "Bash" in result
 
     def test_bash_truncates_long_command(self):
-        long_cmd = (
-            "find / -name '*.py' -exec grep -l 'import asyncio' {} + | sort | uniq -c | sort -rn"
-        )
+        long_cmd = "find / -name '*.py' -exec grep -l 'import asyncio' {} + | " + "x" * 200
         result = format_tool_preview("Bash", {"command": long_cmd})
         assert len(result) < len(long_cmd) + 20  # name + truncated command
         assert "..." in result
+
+    def test_bash_preserves_medium_command(self):
+        """Commands under 180 chars should not be truncated."""
+        cmd = "find / -name '*.py' -exec grep -l 'import asyncio' {} + | sort | uniq -c | sort -rn"
+        result = format_tool_preview("Bash", {"command": cmd})
+        assert result == f"Bash: {cmd}"
+        assert "..." not in result
 
     def test_read_shows_file_path(self):
         result = format_tool_preview("Read", {"file_path": "/src/pynchy/app.py"})

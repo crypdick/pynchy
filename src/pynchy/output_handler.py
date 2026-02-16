@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from itertools import count
 from typing import TYPE_CHECKING, Any, Protocol
 
 from pynchy.config import get_settings
@@ -18,15 +19,16 @@ from pynchy.router import format_tool_preview, parse_host_tag
 if TYPE_CHECKING:
     from pynchy.types import ContainerOutput, RegisteredGroup
 
-_trace_counter = 0
+_trace_counter = count(1)
 
 
 def _next_trace_id(prefix: str) -> str:
-    """Generate a unique monotonic ID for trace DB rows."""
-    global _trace_counter
-    _trace_counter += 1
+    """Generate a unique monotonic ID for trace DB rows.
+
+    Uses itertools.count for thread-safe, atomic counter increments.
+    """
     ts_ms = int(datetime.now(UTC).timestamp() * 1000)
-    return f"{prefix}-{ts_ms}-{_trace_counter}"
+    return f"{prefix}-{ts_ms}-{next(_trace_counter)}"
 
 
 class OutputDeps(Protocol):

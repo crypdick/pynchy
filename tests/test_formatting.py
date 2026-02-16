@@ -259,13 +259,20 @@ class TestFormatToolPreview:
         assert result == "Bash: ls -la"
 
     def test_bash_truncates_long_commands(self):
-        long_cmd = "echo " + "x" * 100
+        long_cmd = "echo " + "x" * 200
         result = format_tool_preview("Bash", {"command": long_cmd})
         assert result.startswith("Bash: echo ")
         assert result.endswith("...")
-        # Check that truncation happened (original was >100 chars)
+        # Check that truncation happened (original was >180 chars)
         assert len(result) < len(f"Bash: {long_cmd}")
-        assert len(result) <= 66  # "Bash: " (6) + 57 chars + "..." (3) = 66
+        assert len(result) <= 189  # "Bash: " (6) + 180 chars = 186 max
+
+    def test_bash_preserves_medium_commands(self):
+        """Commands under 180 chars should not be truncated."""
+        cmd = "echo " + "x" * 100
+        result = format_tool_preview("Bash", {"command": cmd})
+        assert result == f"Bash: {cmd}"
+        assert "..." not in result
 
     def test_bash_without_command(self):
         result = format_tool_preview("Bash", {})
@@ -285,10 +292,10 @@ class TestFormatToolPreview:
         assert result == "Write: /tmp/output.txt"
 
     def test_read_truncates_long_paths(self):
-        long_path = "/very/long/" + "deep/" * 20 + "file.txt"
+        long_path = "/very/long/" + "deep/" * 40 + "file.txt"
         result = format_tool_preview("Read", {"file_path": long_path})
         assert result.startswith("Read: ...")
-        assert len(result) <= 56  # "Read: " (6) + "..." (3) + 47 chars
+        assert len(result) <= 159  # "Read: " (6) + "..." (3) + 147 chars
 
     def test_read_without_path(self):
         result = format_tool_preview("Read", {})
@@ -331,12 +338,12 @@ class TestFormatToolPreview:
         assert "param" in result
 
     def test_unknown_tool_truncates_long_input(self):
-        long_input = {"data": "x" * 100}
+        long_input = {"data": "x" * 200}
         result = format_tool_preview("CustomTool", long_input)
         assert result.endswith("...")
         # Check that truncation happened
         assert len(result) < len(f"CustomTool: {long_input}")
-        assert len(result) <= 65  # Tool name + ": " + 47 chars + "..." = ~62
+        assert len(result) <= 163  # "CustomTool: " (12) + 147 chars + "..." (3)
 
     # Edge cases
     def test_empty_tool_name(self):
@@ -362,11 +369,11 @@ class TestFormatToolPreview:
         assert result == "WebFetch: https://example.com"
 
     def test_webfetch_truncates_long_url(self):
-        long_url = "https://example.com/very/long/" + "path/" * 20
+        long_url = "https://example.com/very/long/" + "path/" * 40
         result = format_tool_preview("WebFetch", {"url": long_url})
         assert result.startswith("WebFetch: ")
         assert result.endswith("...")
-        assert len(result) <= 60  # "WebFetch: " (10) + 47 chars + "..." (3)
+        assert len(result) <= 163  # "WebFetch: " (10) + 147 chars + "..." (3)
 
     def test_webfetch_without_url(self):
         result = format_tool_preview("WebFetch", {})
@@ -378,11 +385,11 @@ class TestFormatToolPreview:
         assert result == "WebSearch: python async tutorial"
 
     def test_websearch_truncates_long_query(self):
-        long_query = "how to " + "very " * 30 + "thing"
+        long_query = "how to " + "very " * 50 + "thing"
         result = format_tool_preview("WebSearch", {"query": long_query})
         assert result.startswith("WebSearch: ")
         assert result.endswith("...")
-        assert len(result) <= 61  # "WebSearch: " (11) + 47 chars + "..." (3)
+        assert len(result) <= 164  # "WebSearch: " (11) + 147 chars + "..." (3)
 
     def test_websearch_without_query(self):
         result = format_tool_preview("WebSearch", {})

@@ -19,6 +19,7 @@ from pynchy.ipc._protocol import parse_ipc_file, validate_signal
 from pynchy.ipc._registry import dispatch
 from pynchy.logger import logger
 
+_ipc_watcher_lock = asyncio.Lock()
 _ipc_watcher_running = False
 
 
@@ -281,10 +282,11 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
     2. Starts a watchdog Observer for event-driven processing.
     """
     global _ipc_watcher_running
-    if _ipc_watcher_running:
-        logger.debug("IPC watcher already running, skipping duplicate start")
-        return
-    _ipc_watcher_running = True
+    async with _ipc_watcher_lock:
+        if _ipc_watcher_running:
+            logger.debug("IPC watcher already running, skipping duplicate start")
+            return
+        _ipc_watcher_running = True
 
     s = get_settings()
     ipc_base_dir = s.data_dir / "ipc"
