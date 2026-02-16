@@ -24,6 +24,7 @@ from pynchy.config import (
     AgentConfig,
     CommandWordsConfig,
     ContainerConfig,
+    CronJobConfig,
     IntervalsConfig,
     LoggingConfig,
     QueueConfig,
@@ -45,7 +46,7 @@ from pynchy.types import (
 
 
 @contextlib.contextmanager
-def _patch_settings(*, poll_interval: float = 5.0, groups_dir=None):
+def _patch_settings(*, poll_interval: float = 5.0, groups_dir=None, cron_jobs=None):
     s = Settings.model_construct(
         agent=AgentConfig(),
         container=ContainerConfig(),
@@ -56,6 +57,7 @@ def _patch_settings(*, poll_interval: float = 5.0, groups_dir=None):
         workspaces={},
         commands=CommandWordsConfig(),
         scheduler=SchedulerConfig(poll_interval=poll_interval),
+        cron_jobs=cron_jobs or {},
         intervals=IntervalsConfig(),
         queue=QueueConfig(),
         security=SecurityConfig(),
@@ -221,6 +223,7 @@ class TestStartSchedulerLoop:
         import pynchy.task_scheduler
 
         pynchy.task_scheduler._scheduler_running = False
+        pynchy.task_scheduler._cron_job_next_runs = {}
 
     @pytest.mark.asyncio
     async def test_prevents_duplicate_scheduler_start(self, mock_deps):
@@ -735,3 +738,73 @@ class TestRunTask:
         task_ids = [t["id"] for t in snapshots[0][2]]
         assert "task-1" in task_ids
         assert "task-2" in task_ids
+
+
+class TestHostCronJobs:
+    @pytest.mark.asyncio
+    async def test_runs_due_host_cron_job(self, tmp_path):
+        import pynchy.task_scheduler
+
+        pynchy.task_scheduler._cron_job_next_runs = {
+            "rebuild_container": datetime.now(UTC).replace(microsecond=0).isoformat()
+        }
+
+        class FakeProcess:
+            returncode = 0
+
+            async def communicate(self):
+                return b"build ok", b""
+
+        fake_proc = FakeProcess()
+
+        with (
+            _patch_settings(
+                cron_jobs={
+                    "rebuild_container": CronJobConfig(
+                        schedule="0 5 * * *",
+                        command="./container/build.sh",
+                    )
+                },
+            ),
+            patch(
+                "pynchy.task_scheduler.asyncio.create_subprocess_shell",
+                new_callable=AsyncMock,
+                return_value=fake_proc,
+            ) as mock_spawn,
+        ):
+            from pynchy.task_scheduler import _poll_host_cron_jobs
+
+            await _poll_host_cron_jobs()
+
+        mock_spawn.assert_awaited_once()
+        args = mock_spawn.await_args
+        assert args.args[0] == "./container/build.sh"
+
+    @pytest.mark.asyncio
+    async def test_skips_disabled_host_cron_job(self):
+        import pynchy.task_scheduler
+
+        pynchy.task_scheduler._cron_job_next_runs = {
+            "disabled_job": datetime.now(UTC).replace(microsecond=0).isoformat()
+        }
+
+        with (
+            _patch_settings(
+                cron_jobs={
+                    "disabled_job": CronJobConfig(
+                        schedule="0 5 * * *",
+                        command="echo hello",
+                        enabled=False,
+                    )
+                },
+            ),
+            patch(
+                "pynchy.task_scheduler.asyncio.create_subprocess_shell",
+                new_callable=AsyncMock,
+            ) as mock_spawn,
+        ):
+            from pynchy.task_scheduler import _poll_host_cron_jobs
+
+            await _poll_host_cron_jobs()
+
+        mock_spawn.assert_not_awaited()

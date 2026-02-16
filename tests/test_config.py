@@ -8,7 +8,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from pynchy.commands import is_context_reset, is_end_session, is_redeploy
-from pynchy.config import _detect_timezone
+from pynchy.config import CronJobConfig, _detect_timezone
 
 
 class TestIsContextReset:
@@ -383,3 +383,33 @@ class TestDetectTimezone:
             patch("pynchy.config.os.readlink", side_effect=FileNotFoundError),
         ):
             assert _detect_timezone() == "UTC"
+
+
+class TestCronJobConfig:
+    def test_valid_cron_job(self):
+        cfg = CronJobConfig(schedule="0 5 * * *", command="./container/build.sh")
+        assert cfg.schedule == "0 5 * * *"
+        assert cfg.command == "./container/build.sh"
+        assert cfg.timeout_seconds == 600
+        assert cfg.enabled is True
+
+    def test_rejects_invalid_schedule(self):
+        try:
+            CronJobConfig(schedule="not a cron", command="echo hi")
+            raise AssertionError("Expected ValueError for invalid cron schedule")
+        except ValueError as exc:
+            assert "Invalid cron expression" in str(exc)
+
+    def test_rejects_empty_command(self):
+        try:
+            CronJobConfig(schedule="0 5 * * *", command="   ")
+            raise AssertionError("Expected ValueError for empty command")
+        except ValueError as exc:
+            assert "command cannot be empty" in str(exc)
+
+    def test_rejects_non_positive_timeout(self):
+        try:
+            CronJobConfig(schedule="0 5 * * *", command="echo hi", timeout_seconds=0)
+            raise AssertionError("Expected ValueError for invalid timeout")
+        except ValueError as exc:
+            assert "timeout_seconds must be positive" in str(exc)
