@@ -231,6 +231,13 @@ class PluginConfig(BaseModel):
     trusted: bool = False  # Skip verification — use for self-authored plugins
 
 
+class CalDAVConfig(BaseModel):
+    url: str = ""
+    username: str = ""
+    password: SecretStr | None = None
+    default_calendar: str = "personal"
+
+
 class SecurityConfig(BaseModel):
     blocked_patterns: list[str] = [
         ".ssh",
@@ -281,6 +288,7 @@ class Settings(BaseSettings):
     channels: ChannelsConfig = ChannelsConfig()
     plugins: dict[str, PluginConfig] = {}
     security: SecurityConfig = SecurityConfig()
+    caldav: CalDAVConfig = CalDAVConfig()
 
     # Sentinels (class-level, not fields)
     OUTPUT_START_MARKER: ClassVar[str] = "---PYNCHY_OUTPUT_START---"
