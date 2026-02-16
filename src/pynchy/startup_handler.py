@@ -14,7 +14,7 @@ from pynchy.db import get_messages_since, store_message
 from pynchy.git_utils import get_head_sha, is_repo_dirty, run_git
 from pynchy.http_server import _get_head_commit_message
 from pynchy.logger import logger
-from pynchy.types import NewMessage, WorkspaceProfile
+from pynchy.types import NewMessage, WorkspaceSecurity, WorkspaceProfile
 from pynchy.utils import generate_message_id
 
 if TYPE_CHECKING:
@@ -212,7 +212,12 @@ async def setup_god_group(deps: StartupDeps, default_channel: Any | None) -> Non
     else:
         logger.info("No channel group support found, creating TUI local workspace", jid=jid)
 
-    # Create god workspace with default security profile
+    # Create god workspace with permissive security profile.
+    # God group is fully trusted — auto-approve all tools.
+    # TODO: Re-evaluate when human-approval gate is implemented (see
+    #   backlog/2-planning/security-hardening-6-approval.md). At that point,
+    #   consider keeping god at always-approve but requiring approval for
+    #   non-god workspaces' destructive actions.
     profile = WorkspaceProfile(
         jid=jid,
         name=group_name,
@@ -221,6 +226,7 @@ async def setup_god_group(deps: StartupDeps, default_channel: Any | None) -> Non
         added_at=datetime.now(UTC).isoformat(),
         requires_trigger=False,
         is_god=True,
+        security=WorkspaceSecurity(default_risk_tier="always-approve"),
     )
     await deps._register_workspace(profile)
     logger.info("God workspace created", group=group_name, jid=jid)
