@@ -3,25 +3,22 @@
 </p>
 
 <p align="center">
-  <em>Pynchy</em> — Personal AI assistant with an emphasis on simplicity and security, written in Python.
+  <em>Pynchy</em> — Personal AI assistant with an emphasis on security and modularity, written in Python.
 </p>
 
 
-## Philosophy
+## Features
 
-**Secure by isolation.** Agents run in Linux containers (Docker, or Apple Container on macOS). They can only see what's explicitly mounted. Bash access is safe because commands run inside the container, not on your host.
-
-**AI-native.** No installation wizard; Pynchy guides setup. No monitoring dashboard; ask Pynchy what's happening. No debugging tools; describe the problem, Pynchy fixes it.
-
-**Modularity.** New capabilities are added as plugins, not features in the base codebase. Plugins can provide:
-
-- **Channels** — Communication platforms (WhatsApp, Slack, Telegram, Discord)
-- **Agent Cores** — Alternative LLM engines (OpenAI, Ollama)
-- **MCP Servers** — Tools for agents via Model Context Protocol
-- **Skills** — Agent instructions and capabilities (markdown)
-- **Workspaces** — Managed workspace and task definitions
-
-See **[docs/plugins/index.md](docs/plugins/index.md)** for the plugin authoring guide.
+- Agents run in containers, providing process, filesystem, and network isolation.
+- Plugins are scanned by an LLM before being installed, providing a basic security audit.
+- Customizable; [five types of plugins](docs/plugins/index.md) are supported:
+  - LLM Providers
+  - MCP Clients/Servers
+  - Agents (prompt templates, instructions, and capabilities)
+  - Communication channels (Slack, WhatsApp, etc.)
+  - Workspaces with isolated memory and Git worktrees.
+- Reoccurring tasks can be scheduled to run at a specific time or interval.
+- (work in progress) policy groups to prevent [lethal trifecta prompt injection attacks](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/).
 
 ## Getting Started
 
@@ -31,11 +28,11 @@ See **[docs/install.md](docs/install.md)** for installation instructions.
 
 | Section | What it covers |
 |---------|---------------|
+| [Why Pynchy?](docs/why-pynchy.md) | Motivation and comparison to related projects |
 | [Usage](docs/usage/index.md) | Day-to-day operation, groups, scheduled tasks |
 | [Plugin authoring](docs/plugins/index.md) | Writing plugins: channels, skills, MCP servers |
-| [Architecture](docs/architecture/index.md) | Container isolation, message routing, IPC, security |
+| [Architecture & Design](docs/architecture/index.md) | Container isolation, message routing, IPC, security |
 | [Contributing](docs/contributing.md) | What changes are accepted, plugin-first philosophy |
-| [Why Pynchy?](docs/why-pynchy.md) | Motivation and comparison to related projects |
 
 ## FAQ
 
