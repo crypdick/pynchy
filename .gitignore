@@ -18,6 +18,9 @@ groups/global/*
 !groups/admin/
 groups/admin/*
 !groups/admin/CLAUDE.md
+!groups/god/
+groups/god/*
+!groups/god/CLAUDE.md
 !groups/mr-pynchy/
 groups/mr-pynchy/*
 !groups/mr-pynchy/CLAUDE.md

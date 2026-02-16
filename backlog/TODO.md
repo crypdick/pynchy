@@ -42,6 +42,9 @@ Single source of truth for all pynchy work items.
 - we want to be plugin maximalists. add that to the requirements.txt design doc. we want to make everything in this repo a plugin. ideally, we rip out non-essential code (whatsapp, openai, claude, etc.) and push them out into plugins. that way, users can disable unwanted functionality. this is how pytest lib works, for example
 - implement the progressive disclosure principle for skills. see the official claude docs on this
 - if container 1 syncs a change, the host recieves and pushes to the rest of the containers, and one of the container's worktree has a merge conflict, and that container is hibernating, that container ought to be spun up, sent a system message about the failed abortion, and a follow up message telling it to fix the broken rebase. that way, working in one container does not fuck up the work of a hibernating container.
+- rename subsystems:
+  - Providers (AI models)
+  - Runtime (container runtimes)
 
 
 ### 2 - Planning
