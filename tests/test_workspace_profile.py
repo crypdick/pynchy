@@ -3,6 +3,7 @@
 from pynchy.types import (
     ContainerConfig,
     McpToolConfig,
+    RateLimitConfig,
     RegisteredGroup,
     WorkspaceProfile,
     WorkspaceSecurity,
@@ -15,15 +16,16 @@ def test_workspace_security_defaults():
 
     assert security.mcp_tools == {}
     assert security.default_risk_tier == "human-approval"
+    assert security.rate_limits is None
     assert security.allow_filesystem_access is True
     assert security.allow_network_access is True
 
 
 def test_mcp_tool_config():
     """Test McpToolConfig creation."""
-    config = McpToolConfig(risk_tier="read-only", enabled=True)
+    config = McpToolConfig(risk_tier="always-approve", enabled=True)
 
-    assert config.risk_tier == "read-only"
+    assert config.risk_tier == "always-approve"
     assert config.enabled is True
 
 
@@ -50,11 +52,11 @@ def test_workspace_profile_with_security():
     """Test WorkspaceProfile with custom security configuration."""
     security = WorkspaceSecurity(
         mcp_tools={
-            "read_email": McpToolConfig(risk_tier="read-only"),
+            "read_email": McpToolConfig(risk_tier="always-approve"),
             "send_email": McpToolConfig(risk_tier="human-approval"),
-            "create_event": McpToolConfig(risk_tier="policy-check"),
+            "create_event": McpToolConfig(risk_tier="rules-engine"),
         },
-        default_risk_tier="policy-check",
+        default_risk_tier="rules-engine",
         allow_filesystem_access=True,
         allow_network_access=False,
     )
@@ -68,10 +70,10 @@ def test_workspace_profile_with_security():
     )
 
     assert len(profile.security.mcp_tools) == 3
-    assert profile.security.mcp_tools["read_email"].risk_tier == "read-only"
+    assert profile.security.mcp_tools["read_email"].risk_tier == "always-approve"
     assert profile.security.mcp_tools["send_email"].risk_tier == "human-approval"
-    assert profile.security.mcp_tools["create_event"].risk_tier == "policy-check"
-    assert profile.security.default_risk_tier == "policy-check"
+    assert profile.security.mcp_tools["create_event"].risk_tier == "rules-engine"
+    assert profile.security.default_risk_tier == "rules-engine"
     assert profile.security.allow_network_access is False
 
 
@@ -84,7 +86,7 @@ def test_workspace_profile_validation_success():
         trigger="@Pynchy",
         security=WorkspaceSecurity(
             mcp_tools={
-                "read_email": McpToolConfig(risk_tier="read-only"),
+                "read_email": McpToolConfig(risk_tier="always-approve"),
             }
         ),
     )
@@ -229,7 +231,7 @@ def test_workspace_profile_to_registered_group():
         container_config=ContainerConfig(timeout=300.0),
         security=WorkspaceSecurity(
             mcp_tools={
-                "read_email": McpToolConfig(risk_tier="read-only"),
+                "read_email": McpToolConfig(risk_tier="always-approve"),
             }
         ),
     )
@@ -274,7 +276,7 @@ def test_workspace_security_with_mixed_tool_states():
     """Test security config with enabled and disabled tools."""
     security = WorkspaceSecurity(
         mcp_tools={
-            "read_email": McpToolConfig(risk_tier="read-only", enabled=True),
+            "read_email": McpToolConfig(risk_tier="always-approve", enabled=True),
             "send_email": McpToolConfig(risk_tier="human-approval", enabled=False),
             "get_password": McpToolConfig(risk_tier="human-approval", enabled=True),
         }
@@ -294,3 +296,105 @@ def test_workspace_security_with_mixed_tool_states():
 
     # Disabled tool
     assert profile.security.mcp_tools["send_email"].enabled is False
+
+
+# --- Rate limits ---
+
+
+def test_rate_limit_config():
+    """Test RateLimitConfig creation."""
+    rl = RateLimitConfig(max_calls_per_hour=100, per_tool_overrides={"send_email": 5})
+    assert rl.max_calls_per_hour == 100
+    assert rl.per_tool_overrides == {"send_email": 5}
+
+
+def test_rate_limit_config_defaults():
+    """Test RateLimitConfig defaults."""
+    rl = RateLimitConfig()
+    assert rl.max_calls_per_hour == 500
+    assert rl.per_tool_overrides == {}
+
+
+def test_workspace_security_with_rate_limits():
+    """Test WorkspaceSecurity with rate limits configured."""
+    security = WorkspaceSecurity(
+        rate_limits=RateLimitConfig(max_calls_per_hour=30, per_tool_overrides={"send_email": 5}),
+    )
+
+    profile = WorkspaceProfile(
+        jid="12345@g.us",
+        name="Rate Limited",
+        folder="rate-limited",
+        trigger="@Pynchy",
+        security=security,
+    )
+
+    assert profile.security.rate_limits is not None
+    assert profile.security.rate_limits.max_calls_per_hour == 30
+    assert profile.security.rate_limits.per_tool_overrides["send_email"] == 5
+
+
+def test_workspace_profile_validation_rate_limits_valid():
+    """Test validation passes for valid rate limits."""
+    profile = WorkspaceProfile(
+        jid="12345@g.us",
+        name="Test",
+        folder="test",
+        trigger="@Pynchy",
+        security=WorkspaceSecurity(
+            rate_limits=RateLimitConfig(
+                max_calls_per_hour=100,
+                per_tool_overrides={"send_email": 10},
+            ),
+        ),
+    )
+    errors = profile.validate()
+    assert errors == []
+
+
+def test_workspace_profile_validation_rate_limits_invalid_max():
+    """Test validation fails for non-positive max_calls_per_hour."""
+    profile = WorkspaceProfile(
+        jid="12345@g.us",
+        name="Test",
+        folder="test",
+        trigger="@Pynchy",
+        security=WorkspaceSecurity(
+            rate_limits=RateLimitConfig(max_calls_per_hour=0),
+        ),
+    )
+    errors = profile.validate()
+    assert len(errors) == 1
+    assert "max_calls_per_hour" in errors[0]
+
+
+def test_workspace_profile_validation_rate_limits_invalid_per_tool():
+    """Test validation fails for non-positive per-tool override."""
+    profile = WorkspaceProfile(
+        jid="12345@g.us",
+        name="Test",
+        folder="test",
+        trigger="@Pynchy",
+        security=WorkspaceSecurity(
+            rate_limits=RateLimitConfig(
+                max_calls_per_hour=100,
+                per_tool_overrides={"send_email": -1},
+            ),
+        ),
+    )
+    errors = profile.validate()
+    assert len(errors) == 1
+    assert "per-tool rate limit" in errors[0]
+
+
+def test_workspace_profile_validation_rate_limits_none():
+    """Test validation passes when rate_limits is None."""
+    profile = WorkspaceProfile(
+        jid="12345@g.us",
+        name="Test",
+        folder="test",
+        trigger="@Pynchy",
+        security=WorkspaceSecurity(rate_limits=None),
+    )
+    errors = profile.validate()
+    assert errors == []

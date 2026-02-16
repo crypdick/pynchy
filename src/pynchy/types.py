@@ -45,8 +45,16 @@ class ContainerConfig:
 class McpToolConfig:
     """Configuration for a single MCP tool."""
 
-    risk_tier: Literal["read-only", "policy-check", "human-approval"]
+    risk_tier: Literal["always-approve", "rules-engine", "human-approval"]
     enabled: bool = True
+
+
+@dataclass
+class RateLimitConfig:
+    """Rate limiting configuration for a workspace."""
+
+    max_calls_per_hour: int = 500  # Global limit across all tools
+    per_tool_overrides: dict[str, int] = field(default_factory=dict)  # tool -> max/hour
 
 
 @dataclass
@@ -56,8 +64,13 @@ class WorkspaceSecurity:
     # MCP tool permissions (tool_name -> config)
     mcp_tools: dict[str, McpToolConfig] = field(default_factory=dict)
 
-    # Default risk tier for tools not explicitly configured
-    default_risk_tier: Literal["read-only", "policy-check", "human-approval"] = "human-approval"
+    # Default risk tier for tools not explicitly listed in mcp_tools
+    default_risk_tier: Literal["always-approve", "rules-engine", "human-approval"] = (
+        "human-approval"
+    )
+
+    # Rate limiting (None = no limits)
+    rate_limits: RateLimitConfig | None = None
 
     # Filesystem and network access
     allow_filesystem_access: bool = True
@@ -110,7 +123,7 @@ class WorkspaceProfile:
             errors.append("Workspace trigger is required")
 
         # Validate MCP tool risk tiers
-        valid_tiers = {"read-only", "policy-check", "human-approval"}
+        valid_tiers = {"always-approve", "rules-engine", "human-approval"}
         for tool_name, config in self.security.mcp_tools.items():
             if config.risk_tier not in valid_tiers:
                 errors.append(
@@ -124,6 +137,21 @@ class WorkspaceProfile:
                 f"Invalid default risk tier '{self.security.default_risk_tier}'. "
                 f"Must be one of: {', '.join(valid_tiers)}"
             )
+
+        # Validate rate limits
+        rl = self.security.rate_limits
+        if rl is not None:
+            if not isinstance(rl.max_calls_per_hour, int) or rl.max_calls_per_hour < 1:
+                errors.append(
+                    f"Invalid max_calls_per_hour: {rl.max_calls_per_hour} "
+                    "(must be a positive integer)"
+                )
+            for tool_name, limit in rl.per_tool_overrides.items():
+                if not isinstance(limit, int) or limit < 1:
+                    errors.append(
+                        f"Invalid per-tool rate limit for '{tool_name}': {limit} "
+                        "(must be a positive integer)"
+                    )
 
         return errors
 

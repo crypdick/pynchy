@@ -936,9 +936,9 @@ class TestWorkspaceProfiles:
         security = WorkspaceSecurity(
             mcp_tools={
                 "send_email": McpToolConfig(risk_tier="human-approval", enabled=True),
-                "read_file": McpToolConfig(risk_tier="read-only", enabled=True),
+                "read_file": McpToolConfig(risk_tier="always-approve", enabled=True),
             },
-            default_risk_tier="policy-check",
+            default_risk_tier="rules-engine",
             allow_filesystem_access=False,
             allow_network_access=True,
         )
@@ -954,7 +954,7 @@ class TestWorkspaceProfiles:
 
         result = await get_workspace_profile("secure@g.us")
         assert result is not None
-        assert result.security.default_risk_tier == "policy-check"
+        assert result.security.default_risk_tier == "rules-engine"
         assert result.security.allow_filesystem_access is False
         assert result.security.allow_network_access is True
         assert "send_email" in result.security.mcp_tools
