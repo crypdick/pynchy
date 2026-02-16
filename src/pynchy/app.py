@@ -35,7 +35,8 @@ from pynchy.event_bus import EventBus
 from pynchy.group_queue import GroupQueue
 from pynchy.http_server import start_http_server
 from pynchy.logger import logger
-from pynchy.plugin_sync import sync_configured_plugins
+from pynchy.plugin_sync import install_verified_plugins, sync_plugin_repos
+from pynchy.plugin_verifier import verify_synced_plugins
 from pynchy.service_installer import install_service
 from pynchy.system_checks import check_tailscale, ensure_container_system_running
 from pynchy.types import (
@@ -337,6 +338,10 @@ class PynchyApp:
             # exit before aiohttp forcibly tears down request tasks.
             await asyncio.sleep(0.3)
             await self._http_runner.cleanup()
+
+        from pynchy.gateway import stop_gateway
+
+        await stop_gateway()
         await self.queue.shutdown(10.0)
         for ch in self.channels:
             await ch.disconnect()
@@ -358,16 +363,31 @@ class PynchyApp:
 
         try:
             install_service()
-            # Ensure config-declared plugin repositories are cloned/updated.
-            sync_configured_plugins()
 
-            # Initialize plugin manager after plugin sync so runtime/channel hooks are available.
+            # Phase 1: Clone/update plugin repos (no install, no import).
+            synced = sync_plugin_repos()
+
+            # Phase 2: Verify uncached plugins using an isolated container agent.
+            # Uses Docker directly to avoid importing unverified plugin code.
+            verified = await verify_synced_plugins(synced, s.plugins_dir)
+
+            # Phase 3: Install verified plugins into host Python environment.
+            install_verified_plugins(verified)
+
+            # Now safe to discover plugins — only verified code gets imported.
             from pynchy.plugin import get_plugin_manager
             from pynchy.workspace_config import configure_plugin_workspaces
 
             self.plugin_manager = get_plugin_manager()
             configure_plugin_workspaces(self.plugin_manager)
             ensure_container_system_running()
+
+            # Start the LLM gateway before any containers launch so they can
+            # reach it for credential-isolated API calls.
+            from pynchy.gateway import start_gateway
+
+            await start_gateway()
+
             await init_database()
             logger.info("Database initialized")
             await self._load_state()

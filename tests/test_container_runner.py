@@ -665,10 +665,11 @@ class TestWriteEnvFile:
             assert f"OPENAI_API_KEY='{gw.key}'" in content
 
     def test_returns_none_when_no_credentials(self, tmp_path: Path):
+        """No gateway providers and no non-LLM creds → returns None."""
+        gw = _MockGateway(providers=set())
         with (
             _patch_settings(tmp_path),
-            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
-            patch(f"{_CR_CREDS}._read_oauth_from_keychain", return_value=None),
+            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
             patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
@@ -676,10 +677,10 @@ class TestWriteEnvFile:
 
     def test_auto_discovers_gh_token_for_god(self, tmp_path: Path):
         """GH_TOKEN is auto-discovered from gh CLI for god containers."""
+        gw = _MockGateway(providers=set())
         with (
             _patch_settings(tmp_path),
-            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
-            patch(f"{_CR_CREDS}._read_oauth_from_keychain", return_value=None),
+            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
             patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_abc123"),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
@@ -690,10 +691,10 @@ class TestWriteEnvFile:
 
     def test_non_god_excludes_gh_token(self, tmp_path: Path):
         """Non-god containers never receive GH_TOKEN, even when available."""
+        gw = _MockGateway(providers={"anthropic"})
         with (
             _patch_settings(tmp_path, secret_overrides={"gh_token": "explicit-token"}),
-            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
-            patch(f"{_CR_CREDS}._read_oauth_from_keychain", return_value="oauth-tok"),
+            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
             patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_abc123"),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
@@ -701,14 +702,14 @@ class TestWriteEnvFile:
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert "GH_TOKEN" not in content
-            assert "CLAUDE_CODE_OAUTH_TOKEN='oauth-tok'" in content
+            assert "ANTHROPIC_BASE_URL" in content
 
     def test_settings_gh_token_overrides_auto_discovery(self, tmp_path: Path):
         """Configured GH_TOKEN takes priority over gh CLI auto-discovery."""
+        gw = _MockGateway(providers=set())
         with (
             _patch_settings(tmp_path, secret_overrides={"gh_token": "explicit-token"}),
-            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
-            patch(f"{_CR_CREDS}._read_oauth_from_keychain", return_value=None),
+            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
             patch(f"{_CR_CREDS}._read_gh_token", return_value="auto-token"),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
@@ -720,10 +721,10 @@ class TestWriteEnvFile:
 
     def test_auto_discovers_git_identity(self, tmp_path: Path):
         """Git identity is auto-discovered and written as all four env vars."""
+        gw = _MockGateway(providers=set())
         with (
             _patch_settings(tmp_path),
-            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
-            patch(f"{_CR_CREDS}._read_oauth_from_keychain", return_value=None),
+            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
             patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
             patch(
                 f"{_CR_CREDS}._read_git_identity",
@@ -739,13 +740,11 @@ class TestWriteEnvFile:
             assert "GIT_COMMITTER_EMAIL='jane@example.com'" in content
 
     def test_all_credentials_combined(self, tmp_path: Path):
-        """Claude, GitHub, and git credentials are all written together."""
-        creds = tmp_path / ".claude" / ".credentials.json"
-        creds.parent.mkdir(parents=True)
-        creds.write_text(json.dumps({"claudeAiOauth": {"accessToken": "oauth-tok"}}))
+        """Gateway LLM creds, GitHub, and git credentials are all written together."""
+        gw = _MockGateway(providers={"anthropic", "openai"})
         with (
             _patch_settings(tmp_path),
-            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
+            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
             patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_xyz"),
             patch(
                 f"{_CR_CREDS}._read_git_identity",
@@ -755,16 +754,19 @@ class TestWriteEnvFile:
             env_dir = _write_env_file(is_god=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
-            assert "CLAUDE_CODE_OAUTH_TOKEN='oauth-tok'" in content
+            assert f"ANTHROPIC_BASE_URL='{gw.base_url}'" in content
+            assert f"ANTHROPIC_AUTH_TOKEN='{gw.key}'" in content
+            assert f"OPENAI_BASE_URL='{gw.base_url}'" in content
+            assert f"OPENAI_API_KEY='{gw.key}'" in content
             assert "GH_TOKEN='gho_xyz'" in content
             assert "GIT_AUTHOR_NAME='Bob'" in content
 
     def test_per_group_env_dirs_are_isolated(self, tmp_path: Path):
         """Each group gets its own env directory."""
+        gw = _MockGateway(providers={"anthropic"})
         with (
             _patch_settings(tmp_path),
-            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
-            patch(f"{_CR_CREDS}._read_oauth_from_keychain", return_value="oauth-tok"),
+            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
             patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_xyz"),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
@@ -776,10 +778,10 @@ class TestWriteEnvFile:
 
     def test_values_are_shell_quoted(self, tmp_path: Path):
         """Names with spaces and apostrophes are safely shell-quoted."""
+        gw = _MockGateway(providers=set())
         with (
             _patch_settings(tmp_path),
-            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
-            patch(f"{_CR_CREDS}._read_oauth_from_keychain", return_value=None),
+            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
             patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
             patch(
                 f"{_CR_CREDS}._read_git_identity",

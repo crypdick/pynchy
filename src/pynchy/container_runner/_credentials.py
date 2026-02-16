@@ -1,7 +1,7 @@
 """Credential discovery and environment file writing.
 
-Reads OAuth tokens, GitHub tokens, and git identity from the host,
-then writes them into an env file for container consumption.
+Containers receive the gateway URL and an ephemeral key instead of real
+API credentials.  Real keys never leave the host process.
 """
 
 from __future__ import annotations
@@ -12,6 +12,10 @@ from pathlib import Path
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
+
+# ---------------------------------------------------------------------------
+# Auto-discovery helpers (host-side only)
+# ---------------------------------------------------------------------------
 
 
 def _read_oauth_token() -> str | None:
@@ -95,51 +99,56 @@ def _shell_quote(value: str) -> str:
     return "'" + value.replace("'", "'\\''") + "'"
 
 
-def _write_env_file() -> Path | None:
-    """Write credential env vars for the container. Returns env dir or None.
+# ---------------------------------------------------------------------------
+# Env file writer
+# ---------------------------------------------------------------------------
 
-    Auto-discovers and writes (each independently):
-    - Claude credentials: .env file -> OAuth token from Claude Code
-    - GH_TOKEN: .env file -> ``gh auth token``
-    - Git identity: ``git config user.name/email`` -> GIT_AUTHOR_NAME, etc.
 
-    # TODO: security hardening -- generate per-container scoped tokens (GitHub App
-    # installation tokens or fine-grained PATs) instead of forwarding the host's
-    # full gh token. Each container should have least-privilege credentials scoped
-    # to only the repos/permissions it needs.
+def _write_env_file(*, is_god: bool, group_folder: str) -> Path | None:
+    """Write credential env vars for a specific group's container.
+
+    Returns the per-group env dir, or ``None`` if no credentials were found.
+
+    LLM credentials are replaced by gateway URL + ephemeral key.
+    Real API keys never enter the container.
+
+    Non-LLM credentials (GH_TOKEN, git identity) are written directly —
+    they are not proxied through the gateway.
     """
+    from pynchy.gateway import get_gateway
+
     s = get_settings()
-    env_dir = s.data_dir / "env"
+    env_dir = s.data_dir / "env" / group_folder
     env_dir.mkdir(parents=True, exist_ok=True)
 
     env_vars: dict[str, str] = {}
+    gateway = get_gateway()
 
-    # --- Read secrets from Settings ---
-    secret_map = {
-        "ANTHROPIC_API_KEY": s.secrets.anthropic_api_key,
-        "OPENAI_API_KEY": s.secrets.openai_api_key,
-        "GH_TOKEN": s.secrets.gh_token,
-        "CLAUDE_CODE_OAUTH_TOKEN": s.secrets.claude_code_oauth_token,
-    }
-    for env_name, secret_val in secret_map.items():
-        if secret_val is not None:
-            env_vars[env_name] = secret_val.get_secret_value()
+    # ------------------------------------------------------------------
+    # LLM credentials — routed through the gateway
+    # ------------------------------------------------------------------
 
-    # --- Auto-discover Claude credentials ---
-    if "CLAUDE_CODE_OAUTH_TOKEN" not in env_vars and "ANTHROPIC_API_KEY" not in env_vars:
-        token = _read_oauth_token()
-        if token:
-            env_vars["CLAUDE_CODE_OAUTH_TOKEN"] = token
-            logger.debug("Using OAuth token from Claude Code credentials")
+    if gateway is not None:
+        if gateway.has_provider("anthropic"):
+            env_vars["ANTHROPIC_BASE_URL"] = gateway.base_url
+            env_vars["ANTHROPIC_AUTH_TOKEN"] = gateway.key
+        if gateway.has_provider("openai"):
+            env_vars["OPENAI_BASE_URL"] = gateway.base_url
+            env_vars["OPENAI_API_KEY"] = gateway.key
 
-    # --- Auto-discover GH_TOKEN ---
-    if "GH_TOKEN" not in env_vars:
-        gh_token = _read_gh_token()
-        if gh_token:
+    # ------------------------------------------------------------------
+    # Non-LLM credentials (not proxied)
+    # ------------------------------------------------------------------
+
+    # GH_TOKEN — god only
+    if is_god:
+        if s.secrets.gh_token:
+            env_vars["GH_TOKEN"] = s.secrets.gh_token.get_secret_value()
+        elif gh_token := _read_gh_token():
             env_vars["GH_TOKEN"] = gh_token
             logger.debug("Using GitHub token from gh CLI")
 
-    # --- Auto-discover git identity ---
+    # Git identity
     git_name, git_email = _read_git_identity()
     if git_name:
         env_vars["GIT_AUTHOR_NAME"] = git_name
@@ -155,7 +164,12 @@ def _write_env_file() -> Path | None:
         )
         return None
 
-    logger.debug("Container env prepared", vars=list(env_vars.keys()))
+    logger.debug(
+        "Container env prepared",
+        group=group_folder,
+        is_god=is_god,
+        vars=list(env_vars.keys()),
+    )
     lines = [f"{k}={_shell_quote(v)}" for k, v in env_vars.items()]
     (env_dir / "env").write_text("\n".join(lines) + "\n")
     return env_dir

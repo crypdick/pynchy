@@ -76,6 +76,18 @@ class SecretsConfig(BaseModel):
     claude_code_oauth_token: SecretStr | None = None
 
 
+class GatewayConfig(BaseModel):
+    """LLM API gateway — reverse proxy for credential isolation.
+
+    Containers receive a gateway URL and ephemeral key instead of real
+    API credentials.  Real keys stay on the host.
+    """
+
+    port: int = 4010
+    host: str = "0.0.0.0"  # bind address
+    container_host: str = "host.docker.internal"  # hostname containers use to reach host
+
+
 class WorkspaceDefaultsConfig(BaseModel):
     requires_trigger: bool = True
     context_mode: Literal["group", "isolated"] = "group"
@@ -216,6 +228,7 @@ class PluginConfig(BaseModel):
     repo: str
     ref: str = "main"
     enabled: bool = True
+    trusted: bool = False  # Skip verification — use for self-authored plugins
 
 
 class SecurityConfig(BaseModel):
@@ -257,6 +270,7 @@ class Settings(BaseSettings):
     server: ServerConfig = ServerConfig()
     logging: LoggingConfig = LoggingConfig()
     secrets: SecretsConfig = SecretsConfig()
+    gateway: GatewayConfig = GatewayConfig()
     workspace_defaults: WorkspaceDefaultsConfig = WorkspaceDefaultsConfig()
     workspaces: dict[str, WorkspaceConfig] = {}  # [workspaces.<folder_name>]
     commands: CommandWordsConfig = CommandWordsConfig()

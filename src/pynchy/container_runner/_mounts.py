@@ -72,8 +72,8 @@ def _build_volume_mounts(
     if scripts_dir.exists():
         mounts.append(VolumeMount(str(scripts_dir), "/workspace/scripts", readonly=True))
 
-    # Environment file directory
-    env_dir = _write_env_file()
+    # Environment file directory (per-group, GH_TOKEN scoped to god only)
+    env_dir = _write_env_file(is_god=is_god, group_folder=group.folder)
     if env_dir is not None:
         mounts.append(VolumeMount(str(env_dir), "/workspace/env-dir", readonly=True))
 
@@ -121,7 +121,18 @@ def _build_volume_mounts(
 
 def _build_container_args(mounts: list[VolumeMount], container_name: str) -> list[str]:
     """Build CLI args for `container run`."""
+    from pynchy.gateway import get_gateway
+    from pynchy.runtime import get_runtime
+
     args = ["run", "-i", "--rm", "--name", container_name]
+
+    # When the gateway is active and we're using Docker, add a host mapping
+    # so containers can reach the host process via ``host.docker.internal``.
+    # Docker Desktop sets this automatically; on Linux it requires --add-host.
+    gateway = get_gateway()
+    if gateway is not None and get_runtime().name == "docker":
+        args.extend(["--add-host", "host.docker.internal:host-gateway"])
+
     for m in mounts:
         if m.readonly:
             args.extend(
