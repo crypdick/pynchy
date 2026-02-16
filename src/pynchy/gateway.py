@@ -70,13 +70,31 @@ class GatewayProto(Protocol):
 
 
 # ===========================================================================
-# LiteLLM mode — Docker container
+# LiteLLM mode — Docker container with PostgreSQL sidecar
 # ===========================================================================
 
 _LITELLM_CONTAINER = "pynchy-litellm"
+_POSTGRES_CONTAINER = "pynchy-litellm-db"
+_NETWORK_NAME = "pynchy-litellm-net"
 _LITELLM_INTERNAL_PORT = 4000
-_HEALTH_TIMEOUT = 60  # seconds to wait for litellm to become healthy
+_POSTGRES_PORT = 5432
+_POSTGRES_DB = "litellm"
+_POSTGRES_USER = "litellm"
+_HEALTH_TIMEOUT = 90  # seconds; Postgres + LiteLLM migrations need headroom
 _HEALTH_POLL_INTERVAL = 1.0
+_POSTGRES_HEALTH_TIMEOUT = 30
+
+_SALT_KEY_FILE = "salt.key"
+
+
+def _load_or_create_persistent_key(path: Path, prefix: str = "") -> str:
+    """Read a key from disk, or generate and persist one on first run."""
+    if path.exists():
+        return path.read_text().strip()
+    key = f"{prefix}{secrets.token_urlsafe(32)}"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(key)
+    return key
 
 
 class LiteLLMGateway:
@@ -92,6 +110,10 @@ class LiteLLMGateway:
     Or omit ``master_key`` entirely — litellm reads the env var
     automatically.
 
+    A PostgreSQL sidecar container provides persistent storage for
+    spend tracking, provider budget caps, and virtual keys.  Both
+    containers share a private Docker network.
+
     Attributes:
         port: Host port mapped to the litellm container.
         key: Ephemeral master key for container authentication.
@@ -104,6 +126,7 @@ class LiteLLMGateway:
         port: int,
         container_host: str,
         image: str,
+        postgres_image: str,
         data_dir: Path,
     ) -> None:
         self.port = port
@@ -112,11 +135,28 @@ class LiteLLMGateway:
 
         self._config_path = Path(config_path).resolve()
         self._image = image
+        self._postgres_image = postgres_image
         self._data_dir = data_dir / "litellm"
+        self._pg_data_dir = self._data_dir / "postgres"
+
+        self._pg_password = _load_or_create_persistent_key(
+            self._data_dir / "pg_password.key",
+        )
+        self._salt_key = _load_or_create_persistent_key(
+            self._data_dir / _SALT_KEY_FILE,
+            prefix="sk-salt-",
+        )
 
     @property
     def base_url(self) -> str:
         return f"http://{self.container_host}:{self.port}"
+
+    @property
+    def _database_url(self) -> str:
+        return (
+            f"postgresql://{_POSTGRES_USER}:{self._pg_password}"
+            f"@{_POSTGRES_CONTAINER}:{_POSTGRES_PORT}/{_POSTGRES_DB}"
+        )
 
     def has_provider(self, name: str) -> bool:
         # LiteLLM handles provider resolution — always expose both URLs.
@@ -146,23 +186,107 @@ class LiteLLMGateway:
         )
 
     # ------------------------------------------------------------------
-    # Lifecycle
+    # Image helpers
     # ------------------------------------------------------------------
 
-    def _ensure_image(self) -> None:
-        """Pull the LiteLLM image if not already present."""
-        result = self._run_docker(
-            "image",
-            "inspect",
-            self._image,
-            check=False,
-        )
+    def _ensure_image(self, image: str) -> None:
+        """Pull an image if not already present."""
+        result = self._run_docker("image", "inspect", image, check=False)
         if result.returncode == 0:
             return
 
-        logger.info("Pulling LiteLLM image (first run may take a minute)", image=self._image)
-        self._run_docker("pull", self._image, timeout=300)
-        logger.info("LiteLLM image pulled", image=self._image)
+        logger.info("Pulling Docker image (first run may take a minute)", image=image)
+        self._run_docker("pull", image, timeout=300)
+        logger.info("Docker image pulled", image=image)
+
+    # ------------------------------------------------------------------
+    # Docker network
+    # ------------------------------------------------------------------
+
+    def _ensure_network(self) -> None:
+        """Create the private Docker network if it doesn't exist."""
+        result = self._run_docker("network", "inspect", _NETWORK_NAME, check=False)
+        if result.returncode == 0:
+            return
+        self._run_docker("network", "create", _NETWORK_NAME)
+        logger.info("Created Docker network", network=_NETWORK_NAME)
+
+    # ------------------------------------------------------------------
+    # PostgreSQL sidecar
+    # ------------------------------------------------------------------
+
+    async def _start_postgres(self) -> None:
+        """Start the PostgreSQL sidecar and wait for it to accept connections."""
+        self._pg_data_dir.mkdir(parents=True, exist_ok=True)
+        self._ensure_image(self._postgres_image)
+
+        self._run_docker("rm", "-f", _POSTGRES_CONTAINER, check=False)
+
+        logger.info(
+            "Starting PostgreSQL sidecar",
+            image=self._postgres_image,
+            data_dir=str(self._pg_data_dir),
+        )
+
+        self._run_docker(
+            "run", "-d",
+            "--name", _POSTGRES_CONTAINER,
+            "--network", _NETWORK_NAME,
+            "-v", f"{self._pg_data_dir}:/var/lib/postgresql/data",
+            "-e", f"POSTGRES_USER={_POSTGRES_USER}",
+            "-e", f"POSTGRES_PASSWORD={self._pg_password}",
+            "-e", f"POSTGRES_DB={_POSTGRES_DB}",
+            "--restart", "unless-stopped",
+            self._postgres_image,
+        )  # fmt: skip
+
+        await self._wait_postgres_healthy()
+
+    async def _wait_postgres_healthy(self) -> None:
+        """Poll pg_isready inside the container until Postgres is up."""
+        deadline = asyncio.get_event_loop().time() + _POSTGRES_HEALTH_TIMEOUT
+
+        while asyncio.get_event_loop().time() < deadline:
+            result = self._run_docker(
+                "exec",
+                _POSTGRES_CONTAINER,
+                "pg_isready",
+                "-U",
+                _POSTGRES_USER,
+                check=False,
+            )
+            if result.returncode == 0:
+                logger.info("PostgreSQL sidecar ready")
+                return
+
+            # Ensure the container is still running
+            inspect = self._run_docker(
+                "inspect",
+                "-f",
+                "{{.State.Running}}",
+                _POSTGRES_CONTAINER,
+                check=False,
+            )
+            if inspect.stdout.strip() != "true":
+                logs = self._run_docker(
+                    "logs",
+                    "--tail",
+                    "30",
+                    _POSTGRES_CONTAINER,
+                    check=False,
+                )
+                logger.error("PostgreSQL container exited", logs=logs.stdout[-2000:])
+                msg = "PostgreSQL container failed to start — check logs above"
+                raise RuntimeError(msg)
+
+            await asyncio.sleep(_HEALTH_POLL_INTERVAL)
+
+        msg = f"PostgreSQL did not become ready within {_POSTGRES_HEALTH_TIMEOUT}s"
+        raise TimeoutError(msg)
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
 
     async def start(self) -> None:
         if not self._docker_available():
@@ -174,9 +298,13 @@ class LiteLLMGateway:
             raise FileNotFoundError(msg)
 
         self._data_dir.mkdir(parents=True, exist_ok=True)
-        self._ensure_image()
 
-        # Remove stale container from previous run
+        self._ensure_network()
+        await self._start_postgres()
+
+        self._ensure_image(self._image)
+
+        # Remove stale LiteLLM container from previous run
         self._run_docker("rm", "-f", _LITELLM_CONTAINER, check=False)
 
         logger.info(
@@ -189,11 +317,13 @@ class LiteLLMGateway:
         self._run_docker(
             "run", "-d",
             "--name", _LITELLM_CONTAINER,
+            "--network", _NETWORK_NAME,
             "-p", f"{self.port}:{_LITELLM_INTERNAL_PORT}",
             "-v", f"{self._config_path}:/app/config.yaml:ro",
             "-v", f"{self._data_dir}:/app/data",
             "-e", f"LITELLM_MASTER_KEY={self.key}",
-            "-e", "DATABASE_URL=sqlite:///app/data/litellm.db",
+            "-e", f"LITELLM_SALT_KEY={self._salt_key}",
+            "-e", f"DATABASE_URL={self._database_url}",
             "--restart", "unless-stopped",
             self._image,
             "--config", "/app/config.yaml",
@@ -245,9 +375,12 @@ class LiteLLMGateway:
         raise TimeoutError(msg)
 
     async def stop(self) -> None:
-        logger.info("Stopping LiteLLM proxy container")
+        logger.info("Stopping LiteLLM gateway containers")
         self._run_docker("stop", "-t", "5", _LITELLM_CONTAINER, check=False)
         self._run_docker("rm", "-f", _LITELLM_CONTAINER, check=False)
+        self._run_docker("stop", "-t", "5", _POSTGRES_CONTAINER, check=False)
+        self._run_docker("rm", "-f", _POSTGRES_CONTAINER, check=False)
+        self._run_docker("network", "rm", _NETWORK_NAME, check=False)
         logger.info("LiteLLM gateway stopped")
 
 
@@ -485,6 +618,7 @@ async def start_gateway() -> LiteLLMGateway | BuiltinGateway:
             port=s.gateway.port,
             container_host=s.gateway.container_host,
             image=s.gateway.litellm_image,
+            postgres_image=s.gateway.postgres_image,
             data_dir=s.data_dir,
         )
     else:

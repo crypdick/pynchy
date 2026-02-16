@@ -10,6 +10,7 @@ import pytest
 from pynchy.gateway import (
     BuiltinGateway,
     LiteLLMGateway,
+    _load_or_create_persistent_key,
     start_gateway,
     stop_gateway,
 )
@@ -20,15 +21,41 @@ from pynchy.gateway import (
 
 _GATEWAY_MOD = "pynchy.gateway"
 
+_LITELLM_KWARGS = dict(
+    port=4000,
+    container_host="host.docker.internal",
+    image="ghcr.io/berriai/litellm:main-latest",
+    postgres_image="postgres:17-alpine",
+)
+
+
+class TestPersistentKey:
+    def test_creates_key_on_first_call(self, tmp_path: Path):
+        key_file = tmp_path / "test.key"
+        key = _load_or_create_persistent_key(key_file, prefix="pfx-")
+        assert key.startswith("pfx-")
+        assert key_file.exists()
+        assert key_file.read_text().strip() == key
+
+    def test_returns_existing_key(self, tmp_path: Path):
+        key_file = tmp_path / "test.key"
+        key_file.write_text("my-fixed-key")
+        key = _load_or_create_persistent_key(key_file, prefix="pfx-")
+        assert key == "my-fixed-key"
+
+    def test_creates_parent_dirs(self, tmp_path: Path):
+        key_file = tmp_path / "a" / "b" / "test.key"
+        key = _load_or_create_persistent_key(key_file)
+        assert key_file.exists()
+        assert len(key) > 10
+
 
 class TestLiteLLMGatewayInit:
     def test_generates_ephemeral_key(self, tmp_path: Path):
         gw = LiteLLMGateway(
             config_path=str(tmp_path / "config.yaml"),
-            port=4000,
-            container_host="host.docker.internal",
-            image="ghcr.io/berriai/litellm:main-latest",
             data_dir=tmp_path,
+            **_LITELLM_KWARGS,
         )
         assert gw.key.startswith("sk-pynchy-")
         assert len(gw.key) > 20
@@ -36,24 +63,43 @@ class TestLiteLLMGatewayInit:
     def test_base_url(self, tmp_path: Path):
         gw = LiteLLMGateway(
             config_path=str(tmp_path / "config.yaml"),
-            port=4000,
-            container_host="host.docker.internal",
-            image="ghcr.io/berriai/litellm:main-latest",
             data_dir=tmp_path,
+            **_LITELLM_KWARGS,
         )
         assert gw.base_url == "http://host.docker.internal:4000"
 
     def test_has_provider_always_true(self, tmp_path: Path):
         gw = LiteLLMGateway(
             config_path=str(tmp_path / "config.yaml"),
-            port=4000,
-            container_host="host.docker.internal",
-            image="ghcr.io/berriai/litellm:main-latest",
             data_dir=tmp_path,
+            **_LITELLM_KWARGS,
         )
         assert gw.has_provider("anthropic") is True
         assert gw.has_provider("openai") is True
         assert gw.has_provider("anything") is True
+
+    def test_database_url_format(self, tmp_path: Path):
+        gw = LiteLLMGateway(
+            config_path=str(tmp_path / "config.yaml"),
+            data_dir=tmp_path,
+            **_LITELLM_KWARGS,
+        )
+        assert gw._database_url.startswith("postgresql://litellm:")
+        assert "@pynchy-litellm-db:5432/litellm" in gw._database_url
+
+    def test_persists_salt_and_pg_password(self, tmp_path: Path):
+        gw1 = LiteLLMGateway(
+            config_path=str(tmp_path / "config.yaml"),
+            data_dir=tmp_path,
+            **_LITELLM_KWARGS,
+        )
+        gw2 = LiteLLMGateway(
+            config_path=str(tmp_path / "config.yaml"),
+            data_dir=tmp_path,
+            **_LITELLM_KWARGS,
+        )
+        assert gw1._salt_key == gw2._salt_key
+        assert gw1._pg_password == gw2._pg_password
 
 
 class TestLiteLLMGatewayStart:
@@ -67,10 +113,8 @@ class TestLiteLLMGatewayStart:
     def gw(self, litellm_config: Path, tmp_path: Path) -> LiteLLMGateway:
         return LiteLLMGateway(
             config_path=str(litellm_config),
-            port=4000,
-            container_host="host.docker.internal",
-            image="ghcr.io/berriai/litellm:main-latest",
             data_dir=tmp_path,
+            **_LITELLM_KWARGS,
         )
 
     @pytest.mark.asyncio
@@ -85,10 +129,8 @@ class TestLiteLLMGatewayStart:
     async def test_raises_if_config_missing(self, tmp_path: Path):
         gw = LiteLLMGateway(
             config_path=str(tmp_path / "nonexistent.yaml"),
-            port=4000,
-            container_host="host.docker.internal",
-            image="ghcr.io/berriai/litellm:main-latest",
             data_dir=tmp_path,
+            **_LITELLM_KWARGS,
         )
         with (
             patch("shutil.which", return_value="/usr/bin/docker"),
@@ -97,11 +139,11 @@ class TestLiteLLMGatewayStart:
             await gw.start()
 
     @pytest.mark.asyncio
-    async def test_start_issues_docker_run(self, gw: LiteLLMGateway):
-        """Verify docker run is called with the right arguments."""
+    async def test_start_creates_network_and_postgres(self, gw: LiteLLMGateway):
+        """Verify start creates network, Postgres, then LiteLLM."""
         calls: list[list[str]] = []
 
-        def fake_docker(*args: str, check: bool = True):
+        def fake_docker(*args: str, check: bool = True, timeout: int = 30):
             calls.append(list(args))
             result = MagicMock()
             result.stdout = ""
@@ -111,27 +153,28 @@ class TestLiteLLMGatewayStart:
         with (
             patch("shutil.which", return_value="/usr/bin/docker"),
             patch.object(type(gw), "_run_docker", staticmethod(fake_docker)),
+            patch.object(gw, "_wait_postgres_healthy", new_callable=AsyncMock),
             patch.object(gw, "_wait_healthy", new_callable=AsyncMock),
         ):
             await gw.start()
 
-        # First call: rm -f stale container
-        assert calls[0] == ["rm", "-f", "pynchy-litellm"]
+        flat = [" ".join(c) for c in calls]
 
-        # Second call: docker run
-        run_args = calls[1]
-        assert run_args[0] == "run"
-        assert "-d" in run_args
-        assert "--name" in run_args
-        assert "pynchy-litellm" in run_args
-        assert any(arg.startswith("LITELLM_MASTER_KEY=") for arg in run_args)
-        assert any("config.yaml:ro" in arg for arg in run_args)
+        assert any("network inspect pynchy-litellm-net" in c for c in flat)
+        assert any("pynchy-litellm-db" in c and "run" in c for c in flat)
+        assert any("pynchy-litellm" in c and "run" in c and "LITELLM_MASTER_KEY" in c for c in flat)
+
+        litellm_run = next(c for c in flat if "LITELLM_MASTER_KEY" in c)
+        assert "DATABASE_URL=" in litellm_run
+        assert "postgresql://" in litellm_run
+        assert "LITELLM_SALT_KEY=" in litellm_run
+        assert "--network pynchy-litellm-net" in litellm_run
 
     @pytest.mark.asyncio
-    async def test_stop_removes_container(self, gw: LiteLLMGateway):
+    async def test_stop_removes_all_containers_and_network(self, gw: LiteLLMGateway):
         calls: list[list[str]] = []
 
-        def fake_docker(*args: str, check: bool = True):
+        def fake_docker(*args: str, check: bool = True, timeout: int = 30):
             calls.append(list(args))
             result = MagicMock()
             result.stdout = ""
@@ -143,6 +186,9 @@ class TestLiteLLMGatewayStart:
 
         assert ["stop", "-t", "5", "pynchy-litellm"] in calls
         assert ["rm", "-f", "pynchy-litellm"] in calls
+        assert ["stop", "-t", "5", "pynchy-litellm-db"] in calls
+        assert ["rm", "-f", "pynchy-litellm-db"] in calls
+        assert ["network", "rm", "pynchy-litellm-net"] in calls
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +233,7 @@ class TestGatewayModeSelection:
         mock_settings.gateway.port = 4000
         mock_settings.gateway.container_host = "host.docker.internal"
         mock_settings.gateway.litellm_image = "ghcr.io/berriai/litellm:main-latest"
+        mock_settings.gateway.postgres_image = "postgres:17-alpine"
         mock_settings.data_dir = tmp_path
 
         with (

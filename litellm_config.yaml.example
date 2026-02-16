@@ -68,11 +68,15 @@ router_settings:
   cooldown_time: 60
 
   # Provider-level budget caps (combined across all keys for that provider).
+  # Requires the PostgreSQL sidecar (started automatically by pynchy).
   # For per-key budgets, use litellm's virtual key system via the admin API.
   #
   # provider_budget_config:
   #   anthropic:
   #     budget_limit: 200.0   # USD
+  #     time_period: 30d
+  #   openai:
+  #     budget_limit: 50.0
   #     time_period: 30d
 
 # ---------------------------------------------------------------------------
