@@ -314,6 +314,20 @@ class LiteLLMGateway:
             port=self.port,
         )
 
+        # Build environment variables
+        env_vars = [
+            "-e", f"LITELLM_MASTER_KEY={self.key}",
+            "-e", f"LITELLM_SALT_KEY={self._salt_key}",
+            "-e", f"DATABASE_URL={self._database_url}",
+        ]
+
+        # Add UI credentials if configured
+        s = get_settings()
+        if s.gateway.ui_username:
+            env_vars.extend(["-e", f"UI_USERNAME={s.gateway.ui_username}"])
+        if s.gateway.ui_password:
+            env_vars.extend(["-e", f"UI_PASSWORD={s.gateway.ui_password.get_secret_value()}"])
+
         self._run_docker(
             "run", "-d",
             "--name", _LITELLM_CONTAINER,
@@ -321,9 +335,7 @@ class LiteLLMGateway:
             "-p", f"{self.port}:{_LITELLM_INTERNAL_PORT}",
             "-v", f"{self._config_path}:/app/config.yaml:ro",
             "-v", f"{self._data_dir}:/app/data",
-            "-e", f"LITELLM_MASTER_KEY={self.key}",
-            "-e", f"LITELLM_SALT_KEY={self._salt_key}",
-            "-e", f"DATABASE_URL={self._database_url}",
+            *env_vars,
             "--restart", "unless-stopped",
             self._image,
             "--config", "/app/config.yaml",
