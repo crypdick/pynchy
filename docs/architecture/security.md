@@ -62,7 +62,17 @@ The host verifies messages and task operations against group identity:
 | View all tasks | ✓ | Own only |
 | Manage other groups | ✓ | ✗ |
 
-### 5. Credential Handling
+### 5. MCP Service Tool Policy
+
+Host-side MCP service tools (calendar, etc.) are gated by a policy middleware. Tools are assigned to risk tiers:
+
+- **always-approve** — low-risk read operations, executed without checks
+- **rules-engine** — deterministic rules (auto-approved for now; future: contextual rules like "only your own calendar")
+- **human-approval** — high-risk operations, denied until a human approves via chat
+
+God workspaces bypass all policy gates — all service tools are auto-approved. Non-god workspaces fall back to strict defaults (human-approval for all tools) unless a security profile is configured.
+
+### 6. Credential Handling
 
 #### LLM Gateway (default)
 
@@ -111,9 +121,9 @@ Each group gets its own env directory, so concurrent containers don't share secr
 - Mount allowlist — external, never mounted
 - Any credentials matching blocked patterns
 
-### 6. Prompt Injection
+### 7. Prompt Injection
 
-WhatsApp messages can contain malicious instructions that attempt to manipulate Claude's behavior.
+Channel messages can contain malicious instructions that attempt to manipulate Claude's behavior.
 
 **Mitigations:**
 - Container isolation limits the blast radius of successful attacks
@@ -137,9 +147,10 @@ WhatsApp messages can contain malicious instructions that attempt to manipulate 
 | Project root access | `/workspace/project` (rw) | Via `project_access` (worktree, rw) |
 | Group folder | `/workspace/group` (rw) | `/workspace/group` (rw) |
 | Global memory | Implicit via project | `/workspace/global` (ro) |
+| `config.toml` | Mounted read-write | Not mounted |
 | Additional mounts | Configurable | Read-only unless allowed |
 | Network access | Unrestricted | Unrestricted |
-| MCP tools | All | All |
+| MCP service tools | Auto-approved | Policy-gated (see below) |
 
 ## Security Architecture Diagram
 

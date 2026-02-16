@@ -206,6 +206,16 @@ requires_trigger = false
 # verbs = ["redeploy", "deploy"]
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Slack Channel (built-in plugin)
+# ─────────────────────────────────────────────────────────────────────────────
+# Connects to Slack via Socket Mode. Each Slack channel/DM maps to a pynchy
+# workspace with JID "slack:<CHANNEL_ID>". Activates when tokens are set.
+
+# [slack]
+# bot_token = "xoxb-..."
+# app_token = "xapp-..."
+
+# ─────────────────────────────────────────────────────────────────────────────
 # CalDAV (Calendar)
 # ─────────────────────────────────────────────────────────────────────────────
 # Built-in host-side plugin. Connects to any CalDAV server (Nextcloud, etc.)

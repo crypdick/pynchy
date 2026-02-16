@@ -15,7 +15,7 @@
 
 **Modularity.** New capabilities are added as plugins, not features in the base codebase. Plugins can provide:
 
-- **Channels** — New communication platforms (Telegram, Slack, Discord)
+- **Channels** — Communication platforms (WhatsApp, Slack, Telegram, Discord)
 - **Agent Cores** — Alternative LLM engines (OpenAI, Ollama)
 - **MCP Servers** — Tools for agents via Model Context Protocol
 - **Skills** — Agent instructions and capabilities (markdown)
@@ -39,8 +39,8 @@ See **[docs/install.md](docs/install.md)** for installation instructions.
 
 ## FAQ
 
-**Why WhatsApp and not Telegram/Signal/etc?**
-Because I use WhatsApp. Write a [plugin](docs/plugins/index.md) to support new channels.
+**What messaging channels are supported?**
+WhatsApp and Slack have first-party plugins. Channels are pluggable — write a [plugin](docs/plugins/index.md) to add new ones.
 
 **Why Apple Container instead of Docker?**
 On macOS, Apple Container is lightweight and optimized for Apple silicon. Docker works too and is used as a fallback. On Linux, Docker is the only option.
