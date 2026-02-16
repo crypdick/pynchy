@@ -10,6 +10,7 @@ import json
 import subprocess
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from pynchy.commands import is_context_reset, is_end_session, is_redeploy
@@ -194,6 +195,104 @@ async def execute_direct_command(
         logger.error("Direct command error", group=group.name, error=str(exc))
 
 
+async def _handle_reset_handoff(
+    deps: MessageHandlerDeps,
+    chat_jid: str,
+    group: RegisteredGroup,
+    reset_file: Path,
+) -> bool | None:
+    """Consume a reset_prompt.json file and run the handoff agent.
+
+    Returns True/False if the reset was handled (success/failure),
+    or None if there was no reset to process.
+    """
+    if not reset_file.exists():
+        return None
+
+    s = get_settings()
+    try:
+        reset_data = json.loads(reset_file.read_text())
+        reset_file.unlink()
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning(
+            "Failed to read reset prompt file",
+            group=group.name,
+            path=str(reset_file),
+            err=str(exc),
+        )
+        reset_file.unlink(missing_ok=True)
+        return True
+
+    reset_message = reset_data.get("message", "")
+    if not reset_message:
+        return True
+
+    logger.info("Processing reset handoff", group=group.name)
+
+    async def handoff_on_output(result: ContainerOutput) -> None:
+        await deps.handle_streamed_output(chat_jid, group, result)
+
+    reset_messages = [
+        {
+            "message_type": "user",
+            "sender": "system",
+            "sender_name": "System",
+            "content": reset_message,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "metadata": {"source": "reset_handoff"},
+        }
+    ]
+
+    result = await deps.run_agent(group, chat_jid, reset_messages, handoff_on_output)
+
+    if reset_data.get("needsDirtyRepoCheck"):
+        dirty_check_file = s.data_dir / "ipc" / group.folder / "needs_dirty_check.json"
+        dirty_check_file.write_text(json.dumps({"timestamp": datetime.now(UTC).isoformat()}))
+
+    return result != "error"
+
+
+def _check_dirty_repo(group_name: str, dirty_check_file: Path) -> list[str]:
+    """Check for uncommitted changes and return system notices if dirty.
+
+    Consumes the dirty_check_file marker. Returns a list of system notice
+    strings (empty if repo is clean or file doesn't exist).
+    """
+    notices: list[str] = []
+    if not dirty_check_file.exists():
+        return notices
+    try:
+        dirty_check_file.unlink()
+        if is_repo_dirty():
+            notices.append(
+                "WARNING: Uncommitted changes detected in the repository. "
+                "Please review and commit these changes so that you may work "
+                "with a clean slate. "
+                "Run `git status` and `git diff` to see what has changed."
+            )
+            logger.info("Added dirty repo warning after reset", group=group_name)
+    except Exception as exc:
+        logger.error("Error checking for dirty repo after reset", err=str(exc))
+        dirty_check_file.unlink(missing_ok=True)
+    return notices
+
+
+async def _advance_cursor(deps: MessageHandlerDeps, chat_jid: str, new_timestamp: str) -> str:
+    """Advance the agent cursor to *new_timestamp*, persisting to DB.
+
+    Returns the **previous** cursor value so the caller can roll back on
+    error.  If ``save_state`` fails the cursor is automatically restored.
+    """
+    previous = deps.last_agent_timestamp.get(chat_jid, "")
+    deps.last_agent_timestamp[chat_jid] = new_timestamp
+    try:
+        await deps.save_state()
+    except Exception:
+        deps.last_agent_timestamp[chat_jid] = previous
+        raise
+    return previous
+
+
 async def process_group_messages(
     deps: MessageHandlerDeps,
     chat_jid: str,
@@ -206,48 +305,9 @@ async def process_group_messages(
 
     # Check for agent-initiated context reset prompt
     reset_file = s.data_dir / "ipc" / group.folder / "reset_prompt.json"
-    if reset_file.exists():
-        try:
-            reset_data = json.loads(reset_file.read_text())
-            reset_file.unlink()
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning(
-                "Failed to read reset prompt file",
-                group=group.name,
-                path=str(reset_file),
-                err=str(exc),
-            )
-            reset_file.unlink(missing_ok=True)
-            return True
-
-        reset_message = reset_data.get("message", "")
-        if reset_message:
-            logger.info("Processing reset handoff", group=group.name)
-
-            async def handoff_on_output(result: ContainerOutput) -> None:
-                await deps.handle_streamed_output(chat_jid, group, result)
-
-            reset_messages = [
-                {
-                    "message_type": "user",
-                    "sender": "system",
-                    "sender_name": "System",
-                    "content": reset_message,
-                    "timestamp": datetime.now(UTC).isoformat(),
-                    "metadata": {"source": "reset_handoff"},
-                }
-            ]
-
-            result = await deps.run_agent(group, chat_jid, reset_messages, handoff_on_output)
-
-            if reset_data.get("needsDirtyRepoCheck"):
-                dirty_check_file = s.data_dir / "ipc" / group.folder / "needs_dirty_check.json"
-                dirty_check_file.write_text(
-                    json.dumps({"timestamp": datetime.now(UTC).isoformat()})
-                )
-
-            return result != "error"
-        return True
+    reset_result = await _handle_reset_handoff(deps, chat_jid, group, reset_file)
+    if reset_result is not None:
+        return reset_result
 
     is_god_group = group.is_god
     since_timestamp = deps.last_agent_timestamp.get(chat_jid, "")
@@ -271,40 +331,11 @@ async def process_group_messages(
     messages = format_messages_for_sdk(missed_messages)
 
     # Check if we need to add dirty repo warning after context reset
-    reset_system_notices: list[str] = []
     dirty_check_file = s.data_dir / "ipc" / group.folder / "needs_dirty_check.json"
-    if dirty_check_file.exists() and is_god_group:
-        try:
-            dirty_check_file.unlink()
-            if is_repo_dirty():
-                reset_system_notices.append(
-                    "WARNING: Uncommitted changes detected in the repository. "
-                    "Please review and commit these changes so that you may work "
-                    "with a clean slate. "
-                    "Run `git status` and `git diff` to see what has changed."
-                )
-                logger.info(
-                    "Added dirty repo warning after reset",
-                    group=group.name,
-                )
-        except Exception as exc:
-            logger.error(
-                "Error checking for dirty repo after reset",
-                err=str(exc),
-            )
-            dirty_check_file.unlink(missing_ok=True)
+    reset_system_notices = _check_dirty_repo(group.name, dirty_check_file) if is_god_group else []
 
-    # Advance cursor; save old cursor for rollback on error.
-    # Persist to DB first — if save_state fails, keep in-memory cursor
-    # at the old position so we don't silently skip messages.
-    previous_cursor = deps.last_agent_timestamp.get(chat_jid, "")
-    new_cursor = missed_messages[-1].timestamp
-    deps.last_agent_timestamp[chat_jid] = new_cursor
-    try:
-        await deps.save_state()
-    except Exception:
-        deps.last_agent_timestamp[chat_jid] = previous_cursor
-        raise
+    # Advance cursor with automatic rollback on failure
+    previous_cursor = await _advance_cursor(deps, chat_jid, missed_messages[-1].timestamp)
 
     logger.info(
         "Processing messages",

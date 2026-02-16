@@ -243,3 +243,196 @@ class TestHandleStreamedOutput:
         result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is False
+
+    # -----------------------------------------------------------------------
+    # Additional edge cases
+    # -----------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_result_with_dict_result_serialized_to_json(self):
+        """Non-string results should be JSON-serialized before processing."""
+        deps = _make_deps()
+        group = _make_group()
+        output = _make_output(type="result", result={"key": "value"})
+
+        with patch("pynchy.output_handler.store_message_direct", new_callable=AsyncMock):
+            result = await handle_streamed_output(deps, "g@g.us", group, output)
+
+        assert result is True
+        channel_text = deps.broadcast_to_channels.call_args[0][1]
+        assert "key" in channel_text
+
+    @pytest.mark.asyncio
+    async def test_result_with_mixed_internal_and_visible_text(self):
+        """Internal tags stripped, visible text remains."""
+        deps = _make_deps()
+        group = _make_group()
+        output = _make_output(type="result", result="<internal>secret</internal>Hello visible!")
+
+        with patch("pynchy.output_handler.store_message_direct", new_callable=AsyncMock):
+            result = await handle_streamed_output(deps, "g@g.us", group, output)
+
+        assert result is True
+        channel_text = deps.broadcast_to_channels.call_args[0][1]
+        assert "visible" in channel_text
+        assert "secret" not in channel_text
+
+    @pytest.mark.asyncio
+    async def test_result_metadata_partial_fields(self):
+        """Metadata with only some fields still formats correctly."""
+        deps = _make_deps()
+        group = _make_group()
+        # Only cost, no duration or turns
+        output = _make_output(
+            type="result",
+            result=None,
+            result_metadata={"total_cost_usd": 0.12},
+        )
+
+        with patch("pynchy.output_handler.store_message_direct", new_callable=AsyncMock):
+            await handle_streamed_output(deps, "g@g.us", group, output)
+
+        channel_text = deps.broadcast_to_channels.call_args[0][1]
+        assert "0.12 USD" in channel_text
+        # Duration and turns should NOT be in the output
+        assert "s" not in channel_text.replace("USD", "")  # no seconds
+        assert "turns" not in channel_text
+
+    @pytest.mark.asyncio
+    async def test_result_metadata_empty_dict_no_broadcast(self):
+        """Empty metadata dict should not produce a stats broadcast."""
+        deps = _make_deps()
+        group = _make_group()
+        output = _make_output(type="result", result=None, result_metadata={})
+
+        with patch("pynchy.output_handler.store_message_direct", new_callable=AsyncMock):
+            await handle_streamed_output(deps, "g@g.us", group, output)
+
+        # Store is called for metadata, but no channel broadcast for empty parts
+        # The broadcast should NOT be called because parts list is empty
+        deps.broadcast_to_channels.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_tool_use_with_none_tool_name_defaults(self):
+        """tool_use with None tool_name should default to 'tool'."""
+        deps = _make_deps()
+        group = _make_group()
+        output = _make_output(type="tool_use", tool_name=None, tool_input=None)
+
+        with patch("pynchy.output_handler.store_message_direct", new_callable=AsyncMock):
+            result = await handle_streamed_output(deps, "g@g.us", group, output)
+
+        assert result is False
+        channel_text = deps.broadcast_to_channels.call_args[0][1]
+        assert "tool" in channel_text.lower()
+
+    @pytest.mark.asyncio
+    async def test_system_event_with_none_subtype(self):
+        """System event with no subtype should show 'unknown'."""
+        deps = _make_deps()
+        group = _make_group()
+        output = _make_output(type="system", system_subtype=None, system_data=None)
+
+        with patch("pynchy.output_handler.store_message_direct", new_callable=AsyncMock):
+            result = await handle_streamed_output(deps, "g@g.us", group, output)
+
+        assert result is False
+        channel_text = deps.broadcast_to_channels.call_args[0][1]
+        assert "unknown" in channel_text
+
+    @pytest.mark.asyncio
+    async def test_host_channel_text_prefixed_with_house(self):
+        """Host messages should be prefixed with the house emoji on channels."""
+        deps = _make_deps()
+        group = _make_group()
+        output = _make_output(type="result", result="<host>Restarting</host>")
+
+        with patch("pynchy.output_handler.store_message_direct", new_callable=AsyncMock):
+            await handle_streamed_output(deps, "g@g.us", group, output)
+
+        channel_text = deps.broadcast_to_channels.call_args[0][1]
+        assert channel_text.startswith("🏠")
+        assert "Restarting" in channel_text
+
+    @pytest.mark.asyncio
+    async def test_normal_result_uses_agent_name(self):
+        """Normal (non-host) results should be prefixed with agent name."""
+        deps = _make_deps()
+        group = _make_group()
+        output = _make_output(type="result", result="Hello!")
+
+        with (
+            patch("pynchy.output_handler.store_message_direct", new_callable=AsyncMock),
+            patch("pynchy.output_handler.get_settings") as mock_settings,
+        ):
+            mock_settings.return_value.agent.name = "TestBot"
+            await handle_streamed_output(deps, "g@g.us", group, output)
+
+        channel_text = deps.broadcast_to_channels.call_args[0][1]
+        assert "TestBot" in channel_text
+
+    @pytest.mark.asyncio
+    async def test_result_and_metadata_both_processed(self):
+        """When both result text and metadata exist, both should be processed."""
+        deps = _make_deps()
+        group = _make_group()
+        output = _make_output(
+            type="result",
+            result="Done!",
+            result_metadata={"total_cost_usd": 0.03, "duration_ms": 5000},
+        )
+
+        with patch(
+            "pynchy.output_handler.store_message_direct",
+            new_callable=AsyncMock,
+        ) as mock_store:
+            result = await handle_streamed_output(deps, "g@g.us", group, output)
+
+        assert result is True
+        # Should have stored both metadata and result
+        assert mock_store.await_count >= 2
+        # Should have broadcast both stats and the result text
+        assert deps.broadcast_to_channels.await_count >= 2
+
+    @pytest.mark.asyncio
+    async def test_broadcast_trace_emits_correct_event_type(self):
+        """broadcast_trace should emit an AgentTraceEvent with correct trace_type."""
+        deps = _make_deps()
+
+        with patch("pynchy.output_handler.store_message_direct", new_callable=AsyncMock):
+            await broadcast_trace(
+                deps,
+                "g@g.us",
+                "tool_use",
+                {"tool_name": "Bash"},
+                "🔧 Bash: ls",
+                db_id_prefix="tool",
+                db_sender="tool_use",
+            )
+
+        event = deps.emit.call_args[0][0]
+        assert event.trace_type == "tool_use"
+        assert event.chat_jid == "g@g.us"
+        assert event.data == {"tool_name": "Bash"}
+
+    @pytest.mark.asyncio
+    async def test_broadcast_trace_uses_custom_message_type(self):
+        """broadcast_trace should use the specified message_type for DB storage."""
+        deps = _make_deps()
+
+        with patch(
+            "pynchy.output_handler.store_message_direct", new_callable=AsyncMock
+        ) as mock_store:
+            await broadcast_trace(
+                deps,
+                "g@g.us",
+                "system",
+                {"subtype": "init"},
+                "⚙️ system: init",
+                db_id_prefix="sys",
+                db_sender="system",
+                message_type="system",
+            )
+
+        call_kwargs = mock_store.call_args[1]
+        assert call_kwargs["message_type"] == "system"
