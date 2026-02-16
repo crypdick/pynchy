@@ -32,6 +32,7 @@ echo "Image: ${IMAGE_NAME}:${TAG}"
 # Generate container plugin requirements from currently installed plugins.
 python3 ./scripts/generate_plugin_requirements.py --output ./requirements-plugins.txt
 
+export DOCKER_BUILDKIT=1
 $RUNTIME build -t "${IMAGE_NAME}:${TAG}" .
 
 echo ""

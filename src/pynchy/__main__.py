@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import subprocess
 import sys
 
@@ -46,9 +47,11 @@ def _build() -> None:
         sys.exit(1)
 
     print(f"Building {s.container.image} with {runtime.cli}...")
+    env = {**os.environ, "DOCKER_BUILDKIT": "1"}
     result = subprocess.run(
         [runtime.cli, "build", "-t", s.container.image, "."],
         cwd=str(container_dir),
+        env=env,
     )
     sys.exit(result.returncode)
 
