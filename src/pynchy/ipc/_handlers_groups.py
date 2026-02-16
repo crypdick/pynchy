@@ -55,33 +55,6 @@ async def _handle_register_group(
         )
 
 
-async def _handle_refresh_groups(
-    data: dict[str, Any],
-    source_group: str,
-    is_god: bool,
-    deps: IpcDeps,
-) -> None:
-    if is_god:
-        logger.info(
-            "Group metadata refresh requested via IPC",
-            source_group=source_group,
-        )
-        registered_groups = deps.registered_groups()
-        await deps.sync_group_metadata(True)
-        available_groups = await deps.get_available_groups()
-        deps.write_groups_snapshot(
-            source_group,
-            True,
-            available_groups,
-            set(registered_groups.keys()),
-        )
-    else:
-        logger.warning(
-            "Unauthorized refresh_groups attempt blocked",
-            source_group=source_group,
-        )
-
-
 async def _handle_create_periodic_agent(
     data: dict[str, Any],
     source_group: str,
@@ -175,5 +148,4 @@ async def _handle_create_periodic_agent(
 
 
 register("register_group", _handle_register_group)
-register("refresh_groups", _handle_refresh_groups)
 register("create_periodic_agent", _handle_create_periodic_agent)

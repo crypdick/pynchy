@@ -16,6 +16,7 @@ dependencies = [
     "structlog>=25.5.0",
     "textual>=7.5.0",
     "tomlkit>=0.13",
+    "watchdog>=6.0.0",
 ]
 
 [project.scripts]

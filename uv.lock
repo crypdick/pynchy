@@ -1338,6 +1338,7 @@ dependencies = [
     { name = "structlog" },
     { name = "textual" },
     { name = "tomlkit" },
+    { name = "watchdog" },
 ]
 
 [package.dev-dependencies]
@@ -1372,6 +1373,7 @@ requires-dist = [
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "textual", specifier = ">=7.5.0" },
     { name = "tomlkit", specifier = ">=0.13" },
+    { name = "watchdog", specifier = ">=6.0.0" },
 ]
 
 [package.metadata.requires-dev]

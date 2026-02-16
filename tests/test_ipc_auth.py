@@ -437,15 +437,6 @@ class TestRegisterGroupAuth:
         assert deps.registered_groups().get("new@g.us") is None
 
 
-# --- refresh_groups authorization ---
-
-
-class TestRefreshGroupsAuth:
-    async def test_non_god_cannot_trigger_refresh(self, deps):
-        # Should be silently blocked
-        await dispatch({"type": "refresh_groups"}, "other-group", False, deps)
-
-
 # --- IPC message authorization ---
 
 
@@ -1101,27 +1092,6 @@ class TestFinishedWorkExecution:
 
             # Host message should still be sent despite merge failure
             assert len(deps.host_messages) == 1
-
-
-# --- refresh_groups execution ---
-
-
-class TestRefreshGroupsExecution:
-    """Tests for refresh_groups IPC command execution."""
-
-    async def test_god_triggers_metadata_refresh(self, deps):
-        # Patch sync_group_metadata on the deps instance to track calls
-        deps.sync_group_metadata = AsyncMock()
-        deps.get_available_groups = AsyncMock(return_value=[])
-
-        await dispatch(
-            {"type": "refresh_groups"},
-            "god",
-            True,
-            deps,
-        )
-
-        deps.sync_group_metadata.assert_called_once_with(True)
 
 
 # --- create_periodic_agent authorization ---

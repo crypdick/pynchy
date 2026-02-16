@@ -1,6 +1,6 @@
 # Inter-Process Communication (IPC)
 
-Containers are isolated from the host, so they communicate through a file-based IPC channel. The container writes JSON files to shared directories; the host polls those directories and processes them.
+Containers are isolated from the host, so they communicate through a file-based IPC channel. The container writes JSON files to shared directories; the host uses filesystem events (watchdog/inotify) to detect and process them immediately.
 
 ## Why File-Based
 
@@ -17,16 +17,18 @@ data/ipc/{group}/
 ├── input/             # Host → container: follow-up user messages
 ├── merge_results/     # Host → container: git sync responses
 ├── current_tasks.json # Host → container: read-only task snapshot
+├── todos.json         # Shared: host writes, container reads/manages
 └── reset_prompt.json  # Host internal: context reset signal
 ```
 
 ## Message Flow (Container → Host)
 
 1. Agent calls an MCP tool (e.g., `send_message`, `schedule_task`)
-2. The MCP server (`ipc_mcp.py`, running inside the container) writes a JSON file atomically to the appropriate subdirectory
-3. The host's IPC watcher (`ipc.py`) polls all group directories on a configurable interval
+2. The MCP server (running inside the container) writes a JSON file atomically to the appropriate subdirectory
+3. The host's IPC watcher (`ipc/_watcher.py`) detects the new file via watchdog (inotify on Linux, FSEvents on macOS)
 4. Host reads the file, authorizes the operation, executes it, and deletes the file
 5. Failed files are moved to `data/ipc/errors/` for inspection
+6. On startup, the watcher sweeps all directories for files written while the process was down (crash recovery)
 
 ### Atomic writes
 
@@ -44,9 +46,27 @@ The host only reads `.json` files, so the `.json.tmp` intermediate is never pick
 
 When a user sends a follow-up message while the container is already running, the host writes to `data/ipc/{group}/input/`. The container's agent runner watches this directory and injects the message into the active conversation via stdin.
 
-## IPC Message Types
+## IPC Protocol
 
-### Messages (`messages/`)
+IPC files use one of two formats depending on their tier:
+
+### Tier 1: Signals
+
+Signals carry no payload. The host derives behavior from the signal type and which group sent it.
+
+```json
+{"signal": "refresh_groups"}
+```
+
+| Signal | Purpose | God only? |
+|--------|---------|-----------|
+| `refresh_groups` | Re-sync group metadata | Yes |
+
+### Tier 2: Data-carrying requests
+
+Requests carry payload data via the `type` field. Future steps will add Deputy mediation for these.
+
+#### Messages (`messages/`)
 
 Outbound chat messages. The agent can send messages mid-run without ending its turn.
 
@@ -63,7 +83,7 @@ Outbound chat messages. The agent can send messages mid-run without ending its t
 
 `sender` is optional — used for multi-bot display in Telegram.
 
-### Tasks (`tasks/`)
+#### Tasks (`tasks/`)
 
 All other operations — scheduling, group management, deployment, git sync — go through the tasks directory. The `type` field determines the operation:
 
@@ -75,7 +95,6 @@ All other operations — scheduling, group management, deployment, git sync — 
 | `resume_task` | Resume a task | No (own tasks) |
 | `cancel_task` | Delete a task | No (own tasks) |
 | `register_group` | Register a new WhatsApp group | Yes |
-| `refresh_groups` | Re-sync group metadata from WhatsApp | Yes |
 | `create_periodic_agent` | Create a group + task + config for a periodic agent | Yes |
 | `deploy` | Trigger a deployment (rebuild, restart) | Yes |
 | `reset_context` | Clear session and chat history | No |
@@ -88,6 +107,6 @@ The host enforces permissions based on the source group's identity. See [Securit
 
 ## Container-Side MCP Server
 
-The agent interacts with IPC through MCP tools exposed by `ipc_mcp.py` (runs as an MCP server inside the container). These tools validate inputs and write the appropriate JSON files. The agent never writes IPC files directly.
+The agent interacts with IPC through MCP tools exposed by the agent tools MCP server (runs inside the container). These tools validate inputs and write the appropriate JSON files. The agent never writes IPC files directly.
 
 For the list of MCP tools available to agents, see [Scheduled Tasks](../usage/scheduled-tasks.md#mcp-tools).
