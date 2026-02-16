@@ -77,9 +77,7 @@ async def read_stdout(
                 json_str = state.parse_buffer[
                     start_idx + len(Settings.OUTPUT_START_MARKER) : end_idx
                 ].strip()
-                state.parse_buffer = state.parse_buffer[
-                    end_idx + len(Settings.OUTPUT_END_MARKER) :
-                ]
+                state.parse_buffer = state.parse_buffer[end_idx + len(Settings.OUTPUT_END_MARKER) :]
 
                 try:
                     parsed = _parse_container_output(json_str)

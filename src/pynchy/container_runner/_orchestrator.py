@@ -144,9 +144,7 @@ def _determine_result(
             duration_ms=duration_ms,
             new_session_id=state.new_session_id,
         )
-        return ContainerOutput(
-            status="success", result=None, new_session_id=state.new_session_id
-        )
+        return ContainerOutput(status="success", result=None, new_session_id=state.new_session_id)
 
     # Legacy mode: parse final output from stdout
     return _parse_final_output(stdout_buf, container_name, stderr_buf, duration_ms)

@@ -841,6 +841,30 @@ class TestTasksSnapshot:
             assert len(result) == 1
             assert result[0]["id"] == "t2"
 
+    def test_god_includes_host_jobs(self, tmp_path: Path):
+        with _patch_settings(tmp_path):
+            tasks = [{"groupFolder": "god", "id": "t1"}]
+            host_jobs = [{"type": "host", "id": "h1", "name": "daily-backup"}]
+            write_tasks_snapshot("god", True, tasks, host_jobs=host_jobs)
+            result = json.loads(
+                (tmp_path / "data" / "ipc" / "god" / "current_tasks.json").read_text()
+            )
+            assert len(result) == 2
+            assert result[0]["id"] == "t1"
+            assert result[1]["id"] == "h1"
+            assert result[1]["type"] == "host"
+
+    def test_nongod_ignores_host_jobs(self, tmp_path: Path):
+        with _patch_settings(tmp_path):
+            tasks = [{"groupFolder": "other", "id": "t1"}]
+            host_jobs = [{"type": "host", "id": "h1", "name": "daily-backup"}]
+            write_tasks_snapshot("other", False, tasks, host_jobs=host_jobs)
+            result = json.loads(
+                (tmp_path / "data" / "ipc" / "other" / "current_tasks.json").read_text()
+            )
+            assert len(result) == 1
+            assert result[0]["id"] == "t1"
+
 
 class TestGroupsSnapshot:
     def test_god_sees_all_groups(self, tmp_path: Path):
