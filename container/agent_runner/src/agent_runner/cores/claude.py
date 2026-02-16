@@ -232,6 +232,9 @@ class ClaudeAgentCore:
                 "NotebookEdit",
                 "mcp__pynchy__*",
             ],
+            # Plan mode tools require interactive approval that headless
+            # containers can't provide, causing an infinite resume loop.
+            disallowed_tools=["EnterPlanMode", "ExitPlanMode"],
             permission_mode="bypassPermissions",
             settings='{"attribution": {"commit": "", "pr": ""}}',
             setting_sources=["project", "user"],
