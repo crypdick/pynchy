@@ -1,18 +1,18 @@
 # Style Guide
 
-## Documentation Philosophy
+## Write docs for users, not developers
 
-Write documentation from the **user's perspective and goal**, not chronological order. The user is trying to achieve something—help them achieve it by disclosing information when it makes sense in their pursuit of that goal.
+Users are trying to use the system to achieve a goal. The docs should help them achieve their goals.
 
-**Bad (chronological):** "First we added X, then we refactored Y, then we discovered Z needed changing..."
+Structure documentation around how to accomplish tasks using Pynchy. The docs are not meant to:
 
-**Good (goal-oriented):** "To accomplish [goal], do [steps]. Note: [context when relevant to the task]."
+- chronicle the evolution of the codebase
+- go into unnecessary technical implementation details that users don't need to know about (save these in the Architecture section)
+- be an encyclopedia of all the features and concepts in the system.
 
-Structure documentation around:
-- What the user is trying to do
-- What they need to know to do it
-- Relevant context disclosed at the point of need
-- Not the history of how the code evolved
+Each doc should start off explaining what the page is about and why the user would want to read it. For example, "This page provides an overview of the core constructs and concepts of <feature>. Understanding these concepts is important for navigating, configuring, and using Pynchy."
+
+The content should be organized such that information is presented in the most relevant context, at the point of need.
 
 ## Information Architecture
 
