@@ -51,13 +51,17 @@ def compute_next_run(
 ) -> str | None:
     """Compute the next run ISO timestamp for a scheduled task.
 
+    Always returns UTC isoformat so SQLite lexicographic comparison
+    against ``datetime.now(UTC).isoformat()`` works correctly in
+    ``get_due_tasks()``.
+
     Returns None for 'once' tasks (no recurrence) or if the input is invalid.
     Raises ValueError for invalid cron/interval values so callers can reject them.
     """
     if schedule_type == "cron":
         tz = ZoneInfo(timezone)
         cron = croniter(schedule_value, datetime.now(tz))
-        return cron.get_next(datetime).isoformat()
+        return cron.get_next(datetime).astimezone(UTC).isoformat()
 
     if schedule_type == "interval":
         ms = int(schedule_value)
