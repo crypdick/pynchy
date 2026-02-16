@@ -38,6 +38,7 @@ from pynchy.config import (
     SecurityConfig,
     ServerConfig,
     Settings,
+    SlackConfig,
     WorkspaceDefaultsConfig,
 )
 from pynchy.db import _init_test_database, store_message
@@ -80,6 +81,7 @@ def _integration_settings(tmp_path: Path) -> Settings:
             ),
         },
         security=SecurityConfig(),
+        slack=SlackConfig(),
     )
     settings.__dict__["plugins_dir"] = tmp_path / "plugins"
     settings.__dict__["groups_dir"] = tmp_path / "groups"
@@ -159,6 +161,7 @@ async def test_first_party_plugins_sync_install_and_functionality(tmp_path: Path
 
     with (
         patch("pynchy.plugin.get_settings", return_value=settings),
+        patch("pynchy.plugin.builtin_slack.get_settings", return_value=settings),
         patch("pynchy.channel_runtime.get_settings", return_value=settings),
         patch("pynchy.workspace_config.get_settings", return_value=settings),
     ):
@@ -253,6 +256,7 @@ async def test_first_party_plugins_app_flow_with_llm_boundary_mocked(tmp_path: P
 
     with (
         patch("pynchy.plugin.get_settings", return_value=settings),
+        patch("pynchy.plugin.builtin_slack.get_settings", return_value=settings),
         patch("pynchy.channel_runtime.get_settings", return_value=settings),
         patch("pynchy.workspace_config.get_settings", return_value=settings),
         patch("pynchy.message_handler.get_settings", return_value=settings),
