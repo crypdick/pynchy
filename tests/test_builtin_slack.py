@@ -171,7 +171,12 @@ class TestSlackChannelInbound:
         }
         await ch._on_slack_message(event)
 
-        on_metadata.assert_called_once_with("slack:C12345", "general", None)
+        on_metadata.assert_called_once()
+        meta_args = on_metadata.call_args[0]
+        assert meta_args[0] == "slack:C12345"  # jid
+        # Second arg should be an ISO timestamp, not the channel name
+        assert "T" in meta_args[1]  # ISO format contains 'T'
+        assert meta_args[2] == "general"  # channel name as third arg
         on_message.assert_called_once()
         msg = on_message.call_args[0][1]
         assert msg.chat_jid == "slack:C12345"

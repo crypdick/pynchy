@@ -174,9 +174,12 @@ class SlackChannel:
         # Resolve display name (fall back to user ID)
         sender_name = await self._resolve_user_name(user_id)
 
+        # Compute timestamp once for both metadata and message
+        timestamp = datetime.now(UTC).isoformat()
+
         # Report chat metadata so workspace auto-register can pick it up
         chat_name = await self._resolve_channel_name(channel_id)
-        self._on_chat_metadata(jid, chat_name, None)
+        self._on_chat_metadata(jid, timestamp, chat_name)
 
         msg = NewMessage(
             id=generate_message_id("slack"),
@@ -184,7 +187,7 @@ class SlackChannel:
             sender=user_id,
             sender_name=sender_name,
             content=text,
-            timestamp=datetime.now(UTC).isoformat(),
+            timestamp=timestamp,
             is_from_me=False,
             metadata={"slack_ts": ts, "slack_channel_type": event.get("channel_type", "")},
         )
