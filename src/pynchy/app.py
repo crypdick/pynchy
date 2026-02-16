@@ -204,6 +204,28 @@ class PynchyApp:
         chats = await get_all_chats()
         registered_jids = set(self.registered_groups.keys())
 
+        def is_channel_visible(jid: str) -> bool:
+            if jid == "__group_sync__":
+                return False
+
+            # During startup/tests there may be no channels loaded yet; expose all
+            # persisted chats so metadata APIs and snapshots remain available.
+            if not self.channels:
+                return True
+
+            for channel in self.channels:
+                try:
+                    if channel.owns_jid(jid):
+                        return True
+                except Exception as exc:
+                    logger.warning(
+                        "Channel ownership check failed",
+                        channel=channel.name,
+                        jid=jid,
+                        err=str(exc),
+                    )
+            return False
+
         return [
             {
                 "jid": c["jid"],
@@ -212,7 +234,7 @@ class PynchyApp:
                 "isRegistered": c["jid"] in registered_jids,
             }
             for c in chats
-            if c["jid"] != "__group_sync__" and c["jid"].endswith("@g.us")
+            if is_channel_visible(c["jid"])
         ]
 
     # ------------------------------------------------------------------
@@ -542,7 +564,7 @@ class PynchyApp:
 
         Host messages are purely operational notifications (errors, status updates,
         confirmations) that are OUTSIDE the LLM's conversation. They are:
-        - Sent to the user via channels (WhatsApp, etc.)
+        - Sent to the user via active channels
         - Stored in message history for user reference
         - NOT sent to the LLM as system messages or user messages
         - NOT part of the SDK conversation flow
@@ -645,14 +667,13 @@ class PynchyApp:
         """Unified user message ingestion — stores, emits, and broadcasts to all channels.
 
         This is the common code path for ALL user inputs from ANY UI:
-        - WhatsApp messages
+        - Channel messages
         - TUI messages
-        - Telegram messages
         - Any future channels
 
         Args:
             msg: The user message to ingest
-            source_channel: Optional name of the originating channel (e.g., "whatsapp", "tui").
+            source_channel: Optional name of the originating channel (e.g., "tui").
                            If provided, we skip broadcasting back to that channel.
         """
         # 1. Store in database
@@ -729,18 +750,17 @@ class PynchyApp:
 
         try:
             install_service()
+            # Ensure config-declared plugin repositories are cloned/updated.
+            sync_configured_plugins()
+
+            # Initialize plugin manager after plugin sync so runtime/channel hooks are available.
+            from pynchy.plugin import get_plugin_manager
+
+            self.plugin_manager = get_plugin_manager()
             ensure_container_system_running()
             await init_database()
             logger.info("Database initialized")
             await self._load_state()
-
-            # Ensure config-declared plugin repositories are cloned/updated.
-            sync_configured_plugins()
-
-            # Initialize plugin manager after loading state
-            from pynchy.plugin import get_plugin_manager
-
-            self.plugin_manager = get_plugin_manager()
         except Exception as exc:
             # Auto-rollback if we crash during startup after a deploy
             if continuation_path.exists():

@@ -44,12 +44,17 @@ def test_sync_configured_plugins_skips_disabled(tmp_path: Path) -> None:
         patch("pynchy.plugin_sync._load_install_state", return_value={}),
         patch("pynchy.plugin_sync._save_install_state"),
         patch("pynchy.plugin_sync._install_plugin_in_host_env") as install_one,
+        patch("pynchy.plugin_sync.logger.info") as log_info,
     ):
         result = sync_configured_plugins()
 
     assert result == {"enabled": enabled_dir}
     sync_one.assert_called_once()
     install_one.assert_called_once_with("enabled", enabled_dir)
+    assert any(
+        call.args and call.args[0] == "Plugin revision discovered"
+        for call in log_info.call_args_list
+    )
 
 
 def test_sync_configured_plugins_skips_reinstall_for_same_revision(tmp_path: Path) -> None:
@@ -74,9 +79,14 @@ def test_sync_configured_plugins_skips_reinstall_for_same_revision(tmp_path: Pat
         ),
         patch("pynchy.plugin_sync._save_install_state") as save_state,
         patch("pynchy.plugin_sync._install_plugin_in_host_env") as install_one,
+        patch("pynchy.plugin_sync.logger.info") as log_info,
     ):
         result = sync_configured_plugins()
 
     assert result == {"enabled": enabled_dir}
     install_one.assert_not_called()
     save_state.assert_not_called()
+    assert any(
+        call.args and call.args[0] == "Plugin already up to date"
+        for call in log_info.call_args_list
+    )

@@ -124,7 +124,7 @@ grep 'QR\|authentication required\|qr' logs/pynchy.log | tail -5
 ls -la store/auth/
 
 # Re-authenticate if needed
-uv run pynchy auth
+uv run pynchy-whatsapp-auth
 ```
 
 ## Service Management

@@ -81,7 +81,7 @@ Common configurations:
 ### 4. Authenticate WhatsApp
 
 ```bash
-uv run pynchy auth                           # Authenticate WhatsApp (scan QR code)
+uv run pynchy-whatsapp-auth                 # Authenticate WhatsApp (scan QR code)
 ```
 
 1. Open WhatsApp on your phone
@@ -161,7 +161,7 @@ This step requires scanning a QR code with your phone. The QR code renders as Un
 
 ```bash
 cd ~/src/pynchy
-uv run pynchy auth
+uv run pynchy-whatsapp-auth
 ```
 
 1. Open WhatsApp on your phone
@@ -302,7 +302,7 @@ Check that lingering is enabled: `loginctl show-user $USER | grep Linger`. If no
 
 ### WhatsApp disconnects
 
-WhatsApp linked devices expire after ~30 days of inactivity. Re-run `uv run pynchy auth` to re-authenticate, then restart the service.
+WhatsApp linked devices expire after ~30 days of inactivity. Re-run `uv run pynchy-whatsapp-auth` to re-authenticate, then restart the service.
 
 ### First run doesn't create systemd service
 
