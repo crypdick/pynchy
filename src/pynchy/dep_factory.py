@@ -128,9 +128,6 @@ def make_ipc_deps(app: PynchyApp) -> Any:
         write_groups_snapshot = staticmethod(_write_groups_snapshot)
         clear_session = session_manager.clear_session
         clear_chat_history = registration_manager.clear_chat_history
-
-        def has_session(self, group_folder: str) -> bool:
-            return group_folder in session_manager.get_sessions()
         enqueue_message_check = queue_manager.enqueue_message_check
         channels = metadata_manager.channels
 
@@ -220,9 +217,6 @@ def make_git_sync_deps(app: PynchyApp) -> Any:
 
         def registered_groups(self) -> dict[str, Any]:
             return group_registry.registered_groups()
-
-        def has_session(self, group_folder: str) -> bool:
-            return group_folder in app.sessions
 
         async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
             await _trigger_deploy_impl(previous_sha, rebuild=rebuild)

@@ -31,6 +31,11 @@ from pynchy.types import RegisteredGroup
 # git ls-remote every 5s = 720 req/hr — well within limits.
 HOST_GIT_SYNC_POLL_INTERVAL = 5.0
 
+# Track the last HEAD SHA for which worktree notifications were sent.
+# This prevents the poll loop from re-notifying when the IPC handler
+# (sync_worktree_to_main) already notified for the same merge.
+_last_worktree_notified_sha: str | None = None
+
 
 class GitSyncDeps(Protocol):
     """Dependencies for the git sync loop."""
@@ -40,8 +45,6 @@ class GitSyncDeps(Protocol):
     async def broadcast_system_notice(self, jid: str, text: str) -> None: ...
 
     def registered_groups(self) -> dict[str, RegisteredGroup]: ...
-
-    def has_session(self, group_folder: str) -> bool: ...
 
     async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None: ...
 
@@ -231,10 +234,12 @@ async def host_notify_worktree_updates(
     - Clean + rebase fails: DON'T abort — notify "conflicts, run git status to fix"
     - Dirty (uncommitted): skip rebase, notify "commit or stash, then sync"
 
-    Notification routing depends on session state:
-    - Active session → system_notice (visible to LLM as pseudo-system message)
-    - No session → host_message (human-only, avoids polluting future context)
+    Always uses system_notice so the LLM sees the notification as a pseudo
+    system message (the Anthropic SDK doesn't support injecting system messages,
+    so we store them as user messages with a [System Notice] prefix).
     """
+    global _last_worktree_notified_sha
+
     if not get_settings().worktrees_dir.exists():
         return
 
@@ -266,15 +271,7 @@ async def host_notify_worktree_updates(
         if behind.returncode != 0 or behind_n == 0:
             continue  # up to date or can't check
 
-        # Route notification based on whether the group has an active session.
-        # System notices go to the LLM; host messages are human-only.
-        # Without a session, system notices would just accumulate as junk
-        # context for the next conversation.
-        notify = (
-            deps.broadcast_system_notice
-            if deps.has_session(group_folder)
-            else deps.broadcast_host_message
-        )
+        notify = deps.broadcast_system_notice
 
         # Check for uncommitted changes
         status = run_git("status", "--porcelain", cwd=entry)
@@ -314,6 +311,13 @@ async def host_notify_worktree_updates(
             notice = _build_rebase_notice(entry, head_before, behind_count)
             await notify(jid, notice)
             logger.info("Auto-rebased worktree", group=group_folder)
+
+    # Record current HEAD so the poll loop can skip duplicate notifications
+    # for the same merge (e.g. IPC handler already notified, poll loop detects
+    # the same HEAD change seconds later).
+    current_head = get_head_sha()
+    if current_head != "unknown":
+        _last_worktree_notified_sha = current_head
 
 
 # ---------------------------------------------------------------------------
@@ -436,7 +440,8 @@ async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
                         deployed_sha=deployed_sha[:8],
                         local_head=local_head[:8],
                     )
-                    await host_notify_worktree_updates(None, deps)
+                    if _last_worktree_notified_sha != local_head:
+                        await host_notify_worktree_updates(None, deps)
                     rebuild = needs_container_rebuild(deployed_sha, local_head)
                     await deps.trigger_deploy(deployed_sha, rebuild=rebuild)
                     return
@@ -459,12 +464,13 @@ async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
                 logger.info("Origin changed but local already matches, skipping pull")
                 continue  # drift check above already handled deploy
 
-            pre_update_sha = local_head
             updated = await asyncio.to_thread(_host_update_main)
             if not updated:
                 continue
 
-            await host_notify_worktree_updates(None, deps)
+            new_head_after_pull = await asyncio.to_thread(_get_local_head_sha)
+            if _last_worktree_notified_sha != new_head_after_pull:
+                await host_notify_worktree_updates(None, deps)
 
             # Check deploy inline (avoid 5s delay for next tick)
             new_head = await asyncio.to_thread(_get_local_head_sha)
