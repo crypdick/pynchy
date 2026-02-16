@@ -46,7 +46,6 @@ sudo dnf install file-libs         # Required by neonize (WhatsApp) for MIME det
 git clone https://github.com/crypdick/pynchy.git
 cd pynchy
 uv sync                                      # Install Python dependencies
-uv pip install git+https://github.com/crypdick/pynchy-plugin-whatsapp.git
 ```
 
 ### 2. Configure
@@ -56,6 +55,15 @@ To customize configuration, copy the example configuration and edit it:
 ```bash
 cp config-examples/config.toml.EXAMPLE config.toml
 # Edit config.toml with your preferred settings
+```
+
+Enable WhatsApp plugin via config-managed plugins:
+
+```toml
+[plugins.whatsapp]
+repo = "crypdick/pynchy-plugin-whatsapp"
+ref = "main"
+enabled = true
 ```
 
 Common configurations:
@@ -142,7 +150,6 @@ cd ~/src/pynchy
 
 # Install Python dependencies
 uv sync
-uv pip install git+https://github.com/crypdick/pynchy-plugin-whatsapp.git
 
 # Build the agent container image
 sg docker -c './container/build.sh'

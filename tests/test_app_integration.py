@@ -197,6 +197,21 @@ class TestAppImports:
         from pynchy.channel_runtime import ChannelPluginContext  # noqa: F401
 
 
+class TestFirstRunBootstrap:
+    """Verify first-run workspace bootstrap without external channels."""
+
+    async def test_creates_tui_god_workspace_without_channel(self, app: PynchyApp):
+        app.registered_groups = {}
+        app.workspaces = {}
+
+        await app._setup_god_group(default_channel=None)
+
+        assert len(app.registered_groups) == 1
+        [(jid, group)] = list(app.registered_groups.items())
+        assert jid.startswith("tui://")
+        assert group.is_god is True
+
+
 class TestProcessGroupMessages:
     """Test the message processing pipeline (trigger → agent → output)."""
 

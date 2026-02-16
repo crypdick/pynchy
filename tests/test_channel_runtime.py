@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
-
-import pytest
+from unittest.mock import patch
 
 from pynchy import channel_runtime
 
@@ -42,11 +41,22 @@ def test_load_channels_sorts_by_name() -> None:
     assert [ch.name for ch in channels] == ["alpha", "zeta"]
 
 
-def test_load_channels_raises_when_none_discovered() -> None:
-    with pytest.raises(RuntimeError, match="No channel plugins were discovered"):
-        channel_runtime.load_channels(_PM([None]), _context())
+def test_load_channels_returns_empty_when_none_discovered() -> None:
+    channels = channel_runtime.load_channels(_PM([None]), _context())
+    assert channels == []
 
 
-def test_resolve_default_channel_uses_config_fallback() -> None:
-    selected = channel_runtime.resolve_default_channel([_FakeChannel("whatsapp")])
+def test_resolve_default_channel_returns_none_for_tui_default() -> None:
+    assert channel_runtime.resolve_default_channel([_FakeChannel("whatsapp")]) is None
+
+
+def test_resolve_default_channel_uses_explicit_configured_channel() -> None:
+    settings = type("Settings", (), {"channels": type("Channels", (), {"default": "whatsapp"})()})()
+    with patch("pynchy.channel_runtime.get_settings", return_value=settings):
+        selected = channel_runtime.resolve_default_channel([_FakeChannel("whatsapp")])
+    assert selected is not None
     assert selected.name == "whatsapp"
+
+
+def test_resolve_default_channel_returns_none_for_empty_channels() -> None:
+    assert channel_runtime.resolve_default_channel([]) is None

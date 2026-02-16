@@ -106,8 +106,21 @@
 
 [channels]
 # Default channel plugin name used for first-run group creation.
-# If omitted, defaults to "whatsapp".
-# default = "whatsapp"
+# Set to "tui" to keep core UI-only mode (default behavior).
+# Use a plugin channel name (e.g. "whatsapp") to auto-create external first-run groups.
+# With "tui", pynchy still bootstraps a local first-run workspace automatically.
+# default = "tui"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Plugins (config-managed repositories)
+# ─────────────────────────────────────────────────────────────────────────────
+# On startup, pynchy ensures enabled plugin repositories are cloned/updated
+# under ~/.config/pynchy/plugins/<plugin_name>.
+#
+# [plugins.whatsapp]
+# repo = "crypdick/pynchy-plugin-whatsapp"
+# ref = "main"   # branch, tag, or commit SHA
+# enabled = true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Workspace Defaults

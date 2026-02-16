@@ -140,7 +140,13 @@ class QueueConfig(BaseModel):
 
 
 class ChannelsConfig(BaseModel):
-    default: str | None = None
+    default: str | None = "tui"
+
+
+class PluginConfig(BaseModel):
+    repo: str
+    ref: str = "main"
+    enabled: bool = True
 
 
 class SecurityConfig(BaseModel):
@@ -189,6 +195,7 @@ class Settings(BaseSettings):
     intervals: IntervalsConfig = IntervalsConfig()
     queue: QueueConfig = QueueConfig()
     channels: ChannelsConfig = ChannelsConfig()
+    plugins: dict[str, PluginConfig] = {}
     security: SecurityConfig = SecurityConfig()
 
     # Sentinels (class-level, not fields)
@@ -262,6 +269,10 @@ class Settings(BaseSettings):
     @cached_property
     def worktrees_dir(self) -> Path:
         return self.home_dir / ".config" / "pynchy" / "worktrees"
+
+    @cached_property
+    def plugins_dir(self) -> Path:
+        return self.home_dir / ".config" / "pynchy" / "plugins"
 
 
 # ---------------------------------------------------------------------------
