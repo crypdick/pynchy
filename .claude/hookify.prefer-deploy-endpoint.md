@@ -9,7 +9,7 @@ action: warn
 You're manually managing the pynchy service or its containers. **Use the deploy endpoint instead:**
 
 ```bash
-curl -s -X POST http://nuc-server:8484/deploy
+curl -s -X POST http://pynchy:8484/deploy
 ```
 
 This handles graceful shutdown, git pull, and restart cleanly.
