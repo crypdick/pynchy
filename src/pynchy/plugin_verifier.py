@@ -179,9 +179,12 @@ def store_verdict(
 def _parse_verdict(text: str) -> tuple[str, str]:
     """Parse VERDICT and REASONING from agent text.
 
-    Defaults to ("fail", <raw text>) if parsing fails (fail-safe).
+    Returns ``("error", ...)`` when no VERDICT line is found — meaning
+    the agent didn't actually complete its inspection (auth failure,
+    crash, timeout, etc.).  Only returns ``"pass"`` or ``"fail"`` when
+    the agent explicitly stated a verdict.
     """
-    verdict = "fail"
+    verdict = "error"
     reasoning = text.strip()[-500:] if text.strip() else "No response from verification agent"
 
     for line in reversed(text.strip().splitlines()):
@@ -332,7 +335,7 @@ async def _audit_single_plugin(
             plugin=plugin_name,
             error=result.error,
         )
-        return ("fail", f"Verification agent error: {result.error}")
+        return ("error", f"Verification agent error: {result.error}")
 
     full_text = "".join(collected_text)
     return _parse_verdict(full_text)
@@ -368,11 +371,10 @@ async def audit_unverified_plugins(
             verdict, reasoning = await _audit_single_plugin(name, plugin_dir, plugin_manager)
         except Exception:
             logger.exception("Plugin audit failed with error", plugin=name)
-            verdict, reasoning = "fail", "Verification agent crashed"
-
-        store_verdict(plugins_dir, name, sha, verdict, reasoning)
+            verdict, reasoning = "error", "Verification agent crashed"
 
         if verdict == "pass":
+            store_verdict(plugins_dir, name, sha, verdict, reasoning)
             logger.info(
                 "Plugin PASSED verification",
                 plugin=name,
@@ -380,9 +382,19 @@ async def audit_unverified_plugins(
                 reasoning=reasoning,
             )
             newly_passed[name] = (plugin_dir, sha)
-        else:
+        elif verdict == "fail":
+            store_verdict(plugins_dir, name, sha, verdict, reasoning)
             logger.warning(
                 "Plugin BLOCKED — failed verification",
+                plugin=name,
+                sha=sha[:12],
+                reasoning=reasoning,
+            )
+        else:
+            # Don't cache errors — the plugin wasn't actually scanned.
+            # It will be retried on next boot.
+            logger.warning(
+                "Plugin scan inconclusive — will retry next boot",
                 plugin=name,
                 sha=sha[:12],
                 reasoning=reasoning,
