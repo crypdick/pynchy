@@ -269,6 +269,7 @@ def _write_env_file() -> Path | None:
     env_vars: dict[str, str] = {}
 
     # --- Read secrets from Settings ---
+    # NOTE: Update docs/architecture/security.md § Credential Filtering if you change this map
     secret_map = {
         "ANTHROPIC_API_KEY": s.secrets.anthropic_api_key,
         "OPENAI_API_KEY": s.secrets.openai_api_key,
