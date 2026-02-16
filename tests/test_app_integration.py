@@ -33,6 +33,8 @@ from pynchy.config import (
 from pynchy.db import _init_test_database, get_chat_history, store_message
 from pynchy.types import NewMessage, RegisteredGroup
 
+_CR_ORCH = "pynchy.container_runner._orchestrator"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -84,11 +86,17 @@ def _patch_test_settings(tmp_path: Path):
     s.__dict__["project_root"] = tmp_path
     s.__dict__["groups_dir"] = tmp_path / "groups"
     s.__dict__["data_dir"] = tmp_path / "data"
-    with (
-        patch("pynchy.container_runner.get_settings", return_value=s),
-        patch("pynchy.message_handler.get_settings", return_value=s),
-        patch("pynchy.output_handler.get_settings", return_value=s),
-    ):
+    with contextlib.ExitStack() as stack:
+        for mod in (
+            "pynchy.container_runner._credentials",
+            "pynchy.container_runner._mounts",
+            "pynchy.container_runner._session_prep",
+            "pynchy.container_runner._orchestrator",
+            "pynchy.container_runner._snapshots",
+            "pynchy.message_handler",
+            "pynchy.output_handler",
+        ):
+            stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         yield
 
 
@@ -238,7 +246,7 @@ class TestProcessGroupMessages:
         app.channels = [channel]
 
         with (
-            patch("pynchy.container_runner.asyncio.create_subprocess_exec", fake_create),
+            patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", fake_create),
             _patch_test_settings(tmp_path),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
@@ -312,7 +320,7 @@ class TestProcessGroupMessages:
         app.channels = [channel]
 
         with (
-            patch("pynchy.container_runner.asyncio.create_subprocess_exec", fake_create),
+            patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", fake_create),
             _patch_test_settings(tmp_path),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
@@ -374,7 +382,7 @@ class TestProcessGroupMessages:
         app.channels = [FakeChannel()]
 
         with (
-            patch("pynchy.container_runner.asyncio.create_subprocess_exec", fake_create),
+            patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", fake_create),
             _patch_test_settings(tmp_path),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
@@ -419,7 +427,7 @@ class TestProcessGroupMessages:
         fake_wt.notices = []
 
         with (
-            patch("pynchy.container_runner.asyncio.create_subprocess_exec", fake_create),
+            patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", fake_create),
             _patch_test_settings(tmp_path),
             patch("pynchy.worktree.ensure_worktree", return_value=fake_wt),
         ):
@@ -449,7 +457,7 @@ class TestRunAgent:
         group = app.registered_groups["group@g.us"]
 
         with (
-            patch("pynchy.container_runner.asyncio.create_subprocess_exec", fake_create),
+            patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", fake_create),
             _patch_test_settings(tmp_path),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
@@ -466,7 +474,7 @@ class TestRunAgent:
         group = app.registered_groups["group@g.us"]
 
         with (
-            patch("pynchy.container_runner.asyncio.create_subprocess_exec", failing_create),
+            patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", failing_create),
             _patch_test_settings(tmp_path),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
@@ -582,7 +590,7 @@ class TestTracePersistence:
         app.channels = [channel]
 
         with (
-            patch("pynchy.container_runner.asyncio.create_subprocess_exec", fake_create),
+            patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", fake_create),
             _patch_test_settings(tmp_path),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
@@ -642,7 +650,7 @@ class TestTracePersistence:
         app.channels = [channel]
 
         with (
-            patch("pynchy.container_runner.asyncio.create_subprocess_exec", fake_create),
+            patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", fake_create),
             _patch_test_settings(tmp_path),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
@@ -696,7 +704,7 @@ class TestTracePersistence:
         app.channels = [channel]
 
         with (
-            patch("pynchy.container_runner.asyncio.create_subprocess_exec", fake_create),
+            patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", fake_create),
             _patch_test_settings(tmp_path),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)

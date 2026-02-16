@@ -87,6 +87,18 @@ def _marker_wrap(output: dict[str, Any]) -> bytes:
     return payload.encode()
 
 
+_CR_CREDS = "pynchy.container_runner._credentials"
+_CR_ORCH = "pynchy.container_runner._orchestrator"
+
+_SETTINGS_MODULES = [
+    _CR_CREDS,
+    "pynchy.container_runner._mounts",
+    "pynchy.container_runner._session_prep",
+    _CR_ORCH,
+    "pynchy.container_runner._snapshots",
+]
+
+
 @contextlib.contextmanager
 def _patch_settings(
     tmp_path: Path | None = None,
@@ -97,7 +109,7 @@ def _patch_settings(
     max_output_size: int | None = None,
     secret_overrides: dict[str, str] | None = None,
 ):
-    """Patch container_runner.get_settings() with test-friendly values."""
+    """Patch get_settings() across all container_runner submodules."""
     s = Settings.model_construct(
         agent=AgentConfig(),
         container=ContainerConfig(),
@@ -127,7 +139,9 @@ def _patch_settings(
     if secret_overrides:
         for key, value in secret_overrides.items():
             setattr(s.secrets, key, SecretStr(value))
-    with patch("pynchy.container_runner.get_settings", return_value=s):
+    with contextlib.ExitStack() as stack:
+        for mod in _SETTINGS_MODULES:
+            stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         yield
 
 
@@ -405,7 +419,7 @@ def _patch_subprocess(fake_proc: FakeProcess):
     async def _fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
         return fake_proc
 
-    return patch("pynchy.container_runner.asyncio.create_subprocess_exec", _fake_create)
+    return patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", _fake_create)
 
 
 @contextlib.contextmanager
@@ -501,7 +515,7 @@ class TestRunContainerAgent:
             # idle_timeout=-29.9 and container_timeout=0.1:
             # max(0.1, -29.9 + 30.0) == 0.1s
             _patch_settings(tmp_path, idle_timeout=-29.9, container_timeout=0.1),
-            patch("pynchy.container_runner._graceful_stop", _fake_stop),
+            patch(f"{_CR_ORCH}._graceful_stop", _fake_stop),
         ):
             # Don't emit any output — let it timeout
             result = await run_container_agent(
@@ -524,7 +538,7 @@ class TestRunContainerAgent:
         with (
             _patch_subprocess(fake_proc),
             _patch_settings(tmp_path, idle_timeout=-29.9, container_timeout=0.1),
-            patch("pynchy.container_runner._graceful_stop", _fake_stop),
+            patch(f"{_CR_ORCH}._graceful_stop", _fake_stop),
         ):
 
             async def _driver():
@@ -583,13 +597,13 @@ class TestReadOauthToken:
         creds = tmp_path / ".claude" / ".credentials.json"
         creds.parent.mkdir(parents=True)
         creds.write_text(json.dumps({"claudeAiOauth": {"accessToken": "test-token-123"}}))
-        with patch("pynchy.container_runner.Path.home", return_value=tmp_path):
+        with patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path):
             assert _read_oauth_token() == "test-token-123"
 
     def test_returns_none_when_no_file_and_no_keychain(self, tmp_path: Path):
         with (
-            patch("pynchy.container_runner.Path.home", return_value=tmp_path),
-            patch("pynchy.container_runner._read_oauth_from_keychain", return_value=None),
+            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
+            patch(f"{_CR_CREDS}._read_oauth_from_keychain", return_value=None),
         ):
             assert _read_oauth_token() is None
 
@@ -613,9 +627,9 @@ class TestWriteEnvFile:
                     "anthropic_api_key": "sk-ant-test"  # pragma: allowlist secret
                 },
             ),
-            patch("pynchy.container_runner.Path.home", return_value=tmp_path),
-            patch("pynchy.container_runner._read_gh_token", return_value=None),
-            patch("pynchy.container_runner._read_git_identity", return_value=(None, None)),
+            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
+            patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
+            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
             env_dir = _write_env_file()
             assert env_dir is not None
@@ -630,9 +644,9 @@ class TestWriteEnvFile:
         creds.write_text(json.dumps({"claudeAiOauth": {"accessToken": "my-oauth-token"}}))
         with (
             _patch_settings(tmp_path),
-            patch("pynchy.container_runner.Path.home", return_value=tmp_path),
-            patch("pynchy.container_runner._read_gh_token", return_value=None),
-            patch("pynchy.container_runner._read_git_identity", return_value=(None, None)),
+            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
+            patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
+            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
             env_dir = _write_env_file()
             assert env_dir is not None
@@ -642,10 +656,10 @@ class TestWriteEnvFile:
     def test_returns_none_when_no_credentials(self, tmp_path: Path):
         with (
             _patch_settings(tmp_path),
-            patch("pynchy.container_runner.Path.home", return_value=tmp_path),
-            patch("pynchy.container_runner._read_oauth_from_keychain", return_value=None),
-            patch("pynchy.container_runner._read_gh_token", return_value=None),
-            patch("pynchy.container_runner._read_git_identity", return_value=(None, None)),
+            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
+            patch(f"{_CR_CREDS}._read_oauth_from_keychain", return_value=None),
+            patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
+            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
             assert _write_env_file() is None
 
@@ -653,10 +667,10 @@ class TestWriteEnvFile:
         """GH_TOKEN is auto-discovered from gh CLI when not in .env."""
         with (
             _patch_settings(tmp_path),
-            patch("pynchy.container_runner.Path.home", return_value=tmp_path),
-            patch("pynchy.container_runner._read_oauth_from_keychain", return_value=None),
-            patch("pynchy.container_runner._read_gh_token", return_value="gho_abc123"),
-            patch("pynchy.container_runner._read_git_identity", return_value=(None, None)),
+            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
+            patch(f"{_CR_CREDS}._read_oauth_from_keychain", return_value=None),
+            patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_abc123"),
+            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
             env_dir = _write_env_file()
             assert env_dir is not None
@@ -667,10 +681,10 @@ class TestWriteEnvFile:
         """Configured GH_TOKEN takes priority over gh CLI auto-discovery."""
         with (
             _patch_settings(tmp_path, secret_overrides={"gh_token": "explicit-token"}),
-            patch("pynchy.container_runner.Path.home", return_value=tmp_path),
-            patch("pynchy.container_runner._read_oauth_from_keychain", return_value=None),
-            patch("pynchy.container_runner._read_gh_token", return_value="auto-token"),
-            patch("pynchy.container_runner._read_git_identity", return_value=(None, None)),
+            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
+            patch(f"{_CR_CREDS}._read_oauth_from_keychain", return_value=None),
+            patch(f"{_CR_CREDS}._read_gh_token", return_value="auto-token"),
+            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
             env_dir = _write_env_file()
             assert env_dir is not None
@@ -682,11 +696,11 @@ class TestWriteEnvFile:
         """Git identity is auto-discovered and written as all four env vars."""
         with (
             _patch_settings(tmp_path),
-            patch("pynchy.container_runner.Path.home", return_value=tmp_path),
-            patch("pynchy.container_runner._read_oauth_from_keychain", return_value=None),
-            patch("pynchy.container_runner._read_gh_token", return_value=None),
+            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
+            patch(f"{_CR_CREDS}._read_oauth_from_keychain", return_value=None),
+            patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
             patch(
-                "pynchy.container_runner._read_git_identity",
+                f"{_CR_CREDS}._read_git_identity",
                 return_value=("Jane Doe", "jane@example.com"),
             ),
         ):
@@ -705,10 +719,10 @@ class TestWriteEnvFile:
         creds.write_text(json.dumps({"claudeAiOauth": {"accessToken": "oauth-tok"}}))
         with (
             _patch_settings(tmp_path),
-            patch("pynchy.container_runner.Path.home", return_value=tmp_path),
-            patch("pynchy.container_runner._read_gh_token", return_value="gho_xyz"),
+            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
+            patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_xyz"),
             patch(
-                "pynchy.container_runner._read_git_identity",
+                f"{_CR_CREDS}._read_git_identity",
                 return_value=("Bob", "bob@test.com"),
             ),
         ):
@@ -723,11 +737,11 @@ class TestWriteEnvFile:
         """Names with spaces and apostrophes are safely shell-quoted."""
         with (
             _patch_settings(tmp_path),
-            patch("pynchy.container_runner.Path.home", return_value=tmp_path),
-            patch("pynchy.container_runner._read_oauth_from_keychain", return_value=None),
-            patch("pynchy.container_runner._read_gh_token", return_value=None),
+            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
+            patch(f"{_CR_CREDS}._read_oauth_from_keychain", return_value=None),
+            patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
             patch(
-                "pynchy.container_runner._read_git_identity",
+                f"{_CR_CREDS}._read_git_identity",
                 return_value=("O'Brien Smith", None),
             ),
         ):
@@ -742,21 +756,21 @@ class TestWriteEnvFile:
 class TestReadGhToken:
     def test_returns_token_from_gh_cli(self):
         mock_result = type("Result", (), {"returncode": 0, "stdout": "gho_test123\n"})()
-        with patch("pynchy.container_runner.subprocess.run", return_value=mock_result):
+        with patch(f"{_CR_CREDS}.subprocess.run", return_value=mock_result):
             assert _read_gh_token() == "gho_test123"
 
     def test_returns_none_on_failure(self):
         mock_result = type("Result", (), {"returncode": 1, "stdout": ""})()
-        with patch("pynchy.container_runner.subprocess.run", return_value=mock_result):
+        with patch(f"{_CR_CREDS}.subprocess.run", return_value=mock_result):
             assert _read_gh_token() is None
 
     def test_returns_none_when_gh_not_installed(self):
-        with patch("pynchy.container_runner.subprocess.run", side_effect=FileNotFoundError):
+        with patch(f"{_CR_CREDS}.subprocess.run", side_effect=FileNotFoundError):
             assert _read_gh_token() is None
 
     def test_returns_none_on_timeout(self):
         with patch(
-            "pynchy.container_runner.subprocess.run",
+            f"{_CR_CREDS}.subprocess.run",
             side_effect=subprocess.TimeoutExpired("gh", 5),
         ):
             assert _read_gh_token() is None
@@ -772,14 +786,14 @@ class TestReadGitIdentity:
                 return type("R", (), {"returncode": 0, "stdout": "alice@test.com\n"})()
             return type("R", (), {"returncode": 1, "stdout": ""})()
 
-        with patch("pynchy.container_runner.subprocess.run", side_effect=mock_run):
+        with patch(f"{_CR_CREDS}.subprocess.run", side_effect=mock_run):
             name, email = _read_git_identity()
             assert name == "Alice"
             assert email == "alice@test.com"
 
     def test_returns_none_when_not_configured(self):
         mock_result = type("R", (), {"returncode": 1, "stdout": ""})()
-        with patch("pynchy.container_runner.subprocess.run", return_value=mock_result):
+        with patch(f"{_CR_CREDS}.subprocess.run", return_value=mock_result):
             name, email = _read_git_identity()
             assert name is None
             assert email is None
@@ -790,7 +804,7 @@ class TestReadGitIdentity:
                 return type("R", (), {"returncode": 0, "stdout": "Bob\n"})()
             return type("R", (), {"returncode": 1, "stdout": ""})()
 
-        with patch("pynchy.container_runner.subprocess.run", side_effect=mock_run):
+        with patch(f"{_CR_CREDS}.subprocess.run", side_effect=mock_run):
             name, email = _read_git_identity()
             assert name == "Bob"
             assert email is None
