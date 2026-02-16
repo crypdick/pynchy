@@ -53,7 +53,7 @@ async def send_boot_notification(deps: StartupDeps) -> None:
     # Check for API credentials and warn if missing
     from pynchy.container_runner import _write_env_file
 
-    if _write_env_file() is None:
+    if _write_env_file(is_god=True, group_folder="_startup_check") is None:
         parts.append(
             "WARNING: No API credentials found -- messages will fail. "
             "Run 'claude' to authenticate or set ANTHROPIC_API_KEY in config.toml."
