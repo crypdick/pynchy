@@ -70,6 +70,22 @@ class IpcDeps(Protocol):
 _ipc_watcher_running = False
 
 
+def _compute_next_run_from_ipc(
+    schedule_type: str,
+    schedule_value: str,
+) -> str | None:
+    """Compute next_run from IPC schedule data, returning None on invalid input.
+
+    For 'once' tasks, parses the value as an ISO timestamp.
+    For 'cron'/'interval', delegates to compute_next_run().
+    """
+    if schedule_type == "once":
+        scheduled = datetime.fromisoformat(schedule_value)
+        return scheduled.isoformat()
+
+    return compute_next_run(schedule_type, schedule_value, get_settings().timezone)
+
+
 def _move_to_error_dir(ipc_base_dir: Path, source_group: str, file_path: Path) -> None:
     """Move a failed IPC file to the errors/ directory for later inspection."""
     error_dir = ipc_base_dir / "errors"
@@ -220,25 +236,14 @@ async def process_task_ipc(
                 )
                 return
 
-            # 'once' tasks use the schedule_value directly as next_run
-            if schedule_type == "once":
-                try:
-                    scheduled = datetime.fromisoformat(schedule_value)
-                    next_run: str | None = scheduled.isoformat()
-                except (ValueError, TypeError):
-                    logger.warning("Invalid timestamp", schedule_value=schedule_value)
-                    return
-            else:
-                try:
-                    next_run = compute_next_run(
-                        schedule_type, schedule_value, get_settings().timezone
-                    )
-                except (ValueError, TypeError, KeyError):
-                    logger.warning(
-                        f"Invalid {schedule_type} value",
-                        schedule_value=schedule_value,
-                    )
-                    return
+            try:
+                next_run = _compute_next_run_from_ipc(schedule_type, schedule_value)
+            except (ValueError, TypeError, KeyError):
+                logger.warning(
+                    f"Invalid {schedule_type} value",
+                    schedule_value=schedule_value,
+                )
+                return
 
             task_id = f"task-{int(datetime.now(UTC).timestamp() * 1000)}-{uuid.uuid4().hex[:8]}"
             context_mode = data.get("context_mode")
@@ -282,25 +287,14 @@ async def process_task_ipc(
                 logger.warning("Missing required fields for schedule_host_job", data=data)
                 return
 
-            # Validate schedule and compute next_run
-            if schedule_type == "once":
-                try:
-                    scheduled = datetime.fromisoformat(schedule_value)
-                    next_run: str | None = scheduled.isoformat()
-                except (ValueError, TypeError):
-                    logger.warning("Invalid timestamp for host job", schedule_value=schedule_value)
-                    return
-            else:
-                try:
-                    next_run = compute_next_run(
-                        schedule_type, schedule_value, get_settings().timezone
-                    )
-                except (ValueError, TypeError, KeyError):
-                    logger.warning(
-                        f"Invalid {schedule_type} value for host job",
-                        schedule_value=schedule_value,
-                    )
-                    return
+            try:
+                next_run = _compute_next_run_from_ipc(schedule_type, schedule_value)
+            except (ValueError, TypeError, KeyError):
+                logger.warning(
+                    f"Invalid {schedule_type} value for host job",
+                    schedule_value=schedule_value,
+                )
+                return
 
             from pynchy.db import create_host_job
 

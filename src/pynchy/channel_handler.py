@@ -39,18 +39,15 @@ async def broadcast_to_channels(
         text: Message text to send
         suppress_errors: If True, silently ignore channel send failures
     """
+    caught: tuple[type[BaseException], ...] = (
+        (OSError, TimeoutError, ConnectionError) if suppress_errors else (Exception,)
+    )
     for ch in deps.channels:
         if ch.is_connected():
-            if suppress_errors:
-                try:
-                    await ch.send_message(chat_jid, text)
-                except (OSError, TimeoutError, ConnectionError) as exc:
-                    logger.warning("Channel send failed", channel=ch.name, err=str(exc))
-            else:
-                try:
-                    await ch.send_message(chat_jid, text)
-                except Exception as exc:
-                    logger.warning("Channel send failed", channel=ch.name, err=str(exc))
+            try:
+                await ch.send_message(chat_jid, text)
+            except caught as exc:
+                logger.warning("Channel send failed", channel=ch.name, err=str(exc))
 
 
 async def send_reaction_to_channels(
