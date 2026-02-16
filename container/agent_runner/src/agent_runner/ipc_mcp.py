@@ -82,9 +82,16 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="schedule_task",
             description=(
-                "Schedule a recurring or one-time task. The task will "
-                "run as a full agent with access to all tools.\n\n"
-                "CONTEXT MODE - Choose based on task type:\n"
+                "Schedule a recurring or one-time task.\n\n"
+                "TASK TYPES:\n"
+                '\u2022 "agent" (default): Runs a full agent with access '
+                "to all tools in a container. Use for tasks requiring "
+                "reasoning, tool use, or user interaction.\n"
+                '\u2022 "host" (god group only): Runs a shell command '
+                "directly on the host. Use for system maintenance tasks. "
+                "NOTE: Future improvement will add deputy agent review "
+                "for security validation.\n\n"
+                "CONTEXT MODE (agent tasks only) - Choose based on task type:\n"
                 '\u2022 "group": Task runs in the group\'s conversation '
                 "context, with access to chat history. Use for tasks "
                 "that need context about ongoing discussions, user "
@@ -103,11 +110,11 @@ async def list_tools() -> list[Tool]:
                 "(needs to know what was requested)\n"
                 '- "Generate a daily report" \u2192 isolated '
                 "(just needs instructions in prompt)\n\n"
-                "MESSAGING BEHAVIOR - The task agent's output is sent "
-                "to the user or group. It can also use send_message "
-                "for immediate delivery, or wrap output in <internal> "
-                "tags to suppress it. Include guidance in the prompt "
-                "about whether the agent should:\n"
+                "MESSAGING BEHAVIOR (agent tasks) - The task agent's "
+                "output is sent to the user or group. It can also use "
+                "send_message for immediate delivery, or wrap output in "
+                "<internal> tags to suppress it. Include guidance in the "
+                "prompt about whether the agent should:\n"
                 "\u2022 Always send a message (e.g., reminders, daily "
                 "briefings)\n"
                 "\u2022 Only send a message when there's something to "
@@ -126,12 +133,31 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "task_type": {
+                        "type": "string",
+                        "enum": ["agent", "host"],
+                        "default": "agent",
+                        "description": (
+                            "agent=containerized LLM task, host=shell command (god only)"
+                        ),
+                    },
                     "prompt": {
                         "type": "string",
                         "description": (
-                            "What the agent should do when the task "
-                            "runs. For isolated mode, include all "
-                            "necessary context here."
+                            "For agent tasks: What the agent should do. "
+                            "For host tasks: ignored (use command field)."
+                        ),
+                    },
+                    "command": {
+                        "type": "string",
+                        "description": (
+                            "For host tasks: Shell command to execute. For agent tasks: ignored."
+                        ),
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": (
+                            "For host tasks: Unique job name (required). For agent tasks: ignored."
                         ),
                     },
                     "schedule_type": {
@@ -157,9 +183,7 @@ async def list_tools() -> list[Tool]:
                         "enum": ["group", "isolated"],
                         "default": "group",
                         "description": (
-                            "group=runs with chat history and memory, "
-                            "isolated=fresh session (include context "
-                            "in prompt)"
+                            "Agent tasks only: group=runs with chat history, isolated=fresh session"
                         ),
                     },
                     "target_group_jid": {
@@ -170,8 +194,20 @@ async def list_tools() -> list[Tool]:
                             "current group."
                         ),
                     },
+                    "cwd": {
+                        "type": "string",
+                        "description": (
+                            "Host tasks only: Working directory for "
+                            "command execution. Defaults to project root."
+                        ),
+                    },
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "default": 600,
+                        "description": ("Host tasks only: Command timeout in seconds."),
+                    },
                 },
-                "required": ["prompt", "schedule_type", "schedule_value"],
+                "required": ["schedule_type", "schedule_value"],
             },
         ),
         Tool(
@@ -381,6 +417,66 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolR
             return [TextContent(type="text", text="Message sent.")]
 
         case "schedule_task":
+            task_type = arguments.get("task_type", "agent")
+
+            # Validate task_type
+            if task_type not in ("agent", "host"):
+                return CallToolResult(
+                    content=[
+                        TextContent(
+                            type="text",
+                            text=f'Invalid task_type: "{task_type}". Must be "agent" or "host".',
+                        )
+                    ],
+                    isError=True,
+                )
+
+            # Host jobs are god-only
+            if task_type == "host" and not is_god:
+                return CallToolResult(
+                    content=[
+                        TextContent(
+                            type="text",
+                            text="Only the god group can schedule host-level jobs.",
+                        )
+                    ],
+                    isError=True,
+                )
+
+            # Validate required fields based on task_type
+            if task_type == "agent":
+                if not arguments.get("prompt"):
+                    return CallToolResult(
+                        content=[
+                            TextContent(
+                                type="text",
+                                text='Agent tasks require a "prompt" field.',
+                            )
+                        ],
+                        isError=True,
+                    )
+            else:  # host
+                if not arguments.get("command"):
+                    return CallToolResult(
+                        content=[
+                            TextContent(
+                                type="text",
+                                text='Host tasks require a "command" field.',
+                            )
+                        ],
+                        isError=True,
+                    )
+                if not arguments.get("name"):
+                    return CallToolResult(
+                        content=[
+                            TextContent(
+                                type="text",
+                                text='Host tasks require a "name" field.',
+                            )
+                        ],
+                        isError=True,
+                    )
+
             # Validate schedule_value
             schedule_type = arguments["schedule_type"]
             schedule_value = arguments["schedule_value"]
@@ -444,6 +540,31 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolR
                         isError=True,
                     )
 
+            # Route to appropriate handler
+            if task_type == "host":
+                data = {
+                    "type": "schedule_host_job",
+                    "name": arguments["name"],
+                    "command": arguments["command"],
+                    "schedule_type": schedule_type,
+                    "schedule_value": schedule_value,
+                    "cwd": arguments.get("cwd"),
+                    "timeout_seconds": arguments.get("timeout_seconds", 600),
+                    "createdBy": group_folder,
+                    "timestamp": _now_iso(),
+                }
+                filename = write_ipc_file(TASKS_DIR, data)
+                return [
+                    TextContent(
+                        type="text",
+                        text=(
+                            f"Host job scheduled ({filename}): {arguments['name']} - "
+                            f"{schedule_type} - {schedule_value}"
+                        ),
+                    )
+                ]
+
+            # Agent task (existing logic)
             # Non-god groups can only schedule for themselves
             target_jid = (arguments.get("target_group_jid") if is_god else None) or chat_jid
 

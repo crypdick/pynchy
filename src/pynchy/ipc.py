@@ -259,6 +259,67 @@ async def process_task_ipc(
                 context_mode=context_mode,
             )
 
+        case "schedule_host_job":
+            # God-only operation
+            if not is_god:
+                logger.warning("Unauthorized schedule_host_job attempt", source_group=source_group)
+                return
+
+            name = data.get("name")
+            command = data.get("command")
+            schedule_type = data.get("schedule_type")
+            schedule_value = data.get("schedule_value")
+
+            if not (name and command and schedule_type and schedule_value):
+                logger.warning("Missing required fields for schedule_host_job", data=data)
+                return
+
+            # Validate schedule and compute next_run
+            if schedule_type == "once":
+                try:
+                    scheduled = datetime.fromisoformat(schedule_value)
+                    next_run: str | None = scheduled.isoformat()
+                except (ValueError, TypeError):
+                    logger.warning("Invalid timestamp for host job", schedule_value=schedule_value)
+                    return
+            else:
+                try:
+                    next_run = compute_next_run(
+                        schedule_type, schedule_value, get_settings().timezone
+                    )
+                except (ValueError, TypeError, KeyError):
+                    logger.warning(
+                        f"Invalid {schedule_type} value for host job",
+                        schedule_value=schedule_value,
+                    )
+                    return
+
+            from pynchy.db import create_host_job
+
+            job_id = f"host-{int(datetime.now(UTC).timestamp() * 1000)}-{uuid.uuid4().hex[:8]}"
+            await create_host_job(
+                {
+                    "id": job_id,
+                    "name": name,
+                    "command": command,
+                    "schedule_type": schedule_type,
+                    "schedule_value": schedule_value,
+                    "next_run": next_run,
+                    "status": "active",
+                    "created_at": datetime.now(UTC).isoformat(),
+                    "created_by": source_group,
+                    "cwd": data.get("cwd"),
+                    "timeout_seconds": data.get("timeout_seconds", 600),
+                    "enabled": True,
+                }
+            )
+            logger.info(
+                "Host job created via IPC",
+                job_id=job_id,
+                name=name,
+                source_group=source_group,
+            )
+
         case "pause_task":
             await _authorized_task_action(
                 data,
