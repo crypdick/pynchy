@@ -8,6 +8,7 @@ former nested closures in run_container_agent.
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
@@ -81,15 +82,27 @@ async def read_stdout(
 
                 try:
                     parsed = _parse_container_output(json_str)
-                    if parsed.new_session_id:
-                        state.new_session_id = parsed.new_session_id
-                    state.had_streaming_output = True
-                    reset_timeout()
-                    await on_output(parsed)
-                except Exception as exc:
+                except (json.JSONDecodeError, KeyError, TypeError) as exc:
                     logger.warning(
                         "Failed to parse streamed output chunk",
                         group=group_name,
+                        error_type=type(exc).__name__,
+                        error=str(exc),
+                    )
+                    continue
+
+                if parsed.new_session_id:
+                    state.new_session_id = parsed.new_session_id
+                state.had_streaming_output = True
+                reset_timeout()
+
+                try:
+                    await on_output(parsed)
+                except Exception as exc:
+                    logger.error(
+                        "Output callback failed",
+                        group=group_name,
+                        error_type=type(exc).__name__,
                         error=str(exc),
                     )
 

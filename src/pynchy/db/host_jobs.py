@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from pynchy.db._connection import _get_db
+from pynchy.db._connection import _get_db, _update_by_id
 from pynchy.types import HostJob
 
 
@@ -117,27 +117,12 @@ async def get_all_host_jobs() -> list[HostJob]:
     return [_row_to_host_job(row) for row in rows]
 
 
+_HOST_JOB_UPDATE_FIELDS = {"status", "enabled", "next_run", "schedule_value"}
+
+
 async def update_host_job(job_id: str, updates: dict[str, Any]) -> None:
     """Update specific fields of a host job."""
-    allowed = {"status", "enabled", "next_run", "schedule_value"}
-    fields: list[str] = []
-    values: list[Any] = []
-
-    for key, value in updates.items():
-        if key in allowed:
-            fields.append(f"{key} = ?")
-            values.append(value)
-
-    if not fields:
-        return
-
-    values.append(job_id)
-    db = _get_db()
-    await db.execute(
-        f"UPDATE host_jobs SET {', '.join(fields)} WHERE id = ?",
-        values,
-    )
-    await db.commit()
+    await _update_by_id("host_jobs", job_id, updates, _HOST_JOB_UPDATE_FIELDS)
 
 
 async def delete_host_job(job_id: str) -> None:

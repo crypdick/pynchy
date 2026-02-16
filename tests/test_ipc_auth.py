@@ -23,8 +23,10 @@ from pynchy.config import (
 )
 from pynchy.db import (
     _init_test_database,
+    create_host_job,
     create_task,
     get_all_tasks,
+    get_host_job_by_id,
     get_task_by_id,
     set_registered_group,
 )
@@ -1177,3 +1179,174 @@ class TestCreatePeriodicAgentAuth:
 
         tasks = await get_all_tasks()
         assert len(tasks) == 0
+
+
+# --- host job pause/resume/cancel authorization ---
+
+
+class TestHostJobPauseAuth:
+    """Tests for pause_task routing host job IDs to update_host_job."""
+
+    @pytest.fixture(autouse=True)
+    async def _create_host_job(self, deps):
+        await create_host_job(
+            {
+                "id": "host-job-1",
+                "name": "test-host-job",
+                "command": "echo hi",
+                "schedule_type": "cron",
+                "schedule_value": "0 9 * * *",
+                "next_run": "2025-06-01T09:00:00Z",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00.000Z",
+                "created_by": "god",
+                "enabled": True,
+            }
+        )
+
+    async def test_god_can_pause_host_job(self, deps):
+        await process_task_ipc(
+            {"type": "pause_task", "taskId": "host-job-1"}, "god", True, deps
+        )
+        job = await get_host_job_by_id("host-job-1")
+        assert job is not None
+        assert job.status == "paused"
+
+    async def test_non_god_cannot_pause_host_job(self, deps):
+        await process_task_ipc(
+            {"type": "pause_task", "taskId": "host-job-1"},
+            "other-group",
+            False,
+            deps,
+        )
+        job = await get_host_job_by_id("host-job-1")
+        assert job is not None
+        assert job.status == "active"
+
+
+class TestHostJobResumeAuth:
+    """Tests for resume_task routing host job IDs to update_host_job."""
+
+    @pytest.fixture(autouse=True)
+    async def _create_host_job(self, deps):
+        await create_host_job(
+            {
+                "id": "host-paused-1",
+                "name": "paused-host-job",
+                "command": "echo hi",
+                "schedule_type": "cron",
+                "schedule_value": "0 9 * * *",
+                "next_run": "2025-06-01T09:00:00Z",
+                "status": "paused",
+                "created_at": "2024-01-01T00:00:00.000Z",
+                "created_by": "god",
+                "enabled": True,
+            }
+        )
+
+    async def test_god_can_resume_host_job(self, deps):
+        await process_task_ipc(
+            {"type": "resume_task", "taskId": "host-paused-1"}, "god", True, deps
+        )
+        job = await get_host_job_by_id("host-paused-1")
+        assert job is not None
+        assert job.status == "active"
+
+    async def test_non_god_cannot_resume_host_job(self, deps):
+        await process_task_ipc(
+            {"type": "resume_task", "taskId": "host-paused-1"},
+            "other-group",
+            False,
+            deps,
+        )
+        job = await get_host_job_by_id("host-paused-1")
+        assert job is not None
+        assert job.status == "paused"
+
+
+class TestHostJobCancelAuth:
+    """Tests for cancel_task routing host job IDs to delete_host_job."""
+
+    async def test_god_can_cancel_host_job(self, deps):
+        await create_host_job(
+            {
+                "id": "host-cancel-1",
+                "name": "cancel-me",
+                "command": "echo bye",
+                "schedule_type": "cron",
+                "schedule_value": "0 9 * * *",
+                "next_run": "2025-06-01T09:00:00Z",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00.000Z",
+                "created_by": "god",
+                "enabled": True,
+            }
+        )
+
+        await process_task_ipc(
+            {"type": "cancel_task", "taskId": "host-cancel-1"}, "god", True, deps
+        )
+        assert await get_host_job_by_id("host-cancel-1") is None
+
+    async def test_non_god_cannot_cancel_host_job(self, deps):
+        await create_host_job(
+            {
+                "id": "host-cancel-2",
+                "name": "dont-cancel-me",
+                "command": "echo stay",
+                "schedule_type": "cron",
+                "schedule_value": "0 9 * * *",
+                "next_run": "2025-06-01T09:00:00Z",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00.000Z",
+                "created_by": "god",
+                "enabled": True,
+            }
+        )
+
+        await process_task_ipc(
+            {"type": "cancel_task", "taskId": "host-cancel-2"},
+            "other-group",
+            False,
+            deps,
+        )
+        assert await get_host_job_by_id("host-cancel-2") is not None
+
+
+# --- schedule_host_job missing fields ---
+
+
+class TestScheduleHostJobMissingFields:
+    """schedule_host_job requires name, command, schedule_type, and schedule_value."""
+
+    async def test_missing_name_creates_no_job(self, deps):
+        await process_task_ipc(
+            {
+                "type": "schedule_host_job",
+                "command": "echo hi",
+                "schedule_type": "cron",
+                "schedule_value": "0 9 * * *",
+            },
+            "god",
+            True,
+            deps,
+        )
+        from pynchy.db import get_all_host_jobs
+
+        assert len(await get_all_host_jobs()) == 0
+
+    async def test_missing_command_creates_no_job(self, deps):
+        await process_task_ipc(
+            {
+                "type": "schedule_host_job",
+                "name": "no-cmd",
+                "schedule_type": "cron",
+                "schedule_value": "0 9 * * *",
+            },
+            "god",
+            True,
+            deps,
+        )
+        from pynchy.db import get_all_host_jobs
+
+        assert len(await get_all_host_jobs()) == 0

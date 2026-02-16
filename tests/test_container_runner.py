@@ -306,7 +306,7 @@ class TestLegacyParsing:
     def test_returns_error_on_invalid_json(self):
         result = _parse_final_output("not json at all", "test", "", 100)
         assert result.status == "error"
-        assert "Failed to parse" in (result.error or "")
+        assert "Invalid JSON" in (result.error or "")
 
 
 # ---------------------------------------------------------------------------
@@ -1264,7 +1264,7 @@ class TestOutputParsingEdgeCases:
         stdout = f"{Settings.OUTPUT_START_MARKER}\nnot json\n{Settings.OUTPUT_END_MARKER}"
         result = _parse_final_output(stdout, "test-container", "", 100)
         assert result.status == "error"
-        assert "Failed to parse" in (result.error or "")
+        assert "Invalid JSON" in (result.error or "")
 
     def test_parse_final_output_multiple_marker_pairs(self):
         """When multiple marker pairs exist, uses the first one."""
@@ -1286,3 +1286,24 @@ class TestOutputParsingEdgeCases:
         result = _parse_final_output(stdout, "test-container", "", 100)
         assert result.status == "success"
         assert result.result == "fallback"
+
+    def test_parse_final_output_invalid_json_error_message(self):
+        """Invalid JSON should produce a specific 'Invalid JSON' error."""
+        result = _parse_final_output("{bad json", "test-container", "", 100)
+        assert result.status == "error"
+        assert "Invalid JSON" in (result.error or "")
+
+    def test_parse_final_output_missing_status_key(self):
+        """Valid JSON missing required 'status' key should report missing field."""
+        stdout = json.dumps({"result": "no status field"})
+        result = _parse_final_output(stdout, "test-container", "", 100)
+        assert result.status == "error"
+        assert "Missing required field" in (result.error or "") or "status" in (result.error or "")
+
+    def test_parse_final_output_truncates_long_preview_in_error(self):
+        """Very long invalid output should not flood error messages."""
+        long_garbage = "x" * 500
+        result = _parse_final_output(long_garbage, "test-container", "", 100)
+        assert result.status == "error"
+        # The error message should exist but be reasonable length
+        assert len(result.error or "") < 1000

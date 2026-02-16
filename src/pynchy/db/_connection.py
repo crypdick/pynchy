@@ -115,6 +115,38 @@ def _get_db() -> aiosqlite.Connection:
     return _db
 
 
+async def _update_by_id(
+    table: str,
+    row_id: str,
+    updates: dict[str, Any],
+    allowed_fields: set[str],
+) -> None:
+    """Build and execute a dynamic UPDATE for an allowlisted set of fields.
+
+    Shared by tasks, host_jobs, and any future table that needs
+    partial-update-by-primary-key semantics.  Silently skips keys
+    not in *allowed_fields* so callers don't need to pre-filter.
+    """
+    fields: list[str] = []
+    values: list[Any] = []
+
+    for key, value in updates.items():
+        if key in allowed_fields:
+            fields.append(f"{key} = ?")
+            values.append(value)
+
+    if not fields:
+        return
+
+    values.append(row_id)
+    db = _get_db()
+    await db.execute(
+        f"UPDATE {table} SET {', '.join(fields)} WHERE id = ?",
+        values,
+    )
+    await db.commit()
+
+
 async def _create_schema(database: aiosqlite.Connection) -> None:
     await database.executescript(_SCHEMA)
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from pynchy.db._connection import _get_db
+from pynchy.db._connection import _get_db, _update_by_id
 from pynchy.types import ScheduledTask, TaskRunLog
 
 
@@ -84,27 +84,19 @@ async def get_all_tasks() -> list[ScheduledTask]:
     return [_row_to_task(row) for row in rows]
 
 
+_TASK_UPDATE_FIELDS = {
+    "prompt",
+    "schedule_type",
+    "schedule_value",
+    "next_run",
+    "status",
+    "project_access",
+}
+
+
 async def update_task(task_id: str, updates: dict[str, Any]) -> None:
     """Update specific fields of a task."""
-    allowed = {"prompt", "schedule_type", "schedule_value", "next_run", "status", "project_access"}
-    fields: list[str] = []
-    values: list[Any] = []
-
-    for key, value in updates.items():
-        if key in allowed:
-            fields.append(f"{key} = ?")
-            values.append(value)
-
-    if not fields:
-        return
-
-    values.append(task_id)
-    db = _get_db()
-    await db.execute(
-        f"UPDATE scheduled_tasks SET {', '.join(fields)} WHERE id = ?",
-        values,
-    )
-    await db.commit()
+    await _update_by_id("scheduled_tasks", task_id, updates, _TASK_UPDATE_FIELDS)
 
 
 async def delete_task(task_id: str) -> None:
