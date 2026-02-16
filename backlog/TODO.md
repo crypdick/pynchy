@@ -24,16 +24,14 @@ Single source of truth for all pynchy work items.
 *Approved ideas. No plan yet.*
 
 - [X integration port](1-approved/x-integration-port.md) — Port the archived TypeScript X/Twitter skill to Python plugins
-- [Periodic agents](1-approved/periodic-agents.md) — Background agents for security sweeps, SDK updates, etc. (infra done: `task_scheduler.py`; 1 agent live: `code-improver`)
+- [Periodic agents ideas](1-approved/periodic-agents.md) — Background agents for security sweeps, SDK updates, etc. (infra done: `task_scheduler.py`; 1 agent live: `code-improver`)
 - [Project ideas](1-approved/project-ideas.md) — Standalone integration ideas (calendar, voice, Cloudflare, AWS, etc.)
 - [Small improvements](1-approved/small-improvements.md) — Remaining: dossier logging audit, slack-tools migration check (3/5 done)
 - [Ray resource orchestration](1-approved/ray-resource-orchestration.md) — Thin Ray integration for resource-aware container scaling, blocking queues, multi-node distribution, and GPU routing
 - implement 'handoff' tool calls as well as 'delegate' tool calls. handoff causes current agent to cease to exist; it decides what context to give to the next agent. the delegate tool is a blocking call that spawns a new agent to complete a task before passing it back. in reality, this tool call can abstract away a more complex system, like a deep research agent which has many subagents.
 - add support for multiple accounts/subscriptions. allow user to designate different workplaces to different accounts (e.g. corporate claude sub, personal claude sub, etc).
 - add a self-documenting hook to make the agent update its docs as it learns new things. it should run cmds and be sure that they work before writing docs (otherwise it's a hypothesis, not documetnation)
-- **[LOW PRIORITY]** Extract Apple Container runtime into standalone plugin (`pynchy-plugin-apple-container`). Requires plugin discovery system first. Serves as reference implementation for RuntimePlugin.
 - **[LOW PRIORITY]** Extract agent-browser skill into standalone plugin. Consider if container image size becomes an issue.
-- workspace templating — standardize creating new workspaces from templates (dataclass config done: `WorkspaceConfig` in `workspace_config.py`)
 - beginners tips. the tips print sometimes after a user sends a message. it has usage instructions and pro tips. plugin authors can optionally define tips for their plugins. there should be a global setting to disalbe tips. on by default.
 - god container feature request workflow — agents that want to edit shared files (e.g. `.claude/` rules) should spawn a god container with a feature request. The god container decides whether to implement it. (read-only mount enforcement already done in `mount_security.py`)
 - we need a mechanism for spinning down containers. if the worktree is in sync with main, and there hasn't been activity in 10 minutes, the agent container gets killed. this prevents the sync workflow from sending system messages to an inactive container, causing the agent to passively burn tokens for no reason. similarly, deploy shouldn't redeploy the individual containers if they are killed; only active containers.
@@ -72,7 +70,8 @@ Single source of truth for all pynchy work items.
 - factor out tailscale support into a separate plugin. make sure that at least one tunnel is always active. we might need to create a new tunnel plugin type, and update the cookiecutter template.
 - factor out openai backend as a separate plugin.
 - factor out claude backend as a separate plugin.
-- make the code improver plugin able to update the plugin repos as well as the core pynchy repo.()
+- make the code improver plugin able to update the plugin repos as well as the core pynchy repo.
+- check feasibility of turning mcps into tool calls.
 
 #### Bugs
 - messaging is broken. when I send a message, sometimes I see no response in the chat. then when i send a follow up message, it responds to the previous message. the system is desynchronized somehow. update: the message the agents send (as well as tool calls, other messages) seem to be sending to whatsapp more reliably than the tui.
