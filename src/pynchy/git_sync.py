@@ -10,6 +10,7 @@ containers can't read host state (logs, config, etc.).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -38,7 +39,7 @@ class GitSyncDeps(Protocol):
 
     def registered_groups(self) -> dict[str, RegisteredGroup]: ...
 
-    async def trigger_deploy(self, previous_sha: str) -> None: ...
+    async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None: ...
 
 
 # ---------------------------------------------------------------------------
@@ -363,55 +364,97 @@ def _host_source_files_changed(old_sha: str, new_sha: str) -> bool:
     return files_changed_between(old_sha, new_sha, "src/")
 
 
+def needs_deploy(old_sha: str, new_sha: str) -> bool:
+    """Check if a restart is needed between two commits."""
+    return (
+        _host_container_files_changed(old_sha, new_sha)
+        or _host_source_files_changed(old_sha, new_sha)
+    )
+
+
+def needs_container_rebuild(old_sha: str, new_sha: str) -> bool:
+    """Check if container image needs rebuilding. Only container/ changes require this."""
+    return _host_container_files_changed(old_sha, new_sha)
+
+
+def _hash_config_files() -> str:
+    """Hash config files that require a restart when changed."""
+    h = hashlib.sha256()
+    s = get_settings()
+    for path in [
+        s.project_root / "config.toml",
+        Path(s.gateway.litellm_config) if s.gateway.litellm_config else None,
+    ]:
+        if path and path.exists():
+            h.update(path.read_bytes())
+        else:
+            h.update(b"__missing__")
+    return h.hexdigest()
+
+
 async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
-    """Poll origin/main for external changes. Syncs host + all worktrees."""
-    last_sha = await asyncio.to_thread(_host_get_origin_main_sha)
+    """Poll for code and config changes. Detects origin drift, local drift, and config drift."""
+    last_origin_sha = await asyncio.to_thread(_host_get_origin_main_sha)
+    deployed_sha = await asyncio.to_thread(_get_local_head_sha)
+    config_hash = _hash_config_files()
 
     while True:
         await asyncio.sleep(HOST_GIT_SYNC_POLL_INTERVAL)
 
         try:
-            current_sha = await asyncio.to_thread(_host_get_origin_main_sha)
-            if not current_sha or current_sha == last_sha:
-                continue
+            # --- Config file drift detection ---
+            current_config_hash = _hash_config_files()
+            if current_config_hash != config_hash:
+                logger.info("Config files changed, triggering restart")
+                await deps.trigger_deploy(deployed_sha, rebuild=False)
+                return
 
-            old_sha = last_sha
-            last_sha = current_sha
+            # --- Local HEAD drift detection ---
+            local_head = await asyncio.to_thread(_get_local_head_sha)
+            if local_head and deployed_sha and local_head != deployed_sha:
+                if needs_deploy(deployed_sha, local_head):
+                    logger.info(
+                        "Local HEAD drifted, deploy needed",
+                        deployed_sha=deployed_sha[:8],
+                        local_head=local_head[:8],
+                    )
+                    await host_notify_worktree_updates(None, deps)
+                    rebuild = needs_container_rebuild(deployed_sha, local_head)
+                    await deps.trigger_deploy(deployed_sha, rebuild=rebuild)
+                    return
+                deployed_sha = local_head  # no deploy-worthy changes, advance baseline
+
+            # --- Origin change detection ---
+            current_origin = await asyncio.to_thread(_host_get_origin_main_sha)
+            if not current_origin or current_origin == last_origin_sha:
+                continue
+            old_origin = last_origin_sha
+            last_origin_sha = current_origin
 
             logger.info(
                 "Origin/main changed, syncing",
-                old_sha=old_sha[:8] if old_sha else "none",
-                new_sha=current_sha[:8],
+                old_sha=old_origin[:8] if old_origin else "none",
+                new_sha=current_origin[:8],
             )
 
-            # Skip if local HEAD already matches (e.g. we just pushed these commits)
-            local_head = await asyncio.to_thread(_get_local_head_sha)
-            if local_head == current_sha:
-                logger.info(
-                    "Origin changed but local HEAD already matches, skipping",
-                    sha=current_sha[:8],
-                )
-                continue
+            if local_head == current_origin:
+                logger.info("Origin changed but local already matches, skipping pull")
+                continue  # drift check above already handled deploy
 
             pre_update_sha = local_head
             updated = await asyncio.to_thread(_host_update_main)
             if not updated:
                 continue
 
-            # Sync all worktrees + notify agents first (before potential restart)
-            await host_notify_worktree_updates(exclude_group=None, deps=deps)
+            await host_notify_worktree_updates(None, deps)
 
-            # Check if container files changed — trigger rebuild + restart
-            if old_sha and _host_container_files_changed(old_sha, current_sha):
-                logger.info("Container files changed, triggering deploy")
-                await deps.trigger_deploy(pre_update_sha)
-                return  # process will restart
-
-            # Host source changes require a restart — Python doesn't hot-reload
-            if old_sha and _host_source_files_changed(old_sha, current_sha):
-                logger.info("Host source files changed, triggering deploy")
-                await deps.trigger_deploy(pre_update_sha)
-                return  # process will restart
+            # Check deploy inline (avoid 5s delay for next tick)
+            new_head = await asyncio.to_thread(_get_local_head_sha)
+            if deployed_sha and new_head and needs_deploy(deployed_sha, new_head):
+                rebuild = needs_container_rebuild(deployed_sha, new_head)
+                await deps.trigger_deploy(deployed_sha, rebuild=rebuild)
+                return
+            deployed_sha = new_head
 
         except Exception:
             logger.exception("git_sync poll error")

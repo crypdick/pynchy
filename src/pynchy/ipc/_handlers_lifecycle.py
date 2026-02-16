@@ -6,7 +6,14 @@ import json
 from typing import Any
 
 from pynchy.config import get_settings
-from pynchy.git_sync import host_notify_worktree_updates, host_sync_worktree, write_ipc_response
+from pynchy.git_sync import (
+    host_notify_worktree_updates,
+    host_sync_worktree,
+    needs_container_rebuild,
+    needs_deploy,
+    write_ipc_response,
+)
+from pynchy.git_utils import get_head_sha
 from pynchy.ipc._deps import IpcDeps
 from pynchy.ipc._registry import register
 from pynchy.logger import logger
@@ -109,12 +116,14 @@ async def _handle_sync_worktree_to_main(
     deps: IpcDeps,
 ) -> None:
     request_id = data.get("requestId", "")
+    pre_merge_sha = get_head_sha()
     result = host_sync_worktree(source_group)
 
     result_dir = get_settings().data_dir / "ipc" / source_group / "merge_results"
     write_ipc_response(result_dir / f"{request_id}.json", result)
 
     if result.get("success"):
+        post_merge_sha = get_head_sha()
 
         class _GitSyncAdapter:
             async def broadcast_system_notice(self, jid: str, text: str) -> None:
@@ -123,10 +132,20 @@ async def _handle_sync_worktree_to_main(
             def registered_groups(self) -> dict[str, RegisteredGroup]:
                 return deps.registered_groups()
 
-            async def trigger_deploy(self, previous_sha: str) -> None:
-                pass  # No deploy needed — worktree sync doesn't trigger restarts
+            async def trigger_deploy(
+                self, previous_sha: str, rebuild: bool = True
+            ) -> None:
+                pass  # adapter only used for worktree notifications
 
         await host_notify_worktree_updates(source_group, _GitSyncAdapter())
+
+        if (
+            pre_merge_sha != "unknown"
+            and pre_merge_sha != post_merge_sha
+            and needs_deploy(pre_merge_sha, post_merge_sha)
+        ):
+            rebuild = needs_container_rebuild(pre_merge_sha, post_merge_sha)
+            await deps.trigger_deploy(pre_merge_sha, rebuild=rebuild)
 
     logger.info(
         "sync_worktree_to_main handled",
