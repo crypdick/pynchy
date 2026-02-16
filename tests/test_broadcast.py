@@ -445,7 +445,9 @@ class TestBroadcastConsistency:
             received.append(data)
 
         # Wire up the SSE bridge like the HTTP server does
-        http_deps = app._make_http_deps()
+        from pynchy.dep_factory import make_http_deps
+
+        http_deps = make_http_deps(app)
         unsub = http_deps.subscribe_events(sse_callback)
 
         try:
@@ -497,7 +499,9 @@ class TestUserMessageBroadcast:
         capture = EventCapture(app.event_bus)
 
         # Get the HTTP deps (which includes send_user_message)
-        http_deps = app._make_http_deps()
+        from pynchy.dep_factory import make_http_deps
+
+        http_deps = make_http_deps(app)
 
         # Simulate a TUI user sending a message
         await http_deps.send_user_message("group@g.us", "Hello from TUI")

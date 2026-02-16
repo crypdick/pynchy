@@ -1,19 +1,20 @@
-"""Startup and deploy continuation helpers for the main app."""
+"""Startup, first-run setup, and deploy continuation helpers for the main app."""
 
 from __future__ import annotations
 
 import json
+import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from pynchy.config import get_settings
 from pynchy.db import get_messages_since, store_message
 from pynchy.git_utils import get_head_sha, is_repo_dirty, run_git
 from pynchy.http_server import _get_head_commit_message
 from pynchy.logger import logger
-from pynchy.types import NewMessage
+from pynchy.types import NewMessage, WorkspaceProfile
 from pynchy.utils import generate_message_id
 
 if TYPE_CHECKING:
@@ -32,6 +33,8 @@ class StartupDeps(Protocol):
     def queue(self) -> GroupQueue: ...
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
+
+    async def _register_workspace(self, profile: WorkspaceProfile) -> None: ...
 
 
 async def send_boot_notification(deps: StartupDeps) -> None:
@@ -180,3 +183,61 @@ async def check_deploy_continuation(deps: StartupDeps) -> None:
     )
     await store_message(synthetic_msg)
     deps.queue.enqueue_message_check(chat_jid)
+
+
+# ------------------------------------------------------------------
+# First-run setup
+# ------------------------------------------------------------------
+
+
+async def setup_god_group(deps: StartupDeps, default_channel: Any | None) -> None:
+    """Create and register the first god workspace.
+
+    If a default channel with ``create_group`` is available, provision a
+    channel-native group. Otherwise bootstrap a local TUI workspace so core
+    usage is never coupled to external channels.
+    """
+    s = get_settings()
+    group_name = s.agent.name.title()
+    logger.info("No groups registered. Creating first god workspace...", name=group_name)
+
+    jid = f"tui://{s.agent.name}"
+    if default_channel and hasattr(default_channel, "create_group"):
+        jid = await default_channel.create_group(group_name)
+        logger.info(
+            "Created first-run group via channel",
+            channel=default_channel.name,
+            jid=jid,
+        )
+    else:
+        logger.info("No channel group support found, creating TUI local workspace", jid=jid)
+
+    # Create god workspace with default security profile
+    profile = WorkspaceProfile(
+        jid=jid,
+        name=group_name,
+        folder=s.agent.name,
+        trigger=f"@{s.agent.name}",
+        added_at=datetime.now(UTC).isoformat(),
+        requires_trigger=False,
+        is_god=True,
+    )
+    await deps._register_workspace(profile)
+    logger.info("God workspace created", group=group_name, jid=jid)
+
+
+def validate_plugin_credentials(plugin: Any) -> list[str]:
+    """Check if plugin has required environment variables.
+
+    Args:
+        plugin: Plugin instance with optional requires_credentials() method
+
+    Returns:
+        List of missing credential names (empty if all present)
+    """
+    if not hasattr(plugin, "requires_credentials"):
+        return []
+
+    required = plugin.requires_credentials()
+    missing = [cred for cred in required if cred not in os.environ]
+    return missing

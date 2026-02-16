@@ -204,7 +204,9 @@ class TestFirstRunBootstrap:
         app.registered_groups = {}
         app.workspaces = {}
 
-        await app._setup_god_group(default_channel=None)
+        from pynchy import startup_handler
+
+        await startup_handler.setup_god_group(app, default_channel=None)
 
         assert len(app.registered_groups) == 1
         [(jid, group)] = list(app.registered_groups.items())
@@ -451,7 +453,7 @@ class TestRunAgent:
             _patch_test_settings(tmp_path),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
-            result = await app._run_agent(group, "test prompt", "group@g.us")
+            result = await app.run_agent(group, "test prompt", "group@g.us")
 
         await driver
         assert result == "success"
@@ -468,7 +470,7 @@ class TestRunAgent:
             _patch_test_settings(tmp_path),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
-            result = await app._run_agent(group, "test prompt", "group@g.us")
+            result = await app.run_agent(group, "test prompt", "group@g.us")
 
         assert result == "error"
 
