@@ -435,15 +435,18 @@ async def start_message_loop(
                             # Non-interrupting — host writes directly to
                             # todos.json, then notifies agent via IPC.
                             #
-                            # SDK limitation: the Claude SDK does not
-                            # expose APIs to inject true system messages
-                            # or invoke MCP tools from outside the
-                            # agent's query loop.  So we edit todos.json
-                            # directly (bypassing the list_todos /
-                            # complete_todo MCP tools) and use a
-                            # "[System notice]" prefix convention on the
-                            # IPC notification so the agent treats it as
-                            # informational rather than a user request.
+                            # Tightly coupled to the Claude SDK: the SDK
+                            # does not expose APIs to inject true system
+                            # messages or invoke MCP tools from outside
+                            # the agent's query loop.  So we edit
+                            # todos.json directly (bypassing the
+                            # list_todos / complete_todo MCP tools) and
+                            # use a "[System notice]" prefix convention
+                            # on the IPC notification so the agent treats
+                            # it as informational rather than a user
+                            # request.  If the SDK adds external tool
+                            # invocation or system message injection,
+                            # this workaround can be replaced.
                             from pynchy.todos import add_todo
 
                             item = last_content[5:]  # strip "todo " prefix

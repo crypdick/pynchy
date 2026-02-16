@@ -37,5 +37,6 @@ Messages must start with the `@Pynchy` prefix (case insensitive, configurable vi
 - All channels send messages to the same code path
 - Only messages from registered groups are processed; unregistered groups are ignored
 - All channels are kept in sync — ongoing conversations can be continued from different channels, and all channels display the same message history
+- Messages that arrive while a task is already running follow escalation rules — see [Messaging During Active Tasks](../usage/index.md#messaging-during-active-tasks)
 
 For how messages are typed and stored, see [Message types](message-types.md).
