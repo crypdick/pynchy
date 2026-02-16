@@ -74,12 +74,20 @@ def _write_response(source_group: str, request_id: str, response: dict) -> None:
     temp_path.rename(filepath)
 
 
-def _resolve_security(source_group: str) -> WorkspaceSecurity:
+def _resolve_security(source_group: str, *, is_god: bool = False) -> WorkspaceSecurity:
     """Resolve the security profile for a workspace from config.toml.
 
     config.toml is the source of truth. Falls back to strict defaults
     (all tools require human-approval) if the workspace has no security config.
+
+    God workspaces auto-approve all tools since they are fully trusted.
     """
+    # God workspace is fully trusted — skip policy gates.
+    # TODO: Re-evaluate when human-approval gate is implemented
+    #   (backlog/2-planning/security-hardening-6-approval.md).
+    if is_god:
+        return WorkspaceSecurity(default_risk_tier="always-approve")
+
     s = get_settings()
     ws_config = s.workspaces.get(source_group)
 
@@ -144,7 +152,7 @@ async def _handle_service_request(
         return
 
     # Resolve workspace security from config.toml
-    security = _resolve_security(source_group)
+    security = _resolve_security(source_group, is_god=is_god)
     policy = _get_policy(source_group, security)
 
     # Find the chat_jid for this group (for audit logging)
