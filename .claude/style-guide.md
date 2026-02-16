@@ -42,7 +42,7 @@ Each file covers **one topic**. If a page grows to cover multiple concerns, spli
 When a specific value in code is also documented (env var allowlists, blocked patterns,
 mount tables, user names, etc.), add a comment at the code site:
 
-    # NOTE: Update docs/security.md § Credential Handling if you change this list
+    # NOTE: Update docs/architecture/security.md § Credential Handling if you change this list
     allowed_vars = [...]
 
 This keeps docs in sync without requiring developers to memorize which docs reference which code.
