@@ -132,6 +132,9 @@ class MockDeps:
     def channels(self) -> list:
         return []
 
+    def get_active_sessions(self) -> dict[str, str]:
+        return {}
+
     async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
         self.deploy_calls.append((previous_sha, rebuild))
 

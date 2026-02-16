@@ -137,6 +137,9 @@ class MockDeps:
     def channels(self) -> list:
         return []
 
+    def get_active_sessions(self) -> dict[str, str]:
+        return {}
+
 
 @pytest.fixture
 async def deps():

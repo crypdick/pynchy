@@ -21,6 +21,7 @@ async def finalize_deploy(
     session_id: str = "",
     resume_prompt: str = "Deploy complete. Verifying service health.",
     sigterm_delay: float = 0,
+    active_sessions: dict[str, str] | None = None,
 ) -> None:
     """Write continuation, notify all UIs, and SIGTERM self.
 
@@ -34,20 +35,28 @@ async def finalize_deploy(
         resume_prompt: Message injected into the agent on restart.
         sigterm_delay: Seconds to wait before SIGTERM. Use >0 when an HTTP
             response needs to flush before the process dies.
+        active_sessions: Optional mapping of chat_jid → session_id for all
+            active groups. Merged with the single session_id/chat_jid pair.
     """
-    # 1. Write continuation file
-    continuation = {
+    # 1. Build merged active_sessions dict
+    merged_sessions: dict[str, str] = dict(active_sessions) if active_sessions else {}
+    if session_id and chat_jid:
+        merged_sessions[chat_jid] = session_id
+
+    # 2. Write continuation file
+    continuation: dict[str, object] = {
         "chat_jid": chat_jid,
         "session_id": session_id,
         "resume_prompt": resume_prompt,
         "commit_sha": commit_sha,
         "previous_commit_sha": previous_sha,
+        "active_sessions": merged_sessions,
     }
     continuation_path = get_settings().data_dir / "deploy_continuation.json"
     continuation_path.parent.mkdir(parents=True, exist_ok=True)
     continuation_path.write_text(json.dumps(continuation, indent=2))
 
-    # 2. Notify all UIs
+    # 3. Notify all UIs
     short_sha = commit_sha[:8] if commit_sha else "unknown"
     if chat_jid:
         await broadcast_host_message(
@@ -61,7 +70,7 @@ async def finalize_deploy(
         previous_sha=previous_sha,
     )
 
-    # 3. SIGTERM self
+    # 4. SIGTERM self
     if sigterm_delay > 0:
         loop = asyncio.get_running_loop()
         loop.call_later(sigterm_delay, os.kill, os.getpid(), signal.SIGTERM)

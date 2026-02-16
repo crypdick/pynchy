@@ -14,7 +14,7 @@ from pynchy.db import get_messages_since, store_message
 from pynchy.git_utils import get_head_sha, is_repo_dirty, run_git
 from pynchy.http_server import _get_head_commit_message
 from pynchy.logger import logger
-from pynchy.types import NewMessage, WorkspaceSecurity, WorkspaceProfile
+from pynchy.types import NewMessage, WorkspaceProfile, WorkspaceSecurity
 from pynchy.utils import generate_message_id
 
 if TYPE_CHECKING:
@@ -131,7 +131,13 @@ async def auto_rollback(continuation_path: Path, exc: Exception) -> None:
 
 
 async def check_deploy_continuation(deps: StartupDeps) -> None:
-    """Check for a deploy continuation file and inject a resume message."""
+    """Check for a deploy continuation file and inject resume messages.
+
+    Reads the ``active_sessions`` dict from the continuation file and injects
+    a synthetic resume message for every group that had an active session.
+    Falls back to the legacy single ``session_id``/``chat_jid`` pair when
+    ``active_sessions`` is not present (backward compat with old continuations).
+    """
     continuation_path = get_settings().data_dir / "deploy_continuation.json"
     if not continuation_path.exists():
         return
@@ -147,42 +153,44 @@ async def check_deploy_continuation(deps: StartupDeps) -> None:
         )
         return
 
-    chat_jid = continuation.get("chat_jid", "")
-    session_id = continuation.get("session_id", "")
     resume_prompt = continuation.get("resume_prompt", "Deploy complete.")
     commit_sha = continuation.get("commit_sha", "unknown")
 
-    if not chat_jid:
-        logger.warning("Deploy continuation missing chat_jid, skipping")
-        return
+    # Build sessions to resume: prefer active_sessions dict, fall back to legacy single pair
+    active_sessions: dict[str, str] = continuation.get("active_sessions", {})
+    if not active_sessions:
+        # Backward compat: old continuation files only have session_id + chat_jid
+        legacy_jid = continuation.get("chat_jid", "")
+        legacy_sid = continuation.get("session_id", "")
+        if legacy_jid and legacy_sid:
+            active_sessions = {legacy_jid: legacy_sid}
 
-    # Only inject a resume message if an agent session needs to continue.
-    # Plain HTTP deploys have no session_id -- the boot notification suffices.
-    if not session_id:
+    if not active_sessions:
         logger.info(
-            "Deploy continuation has no session_id, skipping agent resume",
+            "Deploy continuation has no active sessions, skipping agent resume",
             commit_sha=commit_sha,
         )
         return
 
     logger.info(
-        "Deploy continuation found, injecting resume message",
+        "Deploy continuation found, resuming sessions",
         commit_sha=commit_sha,
-        chat_jid=chat_jid,
+        group_count=len(active_sessions),
     )
 
-    # Uses sender="deploy" so it passes get_messages_since filters.
-    synthetic_msg = NewMessage(
-        id=generate_message_id(f"deploy-{commit_sha[:8]}"),
-        chat_jid=chat_jid,
-        sender="deploy",
-        sender_name="deploy",
-        content=f"[DEPLOY COMPLETE -- {commit_sha[:8]}] {resume_prompt}",
-        timestamp=datetime.now(UTC).isoformat(),
-        is_from_me=False,
-    )
-    await store_message(synthetic_msg)
-    deps.queue.enqueue_message_check(chat_jid)
+    for jid, _session_id in active_sessions.items():
+        synthetic_msg = NewMessage(
+            id=generate_message_id(f"deploy-{commit_sha[:8]}-{jid[:12]}"),
+            chat_jid=jid,
+            sender="deploy",
+            sender_name="deploy",
+            content=f"[DEPLOY COMPLETE -- {commit_sha[:8]}] {resume_prompt}",
+            timestamp=datetime.now(UTC).isoformat(),
+            is_from_me=False,
+        )
+        await store_message(synthetic_msg)
+        deps.queue.enqueue_message_check(jid)
+        logger.info("Injected resume message", chat_jid=jid)
 
 
 # ------------------------------------------------------------------

@@ -193,6 +193,21 @@ class SessionManager:
         """Return all active sessions."""
         return self._sessions
 
+    def get_active_sessions(self, groups: dict[str, RegisteredGroup]) -> dict[str, str]:
+        """Build a {chat_jid: session_id} map from sessions and registered groups.
+
+        ``self._sessions`` is keyed by group folder. This helper joins with the
+        group registry (keyed by JID) to produce a JID-keyed mapping suitable
+        for the deploy continuation file.
+        """
+        folder_to_jid: dict[str, str] = {g.folder: jid for jid, g in groups.items()}
+        result: dict[str, str] = {}
+        for folder, session_id in self._sessions.items():
+            jid = folder_to_jid.get(folder, "")
+            if jid and session_id:
+                result[jid] = session_id
+        return result
+
     async def clear_session(self, group_folder: str) -> None:
         """Clear session state for a group."""
         self._sessions.pop(group_folder, None)

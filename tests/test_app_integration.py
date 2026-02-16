@@ -722,3 +722,136 @@ class TestTracePersistence:
         # Channel should have received the formatted cost message
         texts = [text for _, text in channel.sent_messages]
         assert any("0.03 USD" in t for t in texts), f"Expected cost in channel, got {texts}"
+
+
+class TestDeployContinuationResume:
+    """Verify multi-group resume after deploy restart."""
+
+    async def test_resumes_all_groups_from_active_sessions(self, app: PynchyApp, tmp_path: Path):
+        """check_deploy_continuation should inject resume messages for every active session."""
+        await _init_test_database()
+
+        # Register two groups
+        app.registered_groups = {
+            "god@g.us": RegisteredGroup(
+                name="God",
+                folder="god",
+                trigger="always",
+                added_at="2024-01-01T00:00:00.000Z",
+                is_god=True,
+            ),
+            "team@g.us": RegisteredGroup(
+                name="Team",
+                folder="team",
+                trigger="@pynchy",
+                added_at="2024-01-01T00:00:00.000Z",
+            ),
+        }
+
+        # Write a continuation file with active_sessions for both groups
+        data_dir = tmp_path / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        continuation = {
+            "chat_jid": "god@g.us",
+            "session_id": "sess-god",
+            "resume_prompt": "Deploy complete.",
+            "commit_sha": "abc12345",
+            "previous_commit_sha": "000",
+            "active_sessions": {
+                "god@g.us": "sess-god",
+                "team@g.us": "sess-team",
+            },
+        }
+        (data_dir / "deploy_continuation.json").write_text(json.dumps(continuation))
+
+        enqueued: list[str] = []
+        app.queue.enqueue_message_check = lambda jid: enqueued.append(jid)  # type: ignore[assignment]
+
+        with patch("pynchy.startup_handler.get_settings") as mock_settings:
+            s = MagicMock()
+            s.data_dir = data_dir
+            mock_settings.return_value = s
+            from pynchy.startup_handler import check_deploy_continuation
+
+            await check_deploy_continuation(app)
+
+        # Both groups should have been enqueued for resume
+        assert "god@g.us" in enqueued
+        assert "team@g.us" in enqueued
+
+        # Both groups should have a deploy resume message in history
+        god_history = await get_chat_history("god@g.us", limit=10)
+        team_history = await get_chat_history("team@g.us", limit=10)
+        assert any("DEPLOY COMPLETE" in m.content for m in god_history)
+        assert any("DEPLOY COMPLETE" in m.content for m in team_history)
+
+        # Continuation file should be deleted
+        assert not (data_dir / "deploy_continuation.json").exists()
+
+    async def test_backward_compat_single_session(self, app: PynchyApp, tmp_path: Path):
+        """Old continuation files without active_sessions should still resume the single group."""
+        await _init_test_database()
+
+        app.registered_groups = {
+            "god@g.us": RegisteredGroup(
+                name="God",
+                folder="god",
+                trigger="always",
+                added_at="2024-01-01T00:00:00.000Z",
+                is_god=True,
+            ),
+        }
+
+        data_dir = tmp_path / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        # Old-style continuation: no active_sessions key
+        continuation = {
+            "chat_jid": "god@g.us",
+            "session_id": "sess-god",
+            "resume_prompt": "Deploy complete.",
+            "commit_sha": "abc12345",
+            "previous_commit_sha": "000",
+        }
+        (data_dir / "deploy_continuation.json").write_text(json.dumps(continuation))
+
+        enqueued: list[str] = []
+        app.queue.enqueue_message_check = lambda jid: enqueued.append(jid)  # type: ignore[assignment]
+
+        with patch("pynchy.startup_handler.get_settings") as mock_settings:
+            s = MagicMock()
+            s.data_dir = data_dir
+            mock_settings.return_value = s
+            from pynchy.startup_handler import check_deploy_continuation
+
+            await check_deploy_continuation(app)
+
+        assert "god@g.us" in enqueued
+
+    async def test_skips_when_no_active_sessions(self, app: PynchyApp, tmp_path: Path):
+        """Continuation with empty active_sessions and no session_id should skip resume."""
+        await _init_test_database()
+
+        data_dir = tmp_path / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        continuation = {
+            "chat_jid": "god@g.us",
+            "session_id": "",
+            "resume_prompt": "Deploy complete.",
+            "commit_sha": "abc12345",
+            "previous_commit_sha": "000",
+            "active_sessions": {},
+        }
+        (data_dir / "deploy_continuation.json").write_text(json.dumps(continuation))
+
+        enqueued: list[str] = []
+        app.queue.enqueue_message_check = lambda jid: enqueued.append(jid)  # type: ignore[assignment]
+
+        with patch("pynchy.startup_handler.get_settings") as mock_settings:
+            s = MagicMock()
+            s.data_dir = data_dir
+            mock_settings.return_value = s
+            from pynchy.startup_handler import check_deploy_continuation
+
+            await check_deploy_continuation(app)
+
+        assert len(enqueued) == 0
