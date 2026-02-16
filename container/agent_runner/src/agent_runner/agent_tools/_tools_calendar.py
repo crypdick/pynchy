@@ -1,7 +1,12 @@
 """Calendar tools — list, create, and delete events via IPC service requests.
 
+Supports multiple CalDAV servers. The ``calendar`` parameter accepts either
+``calendar_name`` (resolved against the default server) or
+``server/calendar_name`` for explicit server selection. Use ``list_calendars``
+to discover available servers and calendars.
+
 These tools write IPC requests that the host processes after applying
-policy middleware. Actual calendar service integration comes in Step 4.
+policy middleware.
 """
 
 from __future__ import annotations
@@ -10,6 +15,28 @@ from mcp.types import TextContent, Tool
 
 from agent_runner.agent_tools._ipc_request import ipc_service_request
 from agent_runner.agent_tools._registry import ToolEntry, register
+
+# --- list_calendars ---
+
+
+def _list_calendars_definition() -> Tool:
+    return Tool(
+        name="list_calendars",
+        description=(
+            "Discover all available calendars across all configured CalDAV servers. "
+            "Returns server names and their visible calendars. Use this to find out "
+            "what calendars are available before using other calendar tools."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {},
+        },
+    )
+
+
+async def _list_calendars_handle(arguments: dict) -> list[TextContent]:
+    return await ipc_service_request("list_calendars", {})
+
 
 # --- list_calendar ---
 
@@ -31,7 +58,11 @@ def _list_calendar_definition() -> Tool:
                 },
                 "calendar": {
                     "type": "string",
-                    "description": "Calendar name (default: primary)",
+                    "description": (
+                        'Calendar name (default: primary). Use "server/calendar" '
+                        "to target a specific server, or just "
+                        '"calendar" for the default server.'
+                    ),
                     "default": "primary",
                 },
             },
@@ -82,7 +113,11 @@ def _create_event_definition() -> Tool:
                 },
                 "calendar": {
                     "type": "string",
-                    "description": "Calendar name (default: primary)",
+                    "description": (
+                        'Calendar name (default: primary). Use "server/calendar" '
+                        "to target a specific server, or just "
+                        '"calendar" for the default server.'
+                    ),
                     "default": "primary",
                 },
             },
@@ -123,7 +158,11 @@ def _delete_event_definition() -> Tool:
                 },
                 "calendar": {
                     "type": "string",
-                    "description": "Calendar name (default: primary)",
+                    "description": (
+                        'Calendar name (default: primary). Use "server/calendar" '
+                        "to target a specific server, or just "
+                        '"calendar" for the default server.'
+                    ),
                     "default": "primary",
                 },
             },
@@ -142,6 +181,10 @@ async def _delete_event_handle(arguments: dict) -> list[TextContent]:
     )
 
 
+register(
+    "list_calendars",
+    ToolEntry(definition=_list_calendars_definition, handler=_list_calendars_handle),
+)
 register(
     "list_calendar",
     ToolEntry(definition=_list_calendar_definition, handler=_list_calendar_handle),
