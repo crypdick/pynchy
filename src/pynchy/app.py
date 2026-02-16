@@ -35,8 +35,7 @@ from pynchy.event_bus import EventBus
 from pynchy.group_queue import GroupQueue
 from pynchy.http_server import start_http_server
 from pynchy.logger import logger
-from pynchy.plugin_sync import install_verified_plugins, sync_plugin_repos
-from pynchy.plugin_verifier import verify_synced_plugins
+from pynchy.plugin_verifier import load_verified_plugins, scan_and_install_new_plugins
 from pynchy.service_installer import install_service
 from pynchy.system_checks import check_tailscale, ensure_container_system_running
 from pynchy.types import (
@@ -319,6 +318,16 @@ class PynchyApp:
     # Lifecycle
     # ------------------------------------------------------------------
 
+    async def _pre_restart_cleanup(self) -> None:
+        """Minimal cleanup before os.execv restart (plugin reload).
+
+        Only the gateway and DB need closing — channels haven't connected
+        yet and the queue has no in-flight work.
+        """
+        from pynchy.gateway import stop_gateway
+
+        await stop_gateway()
+
     async def _shutdown(self, sig_name: str) -> None:
         """Graceful shutdown handler. Second signal force-exits."""
         if self._shutting_down:
@@ -364,17 +373,10 @@ class PynchyApp:
         try:
             install_service()
 
-            # Phase 1: Clone/update plugin repos (no install, no import).
-            synced = sync_plugin_repos()
+            # Sync plugin repos, install only trusted / already-verified ones.
+            # Unverified plugins are left out until audited below.
+            synced = load_verified_plugins()
 
-            # Phase 2: Verify uncached plugins using an isolated container agent.
-            # Uses Docker directly to avoid importing unverified plugin code.
-            verified = await verify_synced_plugins(synced, s.plugins_dir)
-
-            # Phase 3: Install verified plugins into host Python environment.
-            install_verified_plugins(verified)
-
-            # Now safe to discover plugins — only verified code gets imported.
             from pynchy.plugin import get_plugin_manager
             from pynchy.workspace_config import configure_plugin_workspaces
 
@@ -396,6 +398,14 @@ class PynchyApp:
             if continuation_path.exists():
                 await self._auto_rollback(continuation_path, exc)
             raise
+
+        # Audit unverified plugins using the now-running container infra.
+        # Blocks channel connections so no user messages arrive during audit.
+        if await scan_and_install_new_plugins(synced, self.plugin_manager):
+            await self._pre_restart_cleanup()
+            import sys
+
+            os.execv(sys.executable, [sys.executable] + sys.argv)
 
         loop = asyncio.get_running_loop()
 

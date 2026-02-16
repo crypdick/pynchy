@@ -368,6 +368,7 @@ class TestManagedPluginIntegration:
                     repo="crypdick/pynchy-plugin-whatsapp",
                     ref="main",
                     enabled=True,
+                    trusted=True,
                 )
             },
         )
@@ -425,6 +426,7 @@ class TestManagedPluginIntegration:
                     repo="crypdick/pynchy-plugin-code-improver",
                     ref="main",
                     enabled=True,
+                    trusted=True,
                 )
             },
         )

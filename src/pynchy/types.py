@@ -342,6 +342,18 @@ class ContainerOutput:
 
 
 @dataclass
+class PluginVerification:
+    """Cached plugin security verification result."""
+
+    plugin_name: str
+    git_sha: str
+    verified_at: str
+    verdict: Literal["pass", "fail"]
+    reasoning: str
+    model: str
+
+
+@dataclass
 class VolumeMount:
     host_path: str
     container_path: str
