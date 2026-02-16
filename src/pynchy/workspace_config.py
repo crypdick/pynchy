@@ -228,7 +228,7 @@ async def reconcile_workspaces(
         if existing_task is None:
             tz = ZoneInfo(s.timezone)
             cron = croniter(config.schedule, datetime.now(tz))
-            next_run = cron.get_next(datetime).isoformat()
+            next_run = cron.get_next(datetime).astimezone(UTC).isoformat()
 
             task_id = f"periodic-{folder}-{uuid.uuid4().hex[:8]}"
             await create_task(
@@ -258,7 +258,7 @@ async def reconcile_workspaces(
                 updates["schedule_value"] = config.schedule
                 tz = ZoneInfo(s.timezone)
                 cron = croniter(config.schedule, datetime.now(tz))
-                updates["next_run"] = cron.get_next(datetime).isoformat()
+                updates["next_run"] = cron.get_next(datetime).astimezone(UTC).isoformat()
             if existing_task.prompt != config.prompt:
                 updates["prompt"] = config.prompt
             if existing_task.project_access != config.project_access:

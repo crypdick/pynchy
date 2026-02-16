@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 
 import aiohttp
 from textual.app import App, ComposeResult
@@ -157,7 +157,7 @@ class PynchyTUI(App):
 
         # Render immediately for responsiveness
         chat_log = self.query_one(ChatLog)
-        _render_message(chat_log, "You", text, datetime.now().isoformat())
+        _render_message(chat_log, "You", text, datetime.now(UTC).isoformat())
 
         # Send to server
         try:
