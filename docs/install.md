@@ -25,13 +25,15 @@ brew install container             # Apple Container (recommended) — or instal
 **Linux (Debian/Ubuntu):**
 ```bash
 sudo apt-get install libmagic1     # Required by neonize (WhatsApp) for MIME detection
-# Install Docker - https://docs.docker.com/engine/install/
+# Install Docker + BuildKit - https://docs.docker.com/engine/install/
+sudo apt-get install docker-buildx # Required for container image builds
 ```
 
 **Linux (Fedora/RHEL):**
 ```bash
 sudo dnf install file-libs         # Required by neonize (WhatsApp) for MIME detection
-# Install Docker - https://docs.docker.com/engine/install/
+# Install Docker + BuildKit - https://docs.docker.com/engine/install/
+sudo dnf install docker-buildx-plugin  # Required for container image builds
 ```
 
 > **Note:** On macOS, if Apple Container is not installed, Pynchy automatically falls back to Docker.
@@ -126,7 +128,7 @@ SSH into your server and install the required packages:
 
 ```bash
 # System packages
-sudo apt-get update && sudo apt-get install -y docker.io sqlite3
+sudo apt-get update && sudo apt-get install -y docker.io docker-buildx sqlite3
 sudo usermod -aG docker $USER
 # Log out and back in, or use `sg docker -c "docker ps"` to test
 
@@ -287,6 +289,7 @@ Run `claude` on the server to authenticate, or set `[secrets].anthropic_api_key`
 - Ensure Docker is running: `sudo systemctl start docker`
 - Verify you're in the docker group: `groups | grep docker`
 - If not, run `sudo usermod -aG docker $USER` and log out/in
+- **"BuildKit is enabled but the buildx component is missing"**: Install the buildx plugin: `sudo apt-get install docker-buildx` (Debian/Ubuntu) or `sudo dnf install docker-buildx-plugin` (Fedora/RHEL). BuildKit is required for container builds.
 
 Then rebuild: `./container/build.sh`
 
