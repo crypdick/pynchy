@@ -90,6 +90,14 @@
 # IPC file polling interval (seconds)
 # ipc_poll = 1.0
 
+# Host cron jobs (runs shell commands directly on host, no LLM/container loop)
+# [cron_jobs.rebuild_container]
+# schedule = "0 5 * * *"
+# command = "./container/build.sh"
+# cwd = "."
+# timeout_seconds = 1200
+# enabled = true
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Queue Configuration
 # ─────────────────────────────────────────────────────────────────────────────

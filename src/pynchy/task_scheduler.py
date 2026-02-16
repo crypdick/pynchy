@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+from asyncio.subprocess import PIPE
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
+from zoneinfo import ZoneInfo
+
+from croniter import croniter
 
 from pynchy.config import get_settings
 from pynchy.container_runner import (
@@ -54,6 +60,7 @@ class SchedulerDependencies(Protocol):
 
 
 _scheduler_running = False
+_cron_job_next_runs: dict[str, str] = {}
 
 
 async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
@@ -67,6 +74,8 @@ async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
 
     while True:
         try:
+            await _poll_host_cron_jobs()
+
             due_tasks = await get_due_tasks()
             if due_tasks:
                 logger.info("Found due tasks", count=len(due_tasks))
@@ -89,6 +98,118 @@ async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
             logger.error("Error in scheduler loop", err=str(exc))
 
         await asyncio.sleep(get_settings().scheduler.poll_interval)
+
+
+def _get_cron_job_next_run(schedule: str, timezone: str) -> str:
+    """Compute next run time for a host cron job in local scheduler timezone."""
+    tz = ZoneInfo(timezone)
+    cron = croniter(schedule, datetime.now(tz))
+    return cron.get_next(datetime).isoformat()
+
+
+def _resolve_cron_job_cwd(cwd: str | None) -> str:
+    """Resolve optional cron job cwd against project root."""
+    project_root = get_settings().project_root
+    if not cwd:
+        return str(project_root)
+    path = Path(cwd)
+    if path.is_absolute():
+        return str(path)
+    return str((project_root / path).resolve())
+
+
+async def _run_host_cron_job(job_name: str) -> None:
+    """Run one host-level cron job command directly (no LLM/container)."""
+    s = get_settings()
+    job = s.cron_jobs.get(job_name)
+    if job is None or not job.enabled:
+        return
+
+    command_cwd = _resolve_cron_job_cwd(job.cwd)
+    logger.info(
+        "Running host cron job",
+        job=job_name,
+        schedule=job.schedule,
+        cwd=command_cwd,
+    )
+
+    try:
+        process = await asyncio.create_subprocess_shell(
+            job.command,
+            cwd=command_cwd,
+            stdout=PIPE,
+            stderr=PIPE,
+        )
+    except Exception as exc:
+        logger.error("Failed to start host cron job", job=job_name, err=str(exc))
+        return
+
+    try:
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(),
+            timeout=job.timeout_seconds,
+        )
+    except TimeoutError:
+        logger.error(
+            "Host cron job timed out",
+            job=job_name,
+            timeout_seconds=job.timeout_seconds,
+        )
+        with contextlib.suppress(ProcessLookupError):
+            process.kill()
+        with contextlib.suppress(Exception):
+            await process.communicate()
+        return
+    except Exception as exc:
+        logger.error("Host cron job failed during execution", job=job_name, err=str(exc))
+        return
+
+    stdout_text = stdout.decode(errors="replace").strip()
+    stderr_text = stderr.decode(errors="replace").strip()
+
+    if process.returncode == 0:
+        logger.info(
+            "Host cron job completed",
+            job=job_name,
+            exit_code=process.returncode,
+            stdout_tail=stdout_text[-500:] if stdout_text else "",
+        )
+    else:
+        logger.error(
+            "Host cron job failed",
+            job=job_name,
+            exit_code=process.returncode,
+            stdout_tail=stdout_text[-500:] if stdout_text else "",
+            stderr_tail=stderr_text[-500:] if stderr_text else "",
+        )
+
+
+async def _poll_host_cron_jobs() -> None:
+    """Run due host cron jobs configured in settings.cron_jobs."""
+    s = get_settings()
+    cron_jobs = getattr(s, "cron_jobs", {})
+    if not cron_jobs:
+        return
+
+    now = datetime.now(UTC)
+    timezone = s.timezone
+
+    for job_name, job in cron_jobs.items():
+        if not job.enabled:
+            continue
+
+        next_run = _cron_job_next_runs.get(job_name)
+        if next_run is None:
+            next_run = _get_cron_job_next_run(job.schedule, timezone)
+            _cron_job_next_runs[job_name] = next_run
+
+        due_at = datetime.fromisoformat(next_run).astimezone(UTC)
+        if due_at > now:
+            continue
+
+        # Set next run before execution to avoid repeat-triggering in tight loops.
+        _cron_job_next_runs[job_name] = _get_cron_job_next_run(job.schedule, timezone)
+        await _run_host_cron_job(job_name)
 
 
 async def _run_task(task: ScheduledTask, deps: SchedulerDependencies) -> None:

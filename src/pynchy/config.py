@@ -129,6 +129,37 @@ class SchedulerConfig(BaseModel):
     timezone: str = ""  # empty → auto-detect
 
 
+class CronJobConfig(BaseModel):
+    schedule: str  # cron expression
+    command: str
+    cwd: str | None = None  # optional working directory (relative to project root or absolute)
+    timeout_seconds: int = 600
+    enabled: bool = True
+
+    @field_validator("schedule")
+    @classmethod
+    def validate_schedule(cls, v: str) -> str:
+        if not croniter.is_valid(v):
+            msg = f"Invalid cron expression: {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("command")
+    @classmethod
+    def validate_command(cls, v: str) -> str:
+        command = v.strip()
+        if not command:
+            raise ValueError("Cron job command cannot be empty")
+        return command
+
+    @field_validator("timeout_seconds")
+    @classmethod
+    def validate_timeout_seconds(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("timeout_seconds must be positive")
+        return v
+
+
 class IntervalsConfig(BaseModel):
     message_poll: float = 2.0  # seconds
     ipc_poll: float = 1.0  # seconds
@@ -192,6 +223,7 @@ class Settings(BaseSettings):
     workspaces: dict[str, WorkspaceConfig] = {}  # [workspaces.<folder_name>]
     commands: CommandWordsConfig = CommandWordsConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
+    cron_jobs: dict[str, CronJobConfig] = {}  # [cron_jobs.<job_name>]
     intervals: IntervalsConfig = IntervalsConfig()
     queue: QueueConfig = QueueConfig()
     channels: ChannelsConfig = ChannelsConfig()
