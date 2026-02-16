@@ -24,7 +24,7 @@ From Step 2, when the policy middleware determines a tool requires human approva
 - **Explicit approval required** - User must reply with approval code
 - **One-time codes** - Each request gets unique approval ID
 - **Context shown** - Approval request shows full action details
-- **Auditable** - All approvals/denials logged
+- **Auditable** - All approval decisions recorded in the `messages` table (from Step 2, `sender='security'`) with the `approval_code` field in metadata, queryable by workspace, tool, and time range
 
 ## Implementation
 
@@ -256,6 +256,14 @@ class IPCWatcher:
             await asyncio.sleep(30)  # Check every 30 seconds
 
             async for denial in self.approval_manager.cleanup_expired():
+                # Record timeout in audit log (messages table)
+                await self._audit(
+                    denial.get("tool_name", "unknown"),
+                    "denied",
+                    tier="external",
+                    reason=denial["reason"],
+                    request_id=denial["request_id"],
+                )
                 # Send denial response
                 await self._send_error_response(
                     denial["request_id"],
@@ -327,6 +335,16 @@ class IPCWatcher:
 
         request_id = result["request_id"]
         approved = result["approved"]
+
+        # Record the approval decision in the audit log (messages table)
+        await self._audit(
+            result.get("tool_name", "unknown"),
+            "approved" if approved else "denied",
+            tier="external",
+            reason=result["reason"],
+            request_id=request_id,
+            approval_code=result.get("approval_code"),
+        )
 
         if approved:
             # Re-fetch the original request and process it
@@ -580,8 +598,8 @@ If user doesn't respond within 5 minutes:
 - [ ] Approval manager implemented with timeout handling
 - [ ] IPC watcher integrates approval flow
 - [ ] Message handler processes approve/deny responses
-- [ ] Tests pass (approval, denial, timeout, invalid responses)
-- [ ] Audit logging for all approval decisions
+- [ ] All approval decisions (approve, deny, timeout) recorded in `messages` table (`sender='security'`) with `approval_code` in metadata
+- [ ] Tests pass (approval, denial, timeout, invalid responses, audit log integration)
 - [ ] Documentation updated with examples
 
 ## Documentation
@@ -594,7 +612,10 @@ Update the following:
 
 ## Next Steps
 
-After this is complete:
+After this is complete, the security foundation is in place. Proceed with service integrations:
+- Step 3: Email service integration (IMAP/SMTP adapter)
+- Step 4: Calendar service integration (CalDAV/Google Calendar)
+- Step 5: Password manager integration (1Password CLI)
 - Step 7: Input Filtering (Deputy Agent for prompt injection detection - optional defense-in-depth)
 
 ## Future Enhancements

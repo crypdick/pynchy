@@ -10,8 +10,10 @@ This step adds the calendar service integration layer on the host, enabling agen
 
 ## Dependencies
 
+- ✅ Step 0: Reduce IPC Surface (must be complete — narrows IPC before adding tools)
 - ✅ Step 1: Workspace Security Profiles (must be complete)
 - ✅ Step 2: MCP Tools & Basic Policy (must be complete)
+- ✅ Step 6: Human Approval Gate (must be complete — gates `delete_event` from day one)
 - Step 3: Email Integration (optional, but establishes service integration pattern)
 
 ## Background

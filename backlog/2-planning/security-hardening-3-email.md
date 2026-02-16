@@ -10,8 +10,10 @@ This step adds the email service integration layer on the host, enabling agents 
 
 ## Dependencies
 
+- ✅ Step 0: Reduce IPC Surface (must be complete — narrows IPC before adding tools)
 - ✅ Step 1: Workspace Security Profiles (must be complete)
 - ✅ Step 2: MCP Tools & Basic Policy (must be complete)
+- ✅ Step 6: Human Approval Gate (must be complete — gates `send_email` from day one)
 
 ## Background
 

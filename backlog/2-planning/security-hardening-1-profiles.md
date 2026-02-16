@@ -62,12 +62,20 @@ class ToolProfile(TypedDict):
     enabled: bool
 
 
+class RateLimitConfig(TypedDict):
+    """Rate limiting configuration for a workspace."""
+
+    max_calls_per_hour: int  # Global limit across all tools
+    per_tool_overrides: dict[str, int]  # tool_name -> max_calls_per_hour
+
+
 class WorkspaceSecurityProfile(TypedDict):
     """Security configuration for a workspace."""
 
     tools: dict[str, ToolProfile]  # tool_name -> profile
     default_tier: RiskTier  # Default for undefined tools
     allow_unknown_tools: bool  # Whether to allow tools not in profile
+    rate_limits: RateLimitConfig | None  # Rate limiting (None = no limits)
 ```
 
 ### 2. Update Group Config Schema
@@ -93,11 +101,15 @@ class GroupConfig(TypedDict):
 
 from pynchy.types.security import RiskTier, WorkspaceSecurityProfile
 
-# Conservative default: all tools require approval
+# Conservative default: all tools require approval, tight rate limits
 STRICT_PROFILE: WorkspaceSecurityProfile = {
     "tools": {},
     "default_tier": RiskTier.EXTERNAL,
     "allow_unknown_tools": False,
+    "rate_limits": {
+        "max_calls_per_hour": 60,
+        "per_tool_overrides": {},
+    },
 }
 
 # Permissive profile for trusted workspaces (like 'main')
@@ -110,6 +122,10 @@ TRUSTED_PROFILE: WorkspaceSecurityProfile = {
     },
     "default_tier": RiskTier.WRITE,
     "allow_unknown_tools": True,  # Allow experimentation
+    "rate_limits": {
+        "max_calls_per_hour": 500,
+        "per_tool_overrides": {},
+    },
 }
 
 
@@ -153,6 +169,21 @@ def validate_security_profile(profile: WorkspaceSecurityProfile) -> None:
         enabled = tool_profile["enabled"]
         if not isinstance(enabled, bool):
             raise SecurityProfileError(f"Invalid enabled value for {tool_name}: {enabled}")
+
+    # Check rate limits (if present)
+    rate_limits = profile.get("rate_limits")
+    if rate_limits is not None:
+        max_calls = rate_limits.get("max_calls_per_hour")
+        if not isinstance(max_calls, int) or max_calls < 1:
+            raise SecurityProfileError(
+                f"Invalid max_calls_per_hour: {max_calls} (must be positive integer)"
+            )
+
+        for tool_name, limit in rate_limits.get("per_tool_overrides", {}).items():
+            if not isinstance(limit, int) or limit < 1:
+                raise SecurityProfileError(
+                    f"Invalid per-tool rate limit for {tool_name}: {limit} (must be positive integer)"
+                )
 ```
 
 ### 5. Integrate into Startup
@@ -193,7 +224,11 @@ except SecurityProfileError as e:
       "schedule_task": {"tier": "write", "enabled": true}
     },
     "default_tier": "write",
-    "allow_unknown_tools": true
+    "allow_unknown_tools": true,
+    "rate_limits": {
+      "max_calls_per_hour": 500,
+      "per_tool_overrides": {}
+    }
   }
 }
 ```
@@ -212,7 +247,13 @@ except SecurityProfileError as e:
       "bank_transfer": {"tier": "external", "enabled": true}
     },
     "default_tier": "external",
-    "allow_unknown_tools": false
+    "allow_unknown_tools": false,
+    "rate_limits": {
+      "max_calls_per_hour": 30,
+      "per_tool_overrides": {
+        "bank_transfer": 5
+      }
+    }
   }
 }
 ```
@@ -297,16 +338,71 @@ def test_validate_invalid_enabled():
     }
     with pytest.raises(SecurityProfileError, match="Invalid enabled value"):
         validate_security_profile(profile)
+
+
+def test_validate_rate_limits_valid():
+    """Test validation passes for valid rate limits."""
+    profile = {
+        "tools": {},
+        "default_tier": RiskTier.WRITE,
+        "allow_unknown_tools": True,
+        "rate_limits": {
+            "max_calls_per_hour": 100,
+            "per_tool_overrides": {"send_email": 10},
+        },
+    }
+    validate_security_profile(profile)  # Should not raise
+
+
+def test_validate_rate_limits_invalid_max():
+    """Test validation fails for non-positive max_calls_per_hour."""
+    profile = {
+        "tools": {},
+        "default_tier": RiskTier.WRITE,
+        "allow_unknown_tools": True,
+        "rate_limits": {
+            "max_calls_per_hour": 0,
+            "per_tool_overrides": {},
+        },
+    }
+    with pytest.raises(SecurityProfileError, match="Invalid max_calls_per_hour"):
+        validate_security_profile(profile)
+
+
+def test_validate_rate_limits_invalid_per_tool():
+    """Test validation fails for non-positive per-tool override."""
+    profile = {
+        "tools": {},
+        "default_tier": RiskTier.WRITE,
+        "allow_unknown_tools": True,
+        "rate_limits": {
+            "max_calls_per_hour": 100,
+            "per_tool_overrides": {"send_email": -1},
+        },
+    }
+    with pytest.raises(SecurityProfileError, match="Invalid per-tool rate limit"):
+        validate_security_profile(profile)
+
+
+def test_validate_rate_limits_none():
+    """Test validation passes when rate_limits is None (no limits)."""
+    profile = {
+        "tools": {},
+        "default_tier": RiskTier.WRITE,
+        "allow_unknown_tools": True,
+        "rate_limits": None,
+    }
+    validate_security_profile(profile)  # Should not raise
 ```
 
 ## Success Criteria
 
-- [ ] Security profile types defined in `src/pynchy/types/security.py`
+- [ ] Security profile types defined in `src/pynchy/types/security.py` (including `RateLimitConfig`)
 - [ ] Group config schema updated to include `security_profile`
-- [ ] Default profiles created (strict and trusted)
-- [ ] Validation logic implemented and tested
+- [ ] Default profiles created (strict and trusted) with sensible rate limit defaults
+- [ ] Validation logic implemented and tested (including rate limit validation)
 - [ ] Startup integration validates profiles and applies defaults
-- [ ] Tests pass (validation, defaults, error cases)
+- [ ] Tests pass (validation, defaults, rate limits, error cases)
 - [ ] Documentation updated with examples
 
 ## Documentation

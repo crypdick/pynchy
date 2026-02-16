@@ -10,9 +10,10 @@ This step adds password manager integration, enabling agents to search for and r
 
 ## Dependencies
 
+- ✅ Step 0: Reduce IPC Surface (must be complete — narrows IPC before adding tools)
 - ✅ Step 1: Workspace Security Profiles (must be complete)
 - ✅ Step 2: MCP Tools & Basic Policy (must be complete)
-- Step 6: Human Approval Gate (recommended - `get_password` should require approval)
+- ✅ Step 6: Human Approval Gate (**required** — `get_password` must require approval)
 
 ## Background
 

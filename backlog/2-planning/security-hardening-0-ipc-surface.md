@@ -102,17 +102,18 @@ The `request_id` allows the host to write a response file that the container pol
 
 ## Relationship to other security hardening steps
 
-This is Step 0 — it hardens the transport before Steps 1-7 add new capabilities on top of it.
+This is Step 0 — it hardens the transport before service integrations add new tools on top of it.
 
 ```
 Step 0 (this): Narrow the IPC pipe (signal-only + Deputy mediation)
   ↓
-Step 1: Security profiles define what each workspace can do
-Step 2: Policy middleware evaluates requests against profiles
+Step 1: Security profiles define what each workspace can do (+ rate limits)
+Step 2: Policy middleware evaluates requests against profiles (+ audit log)
+  ↓
+Step 6: Human approval gate for EXTERNAL-tier actions
   ↓
 Steps 3-5: Service integrations (email, calendar, passwords) use the narrowed IPC
   ↓
-Step 6: Human approval gate for EXTERNAL-tier actions
 Step 7: Input filtering for prompt injection (optional)
 ```
 
@@ -120,7 +121,8 @@ Steps 2 and 6 remain valuable even with a narrowed IPC surface — they handle t
 
 ## Dependencies
 
-- None. Can be implemented before or in parallel with Steps 1-7.
+- None for starting implementation. Can proceed in parallel with Steps 1-2.
+- **Must complete before Steps 3-5.** Service integrations add new tools to the IPC surface; this step narrows that surface first. Without it, containers write arbitrary JSON payloads that the host trusts — the policy middleware (Step 2) gates execution, but the payload content itself isn't validated. Step 0's Deputy mediation for Tier 2 requests adds the validation layer needed before service adapters process those payloads.
 - The `watchdog` library needs to be added as a dependency.
 
 ## Success criteria
