@@ -51,17 +51,21 @@ def make_host_broadcaster(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessa
 def make_scheduler_deps(app: PynchyApp) -> Any:
     """Create the dependency object for the task scheduler."""
     group_registry = GroupRegistry(app.registered_groups)
-    session_manager = SessionManager(app.sessions, app._session_cleared)
     queue_manager = QueueManager(app.queue)
     broadcaster = MessageBroadcaster(app.channels)
 
     class SchedulerDeps:
         registered_groups = group_registry.registered_groups
-        get_sessions = session_manager.get_sessions
         queue = queue_manager.queue
-        on_process = queue_manager.on_process
         broadcast_to_channels = broadcaster._broadcast_formatted
-        plugin_manager = app.plugin_manager
+
+        @staticmethod
+        async def run_agent(*args: Any, **kwargs: Any) -> str:
+            return await app.run_agent(*args, **kwargs)
+
+        @staticmethod
+        async def handle_streamed_output(*args: Any, **kwargs: Any) -> bool:
+            return await app.handle_streamed_output(*args, **kwargs)
 
     return SchedulerDeps()
 

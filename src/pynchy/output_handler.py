@@ -75,6 +75,68 @@ async def broadcast_trace(
     deps.emit(AgentTraceEvent(chat_jid=chat_jid, trace_type=trace_type, data=data))
 
 
+async def broadcast_agent_input(
+    deps: OutputDeps,
+    chat_jid: str,
+    messages: list[dict],
+    *,
+    source: str = "user",
+) -> None:
+    """Broadcast agent input messages to channels so users see what the agent was told.
+
+    For normal user messages (source="user"), only emits a trace event since
+    users already see their own messages in chat. For synthetic messages
+    (scheduled tasks, reset handoffs, IPC forwards), broadcasts the full
+    prompt to channels so observers understand what triggered the agent.
+    """
+    _SOURCE_LABELS = {
+        "scheduled_task": "Scheduled Task",
+        "reset_handoff": "Context Handoff",
+        "ipc_forward": "Forwarded",
+    }
+
+    if source == "user":
+        # User messages are already visible in chat — just emit trace events
+        # for TUI/SSE consumers who want the full token stream.
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            deps.emit(
+                AgentTraceEvent(
+                    chat_jid=chat_jid,
+                    trace_type="user_input",
+                    data={
+                        "sender_name": msg.get("sender_name", "Unknown"),
+                        "content": msg.get("content", ""),
+                        "source": source,
+                    },
+                )
+            )
+        return
+
+    # Synthetic messages: broadcast to channels so users see what triggered the agent
+    label = _SOURCE_LABELS.get(source, source)
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
+        content = msg.get("content", "")
+        if len(content) > 500:
+            content = content[:497] + "..."
+        channel_text = f"\u00bb [{label}] {content}"
+        await deps.broadcast_to_channels(chat_jid, channel_text)
+        deps.emit(
+            AgentTraceEvent(
+                chat_jid=chat_jid,
+                trace_type="agent_input",
+                data={
+                    "sender_name": msg.get("sender_name", "Unknown"),
+                    "content": msg.get("content", ""),
+                    "source": source,
+                },
+            )
+        )
+
+
 async def handle_streamed_output(
     deps: OutputDeps,
     chat_jid: str,

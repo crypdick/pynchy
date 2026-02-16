@@ -8,20 +8,13 @@ from asyncio.subprocess import PIPE
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import Any, Protocol
 from zoneinfo import ZoneInfo
 
 from croniter import croniter
 
 from pynchy.config import get_settings
-from pynchy.container_runner import (
-    resolve_agent_core,
-    run_container_agent,
-    write_tasks_snapshot,
-)
 from pynchy.db import (
-    get_all_host_jobs,
-    get_all_tasks,
     get_due_host_jobs,
     get_due_tasks,
     get_task_by_id,
@@ -31,12 +24,8 @@ from pynchy.db import (
 )
 from pynchy.group_queue import GroupQueue
 from pynchy.logger import logger
-from pynchy.router import format_tool_preview
-from pynchy.types import ContainerInput, ContainerOutput, RegisteredGroup, ScheduledTask, TaskRunLog
+from pynchy.types import ContainerOutput, RegisteredGroup, ScheduledTask, TaskRunLog
 from pynchy.utils import IdleTimer, compute_next_run
-
-if TYPE_CHECKING:
-    import pluggy
 
 
 class SchedulerDependencies(Protocol):
@@ -44,23 +33,27 @@ class SchedulerDependencies(Protocol):
 
     def registered_groups(self) -> dict[str, RegisteredGroup]: ...
 
-    def get_sessions(self) -> dict[str, str]: ...
-
     @property
     def queue(self) -> GroupQueue: ...
 
-    def on_process(
-        self,
-        group_jid: str,
-        proc: asyncio.subprocess.Process | None,
-        container_name: str,
-        group_folder: str,
-    ) -> None: ...
-
     async def broadcast_to_channels(self, jid: str, text: str) -> None: ...
 
-    @property
-    def plugin_manager(self) -> pluggy.PluginManager | None: ...
+    async def run_agent(
+        self,
+        group: RegisteredGroup,
+        chat_jid: str,
+        messages: list[dict],
+        on_output: Any | None = None,
+        extra_system_notices: list[str] | None = None,
+        *,
+        is_scheduled_task: bool = False,
+        project_access_override: bool | None = None,
+        input_source: str = "user",
+    ) -> str: ...
+
+    async def handle_streamed_output(
+        self, chat_jid: str, group: RegisteredGroup, result: ContainerOutput
+    ) -> bool: ...
 
 
 _scheduler_lock = asyncio.Lock()
@@ -292,7 +285,7 @@ async def _poll_database_host_jobs() -> None:
 
 
 async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies) -> None:
-    """Execute a single scheduled agent task in a container."""
+    """Execute a single scheduled agent task via the unified run_agent path."""
     start_time = datetime.now(UTC)
     s = get_settings()
     group_dir = s.groups_dir / task.group_folder
@@ -327,24 +320,8 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
         )
         return
 
-    _is_god = group.is_god
-
-    # Write tasks snapshot so the container can read current task state
-    all_tasks = await get_all_tasks()
-    all_host_jobs = await get_all_host_jobs() if _is_god else []
-    write_tasks_snapshot(
-        task.group_folder,
-        _is_god,
-        [t.to_snapshot_dict() for t in all_tasks],
-        host_jobs=[j.to_snapshot_dict() for j in all_host_jobs],
-    )
-
     result: str | None = None
     error: str | None = None
-
-    # For group context mode, use the group's current session
-    sessions = deps.get_sessions()
-    _session_id = sessions.get(task.group_folder) if task.context_mode == "group" else None
 
     # Idle timer: close container stdin after IDLE_TIMEOUT of no output,
     # so the container exits instead of hanging at waitForIpcMessage.
@@ -367,50 +344,32 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
             }
         ]
 
-        agent_core_module, agent_core_class = resolve_agent_core(deps.plugin_manager)
-
-        container_input = ContainerInput(
-            messages=task_messages,
-            group_folder=task.group_folder,
-            chat_jid=task.chat_jid,
-            is_god=_is_god,
-            session_id=_session_id,
-            is_scheduled_task=True,
-            project_access=task.project_access,
-            agent_core_module=agent_core_module,
-            agent_core_class=agent_core_class,
-        )
-
-        async def _on_streamed_output(streamed: ContainerOutput) -> None:
+        async def _on_output(streamed: ContainerOutput) -> None:
             nonlocal result, error
-            if streamed.type == "tool_use":
-                tool_name = streamed.tool_name or "tool"
-                tool_input = streamed.tool_input or {}
-                preview = format_tool_preview(tool_name, tool_input)
-                await deps.broadcast_to_channels(task.chat_jid, f"\U0001f527 {preview}")
+            # Delegate to the full output handler (thinking, tool_use,
+            # tool_result, system, metadata, result — all broadcast).
+            await deps.handle_streamed_output(task.chat_jid, group, streamed)
+
             if streamed.result:
                 result = streamed.result
-                await deps.broadcast_to_channels(task.chat_jid, streamed.result)
                 idle_timer.reset()
             if streamed.status == "error":
                 error = streamed.error or "Unknown error"
 
-        output = await run_container_agent(
-            group=group,
-            input_data=container_input,
-            on_process=lambda proc, name: deps.on_process(
-                task.chat_jid, proc, name, task.group_folder
-            ),
-            on_output=_on_streamed_output,
-            plugin_manager=deps.plugin_manager,
+        agent_result = await deps.run_agent(
+            group,
+            task.chat_jid,
+            task_messages,
+            _on_output,
+            is_scheduled_task=True,
+            project_access_override=task.project_access,
+            input_source="scheduled_task",
         )
 
         idle_timer.cancel()
 
-        if output.status == "error":
-            error = output.error or "Unknown error"
-        elif output.result:
-            result = output.result
+        if agent_result == "error":
+            error = error or "Agent returned error"
 
         elapsed_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
         logger.info("Task completed", task_id=task.id, duration_ms=elapsed_ms)

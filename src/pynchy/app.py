@@ -122,6 +122,11 @@ class PynchyApp:
     async def trigger_manual_redeploy(self, chat_jid: str) -> None:
         await session_handler.trigger_manual_redeploy(self, chat_jid)
 
+    async def broadcast_agent_input(
+        self, chat_jid: str, messages: list[dict], *, source: str = "user"
+    ) -> None:
+        await output_handler.broadcast_agent_input(self, chat_jid, messages, source=source)
+
     async def run_agent(
         self,
         group: RegisteredGroup,
@@ -129,11 +134,23 @@ class PynchyApp:
         messages: list[dict],
         on_output: Any | None = None,
         extra_system_notices: list[str] | None = None,
+        *,
+        is_scheduled_task: bool = False,
+        project_access_override: bool | None = None,
+        input_source: str = "user",
     ) -> str:
         from pynchy import agent_runner
 
         return await agent_runner.run_agent(
-            self, group, chat_jid, messages, on_output, extra_system_notices
+            self,
+            group,
+            chat_jid,
+            messages,
+            on_output,
+            extra_system_notices,
+            is_scheduled_task=is_scheduled_task,
+            project_access_override=project_access_override,
+            input_source=input_source,
         )
 
     def emit(self, event: Any) -> None:

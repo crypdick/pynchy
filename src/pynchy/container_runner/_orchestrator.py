@@ -162,7 +162,16 @@ async def run_container_agent(
     on_output: OnOutput | None = None,
     plugin_manager: pluggy.PluginManager | None = None,
 ) -> ContainerOutput:
-    """Spawn a container agent, stream output, manage timeouts, and return result.
+    """Low-level primitive — spawn a container agent and stream output.
+
+    **Do not call directly.** Use ``agent_runner.run_agent()`` instead, which
+    handles input broadcasting, snapshot writes, session tracking, and output
+    routing.  Direct callers bypass the unified message pipeline and the UI
+    will not faithfully represent the agent's token stream.
+
+    The only legitimate direct callers are:
+    - ``agent_runner.run_agent`` (the unified public entry point)
+    - ``plugin_verifier`` (one-off verification containers, not conversations)
 
     Args:
         group: The registered group configuration.

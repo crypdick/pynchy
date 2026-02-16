@@ -163,24 +163,54 @@ class MockSchedulerDeps:
 
     def __init__(self):
         self.groups: dict[str, RegisteredGroup] = {}
-        self.sessions: dict[str, str] = {}
         self.queue = GroupQueue()
-        self.processes: list = []
         self.messages: list = []
-        # Avoid global plugin discovery side effects in scheduler unit tests.
-        self.plugin_manager = None
+        self.agent_runs: list = []
+        self.streamed_outputs: list = []
+        # Configurable return value for run_agent
+        self._run_agent_result: str = "success"
+        # Configurable side effect for run_agent (to call on_output)
+        self._run_agent_side_effect = None
 
     def registered_groups(self) -> dict[str, RegisteredGroup]:
         return self.groups
 
-    def get_sessions(self) -> dict[str, str]:
-        return self.sessions
-
-    def on_process(self, group_jid: str, proc, container_name: str, group_folder: str) -> None:
-        self.processes.append((group_jid, proc, container_name, group_folder))
-
     async def broadcast_to_channels(self, jid: str, text: str) -> None:
         self.messages.append((jid, text))
+
+    async def run_agent(
+        self,
+        group,
+        chat_jid,
+        messages,
+        on_output=None,
+        extra_system_notices=None,
+        *,
+        is_scheduled_task=False,
+        project_access_override=None,
+        input_source="user",
+    ) -> str:
+        self.agent_runs.append({
+            "group": group,
+            "chat_jid": chat_jid,
+            "messages": messages,
+            "on_output": on_output,
+            "is_scheduled_task": is_scheduled_task,
+            "project_access_override": project_access_override,
+            "input_source": input_source,
+        })
+        if self._run_agent_side_effect:
+            return await self._run_agent_side_effect(
+                group, chat_jid, messages, on_output,
+                is_scheduled_task=is_scheduled_task,
+                project_access_override=project_access_override,
+                input_source=input_source,
+            )
+        return self._run_agent_result
+
+    async def handle_streamed_output(self, chat_jid, group, result) -> bool:
+        self.streamed_outputs.append((chat_jid, group, result))
+        return bool(result.result)
 
 
 @pytest.fixture
@@ -378,7 +408,12 @@ class TestStartSchedulerLoop:
 
 
 class TestRunScheduledAgent:
-    """Test task execution logic."""
+    """Test task execution logic.
+
+    Since _run_scheduled_agent now delegates to deps.run_agent (the unified
+    entry point), these tests verify that the scheduler correctly constructs
+    messages, passes the right flags, handles return values, and logs runs.
+    """
 
     @pytest.mark.asyncio
     async def test_logs_error_when_group_not_found(self, mock_deps, sample_task, tmp_path):
@@ -389,15 +424,10 @@ class TestRunScheduledAgent:
             logged_runs.append(log)
 
         with patch("pynchy.task_scheduler.log_task_run", side_effect=mock_log_run):
-            with patch(
-                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
-            ) as mock_get_all:
-                mock_get_all.return_value = []
-                # Import and call _run_scheduled_agent directly
-                with _patch_settings(groups_dir=tmp_path):
-                    from pynchy.task_scheduler import _run_scheduled_agent
+            with _patch_settings(groups_dir=tmp_path):
+                from pynchy.task_scheduler import _run_scheduled_agent
 
-                    await _run_scheduled_agent(sample_task, mock_deps)
+                await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have logged an error
         assert len(logged_runs) == 1
@@ -405,104 +435,88 @@ class TestRunScheduledAgent:
         assert "Group not found" in logged_runs[0].error
 
     @pytest.mark.asyncio
-    async def test_uses_group_session_for_group_context_mode(
+    async def test_calls_run_agent_with_correct_flags(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """Should use group's session when context_mode is 'group'."""
-        sample_task.context_mode = "group"
+        """Should call run_agent with is_scheduled_task=True and input_source='scheduled_task'."""
         mock_deps.groups["test-jid"] = sample_group
-        mock_deps.sessions["test-group"] = "session-123"
 
-        container_inputs = []
+        with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
+            with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
+                with _patch_settings(groups_dir=tmp_path):
+                    from pynchy.task_scheduler import _run_scheduled_agent
 
-        async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
-            container_inputs.append(input_data)
-            return ContainerOutput(status="success", result="Done")
+                    await _run_scheduled_agent(sample_task, mock_deps)
 
-        with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
-            with patch(
-                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
-            ) as mock_get_all:
-                mock_get_all.return_value = []
-                with patch("pynchy.task_scheduler.write_tasks_snapshot"):
-                    with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
-                        with patch(
-                            "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
-                        ):
-                            with _patch_settings(groups_dir=tmp_path):
-                                from pynchy.task_scheduler import _run_scheduled_agent
-
-                                await _run_scheduled_agent(sample_task, mock_deps)
-
-        # Should have used the group's session
-        assert len(container_inputs) == 1
-        assert container_inputs[0].session_id == "session-123"
+        assert len(mock_deps.agent_runs) == 1
+        run = mock_deps.agent_runs[0]
+        assert run["is_scheduled_task"] is True
+        assert run["input_source"] == "scheduled_task"
+        assert run["chat_jid"] == "test@g.us"
+        # Verify prompt was passed as a user message
+        assert len(run["messages"]) == 1
+        assert run["messages"][0]["content"] == "Test task"
+        assert run["messages"][0]["sender"] == "scheduled_task"
 
     @pytest.mark.asyncio
-    async def test_uses_no_session_for_isolated_context_mode(
+    async def test_passes_project_access_override(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """Should not use session when context_mode is 'isolated'."""
-        sample_task.context_mode = "isolated"
+        """Should pass project_access from task as project_access_override."""
         mock_deps.groups["test-jid"] = sample_group
-        mock_deps.sessions["test-group"] = "session-123"
+        sample_task.project_access = True
 
-        container_inputs = []
+        with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
+            with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
+                with _patch_settings(groups_dir=tmp_path):
+                    from pynchy.task_scheduler import _run_scheduled_agent
 
-        async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
-            container_inputs.append(input_data)
-            return ContainerOutput(status="success", result="Done")
+                    await _run_scheduled_agent(sample_task, mock_deps)
 
-        with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
-            with patch(
-                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
-            ) as mock_get_all:
-                mock_get_all.return_value = []
-                with patch("pynchy.task_scheduler.write_tasks_snapshot"):
-                    with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
-                        with patch(
-                            "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
-                        ):
-                            with _patch_settings(groups_dir=tmp_path):
-                                from pynchy.task_scheduler import _run_scheduled_agent
-
-                                await _run_scheduled_agent(sample_task, mock_deps)
-
-        # Should NOT have used any session
-        assert len(container_inputs) == 1
-        assert container_inputs[0].session_id is None
+        assert len(mock_deps.agent_runs) == 1
+        assert mock_deps.agent_runs[0]["project_access_override"] is True
 
     @pytest.mark.asyncio
-    async def test_sends_result_message_on_success(
+    async def test_sends_start_notification(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """Should send result message when task succeeds."""
+        """Should broadcast start notification before running agent."""
         mock_deps.groups["test-jid"] = sample_group
 
-        async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
-            # Simulate streamed output
-            await on_output(ContainerOutput(status="success", result="Task completed successfully"))
-            return ContainerOutput(status="success", result="Task completed successfully")
+        with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
+            with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
+                with _patch_settings(groups_dir=tmp_path):
+                    from pynchy.task_scheduler import _run_scheduled_agent
 
-        with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
-            with patch(
-                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
-            ) as mock_get_all:
-                mock_get_all.return_value = []
-                with patch("pynchy.task_scheduler.write_tasks_snapshot"):
-                    with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
-                        with patch(
-                            "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
-                        ):
-                            with _patch_settings(groups_dir=tmp_path):
-                                from pynchy.task_scheduler import _run_scheduled_agent
+                    await _run_scheduled_agent(sample_task, mock_deps)
 
-                                await _run_scheduled_agent(sample_task, mock_deps)
+        assert ("test@g.us", "\u23f1 Scheduled task starting.") in mock_deps.messages
 
-        # Should have sent the start notification and the result message
-        assert len(mock_deps.messages) == 2
-        assert mock_deps.messages[0] == ("test@g.us", "\u23f1 Scheduled task starting.")
-        assert mock_deps.messages[1] == ("test@g.us", "Task completed successfully")
+    @pytest.mark.asyncio
+    async def test_on_output_delegates_to_handle_streamed_output(
+        self, mock_deps, sample_task, sample_group, tmp_path
+    ):
+        """Should delegate streamed output to deps.handle_streamed_output."""
+        mock_deps.groups["test-jid"] = sample_group
+        streamed = ContainerOutput(status="success", result="Task completed")
+
+        async def mock_run(group, chat_jid, messages, on_output, **kwargs):
+            if on_output:
+                await on_output(streamed)
+            return "success"
+
+        mock_deps._run_agent_side_effect = mock_run
+
+        with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
+            with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
+                with _patch_settings(groups_dir=tmp_path):
+                    from pynchy.task_scheduler import _run_scheduled_agent
+
+                    await _run_scheduled_agent(sample_task, mock_deps)
+
+        # Should have delegated to handle_streamed_output
+        assert len(mock_deps.streamed_outputs) == 1
+        assert mock_deps.streamed_outputs[0][0] == "test@g.us"
 
     @pytest.mark.asyncio
     async def test_calculates_next_run_for_cron_schedule(
@@ -518,23 +532,14 @@ class TestRunScheduledAgent:
         async def mock_update(task_id, next_run, result_summary):
             updates.append((task_id, next_run, result_summary))
 
-        async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
-            return ContainerOutput(status="success", result="Done")
-
-        with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
+        with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
             with patch(
-                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
-            ) as mock_get_all:
-                mock_get_all.return_value = []
-                with patch("pynchy.task_scheduler.write_tasks_snapshot"):
-                    with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
-                        with patch(
-                            "pynchy.task_scheduler.update_task_after_run", side_effect=mock_update
-                        ):
-                            with _patch_settings(groups_dir=tmp_path):
-                                from pynchy.task_scheduler import _run_scheduled_agent
+                "pynchy.task_scheduler.update_task_after_run", side_effect=mock_update
+            ):
+                with _patch_settings(groups_dir=tmp_path):
+                    from pynchy.task_scheduler import _run_scheduled_agent
 
-                                await _run_scheduled_agent(sample_task, mock_deps)
+                    await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have calculated next run
         assert len(updates) == 1
@@ -557,23 +562,14 @@ class TestRunScheduledAgent:
         async def mock_update(task_id, next_run, result_summary):
             updates.append((task_id, next_run, result_summary))
 
-        async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
-            return ContainerOutput(status="success", result="Done")
-
-        with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
+        with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
             with patch(
-                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
-            ) as mock_get_all:
-                mock_get_all.return_value = []
-                with patch("pynchy.task_scheduler.write_tasks_snapshot"):
-                    with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
-                        with patch(
-                            "pynchy.task_scheduler.update_task_after_run", side_effect=mock_update
-                        ):
-                            with _patch_settings(groups_dir=tmp_path):
-                                from pynchy.task_scheduler import _run_scheduled_agent
+                "pynchy.task_scheduler.update_task_after_run", side_effect=mock_update
+            ):
+                with _patch_settings(groups_dir=tmp_path):
+                    from pynchy.task_scheduler import _run_scheduled_agent
 
-                                await _run_scheduled_agent(sample_task, mock_deps)
+                    await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have calculated next run
         assert len(updates) == 1
@@ -598,147 +594,72 @@ class TestRunScheduledAgent:
         async def mock_update(task_id, next_run, result_summary):
             updates.append((task_id, next_run, result_summary))
 
-        async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
-            return ContainerOutput(status="success", result="Done")
-
-        with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
+        with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
             with patch(
-                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
-            ) as mock_get_all:
-                mock_get_all.return_value = []
-                with patch("pynchy.task_scheduler.write_tasks_snapshot"):
-                    with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
-                        with patch(
-                            "pynchy.task_scheduler.update_task_after_run", side_effect=mock_update
-                        ):
-                            with _patch_settings(groups_dir=tmp_path):
-                                from pynchy.task_scheduler import _run_scheduled_agent
+                "pynchy.task_scheduler.update_task_after_run", side_effect=mock_update
+            ):
+                with _patch_settings(groups_dir=tmp_path):
+                    from pynchy.task_scheduler import _run_scheduled_agent
 
-                                await _run_scheduled_agent(sample_task, mock_deps)
+                    await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have no next run for 'once' tasks
         assert len(updates) == 1
         assert updates[0][1] is None
 
     @pytest.mark.asyncio
-    async def test_logs_error_on_task_exception(
+    async def test_logs_error_on_agent_exception(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """Should log error when task execution fails."""
+        """Should log error when run_agent raises an exception."""
         mock_deps.groups["test-jid"] = sample_group
 
-        async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
-            raise ValueError("Container failed")
+        async def mock_run_raise(group, chat_jid, messages, on_output, **kwargs):
+            raise ValueError("Agent failed")
+
+        mock_deps._run_agent_side_effect = mock_run_raise
 
         logged_runs = []
 
         async def mock_log_run(log: TaskRunLog):
             logged_runs.append(log)
 
-        with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
-            with patch(
-                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
-            ) as mock_get_all:
-                mock_get_all.return_value = []
-                with patch("pynchy.task_scheduler.write_tasks_snapshot"):
-                    with patch("pynchy.task_scheduler.log_task_run", side_effect=mock_log_run):
-                        with patch(
-                            "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
-                        ):
-                            with _patch_settings(groups_dir=tmp_path):
-                                from pynchy.task_scheduler import _run_scheduled_agent
+        with patch("pynchy.task_scheduler.log_task_run", side_effect=mock_log_run):
+            with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
+                with _patch_settings(groups_dir=tmp_path):
+                    from pynchy.task_scheduler import _run_scheduled_agent
 
-                                await _run_scheduled_agent(sample_task, mock_deps)
+                    await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have logged the error
         assert len(logged_runs) == 1
         assert logged_runs[0].status == "error"
-        assert "Container failed" in logged_runs[0].error
+        assert "Agent failed" in logged_runs[0].error
 
     @pytest.mark.asyncio
-    async def test_passes_project_access_flag_to_container(
+    async def test_logs_error_on_agent_error_return(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """Should pass project_access flag from task to container input."""
+        """Should log error when run_agent returns 'error'."""
         mock_deps.groups["test-jid"] = sample_group
-        sample_task.project_access = True
+        mock_deps._run_agent_result = "error"
 
-        container_inputs = []
+        logged_runs = []
 
-        async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
-            container_inputs.append(input_data)
-            return ContainerOutput(status="success", result="Done")
+        async def mock_log_run(log: TaskRunLog):
+            logged_runs.append(log)
 
-        with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
-            with patch(
-                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
-            ) as mock_get_all:
-                mock_get_all.return_value = []
-                with patch("pynchy.task_scheduler.write_tasks_snapshot"):
-                    with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
-                        with patch(
-                            "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
-                        ):
-                            with _patch_settings(groups_dir=tmp_path):
-                                from pynchy.task_scheduler import _run_scheduled_agent
+        with patch("pynchy.task_scheduler.log_task_run", side_effect=mock_log_run):
+            with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
+                with _patch_settings(groups_dir=tmp_path):
+                    from pynchy.task_scheduler import _run_scheduled_agent
 
-                                await _run_scheduled_agent(sample_task, mock_deps)
+                    await _run_scheduled_agent(sample_task, mock_deps)
 
-        # Should have passed project_access=True
-        assert len(container_inputs) == 1
-        assert container_inputs[0].project_access is True
-
-    @pytest.mark.asyncio
-    async def test_writes_tasks_snapshot_before_execution(
-        self, mock_deps, sample_task, sample_group, tmp_path
-    ):
-        """Should write tasks snapshot so container can read current task state."""
-        mock_deps.groups["test-jid"] = sample_group
-
-        other_task = ScheduledTask(
-            id="task-2",
-            group_folder="other-group",
-            chat_jid="other@g.us",
-            prompt="Other task",
-            schedule_type="interval",
-            schedule_value="60000",
-            context_mode="group",
-            status="paused",
-        )
-
-        snapshots = []
-
-        def mock_write_snapshot(group_folder, is_god, tasks, host_jobs=None):
-            snapshots.append((group_folder, is_god, tasks, host_jobs))
-
-        async def mock_run_container(group, input_data, on_process, on_output, plugin_manager=None):
-            return ContainerOutput(status="success", result="Done")
-
-        with patch("pynchy.task_scheduler.run_container_agent", side_effect=mock_run_container):
-            with patch(
-                "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
-            ) as mock_get_all:
-                mock_get_all.return_value = [sample_task, other_task]
-                with patch(
-                    "pynchy.task_scheduler.write_tasks_snapshot", side_effect=mock_write_snapshot
-                ):
-                    with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
-                        with patch(
-                            "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
-                        ):
-                            with _patch_settings(groups_dir=tmp_path):
-                                from pynchy.task_scheduler import _run_scheduled_agent
-
-                                await _run_scheduled_agent(sample_task, mock_deps)
-
-        # Should have written snapshot with all tasks
-        assert len(snapshots) == 1
-        assert snapshots[0][0] == "test-group"
-        assert len(snapshots[0][2]) == 2
-        # Check that tasks include required fields
-        task_ids = [t["id"] for t in snapshots[0][2]]
-        assert "task-1" in task_ids
-        assert "task-2" in task_ids
+        # Should have logged the error
+        assert len(logged_runs) == 1
+        assert logged_runs[0].status == "error"
+        assert "Agent returned error" in logged_runs[0].error
 
 
 class TestHostCronJobs:
