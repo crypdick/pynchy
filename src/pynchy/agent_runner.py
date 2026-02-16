@@ -9,10 +9,10 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from pynchy.container_runner import (
     resolve_agent_core,
-    run_container_agent,
     write_groups_snapshot,
     write_tasks_snapshot,
 )
+from pynchy.container_runner._orchestrator import run_container_agent
 from pynchy.db import get_all_host_jobs, get_all_tasks, set_session
 from pynchy.git_utils import count_unpushed_commits, is_repo_dirty
 from pynchy.logger import logger
@@ -45,6 +45,10 @@ class AgentRunnerDeps(Protocol):
 
     async def get_available_groups(self) -> list[dict[str, Any]]: ...
 
+    async def broadcast_agent_input(
+        self, chat_jid: str, messages: list[dict], *, source: str = "user"
+    ) -> None: ...
+
 
 async def run_agent(
     deps: AgentRunnerDeps,
@@ -53,13 +57,35 @@ async def run_agent(
     messages: list[dict],
     on_output: Any | None = None,
     extra_system_notices: list[str] | None = None,
+    *,
+    is_scheduled_task: bool = False,
+    project_access_override: bool | None = None,
+    input_source: str = "user",
 ) -> str:
-    """Run the container agent for a group. Returns 'success' or 'error'."""
+    """Run the container agent for a group. Returns 'success' or 'error'.
+
+    This is the single public entry point for all agent invocations.
+    It broadcasts input messages to channels, manages snapshots and sessions,
+    and launches the container. Do not call run_container_agent directly.
+
+    Args:
+        is_scheduled_task: Whether this is a scheduled task run.
+        project_access_override: Explicit project_access flag; None = auto-detect.
+        input_source: Source label for input broadcasting
+            ("user", "scheduled_task", "reset_handoff").
+    """
     from pynchy.workspace_config import has_project_access
 
     is_god = group.is_god
-    project_access = has_project_access(group)
+    if project_access_override is not None:
+        project_access = project_access_override
+    else:
+        project_access = has_project_access(group)
     session_id = deps.sessions.get(group.folder)
+
+    # Broadcast input messages to channels so the UI faithfully represents
+    # what the agent sees in its token stream.
+    await deps.broadcast_agent_input(chat_jid, messages, source=input_source)
 
     # Update snapshots for container to read
     tasks = await get_all_tasks()
@@ -132,6 +158,7 @@ async def run_agent(
                 chat_jid=chat_jid,
                 is_god=is_god,
                 system_notices=system_notices or None,
+                is_scheduled_task=is_scheduled_task,
                 project_access=project_access,
                 agent_core_module=agent_core_module,
                 agent_core_class=agent_core_class,

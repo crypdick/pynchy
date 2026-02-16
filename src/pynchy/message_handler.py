@@ -74,6 +74,8 @@ class MessageHandlerDeps(Protocol):
         messages: list[dict],
         on_output: Any | None = None,
         extra_system_notices: list[str] | None = None,
+        *,
+        input_source: str = "user",
     ) -> str: ...
 
     async def handle_streamed_output(
@@ -243,7 +245,9 @@ async def _handle_reset_handoff(
         }
     ]
 
-    result = await deps.run_agent(group, chat_jid, reset_messages, handoff_on_output)
+    result = await deps.run_agent(
+        group, chat_jid, reset_messages, handoff_on_output, input_source="reset_handoff"
+    )
 
     if reset_data.get("needsDirtyRepoCheck"):
         dirty_check_file = s.data_dir / "ipc" / group.folder / "needs_dirty_check.json"
@@ -478,6 +482,9 @@ async def start_message_loop(
                             # we mark pending_messages so _drain_group
                             # reprocesses them after the task exits.
                             deps.queue.send_message(group_jid, formatted)
+                            await deps.broadcast_to_channels(
+                                group_jid, f"\u00bb [Forwarded] {last_content[:500]}"
+                            )
                             deps.queue.enqueue_message_check(group_jid)
                         elif last_content.lower().startswith("todo "):
                             # Non-interrupting — host writes directly to
@@ -524,6 +531,9 @@ async def start_message_loop(
                             # container via IPC but don't advance the
                             # cursor.  The message will be reprocessed
                             # after the agent finishes its current turn.
+                            await deps.broadcast_to_channels(
+                                group_jid, f"\u00bb [Forwarded] {last_content[:500]}"
+                            )
                             deps.queue.enqueue_message_check(group_jid)
                         else:
                             logger.debug(

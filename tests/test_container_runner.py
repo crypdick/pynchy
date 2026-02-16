@@ -42,10 +42,10 @@ from pynchy.container_runner import (
     _write_env_file,
     _write_settings_json,
     resolve_agent_core,
-    run_container_agent,
     write_groups_snapshot,
     write_tasks_snapshot,
 )
+from pynchy.container_runner._orchestrator import run_container_agent
 from pynchy.types import (
     ContainerInput,
     RegisteredGroup,

@@ -40,7 +40,6 @@ from pynchy.container_runner._orchestrator import (
     _collect_plugin_mcp_specs,
     _determine_result,
     resolve_agent_core,
-    run_container_agent,
 )
 from pynchy.container_runner._process import (
     StreamState,
@@ -82,7 +81,6 @@ __all__ = [
     "_collect_plugin_mcp_specs",
     "_determine_result",
     "resolve_agent_core",
-    "run_container_agent",
     # process
     "StreamState",
     "_graceful_stop",
