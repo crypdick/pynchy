@@ -18,7 +18,7 @@ This section explains how Pynchy works under the hood. Understanding these conce
 
 | System | How it connects |
 |--------|----------------|
-| WhatsApp | neonize library for WhatsApp Web. Messages stored in SQLite, polled by router. QR code auth during setup. |
+| Channels | Plugin-provided (WhatsApp, Slack, etc.). Messages stored in SQLite, routed to agents. See [available plugins](../plugins/available.md). |
 | Scheduler | Host-side scheduler spawns containers. `pynchy` MCP server (inside container) provides scheduling tools. Tasks stored in SQLite. |
 | Web access | Built-in WebSearch and WebFetch tools via Claude Agent SDK. |
 | Browser | agent-browser CLI with Chromium in container. Snapshot-based interaction. See `container/skills/agent-browser/`. |

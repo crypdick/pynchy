@@ -2,9 +2,18 @@
 
 This page tracks plugins that work with pynchy.
 
+## Built-in Plugins
+
+These ship with pynchy and activate when their config section is present:
+
+| Plugin | Purpose | Config |
+|--------|---------|--------|
+| `slack` | Slack channel via Socket Mode (bolt). Maps Slack channels/DMs to workspaces. | `[slack] bot_token / app_token` |
+| `caldav` | CalDAV calendar tools (list, create, delete events). Works with Nextcloud and other CalDAV servers. | `[caldav] url / username / password` |
+
 ## First-Party Plugins
 
-These plugins are maintained by the pynchy project:
+These are maintained by the pynchy project and installed via `[plugins.*]` in config.toml:
 
 | Plugin | Purpose | Repository |
 |--------|---------|------------|

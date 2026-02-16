@@ -15,6 +15,7 @@ Each agent invocation spawns a fresh, ephemeral container (Apple Container on ma
 | `container/agent_runner/src` | `/app/src` | Readonly | All (agent runner source) |
 | `data/ipc/{group}/` | `/workspace/ipc` | Read-write | All (IPC channel) |
 | `data/env/{group}/` | `/workspace/env-dir` | Readonly | All (per-group credentials) |
+| `config.toml` | `/workspace/project/config.toml` | Read-write | God only |
 | `{additional mounts}` | `/workspace/extra/*` | Configurable | Per containerConfig |
 
 **Notes:**

@@ -4,7 +4,7 @@ This section covers day-to-day operation of Pynchy — managing groups, scheduli
 
 ## What You Can Do
 
-- **WhatsApp I/O** — Message Claude from your phone
+- **Channel I/O** — Message Claude from WhatsApp, Slack, or the built-in TUI
 - **Isolated group context** — Each group has its own `CLAUDE.md` memory, isolated filesystem, and runs in its own container sandbox
 - **God channel** — Your private channel (self-chat) for admin control; every other group is completely isolated
 - **Scheduled tasks** — Recurring jobs that run Claude and can message you back

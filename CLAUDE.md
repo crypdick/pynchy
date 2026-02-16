@@ -4,14 +4,16 @@ Personal Claude assistant. See [README.md](README.md) for philosophy. See [docs/
 
 ## Quick Context
 
-Python process that connects to WhatsApp, routes messages to Claude Agent SDK running in containers (Apple Container on macOS, Docker on Linux). Each group has isolated filesystem and memory.
+Python process that connects to messaging channels (WhatsApp, Slack, etc. via plugins), routes messages to Claude Agent SDK running in containers (Apple Container on macOS, Docker on Linux). Each group has isolated filesystem and memory.
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/pynchy/db.py` | SQLite operations (async, aiosqlite) |
-| `src/pynchy/ipc.py` | IPC watcher and task processing |
+| `src/pynchy/db/` | SQLite operations (async, aiosqlite) — package with domain submodules |
+| `src/pynchy/ipc/` | IPC watcher, registry-based dispatch, service handlers — package |
+| `src/pynchy/gateway.py` | LLM API gateway (credential-isolating reverse proxy) |
+| `src/pynchy/git_sync.py` | Host git sync loop, drift detection, worktree merges |
 | `src/pynchy/router.py` | Message formatting and outbound routing |
 | `src/pynchy/config.py` | Pydantic BaseSettings config (TOML + env overrides) |
 | `src/pynchy/commands.py` | Special command matching (reset/end/redeploy) |

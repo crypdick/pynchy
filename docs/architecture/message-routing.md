@@ -21,7 +21,7 @@ The sender vocabulary in the database:
 | `tool_result` | Stored | Tool result records (internal) |
 | `result_meta` | Stored | Result metadata (internal) |
 | `system_notice` | No | Ephemeral system notices (not stored in DB) |
-| `{phone_jid}` | Yes | WhatsApp user messages (`UserMessage`) |
+| `{channel_jid}` | Yes | Channel user messages — WhatsApp phone JID, `slack:<channel_id>`, etc. (`UserMessage`) |
 
 The goal: if something went wrong, you can reconstruct what the LLM saw by reading the chat.
 
