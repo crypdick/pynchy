@@ -48,6 +48,12 @@ class GroupState:
 
 
 class GroupQueue:
+    """Per-group concurrency queue that serializes container runs within each group.
+
+    Enforces a global concurrency limit across all groups. Messages take
+    priority over scheduled tasks when draining, since a human is waiting.
+    """
+
     def __init__(self) -> None:
         self._groups: dict[str, GroupState] = {}
         self._active_count = 0
@@ -56,14 +62,22 @@ class GroupQueue:
         self._shutting_down = False
 
     def _get_group(self, group_jid: str) -> GroupState:
+        """Return the GroupState for *group_jid*, creating one if needed."""
         if group_jid not in self._groups:
             self._groups[group_jid] = GroupState()
         return self._groups[group_jid]
 
     def set_process_messages_fn(self, fn: Callable[[str], Awaitable[bool]]) -> None:
+        """Register the callback used to process pending messages for a group."""
         self._process_messages_fn = fn
 
     def enqueue_message_check(self, group_jid: str) -> None:
+        """Schedule a message processing run for *group_jid*.
+
+        If the group already has an active container, the check is deferred
+        until the current run finishes.  If the global concurrency limit is
+        reached, the group is added to the waiting queue.
+        """
         if self._shutting_down:
             return
 
@@ -92,6 +106,12 @@ class GroupQueue:
         asyncio.ensure_future(self._run_for_group(group_jid, "messages"))
 
     def enqueue_task(self, group_jid: str, task_id: str, fn: Callable[[], Awaitable[None]]) -> None:
+        """Queue a scheduled task for *group_jid*.
+
+        Deduplicates by *task_id* — if the same task is already queued it is
+        silently skipped.  Respects the same concurrency and per-group
+        serialization rules as ``enqueue_message_check``.
+        """
         if self._shutting_down:
             return
 
@@ -142,6 +162,11 @@ class GroupQueue:
         container_name: str,
         group_folder: str | None = None,
     ) -> None:
+        """Associate a running container process with a group.
+
+        Called by ``run_container_agent`` so the queue can stop the container
+        on interrupts, send IPC messages, and track liveness.
+        """
         state = self._get_group(group_jid)
         state.process = proc
         state.container_name = container_name
@@ -282,6 +307,7 @@ class GroupQueue:
             self._drain_group(group_jid)
 
     def _schedule_retry(self, group_jid: str, state: GroupState) -> None:
+        """Re-enqueue a failed message check after exponential backoff."""
         s = get_settings()
         state.retry_count += 1
         if state.retry_count > s.queue.max_retries:
@@ -309,6 +335,11 @@ class GroupQueue:
         asyncio.ensure_future(_retry())
 
     def _drain_group(self, group_jid: str) -> None:
+        """After a run finishes, start the next pending item for this group.
+
+        Messages are drained before tasks (human > autonomous priority).
+        If nothing is pending for this group, drains the global waiting queue.
+        """
         if self._shutting_down:
             return
 
@@ -336,6 +367,7 @@ class GroupQueue:
         self._drain_waiting()
 
     def _drain_waiting(self) -> None:
+        """Start runs for waiting groups until the concurrency limit is hit."""
         while self._waiting_groups and self._active_count < get_settings().container.max_concurrent:
             next_jid = self._waiting_groups.popleft()
             state = self._get_group(next_jid)

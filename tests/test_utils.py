@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
 import pytest
 
-from pynchy.utils import compute_next_run, generate_message_id, safe_json_load
+from pynchy.utils import (
+    compute_next_run,
+    create_background_task,
+    generate_message_id,
+    safe_json_load,
+)
 
 
 class TestGenerateMessageId:
@@ -161,3 +167,70 @@ class TestComputeNextRun:
         """Small but valid interval (1ms) should work."""
         result = compute_next_run("interval", "1", "UTC")
         assert result is not None
+
+
+class TestCreateBackgroundTask:
+    """Test create_background_task for exception logging on fire-and-forget coroutines.
+
+    Silently swallowed exceptions in background tasks make debugging nearly
+    impossible — this helper ensures failures always surface in logs.
+    """
+
+    @pytest.mark.asyncio
+    async def test_successful_task_completes(self):
+        """A successful coroutine should complete normally."""
+        result_holder: list[str] = []
+
+        async def success():
+            result_holder.append("done")
+
+        task = create_background_task(success(), name="test-success")
+        await task
+        assert result_holder == ["done"]
+
+    @pytest.mark.asyncio
+    async def test_failed_task_logs_error(self, caplog):
+        """A failing coroutine should log the exception via the done callback."""
+        async def fail():
+            raise RuntimeError("intentional failure")
+
+        task = create_background_task(fail(), name="test-failure")
+
+        # Wait for the task to complete (it will raise internally)
+        with pytest.raises(RuntimeError, match="intentional failure"):
+            await task
+
+        # The done callback fires after the await, but we need to let the
+        # event loop process it
+        await asyncio.sleep(0)
+
+    @pytest.mark.asyncio
+    async def test_cancelled_task_does_not_log_error(self):
+        """A cancelled task should not trigger error logging."""
+        async def hang():
+            await asyncio.sleep(999)
+
+        task = create_background_task(hang(), name="test-cancel")
+        task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    @pytest.mark.asyncio
+    async def test_task_has_name(self):
+        """The created task should have the specified name."""
+        async def noop():
+            pass
+
+        task = create_background_task(noop(), name="my-task-name")
+        assert task.get_name() == "my-task-name"
+        await task
+
+    @pytest.mark.asyncio
+    async def test_task_without_name(self):
+        """Creating a task without a name should still work."""
+        async def noop():
+            pass
+
+        task = create_background_task(noop())
+        await task  # Should complete without error
