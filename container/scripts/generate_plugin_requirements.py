@@ -31,7 +31,7 @@ def _resolve_config_path(config_arg: str, output_path: Path) -> Path:
     return (repo_root / raw).resolve()
 
 
-def _to_git_requirement(name: str, repo: str, ref: str) -> str:
+def _to_git_requirement(repo: str, ref: str) -> str:
     url = normalize_repo_url(repo)
     if url.startswith("git@github.com:"):
         url = "ssh://git@" + url[len("git@") :].replace(":", "/", 1)
@@ -41,7 +41,10 @@ def _to_git_requirement(name: str, repo: str, ref: str) -> str:
         and not url.startswith("ssh://")
     ):
         url = "https://" + url
-    return f"{name} @ git+{url}@{ref}"
+    # Omit "name @" prefix — uv infers the package name from metadata.
+    # Using the config key as the name breaks when it differs from the
+    # package's own metadata name (e.g. "whatsapp" vs "pynchy-plugin-whatsapp").
+    return f"git+{url}@{ref}"
 
 
 def generate_requirements(output_path: Path, config_path: Path) -> int:
@@ -50,7 +53,7 @@ def generate_requirements(output_path: Path, config_path: Path) -> int:
         data = tomllib.loads(config_path.read_text())
         plugins = data.get("plugins", {})
         if isinstance(plugins, dict):
-            for plugin_name, plugin_cfg in plugins.items():
+            for _plugin_name, plugin_cfg in plugins.items():
                 if not isinstance(plugin_cfg, dict):
                     continue
                 if plugin_cfg.get("enabled", True) is False:
@@ -61,7 +64,7 @@ def generate_requirements(output_path: Path, config_path: Path) -> int:
                 ref = plugin_cfg.get("ref", "main")
                 if not isinstance(ref, str) or not ref.strip():
                     ref = "main"
-                lines.append(_to_git_requirement(str(plugin_name), repo, ref))
+                lines.append(_to_git_requirement(repo, ref))
     else:
         print(f"Config not found at {config_path}; writing empty plugin requirements file")
 
