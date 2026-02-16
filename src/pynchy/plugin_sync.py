@@ -119,7 +119,7 @@ def _save_install_state(root: Path, state: dict[str, dict[str, str]]) -> None:
 
 def _install_plugin_in_host_env(plugin_name: str, plugin_dir: Path) -> None:
     result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--no-cache-dir", str(plugin_dir)],
+        ["uv", "pip", "install", "--python", sys.executable, "--no-cache-dir", str(plugin_dir)],
         capture_output=True,
         text=True,
         timeout=300,
