@@ -15,10 +15,12 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import pkgutil
 import sys
 import tomllib
+import warnings
 
 import pluggy
 
@@ -138,6 +140,22 @@ def get_plugin_manager() -> pluggy.PluginManager:
     blocked = _load_managed_plugin_entrypoints(pm)
     for entry_name in blocked:
         pm.set_blocked(entry_name)
+
+    # Some third-party plugins (e.g. neonize, used by the WhatsApp channel)
+    # call asyncio.get_event_loop() at import time.  Ensure a loop exists so
+    # the import succeeds even when called from a sync context or a pytest-xdist
+    # worker thread that hasn't set one up yet.
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # No running loop — probe whether a default loop is already set.
+        # Suppress the Python 3.12+ DeprecationWarning from the probe itself.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            try:
+                asyncio.get_event_loop()
+            except RuntimeError:
+                asyncio.set_event_loop(asyncio.new_event_loop())
 
     # Discover and register third-party plugins from entry points
     # Plugins register via "pynchy" group in their pyproject.toml
