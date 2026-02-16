@@ -17,9 +17,18 @@ def normalize_repo_url(repo: str) -> str:
     return value
 
 
-def _config_path_from_output(output_path: Path) -> Path:
-    repo_root = output_path.parents[1] if output_path.is_absolute() else Path.cwd().parent
-    return repo_root / "config.toml"
+def _resolve_config_path(config_arg: str, output_path: Path) -> Path:
+    raw = Path(config_arg)
+    if raw.is_absolute():
+        return raw
+
+    cwd_candidate = (Path.cwd() / raw).resolve()
+    if cwd_candidate.exists():
+        return cwd_candidate
+
+    output_abs = output_path if output_path.is_absolute() else (Path.cwd() / output_path).resolve()
+    repo_root = output_abs.parent.parent if output_abs.parent.name == "container" else Path.cwd()
+    return (repo_root / raw).resolve()
 
 
 def _to_git_requirement(name: str, repo: str, ref: str) -> str:
@@ -81,9 +90,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     output_path = Path(args.output)
-    config_path = Path(args.config)
-    if not config_path.is_absolute():
-        config_path = _config_path_from_output(output_path)
+    config_path = _resolve_config_path(args.config, output_path)
     return generate_requirements(output_path, config_path)
 
 
