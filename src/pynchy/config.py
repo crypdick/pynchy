@@ -36,6 +36,7 @@ from pydantic_settings import (
 
 class AgentConfig(BaseModel):
     name: str = "pynchy"
+    # NOTE: Update docs/architecture/message-routing.md § Trigger Pattern if you change this
     trigger_aliases: list[str] = ["ghost"]
     core: str = "claude"  # "claude" or "openai"
 
@@ -67,6 +68,7 @@ class LoggingConfig(BaseModel):
         return v.upper()
 
 
+# NOTE: Update docs/architecture/security.md § Credential Filtering if you change these fields
 class SecretsConfig(BaseModel):
     anthropic_api_key: SecretStr | None = None
     openai_api_key: SecretStr | None = None
