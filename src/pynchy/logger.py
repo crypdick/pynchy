@@ -28,7 +28,6 @@ def _setup_logging() -> structlog.stdlib.BoundLogger:
             structlog.dev.set_exc_info,
             structlog.processors.TimeStamper(fmt="iso"),
             structlog.processors.StackInfoRenderer(),
-            structlog.processors.format_exc_info,
             structlog.dev.ConsoleRenderer(colors=sys.stderr.isatty()),
         ],
         wrapper_class=structlog.stdlib.BoundLogger,
