@@ -436,11 +436,16 @@ async def start_message_loop(
                     if deps.queue.is_active_task(group_jid):
                         last_content = all_pending[-1].content.strip()
                         if last_content.lower().startswith("btw "):
-                            # Non-interrupting — forward to the running
-                            # container via IPC as additional context.
+                            # Non-interrupting — best-effort forward to
+                            # the running container via IPC.  The cursor
+                            # is NOT advanced: the container may never
+                            # read the IPC file (e.g. the agent calls
+                            # finished_work() during its query before
+                            # reaching wait_for_ipc_message).  Instead
+                            # we mark pending_messages so _drain_group
+                            # reprocesses them after the task exits.
                             deps.queue.send_message(group_jid, formatted)
-                            deps.last_agent_timestamp[group_jid] = all_pending[-1].timestamp
-                            await deps.save_state()
+                            deps.queue.enqueue_message_check(group_jid)
                         elif last_content.lower().startswith("todo "):
                             # Non-interrupting — host writes directly to
                             # todos.json, then notifies agent via IPC.
@@ -466,8 +471,9 @@ async def start_message_loop(
                                 "[System notice \u2014 no response needed] "
                                 f"User added a todo item to your list: {item}",
                             )
-                            deps.last_agent_timestamp[group_jid] = all_pending[-1].timestamp
-                            await deps.save_state()
+                            # Same as "btw ": don't advance cursor,
+                            # mark pending so drain reprocesses.
+                            deps.queue.enqueue_message_check(group_jid)
                         else:
                             # Interrupting — kill the task, process
                             # messages after it dies.
