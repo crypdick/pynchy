@@ -1,13 +1,15 @@
 """Shared utility functions.
 
 Small helpers used across multiple modules. Avoids duplication of common
-patterns like timestamped ID generation, safe JSON loading, and schedule
-calculations.
+patterns like timestamped ID generation, safe JSON loading, schedule
+calculations, and idle timer management.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -68,3 +70,29 @@ def compute_next_run(
 
     # 'once' tasks: no next run after execution
     return None
+
+
+class IdleTimer:
+    """Resettable idle timer that fires a callback after a period of inactivity.
+
+    Used by both the message handler and the task scheduler to close
+    container stdin when no output is received for ``timeout`` seconds.
+    """
+
+    def __init__(self, timeout: float, callback: Callable[[], None]) -> None:
+        self._timeout = timeout
+        self._callback = callback
+        self._handle: asyncio.TimerHandle | None = None
+        self._loop = asyncio.get_running_loop()
+
+    def reset(self) -> None:
+        """Cancel any pending timer and start a fresh countdown."""
+        if self._handle is not None:
+            self._handle.cancel()
+        self._handle = self._loop.call_later(self._timeout, self._callback)
+
+    def cancel(self) -> None:
+        """Cancel the timer without firing the callback."""
+        if self._handle is not None:
+            self._handle.cancel()
+            self._handle = None

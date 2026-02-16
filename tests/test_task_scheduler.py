@@ -377,7 +377,7 @@ class TestStartSchedulerLoop:
         assert len(enqueued) == 0
 
 
-class TestRunTask:
+class TestRunScheduledAgent:
     """Test task execution logic."""
 
     @pytest.mark.asyncio
@@ -393,11 +393,11 @@ class TestRunTask:
                 "pynchy.task_scheduler.get_all_tasks", new_callable=AsyncMock
             ) as mock_get_all:
                 mock_get_all.return_value = []
-                # Import and call _run_task directly
+                # Import and call _run_scheduled_agent directly
                 with _patch_settings(groups_dir=tmp_path):
-                    from pynchy.task_scheduler import _run_task
+                    from pynchy.task_scheduler import _run_scheduled_agent
 
-                    await _run_task(sample_task, mock_deps)
+                    await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have logged an error
         assert len(logged_runs) == 1
@@ -430,9 +430,9 @@ class TestRunTask:
                             "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
                         ):
                             with _patch_settings(groups_dir=tmp_path):
-                                from pynchy.task_scheduler import _run_task
+                                from pynchy.task_scheduler import _run_scheduled_agent
 
-                                await _run_task(sample_task, mock_deps)
+                                await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have used the group's session
         assert len(container_inputs) == 1
@@ -464,9 +464,9 @@ class TestRunTask:
                             "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
                         ):
                             with _patch_settings(groups_dir=tmp_path):
-                                from pynchy.task_scheduler import _run_task
+                                from pynchy.task_scheduler import _run_scheduled_agent
 
-                                await _run_task(sample_task, mock_deps)
+                                await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should NOT have used any session
         assert len(container_inputs) == 1
@@ -495,9 +495,9 @@ class TestRunTask:
                             "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
                         ):
                             with _patch_settings(groups_dir=tmp_path):
-                                from pynchy.task_scheduler import _run_task
+                                from pynchy.task_scheduler import _run_scheduled_agent
 
-                                await _run_task(sample_task, mock_deps)
+                                await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have sent the start notification and the result message
         assert len(mock_deps.messages) == 2
@@ -532,9 +532,9 @@ class TestRunTask:
                             "pynchy.task_scheduler.update_task_after_run", side_effect=mock_update
                         ):
                             with _patch_settings(groups_dir=tmp_path):
-                                from pynchy.task_scheduler import _run_task
+                                from pynchy.task_scheduler import _run_scheduled_agent
 
-                                await _run_task(sample_task, mock_deps)
+                                await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have calculated next run
         assert len(updates) == 1
@@ -571,9 +571,9 @@ class TestRunTask:
                             "pynchy.task_scheduler.update_task_after_run", side_effect=mock_update
                         ):
                             with _patch_settings(groups_dir=tmp_path):
-                                from pynchy.task_scheduler import _run_task
+                                from pynchy.task_scheduler import _run_scheduled_agent
 
-                                await _run_task(sample_task, mock_deps)
+                                await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have calculated next run
         assert len(updates) == 1
@@ -612,9 +612,9 @@ class TestRunTask:
                             "pynchy.task_scheduler.update_task_after_run", side_effect=mock_update
                         ):
                             with _patch_settings(groups_dir=tmp_path):
-                                from pynchy.task_scheduler import _run_task
+                                from pynchy.task_scheduler import _run_scheduled_agent
 
-                                await _run_task(sample_task, mock_deps)
+                                await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have no next run for 'once' tasks
         assert len(updates) == 1
@@ -646,9 +646,9 @@ class TestRunTask:
                             "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
                         ):
                             with _patch_settings(groups_dir=tmp_path):
-                                from pynchy.task_scheduler import _run_task
+                                from pynchy.task_scheduler import _run_scheduled_agent
 
-                                await _run_task(sample_task, mock_deps)
+                                await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have logged the error
         assert len(logged_runs) == 1
@@ -680,9 +680,9 @@ class TestRunTask:
                             "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
                         ):
                             with _patch_settings(groups_dir=tmp_path):
-                                from pynchy.task_scheduler import _run_task
+                                from pynchy.task_scheduler import _run_scheduled_agent
 
-                                await _run_task(sample_task, mock_deps)
+                                await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have passed project_access=True
         assert len(container_inputs) == 1
@@ -727,9 +727,9 @@ class TestRunTask:
                             "pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock
                         ):
                             with _patch_settings(groups_dir=tmp_path):
-                                from pynchy.task_scheduler import _run_task
+                                from pynchy.task_scheduler import _run_scheduled_agent
 
-                                await _run_task(sample_task, mock_deps)
+                                await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have written snapshot with all tasks
         assert len(snapshots) == 1

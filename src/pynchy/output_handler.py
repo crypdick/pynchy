@@ -22,6 +22,7 @@ _trace_counter = 0
 
 
 def _next_trace_id(prefix: str) -> str:
+    """Generate a unique monotonic ID for trace DB rows."""
     global _trace_counter
     _trace_counter += 1
     ts_ms = int(datetime.now(UTC).timestamp() * 1000)

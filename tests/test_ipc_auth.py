@@ -1205,9 +1205,7 @@ class TestHostJobPauseAuth:
         )
 
     async def test_god_can_pause_host_job(self, deps):
-        await process_task_ipc(
-            {"type": "pause_task", "taskId": "host-job-1"}, "god", True, deps
-        )
+        await process_task_ipc({"type": "pause_task", "taskId": "host-job-1"}, "god", True, deps)
         job = await get_host_job_by_id("host-job-1")
         assert job is not None
         assert job.status == "paused"

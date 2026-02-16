@@ -18,6 +18,7 @@ from pynchy.db import get_messages_since, get_new_messages, store_message_direct
 from pynchy.event_bus import AgentActivityEvent, MessageEvent
 from pynchy.git_utils import is_repo_dirty
 from pynchy.logger import logger
+from pynchy.utils import IdleTimer
 
 if TYPE_CHECKING:
     from pynchy.group_queue import GroupQueue
@@ -306,17 +307,7 @@ async def process_group_messages(
     )
 
     # Track idle timer for closing stdin when agent is idle
-    loop = asyncio.get_running_loop()
-    idle_handle: asyncio.TimerHandle | None = None
-
-    def reset_idle_timer() -> None:
-        nonlocal idle_handle
-        if idle_handle is not None:
-            idle_handle.cancel()
-        idle_handle = loop.call_later(
-            s.idle_timeout,
-            lambda: deps.queue.close_stdin(chat_jid),
-        )
+    idle_timer = IdleTimer(s.idle_timeout, lambda: deps.queue.close_stdin(chat_jid))
 
     # Send emoji reaction on the last message to indicate agent is reading
     last_msg = missed_messages[-1]
@@ -337,7 +328,7 @@ async def process_group_messages(
         if sent:
             output_sent_to_user = True
         if result.type == "result":
-            reset_idle_timer()
+            idle_timer.reset()
         if result.status == "error":
             had_error = True
 
@@ -347,8 +338,7 @@ async def process_group_messages(
 
     await deps.set_typing_on_channels(chat_jid, False)
     deps.emit(AgentActivityEvent(chat_jid=chat_jid, active=False))
-    if idle_handle is not None:
-        idle_handle.cancel()
+    idle_timer.cancel()
 
     if agent_result == "error" or had_error:
         if output_sent_to_user:
