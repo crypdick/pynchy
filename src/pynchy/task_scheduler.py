@@ -114,10 +114,10 @@ async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
 
 
 def _get_cron_job_next_run(schedule: str, timezone: str) -> str:
-    """Compute next run time for a host cron job in local scheduler timezone."""
+    """Compute next run time for a host cron job, always in UTC."""
     tz = ZoneInfo(timezone)
     cron = croniter(schedule, datetime.now(tz))
-    return cron.get_next(datetime).isoformat()
+    return cron.get_next(datetime).astimezone(UTC).isoformat()
 
 
 def _resolve_cron_job_cwd(cwd: str | None) -> str:
