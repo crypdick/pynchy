@@ -18,8 +18,8 @@ This step adds an optional pre-processing layer that uses an LLM-as-judge patter
 
 From Simon Willison's research on prompt injection:
 
-- **Primary defense**: Action gating (Step 6) - hard policy checks on tool execution
-- **Secondary defense**: Input filtering (this step) - catches obvious attacks
+- **Primary defense**: Action gating on untrusted sinks (Step 6) - human approval when trifecta exists
+- **Secondary defense**: Input filtering (this step) - catches obvious attacks in untrusted content
 - **Why both?**:
   - Input filtering catches mass/generic attacks (phishing, simple injection)
   - Action gating catches sophisticated adaptive attacks that bypass the filter
@@ -27,15 +27,29 @@ From Simon Willison's research on prompt injection:
 
 **Important**: This is optional and can be disabled. Some workspaces may prefer human review only.
 
+## When Deputy Scanning Triggers
+
+The policy middleware (Step 2) flags responses for deputy scanning when:
+- The tool reads from a service with `trusted_source = false`
+- The `PolicyDecision` has `requires_deputy_scan = True`
+
+This means:
+- `read_email` → deputy scan (email has `trusted_source = false`)
+- `list_calendar` on a personal calendar → **no scan** (`trusted_source = true`)
+- `list_calendar` on a shared calendar with untrusted participants → deputy scan (if configured as `trusted_source = false`)
+
+The trust declaration is per-service-instance, so the same tool type can have different scanning behavior depending on which service it's connected to.
+
 ## The Deputy Agent Pattern
 
 A separate LLM instance (the "Deputy") reviews untrusted content before the main agent sees it:
 
 1. **Orchestrator requests content** (e.g., "read my emails")
 2. **Host fetches content** (email bodies from IMAP)
-3. **Deputy reviews content** for prompt injection
-4. **If suspicious**: Redact or flag content
-5. **If clean**: Pass through to orchestrator
+3. **Policy middleware sees `requires_deputy_scan = True`**
+4. **Deputy reviews content** for prompt injection (fresh context, no tools)
+5. **If suspicious**: Redact or flag content
+6. **If clean**: Pass through to orchestrator
 
 The Deputy uses a different prompt optimized for detection, not helpfulness.
 
@@ -61,7 +75,6 @@ class WorkspaceSecurityProfile(TypedDict):
     """Security configuration for a workspace."""
 
     tools: dict[str, ToolProfile]
-    default_tier: RiskTier
     allow_unknown_tools: bool
     input_filter: InputFilterConfig | None  # New field
 ```
@@ -278,21 +291,17 @@ Similar integration for:
 
 **File:** Example workspace security profile
 
-```json
-{
-  "tools": {
-    "read_email": {"tier": "read_only", "enabled": true},
-    "send_email": {"tier": "external", "enabled": true}
-  },
-  "default_tier": "external",
-  "allow_unknown_tools": false,
-  "input_filter": {
-    "enabled": true,
-    "provider": "anthropic",
-    "model": "claude-3-haiku-20240307",
-    "threshold": 0.8
-  }
-}
+```toml
+[services.email]
+trusted_source = false   # incoming email is untrusted
+sensitive_info = false
+trusted_sink = false      # sending email is an untrusted sink
+
+[input_filter]
+enabled = true
+provider = "anthropic"
+model = "claude-3-haiku-20240307"
+threshold = 0.8
 ```
 
 Threshold guidance:
@@ -504,18 +513,6 @@ Update the following:
 1. **Security model** - Explain defense-in-depth approach
 2. **Configuration guide** - How to enable/disable, tune threshold
 3. **Troubleshooting** - What to do if legitimate content is blocked
-
-## When to Enable
-
-**Enable for:**
-- Workspaces handling untrusted input (email, web scraping)
-- High-security workspaces (banking, passwords)
-- Public-facing bots
-
-**Disable for:**
-- Trusted workspaces (main admin workspace)
-- Performance-critical applications
-- Low-risk read-only workspaces
 
 ## Next Steps
 

@@ -476,8 +476,8 @@ def test_get_password(mock_run, password_config):
 ## Security Considerations
 
 1. **ALWAYS Require Approval**
-   - `get_password` MUST be in EXTERNAL tier (human approval required)
-   - `search_passwords` can be READ_ONLY (metadata only, safe)
+   - `get_password` accesses sensitive_info=true data. When the container is tainted (has read from an untrusted source), human approval is required.
+   - `search_passwords` returns metadata only. Since passwords service has trusted_source=true, this doesn't taint the container.
    - Step 6 (Human Approval Gate) is critical for this feature
 
 2. **No Credential Persistence**
@@ -497,22 +497,14 @@ def test_get_password(mock_run, password_config):
    - Limit password retrievals per hour/day
    - Alert on excessive password access
 
-## Workspace Security Profile Example
+## ServiceTrustConfig Example
 
-**File:** Example for banking workspace
-
-```json
-{
-  "tools": {
-    "search_passwords": {"tier": "read_only", "enabled": true},
-    "get_password": {"tier": "external", "enabled": true}
-  },
-  "default_tier": "external",
-  "allow_unknown_tools": false
-}
+```toml
+[services.passwords]
+trusted_source = true    # vault metadata is trusted
+sensitive_info = true     # passwords are secrets
+trusted_sink = false      # retrieving passwords is sensitive
 ```
-
-This ensures `get_password` always requires human approval.
 
 ## Success Criteria
 

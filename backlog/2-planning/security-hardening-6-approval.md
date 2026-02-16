@@ -2,7 +2,7 @@
 
 ## Overview
 
-Implement the human approval system for high-risk MCP tool operations. When an agent attempts an EXTERNAL-tier action (like sending email or retrieving passwords), the host sends an approval request via WhatsApp and waits for the user's response.
+Implement the human approval system for high-risk MCP tool operations. When an agent writes to untrusted sinks by tainted containers, or accesses sensitive data by tainted containers (like sending email or retrieving passwords), the host sends an approval request via WhatsApp and waits for the user's response.
 
 ## Scope
 
@@ -16,7 +16,7 @@ This step completes the security enforcement layer by adding the final gate for 
 
 ## Background
 
-From Step 2, when the policy middleware determines a tool requires human approval (`RiskTier.EXTERNAL`), it sets `requires_approval=True`. Currently, this just denies the request. This step implements the actual approval flow.
+From Step 2, when the policy middleware detects a tainted container writing to an untrusted sink or accessing sensitive data, it sets `requires_approval=True`. Currently, this just denies the request. This step implements the actual approval flow.
 
 ## Security Model
 
@@ -260,7 +260,6 @@ class IPCWatcher:
                 await self._audit(
                     denial.get("tool_name", "unknown"),
                     "denied",
-                    tier="external",
                     reason=denial["reason"],
                     request_id=denial["request_id"],
                 )
@@ -340,7 +339,6 @@ class IPCWatcher:
         await self._audit(
             result.get("tool_name", "unknown"),
             "approved" if approved else "denied",
-            tier="external",
             reason=result["reason"],
             request_id=request_id,
             approval_code=result.get("approval_code"),
@@ -538,7 +536,7 @@ async def test_cleanup_expired(approval_manager):
 ### Example: Sending Email
 
 1. Agent calls `send_email` tool
-2. Policy middleware detects EXTERNAL tier
+2. Container is tainted (previously read untrusted email). Policy detects write to untrusted sink.
 3. Approval request sent to WhatsApp:
 
 ```
