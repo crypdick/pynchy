@@ -17,6 +17,7 @@ import json
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from pynchy.config import get_settings
 
@@ -25,7 +26,7 @@ def _todos_path(group_folder: str) -> Path:
     return get_settings().data_dir / "ipc" / group_folder / "todos.json"
 
 
-def _read_todos(group_folder: str) -> list[dict]:
+def _read_todos(group_folder: str) -> list[dict[str, Any]]:
     path = _todos_path(group_folder)
     if not path.exists():
         return []
@@ -35,7 +36,7 @@ def _read_todos(group_folder: str) -> list[dict]:
         return []
 
 
-def _write_todos(group_folder: str, todos: list[dict]) -> None:
+def _write_todos(group_folder: str, todos: list[dict[str, Any]]) -> None:
     path = _todos_path(group_folder)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
@@ -43,10 +44,10 @@ def _write_todos(group_folder: str, todos: list[dict]) -> None:
     tmp.rename(path)
 
 
-def add_todo(group_folder: str, content: str) -> dict:
+def add_todo(group_folder: str, content: str) -> dict[str, Any]:
     """Append a todo item and return the new entry."""
     todos = _read_todos(group_folder)
-    entry = {
+    entry: dict[str, Any] = {
         "id": uuid.uuid4().hex[:8],
         "content": content,
         "done": False,
@@ -57,6 +58,6 @@ def add_todo(group_folder: str, content: str) -> dict:
     return entry
 
 
-def get_todos(group_folder: str) -> list[dict]:
+def get_todos(group_folder: str) -> list[dict[str, Any]]:
     """Return all todo items for a group."""
     return _read_todos(group_folder)

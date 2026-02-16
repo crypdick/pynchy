@@ -179,6 +179,60 @@ def sync_plugin_repos() -> dict[str, tuple[Path, str, bool]]:
 
 
 # ---------------------------------------------------------------------------
+# Shared install logic
+# ---------------------------------------------------------------------------
+
+
+def _install_if_needed(
+    plugin_name: str,
+    plugin_dir: Path,
+    revision: str,
+    install_state: dict[str, dict[str, str]],
+    plugins_dir: Path,
+    **log_extra: str,
+) -> bool:
+    """Install a plugin if its revision changed since last install.
+
+    Updates *install_state* in-place and persists it on change.
+    Returns True if the plugin was (re)installed, False if already up to date.
+    """
+    installed_revision = (install_state.get(plugin_name) or {}).get("revision")
+    if installed_revision == revision:
+        logger.info(
+            "Plugin already up to date",
+            plugin=plugin_name,
+            revision=revision,
+            **log_extra,
+        )
+        return False
+
+    if installed_revision:
+        logger.info(
+            "Plugin revision changed",
+            plugin=plugin_name,
+            from_revision=installed_revision,
+            to_revision=revision,
+            **log_extra,
+        )
+    else:
+        logger.info(
+            "Plugin revision discovered",
+            plugin=plugin_name,
+            revision=revision,
+            **log_extra,
+        )
+    logger.info(
+        "Installing plugin into host environment",
+        plugin=plugin_name,
+        revision=revision,
+    )
+    _install_plugin_in_host_env(plugin_name, plugin_dir)
+    install_state[plugin_name] = {"revision": revision}
+    _save_install_state(plugins_dir, install_state)
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Phase 2: Install verified plugins into host environment
 # ---------------------------------------------------------------------------
 
@@ -198,35 +252,7 @@ def install_verified_plugins(verified: dict[str, tuple[Path, str]]) -> dict[str,
 
     for plugin_name, (plugin_dir, revision) in verified.items():
         try:
-            installed_revision = (install_state.get(plugin_name) or {}).get("revision")
-            if installed_revision != revision:
-                if installed_revision:
-                    logger.info(
-                        "Plugin revision changed",
-                        plugin=plugin_name,
-                        from_revision=installed_revision,
-                        to_revision=revision,
-                    )
-                else:
-                    logger.info(
-                        "Plugin revision discovered",
-                        plugin=plugin_name,
-                        revision=revision,
-                    )
-                logger.info(
-                    "Installing plugin into host environment",
-                    plugin=plugin_name,
-                    revision=revision,
-                )
-                _install_plugin_in_host_env(plugin_name, plugin_dir)
-                install_state[plugin_name] = {"revision": revision}
-                _save_install_state(s.plugins_dir, install_state)
-            else:
-                logger.info(
-                    "Plugin already up to date",
-                    plugin=plugin_name,
-                    revision=revision,
-                )
+            _install_if_needed(plugin_name, plugin_dir, revision, install_state, s.plugins_dir)
             installed[plugin_name] = plugin_dir
         except Exception:
             logger.exception(
@@ -260,38 +286,14 @@ def sync_configured_plugins() -> dict[str, Path]:
         try:
             plugin_dir = _sync_single_plugin(plugin_name, plugin_cfg, s.plugins_dir)
             revision = _plugin_revision(plugin_dir)
-            installed_revision = (install_state.get(plugin_name) or {}).get("revision")
-            if installed_revision != revision:
-                if installed_revision:
-                    logger.info(
-                        "Plugin revision changed",
-                        plugin=plugin_name,
-                        from_revision=installed_revision,
-                        to_revision=revision,
-                        ref=plugin_cfg.ref,
-                    )
-                else:
-                    logger.info(
-                        "Plugin revision discovered",
-                        plugin=plugin_name,
-                        revision=revision,
-                        ref=plugin_cfg.ref,
-                    )
-                logger.info(
-                    "Installing plugin into host environment",
-                    plugin=plugin_name,
-                    revision=revision,
-                )
-                _install_plugin_in_host_env(plugin_name, plugin_dir)
-                install_state[plugin_name] = {"revision": revision}
-                _save_install_state(s.plugins_dir, install_state)
-            else:
-                logger.info(
-                    "Plugin already up to date",
-                    plugin=plugin_name,
-                    revision=revision,
-                    ref=plugin_cfg.ref,
-                )
+            _install_if_needed(
+                plugin_name,
+                plugin_dir,
+                revision,
+                install_state,
+                s.plugins_dir,
+                ref=plugin_cfg.ref,
+            )
             synced[plugin_name] = plugin_dir
             logger.info(
                 "Plugin repo ready",

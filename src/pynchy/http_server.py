@@ -288,7 +288,7 @@ async def _handle_api_events(request: web.Request) -> web.StreamResponse:
             data = json.dumps(event)
             await response.write(f"data: {data}\n\n".encode())
     except (asyncio.CancelledError, ConnectionResetError):
-        pass
+        pass  # Client disconnected or request cancelled — clean up silently
     finally:
         unsubscribe()
 

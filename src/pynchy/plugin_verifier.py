@@ -191,11 +191,13 @@ def _parse_verdict(text: str) -> tuple[str, str]:
         stripped = line.strip()
         upper = stripped.upper()
         if upper.startswith("VERDICT:"):
-            v = stripped.split(":", 1)[1].strip().lower()
+            _, _, value = stripped.partition(":")
+            v = value.strip().lower()
             if v in ("pass", "fail"):
                 verdict = v
         elif upper.startswith("REASONING:"):
-            reasoning = stripped.split(":", 1)[1].strip()
+            _, _, value = stripped.partition(":")
+            reasoning = value.strip()
 
     return verdict, reasoning
 

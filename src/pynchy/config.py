@@ -373,7 +373,7 @@ def _detect_timezone() -> str:
         if len(parts) > 1:
             return parts[1]
     except OSError:
-        pass
+        pass  # /etc/localtime missing or not a symlink — fall back to UTC
     return "UTC"
 
 
