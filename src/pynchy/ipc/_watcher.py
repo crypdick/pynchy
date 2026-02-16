@@ -10,7 +10,7 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-from watchdog.events import FileCreatedEvent, FileSystemEventHandler
+from watchdog.events import FileCreatedEvent, FileMovedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from pynchy.config import get_settings
@@ -214,18 +214,28 @@ class _IpcEventHandler(FileSystemEventHandler):
         self._loop = loop
         self._queue = queue
 
+    def _enqueue_if_ipc(self, path_str: str) -> None:
+        """Enqueue a file if it matches the IPC directory structure."""
+        if not path_str.endswith(".json"):
+            return
+        file_path = Path(path_str)
+        try:
+            relative = file_path.relative_to(self._ipc_base_dir)
+            parts = relative.parts
+            # Expected: <group>/<messages|tasks>/<file>.json
+            if len(parts) == 3 and parts[1] in ("messages", "tasks"):
+                self._loop.call_soon_threadsafe(self._queue.put_nowait, file_path)
+        except (ValueError, IndexError):
+            pass
+
     def on_created(self, event: Any) -> None:
-        if isinstance(event, FileCreatedEvent) and event.src_path.endswith(".json"):
-            file_path = Path(event.src_path)
-            # Only process files that are in a group's messages/ or tasks/ subdir
-            try:
-                relative = file_path.relative_to(self._ipc_base_dir)
-                parts = relative.parts
-                # Expected: <group>/<messages|tasks>/<file>.json
-                if len(parts) == 3 and parts[1] in ("messages", "tasks"):
-                    self._loop.call_soon_threadsafe(self._queue.put_nowait, file_path)
-            except (ValueError, IndexError):
-                pass
+        if isinstance(event, FileCreatedEvent):
+            self._enqueue_if_ipc(event.src_path)
+
+    def on_moved(self, event: Any) -> None:
+        # Atomic writes (tmp → .json rename) generate moved events, not created
+        if isinstance(event, FileMovedEvent):
+            self._enqueue_if_ipc(event.dest_path)
 
 
 async def _process_queue(
