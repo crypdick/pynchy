@@ -419,13 +419,49 @@ async def start_message_loop(
                     if await intercept_special_command(deps, group_jid, group, all_pending[-1]):
                         continue
 
-                    if deps.queue.is_active_task(group_jid):
-                        deps.queue.enqueue_message_check(group_jid)
-                        continue
-
                     formatted = "\n".join(
                         f"{msg.sender_name}: {msg.content}" for msg in all_pending
                     )
+
+                    if deps.queue.is_active_task(group_jid):
+                        last_content = all_pending[-1].content.strip()
+                        if last_content.lower().startswith("btw "):
+                            # Non-interrupting — forward to the running
+                            # container via IPC as additional context.
+                            deps.queue.send_message(group_jid, formatted)
+                            deps.last_agent_timestamp[group_jid] = all_pending[-1].timestamp
+                            await deps.save_state()
+                        elif last_content.lower().startswith("todo "):
+                            # Non-interrupting — host writes directly to
+                            # todos.json, then notifies agent via IPC.
+                            #
+                            # SDK limitation: the Claude SDK does not
+                            # expose APIs to inject true system messages
+                            # or invoke MCP tools from outside the
+                            # agent's query loop.  So we edit todos.json
+                            # directly (bypassing the list_todos /
+                            # complete_todo MCP tools) and use a
+                            # "[System notice]" prefix convention on the
+                            # IPC notification so the agent treats it as
+                            # informational rather than a user request.
+                            from pynchy.todos import add_todo
+
+                            item = last_content[5:]  # strip "todo " prefix
+                            add_todo(group.folder, item)
+                            deps.queue.send_message(
+                                group_jid,
+                                "[System notice \u2014 no response needed] "
+                                f"User added a todo item to your list: {item}",
+                            )
+                            deps.last_agent_timestamp[group_jid] = all_pending[-1].timestamp
+                            await deps.save_state()
+                        else:
+                            # Interrupting — kill the task, process
+                            # messages after it dies.
+                            deps.queue.clear_pending_tasks(group_jid)
+                            deps.queue.enqueue_message_check(group_jid)
+                            asyncio.create_task(deps.queue.stop_active_process(group_jid))
+                        continue
 
                     if deps.queue.send_message(group_jid, formatted):
                         logger.debug(

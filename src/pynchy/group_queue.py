@@ -193,6 +193,32 @@ class GroupQueue:
                 err=str(exc),
             )
 
+    async def stop_active_process(self, group_jid: str) -> None:
+        """Force-stop the active container for a group.
+
+        Writes the cooperative _close sentinel first, then calls
+        ``docker stop`` (or equivalent) with a 15s fallback to kill.
+        """
+        state = self._get_group(group_jid)
+        if not state.active:
+            return
+
+        # Cooperative signal first
+        self.close_stdin(group_jid)
+
+        # Force-stop the container process
+        proc = state.process
+        container_name = state.container_name
+        if proc and container_name and proc.returncode is None:
+            from pynchy.container_runner._process import _graceful_stop
+
+            await _graceful_stop(proc, container_name)
+
+    def clear_pending_tasks(self, group_jid: str) -> None:
+        """Drop all pending tasks for a group."""
+        state = self._get_group(group_jid)
+        state.pending_tasks.clear()
+
     async def _run_for_group(self, group_jid: str, reason: str) -> None:
         """Run the process_messages_fn for a group.
 
