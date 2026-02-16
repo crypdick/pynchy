@@ -7,12 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import pynchy.gateway as _gw_mod
 from pynchy.gateway import (
     BuiltinGateway,
     LiteLLMGateway,
     _load_or_create_persistent_key,
     start_gateway,
-    stop_gateway,
 )
 
 # ---------------------------------------------------------------------------
@@ -221,7 +221,9 @@ class TestGatewayModeSelection:
     @pytest.fixture(autouse=True)
     async def _cleanup(self):
         yield
-        await stop_gateway()
+        # Reset the module-level singleton directly instead of calling
+        # stop_gateway(), which would invoke real Docker commands.
+        _gw_mod._gateway = None
 
     @pytest.mark.asyncio
     async def test_litellm_mode_when_config_set(self, tmp_path: Path):
