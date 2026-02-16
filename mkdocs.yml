@@ -66,6 +66,7 @@ nav:
       - Git Sync: architecture/git-sync.md
   - Plugins:
       - Overview: plugins/index.md
+      - Available Plugins: plugins/available.md
       - Quickstart: plugins/quickstart.md
       - Hook Reference: plugins/hooks.md
       - Packaging: plugins/packaging.md

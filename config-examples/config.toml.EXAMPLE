@@ -61,8 +61,8 @@
 # max_concurrent = 5
 
 # Override container runtime detection (usually auto-detected)
-# Options: "apple" (Apple Container), "docker" (Docker)
-# runtime = "apple"
+# Options: "docker" (built-in), "apple" (requires Apple runtime plugin)
+# runtime = "docker"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Server Configuration
@@ -101,8 +101,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Channel Selection
 # ─────────────────────────────────────────────────────────────────────────────
-# Channels are now provided only by plugins. Install the default WhatsApp plugin:
-#   uv pip install git+https://github.com/crypdick/pynchy-plugin-whatsapp.git
+# Channels and optional host runtimes are now provided by plugins managed via
+# [plugins.*] entries below.
 
 [channels]
 # Default channel plugin name used for first-run group creation.
@@ -120,6 +120,12 @@
 # [plugins.whatsapp]
 # repo = "crypdick/pynchy-plugin-whatsapp"
 # ref = "main"   # branch, tag, or commit SHA
+# enabled = true
+#
+# Optional: Apple Container runtime provider (macOS)
+# [plugins.apple-runtime]
+# repo = "crypdick/pynchy-plugin-apple-runtime"
+# ref = "main"
 # enabled = true
 
 # ─────────────────────────────────────────────────────────────────────────────
