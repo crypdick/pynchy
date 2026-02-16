@@ -27,6 +27,7 @@ Single source of truth for all pynchy work items.
 - [Periodic agents ideas](1-approved/periodic-agents.md) — Background agents for security sweeps, SDK updates, etc. (infra done: `task_scheduler.py`; 1 agent live: `code-improver`)
 - [Project ideas](1-approved/project-ideas.md) — Standalone integration ideas (calendar, voice, Cloudflare, AWS, etc.)
 - [Small improvements](1-approved/small-improvements.md) — Remaining: dossier logging audit, slack-tools migration check (3/5 done)
+- [LiteLLM Gateway](1-approved/litellm-gateway.md) — Host-side LLM proxy for credential isolation, per-group budgets, and provider-agnostic routing. Prerequisite for extracting Claude/OpenAI backends into plugins.
 - [Ray resource orchestration](1-approved/ray-resource-orchestration.md) — Thin Ray integration for resource-aware container scaling, blocking queues, multi-node distribution, and GPU routing
 - implement 'handoff' tool calls as well as 'delegate' tool calls. handoff causes current agent to cease to exist; it decides what context to give to the next agent. the delegate tool is a blocking call that spawns a new agent to complete a task before passing it back. in reality, this tool call can abstract away a more complex system, like a deep research agent which has many subagents.
 - add support for multiple accounts/subscriptions. allow user to designate different workplaces to different accounts (e.g. corporate claude sub, personal claude sub, etc).
@@ -71,10 +72,9 @@ Single source of truth for all pynchy work items.
 *Plan approved or not needed. Ready for an agent to pick up.*
 
 - factor out tailscale support into a separate plugin. make sure that at least one tunnel is always active. we might need to create a new tunnel plugin type, and update the cookiecutter template.
-- factor out openai backend as a separate plugin.
-- factor out claude backend as a separate plugin.
+- factor out openai backend as a separate plugin. (blocked on litellm-gateway)
+- factor out claude backend as a separate plugin. (blocked on litellm-gateway)
 - make the code improver plugin able to update the plugin repos as well as the core pynchy repo.
-- check feasibility of turning mcps into tool calls.
 
 #### Bugs
 - messaging is broken. when I send a message, sometimes I see no response in the chat. then when i send a follow up message, it responds to the previous message. the system is desynchronized somehow. update: the message the agents send (as well as tool calls, other messages) seem to be sending to whatsapp more reliably than the tui.
