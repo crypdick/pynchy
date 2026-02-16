@@ -20,6 +20,42 @@ Containers receive env vars like::
     OPENAI_API_KEY=gw-<random>
 
 Start with :func:`start_gateway`, access the singleton with :func:`get_gateway`.
+
+OAuth gotcha
+~~~~~~~~~~~~
+
+The Anthropic Messages API does **not** accept OAuth tokens
+(``sk-ant-oat01-…``) via ``Authorization: Bearer`` unless the request
+also carries the beta header ``anthropic-beta: oauth-2025-04-20``.
+Without it every request returns 401 *"OAuth authentication is currently
+not supported."*
+
+This is undocumented in the public Anthropic API docs as of Feb 2026.
+It was discovered by grepping the minified Claude Code CLI bundle::
+
+    @anthropic-ai/claude-code@2.1.41  cli.js  (11 MB single-file bundle)
+
+Relevant fragment (de-minified)::
+
+    // Auth header builder — OAuth path
+    return {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "anthropic-beta": "oauth-2025-04-20",   // ← required
+      },
+    };
+
+    // Auth header builder — API key path (no beta needed)
+    return { headers: { "x-api-key": apiKey } };
+
+The variable ``pf`` in the bundle holds the beta string, and the
+``org:create_api_key`` scope constant (``SKK``) next to it suggests
+Anthropic originally intended an OAuth→API-key exchange flow, but
+the ``user:inference`` scoped tokens used by Claude Code skip that
+and go straight to the API — gated behind this beta flag.
+
+If Anthropic graduates OAuth out of beta, this header can be removed.
+API keys (``sk-ant-api03-…``) via ``x-api-key`` are unaffected.
 """
 
 from __future__ import annotations
@@ -38,6 +74,9 @@ from pynchy.logger import logger
 
 _ANTHROPIC_BASE = "https://api.anthropic.com"
 _OPENAI_BASE = "https://api.openai.com"
+
+# Required beta flag for OAuth token auth — see module docstring.
+_ANTHROPIC_OAUTH_BETA = "oauth-2025-04-20"
 
 # Headers stripped from the inbound request (replaced with real credentials)
 _STRIP_REQUEST_HEADERS = frozenset(
@@ -142,9 +181,11 @@ class Gateway:
             }
 
         self._credentials = providers
+        auth_types = {name: cred["type"] for name, cred in providers.items()}
         logger.info(
             "Gateway credentials discovered",
             providers=list(providers.keys()) or ["none"],
+            auth_types=auth_types or None,
         )
 
     # ------------------------------------------------------------------
@@ -174,6 +215,14 @@ class Gateway:
                 headers["x-api-key"] = creds["value"]
             else:
                 headers["Authorization"] = f"Bearer {creds['value']}"
+                # IMPORTANT: api.anthropic.com rejects OAuth tokens (sk-ant-oat01-*)
+                # with 401 unless this beta flag is present.  See module docstring.
+                existing_beta = headers.get("anthropic-beta", "")
+                oauth_beta = _ANTHROPIC_OAUTH_BETA
+                if oauth_beta not in existing_beta:
+                    headers["anthropic-beta"] = (
+                        f"{existing_beta},{oauth_beta}" if existing_beta else oauth_beta
+                    )
         elif provider == "openai":
             headers["Authorization"] = f"Bearer {creds['value']}"
 
