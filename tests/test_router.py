@@ -8,11 +8,6 @@ means host messages leak into prompts or user messages get dropped.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from unittest.mock import patch
-
-import pytest
-
 from pynchy.router import (
     format_messages_for_sdk,
     format_tool_preview,
@@ -20,7 +15,6 @@ from pynchy.router import (
     strip_internal_tags,
 )
 from pynchy.types import NewMessage
-
 
 # ---------------------------------------------------------------------------
 # format_tool_preview — one branch per tool type
