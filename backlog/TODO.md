@@ -16,7 +16,6 @@ Single source of truth for all pynchy work items.
 ### 0 - Proposed
 *ideas awaiting human review - to be discussed.*
 
-- [Plugin verifier agent](0-proposed/plugin-verifier.md) — Automated security audit for third-party plugins before activation (container-based, LLM-powered, SHA-pinned)
 - convert setup into pyinfra deployments for repeatable deployments.
 - **Deputy agent for worktree contributions** — Ephemeral agent that inspects commits from worktrees before they enter main. Reviews for malicious code, security issues, and project conventions. Spawned by `host_sync_worktree()` before the merge step.
 
@@ -24,10 +23,9 @@ Single source of truth for all pynchy work items.
 *Approved ideas. No plan yet.*
 
 - [X integration port](1-approved/x-integration-port.md) — Port the archived TypeScript X/Twitter skill to Python plugins
-- [Periodic agents ideas](1-approved/periodic-agents.md) — Background agents for security sweeps, SDK updates, etc. (infra done: `task_scheduler.py`; 1 agent live: `code-improver`)
+- [Periodic agents ideas](1-approved/periodic-agents-ideas.md) — More periodic agent ideas beyond code-improver (security sweeps, SDK updates, etc.)
 - [Project ideas](1-approved/project-ideas.md) — Standalone integration ideas (calendar, voice, Cloudflare, AWS, etc.)
-- [Small improvements](1-approved/small-improvements.md) — Remaining: slack-tools migration check (3/5 done)
-- [LiteLLM Gateway](1-approved/litellm-gateway.md) — Host-side LLM proxy for credential isolation, per-group budgets, and provider-agnostic routing. Prerequisite for extracting Claude/OpenAI backends into plugins.
+- [Small improvements](1-approved/small-improvements.md) — Remaining: slack-tools migration check
 - [Ray resource orchestration](1-approved/ray-resource-orchestration.md) — Thin Ray integration for resource-aware container scaling, blocking queues, multi-node distribution, and GPU routing
 - implement 'handoff' tool calls as well as 'delegate' tool calls. handoff causes current agent to cease to exist; it decides what context to give to the next agent. the delegate tool is a blocking call that spawns a new agent to complete a task before passing it back. in reality, this tool call can abstract away a more complex system, like a deep research agent which has many subagents.
 - add support for multiple accounts/subscriptions. allow user to designate different workplaces to different accounts (e.g. corporate claude sub, personal claude sub, etc).
@@ -36,7 +34,6 @@ Single source of truth for all pynchy work items.
 - beginners tips. the tips print sometimes after a user sends a message. it has usage instructions and pro tips. plugin authors can optionally define tips for their plugins. there should be a global setting to disalbe tips. on by default.
 - god container feature request workflow — agents that want to edit shared files (e.g. `.claude/` rules) should spawn a god container with a feature request. The god container decides whether to implement it. (read-only mount enforcement already done in `mount_security.py`)
 - port `.claude/` hookify hooks to built-in harness hooks. Claude hookify is vendor-specific (OpenAI doesn't support it). Migrate existing hook logic into our own hook system.
-- [Plan mode diff view](1-approved/plan-mode-diff-view.md) — Show full plan diff when agent exits plan mode so user can review what changed
 - **Rethink DB event cursor design** — The message polling loop uses a single `last_timestamp` cursor shared across all consumers (WhatsApp, TUI, running agents). This means advancing the cursor for one consumer silently advances it for all others, so events can be missed. Each subscriber (each channel, each running agent container) should have its own independent cursor into the DB event stream.
 - if container 1 syncs a change, the host recieves and pushes to the rest of the containers, and one of the container's worktree has a merge conflict, and that container is hibernating, that container ought to be spun up, sent a system message about the failed abortion, and a follow up message telling it to fix the broken rebase. that way, working in one container does not fuck up the work of a hibernating container.
 - rename subsystems:
@@ -68,12 +65,12 @@ Single source of truth for all pynchy work items.
 *Plan approved or not needed. Ready for an agent to pick up.*
 
 - factor out tailscale support into a separate plugin. make sure that at least one tunnel is always active. we might need to create a new tunnel plugin type, and update the cookiecutter template.
-- factor out openai backend as a separate plugin
-- factor out claude backend as a separate plugin
+- factor out openai backend as a separate plugin (currently built-in at `plugin/builtin_agent_openai.py` — needs extraction to separate package)
+- factor out claude backend as a separate plugin (currently built-in at `plugin/builtin_agent_claude.py` — needs extraction to separate package)
 - make the code improver plugin able to update the plugin repos as well as the core pynchy repo.
 
 #### Bugs
-- messaging is broken. when I send a message, sometimes I see no response in the chat. then when i send a follow up message, it responds to the previous message. the system is desynchronized somehow. update: the message the agents send (as well as tool calls, other messages) seem to be sending to whatsapp more reliably than the tui.
+- messaging desync — sometimes no response appears in TUI until a follow-up message is sent. Partially fixed (cursor advance bug, input pipeline unification), but full fix likely depends on per-subscriber DB cursors (see 1-approved).
 
 #### Docs updates
 - we've iterated on our plugin system but havent updated the docs of all the individual plugins to keep them up to date
