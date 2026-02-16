@@ -148,19 +148,29 @@ async def handle_streamed_output(
         )
         return False
     if result.type == "system":
-        await broadcast_trace(
-            deps,
-            chat_jid,
-            "system",
-            {
-                "subtype": result.system_subtype or "",
-                "data": result.system_data or {},
-            },
-            f"\u2699\ufe0f system: {result.system_subtype or 'unknown'}",
-            db_id_prefix="sys",
-            db_sender="system",
+        subtype = result.system_subtype or ""
+        data = {"subtype": subtype, "data": result.system_data or {}}
+        channel_text = f"\u2699\ufe0f system: {subtype or 'unknown'}"
+
+        # Always persist to DB and emit to EventBus
+        ts = datetime.now(UTC).isoformat()
+        await store_message_direct(
+            id=_next_trace_id("sys"),
+            chat_jid=chat_jid,
+            sender="system",
+            sender_name="system",
+            content=json.dumps(data),
+            timestamp=ts,
+            is_from_me=True,
             message_type="system",
         )
+        deps.emit(AgentTraceEvent(chat_jid=chat_jid, trace_type="system", data=data))
+
+        # Suppress noisy "init" from channels — it fires on every resumed
+        # session and adds no value for the user.
+        if subtype != "init":
+            await deps.broadcast_to_channels(chat_jid, channel_text)
+
         return False
     if result.type == "text":
         deps.emit(
