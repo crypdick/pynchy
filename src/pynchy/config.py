@@ -81,6 +81,41 @@ class WorkspaceDefaultsConfig(BaseModel):
     context_mode: Literal["group", "isolated"] = "group"
 
 
+class McpToolSecurityConfig(BaseModel):
+    """Per-tool security config in config.toml."""
+
+    risk_tier: Literal["always-approve", "rules-engine", "human-approval"] = "human-approval"
+    enabled: bool = True
+
+
+class RateLimitsConfig(BaseModel):
+    """Rate limiting config in config.toml."""
+
+    max_calls_per_hour: int = 500
+    per_tool_overrides: dict[str, int] = {}
+
+    @field_validator("max_calls_per_hour")
+    @classmethod
+    def validate_max_calls(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("max_calls_per_hour must be a positive integer")
+        return v
+
+
+class WorkspaceSecurityConfig(BaseModel):
+    """Security profile in config.toml.
+
+    Configures per-workspace MCP tool access control and rate limiting.
+    Tools not listed in mcp_tools use the default_risk_tier.
+    """
+
+    mcp_tools: dict[str, McpToolSecurityConfig] = {}
+    default_risk_tier: Literal["always-approve", "rules-engine", "human-approval"] = (
+        "human-approval"
+    )
+    rate_limits: RateLimitsConfig | None = None
+
+
 class WorkspaceConfig(BaseModel):
     is_god: bool = False
     requires_trigger: bool | None = None  # None → use workspace_defaults
@@ -89,6 +124,7 @@ class WorkspaceConfig(BaseModel):
     schedule: str | None = None  # cron expression
     prompt: str | None = None  # prompt for scheduled tasks
     context_mode: str | None = None  # None → use workspace_defaults
+    security: WorkspaceSecurityConfig | None = None  # MCP tool access control
 
     @field_validator("schedule")
     @classmethod

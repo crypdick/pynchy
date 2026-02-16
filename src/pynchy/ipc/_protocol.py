@@ -39,6 +39,14 @@ TIER2_TYPES = frozenset(
         "pause_task",
         "resume_task",
         "cancel_task",
+        # Service requests (policy-gated, Step 2)
+        "service:read_email",
+        "service:send_email",
+        "service:list_calendar",
+        "service:create_event",
+        "service:delete_event",
+        "service:search_passwords",
+        "service:get_password",
     }
 )
 

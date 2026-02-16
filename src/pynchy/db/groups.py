@@ -11,6 +11,7 @@ from pynchy.logger import logger
 from pynchy.types import (
     ContainerConfig,
     McpToolConfig,
+    RateLimitConfig,
     RegisteredGroup,
     WorkspaceProfile,
     WorkspaceSecurity,
@@ -115,9 +116,19 @@ def _row_to_workspace_profile(row) -> WorkspaceProfile:
                     risk_tier=tool_data.get("risk_tier", "human-approval"),
                     enabled=tool_data.get("enabled", True),
                 )
+
+            rate_limits = None
+            rl_data = sec_data.get("rate_limits")
+            if rl_data is not None:
+                rate_limits = RateLimitConfig(
+                    max_calls_per_hour=rl_data.get("max_calls_per_hour", 500),
+                    per_tool_overrides=rl_data.get("per_tool_overrides", {}),
+                )
+
             security = WorkspaceSecurity(
                 mcp_tools=mcp_tools,
                 default_risk_tier=sec_data.get("default_risk_tier", "human-approval"),
+                rate_limits=rate_limits,
                 allow_filesystem_access=sec_data.get("allow_filesystem_access", True),
                 allow_network_access=sec_data.get("allow_network_access", True),
             )
@@ -164,12 +175,19 @@ async def set_workspace_profile(profile: WorkspaceProfile) -> None:
 
     db = _get_db()
 
+    rl = profile.security.rate_limits
     security_data = {
         "mcp_tools": {
             tool_name: {"risk_tier": config.risk_tier, "enabled": config.enabled}
             for tool_name, config in profile.security.mcp_tools.items()
         },
         "default_risk_tier": profile.security.default_risk_tier,
+        "rate_limits": {
+            "max_calls_per_hour": rl.max_calls_per_hour,
+            "per_tool_overrides": rl.per_tool_overrides,
+        }
+        if rl is not None
+        else None,
         "allow_filesystem_access": profile.security.allow_filesystem_access,
         "allow_network_access": profile.security.allow_network_access,
     }

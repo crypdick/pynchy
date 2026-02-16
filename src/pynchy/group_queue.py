@@ -9,6 +9,7 @@ up in the async finally block.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import random
 import time
@@ -18,6 +19,7 @@ from dataclasses import dataclass, field
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
+from pynchy.policy.middleware import PolicyDeniedError
 
 
 @dataclass
@@ -244,6 +246,24 @@ class GroupQueue:
         state = self._get_group(group_jid)
         state.pending_tasks.clear()
 
+    @staticmethod
+    def _cleanup_ipc_input(group_folder: str | None) -> None:
+        """Remove stale IPC input files left by best-effort "btw " delivery.
+
+        Called after a task container exits so the next container (started
+        by _drain_group) doesn't ingest duplicates from both the SDK
+        message list and leftover IPC files.
+        """
+        if not group_folder:
+            return
+        input_dir = get_settings().data_dir / "ipc" / group_folder / "input"
+        if not input_dir.is_dir():
+            return
+        for f in input_dir.iterdir():
+            if f.suffix == ".json":
+                with contextlib.suppress(OSError):
+                    f.unlink()
+
     async def _run_for_group(self, group_jid: str, reason: str) -> None:
         """Run the process_messages_fn for a group.
 
@@ -266,6 +286,13 @@ class GroupQueue:
                     state.retry_count = 0
                 else:
                     self._schedule_retry(group_jid, state)
+        except PolicyDeniedError as exc:
+            # Deterministic failure — retrying won't change the outcome
+            logger.warning(
+                "Policy denial for group, not retrying",
+                group_jid=group_jid,
+                err=str(exc),
+            )
         except Exception as exc:
             logger.error(
                 "Error processing messages for group",
@@ -302,6 +329,11 @@ class GroupQueue:
                 err=str(exc),
             )
         finally:
+            # Clean up stale IPC input files before drain may start a
+            # new container — prevents the next container from seeing
+            # duplicates of "btw " messages that were best-effort
+            # forwarded but never read by the now-dead task container.
+            self._cleanup_ipc_input(state.group_folder)
             state.release()
             self._active_count -= 1
             self._drain_group(group_jid)
