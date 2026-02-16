@@ -2,7 +2,7 @@
 
 ## Overview
 
-Establish the security profile schema and configuration system that defines which MCP tools each workspace can access and their associated risk tiers.
+Establish the security profile schema and configuration system that defines how each workspace interacts with external services, based on a three-boolean trust model per service.
 
 ## Scope
 
@@ -15,22 +15,50 @@ This step creates the foundational security configuration layer without implemen
 
 ## Background: The Lethal Trifecta
 
-The orchestrator (agent) has:
-- **A) Untrusted input** (user messages, emails, web content)
-- **B) Sensitive data** (passwords, banking info, personal calendar)
-- **C) External communications** (email, WhatsApp, banking APIs)
+The orchestrator (agent) has access to services that may provide:
+- **A) Untrusted input** — data from sources we don't control (emails from strangers, web content)
+- **B) Sensitive data** — information that could cause harm if leaked (passwords, banking info)
+- **C) Untrusted sinks** — channels that could be used for exfiltration or harm (sending emails, external APIs)
 
-Having all three is dangerous. **We gate C** with deterministic host-side controls. The agent cannot bypass these gates - they're enforced by the host process, not by the LLM.
+Having all three is dangerous. But **not every service contributes to the trifecta**. A personal calendar is fully trusted. Email has untrusted input and is an untrusted sink. Passwords contain sensitive data. The gating applied to each service should be **derived from the trust model**, not manually assigned.
 
-## Risk Tiers
+## Service Trust Declarations
 
-| Tier | Gating | Examples |
-|------|--------|---------|
-| **Read-only** | Auto-approved | `read_email`, `list_calendar`, `bank_balance`, `search_web` |
-| **Write** | Policy check (rules engine) | `create_event`, `update_task`, `archive_email` |
-| **External / destructive** | Human approval via WhatsApp | `send_email`, `get_password`, `bank_transfer`, `delete_email` |
+Each service declares which legs of the trifecta it contributes:
 
-The policy check tier uses a **deterministic rules engine** (not an LLM): e.g., "create_event is OK if the calendar is the user's own." Human approval is the final gate for high-risk actions.
+```python
+class ServiceTrustConfig(BaseModel):
+    trusted_source: bool = False   # is data from this service trusted?
+    sensitive_info: bool = True    # does this service expose sensitive data?
+    trusted_sink: bool = False     # is writing to this service safe?
+```
+
+Defaults are maximally restrictive (untrusted source, sensitive, untrusted sink). Unknown services always get these defaults.
+
+Examples:
+
+| Service | trusted_source | sensitive_info | trusted_sink | Gating |
+|---------|---------------|----------------|-------------|--------|
+| Personal calendar | true | false | true | **None** (fully trusted) |
+| Email (IMAP/SMTP) | false | false | false | Deputy scan on reads, human gate on sends |
+| Password manager | true | true | false | Human gate on retrieval |
+| Web browsing | false | false | N/A | Deputy scan on content |
+
+## Derived Policy and Taint Tracking
+
+The policy middleware **composes** trust declarations across all services the workspace has access to. Taint propagation is the core mechanism:
+
+| Condition | Action |
+|-----------|--------|
+| Container reads from service with `trusted_source = false` | Deputy sanitizes content; container is marked **tainted** |
+| Tainted container accesses service with `sensitive_info = true` | Deputy + human gate triggers |
+| Tainted container writes to service with `trusted_sink = false` | Deputy + human gate triggers |
+| All services fully trusted | No gating — execute unfettered |
+| Unknown service (not declared in profile) | Defaults to `{trusted_source: false, sensitive_info: true, trusted_sink: false}` |
+
+Taint is sticky for the lifetime of a container invocation. Once tainted (by reading untrusted input), any subsequent access to sensitive data or untrusted sinks requires gating. This prevents indirect exfiltration: an attacker-controlled email cannot silently cause the agent to read passwords and send them out.
+
+Rate limiting applies regardless of trust declarations or taint state.
 
 ## Implementation
 
@@ -43,38 +71,40 @@ The policy check tier uses a **deterministic rules engine** (not an LLM): e.g., 
 
 from __future__ import annotations
 
-from enum import Enum
 from typing import TypedDict
 
-
-class RiskTier(str, Enum):
-    """Risk tiers for MCP tools."""
-
-    READ_ONLY = "read_only"  # Auto-approved
-    WRITE = "write"  # Policy check via rules engine
-    EXTERNAL = "external"  # Human approval required
+from pydantic import BaseModel
 
 
-class ToolProfile(TypedDict):
-    """Security profile for a single MCP tool."""
+class ServiceTrustConfig(BaseModel):
+    """Trust declaration for a service — maps to the lethal trifecta legs.
 
-    tier: RiskTier
-    enabled: bool
+    Each service declares which legs of the trifecta it contributes.
+    The policy engine composes these across all services to determine gating.
+    Unknown services default to maximally restrictive:
+    {trusted_source: False, sensitive_info: True, trusted_sink: False}
+    """
+
+    trusted_source: bool = False   # is data from this service trusted? (false = deputy scan + taint)
+    sensitive_info: bool = True    # does this service expose sensitive data? (true = gated if tainted)
+    trusted_sink: bool = False     # is writing to this service safe? (false = gated if tainted)
 
 
 class RateLimitConfig(TypedDict):
     """Rate limiting configuration for a workspace."""
 
-    max_calls_per_hour: int  # Global limit across all tools
-    per_tool_overrides: dict[str, int]  # tool_name -> max_calls_per_hour
+    max_calls_per_hour: int  # Global limit across all services
+    per_service_overrides: dict[str, int]  # service_name -> max_calls_per_hour
 
 
 class WorkspaceSecurityProfile(TypedDict):
-    """Security configuration for a workspace."""
+    """Security configuration for a workspace.
 
-    tools: dict[str, ToolProfile]  # tool_name -> profile
-    default_tier: RiskTier  # Default for undefined tools
-    allow_unknown_tools: bool  # Whether to allow tools not in profile
+    The profile declares trust levels for each service. Services not listed
+    are treated as unknown and get maximally restrictive defaults.
+    """
+
+    services: dict[str, ServiceTrustConfig]  # service_name -> trust declaration
     rate_limits: RateLimitConfig | None  # Rate limiting (None = no limits)
 ```
 
@@ -99,32 +129,37 @@ class GroupConfig(TypedDict):
 ```python
 """Default security profiles for workspaces."""
 
-from pynchy.types.security import RiskTier, WorkspaceSecurityProfile
+from pynchy.types.security import ServiceTrustConfig, WorkspaceSecurityProfile
 
-# Conservative default: all tools require approval, tight rate limits
+# Unknown service default — maximally restrictive
+UNKNOWN_SERVICE_TRUST = ServiceTrustConfig()
+# Equivalent to: ServiceTrustConfig(trusted_source=False, sensitive_info=True, trusted_sink=False)
+
+# Conservative default: no services declared, everything unknown
 STRICT_PROFILE: WorkspaceSecurityProfile = {
-    "tools": {},
-    "default_tier": RiskTier.EXTERNAL,
-    "allow_unknown_tools": False,
+    "services": {},
     "rate_limits": {
         "max_calls_per_hour": 60,
-        "per_tool_overrides": {},
+        "per_service_overrides": {},
     },
 }
 
-# Permissive profile for trusted workspaces (like 'main')
+# Permissive profile for trusted workspaces (like god group)
 TRUSTED_PROFILE: WorkspaceSecurityProfile = {
-    "tools": {
-        # Messaging tools (current system)
-        "send_message": {"tier": RiskTier.READ_ONLY, "enabled": True},
-        "schedule_task": {"tier": RiskTier.WRITE, "enabled": True},
-        # Future tools will be added here
+    "services": {
+        "calendar": ServiceTrustConfig(
+            trusted_source=True, sensitive_info=False, trusted_sink=True,
+        ),
+        "email": ServiceTrustConfig(
+            trusted_source=False, sensitive_info=False, trusted_sink=False,
+        ),
+        "passwords": ServiceTrustConfig(
+            trusted_source=True, sensitive_info=True, trusted_sink=False,
+        ),
     },
-    "default_tier": RiskTier.WRITE,
-    "allow_unknown_tools": True,  # Allow experimentation
     "rate_limits": {
         "max_calls_per_hour": 500,
-        "per_tool_overrides": {},
+        "per_service_overrides": {},
     },
 }
 
@@ -134,6 +169,13 @@ def get_default_profile(workspace_name: str) -> WorkspaceSecurityProfile:
     if workspace_name == "main":
         return TRUSTED_PROFILE
     return STRICT_PROFILE
+
+
+def get_service_trust(
+    profile: WorkspaceSecurityProfile, service_name: str
+) -> ServiceTrustConfig:
+    """Get trust config for a service, defaulting to maximally restrictive for unknown services."""
+    return profile["services"].get(service_name, UNKNOWN_SERVICE_TRUST)
 ```
 
 ### 4. Add Profile Validation
@@ -143,7 +185,7 @@ def get_default_profile(workspace_name: str) -> WorkspaceSecurityProfile:
 ```python
 """Validate security profiles on startup."""
 
-from pynchy.types.security import RiskTier, WorkspaceSecurityProfile
+from pynchy.types.security import ServiceTrustConfig, WorkspaceSecurityProfile
 
 
 class SecurityProfileError(Exception):
@@ -156,19 +198,20 @@ def validate_security_profile(profile: WorkspaceSecurityProfile) -> None:
     Raises:
         SecurityProfileError: If profile is invalid
     """
-    # Check default tier is valid
-    if profile["default_tier"] not in RiskTier:
-        raise SecurityProfileError(f"Invalid default_tier: {profile['default_tier']}")
-
-    # Check all tool profiles
-    for tool_name, tool_profile in profile["tools"].items():
-        tier = tool_profile["tier"]
-        if tier not in RiskTier:
-            raise SecurityProfileError(f"Invalid tier for {tool_name}: {tier}")
-
-        enabled = tool_profile["enabled"]
-        if not isinstance(enabled, bool):
-            raise SecurityProfileError(f"Invalid enabled value for {tool_name}: {enabled}")
+    # Check all service trust configs are valid ServiceTrustConfig instances
+    for service_name, trust_config in profile["services"].items():
+        if not isinstance(trust_config, ServiceTrustConfig):
+            raise SecurityProfileError(
+                f"Invalid trust config for service '{service_name}': "
+                f"expected ServiceTrustConfig, got {type(trust_config).__name__}"
+            )
+        for field in ("trusted_source", "sensitive_info", "trusted_sink"):
+            value = getattr(trust_config, field)
+            if not isinstance(value, bool):
+                raise SecurityProfileError(
+                    f"Invalid {field} for service '{service_name}': "
+                    f"expected bool, got {type(value).__name__}"
+                )
 
     # Check rate limits (if present)
     rate_limits = profile.get("rate_limits")
@@ -179,10 +222,11 @@ def validate_security_profile(profile: WorkspaceSecurityProfile) -> None:
                 f"Invalid max_calls_per_hour: {max_calls} (must be positive integer)"
             )
 
-        for tool_name, limit in rate_limits.get("per_tool_overrides", {}).items():
+        for service_name, limit in rate_limits.get("per_service_overrides", {}).items():
             if not isinstance(limit, int) or limit < 1:
                 raise SecurityProfileError(
-                    f"Invalid per-tool rate limit for {tool_name}: {limit} (must be positive integer)"
+                    f"Invalid per-service rate limit for {service_name}: "
+                    f"{limit} (must be positive integer)"
                 )
 ```
 
@@ -212,51 +256,79 @@ except SecurityProfileError as e:
 
 ## Configuration Examples
 
-### Example: God Group (Trusted)
+### Example: God Group (Trusted Calendar + Email)
 
-```json
-{
-  "name": "Main",
-  "folder": "main",
-  "security_profile": {
-    "tools": {
-      "send_message": {"tier": "read_only", "enabled": true},
-      "schedule_task": {"tier": "write", "enabled": true}
-    },
-    "default_tier": "write",
-    "allow_unknown_tools": true,
-    "rate_limits": {
-      "max_calls_per_hour": 500,
-      "per_tool_overrides": {}
-    }
-  }
-}
+```toml
+[workspaces.main.security.services.calendar]
+trusted_source = true
+sensitive_info = false
+trusted_sink = true
+
+[workspaces.main.security.services.email]
+trusted_source = false
+sensitive_info = false
+trusted_sink = false
+
+[workspaces.main.security.rate_limits]
+max_calls_per_hour = 500
 ```
+
+With this config:
+- Calendar tools execute unfettered (all flags trusted, never taints)
+- Email reads go through deputy scan and **taint** the container (`trusted_source = false`)
+- Once tainted, email sends require human approval (`trusted_sink = false`)
+- If the agent only uses calendar (no email reads), no gating at all
 
 ### Example: Banking Workspace (Strict)
 
-```json
-{
-  "name": "Banking Assistant",
-  "folder": "banking",
-  "security_profile": {
-    "tools": {
-      "read_email": {"tier": "read_only", "enabled": true},
-      "send_email": {"tier": "external", "enabled": true},
-      "bank_balance": {"tier": "read_only", "enabled": true},
-      "bank_transfer": {"tier": "external", "enabled": true}
-    },
-    "default_tier": "external",
-    "allow_unknown_tools": false,
-    "rate_limits": {
-      "max_calls_per_hour": 30,
-      "per_tool_overrides": {
-        "bank_transfer": 5
-      }
-    }
-  }
-}
+```toml
+[workspaces.banking.security.services.banking]
+trusted_source = true
+sensitive_info = true
+trusted_sink = false
+
+[workspaces.banking.security.services.email]
+trusted_source = false
+sensitive_info = false
+trusted_sink = false
+
+[workspaces.banking.security.rate_limits]
+max_calls_per_hour = 30
+
+[workspaces.banking.security.rate_limits.per_service_overrides]
+banking = 5
 ```
+
+With this config:
+- Banking data is sensitive (`sensitive_info = true`); if the container is tainted, accessing banking requires gating
+- Email reading taints the container (`trusted_source = false`)
+- Tainted container + banking access (`sensitive_info = true`) = deputy + human gate
+- Tainted container + email send (`trusted_sink = false`) = deputy + human gate
+- If the agent only accesses banking (no email reads), banking reads are ungated (source is trusted, not tainted)
+- Banking limited to 5 calls/hour even if approved
+
+### Example: Research Workspace (Web + Notes)
+
+```toml
+[workspaces.research.security.services.web]
+trusted_source = false
+sensitive_info = false
+trusted_sink = false
+
+[workspaces.research.security.services.notes]
+trusted_source = true
+sensitive_info = false
+trusted_sink = true
+
+[workspaces.research.security.rate_limits]
+max_calls_per_hour = 200
+```
+
+With this config:
+- Web browsing taints the container immediately
+- Notes are fully trusted, but once tainted from web content, writes to notes still execute (notes is a trusted sink)
+- No sensitive data in this workspace, so taint only gates untrusted sinks
+- Unknown services get maximally restrictive defaults
 
 ## Tests
 
@@ -270,126 +342,225 @@ import pytest
 from pynchy.config.security_defaults import (
     STRICT_PROFILE,
     TRUSTED_PROFILE,
+    UNKNOWN_SERVICE_TRUST,
     get_default_profile,
+    get_service_trust,
 )
 from pynchy.config.validation import SecurityProfileError, validate_security_profile
-from pynchy.types.security import RiskTier
+from pynchy.types.security import ServiceTrustConfig
+
+
+# --- ServiceTrustConfig defaults ---
+
+
+def test_unknown_service_defaults_maximally_restrictive():
+    """Unknown services default to untrusted source, sensitive, untrusted sink."""
+    trust = UNKNOWN_SERVICE_TRUST
+    assert trust.trusted_source is False
+    assert trust.sensitive_info is True
+    assert trust.trusted_sink is False
+
+
+def test_service_trust_config_default_constructor():
+    """Default constructor matches unknown-service defaults."""
+    trust = ServiceTrustConfig()
+    assert trust.trusted_source is False
+    assert trust.sensitive_info is True
+    assert trust.trusted_sink is False
+
+
+# --- Default profiles ---
 
 
 def test_default_profiles_valid():
-    """Test that default profiles pass validation."""
+    """Default profiles pass validation."""
     validate_security_profile(STRICT_PROFILE)
     validate_security_profile(TRUSTED_PROFILE)
 
 
-def test_get_default_profile():
-    """Test getting default profile for workspace."""
-    main_profile = get_default_profile("main")
-    assert main_profile["allow_unknown_tools"] is True
+def test_get_default_profile_main():
+    """Main workspace gets trusted profile."""
+    profile = get_default_profile("main")
+    assert "calendar" in profile["services"]
+    assert "email" in profile["services"]
+    assert "passwords" in profile["services"]
 
-    other_profile = get_default_profile("banking")
-    assert other_profile["allow_unknown_tools"] is False
+
+def test_get_default_profile_other():
+    """Non-main workspaces get strict profile (no services declared)."""
+    profile = get_default_profile("banking")
+    assert profile["services"] == {}
+
+
+def test_strict_profile_has_rate_limits():
+    """Strict profile has conservative rate limits."""
+    assert STRICT_PROFILE["rate_limits"] is not None
+    assert STRICT_PROFILE["rate_limits"]["max_calls_per_hour"] == 60
+
+
+def test_trusted_profile_services():
+    """Trusted profile declares calendar, email, passwords with correct trust."""
+    services = TRUSTED_PROFILE["services"]
+
+    # Calendar is fully trusted
+    assert services["calendar"].trusted_source is True
+    assert services["calendar"].sensitive_info is False
+    assert services["calendar"].trusted_sink is True
+
+    # Email is untrusted source and untrusted sink
+    assert services["email"].trusted_source is False
+    assert services["email"].sensitive_info is False
+    assert services["email"].trusted_sink is False
+
+    # Passwords are trusted source but sensitive
+    assert services["passwords"].trusted_source is True
+    assert services["passwords"].sensitive_info is True
+    assert services["passwords"].trusted_sink is False
+
+
+# --- get_service_trust ---
+
+
+def test_get_service_trust_known_service():
+    """Known services return their declared trust config."""
+    trust = get_service_trust(TRUSTED_PROFILE, "calendar")
+    assert trust.trusted_source is True
+    assert trust.sensitive_info is False
+    assert trust.trusted_sink is True
+
+
+def test_get_service_trust_unknown_service():
+    """Unknown services return maximally restrictive defaults."""
+    trust = get_service_trust(TRUSTED_PROFILE, "unknown_service")
+    assert trust.trusted_source is False
+    assert trust.sensitive_info is True
+    assert trust.trusted_sink is False
+
+
+# --- Taint tracking scenarios ---
+
+
+def test_fully_trusted_service_does_not_taint():
+    """A fully trusted service (all booleans true/false-safe) should not cause taint."""
+    trust = ServiceTrustConfig(trusted_source=True, sensitive_info=False, trusted_sink=True)
+    # trusted_source = True means reading from this service does not taint
+    assert trust.trusted_source is True
+
+
+def test_untrusted_source_causes_taint():
+    """Reading from an untrusted source should taint the container."""
+    trust = ServiceTrustConfig(trusted_source=False, sensitive_info=False, trusted_sink=True)
+    # trusted_source = False means reading taints
+    assert trust.trusted_source is False
+
+
+def test_tainted_access_to_sensitive_requires_gating():
+    """A tainted container accessing sensitive data should require gating."""
+    email = ServiceTrustConfig(trusted_source=False, sensitive_info=False, trusted_sink=False)
+    passwords = ServiceTrustConfig(trusted_source=True, sensitive_info=True, trusted_sink=False)
+    # If container reads email (trusted_source=False), it becomes tainted
+    # Then accessing passwords (sensitive_info=True) requires gating
+    assert email.trusted_source is False  # taints
+    assert passwords.sensitive_info is True  # gated when tainted
+
+
+def test_tainted_write_to_untrusted_sink_requires_gating():
+    """A tainted container writing to an untrusted sink should require gating."""
+    web = ServiceTrustConfig(trusted_source=False, sensitive_info=False, trusted_sink=False)
+    email = ServiceTrustConfig(trusted_source=False, sensitive_info=False, trusted_sink=False)
+    # Read web (taints), then send email (untrusted sink) = gated
+    assert web.trusted_source is False  # taints
+    assert email.trusted_sink is False  # gated when tainted
+
+
+def test_tainted_write_to_trusted_sink_no_gating():
+    """A tainted container writing to a trusted sink should NOT require gating."""
+    web = ServiceTrustConfig(trusted_source=False, sensitive_info=False, trusted_sink=False)
+    notes = ServiceTrustConfig(trusted_source=True, sensitive_info=False, trusted_sink=True)
+    # Read web (taints), write notes (trusted sink) = no gating
+    assert web.trusted_source is False  # taints
+    assert notes.trusted_sink is True  # safe even when tainted
+
+
+# --- Validation ---
 
 
 def test_validate_valid_profile():
-    """Test validation passes for valid profile."""
+    """Validation passes for valid profile with services."""
     profile = {
-        "tools": {
-            "send_message": {"tier": RiskTier.READ_ONLY, "enabled": True}
+        "services": {
+            "calendar": ServiceTrustConfig(
+                trusted_source=True, sensitive_info=False, trusted_sink=True,
+            ),
         },
-        "default_tier": RiskTier.WRITE,
-        "allow_unknown_tools": True,
+        "rate_limits": None,
     }
     validate_security_profile(profile)  # Should not raise
 
 
-def test_validate_invalid_tier():
-    """Test validation fails for invalid tier."""
+def test_validate_empty_services():
+    """Validation passes for profile with no services (strict)."""
     profile = {
-        "tools": {
-            "bad_tool": {"tier": "invalid", "enabled": True}
+        "services": {},
+        "rate_limits": None,
+    }
+    validate_security_profile(profile)  # Should not raise
+
+
+def test_validate_invalid_trust_config_type():
+    """Validation fails when service has wrong type instead of ServiceTrustConfig."""
+    profile = {
+        "services": {
+            "bad_service": {"trusted_source": True},  # dict, not ServiceTrustConfig
         },
-        "default_tier": RiskTier.WRITE,
-        "allow_unknown_tools": True,
+        "rate_limits": None,
     }
-    with pytest.raises(SecurityProfileError, match="Invalid tier"):
-        validate_security_profile(profile)
-
-
-def test_validate_invalid_default_tier():
-    """Test validation fails for invalid default tier."""
-    profile = {
-        "tools": {},
-        "default_tier": "invalid",
-        "allow_unknown_tools": True,
-    }
-    with pytest.raises(SecurityProfileError, match="Invalid default_tier"):
-        validate_security_profile(profile)
-
-
-def test_validate_invalid_enabled():
-    """Test validation fails for non-boolean enabled."""
-    profile = {
-        "tools": {
-            "send_message": {"tier": RiskTier.READ_ONLY, "enabled": "yes"}
-        },
-        "default_tier": RiskTier.WRITE,
-        "allow_unknown_tools": True,
-    }
-    with pytest.raises(SecurityProfileError, match="Invalid enabled value"):
+    with pytest.raises(SecurityProfileError, match="Invalid trust config"):
         validate_security_profile(profile)
 
 
 def test_validate_rate_limits_valid():
-    """Test validation passes for valid rate limits."""
+    """Validation passes for valid rate limits."""
     profile = {
-        "tools": {},
-        "default_tier": RiskTier.WRITE,
-        "allow_unknown_tools": True,
+        "services": {},
         "rate_limits": {
             "max_calls_per_hour": 100,
-            "per_tool_overrides": {"send_email": 10},
+            "per_service_overrides": {"email": 10},
         },
     }
     validate_security_profile(profile)  # Should not raise
 
 
 def test_validate_rate_limits_invalid_max():
-    """Test validation fails for non-positive max_calls_per_hour."""
+    """Validation fails for non-positive max_calls_per_hour."""
     profile = {
-        "tools": {},
-        "default_tier": RiskTier.WRITE,
-        "allow_unknown_tools": True,
+        "services": {},
         "rate_limits": {
             "max_calls_per_hour": 0,
-            "per_tool_overrides": {},
+            "per_service_overrides": {},
         },
     }
     with pytest.raises(SecurityProfileError, match="Invalid max_calls_per_hour"):
         validate_security_profile(profile)
 
 
-def test_validate_rate_limits_invalid_per_tool():
-    """Test validation fails for non-positive per-tool override."""
+def test_validate_rate_limits_invalid_per_service():
+    """Validation fails for non-positive per-service override."""
     profile = {
-        "tools": {},
-        "default_tier": RiskTier.WRITE,
-        "allow_unknown_tools": True,
+        "services": {},
         "rate_limits": {
             "max_calls_per_hour": 100,
-            "per_tool_overrides": {"send_email": -1},
+            "per_service_overrides": {"email": -1},
         },
     }
-    with pytest.raises(SecurityProfileError, match="Invalid per-tool rate limit"):
+    with pytest.raises(SecurityProfileError, match="Invalid per-service rate limit"):
         validate_security_profile(profile)
 
 
 def test_validate_rate_limits_none():
-    """Test validation passes when rate_limits is None (no limits)."""
+    """Validation passes when rate_limits is None (no limits)."""
     profile = {
-        "tools": {},
-        "default_tier": RiskTier.WRITE,
-        "allow_unknown_tools": True,
+        "services": {},
         "rate_limits": None,
     }
     validate_security_profile(profile)  # Should not raise
@@ -397,27 +568,30 @@ def test_validate_rate_limits_none():
 
 ## Success Criteria
 
-- [ ] Security profile types defined in `src/pynchy/types/security.py` (including `RateLimitConfig`)
+- [ ] Security profile types defined in `src/pynchy/types/security.py` (`ServiceTrustConfig`, `RateLimitConfig`, `WorkspaceSecurityProfile`)
 - [ ] Group config schema updated to include `security_profile`
 - [ ] Default profiles created (strict and trusted) with sensible rate limit defaults
-- [ ] Validation logic implemented and tested (including rate limit validation)
+- [ ] Unknown services default to maximally restrictive trust config
+- [ ] `get_service_trust()` helper resolves known and unknown services
+- [ ] Validation logic checks trust configs and rate limits
+- [ ] Taint tracking semantics documented: untrusted source read taints container; tainted container gated on sensitive data or untrusted sink access
 - [ ] Startup integration validates profiles and applies defaults
-- [ ] Tests pass (validation, defaults, rate limits, error cases)
-- [ ] Documentation updated with examples
+- [ ] Tests pass (trust configs, defaults, taint scenarios, validation, rate limits, error cases)
 
 ## Documentation
 
 Update the following:
 
 1. **Group configuration docs** - Add security_profile field explanation
-2. **Security model docs** - Explain risk tiers and the lethal trifecta
-3. **Examples** - Show trusted vs strict profiles
+2. **Security model docs** - Explain the three-boolean trust model and taint tracking
+3. **Examples** - Show trusted vs strict profiles with taint propagation scenarios
 
 ## Next Steps
 
 After this is complete:
-- Step 2: Implement MCP tools with basic policy checking
-- Step 3+: Add service-specific integrations (email, calendar, passwords)
+- Step 2: Implement taint tracking in the container runtime (taint-on-read, gate-on-write)
+- Step 3: Implement deputy agent scanning for untrusted source content
+- Step 4+: Add service-specific integrations (email, calendar, passwords)
 
 ## References
 

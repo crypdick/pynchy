@@ -4,17 +4,33 @@
 
 Implement the host-side calendar service adapter that processes calendar-related IPC requests using CalDAV or Google Calendar API.
 
+## Trust Classification
+
+Personal calendar is a **fully trusted service**:
+
+```toml
+[services.calendar]
+trusted_source = true    # we control what's in it — no untrusted input
+sensitive_info = false    # calendar events aren't secrets
+trusted_sink = true       # writing to our own calendar is safe
+```
+
+Because all three flags are true, **no policy gating is needed** — no deputy scan on reads, no human approval on writes. Calendar operations execute unfettered (subject only to rate limiting).
+
+> **Note:** A shared calendar with untrusted participants would have `trusted_source = false`. The trust declaration is per-service-instance, not per-service-type. This is configurable.
+
 ## Scope
 
-This step adds the calendar service integration layer on the host, enabling agents to read and manage calendar events through the policy-gated IPC mechanism. Calendar credentials are stored and used only by the host process.
+This step adds the calendar service integration layer on the host. Since personal calendar is fully trusted, the implementation is straightforward — no policy middleware interaction needed beyond rate limiting. Calendar credentials are stored and used only by the host process.
 
 ## Dependencies
 
 - ✅ Step 0: Reduce IPC Surface (must be complete — narrows IPC before adding tools)
-- ✅ Step 1: Workspace Security Profiles (must be complete)
-- ✅ Step 2: MCP Tools & Basic Policy (must be complete)
-- ✅ Step 6: Human Approval Gate (must be complete — gates `delete_event` from day one)
+- ✅ Step 1: Service Trust Profiles (must be complete)
+- ✅ Step 2: Policy Middleware & Taint Tracking (must be complete)
 - Step 3: Email Integration (optional, but establishes service integration pattern)
+
+Note: Step 6 (Human Approval Gate) is **not required** for calendar. Personal calendar is fully trusted — no human gate needed.
 
 ## Background
 
@@ -487,18 +503,19 @@ def test_delete_event(mock_client, calendar_config):
    - Same as email: use keyring or environment variables
    - Never expose credentials to container
 
-2. **Event Validation**
+2. **Trust Model**
+   - Personal calendar: `{trusted_source: true, sensitive_info: false, trusted_sink: true}` — no gating
+   - Shared calendar: consider `{trusted_source: false, ...}` if other participants are untrusted — would trigger deputy scan on reads
+   - The trust declaration is configurable per service instance in `config.toml`
+
+3. **Event Validation**
    - Validate date formats (ISO 8601)
    - Prevent creating events too far in future (e.g., > 5 years)
    - Limit event duration (e.g., < 1 month)
 
-3. **Access Control**
-   - Verify user owns the calendar before modifications
-   - For shared calendars, check write permissions
-
 4. **Rate Limiting**
-   - Limit event creation per hour/day
-   - Prevent calendar spam
+   - Rate limiting applies regardless of trust declarations
+   - Limit event creation per hour/day to prevent runaway loops
 
 ## Success Criteria
 

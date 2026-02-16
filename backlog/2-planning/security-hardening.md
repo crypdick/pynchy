@@ -2,151 +2,152 @@
 
 ## Summary
 
-This project adds comprehensive security layers to Pynchy, enabling multi-workspace agents with scoped privileges for sensitive operations (email, passwords, calendar, banking, etc.).
+This project adds security layers to Pynchy, enabling agents to safely use external services (email, passwords, calendar, etc.) without creating the conditions for prompt injection attacks.
 
 **Status:** Broken into 7 sub-plans (see below)
 
 ## The Problem: The Lethal Trifecta
 
-The orchestrator (agent) has:
-- **A) Untrusted input** (user messages, emails, web content)
-- **B) Sensitive data** (passwords, banking info, personal calendar)
-- **C) External communications** (email, WhatsApp, banking APIs)
+An agent becomes dangerous when it has all three of:
+- **A) Untrusted input** — data from sources we don't control (emails from strangers, web content)
+- **B) Sensitive data** — information that could cause harm if leaked (passwords, banking info)
+- **C) Untrusted sinks** — channels that could be used for exfiltration or harm (sending emails, external APIs)
 
-Having all three is dangerous. We mitigate by **gating C** with deterministic host-side controls that the agent cannot bypass.
+But **not every service contributes to the trifecta**. A personal calendar is fully trusted — we control the data, it's not sensitive, and writing to it is safe. Email, on the other hand, has untrusted input (incoming mail from strangers) and is an untrusted sink (can send to anyone).
 
-## The Solution: Layered Security
+## The Solution: Three Booleans
 
-### Primary Defense: Action Gating (Steps 1, 2, 6)
+Each service or tool declares which legs of the trifecta it contributes:
 
-Hard policy checks on tool execution:
+```toml
+[services.calendar]
+trusted_source = true    # we control what's in it
+sensitive_info = false    # calendar events aren't secrets
+trusted_sink = true       # writing to our own calendar is safe
 
-| Tier | Gating | Examples |
-|------|--------|---------|
-| **Read-only** | Auto-approved | `read_email`, `list_calendar`, `bank_balance` |
-| **Write** | Policy check (rules engine) | `create_event`, `update_task`, `archive_email` |
-| **External / destructive** | Human approval via WhatsApp | `send_email`, `get_password`, `bank_transfer` |
+[services.email]
+trusted_source = false   # incoming mail is untrusted
+sensitive_info = false    # email content isn't inherently secret
+trusted_sink = false      # can send to anyone — exfiltration vector
 
-The policy engine runs in the host process, independent of the agent. The agent cannot bypass these gates.
+[services.passwords]
+trusted_source = true    # vault data is trusted
+sensitive_info = true     # passwords ARE secrets
+trusted_sink = false      # retrieving passwords is a sensitive action
+```
 
-Rate limiting is enforced at the policy layer — even auto-approved tools have per-workspace, per-tool call limits to prevent a jailbroken agent from spamming read operations.
+These can be applied at any granularity:
+- **Per service instance** — a specific CalDAV address, a specific IMAP account
+- **Per tool** — mark the web search tool as `trusted_source = false`
 
-### Secondary Defense: Input Filtering (Step 7)
+This is all a user needs to understand to keep their system secure. Three booleans per service.
 
-Optional defense-in-depth using a "Deputy Agent" that scans untrusted content for prompt injection before the orchestrator sees it. Catches obvious attacks; sophisticated attacks are caught by the action gate.
+## How It Works: Tainted Container Model
 
-### Service Integrations (Steps 3-5)
+The runtime tracks whether a container has been **tainted** by untrusted input:
 
-Host-side adapters that execute MCP requests using real credentials:
-- **Email** (IMAP/SMTP or Gmail API)
-- **Calendar** (CalDAV or Google Calendar API)
-- **Passwords** (1Password CLI)
+1. **Reads from untrusted source (`trusted_source = false`):**
+   - Content is sanitized by a **deputy agent** (fresh context, no tools) before the orchestrator sees it
+   - The container is **marked as tainted**
+
+2. **Tainted container tries to write to untrusted sink (`trusted_sink = false`):**
+   - A deputy reviews the outbound content
+   - A **human gate** is triggered (approval via WhatsApp)
+   - Both must pass before the action proceeds
+
+3. **Tainted container accesses sensitive data (`sensitive_info = true`):**
+   - Human gate triggered — the combination of tainted + sensitive is dangerous
+
+4. **Fully trusted services (`trusted_source = true, sensitive_info = false, trusted_sink = true`):**
+   - **No gating, no deputy, no overhead.** Execute unfettered.
+
+Rate limiting applies to all services regardless of trust declarations, to prevent runaway loops.
+
+## Service Trust Examples
+
+| Service | trusted_source | sensitive_info | trusted_sink | Result |
+|---------|---------------|----------------|-------------|--------|
+| Personal calendar | true | false | true | No gating |
+| Email (IMAP/SMTP) | false | false | false | Deputy on reads, taint + human gate on sends |
+| Password manager | true | true | false | Human gate when tainted container requests password |
+| Web browsing | false | false | N/A | Deputy on content, taints container |
+| Personal Nextcloud | true | false | true | No gating |
+| Shared calendar (untrusted participants) | false | false | true | Deputy on reads, taints container |
+
+## Service Integrations (Steps 3-5)
+
+Host-side adapters that execute IPC requests using real credentials:
+- **Email** (IMAP/SMTP) — `trusted_source: false, sensitive_info: false, trusted_sink: false`
+- **Calendar** (CalDAV) — `trusted_source: true, sensitive_info: false, trusted_sink: true`
+- **Passwords** (1Password CLI) — `trusted_source: true, sensitive_info: true, trusted_sink: false`
 
 Credentials live only in the host process, never exposed to containers or agents.
 
-### Cross-Cutting: Audit Log & Non-Retryable Denials
+## Cross-Cutting: Audit Log & Non-Retryable Denials
 
 Every policy evaluation is recorded in the existing `messages` table (`sender='security'`), prunable independently with `DELETE FROM messages WHERE sender = 'security' AND timestamp < cutoff`. No new tables needed. Policy denials are marked as non-retryable errors — the GroupQueue will not retry container runs that failed due to a deterministic policy denial.
 
-### Post-Step 2: SecurityPolicy Facade
+## SecurityPolicy Facade
 
-After Steps 1 and 2 are complete, the separate components (`WorkspaceSecurityProfile`, `PolicyMiddleware`, `ApprovalManager`, `DeputyAgent`) should be composed into a single `SecurityPolicy` object per workspace. This is the single entry point for all security decisions:
+The components compose into a single `SecurityPolicy` object per workspace:
 
 ```python
 class SecurityPolicy:
     """Single entry point for all security decisions for a workspace."""
-    profile: WorkspaceSecurityProfile
-    middleware: PolicyMiddleware
-    approval_manager: ApprovalManager | None
+    service_trust: dict[str, ServiceTrustConfig]  # per-service trust declarations
+    tainted: bool  # has this container seen untrusted input?
     deputy: DeputyAgent | None
+    approval_manager: ApprovalManager | None
 
-    async def evaluate_tool_call(self, tool_name, request) -> PolicyDecision:
-        """Rate limit → tier evaluation → approval routing → audit log."""
+    def is_tainted(self) -> bool:
+        """Has the container read from an untrusted source?"""
+        return self.tainted
+
+    async def evaluate_read(self, service_name, data) -> PolicyDecision:
+        """Evaluate a read operation. Deputy scans if untrusted source, taints container."""
+
+    async def evaluate_write(self, service_name, data) -> PolicyDecision:
+        """Evaluate a write operation. Human gate if tainted + untrusted sink."""
+
+    async def evaluate_access(self, service_name) -> PolicyDecision:
+        """Evaluate sensitive data access. Human gate if tainted + sensitive."""
 ```
-
-This makes it easy to answer "what security governs workspace X?" and keeps the IPC watcher's integration clean.
 
 ## Implementation Plan
 
-This project is broken into 8 sub-plans. The recommended order is **0 → 1 → 2 → 6 → 3/4/5 → 7**. Step 0 narrows the IPC surface before Steps 3-5 add more tools to it; Step 6 establishes the human approval gate before service integrations make it load-bearing.
+This project is broken into 8 sub-plans. The recommended order is **0 → 1 → 2 → 6 → 3/4/5 → 7**.
 
 ### [Step 0: Reduce IPC Surface](security-hardening-0-ipc-surface.md)
-**Scope:** Signal-only IPC + Deputy mediation + inotify
-**Time:** 6-8 hours
-**Dependencies:** None
-**Must complete before:** Steps 3-5
-
-Narrow the IPC pipe from arbitrary payloads to signals (Tier 1) and Deputy-mediated requests (Tier 2). Replace polling with inotify. This hardens the transport before service integrations add more tools on top of it.
-
-### [Step 1: Workspace Security Profiles](security-hardening-1-profiles.md)
-**Scope:** Config schema and validation for security profiles (including rate limits)
-**Time:** 2-3 hours
+**Scope:** Signal-only IPC + inotify
 **Dependencies:** None
 
-Define the security model: which tools each workspace can access, their risk tiers, and rate limits. Pure configuration layer - no service integrations yet.
+### [Step 1: Service Trust Profiles](security-hardening-1-profiles.md)
+**Scope:** `ServiceTrustConfig` schema, per-workspace configuration, taint tracking
+**Dependencies:** None
 
-### [Step 2: MCP Tools & Basic Policy](security-hardening-2-mcp-policy.md)
-**Scope:** New IPC MCP tools + policy middleware + audit log + rate limiting
-**Time:** 5-7 hours
+### [Step 2: Policy Middleware & Taint Tracking](security-hardening-2-mcp-policy.md)
+**Scope:** IPC MCP tools + taint-aware policy middleware + audit log + rate limiting
 **Dependencies:** Step 1
 
-Add MCP tools for email, calendar, passwords. Implement policy enforcement middleware with rate limiting, audit logging, and non-retryable denial classification. Tools return mock responses (real service integrations come in Steps 3-5).
-
 ### [Step 6: Human Approval Gate](security-hardening-6-approval.md)
-**Scope:** WhatsApp approval flow for high-risk actions
-**Time:** 5-6 hours
+**Scope:** WhatsApp approval flow for tainted containers writing to untrusted sinks
 **Dependencies:** Steps 1-2
-
-Implement the human approval system. When an agent attempts an EXTERNAL-tier action, the host sends an approval request via WhatsApp and waits for user response (approve/deny). Default: deny after 5-minute timeout.
-
-**This is the primary security boundary. Complete before Steps 3-5 so service integrations are gated from day one.**
 
 ### [Step 3: Email Integration](security-hardening-3-email.md)
 **Scope:** Host-side email adapter (IMAP/SMTP)
-**Time:** 4-5 hours
 **Dependencies:** Steps 0-2, 6
-
-Implement email service adapter using IMAP/SMTP. Agents can read and send emails through the policy-gated IPC mechanism.
 
 ### [Step 4: Calendar Integration](security-hardening-4-calendar.md)
-**Scope:** Host-side calendar adapter (CalDAV)
-**Time:** 4-5 hours
-**Dependencies:** Steps 0-2, 6
-
-Implement calendar service adapter using CalDAV. Agents can list, create, and delete calendar events.
+**Scope:** Host-side calendar adapter (CalDAV). Fully trusted — no gating needed.
+**Dependencies:** Steps 0-2
 
 ### [Step 5: Password Manager Integration](security-hardening-5-passwords.md)
 **Scope:** Host-side 1Password CLI adapter
-**Time:** 3-4 hours
 **Dependencies:** Steps 0-2, 6
 
-Implement password manager adapter using 1Password CLI. Agents can search and retrieve passwords (with human approval).
-
-### [Step 7: Input Filtering (Optional)](security-hardening-7-input-filter.md)
-**Scope:** Deputy Agent for prompt injection detection
-**Time:** 4-5 hours
-**Dependencies:** Steps 1-2, 6
-
-Implement optional defense-in-depth input filtering using an LLM-as-judge pattern. Scans untrusted content (email bodies, web pages) for prompt injection before the orchestrator sees it.
-
-**This is optional** - workspaces can disable it for performance or if they prefer human review only.
-
-## Total Time Estimate
-
-- **Steps 0-2, 6 (foundation):** 18-24 hours (2-3 full work days)
-- **Steps 3-5 (service integrations):** 11-14 hours (1-2 full work days)
-- **Step 7 (optional):** 4-5 hours additional
-
-## How This Extends the Existing Pattern
-
-Current Pynchy already works this way for messaging:
-
-1. Agent calls `send_message` MCP tool
-2. MCP server writes IPC file to `/workspace/ipc/output/`
-3. Host reads IPC file
-4. Host actually sends the WhatsApp message (agent never has WhatsApp creds)
-
-We're extending this to email, passwords, calendar, banking. Same IPC mechanism, same trust model, more MCP tools, more policy enforcement.
+### [Step 7: Deputy Agent (Input Filtering)](security-hardening-7-input-filter.md)
+**Scope:** LLM-based content sanitization for untrusted sources
+**Dependencies:** Steps 1-2
 
 ## Architecture
 
@@ -173,33 +174,25 @@ We're extending this to email, passwords, calendar, banking. Same IPC mechanism,
 │        Host Process                 │
 │                                     │
 │  ┌─────────────────────────────┐   │
-│  │   IPC Watcher               │   │
-│  │   (monitors output dir)     │   │
+│  │   IPC Watcher (inotify)     │   │
 │  └───────────┬─────────────────┘   │
 │              │                      │
 │              ▼                      │
 │  ┌─────────────────────────────┐   │
 │  │   SecurityPolicy            │   │
-│  │   ┌───────────────────┐    │   │
-│  │   │ Rate Limiter      │    │   │
-│  │   │ (sliding window)  │    │   │
-│  │   └────────┬──────────┘    │   │
-│  │            ▼               │   │
-│  │   ┌───────────────────┐    │   │
-│  │   │ Policy Middleware  │    │   │
-│  │   │ (tier evaluation)  │    │   │
-│  │   └────────┬──────────┘    │   │
-│  │            │               │   │
-│  │     ┌──────┴────────┐     │   │
-│  │     ▼               ▼     │   │
-│  │  Auto-approve  Human Gate │   │
-│  │     │          (WhatsApp) │   │
-│  │     └──────┬────────┘     │   │
-│  │            ▼               │   │
-│  │   ┌───────────────────┐    │   │
-│  │   │ Audit Log         │    │   │
-│  │   │ (messages table)  │    │   │
-│  │   └───────────────────┘    │   │
+│  │                             │   │
+│  │   1. Rate limiter           │   │
+│  │   2. Trust check            │   │
+│  │      ├─ trusted service     │   │
+│  │      │  → pass through      │   │
+│  │      ├─ untrusted source    │   │
+│  │      │  → deputy scan       │   │
+│  │      │  → mark tainted      │   │
+│  │      └─ tainted + untrusted │   │
+│  │         sink/sensitive       │   │
+│  │         → deputy + human    │   │
+│  │           gate              │   │
+│  │   3. Audit log              │   │
 │  └───────────┬─────────────────┘   │
 │              │                      │
 │              ▼                      │
@@ -212,7 +205,7 @@ We're extending this to email, passwords, calendar, banking. Same IPC mechanism,
 │              │                      │
 │              ▼                      │
 │      External Services              │
-│      (Gmail, iCloud, 1Password)     │
+│      (Gmail, Nextcloud, 1Password)  │
 └─────────────────────────────────────┘
 ```
 
@@ -220,40 +213,12 @@ We're extending this to email, passwords, calendar, banking. Same IPC mechanism,
 
 1. **Credentials never in container** - All service credentials live only in the host process
 2. **Agent cannot bypass gates** - Policy enforcement runs in host, not in LLM
-3. **Default deny** - Unknown tools and expired approvals are denied by default
-4. **Audit trail** - All policy evaluations recorded in existing `messages` table (`sender='security'`), independently prunable
-5. **Workspace isolation** - Each workspace has independent security profile and rate limits
-6. **Rate limiting** - Per-workspace, per-tool call limits prevent abuse even for auto-approved tools
-7. **Non-retryable denials** - Policy denials are deterministic; the queue does not retry them
-
-## Testing Strategy
-
-Each step includes unit tests for:
-- Configuration validation
-- Policy evaluation logic
-- Service adapter operations (mocked)
-- Error handling and edge cases
-
-Integration tests:
-- End-to-end IPC flow with policy enforcement
-- Approval timeout behavior
-- Multi-workspace isolation
-
-## Documentation Requirements
-
-Each step must update:
-- Setup instructions (if introducing new dependencies)
-- Configuration examples
-- Security best practices
-- Troubleshooting guide
-
-## Success Metrics
-
-1. **Functional:** All 6 required steps implemented and tested
-2. **Security:** No bypass possible (verified by penetration testing)
-3. **Usability:** Approval flow is clear and responsive
-4. **Performance:** Deputy agent (if enabled) adds < 1s per email
-5. **Documentation:** Complete setup guide for all services
+3. **Three booleans** - Users configure `trusted_source`, `sensitive_info`, `trusted_sink` per service. That's all they need to understand
+4. **Taint tracking** - Containers that read untrusted content are marked tainted; tainted containers face gating on untrusted sinks and sensitive data
+5. **Default deny** - Unknown services default to `{trusted_source: false, sensitive_info: true, trusted_sink: false}` (maximum gating)
+6. **Audit trail** - All policy evaluations recorded in existing `messages` table
+7. **Rate limiting** - Per-workspace, per-tool call limits prevent abuse even for fully trusted services
+8. **Non-retryable denials** - Policy denials are deterministic; the queue does not retry them
 
 ## References
 
@@ -261,12 +226,6 @@ Each step must update:
 - [AI Agent Security](https://simonwillison.net/2025/Jun/15/ai-agent-security/) — Simon Willison
 - [CaMeL: Prompt Injection Mitigation](https://simonwillison.net/2025/Apr/11/camel/) — Simon Willison on Google DeepMind
 - [Meta: Practical AI Agent Security](https://ai.meta.com/blog/practical-ai-agent-security/) — Agents Rule of Two
-- [Design Patterns for Securing LLM Agents](https://simonwillison.net/2025/Jun/13/prompt-injection-design-patterns/) — Code-then-Execute, Context Minimization
+- [Design Patterns for Securing LLM Agents](https://simonwillison.net/2025/Jun/13/prompt-injection-design-patterns/)
 - [MCP Prompt Injection](https://simonwillison.net/2025/Apr/9/mcp-prompt-injection/) — Tool shadowing, cross-server attacks
 - [New Prompt Injection Papers](https://simonwillison.net/2025/Nov/2/new-prompt-injection-papers/) — Rule of Two + Attacker Moves Second
-
-## Related Work
-
-- Plugin Hook system (similar breakdown into sequential steps)
-- Current IPC MCP system (foundation for this work)
-- Message types refactor (clean message handling)
