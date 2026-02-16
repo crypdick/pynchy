@@ -1,6 +1,6 @@
 # Deployment
 
-The pynchy service runs on `nuc-server` (Intel NUC, headless Ubuntu) over Tailscale. SSH: `ssh nuc-server`, user `ricardo`.
+The pynchy service runs on `pynchy` (Intel NUC, headless Ubuntu) over Tailscale. SSH: `ssh pynchy`, user `ricardo`.
 
 Pushing to `main` is all that's needed — the prod server auto-pulls and restarts the service. No manual deploy required.
 
@@ -8,15 +8,15 @@ Pushing to `main` is all that's needed — the prod server auto-pulls and restar
 
 ```bash
 # Manual deploy / restart from HOST only (not from containers — use mcp__pynchy__deploy_changes instead)
-curl -s -X POST http://nuc-server:8484/deploy
+curl -s -X POST http://pynchy:8484/deploy
 
 # Service status & logs (run on NUC or via ssh)
-ssh nuc-server 'systemctl --user status pynchy'
-ssh nuc-server 'journalctl --user -u pynchy -f'
-ssh nuc-server 'journalctl --user -u pynchy -n 100'
+ssh pynchy 'systemctl --user status pynchy'
+ssh pynchy 'journalctl --user -u pynchy -f'
+ssh pynchy 'journalctl --user -u pynchy -n 100'
 
 # Check running containers
-ssh nuc-server 'docker ps --filter name=pynchy'
+ssh pynchy 'docker ps --filter name=pynchy'
 ```
 
 ## Service Management
@@ -45,12 +45,12 @@ To set up GitHub auth on a new host:
 
 ```bash
 # Interactive login (works over SSH with -t for TTY)
-ssh -t nuc-server 'gh auth login -p ssh'
+ssh -t pynchy 'gh auth login -p ssh'
 # Select: GitHub.com → Login with a web browser
 # Then follow the device code flow in your local browser
 
 # Verify
-ssh nuc-server 'gh auth status'
+ssh pynchy 'gh auth status'
 ```
 
 After authenticating, `_write_env_file()` auto-discovers `GH_TOKEN` and git identity on each god container launch. No manual env configuration needed.
