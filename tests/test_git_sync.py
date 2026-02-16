@@ -29,10 +29,13 @@ from pynchy.config import (
     WorkspaceDefaultsConfig,
 )
 from pynchy.git_sync import (
+    _hash_config_files,
     _host_container_files_changed,
     _host_get_origin_main_sha,
     host_notify_worktree_updates,
     host_sync_worktree,
+    needs_container_rebuild,
+    needs_deploy,
     write_ipc_response,
 )
 from pynchy.worktree import ensure_worktree
@@ -467,3 +470,80 @@ class TestPollingHelpers:
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
             assert _host_container_files_changed("abc", "def") is False
+
+
+# ---------------------------------------------------------------------------
+# Deploy-check helper tests
+# ---------------------------------------------------------------------------
+
+
+class TestNeedsDeploy:
+    def test_needs_deploy_src_changes(self):
+        """src/ changes require a deploy."""
+        with patch("subprocess.run") as mock_run:
+            # files_changed_between calls git diff --name-only with path filter.
+            # First call (container/) returns empty, second (src/) returns a file.
+            mock_run.side_effect = [
+                subprocess.CompletedProcess(args=[], returncode=0, stdout=""),
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="src/pynchy/app.py\n"),
+            ]
+            assert needs_deploy("aaa", "bbb") is True
+
+    def test_needs_deploy_container_changes(self):
+        """container/ changes require a deploy."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="container/Dockerfile\n"
+            )
+            assert needs_deploy("aaa", "bbb") is True
+
+    def test_needs_deploy_no_relevant_changes(self):
+        """Changes outside src/ and container/ don't need a deploy."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
+            assert needs_deploy("aaa", "bbb") is False
+
+    def test_needs_container_rebuild_src_only(self):
+        """src/ changes don't need a container rebuild."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
+            assert needs_container_rebuild("aaa", "bbb") is False
+
+    def test_needs_container_rebuild_container_changes(self):
+        """container/ changes need a container rebuild."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="container/Dockerfile\n"
+            )
+            assert needs_container_rebuild("aaa", "bbb") is True
+
+
+# ---------------------------------------------------------------------------
+# Config file hashing tests
+# ---------------------------------------------------------------------------
+
+
+class TestHashConfigFiles:
+    def test_hash_config_files_detects_change(self, git_env: dict):
+        """Modifying config.toml should change the hash."""
+        project = git_env["project"]
+        config_path = project / "config.toml"
+
+        config_path.write_text("[agent]\nname = 'test'\n")
+        hash1 = _hash_config_files()
+
+        config_path.write_text("[agent]\nname = 'changed'\n")
+        hash2 = _hash_config_files()
+
+        assert hash1 != hash2
+
+    def test_hash_config_files_missing_file(self, git_env: dict):
+        """Missing litellm config should produce a stable hash."""
+        project = git_env["project"]
+        config_path = project / "config.toml"
+        config_path.write_text("[agent]\nname = 'test'\n")
+
+        hash1 = _hash_config_files()
+        hash2 = _hash_config_files()
+
+        assert hash1 == hash2

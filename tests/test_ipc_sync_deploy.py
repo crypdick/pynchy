@@ -88,6 +88,7 @@ class MockDeps:
         self.cleared_sessions: list[str] = []
         self.cleared_chats: list[str] = []
         self.enqueued_checks: list[str] = []
+        self.deploy_calls: list[tuple[str, bool]] = []
 
     async def broadcast_to_channels(self, jid: str, text: str) -> None:
         self.broadcast_messages.append((jid, text))
@@ -130,6 +131,9 @@ class MockDeps:
 
     def channels(self) -> list:
         return []
+
+    async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
+        self.deploy_calls.append((previous_sha, rebuild))
 
 
 @pytest.fixture
@@ -283,6 +287,95 @@ class TestSyncWorktreeToMain:
             )
 
         mock_notify.assert_not_called()
+
+    async def test_sync_worktree_triggers_deploy_on_src_changes(
+        self, deps: MockDeps, tmp_path: Path
+    ):
+        """Successful sync with src/ changes should trigger deploy."""
+        merge_results_dir = tmp_path / "data" / "ipc" / "other-group" / "merge_results"
+        merge_results_dir.mkdir(parents=True)
+
+        with (
+            patch(
+                "pynchy.ipc._handlers_lifecycle.get_settings",
+                return_value=_test_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
+                return_value={"success": True, "message": "Merged 1 commit(s)"},
+            ),
+            patch(
+                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "pynchy.ipc._handlers_lifecycle.get_head_sha",
+                side_effect=["pre-sha-111", "post-sha-222"],
+            ),
+            patch(
+                "pynchy.ipc._handlers_lifecycle.needs_deploy",
+                return_value=True,
+            ),
+            patch(
+                "pynchy.ipc._handlers_lifecycle.needs_container_rebuild",
+                return_value=False,
+            ),
+        ):
+            await dispatch(
+                {
+                    "type": "sync_worktree_to_main",
+                    "requestId": "req-deploy",
+                },
+                "other-group",
+                False,
+                deps,
+            )
+
+        assert len(deps.deploy_calls) == 1
+        sha, rebuild = deps.deploy_calls[0]
+        assert sha == "pre-sha-111"
+        assert rebuild is False
+
+    async def test_sync_worktree_no_deploy_on_irrelevant_changes(
+        self, deps: MockDeps, tmp_path: Path
+    ):
+        """Successful sync with only docs changes should not trigger deploy."""
+        merge_results_dir = tmp_path / "data" / "ipc" / "other-group" / "merge_results"
+        merge_results_dir.mkdir(parents=True)
+
+        with (
+            patch(
+                "pynchy.ipc._handlers_lifecycle.get_settings",
+                return_value=_test_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
+                return_value={"success": True, "message": "Merged 1 commit(s)"},
+            ),
+            patch(
+                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "pynchy.ipc._handlers_lifecycle.get_head_sha",
+                side_effect=["pre-sha-111", "post-sha-222"],
+            ),
+            patch(
+                "pynchy.ipc._handlers_lifecycle.needs_deploy",
+                return_value=False,
+            ),
+        ):
+            await dispatch(
+                {
+                    "type": "sync_worktree_to_main",
+                    "requestId": "req-nodeploy",
+                },
+                "other-group",
+                False,
+                deps,
+            )
+
+        assert len(deps.deploy_calls) == 0
 
 
 # ---------------------------------------------------------------------------
