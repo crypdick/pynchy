@@ -11,7 +11,6 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -130,6 +129,16 @@ def _patch_msgs_since(messages: list):
 
 def _patch_fmt_sdk():
     return patch(_P_FMT_SDK, return_value=[{"content": "hello"}])
+
+
+def _patch_bg_task():
+    """Patch create_background_task, closing coroutine args to avoid unawaited warnings."""
+
+    def _cleanup(coro, *, name=None):
+        if hasattr(coro, "close"):
+            coro.close()
+
+    return patch(_P_BG_TASK, side_effect=_cleanup)
 
 
 # ---------------------------------------------------------------------------
@@ -581,7 +590,7 @@ class TestProcessGroupMessages:
             _patch_fmt_sdk(),
             patch(_P_HAS_PA, return_value=True),
             patch(_P_MERGE),
-            patch(_P_BG_TASK) as mock_bg_task,
+            _patch_bg_task() as mock_bg_task,
         ):
             ms.return_value = _settings_mock(tmp_path)
             ms.return_value.trigger_pattern.search.return_value = True
@@ -608,6 +617,7 @@ class TestProcessGroupMessages:
             _patch_intercept(),
             _patch_fmt_sdk(),
             patch(_P_DIRTY, return_value=True),
+            patch(_P_HAS_PA, return_value=False),
         ):
             ms.return_value = _settings_mock(tmp_path)
             await process_group_messages(deps, "g@g.us")
@@ -634,6 +644,7 @@ class TestProcessGroupMessages:
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
+            patch(_P_HAS_PA, return_value=False),
         ):
             ms.return_value = _settings_mock(tmp_path)
             await process_group_messages(deps, "g@g.us")
@@ -899,9 +910,7 @@ class TestBtwNonInterruptingMessages:
             await _run_loop_once(deps)
 
         # IPC forwarded (best-effort)
-        deps.queue.send_message.assert_called_once_with(
-            jid, "Alice: btw here's some extra context"
-        )
+        deps.queue.send_message.assert_called_once_with(jid, "Alice: btw here's some extra context")
         # Marked for reprocessing after task exits
         deps.queue.enqueue_message_check.assert_called_once_with(jid)
 
@@ -1009,7 +1018,7 @@ class TestBtwNonInterruptingMessages:
                 return_value=[msg],
             ),
             patch(_P_INTERCEPT, new_callable=AsyncMock, return_value=False),
-            patch(_P_BG_TASK),
+            _patch_bg_task(),
         ):
             await _run_loop_once(deps)
 
@@ -1045,7 +1054,7 @@ class TestBtwNonInterruptingMessages:
                 return_value=[msg],
             ),
             patch(_P_INTERCEPT, new_callable=AsyncMock, return_value=False),
-            patch(_P_BG_TASK),
+            _patch_bg_task(),
         ):
             await _run_loop_once(deps)
 
