@@ -28,11 +28,11 @@ class ChannelPluginContext:
 
 
 def default_channel_name() -> str:
-    """Return configured default channel, falling back to whatsapp."""
+    """Return configured default channel, falling back to tui."""
     configured = get_settings().channels.default
     if configured:
         return configured.strip()
-    return "whatsapp"
+    return "tui"
 
 
 def load_channels(pm: pluggy.PluginManager, context: ChannelPluginContext) -> list[Channel]:
@@ -48,20 +48,19 @@ def load_channels(pm: pluggy.PluginManager, context: ChannelPluginContext) -> li
         )
         return channels
 
-    install_hint = (
-        "uv pip install git+https://github.com/crypdick/pynchy-plugin-whatsapp.git && "
-        "uv run pynchy auth"
+    logger.warning(
+        "No channel plugins discovered; continuing in TUI-only mode. "
+        "Add [plugins.<name>] entries in config.toml to enable external channels."
     )
-    msg = (
-        "No channel plugins were discovered. Install the default WhatsApp plugin with:\n"
-        f"  {install_hint}"
-    )
-    raise RuntimeError(msg)
+    return []
 
 
-def resolve_default_channel(channels: list[Channel]) -> Channel:
+def resolve_default_channel(channels: list[Channel]) -> Channel | None:
     """Resolve default channel by name from the loaded set."""
     wanted = default_channel_name()
+    if wanted.lower() == "tui" or not channels:
+        return None
+
     for channel in channels:
         if getattr(channel, "name", None) == wanted:
             return channel

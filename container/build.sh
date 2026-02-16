@@ -29,6 +29,9 @@ echo "Building Pynchy agent container image..."
 echo "Runtime: ${RUNTIME}"
 echo "Image: ${IMAGE_NAME}:${TAG}"
 
+# Generate container plugin requirements from currently installed plugins.
+python3 ./scripts/generate_plugin_requirements.py --output ./requirements-plugins.txt
+
 $RUNTIME build -t "${IMAGE_NAME}:${TAG}" .
 
 echo ""

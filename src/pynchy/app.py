@@ -64,6 +64,7 @@ from pynchy.http_server import (
 )
 from pynchy.ipc import start_ipc_watcher
 from pynchy.logger import logger
+from pynchy.plugin_sync import sync_configured_plugins
 from pynchy.service_installer import install_service
 from pynchy.system_checks import check_tailscale, ensure_container_system_running
 from pynchy.task_scheduler import start_scheduler_loop
@@ -218,17 +219,27 @@ class PynchyApp:
     # First-run setup
     # ------------------------------------------------------------------
 
-    async def _setup_god_group(self, default_channel: Any) -> None:
-        """Create a new group and register it as the god channel.
+    async def _setup_god_group(self, default_channel: Any | None) -> None:
+        """Create and register the first god workspace.
 
-        Called on first run when no groups are registered. Creates a private
-        group so the user has a dedicated space to talk to the agent.
+        If a default channel with ``create_group`` is available, provision a
+        channel-native group. Otherwise bootstrap a local TUI workspace so core
+        usage is never coupled to external channels.
         """
         s = get_settings()
         group_name = s.agent.name.title()
-        logger.info("No groups registered. Creating default channel group...", name=group_name)
+        logger.info("No groups registered. Creating first god workspace...", name=group_name)
 
-        jid = await default_channel.create_group(group_name)
+        jid = f"tui://{s.agent.name}"
+        if default_channel and hasattr(default_channel, "create_group"):
+            jid = await default_channel.create_group(group_name)
+            logger.info(
+                "Created first-run group via channel",
+                channel=default_channel.name,
+                jid=jid,
+            )
+        else:
+            logger.info("No channel group support found, creating TUI local workspace", jid=jid)
 
         # Create god workspace with default security profile
         profile = WorkspaceProfile(
@@ -241,7 +252,7 @@ class PynchyApp:
             is_god=True,
         )
         await self._register_workspace(profile)
-        logger.info("God channel created", group=group_name, jid=jid)
+        logger.info("God workspace created", group=group_name, jid=jid)
 
     def _validate_plugin_credentials(self, plugin: Any) -> list[str]:
         """Check if plugin has required environment variables.
@@ -722,6 +733,9 @@ class PynchyApp:
             await init_database()
             logger.info("Database initialized")
             await self._load_state()
+
+            # Ensure config-declared plugin repositories are cloned/updated.
+            sync_configured_plugins()
 
             # Initialize plugin manager after loading state
             from pynchy.plugin import get_plugin_manager
