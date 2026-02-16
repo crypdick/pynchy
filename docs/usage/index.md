@@ -29,6 +29,16 @@ From the God channel (your self-chat), you can manage groups and tasks:
 @Pynchy join the Family Chat group
 ```
 
+## Messaging During Active Tasks
+
+When an agent is already working on something (a user message or scheduled task), new messages are handled differently depending on the prefix:
+
+**btw ...** is for adding context to work already in progress ("btw the file is in `/tmp/data.csv`"). The agent sees it as a follow-up message.
+
+**todo ...** is for items you want the agent to get to later without derailing the current task ("todo also rename the config keys when you're done"). The agent can view and manage the todo list via `list_todos` and `complete_todo` MCP tools.
+
+Sending a normal message (no prefix) interrupts the active task — the container is stopped and your new message is processed from scratch.
+
 ## Customizing
 
 There are no configuration files to learn. Just tell Pynchy what you want:

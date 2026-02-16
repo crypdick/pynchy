@@ -52,6 +52,8 @@ All task types are managed through a single set of tools. The `schedule_task` to
 | `resume_task` | Resume a paused task (any type) |
 | `cancel_task` | Delete a task (any type) |
 | `send_message` | Send a message to the group (agent tasks only) |
+| `list_todos` | List pending todo items (or all items with `include_done: true`) |
+| `complete_todo` | Mark a todo item as done by ID |
 
 ## Schedule Types
 
