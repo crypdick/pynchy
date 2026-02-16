@@ -18,7 +18,7 @@ from pynchy.db import get_messages_since, get_new_messages, store_message_direct
 from pynchy.event_bus import AgentActivityEvent, MessageEvent
 from pynchy.git_utils import is_repo_dirty
 from pynchy.logger import logger
-from pynchy.utils import IdleTimer
+from pynchy.utils import IdleTimer, create_background_task
 
 if TYPE_CHECKING:
     from pynchy.group_queue import GroupQueue
@@ -370,7 +370,10 @@ async def process_group_messages(
     from pynchy.worktree import merge_and_push_worktree
 
     if has_project_access(group):
-        asyncio.create_task(asyncio.to_thread(merge_and_push_worktree, group.folder))
+        create_background_task(
+            asyncio.to_thread(merge_and_push_worktree, group.folder),
+            name=f"worktree-merge-{group.folder}",
+        )
 
     return True
 
@@ -470,7 +473,10 @@ async def start_message_loop(
                             # messages after it dies.
                             deps.queue.clear_pending_tasks(group_jid)
                             deps.queue.enqueue_message_check(group_jid)
-                            asyncio.create_task(deps.queue.stop_active_process(group_jid))
+                            create_background_task(
+                                deps.queue.stop_active_process(group_jid),
+                                name=f"interrupt-stop-{group_jid[:20]}",
+                            )
                         continue
 
                     if deps.queue.send_message(group_jid, formatted):

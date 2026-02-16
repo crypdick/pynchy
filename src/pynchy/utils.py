@@ -72,6 +72,36 @@ def compute_next_run(
     return None
 
 
+def create_background_task(
+    coro: asyncio.coroutines,  # type: ignore[type-arg]
+    *,
+    name: str | None = None,
+) -> asyncio.Task:  # type: ignore[type-arg]
+    """Create an asyncio task that logs exceptions instead of swallowing them.
+
+    A drop-in replacement for ``asyncio.create_task`` for fire-and-forget
+    work (worktree merges, container stops) where we don't await the result
+    but still want failures to appear in logs.
+    """
+    task = asyncio.create_task(coro, name=name)
+    task.add_done_callback(_log_task_exception)
+    return task
+
+
+def _log_task_exception(task: asyncio.Task) -> None:  # type: ignore[type-arg]
+    """Callback attached to background tasks — logs unhandled exceptions."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.error(
+            "Background task failed",
+            task_name=task.get_name(),
+            error=str(exc),
+            exc_type=type(exc).__name__,
+        )
+
+
 class IdleTimer:
     """Resettable idle timer that fires a callback after a period of inactivity.
 

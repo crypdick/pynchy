@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from pynchy.db import clear_session, set_chat_cleared_at, store_message
 from pynchy.event_bus import ChatClearedEvent, MessageEvent
 from pynchy.logger import logger
+from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
     from pynchy.group_queue import GroupQueue
@@ -52,13 +53,19 @@ async def handle_context_reset(
 
     # Merge worktree commits before clearing session so work isn't stranded
     if has_project_access(group):
-        asyncio.create_task(asyncio.to_thread(merge_and_push_worktree, group.folder))
+        create_background_task(
+            asyncio.to_thread(merge_and_push_worktree, group.folder),
+            name=f"worktree-merge-{group.folder}",
+        )
 
     deps.sessions.pop(group.folder, None)
     deps._session_cleared.add(group.folder)
     await clear_session(group.folder)
     deps.queue.clear_pending_tasks(chat_jid)
-    asyncio.create_task(deps.queue.stop_active_process(chat_jid))
+    create_background_task(
+        deps.queue.stop_active_process(chat_jid),
+        name=f"stop-container-{chat_jid[:20]}",
+    )
     deps.last_agent_timestamp[chat_jid] = timestamp
     await deps.save_state()
     await send_clear_confirmation(deps, chat_jid)
@@ -77,11 +84,17 @@ async def handle_end_session(
 
     # Merge worktree commits before stopping so work isn't stranded
     if has_project_access(group):
-        asyncio.create_task(asyncio.to_thread(merge_and_push_worktree, group.folder))
+        create_background_task(
+            asyncio.to_thread(merge_and_push_worktree, group.folder),
+            name=f"worktree-merge-{group.folder}",
+        )
 
     # Stop the container but keep session state intact
     deps.queue.clear_pending_tasks(chat_jid)
-    asyncio.create_task(deps.queue.stop_active_process(chat_jid))
+    create_background_task(
+        deps.queue.stop_active_process(chat_jid),
+        name=f"stop-container-{chat_jid[:20]}",
+    )
     deps.last_agent_timestamp[chat_jid] = timestamp
     await deps.save_state()
     await deps.broadcast_host_message(chat_jid, "👋")
