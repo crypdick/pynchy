@@ -211,6 +211,8 @@ class ClaudeAgentCore:
             system_prompt=system_prompt,
             allowed_tools=[
                 "Bash",
+                "BashOutput",
+                "KillBash",
                 "Read",
                 "Write",
                 "Edit",
