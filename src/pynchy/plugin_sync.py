@@ -183,6 +183,31 @@ def sync_plugin_repos() -> dict[str, tuple[Path, str, bool]]:
 # ---------------------------------------------------------------------------
 
 
+def _is_plugin_importable(plugin_dir: Path) -> bool:
+    """Check if a plugin package is actually importable in the current environment.
+
+    Reads the pyproject.toml to find the package name, then tries to import it.
+    """
+    import tomllib
+
+    pyproject = plugin_dir / "pyproject.toml"
+    if not pyproject.exists():
+        return False
+
+    try:
+        with open(pyproject, "rb") as f:
+            data = tomllib.load(f)
+        package_name = data.get("project", {}).get("name", "").replace("-", "_")
+        if not package_name:
+            return False
+
+        # Try to import the package
+        import importlib.util
+        return importlib.util.find_spec(package_name) is not None
+    except Exception:
+        return False
+
+
 def _install_if_needed(
     plugin_name: str,
     plugin_dir: Path,
@@ -197,7 +222,9 @@ def _install_if_needed(
     Returns True if the plugin was (re)installed, False if already up to date.
     """
     installed_revision = (install_state.get(plugin_name) or {}).get("revision")
-    if installed_revision == revision:
+
+    # Check both revision match AND that the plugin is actually importable
+    if installed_revision == revision and _is_plugin_importable(plugin_dir):
         logger.info(
             "Plugin already up to date",
             plugin=plugin_name,
@@ -205,6 +232,15 @@ def _install_if_needed(
             **log_extra,
         )
         return False
+
+    # If revision matches but plugin isn't importable, the venv was likely recreated
+    if installed_revision == revision:
+        logger.info(
+            "Plugin revision matches but not importable (venv recreated?)",
+            plugin=plugin_name,
+            revision=revision,
+            **log_extra,
+        )
 
     if installed_revision:
         logger.info(
