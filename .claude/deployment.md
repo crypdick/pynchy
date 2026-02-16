@@ -39,7 +39,9 @@ Systemd unit template: `config-examples/pynchy.service.EXAMPLE`
 
 ## Container GitHub Access
 
-Container agents get GitHub credentials auto-forwarded from the host's `gh` CLI. To set up on a new host:
+**God containers only.** `GH_TOKEN` is forwarded only to god containers. Non-god containers have git operations routed through host IPC and never receive the token.
+
+To set up GitHub auth on a new host:
 
 ```bash
 # Interactive login (works over SSH with -t for TTY)
@@ -51,7 +53,7 @@ ssh -t nuc-server 'gh auth login -p ssh'
 ssh nuc-server 'gh auth status'
 ```
 
-After authenticating, `_write_env_file()` auto-discovers `GH_TOKEN` and git identity on each container launch. No manual env configuration needed.
+After authenticating, `_write_env_file()` auto-discovers `GH_TOKEN` and git identity on each god container launch. No manual env configuration needed.
 
 ## Container Build Cache
 
