@@ -1,4 +1,11 @@
-"""Sync plugin repositories declared in config.toml."""
+"""Sync plugin repositories declared in config.toml.
+
+Split into two phases:
+  1. sync_plugin_repos()  — clone/update git repos (sync, no install)
+  2. install_verified_plugins() — install only verified/trusted plugins
+
+The verification step (plugin_verifier) runs between these two phases.
+"""
 
 from __future__ import annotations
 
@@ -129,8 +136,119 @@ def _install_plugin_in_host_env(plugin_name: str, plugin_dir: Path) -> None:
         raise RuntimeError(f"Host plugin install failed for '{plugin_name}': {stderr[-500:]}")
 
 
+# ---------------------------------------------------------------------------
+# Phase 1: Clone/update repos only (no installation, no verification)
+# ---------------------------------------------------------------------------
+
+
+def sync_plugin_repos() -> dict[str, tuple[Path, str, bool]]:
+    """Clone or update configured plugin repositories.
+
+    Returns:
+        Dict of {name: (plugin_dir, git_sha, trusted)} for each enabled plugin.
+    """
+    s = get_settings()
+    s.plugins_dir.mkdir(parents=True, exist_ok=True)
+    synced: dict[str, tuple[Path, str, bool]] = {}
+
+    for plugin_name, plugin_cfg in s.plugins.items():
+        if not plugin_cfg.enabled:
+            continue
+        try:
+            plugin_dir = _sync_single_plugin(plugin_name, plugin_cfg, s.plugins_dir)
+            revision = _plugin_revision(plugin_dir)
+            synced[plugin_name] = (plugin_dir, revision, plugin_cfg.trusted)
+            logger.info(
+                "Plugin repo ready",
+                plugin=plugin_name,
+                ref=plugin_cfg.ref,
+                sha=revision[:12],
+                trusted=plugin_cfg.trusted,
+                path=str(plugin_dir),
+            )
+        except Exception:
+            logger.exception(
+                "Failed to sync plugin repository",
+                plugin=plugin_name,
+                repo=plugin_cfg.repo,
+                ref=plugin_cfg.ref,
+            )
+            raise
+
+    return synced
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Install verified plugins into host environment
+# ---------------------------------------------------------------------------
+
+
+def install_verified_plugins(verified: dict[str, tuple[Path, str]]) -> dict[str, Path]:
+    """Install plugins that passed verification into the host Python environment.
+
+    Args:
+        verified: Dict of {name: (plugin_dir, git_sha)} — only verified plugins.
+
+    Returns:
+        Dict of {name: plugin_dir} for successfully installed plugins.
+    """
+    s = get_settings()
+    install_state = _load_install_state(s.plugins_dir)
+    installed: dict[str, Path] = {}
+
+    for plugin_name, (plugin_dir, revision) in verified.items():
+        try:
+            installed_revision = (install_state.get(plugin_name) or {}).get("revision")
+            if installed_revision != revision:
+                if installed_revision:
+                    logger.info(
+                        "Plugin revision changed",
+                        plugin=plugin_name,
+                        from_revision=installed_revision,
+                        to_revision=revision,
+                    )
+                else:
+                    logger.info(
+                        "Plugin revision discovered",
+                        plugin=plugin_name,
+                        revision=revision,
+                    )
+                logger.info(
+                    "Installing plugin into host environment",
+                    plugin=plugin_name,
+                    revision=revision,
+                )
+                _install_plugin_in_host_env(plugin_name, plugin_dir)
+                install_state[plugin_name] = {"revision": revision}
+                _save_install_state(s.plugins_dir, install_state)
+            else:
+                logger.info(
+                    "Plugin already up to date",
+                    plugin=plugin_name,
+                    revision=revision,
+                )
+            installed[plugin_name] = plugin_dir
+        except Exception:
+            logger.exception(
+                "Failed to install verified plugin",
+                plugin=plugin_name,
+            )
+            raise
+
+    return installed
+
+
+# ---------------------------------------------------------------------------
+# Legacy combined API (kept for build command which doesn't need verification)
+# ---------------------------------------------------------------------------
+
+
 def sync_configured_plugins() -> dict[str, Path]:
-    """Ensure configured plugins are cloned and up-to-date at startup."""
+    """Sync + install all configured plugins (no verification).
+
+    Used by `pynchy build` and other contexts where verification is
+    not needed (e.g., the user is building the container image).
+    """
     s = get_settings()
     s.plugins_dir.mkdir(parents=True, exist_ok=True)
     install_state = _load_install_state(s.plugins_dir)

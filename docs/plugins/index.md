@@ -30,7 +30,7 @@ Plugins register themselves via `pyproject.toml` entry points in the `"pynchy"` 
 
 ## Security Model
 
-All plugin Python code runs on the **host** during discovery. Installing a plugin = trusting its code. See [Security Model](../architecture/security.md) for the full trust model.
+All plugin Python code runs on the **host** during discovery. To mitigate the risk of malicious plugins, pynchy runs an automated [**plugin scanner**](plugin-scanner.md) that audits new plugin revisions inside an isolated container before installation. Plugins marked `trusted = true` in config bypass the scan. See [Security Model](../architecture/security.md) for the full trust model.
 
 | Category | Sandbox Level | Risk |
 |----------|--------------|------|
@@ -45,3 +45,4 @@ All plugin Python code runs on the **host** during discovery. Installing a plugi
 - [**Quickstart**](quickstart.md) — Build your first plugin in 5 minutes
 - [**Hook Reference**](hooks.md) — All plugin hooks and return value schemas
 - [**Packaging**](packaging.md) — Entry points, distribution, installation
+- [**Plugin Scanner**](plugin-scanner.md) — Automated security audit for third-party plugins

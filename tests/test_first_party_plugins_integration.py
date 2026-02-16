@@ -70,11 +70,13 @@ def _integration_settings(tmp_path: Path) -> Settings:
                 repo="crypdick/pynchy-plugin-whatsapp",
                 ref="main",
                 enabled=True,
+                trusted=True,
             ),
             "code-improver": PluginConfig(
                 repo="crypdick/pynchy-plugin-code-improver",
                 ref="main",
                 enabled=True,
+                trusted=True,
             ),
         },
         security=SecurityConfig(),

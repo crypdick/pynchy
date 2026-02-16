@@ -35,13 +35,44 @@ __all__ = [
 
 
 def _load_managed_plugin_entrypoints(pm: pluggy.PluginManager) -> set[str]:
-    """Register plugins from config-managed clones under ~/.config/pynchy/plugins."""
+    """Register plugins from config-managed clones under ~/.config/pynchy/plugins.
+
+    Only loads plugins that have passed verification (or are marked trusted).
+    This prevents unverified plugin code from being imported into the host process.
+    """
+    from pynchy.plugin_verifier import get_cached_verdict
+
     s = get_settings()
     blocked_entrypoint_names: set[str] = set()
 
     for plugin_name, plugin_cfg in s.plugins.items():
         if not plugin_cfg.enabled:
             continue
+
+        # Gate: skip unverified plugins unless trusted
+        if not plugin_cfg.trusted:
+            from pynchy.plugin_sync import _plugin_revision
+
+            plugin_root = s.plugins_dir / plugin_name
+            if plugin_root.exists():
+                try:
+                    sha = _plugin_revision(plugin_root)
+                    cached = get_cached_verdict(s.plugins_dir, plugin_name, sha)
+                    if cached is None or cached[0] != "pass":
+                        logger.warning(
+                            "Skipping unverified plugin — run pynchy to trigger verification",
+                            plugin=plugin_name,
+                            sha=sha[:12],
+                            verdict=cached[0] if cached else "unchecked",
+                        )
+                        continue
+                except Exception:
+                    logger.warning(
+                        "Cannot verify plugin status, skipping",
+                        plugin=plugin_name,
+                    )
+                    continue
+
         plugin_root = s.plugins_dir / plugin_name
         pyproject = plugin_root / "pyproject.toml"
         if not pyproject.exists():
