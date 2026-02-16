@@ -344,12 +344,14 @@ class LiteLLMGateway:
         url = f"http://localhost:{self.port}/health"
         deadline = asyncio.get_event_loop().time() + _HEALTH_TIMEOUT
 
+        headers = {"Authorization": f"Bearer {self.key}"}
+
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=5),
         ) as session:
             while asyncio.get_event_loop().time() < deadline:
                 try:
-                    async with session.get(url) as resp:
+                    async with session.get(url, headers=headers) as resp:
                         if resp.status == 200:
                             return
                 except (aiohttp.ClientError, OSError):
