@@ -14,7 +14,7 @@ For security properties of container isolation, see [Security Model](security.md
 | `container/scripts/` | `/workspace/scripts` | Readonly | All |
 | `container/agent_runner/src` | `/app/src` | Readonly | All (agent runner source) |
 | `data/ipc/{group}/` | `/workspace/ipc` | Read-write | All (IPC channel) |
-| `data/env/` | `/workspace/env-dir` | Readonly | All (credentials) |
+| `data/env/{group}/` | `/workspace/env-dir` | Readonly | All (per-group credentials) |
 | `{additional mounts}` | `/workspace/extra/*` | Configurable | Per containerConfig |
 
 **Notes:**
@@ -40,21 +40,21 @@ Groups can have additional directories mounted via `containerConfig` in the SQLi
 
 ## Environment Variable Isolation
 
-Only allowlisted variables are exposed to containers. The `.env` file can contain various variables, but only specific ones are mounted:
+Each group gets its own env file at `data/env/{group}/env`. Only allowlisted variables are exposed.
 
-**Extracted Variables (from `.env`):**
-- `CLAUDE_CODE_OAUTH_TOKEN` — OAuth token from `~/.claude/.credentials.json` (subscription)
-- `ANTHROPIC_API_KEY` — API key for Claude access (pay-per-use)
-- `GH_TOKEN` — GitHub token (also auto-discovered from `gh auth token`)
-- `OPENAI_API_KEY` — OpenAI API key
+**LLM credentials** are proxied through the host gateway (see [Security Model](security.md#5-credential-handling)). Containers receive gateway URLs and an ephemeral key — never real API keys:
+- `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` — points to host gateway
+- `OPENAI_BASE_URL` / `OPENAI_API_KEY` — points to host gateway
 
-**Auto-Discovered Variables:**
-- `GIT_AUTHOR_NAME` / `GIT_COMMITTER_NAME` — from host git config
-- `GIT_AUTHOR_EMAIL` / `GIT_COMMITTER_EMAIL` — from host git config
+**Non-LLM credentials** are written directly, scoped by trust level:
+- `GH_TOKEN` — **god containers only.** Auto-discovered from `gh auth token` or `config.toml [secrets]`. Non-god containers don't receive this; their git operations are routed through host IPC.
+- `GIT_AUTHOR_NAME` / `GIT_COMMITTER_NAME` — from host git config (all groups)
+- `GIT_AUTHOR_EMAIL` / `GIT_COMMITTER_EMAIL` — from host git config (all groups)
 
 **Process:**
-1. Host reads `.env` and extracts only allowlisted variables
-2. Auto-discovers credentials (OAuth token, GH token, git identity) if not in `.env`
-3. Filtered variables are written to `data/env/env`
-4. This file is mounted into containers at `/workspace/env-dir/env`
-5. Container entrypoint sources the file
+1. Host discovers credentials from `config.toml [secrets]` and auto-discovery (OAuth, gh CLI, git config)
+2. LLM keys are registered with the gateway; containers get the gateway URL + ephemeral key
+3. `GH_TOKEN` is included only for god containers
+4. Per-group env file written to `data/env/{group}/env`
+5. Mounted into the container at `/workspace/env-dir/env`
+6. Container entrypoint sources the file

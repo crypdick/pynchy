@@ -62,29 +62,52 @@ Messages and task operations are verified against group identity:
 
 ### 5. Credential Handling
 
-**Mounted Credentials:**
-- Claude auth tokens, GitHub token, and OpenAI key (from `config.toml` `[secrets]`, read-only via `data/env/`)
-- Git identity (`GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, etc.) auto-discovered from host git config
+#### LLM Gateway (default)
 
-**NOT Mounted:**
-- WhatsApp session (`store/auth/`) - host only
-- Mount allowlist - external, never mounted
-- Any credentials matching blocked patterns
+When `gateway.enabled = true` (the default), an LLM API gateway runs on the host process and proxies container API calls to real providers. Containers **never see real LLM API keys**.
 
-**Credential Filtering:**
-Only these environment variables are exposed to containers:
-```python
-allowed_vars = [
-    "CLAUDE_CODE_OAUTH_TOKEN",
-    "ANTHROPIC_API_KEY",
-    "GH_TOKEN",
-    "OPENAI_API_KEY",
-]
+**How it works:**
+
+```
+Container ──[gateway key]──► Host Gateway ──[real API key]──► Provider
 ```
 
-Additionally, `GH_TOKEN` is auto-discovered from `gh auth token` if not configured in `[secrets]`, and git identity vars (`GIT_AUTHOR_NAME`, `GIT_COMMITTER_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_EMAIL`) are auto-discovered from host git config.
+1. The gateway discovers real credentials (Anthropic API key / OAuth token, OpenAI API key) from `config.toml [secrets]` and auto-discovery (Claude Code keychain, etc.).
+2. On startup, a random per-session ephemeral key (`gw-…`) is generated.
+3. Containers receive environment variables pointing to the gateway:
 
-> **Note:** Anthropic credentials are mounted so that Claude Code can authenticate when the agent runs. However, this means the agent itself can discover these credentials via Bash or file operations. Ideally, Claude Code would authenticate without exposing credentials to the agent's execution environment, but I couldn't figure this out. **PRs welcome** if you have ideas for credential isolation.
+```
+ANTHROPIC_BASE_URL=http://host.docker.internal:4010
+ANTHROPIC_AUTH_TOKEN=gw-<random>
+OPENAI_BASE_URL=http://host.docker.internal:4010
+OPENAI_API_KEY=gw-<random>
+```
+
+4. The gateway validates the ephemeral key, then forwards requests to the real provider with real credentials injected. Responses stream back transparently.
+5. Required headers (`anthropic-beta`, `anthropic-version`) are forwarded to the provider.
+
+**Security properties:**
+- Real API keys exist only in the host process memory
+- Ephemeral keys are per-session (regenerated on restart), not real credentials
+- A compromised container cannot use the ephemeral key outside the gateway
+- Docker containers reach the host via `host.docker.internal` (with `--add-host` on Linux)
+
+**Non-LLM credentials** are written directly to per-group env files (`data/env/{group}/env`):
+
+| Credential | God | Non-God | Rationale |
+|-----------|-----|---------|-----------|
+| `GH_TOKEN` | Yes | **No** | Non-god containers have git push/pull blocked by the guard script and routed through host IPC. They never need direct GitHub access. |
+| `GIT_AUTHOR_NAME` | Yes | Yes | Needed for git commits in worktrees |
+| `GIT_COMMITTER_NAME` | Yes | Yes | |
+| `GIT_AUTHOR_EMAIL` | Yes | Yes | |
+| `GIT_COMMITTER_EMAIL` | Yes | Yes | |
+
+Each group gets its own env directory so concurrent containers don't share secrets. A compromised non-god container cannot access GitHub APIs or push to repositories directly.
+
+**NOT Mounted:**
+- WhatsApp session (`store/auth/`) — host only
+- Mount allowlist — external, never mounted
+- Any credentials matching blocked patterns
 
 ### 6. Prompt Injection
 
@@ -131,16 +154,19 @@ WhatsApp messages could contain malicious instructions attempting to manipulate 
 │  • IPC authorization                                              │
 │  • Mount validation (external allowlist)                          │
 │  • Container lifecycle                                            │
-│  • Credential filtering                                           │
+│  • LLM Gateway (credential-isolating reverse proxy)               │
+│    ┌──────────────────────────────────────────────────┐           │
+│    │ Container ──[gw key]──► Gateway ──[real key]──► Provider │   │
+│    └──────────────────────────────────────────────────┘           │
 └────────────────────────────────┬─────────────────────────────────┘
                                  │
-                                 ▼ Explicit mounts only
+                                 ▼ Explicit mounts only, gateway URL in env
 ┌──────────────────────────────────────────────────────────────────┐
 │                CONTAINER (ISOLATED/SANDBOXED)                     │
 │  • Agent execution                                                │
 │  • Bash commands (sandboxed)                                      │
 │  • File operations (limited to mounts)                            │
-│  • Network access (unrestricted)                                  │
+│  • LLM API access via gateway only (no real keys)                 │
 │  • Cannot modify security config                                  │
 └──────────────────────────────────────────────────────────────────┘
 ```
