@@ -35,7 +35,7 @@ class MessageHandlerDeps(Protocol):
     """Dependencies for message processing."""
 
     @property
-    def registered_groups(self) -> dict[str, WorkspaceProfile]: ...
+    def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
     @property
     def last_agent_timestamp(self) -> dict[str, str]: ...
@@ -308,7 +308,7 @@ async def process_group_messages(
 ) -> bool:
     """Process all pending messages for a group. Called by GroupQueue."""
     s = get_settings()
-    group = deps.registered_groups.get(chat_jid)
+    group = deps.workspaces.get(chat_jid)
     if not group:
         return True
 
@@ -430,7 +430,7 @@ async def start_message_loop(
 
     while not shutting_down():
         try:
-            jids = list(deps.registered_groups.keys())
+            jids = list(deps.workspaces.keys())
             messages, new_timestamp = await get_new_messages(jids, deps.last_timestamp)
 
             if messages:
@@ -446,7 +446,7 @@ async def start_message_loop(
                     messages_by_group.setdefault(msg.chat_jid, []).append(msg)
 
                 for group_jid, group_messages in messages_by_group.items():
-                    group = deps.registered_groups.get(group_jid)
+                    group = deps.workspaces.get(group_jid)
                     if not group:
                         continue
 

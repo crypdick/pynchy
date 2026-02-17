@@ -41,7 +41,7 @@ class MockDeps:
     async def broadcast_system_notice(self, jid: str, text: str) -> None:
         self.system_notices.append((jid, text))
 
-    def registered_groups(self) -> dict[str, WorkspaceProfile]:
+    def workspaces(self) -> dict[str, WorkspaceProfile]:
         return self._groups
 
     def register_workspace(self, profile: WorkspaceProfile) -> None:
@@ -139,8 +139,8 @@ class TestCreatePeriodicAgent:
         mock_channel.create_group.assert_called_once()
 
         # 5. Group registered
-        assert "agent@g.us" in deps.registered_groups()
-        group = deps.registered_groups()["agent@g.us"]
+        assert "agent@g.us" in deps.workspaces()
+        group = deps.workspaces()["agent@g.us"]
         assert group.folder == "daily-briefing"
         assert group.requires_trigger is False
 

@@ -39,7 +39,7 @@ class SessionDeps(Protocol):
     def channels(self) -> list[Channel]: ...
 
     @property
-    def registered_groups(self) -> dict[str, WorkspaceProfile]: ...
+    def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
     async def save_state(self) -> None: ...
 
@@ -119,7 +119,7 @@ async def trigger_manual_redeploy(deps: SessionDeps, chat_jid: str) -> None:
 
     # Build active_sessions so all groups resume after restart
     sm = SessionManager(deps.sessions, deps._session_cleared)
-    active_sessions = sm.get_active_sessions(deps.registered_groups)
+    active_sessions = sm.get_active_sessions(deps.workspaces)
 
     await finalize_deploy(
         broadcast_host_message=deps.broadcast_host_message,

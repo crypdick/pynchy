@@ -54,7 +54,7 @@ def _make_deps(
 ) -> MagicMock:
     """Build a MessageHandlerDeps mock with sensible defaults."""
     deps = MagicMock()
-    deps.registered_groups = groups or {}
+    deps.workspaces = groups or {}
     deps.last_agent_timestamp = last_agent_ts if last_agent_ts is not None else {}
     deps.last_timestamp = last_timestamp
 

@@ -44,7 +44,7 @@ class GitSyncDeps(Protocol):
 
     async def broadcast_system_notice(self, jid: str, text: str) -> None: ...
 
-    def registered_groups(self) -> dict[str, WorkspaceProfile]: ...
+    def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
     async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None: ...
 
@@ -244,7 +244,7 @@ async def host_notify_worktree_updates(
         return
 
     main_branch = detect_main_branch()
-    registered = deps.registered_groups()
+    registered = deps.workspaces()
 
     # Build folder->jid lookup
     folder_to_jid: dict[str, str] = {g.folder: jid for jid, g in registered.items()}

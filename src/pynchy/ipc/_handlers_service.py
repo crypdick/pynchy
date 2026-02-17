@@ -157,7 +157,7 @@ async def _handle_service_request(
 
     # Find the chat_jid for this group (for audit logging)
     chat_jid = "unknown"
-    for jid, group in deps.registered_groups().items():
+    for jid, group in deps.workspaces().items():
         if group.folder == source_group:
             chat_jid = jid
             break

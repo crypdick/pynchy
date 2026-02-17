@@ -94,10 +94,10 @@ class TestGroupRegistry:
         result = registry.god_chat_jid()
         assert result in ("god1@g.us", "god2@g.us")
 
-    def test_registered_groups_returns_reference(self):
+    def test_workspaces_returns_reference(self):
         groups = {"a@g.us": _group(jid="a@g.us", name="A")}
         registry = GroupRegistry(groups)
-        assert registry.registered_groups() is groups
+        assert registry.workspaces() is groups
 
 
 # ---------------------------------------------------------------------------
@@ -474,7 +474,7 @@ class TestSessionManager:
 class TestGroupMetadataManager:
     """Test group metadata queries."""
 
-    def test_get_groups_returns_registered_groups(self):
+    def test_get_groups_returns_workspaces(self):
         groups = {
             "a@g.us": _group(jid="a@g.us", name="Alpha", folder="alpha"),
             "b@g.us": _group(jid="b@g.us", name="Beta", folder="beta"),

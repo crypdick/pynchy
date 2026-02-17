@@ -20,9 +20,9 @@ class WhatsAppPlugin:
             return None
         on_message = context.on_message_callback
         on_chat_metadata = context.on_chat_metadata_callback
-        registered_groups = context.registered_groups
+        workspaces = context.workspaces
         return WhatsAppChannel(
             on_message=on_message,
             on_chat_metadata=on_chat_metadata,
-            registered_groups=registered_groups,
+            workspaces=workspaces,
         )

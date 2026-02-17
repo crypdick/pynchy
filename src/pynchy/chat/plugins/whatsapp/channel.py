@@ -48,11 +48,11 @@ class WhatsAppChannel:
         self,
         on_message: Callable[[str, NewMessage], None],
         on_chat_metadata: Callable[[str, str, str | None], None],
-        registered_groups: Callable[[], dict[str, WorkspaceProfile]],
+        workspaces: Callable[[], dict[str, WorkspaceProfile]],
     ) -> None:
         self._on_message = on_message
         self._on_chat_metadata = on_chat_metadata
-        self._registered_groups = registered_groups
+        self._workspaces = workspaces
         self._connected = False
         self._lid_to_phone: dict[str, str] = {}
         self._outgoing_queue: deque[_OutgoingMessage] = deque()
@@ -254,7 +254,7 @@ class WhatsAppChannel:
         timestamp = datetime.fromtimestamp(ts, tz=UTC).isoformat()
         self._on_chat_metadata(chat_jid, timestamp, None)
 
-        groups = self._registered_groups()
+        groups = self._workspaces()
         if chat_jid not in groups:
             return
 

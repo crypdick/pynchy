@@ -149,7 +149,7 @@ class MockSchedulerDeps:
         # Configurable side effect for run_agent (to call on_output)
         self._run_agent_side_effect = None
 
-    def registered_groups(self) -> dict[str, WorkspaceProfile]:
+    def workspaces(self) -> dict[str, WorkspaceProfile]:
         return self.groups
 
     async def broadcast_to_channels(self, jid: str, text: str) -> None:

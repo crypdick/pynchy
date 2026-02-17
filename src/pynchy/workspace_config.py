@@ -191,7 +191,7 @@ async def create_channel_aliases(
 
 
 async def _ensure_aliases_for_all_groups(
-    registered_groups: dict[str, WorkspaceProfile],
+    workspaces: dict[str, WorkspaceProfile],
     channels: list[Channel],
     register_alias_fn: Callable[[str, str, str], Awaitable[None]],
     get_channel_jid_fn: Callable[[str, str], str | None] | None = None,
@@ -202,7 +202,7 @@ async def _ensure_aliases_for_all_groups(
     won't have aliases on other channels like Slack. This fills the gaps.
     """
     created = 0
-    for jid, group in registered_groups.items():
+    for jid, group in workspaces.items():
         created += await create_channel_aliases(
             jid, group.name, channels, register_alias_fn, get_channel_jid_fn
         )
@@ -211,7 +211,7 @@ async def _ensure_aliases_for_all_groups(
 
 
 async def reconcile_workspaces(
-    registered_groups: dict[str, WorkspaceProfile],
+    workspaces: dict[str, WorkspaceProfile],
     channels: list[Channel],
     register_fn: Callable[[WorkspaceProfile], Awaitable[None]],
     register_alias_fn: Callable[[str, str, str], Awaitable[None]] | None = None,
@@ -227,7 +227,7 @@ async def reconcile_workspaces(
 
     s = get_settings()
     specs = _workspace_specs()
-    folder_to_jid: dict[str, str] = {g.folder: jid for jid, g in registered_groups.items()}
+    folder_to_jid: dict[str, str] = {g.folder: jid for jid, g in workspaces.items()}
 
     reconciled = 0
     for folder, spec in specs.items():
@@ -352,5 +352,5 @@ async def reconcile_workspaces(
     # in _workspace_specs() but still need aliases on other channels.
     if register_alias_fn:
         await _ensure_aliases_for_all_groups(
-            registered_groups, channels, register_alias_fn, get_channel_jid_fn
+            workspaces, channels, register_alias_fn, get_channel_jid_fn
         )

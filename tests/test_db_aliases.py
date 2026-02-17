@@ -87,7 +87,7 @@ class TestInboundNormalization:
 
         deps = MagicMock()
         deps.channels = []
-        deps.registered_groups = {}
+        deps.workspaces = {}
         deps.resolve_canonical_jid = MagicMock(return_value="wa@g.us")
         deps.get_channel_jid = MagicMock(return_value=None)
         deps.emit = MagicMock()
@@ -126,7 +126,7 @@ class TestInboundNormalization:
 
         deps = MagicMock()
         deps.channels = []
-        deps.registered_groups = {}
+        deps.workspaces = {}
         deps.resolve_canonical_jid = MagicMock(return_value="wa@g.us")
         deps.get_channel_jid = MagicMock(return_value=None)
         deps.emit = MagicMock()

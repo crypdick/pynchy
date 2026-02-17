@@ -39,7 +39,7 @@ async def _handle_deploy(
     chat_jid = data.get("chatJid", "")
 
     if not chat_jid:
-        groups = deps.registered_groups()
+        groups = deps.workspaces()
         from pynchy.adapters import find_god_jid
 
         chat_jid = find_god_jid(groups)

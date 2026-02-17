@@ -70,7 +70,7 @@ class MockDeps:
     async def broadcast_system_notice(self, jid: str, text: str) -> None:
         self.system_notices.append((jid, text))
 
-    def registered_groups(self) -> dict[str, WorkspaceProfile]:
+    def workspaces(self) -> dict[str, WorkspaceProfile]:
         return self._groups
 
     def register_workspace(self, profile: WorkspaceProfile) -> None:
@@ -178,7 +178,7 @@ class TestStartupSweep:
             processed = await _sweep_directory(ipc_dir, deps)
 
         assert processed == 1
-        assert "new@g.us" in deps.registered_groups()
+        assert "new@g.us" in deps.workspaces()
 
     async def test_sweep_handles_signal_files(self, deps, tmp_path: Path):
         """Startup sweep should process signal-format files."""
@@ -330,7 +330,7 @@ class TestTaskFileProcessing:
 
         await _process_task_file(file_path, "god", True, ipc_dir, deps)
 
-        assert "test@g.us" in deps.registered_groups()
+        assert "test@g.us" in deps.workspaces()
         assert not file_path.exists()
 
     async def test_malformed_signal_goes_to_errors(self, deps, tmp_path: Path):

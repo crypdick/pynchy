@@ -47,7 +47,7 @@ def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
     queue_manager = QueueManager(app.queue)
 
     class SchedulerDeps:
-        registered_groups = group_registry.registered_groups
+        workspaces = group_registry.workspaces
         queue = queue_manager.queue
         broadcast_to_channels = app._broadcaster._broadcast_formatted
 
@@ -91,7 +91,7 @@ async def _rebuild_and_deploy(
 
         build_container_image()
 
-    active_sessions = session_manager.get_active_sessions(group_registry.registered_groups())
+    active_sessions = session_manager.get_active_sessions(group_registry.workspaces())
 
     await finalize_deploy(
         broadcast_host_message=host_broadcaster.broadcast_host_message,
@@ -128,7 +128,7 @@ def make_http_deps(app: PynchyApp) -> HttpDeps:
             return app._shutting_down
 
         def get_active_sessions(self) -> dict[str, str]:
-            return session_manager.get_active_sessions(group_registry.registered_groups())
+            return session_manager.get_active_sessions(group_registry.workspaces())
 
     return HttpDeps()
 
@@ -148,7 +148,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         broadcast_to_channels = broadcaster._broadcast_to_channels
         broadcast_host_message = host_broadcaster.broadcast_host_message
         broadcast_system_notice = host_broadcaster.broadcast_system_notice
-        registered_groups = registration_manager.registered_groups
+        workspaces = registration_manager.workspaces
         register_workspace = registration_manager.register_workspace
         sync_group_metadata = metadata_manager.sync_group_metadata
         get_available_groups = metadata_manager.get_available_groups
@@ -159,7 +159,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         channels = metadata_manager.channels
 
         def get_active_sessions(self) -> dict[str, str]:
-            return session_manager.get_active_sessions(group_registry.registered_groups())
+            return session_manager.get_active_sessions(group_registry.workspaces())
 
         async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
             await _rebuild_and_deploy(
@@ -183,8 +183,8 @@ def make_git_sync_deps(app: PynchyApp) -> GitSyncDeps:
         broadcast_host_message = host_broadcaster.broadcast_host_message
         broadcast_system_notice = host_broadcaster.broadcast_system_notice
 
-        def registered_groups(self) -> dict[str, Any]:
-            return group_registry.registered_groups()
+        def workspaces(self) -> dict[str, Any]:
+            return group_registry.workspaces()
 
         async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
             await _rebuild_and_deploy(

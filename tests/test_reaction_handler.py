@@ -31,7 +31,7 @@ class FakeReactionDeps:
         groups: dict[str, WorkspaceProfile] | None = None,
         is_active: bool = False,
     ) -> None:
-        self.registered_groups: dict[str, WorkspaceProfile] = groups or {}
+        self.workspaces: dict[str, WorkspaceProfile] = groups or {}
         self.queue = MagicMock()
         self.queue.is_active_task.return_value = is_active
         self.queue.stop_active_process = AsyncMock()

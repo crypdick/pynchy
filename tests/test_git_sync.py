@@ -178,7 +178,7 @@ class TestHostNotifyWorktreeUpdates:
         deps = Mock()
         deps.broadcast_host_message = AsyncMock()
         deps.broadcast_system_notice = AsyncMock()
-        deps.registered_groups.return_value = groups
+        deps.workspaces.return_value = groups
         return deps
 
     @pytest.mark.asyncio
