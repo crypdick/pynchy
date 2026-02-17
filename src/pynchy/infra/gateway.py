@@ -28,14 +28,15 @@ Container env vars are set identically for both modes::
 
 Start with :func:`start_gateway`, access the singleton with :func:`get_gateway`.
 
-OAuth gotcha (builtin mode only)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+OAuth gotcha
+~~~~~~~~~~~~
 
 The Anthropic Messages API does **not** accept OAuth tokens
 (``sk-ant-oat01-…``) via ``Authorization: Bearer`` unless the request
 also carries the beta header ``anthropic-beta: oauth-2025-04-20``.
-This is handled automatically in builtin mode.  In LiteLLM mode,
-use API keys (``sk-ant-api03-…``) instead of OAuth tokens.
+Builtin mode handles this automatically.  LiteLLM mode passes the
+discovered token as ``PYNCHY_ANTHROPIC_TOKEN`` — the litellm config
+should reference it via ``api_key: os.environ/PYNCHY_ANTHROPIC_TOKEN``.
 """
 
 from __future__ import annotations
@@ -163,6 +164,53 @@ class LiteLLMGateway:
         # LiteLLM handles provider resolution — always expose both URLs.
         # If a provider isn't configured, litellm returns a clear error.
         return True
+
+    # ------------------------------------------------------------------
+    # Credential discovery
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _discover_anthropic_token() -> str | None:
+        """Discover an Anthropic token for the LiteLLM container.
+
+        Checks (in order):
+        1. ``[secrets].anthropic_api_key`` in config.toml
+        2. ``[secrets].claude_code_oauth_token`` in config.toml
+        3. OAuth token from ``~/.claude/.credentials.json`` (via ``claude setup-token``)
+
+        Returns the token string, or ``None`` if nothing found.
+        """
+        from pynchy.container_runner._credentials import _read_oauth_token
+
+        s = get_settings()
+
+        if s.secrets.anthropic_api_key:
+            logger.info(
+                "Gateway credentials discovered",
+                source="config (api_key)",
+            )
+            return s.secrets.anthropic_api_key.get_secret_value()
+
+        if s.secrets.claude_code_oauth_token:
+            logger.info(
+                "Gateway credentials discovered",
+                source="config (oauth_token)",
+            )
+            return s.secrets.claude_code_oauth_token.get_secret_value()
+
+        token = _read_oauth_token()
+        if token:
+            logger.info(
+                "Gateway credentials discovered",
+                source="~/.claude/.credentials.json",
+            )
+            return token
+
+        logger.warning(
+            "No Anthropic credentials found for LiteLLM — "
+            "run 'claude setup-token' or set [secrets].anthropic_api_key in config.toml"
+        )
+        return None
 
     # ------------------------------------------------------------------
     # Docker helpers
@@ -324,6 +372,11 @@ class LiteLLMGateway:
             "-e",
             f"DATABASE_URL={self._database_url}",
         ]
+
+        # Discover Anthropic token and pass to container
+        anthropic_token = self._discover_anthropic_token()
+        if anthropic_token:
+            env_vars.extend(["-e", f"PYNCHY_ANTHROPIC_TOKEN={anthropic_token}"])
 
         # Add UI credentials if configured
         s = get_settings()
