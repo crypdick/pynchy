@@ -162,12 +162,13 @@ async def ingest_user_message(
 
     # 3. Broadcast to all connected channels (except source)
     # This ensures messages from one UI appear in all other UIs.
-    # Content is sent WITHOUT sender-name prefixing — each channel
-    # already shows message authorship via its native UI (e.g. Slack
-    # shows the bot username, WhatsApp shows contact names).  Adding a
-    # "SenderName: " prefix here would break magic-word detection on
-    # receiving channels and produce ugly double-attribution.
-    await broadcast(deps, msg.chat_jid, msg.content, skip_channel=source_channel)
+    # Include sender attribution so the message isn't mistaken for bot
+    # output (e.g. Slack posts as the bot user).  The source channel is
+    # skipped, so magic-word detection on the originating channel is
+    # unaffected — and receiving channels won't re-ingest bot-posted
+    # messages (Slack filters bot_id, WhatsApp filters IsFromMe echoes).
+    channel_text = f"[{msg.sender_name}] {msg.content}"
+    await broadcast(deps, msg.chat_jid, channel_text, skip_channel=source_channel)
 
 
 async def on_inbound(deps: SessionDeps, _jid: str, msg: NewMessage) -> None:

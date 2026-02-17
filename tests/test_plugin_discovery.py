@@ -321,17 +321,14 @@ class TestPluginErrors:
         """Hooks with no implementations are still callable."""
         pm = get_plugin_manager()
 
-        # These hooks have no built-in implementations
-        # but should still be callable without errors
-        mcp_specs = pm.hook.pynchy_mcp_server_spec()
-        skill_paths = pm.hook.pynchy_skill_paths()
-        channels = pm.hook.pynchy_create_channel(context=None)
-        workspace_specs = pm.hook.pynchy_workspace_spec()
-
-        assert mcp_specs == []
-        assert skill_paths == []
-        assert channels == []
-        assert workspace_specs == []
+        # These hooks should be callable without errors.
+        # Managed plugins installed in the environment may provide
+        # implementations, so we only assert the calls succeed and
+        # return lists (not that they're empty).
+        assert isinstance(pm.hook.pynchy_mcp_server_spec(), list)
+        assert isinstance(pm.hook.pynchy_skill_paths(), list)
+        assert isinstance(pm.hook.pynchy_create_channel(context=None), list)
+        assert isinstance(pm.hook.pynchy_workspace_spec(), list)
 
 
 class TestManagedPluginIntegration:
