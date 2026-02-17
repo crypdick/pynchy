@@ -588,16 +588,14 @@ class TestProcessGroupMessages:
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_HAS_PA, return_value=True),
-            patch(_P_MERGE),
-            _patch_bg_task() as mock_bg_task,
+            patch("pynchy.git_ops.worktree.background_merge_worktree") as mock_bg_merge,
         ):
             ms.return_value = _settings_mock(tmp_path)
             ms.return_value.trigger_pattern.search.return_value = True
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is True
-        mock_bg_task.assert_called_once()
+        mock_bg_merge.assert_called_once_with(group)
 
     @pytest.mark.asyncio
     async def test_dirty_repo_warning_added_for_god_group(self, tmp_path):

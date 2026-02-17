@@ -999,10 +999,7 @@ class TestFinishedWorkExecution:
             assert "finished" in deps.host_messages[0][1].lower()
 
     async def test_finished_work_merges_worktree_for_project_access(self, deps):
-        with (
-            patch("pynchy.workspace_config.has_project_access", return_value=True),
-            patch("pynchy.git_ops.worktree.merge_and_push_worktree") as mock_merge,
-        ):
+        with patch("pynchy.git_ops.worktree.background_merge_worktree") as mock_merge:
             await dispatch(
                 {
                     "type": "finished_work",
@@ -1013,19 +1010,19 @@ class TestFinishedWorkExecution:
                 deps,
             )
 
-            mock_merge.assert_called_once_with("other-group")
+            mock_merge.assert_called_once()
+            group_arg = mock_merge.call_args[0][0]
+            assert group_arg.folder == "other-group"
 
     async def test_finished_work_skips_merge_for_non_project_access(self, deps):
-        with (
-            patch("pynchy.workspace_config.has_project_access", return_value=False),
-            patch("pynchy.git_ops.worktree.merge_and_push_worktree") as mock_merge,
-        ):
+        """When no matching group is found, background_merge_worktree is not called."""
+        with patch("pynchy.git_ops.worktree.background_merge_worktree") as mock_merge:
             await dispatch(
                 {
                     "type": "finished_work",
-                    "chatJid": "other@g.us",
+                    "chatJid": "nonexistent@g.us",
                 },
-                "other-group",
+                "nonexistent-group",
                 False,
                 deps,
             )

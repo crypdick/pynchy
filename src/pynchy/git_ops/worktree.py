@@ -318,3 +318,28 @@ def merge_and_push_worktree(group_folder: str) -> None:
     """
     if merge_worktree(group_folder):
         push_local_commits()
+
+
+def background_merge_worktree(group: object) -> None:
+    """Fire-and-forget worktree merge for groups with project access.
+
+    Checks has_project_access, then runs merge_and_push_worktree in a
+    background thread. This is the single code path for all post-session
+    worktree merges (message handler, session handler, IPC, scheduler).
+
+    Args:
+        group: A RegisteredGroup (or any object with a .folder attribute).
+    """
+    import asyncio
+
+    from pynchy.utils import create_background_task
+    from pynchy.workspace_config import has_project_access
+
+    if not has_project_access(group):  # type: ignore[arg-type]
+        return
+
+    folder: str = group.folder  # type: ignore[union-attr]
+    create_background_task(
+        asyncio.to_thread(merge_and_push_worktree, folder),
+        name=f"worktree-merge-{folder}",
+    )

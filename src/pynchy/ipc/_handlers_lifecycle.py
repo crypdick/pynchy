@@ -37,14 +37,16 @@ async def _handle_reset_context(
         )
         return
 
+    import asyncio
+
+    from pynchy.git_ops.worktree import merge_and_push_worktree
+
     logger.info(
         "Merging worktree before context reset",
         group=group_folder,
     )
     try:
-        from pynchy.git_ops.worktree import merge_and_push_worktree
-
-        merge_and_push_worktree(group_folder)
+        await asyncio.to_thread(merge_and_push_worktree, group_folder)
     except Exception as exc:
         logger.error(
             "Worktree merge failed during context reset",
@@ -85,22 +87,14 @@ async def _handle_finished_work(
         logger.warning("finished_work missing chatJid", source_group=source_group)
         return
 
-    from pynchy.git_ops.worktree import merge_and_push_worktree
-    from pynchy.workspace_config import has_project_access
+    from pynchy.git_ops.worktree import background_merge_worktree
 
     group = next(
         (g for g in deps.registered_groups().values() if g.folder == source_group),
         None,
     )
-    if group and has_project_access(group):
-        try:
-            merge_and_push_worktree(source_group)
-        except Exception as exc:
-            logger.warning(
-                "finished_work merge failed (non-fatal)",
-                group=source_group,
-                err=str(exc),
-            )
+    if group:
+        background_merge_worktree(group)
 
     await deps.broadcast_host_message(
         chat_jid,

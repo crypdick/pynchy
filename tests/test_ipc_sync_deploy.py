@@ -405,10 +405,12 @@ class TestDeployEdgeCases:
 
     async def test_deploy_with_rebuild_but_no_build_script(self, deps: MockDeps, tmp_path: Path):
         """Deploy requesting rebuild when build.sh doesn't exist should still finalize."""
+        from pynchy.deploy import BuildResult
+
         with (
             patch(
-                "pynchy.ipc._handlers_deploy.get_settings",
-                return_value=_test_settings(project_root=tmp_path),
+                "pynchy.ipc._handlers_deploy.build_container_image",
+                return_value=BuildResult(success=True, skipped=True),
             ),
             patch(
                 "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
@@ -425,7 +427,7 @@ class TestDeployEdgeCases:
                 True,
                 deps,
             )
-            # Should still finalize since build.sh not found is non-fatal
+            # Should still finalize since build.sh not found is non-fatal (skipped)
             mock_finalize.assert_called_once()
 
     async def test_deploy_uses_default_resume_prompt(self, deps: MockDeps):

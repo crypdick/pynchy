@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import subprocess
 from typing import Any
 
-from pynchy.config import get_settings
-from pynchy.deploy import finalize_deploy
+from pynchy.deploy import build_container_image, finalize_deploy
 from pynchy.ipc._deps import IpcDeps
 from pynchy.ipc._registry import register
 from pynchy.logger import logger
@@ -55,26 +53,14 @@ async def _handle_deploy(
         )
 
     if rebuild_container:
-        build_script = get_settings().project_root / "container" / "build.sh"
-        if build_script.exists():
-            logger.info("Rebuilding container image...")
-            result = subprocess.run(
-                [str(build_script)],
-                cwd=str(get_settings().project_root / "container"),
-                capture_output=True,
-                text=True,
+        build = build_container_image()
+        if not build.success and not build.skipped:
+            await _deploy_error(
+                deps,
+                chat_jid,
+                f"Container rebuild failed: {build.stderr}",
             )
-            if result.returncode != 0:
-                await _deploy_error(
-                    deps,
-                    chat_jid,
-                    f"Container rebuild failed: {result.stderr[-500:]}",
-                )
-                return
-        else:
-            logger.warning(
-                "rebuild_container requested but build.sh not found",
-            )
+            return
 
     # Merge the god agent's explicit session with all other active sessions
     active_sessions = deps.get_active_sessions()

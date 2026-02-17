@@ -5,7 +5,6 @@ Extracted from app.py to keep the orchestrator focused on wiring.
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol
@@ -57,15 +56,10 @@ async def handle_context_reset(
     deps: SessionDeps, chat_jid: str, group: RegisteredGroup, timestamp: str
 ) -> None:
     """Clear session state, merge worktree, and confirm context reset."""
-    from pynchy.git_ops.worktree import merge_and_push_worktree
-    from pynchy.workspace_config import has_project_access
+    from pynchy.git_ops.worktree import background_merge_worktree
 
     # Merge worktree commits before clearing session so work isn't stranded
-    if has_project_access(group):
-        create_background_task(
-            asyncio.to_thread(merge_and_push_worktree, group.folder),
-            name=f"worktree-merge-{group.folder}",
-        )
+    background_merge_worktree(group)
 
     deps.sessions.pop(group.folder, None)
     deps._session_cleared.add(group.folder)
@@ -88,15 +82,10 @@ async def handle_end_session(
     Unlike context reset, this preserves conversation history. The next
     message will start a fresh container that picks up where it left off.
     """
-    from pynchy.git_ops.worktree import merge_and_push_worktree
-    from pynchy.workspace_config import has_project_access
+    from pynchy.git_ops.worktree import background_merge_worktree
 
     # Merge worktree commits before stopping so work isn't stranded
-    if has_project_access(group):
-        create_background_task(
-            asyncio.to_thread(merge_and_push_worktree, group.folder),
-            name=f"worktree-merge-{group.folder}",
-        )
+    background_merge_worktree(group)
 
     # Stop the container but keep session state intact
     deps.queue.clear_pending_tasks(chat_jid)
