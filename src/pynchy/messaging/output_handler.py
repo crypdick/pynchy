@@ -16,6 +16,7 @@ from pynchy.config import get_settings
 from pynchy.db import store_message_direct
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.logger import logger
+from pynchy.messaging.bus import finalize_stream_or_broadcast
 from pynchy.messaging.router import format_tool_preview, parse_host_tag
 
 if TYPE_CHECKING:
@@ -113,6 +114,8 @@ class OutputDeps(Protocol):
 
     @property
     def channels(self) -> list[Channel]: ...
+
+    def get_channel_jid(self, canonical_jid: str, channel_name: str) -> str | None: ...
 
     async def broadcast_to_channels(
         self, chat_jid: str, text: str, *, suppress_errors: bool = True
@@ -406,24 +409,10 @@ async def handle_streamed_output(
 
             # For channels that were streaming, finalize the existing message.
             # For all others, post normally via broadcast.
-            if stream_state and stream_state.message_ids:
-                # Update streamed messages with final text
-                for ch in deps.channels:
-                    ch_name = getattr(ch, "name", "?")
-                    msg_id = stream_state.message_ids.get(ch_name)
-                    if msg_id and hasattr(ch, "update_message"):
-                        try:
-                            await ch.update_message(chat_jid, msg_id, channel_text)
-                        except Exception as exc:
-                            logger.debug("Final stream update failed", err=str(exc))
-                    elif ch.is_connected():
-                        # Channel wasn't streaming — post normally
-                        try:
-                            await ch.send_message(chat_jid, channel_text)
-                        except Exception as exc:
-                            logger.warning("Channel send failed", channel=ch_name, err=str(exc))
-            else:
-                await deps.broadcast_to_channels(chat_jid, channel_text, suppress_errors=False)
+            stream_ids = stream_state.message_ids if stream_state else None
+            await finalize_stream_or_broadcast(
+                deps, chat_jid, channel_text, stream_ids, suppress_errors=False
+            )
             deps.emit(
                 MessageEvent(
                     chat_jid=chat_jid,
