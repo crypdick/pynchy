@@ -210,6 +210,9 @@ requires_trigger = false
 # ─────────────────────────────────────────────────────────────────────────────
 # Connects to Slack via Socket Mode. Each Slack channel/DM maps to a pynchy
 # workspace with JID "slack:<CHANNEL_ID>". Activates when tokens are set.
+#
+# Gotcha: Auto-created workspace channels won't appear in your Slack sidebar
+# automatically. Search for the channel name in Slack and join it manually.
 
 # [slack]
 # bot_token = "xoxb-..."
