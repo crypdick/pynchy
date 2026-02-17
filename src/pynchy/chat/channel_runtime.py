@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
-from pynchy.types import Channel, NewMessage, RegisteredGroup
+from pynchy.types import Channel, NewMessage, WorkspaceProfile
 
 if TYPE_CHECKING:
     import pluggy
@@ -23,7 +23,7 @@ class ChannelPluginContext:
 
     on_message_callback: Callable[[str, NewMessage], None]
     on_chat_metadata_callback: Callable[[str, str, str | None], None]
-    registered_groups: Callable[[], dict[str, RegisteredGroup]]
+    registered_groups: Callable[[], dict[str, WorkspaceProfile]]
     send_message: Callable[[str, str], Any]
     on_reaction_callback: Callable[[str, str, str, str], None] | None = None
 

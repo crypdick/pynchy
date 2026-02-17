@@ -18,11 +18,12 @@ from pynchy.db import (
     _init_test_database,
     create_task,
     get_all_tasks,
+    get_all_workspace_profiles,
     get_task_by_id,
-    set_registered_group,
     set_session,
+    set_workspace_profile,
 )
-from pynchy.types import RegisteredGroup
+from pynchy.types import WorkspaceProfile
 from pynchy.workspace_ops import RenameError, _rename_dir, rename_workspace
 
 
@@ -107,9 +108,9 @@ class TestRenameWorkspace:
 
     async def test_renames_group_folder_in_database(self, db, tmp_path: Path):
         """DB registered_groups row updates from old folder to new folder."""
-        await set_registered_group(
-            "test@g.us",
-            RegisteredGroup(
+        await set_workspace_profile(
+            WorkspaceProfile(
+                jid="test@g.us",
                 name="Old Name",
                 folder="old-group",
                 trigger="@pynchy",
@@ -125,18 +126,16 @@ class TestRenameWorkspace:
             await rename_workspace("old-group", "new-group")
 
         # Verify DB was updated
-        from pynchy.db import get_all_registered_groups
-
-        groups = await get_all_registered_groups()
+        groups = await get_all_workspace_profiles()
         folders = [g.folder for g in groups.values()]
         assert "new-group" in folders
         assert "old-group" not in folders
 
     async def test_renames_group_folder_and_name(self, db, tmp_path: Path):
         """When new_name is provided, both folder and name are updated in DB."""
-        await set_registered_group(
-            "test@g.us",
-            RegisteredGroup(
+        await set_workspace_profile(
+            WorkspaceProfile(
+                jid="test@g.us",
                 name="Old Name",
                 folder="old-group",
                 trigger="@pynchy",
@@ -151,9 +150,7 @@ class TestRenameWorkspace:
         ):
             await rename_workspace("old-group", "new-group", new_name="New Name")
 
-        from pynchy.db import get_all_registered_groups
-
-        groups = await get_all_registered_groups()
+        groups = await get_all_workspace_profiles()
         group = next(g for g in groups.values() if g.folder == "new-group")
         assert group.name == "New Name"
 

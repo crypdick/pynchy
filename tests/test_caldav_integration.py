@@ -29,7 +29,7 @@ from pynchy.ipc._handlers_service import (
     clear_plugin_handler_cache,
     clear_policy_cache,
 )
-from pynchy.types import RegisteredGroup
+from pynchy.types import WorkspaceProfile
 
 
 @pytest.fixture(autouse=True)
@@ -48,7 +48,8 @@ class FakeDeps:
         return self._groups
 
 
-TEST_GROUP = RegisteredGroup(
+TEST_GROUP = WorkspaceProfile(
+    jid="test@g.us",
     name="Test",
     folder="test-ws",
     trigger="@Pynchy",

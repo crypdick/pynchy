@@ -28,14 +28,14 @@ from pynchy.utils import IdleTimer, create_background_task, generate_message_id
 
 if TYPE_CHECKING:
     from pynchy.group_queue import GroupQueue
-    from pynchy.types import ContainerOutput, NewMessage, RegisteredGroup
+    from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
 
 
 class MessageHandlerDeps(Protocol):
     """Dependencies for message processing."""
 
     @property
-    def registered_groups(self) -> dict[str, RegisteredGroup]: ...
+    def registered_groups(self) -> dict[str, WorkspaceProfile]: ...
 
     @property
     def last_agent_timestamp(self) -> dict[str, str]: ...
@@ -49,11 +49,11 @@ class MessageHandlerDeps(Protocol):
     async def save_state(self) -> None: ...
 
     async def handle_context_reset(
-        self, chat_jid: str, group: RegisteredGroup, timestamp: str
+        self, chat_jid: str, group: WorkspaceProfile, timestamp: str
     ) -> None: ...
 
     async def handle_end_session(
-        self, chat_jid: str, group: RegisteredGroup, timestamp: str
+        self, chat_jid: str, group: WorkspaceProfile, timestamp: str
     ) -> None: ...
 
     async def trigger_manual_redeploy(self, chat_jid: str) -> None: ...
@@ -74,7 +74,7 @@ class MessageHandlerDeps(Protocol):
 
     async def run_agent(
         self,
-        group: RegisteredGroup,
+        group: WorkspaceProfile,
         chat_jid: str,
         messages: list[dict],
         on_output: Any | None = None,
@@ -84,14 +84,14 @@ class MessageHandlerDeps(Protocol):
     ) -> str: ...
 
     async def handle_streamed_output(
-        self, chat_jid: str, group: RegisteredGroup, result: ContainerOutput
+        self, chat_jid: str, group: WorkspaceProfile, result: ContainerOutput
     ) -> bool: ...
 
 
 async def intercept_special_command(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: RegisteredGroup,
+    group: WorkspaceProfile,
     message: NewMessage,
 ) -> bool:
     """Check for and handle special commands (reset, end session, redeploy, !cmd).
@@ -130,7 +130,7 @@ async def intercept_special_command(
 async def execute_direct_command(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: RegisteredGroup,
+    group: WorkspaceProfile,
     message: NewMessage,
     command: str,
 ) -> None:
@@ -205,7 +205,7 @@ async def execute_direct_command(
 async def _handle_reset_handoff(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: RegisteredGroup,
+    group: WorkspaceProfile,
     reset_file: Path,
 ) -> bool | None:
     """Consume a reset_prompt.json file and run the handoff agent.

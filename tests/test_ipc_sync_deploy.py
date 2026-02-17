@@ -24,9 +24,10 @@ from conftest import make_settings
 from pynchy.db import _init_test_database
 from pynchy.ipc import dispatch
 from pynchy.ipc._handlers_deploy import _handle_deploy
-from pynchy.types import RegisteredGroup
+from pynchy.types import WorkspaceProfile
 
-GOD_GROUP = RegisteredGroup(
+GOD_GROUP = WorkspaceProfile(
+    jid="god@g.us",
     name="God",
     folder="god",
     trigger="always",
@@ -34,7 +35,8 @@ GOD_GROUP = RegisteredGroup(
     is_god=True,
 )
 
-OTHER_GROUP = RegisteredGroup(
+OTHER_GROUP = WorkspaceProfile(
+    jid="other@g.us",
     name="Other",
     folder="other-group",
     trigger="@pynchy",
@@ -54,7 +56,7 @@ def _test_settings(*, data_dir=None, project_root=None):
 class MockDeps:
     """Mock IPC dependencies."""
 
-    def __init__(self, groups: dict[str, RegisteredGroup]):
+    def __init__(self, groups: dict[str, WorkspaceProfile]):
         self._groups = groups
         self.broadcast_messages: list[tuple[str, str]] = []
         self.host_messages: list[tuple[str, str]] = []
@@ -73,11 +75,11 @@ class MockDeps:
     async def broadcast_system_notice(self, jid: str, text: str) -> None:
         self.system_notices.append((jid, text))
 
-    def registered_groups(self) -> dict[str, RegisteredGroup]:
+    def registered_groups(self) -> dict[str, WorkspaceProfile]:
         return self._groups
 
-    def register_group(self, jid: str, group: RegisteredGroup) -> None:
-        self._groups[jid] = group
+    def register_workspace(self, profile: WorkspaceProfile) -> None:
+        self._groups[profile.jid] = profile
 
     async def sync_group_metadata(self, force: bool) -> None:
         pass

@@ -19,7 +19,7 @@ from conftest import make_settings
 from pynchy.app import PynchyApp
 from pynchy.config import Settings
 from pynchy.db import _init_test_database, get_chat_history, store_message
-from pynchy.types import NewMessage, RegisteredGroup
+from pynchy.types import NewMessage, WorkspaceProfile
 
 _CR_ORCH = "pynchy.container_runner._orchestrator"
 
@@ -157,8 +157,9 @@ async def app(tmp_path: Path):
     """Create a PynchyApp with a fresh in-memory DB and patched dirs."""
     await _init_test_database()
     a = PynchyApp()
-    a.registered_groups = {
-        "group@g.us": RegisteredGroup(
+    a.workspaces = {
+        "group@g.us": WorkspaceProfile(
+            jid="group@g.us",
             name="Test Group",
             folder="test-group",
             trigger="@pynchy",
@@ -185,15 +186,14 @@ class TestFirstRunBootstrap:
     """Verify first-run workspace bootstrap without external channels."""
 
     async def test_creates_tui_god_workspace_without_channel(self, app: PynchyApp):
-        app.registered_groups = {}
         app.workspaces = {}
 
         from pynchy import startup_handler
 
         await startup_handler.setup_god_group(app, default_channel=None)
 
-        assert len(app.registered_groups) == 1
-        [(jid, group)] = list(app.registered_groups.items())
+        assert len(app.workspaces) == 1
+        [(jid, group)] = list(app.workspaces.items())
         assert jid.startswith("tui://")
         assert group.is_god is True
 
@@ -371,8 +371,9 @@ class TestProcessGroupMessages:
 
     async def test_main_group_processes_without_trigger(self, app: PynchyApp, tmp_path: Path):
         """Main group doesn't require trigger — all messages are processed."""
-        app.registered_groups = {
-            "main@g.us": RegisteredGroup(
+        app.workspaces = {
+            "main@g.us": WorkspaceProfile(
+                jid="main@g.us",
                 name="Main",
                 folder="main",
                 trigger="always",
@@ -430,7 +431,7 @@ class TestRunAgent:
         async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
             return fake_proc
 
-        group = app.registered_groups["group@g.us"]
+        group = app.workspaces["group@g.us"]
 
         with (
             patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", fake_create),
@@ -447,7 +448,7 @@ class TestRunAgent:
         async def failing_create(*args: Any, **kwargs: Any) -> None:
             raise RuntimeError("spawn failed")
 
-        group = app.registered_groups["group@g.us"]
+        group = app.workspaces["group@g.us"]
 
         with (
             patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", failing_create),
@@ -708,15 +709,17 @@ class TestDeployContinuationResume:
         await _init_test_database()
 
         # Register two groups
-        app.registered_groups = {
-            "god@g.us": RegisteredGroup(
+        app.workspaces = {
+            "god@g.us": WorkspaceProfile(
+                jid="god@g.us",
                 name="God",
                 folder="god",
                 trigger="always",
                 added_at="2024-01-01T00:00:00.000Z",
                 is_god=True,
             ),
-            "team@g.us": RegisteredGroup(
+            "team@g.us": WorkspaceProfile(
+                jid="team@g.us",
                 name="Team",
                 folder="team",
                 trigger="@pynchy",
@@ -763,45 +766,6 @@ class TestDeployContinuationResume:
 
         # Continuation file should be deleted
         assert not (data_dir / "deploy_continuation.json").exists()
-
-    async def test_backward_compat_single_session(self, app: PynchyApp, tmp_path: Path):
-        """Old continuation files without active_sessions should still resume the single group."""
-        await _init_test_database()
-
-        app.registered_groups = {
-            "god@g.us": RegisteredGroup(
-                name="God",
-                folder="god",
-                trigger="always",
-                added_at="2024-01-01T00:00:00.000Z",
-                is_god=True,
-            ),
-        }
-
-        data_dir = tmp_path / "data"
-        data_dir.mkdir(parents=True, exist_ok=True)
-        # Old-style continuation: no active_sessions key
-        continuation = {
-            "chat_jid": "god@g.us",
-            "session_id": "sess-god",
-            "resume_prompt": "Deploy complete.",
-            "commit_sha": "abc12345",
-            "previous_commit_sha": "000",
-        }
-        (data_dir / "deploy_continuation.json").write_text(json.dumps(continuation))
-
-        enqueued: list[str] = []
-        app.queue.enqueue_message_check = lambda jid: enqueued.append(jid)  # type: ignore[assignment]
-
-        with patch("pynchy.startup_handler.get_settings") as mock_settings:
-            s = MagicMock()
-            s.data_dir = data_dir
-            mock_settings.return_value = s
-            from pynchy.startup_handler import check_deploy_continuation
-
-            await check_deploy_continuation(app)
-
-        assert "god@g.us" in enqueued
 
     async def test_skips_when_no_active_sessions(self, app: PynchyApp, tmp_path: Path):
         """Continuation with empty active_sessions and no session_id should skip resume."""

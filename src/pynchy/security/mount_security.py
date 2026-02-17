@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import tomllib
 from dataclasses import dataclass
+from pathlib import Path
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
@@ -102,11 +103,11 @@ def load_mount_allowlist() -> MountAllowlist | None:
 
 def _expand_path(p: str) -> str:
     """Expand ~ to home directory and resolve to absolute path."""
-    home_dir = os.environ.get("HOME", "/Users/user")
+    home = str(Path.home())
     if p.startswith("~/"):
-        return os.path.join(home_dir, p[2:])
+        return os.path.join(home, p[2:])
     if p == "~":
-        return home_dir
+        return home
     return os.path.abspath(p)
 
 

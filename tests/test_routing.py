@@ -7,7 +7,7 @@ import pytest
 from pynchy.app import PynchyApp
 from pynchy.chat.router import format_messages_for_sdk
 from pynchy.db import _init_test_database, store_chat_metadata
-from pynchy.types import NewMessage, RegisteredGroup
+from pynchy.types import NewMessage, WorkspaceProfile
 
 
 @pytest.fixture
@@ -62,8 +62,9 @@ class TestGetAvailableGroups:
         await store_chat_metadata("chan://reg", "2024-01-01T00:00:01.000Z", "Registered")
         await store_chat_metadata("chan://unreg", "2024-01-01T00:00:02.000Z", "Unregistered")
 
-        app.registered_groups = {
-            "chan://reg": RegisteredGroup(
+        app.workspaces = {
+            "chan://reg": WorkspaceProfile(
+                jid="chan://reg",
                 name="Registered",
                 folder="registered",
                 trigger="@pynchy",

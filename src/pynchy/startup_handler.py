@@ -19,12 +19,12 @@ from pynchy.utils import generate_message_id
 
 if TYPE_CHECKING:
     from pynchy.group_queue import GroupQueue
-    from pynchy.types import RegisteredGroup
+    from pynchy.types import WorkspaceProfile
 
 
 class StartupDeps(Protocol):
     @property
-    def registered_groups(self) -> dict[str, RegisteredGroup]: ...
+    def registered_groups(self) -> dict[str, WorkspaceProfile]: ...
 
     @property
     def last_agent_timestamp(self) -> dict[str, str]: ...
@@ -144,8 +144,6 @@ async def check_deploy_continuation(deps: StartupDeps) -> None:
 
     Reads the ``active_sessions`` dict from the continuation file and injects
     a synthetic resume message for every group that had an active session.
-    Falls back to the legacy single ``session_id``/``chat_jid`` pair when
-    ``active_sessions`` is not present (backward compat with old continuations).
     """
     continuation_path = get_settings().data_dir / "deploy_continuation.json"
     if not continuation_path.exists():
@@ -165,14 +163,7 @@ async def check_deploy_continuation(deps: StartupDeps) -> None:
     resume_prompt = continuation.get("resume_prompt", "Deploy complete.")
     commit_sha = continuation.get("commit_sha", "unknown")
 
-    # Build sessions to resume: prefer active_sessions dict, fall back to legacy single pair
     active_sessions: dict[str, str] = continuation.get("active_sessions", {})
-    if not active_sessions:
-        # Backward compat: old continuation files only have session_id + chat_jid
-        legacy_jid = continuation.get("chat_jid", "")
-        legacy_sid = continuation.get("session_id", "")
-        if legacy_jid and legacy_sid:
-            active_sessions = {legacy_jid: legacy_sid}
 
     if not active_sessions:
         logger.info(

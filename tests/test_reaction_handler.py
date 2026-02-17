@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from pynchy.chat.reaction_handler import _REACTION_ACTIONS, handle_reaction
-from pynchy.types import RegisteredGroup
+from pynchy.types import WorkspaceProfile
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 TEST_JID = "group@g.us"
-TEST_GROUP = RegisteredGroup(
+TEST_GROUP = WorkspaceProfile(
+    jid="group@g.us",
     name="Test Group",
     folder="test-group",
     trigger="@pynchy",
@@ -28,10 +28,10 @@ class FakeReactionDeps:
 
     def __init__(
         self,
-        groups: dict[str, RegisteredGroup] | None = None,
+        groups: dict[str, WorkspaceProfile] | None = None,
         is_active: bool = False,
     ) -> None:
-        self.registered_groups: dict[str, Any] = groups or {}
+        self.registered_groups: dict[str, WorkspaceProfile] = groups or {}
         self.queue = MagicMock()
         self.queue.is_active_task.return_value = is_active
         self.queue.stop_active_process = AsyncMock()

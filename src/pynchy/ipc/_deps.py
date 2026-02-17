@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from pynchy.types import Channel, RegisteredGroup
+from pynchy.types import Channel, WorkspaceProfile
 
 
 class IpcDeps(Protocol):
@@ -16,9 +16,9 @@ class IpcDeps(Protocol):
 
     async def broadcast_system_notice(self, jid: str, text: str) -> None: ...
 
-    def registered_groups(self) -> dict[str, RegisteredGroup]: ...
+    def registered_groups(self) -> dict[str, WorkspaceProfile]: ...
 
-    def register_group(self, jid: str, group: RegisteredGroup) -> None: ...
+    def register_workspace(self, profile: WorkspaceProfile) -> None: ...
 
     async def sync_group_metadata(self, force: bool) -> None: ...
 

@@ -27,7 +27,7 @@ from neonize.utils.jid import Jid2String
 from pynchy.config import get_settings
 from pynchy.db import get_last_group_sync, set_last_group_sync, update_chat_name
 from pynchy.logger import logger
-from pynchy.types import NewMessage, RegisteredGroup
+from pynchy.types import NewMessage, WorkspaceProfile
 
 GROUP_SYNC_INTERVAL: float = 24 * 60 * 60  # 24 hours in seconds
 
@@ -48,7 +48,7 @@ class WhatsAppChannel:
         self,
         on_message: Callable[[str, NewMessage], None],
         on_chat_metadata: Callable[[str, str, str | None], None],
-        registered_groups: Callable[[], dict[str, RegisteredGroup]],
+        registered_groups: Callable[[], dict[str, WorkspaceProfile]],
     ) -> None:
         self._on_message = on_message
         self._on_chat_metadata = on_chat_metadata

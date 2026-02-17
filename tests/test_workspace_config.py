@@ -14,7 +14,6 @@ from pynchy.workspace_config import (
     get_project_access_folders,
     has_project_access,
     load_workspace_config,
-    write_workspace_config,
 )
 
 
@@ -99,14 +98,6 @@ class TestLoadWorkspaceConfig:
         assert cfg is not None
         assert cfg.project_access is True
         assert cfg.is_periodic is True
-
-
-class TestWriteWorkspaceConfig:
-    def test_writes_via_add_workspace_to_toml(self):
-        cfg = WorkspaceConfig(project_access=True, schedule="*/5 * * * *", prompt="Monitor")
-        with patch("pynchy.workspace_config.add_workspace_to_toml") as add_ws:
-            write_workspace_config("ops", cfg)
-        add_ws.assert_called_once_with("ops", cfg)
 
 
 class TestWorkspaceConfigModel:

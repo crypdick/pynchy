@@ -21,7 +21,7 @@ from pynchy.logger import logger
 from pynchy.utils import generate_message_id
 
 if TYPE_CHECKING:
-    from pynchy.types import Channel, ContainerOutput, RegisteredGroup
+    from pynchy.types import Channel, ContainerOutput, WorkspaceProfile
 
 _trace_counter = count(1)
 
@@ -225,7 +225,7 @@ async def broadcast_agent_input(
 async def handle_streamed_output(
     deps: OutputDeps,
     chat_jid: str,
-    group: RegisteredGroup,
+    group: WorkspaceProfile,
     result: ContainerOutput,
 ) -> bool:
     """Handle a streamed output from the container agent.

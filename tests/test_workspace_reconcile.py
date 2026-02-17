@@ -16,7 +16,7 @@ from conftest import make_settings
 
 from pynchy.config import WorkspaceConfig
 from pynchy.db import _init_test_database, create_task, get_active_task_for_group, get_all_tasks
-from pynchy.types import RegisteredGroup
+from pynchy.types import WorkspaceProfile
 from pynchy.workspace_config import (
     configure_plugin_workspaces,
     reconcile_workspaces,
@@ -61,7 +61,8 @@ class TestReconcileWorkspaces:
 
         # Pre-register the group (simulating it already exists)
         registered = {
-            "improver@g.us": RegisteredGroup(
+            "improver@g.us": WorkspaceProfile(
+                jid="improver@g.us",
                 name="Code Improver",
                 folder="code-improver",
                 trigger="@Pynchy",
@@ -92,7 +93,8 @@ class TestReconcileWorkspaces:
         )
 
         registered = {
-            "regular@g.us": RegisteredGroup(
+            "regular@g.us": WorkspaceProfile(
+                jid="regular@g.us",
                 name="Regular",
                 folder="regular-group",
                 trigger="@Pynchy",
@@ -134,7 +136,8 @@ class TestReconcileWorkspaces:
         )
 
         registered = {
-            "monitor@g.us": RegisteredGroup(
+            "monitor@g.us": WorkspaceProfile(
+                jid="monitor@g.us",
                 name="Monitor",
                 folder="monitor",
                 trigger="@Pynchy",
@@ -176,7 +179,8 @@ class TestReconcileWorkspaces:
         )
 
         registered = {
-            "monitor@g.us": RegisteredGroup(
+            "monitor@g.us": WorkspaceProfile(
+                jid="monitor@g.us",
                 name="Monitor",
                 folder="monitor",
                 trigger="@Pynchy",
@@ -218,7 +222,8 @@ class TestReconcileWorkspaces:
         )
 
         registered = {
-            "monitor@g.us": RegisteredGroup(
+            "monitor@g.us": WorkspaceProfile(
+                jid="monitor@g.us",
                 name="Monitor",
                 folder="monitor",
                 trigger="@Pynchy",
@@ -249,7 +254,7 @@ class TestReconcileWorkspaces:
         mock_channel = AsyncMock()
         mock_channel.create_group = AsyncMock(return_value="new-agent@g.us")
 
-        registered: dict[str, RegisteredGroup] = {}
+        registered: dict[str, WorkspaceProfile] = {}
         register_fn = AsyncMock()
 
         await reconcile_workspaces(registered, [mock_channel], register_fn)
@@ -259,10 +264,10 @@ class TestReconcileWorkspaces:
         # Should have registered the group
         register_fn.assert_called_once()
         call_args = register_fn.call_args
-        assert call_args[0][0] == "new-agent@g.us"
-        group = call_args[0][1]
-        assert group.folder == "new-agent"
-        assert group.requires_trigger is False
+        profile = call_args[0][0]
+        assert profile.jid == "new-agent@g.us"
+        assert profile.folder == "new-agent"
+        assert profile.requires_trigger is False
 
     async def test_skips_when_no_channel_supports_create_group(self, db, groups_dir):
         """Workspace needing new group should be skipped if no channel supports it."""
@@ -278,7 +283,7 @@ class TestReconcileWorkspaces:
         # Channel without create_group attribute
         mock_channel = AsyncMock(spec=["send_message", "connect", "disconnect"])
 
-        registered: dict[str, RegisteredGroup] = {}
+        registered: dict[str, WorkspaceProfile] = {}
         register_fn = AsyncMock()
 
         await reconcile_workspaces(registered, [mock_channel], register_fn)
@@ -290,7 +295,7 @@ class TestReconcileWorkspaces:
 
     async def test_empty_groups_dir(self, db, groups_dir):
         """Empty groups directory should not crash."""
-        registered: dict[str, RegisteredGroup] = {}
+        registered: dict[str, WorkspaceProfile] = {}
         register_fn = AsyncMock()
 
         # Should not raise
@@ -298,7 +303,7 @@ class TestReconcileWorkspaces:
 
     async def test_nonexistent_groups_dir(self, db):
         """No configured workspaces should not crash."""
-        registered: dict[str, RegisteredGroup] = {}
+        registered: dict[str, WorkspaceProfile] = {}
         register_fn = AsyncMock()
 
         # Should not raise
@@ -317,7 +322,8 @@ class TestReconcileWorkspaces:
         )
 
         registered = {
-            "dev@g.us": RegisteredGroup(
+            "dev@g.us": WorkspaceProfile(
+                jid="dev@g.us",
                 name="Dev Agent",
                 folder="dev-agent",
                 trigger="@Pynchy",
@@ -345,7 +351,8 @@ class TestReconcileWorkspaces:
         )
 
         registered = {
-            "iso@g.us": RegisteredGroup(
+            "iso@g.us": WorkspaceProfile(
+                jid="iso@g.us",
                 name="Isolated Agent",
                 folder="isolated-agent",
                 trigger="@Pynchy",
@@ -382,7 +389,8 @@ class TestReconcileWorkspaces:
         configure_plugin_workspaces(fake_pm)
 
         registered = {
-            "improver@g.us": RegisteredGroup(
+            "improver@g.us": WorkspaceProfile(
+                jid="improver@g.us",
                 name="Code Improver",
                 folder="code-improver",
                 trigger="@Pynchy",
@@ -403,7 +411,8 @@ class TestReconcileWorkspaces:
         """Groups created via channel auto-registration should get aliases on other channels."""
         # Group exists in DB (created via WhatsApp) but NOT in config.toml
         registered = {
-            "120363@g.us": RegisteredGroup(
+            "120363@g.us": WorkspaceProfile(
+                jid="120363@g.us",
                 name="Admin",
                 folder="admin",
                 trigger="@Pynchy",
@@ -439,7 +448,8 @@ class TestReconcileWorkspaces:
     async def test_skips_alias_when_already_exists(self, db, groups_dir):
         """Should not create duplicate aliases."""
         registered = {
-            "120363@g.us": RegisteredGroup(
+            "120363@g.us": WorkspaceProfile(
+                jid="120363@g.us",
                 name="Admin",
                 folder="admin",
                 trigger="@Pynchy",

@@ -7,16 +7,11 @@ import pynchy.ipc._handlers_lifecycle  # noqa: F401
 import pynchy.ipc._handlers_service  # noqa: F401
 import pynchy.ipc._handlers_tasks  # noqa: F401
 from pynchy.ipc._deps import IpcDeps
-from pynchy.ipc._protocol import SIGNAL_TYPES, make_signal, parse_ipc_file, validate_signal
 from pynchy.ipc._registry import dispatch
 from pynchy.ipc._watcher import start_ipc_watcher
 
 __all__ = [
     "IpcDeps",
-    "SIGNAL_TYPES",
     "dispatch",
-    "make_signal",
-    "parse_ipc_file",
     "start_ipc_watcher",
-    "validate_signal",
 ]

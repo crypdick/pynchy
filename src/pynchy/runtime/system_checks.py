@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import os
 import subprocess
 
 from pynchy.config import get_settings
@@ -31,11 +30,9 @@ def ensure_container_system_running() -> None:
                 f"no Dockerfile at {container_dir / 'Dockerfile'}"
             )
         logger.info("Container image not found, building...", image=image)
-        env = {**os.environ, "DOCKER_BUILDKIT": "1"}
         build = subprocess.run(
             [runtime.cli, "build", "-t", image, "."],
             cwd=str(container_dir),
-            env=env,
         )
         if build.returncode != 0:
             raise RuntimeError(f"Failed to build container image '{image}'")

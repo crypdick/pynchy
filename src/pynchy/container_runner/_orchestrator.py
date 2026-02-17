@@ -27,7 +27,7 @@ from pynchy.container_runner._process import (
 from pynchy.container_runner._serialization import _input_to_dict
 from pynchy.logger import logger
 from pynchy.runtime.runtime import get_runtime
-from pynchy.types import ContainerInput, ContainerOutput, RegisteredGroup
+from pynchy.types import ContainerInput, ContainerOutput, WorkspaceProfile
 
 # ---------------------------------------------------------------------------
 # Type aliases
@@ -156,7 +156,7 @@ def _determine_result(
 
 
 async def run_container_agent(
-    group: RegisteredGroup,
+    group: WorkspaceProfile,
     input_data: ContainerInput,
     on_process: OnProcess,
     on_output: OnOutput | None = None,

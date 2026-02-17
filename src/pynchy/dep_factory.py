@@ -43,7 +43,7 @@ def _get_broadcasters(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBr
 
 def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
     """Create the dependency object for the task scheduler."""
-    group_registry = GroupRegistry(app.registered_groups)
+    group_registry = GroupRegistry(app.workspaces)
     queue_manager = QueueManager(app.queue)
 
     class SchedulerDeps:
@@ -105,12 +105,10 @@ async def _rebuild_and_deploy(
 def make_http_deps(app: PynchyApp) -> HttpDeps:
     """Create the dependency object for the HTTP server."""
     _broadcaster, host_broadcaster = _get_broadcasters(app)
-    group_registry = GroupRegistry(app.registered_groups)
+    group_registry = GroupRegistry(app.workspaces)
     session_manager = SessionManager(app.sessions, app._session_cleared)
-    metadata_manager = GroupMetadataManager(
-        app.registered_groups, app.channels, app.get_available_groups
-    )
-    periodic_agent_manager = PeriodicAgentManager(app.registered_groups)
+    metadata_manager = GroupMetadataManager(app.workspaces, app.channels, app.get_available_groups)
+    periodic_agent_manager = PeriodicAgentManager(app.workspaces)
     user_message_handler = UserMessageHandler(
         app._ingest_user_message, app.queue.enqueue_message_check
     )
@@ -139,21 +137,19 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
     """Create the dependency object for the IPC watcher."""
     broadcaster, host_broadcaster = _get_broadcasters(app)
     registration_manager = GroupRegistrationManager(
-        app.registered_groups, app._register_group, app._send_clear_confirmation
+        app.workspaces, app._register_workspace, app._send_clear_confirmation
     )
     session_manager = SessionManager(app.sessions, app._session_cleared)
-    metadata_manager = GroupMetadataManager(
-        app.registered_groups, app.channels, app.get_available_groups
-    )
+    metadata_manager = GroupMetadataManager(app.workspaces, app.channels, app.get_available_groups)
     queue_manager = QueueManager(app.queue)
-    group_registry = GroupRegistry(app.registered_groups)
+    group_registry = GroupRegistry(app.workspaces)
 
     class IpcDeps:
         broadcast_to_channels = broadcaster._broadcast_to_channels
         broadcast_host_message = host_broadcaster.broadcast_host_message
         broadcast_system_notice = host_broadcaster.broadcast_system_notice
         registered_groups = registration_manager.registered_groups
-        register_group = registration_manager.register_group
+        register_workspace = registration_manager.register_workspace
         sync_group_metadata = metadata_manager.sync_group_metadata
         get_available_groups = metadata_manager.get_available_groups
         write_groups_snapshot = staticmethod(_write_groups_snapshot)
@@ -180,7 +176,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
 def make_git_sync_deps(app: PynchyApp) -> GitSyncDeps:
     """Create the dependency object for the git sync loop."""
     _broadcaster, host_broadcaster = _get_broadcasters(app)
-    group_registry = GroupRegistry(app.registered_groups)
+    group_registry = GroupRegistry(app.workspaces)
     session_manager = SessionManager(app.sessions, app._session_cleared)
 
     class GitSyncDeps:

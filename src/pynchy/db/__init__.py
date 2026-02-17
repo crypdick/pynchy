@@ -31,11 +31,8 @@ from pynchy.db.chats import (
     update_chat_name,
 )
 from pynchy.db.groups import (
-    get_all_registered_groups,
     get_all_workspace_profiles,
-    get_registered_group,
     get_workspace_profile,
-    set_registered_group,
     set_workspace_profile,
 )
 from pynchy.db.host_jobs import (
@@ -127,10 +124,7 @@ __all__ = [
     "set_router_state",
     "set_session",
     # groups
-    "get_all_registered_groups",
     "get_all_workspace_profiles",
-    "get_registered_group",
     "get_workspace_profile",
-    "set_registered_group",
     "set_workspace_profile",
 ]

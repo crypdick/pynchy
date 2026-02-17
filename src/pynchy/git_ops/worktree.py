@@ -328,7 +328,7 @@ def background_merge_worktree(group: object) -> None:
     worktree merges (message handler, session handler, IPC, scheduler).
 
     Args:
-        group: A RegisteredGroup (or any object with a .folder attribute).
+        group: A WorkspaceProfile (or any object with a .folder attribute).
     """
     import asyncio
 

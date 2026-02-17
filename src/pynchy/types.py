@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Literal, Protocol, runtime_checkable
 
@@ -79,11 +78,7 @@ class WorkspaceSecurity:
 
 @dataclass
 class WorkspaceProfile:
-    """Complete workspace configuration with security profile.
-
-    Replaces RegisteredGroup with added security features for Phase B.1
-    of security hardening.
-    """
+    """Complete workspace configuration with security profile."""
 
     # Identity
     jid: str  # WhatsApp JID or workspace identifier
@@ -155,61 +150,9 @@ class WorkspaceProfile:
 
         return errors
 
-    @classmethod
-    def from_registered_group(cls, jid: str, rg: RegisteredGroup) -> WorkspaceProfile:
-        """Migrate from old RegisteredGroup format.
 
-        Args:
-            jid: The workspace JID
-            rg: RegisteredGroup instance to migrate
-
-        Returns:
-            WorkspaceProfile with default security settings
-        """
-        return cls(
-            jid=jid,
-            name=rg.name,
-            folder=rg.folder,
-            trigger=rg.trigger,
-            requires_trigger=rg.requires_trigger if rg.requires_trigger is not None else True,
-            container_config=rg.container_config,
-            security=WorkspaceSecurity(),  # Default security profile
-            is_god=rg.is_god,
-            added_at=rg.added_at,
-        )
-
-    def to_registered_group(self) -> RegisteredGroup:
-        """Convert to legacy RegisteredGroup format for backward compatibility.
-
-        Returns:
-            RegisteredGroup instance (security info is lost)
-        """
-        return RegisteredGroup(
-            name=self.name,
-            folder=self.folder,
-            trigger=self.trigger,
-            added_at=self.added_at,
-            container_config=self.container_config,
-            requires_trigger=self.requires_trigger,
-            is_god=self.is_god,
-        )
-
-
-@dataclass
-class RegisteredGroup:
-    """Legacy group configuration format.
-
-    DEPRECATED: Use WorkspaceProfile instead.
-    Kept for backward compatibility during migration.
-    """
-
-    name: str
-    folder: str
-    trigger: str
-    added_at: str
-    container_config: ContainerConfig | None = None
-    requires_trigger: bool | None = None  # Default: True for groups, False for solo
-    is_god: bool = False
+# Deprecated alias — kept for external plugins that haven't migrated yet.
+RegisteredGroup = WorkspaceProfile
 
 
 @dataclass
@@ -392,8 +335,3 @@ class Channel(Protocol):
     #   post_message(jid, text) -> str | None   (returns message ID)
     #   update_message(jid, message_id, text)   (updates in-place)
     # Used by output_handler for real-time text streaming with a cursor indicator.
-
-
-# Callback types
-OnInboundMessage = Callable[[str, NewMessage], None]
-OnChatMetadata = Callable[[str, str, str | None], None]

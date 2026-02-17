@@ -6,12 +6,9 @@ without sending a follow-up text message.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import Any, Protocol
 
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    pass
 
 
 class ReactionDeps(Protocol):

@@ -22,7 +22,7 @@ from pynchy.chat.router import format_tool_preview
 from pynchy.config import Settings
 from pynchy.db import _init_test_database, store_message
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
-from pynchy.types import NewMessage, RegisteredGroup
+from pynchy.types import NewMessage, WorkspaceProfile
 
 _CR_ORCH = "pynchy.container_runner._orchestrator"
 
@@ -173,8 +173,9 @@ class EventCapture:
 async def app(tmp_path: Path):
     await _init_test_database()
     a = PynchyApp()
-    a.registered_groups = {
-        "group@g.us": RegisteredGroup(
+    a.workspaces = {
+        "group@g.us": WorkspaceProfile(
+            jid="group@g.us",
             name="Test Group",
             folder="test-group",
             trigger="@pynchy",
@@ -408,7 +409,7 @@ class TestBroadcastConsistency:
         app.channels = [channel]
         capture = EventCapture(app.event_bus)
 
-        group = app.registered_groups["group@g.us"]
+        group = app.workspaces["group@g.us"]
 
         with _patch_test_settings(tmp_path):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)

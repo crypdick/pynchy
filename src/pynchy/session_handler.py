@@ -17,7 +17,7 @@ from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
     from pynchy.group_queue import GroupQueue
-    from pynchy.types import Channel, NewMessage, RegisteredGroup
+    from pynchy.types import Channel, NewMessage, WorkspaceProfile
 
 
 class SessionDeps(Protocol):
@@ -39,7 +39,7 @@ class SessionDeps(Protocol):
     def channels(self) -> list[Channel]: ...
 
     @property
-    def registered_groups(self) -> dict[str, RegisteredGroup]: ...
+    def registered_groups(self) -> dict[str, WorkspaceProfile]: ...
 
     async def save_state(self) -> None: ...
 
@@ -53,7 +53,7 @@ class SessionDeps(Protocol):
 
 
 async def handle_context_reset(
-    deps: SessionDeps, chat_jid: str, group: RegisteredGroup, timestamp: str
+    deps: SessionDeps, chat_jid: str, group: WorkspaceProfile, timestamp: str
 ) -> None:
     """Clear session state, merge worktree, and confirm context reset."""
     from pynchy.git_ops.worktree import background_merge_worktree
@@ -75,7 +75,7 @@ async def handle_context_reset(
 
 
 async def handle_end_session(
-    deps: SessionDeps, chat_jid: str, group: RegisteredGroup, timestamp: str
+    deps: SessionDeps, chat_jid: str, group: WorkspaceProfile, timestamp: str
 ) -> None:
     """Sync worktree and spin down the container without clearing context.
 
