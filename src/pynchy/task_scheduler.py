@@ -378,7 +378,7 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
         if not error and task.project_access:
             from pynchy.git_ops.worktree import merge_and_push_worktree
 
-            merge_and_push_worktree(task.group_folder)
+            await asyncio.to_thread(merge_and_push_worktree, task.group_folder)
     except Exception as exc:
         idle_timer.cancel()
         error = str(exc)

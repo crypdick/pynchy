@@ -18,6 +18,7 @@ from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.logger import logger
 from pynchy.messaging.bus import finalize_stream_or_broadcast
 from pynchy.messaging.router import format_tool_preview, parse_host_tag
+from pynchy.utils import generate_message_id
 
 if TYPE_CHECKING:
     from pynchy.types import Channel, ContainerOutput, RegisteredGroup
@@ -405,7 +406,7 @@ async def handle_streamed_output(
                 logger.info("Agent output", group=group.name, text=raw[:200])
             msg_type = "host" if sender == "host" else "assistant"
             await store_message_direct(
-                id=f"bot-{int(datetime.now(UTC).timestamp() * 1000)}",
+                id=generate_message_id("bot"),
                 chat_jid=chat_jid,
                 sender=sender,
                 sender_name=sender_name,

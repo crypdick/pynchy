@@ -31,29 +31,60 @@ class MessageBroadcaster:
 
     The public API is on HostMessageBroadcaster — typed methods with correct
     emoji prefixes and DB persistence. Raw channel sends are private.
+
+    Uses a callable for channel list so the broadcaster always reads the
+    current state (channels may be replaced at runtime or in tests).
     """
 
-    def __init__(self, channels: list[Channel]) -> None:
-        self.channels = channels
+    def __init__(
+        self,
+        channels: Callable[[], list[Channel]] | list[Channel],
+        get_channel_jid: Callable[[str, str], str | None] | None = None,
+    ) -> None:
+        # Accept either a list or a callable returning a list.
+        # Callable form ensures the broadcaster always reads the current channels
+        # (important when the channel list may be replaced, e.g. in tests).
+        self._get_channels: Callable[[], list[Channel]] = (
+            channels if callable(channels) else lambda: channels
+        )
+        self._get_channel_jid = get_channel_jid
 
-    async def _broadcast_to_channels(self, jid: str, text: str) -> None:
-        """Send message to all connected channels (internal use)."""
-        for ch in self.channels:
+    def _resolve_jid(self, canonical_jid: str, channel_name: str) -> str:
+        """Resolve a canonical JID to a channel-specific alias, falling back to canonical."""
+        if self._get_channel_jid is not None:
+            return self._get_channel_jid(canonical_jid, channel_name) or canonical_jid
+        return canonical_jid
+
+    async def _broadcast_to_channels(
+        self, jid: str, text: str, *, suppress_errors: bool = True
+    ) -> None:
+        """Send message to all connected channels (internal use).
+
+        Args:
+            suppress_errors: When True (default), catches network errors silently.
+                When False, catches all exceptions (wider net for critical sends).
+        """
+        caught: tuple[type[BaseException], ...] = (
+            (OSError, TimeoutError, ConnectionError) if suppress_errors else (Exception,)
+        )
+        for ch in self._get_channels():
             if ch.is_connected():
+                target_jid = self._resolve_jid(jid, ch.name)
                 try:
-                    await ch.send_message(jid, text)
-                except (OSError, TimeoutError, ConnectionError) as exc:
+                    await ch.send_message(target_jid, text)
+                except caught as exc:
                     ch_name = getattr(ch, "name", "?")
                     logger.warning("Channel send failed", channel=ch_name, err=str(exc))
 
     async def _broadcast_formatted(self, jid: str, raw_text: str) -> None:
         """Send message with per-channel formatting (internal use)."""
-        for ch in self.channels:
+        for ch in self._get_channels():
             if ch.is_connected():
                 text = format_outbound(ch, raw_text)
                 if text:
+                    target_jid = self._resolve_jid(jid, ch.name)
                     try:
-                        await ch.send_message(jid, text)
+                        await ch.send_message(target_jid, text)
                     except (OSError, TimeoutError, ConnectionError) as exc:
                         ch_name = getattr(ch, "name", "?")
                         logger.warning("Formatted send failed", channel=ch_name, err=str(exc))

@@ -16,6 +16,7 @@ from pynchy import (
     session_handler,
     startup_handler,
 )
+from pynchy.adapters import HostMessageBroadcaster, MessageBroadcaster
 from pynchy.config import get_settings
 from pynchy.db import (
     get_aliases_for_jid,
@@ -76,6 +77,11 @@ class PynchyApp:
         self._shutting_down: bool = False
         self._http_runner: Any | None = None
         self.plugin_manager: pluggy.PluginManager | None = None
+
+        # Shared broadcast infrastructure — single code path for all channel sends.
+        # Uses lambda so broadcaster always reads current self.channels reference.
+        self._broadcaster = MessageBroadcaster(lambda: self.channels, self.get_channel_jid)
+        self._host_broadcaster = self._make_host_broadcaster()
 
     # ------------------------------------------------------------------
     # State persistence
@@ -210,8 +216,8 @@ class PynchyApp:
     async def broadcast_to_channels(
         self, chat_jid: str, text: str, *, suppress_errors: bool = True
     ) -> None:
-        await channel_handler.broadcast_to_channels(
-            self, chat_jid, text, suppress_errors=suppress_errors
+        await self._broadcaster._broadcast_to_channels(
+            chat_jid, text, suppress_errors=suppress_errors
         )
 
     async def send_reaction_to_channels(
@@ -223,7 +229,21 @@ class PynchyApp:
         await channel_handler.set_typing_on_channels(self, chat_jid, is_typing)
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None:
-        await channel_handler.broadcast_host_message(self, chat_jid, text)
+        await self._host_broadcaster.broadcast_host_message(chat_jid, text)
+
+    def _make_host_broadcaster(self) -> HostMessageBroadcaster:
+        """Create a HostMessageBroadcaster wired to this app's store and event bus."""
+        from pynchy.db import store_message_direct
+
+        async def store_host_message(**kwargs: Any) -> None:
+            await store_message_direct(**kwargs, message_type="host")
+
+        async def store_system_notice(**kwargs: Any) -> None:
+            await store_message_direct(**kwargs, message_type="user")
+
+        return HostMessageBroadcaster(
+            self._broadcaster, store_host_message, store_system_notice, self.event_bus.emit
+        )
 
     async def handle_streamed_output(
         self, chat_jid: str, group: RegisteredGroup, result: ContainerOutput

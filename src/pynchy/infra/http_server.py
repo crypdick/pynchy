@@ -165,26 +165,14 @@ async def _handle_deploy(request: web.Request) -> web.Response:
 
     # 5. Rebuild container image if container/ files changed
     if has_new_code and files_changed_between(old_sha, new_sha, "container/"):
-        build_script = get_settings().project_root / "container" / "build.sh"
-        logger.info("Container files changed, rebuilding image...")
-        result = subprocess.run(
-            [str(build_script)],
-            cwd=str(get_settings().project_root / "container"),
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
-        if result.returncode != 0:
-            logger.error(
-                "Container rebuild failed",
-                stderr=result.stderr[-500:],
-            )
+        from pynchy.deploy import build_container_image
+
+        build = build_container_image()
+        if not build.success:
             chat_jid = deps.god_chat_jid()
             if chat_jid:
                 msg = "Deploy warning — container rebuild failed, continuing with old image."
                 await deps.broadcast_host_message(chat_jid, msg)
-        else:
-            logger.info("Container image rebuilt successfully")
 
     # 6. Restart (write continuation only when new code was deployed)
     chat_jid = deps.god_chat_jid()

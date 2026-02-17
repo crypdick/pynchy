@@ -7,7 +7,6 @@ the composite dependency objects that subsystems require.
 
 from __future__ import annotations
 
-import subprocess
 from typing import TYPE_CHECKING, Any
 
 from pynchy.adapters import (
@@ -22,11 +21,8 @@ from pynchy.adapters import (
     SessionManager,
     UserMessageHandler,
 )
-from pynchy.config import get_settings
 from pynchy.container_runner import write_groups_snapshot as _write_groups_snapshot
-from pynchy.db import store_message_direct
 from pynchy.git_ops.utils import get_head_sha
-from pynchy.logger import logger
 
 if TYPE_CHECKING:
     from pynchy.app import PynchyApp
@@ -36,37 +32,24 @@ if TYPE_CHECKING:
     from pynchy.task_scheduler import SchedulerDependencies
 
 
-def make_host_broadcaster(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBroadcaster]:
-    """Create a MessageBroadcaster and HostMessageBroadcaster pair.
+def _get_broadcasters(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBroadcaster]:
+    """Return the app's shared broadcaster pair.
 
-    Uses two store functions with different message_type values:
-    - host messages → message_type='host' (filtered out of LLM context)
-    - system notices → message_type='user' (visible to LLM as pseudo-system messages)
+    All subsystems reuse the same MessageBroadcaster and HostMessageBroadcaster
+    instances from PynchyApp, ensuring a single code path for all channel sends.
     """
-    broadcaster = MessageBroadcaster(app.channels)
-
-    async def store_host_message(**kwargs: Any) -> None:
-        await store_message_direct(**kwargs, message_type="host")
-
-    async def store_system_notice(**kwargs: Any) -> None:
-        await store_message_direct(**kwargs, message_type="user")
-
-    host_broadcaster = HostMessageBroadcaster(
-        broadcaster, store_host_message, store_system_notice, app.event_bus.emit
-    )
-    return broadcaster, host_broadcaster
+    return app._broadcaster, app._host_broadcaster
 
 
 def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
     """Create the dependency object for the task scheduler."""
     group_registry = GroupRegistry(app.registered_groups)
     queue_manager = QueueManager(app.queue)
-    broadcaster = MessageBroadcaster(app.channels)
 
     class SchedulerDeps:
         registered_groups = group_registry.registered_groups
         queue = queue_manager.queue
-        broadcast_to_channels = broadcaster._broadcast_formatted
+        broadcast_to_channels = app._broadcaster._broadcast_formatted
 
         @staticmethod
         async def run_agent(*args: Any, **kwargs: Any) -> str:
@@ -94,7 +77,6 @@ async def _rebuild_and_deploy(
     """
     from pynchy.deploy import finalize_deploy
 
-    s = get_settings()
     chat_jid = group_registry.god_chat_jid()
     if chat_jid:
         msg = (
@@ -105,20 +87,9 @@ async def _rebuild_and_deploy(
         await host_broadcaster.broadcast_host_message(chat_jid, msg)
 
     if rebuild:
-        build_script = s.project_root / "container" / "build.sh"
-        if build_script.exists():
-            result = subprocess.run(
-                [str(build_script)],
-                cwd=str(s.project_root / "container"),
-                capture_output=True,
-                text=True,
-                timeout=600,
-            )
-            if result.returncode != 0:
-                logger.error(
-                    "Container rebuild failed during sync",
-                    stderr=result.stderr[-500:],
-                )
+        from pynchy.deploy import build_container_image
+
+        build_container_image()
 
     active_sessions = session_manager.get_active_sessions(group_registry.registered_groups())
 
@@ -133,7 +104,7 @@ async def _rebuild_and_deploy(
 
 def make_http_deps(app: PynchyApp) -> HttpDeps:
     """Create the dependency object for the HTTP server."""
-    _broadcaster, host_broadcaster = make_host_broadcaster(app)
+    _broadcaster, host_broadcaster = _get_broadcasters(app)
     group_registry = GroupRegistry(app.registered_groups)
     session_manager = SessionManager(app.sessions, app._session_cleared)
     metadata_manager = GroupMetadataManager(
@@ -166,7 +137,7 @@ def make_http_deps(app: PynchyApp) -> HttpDeps:
 
 def make_ipc_deps(app: PynchyApp) -> IpcDeps:
     """Create the dependency object for the IPC watcher."""
-    broadcaster, host_broadcaster = make_host_broadcaster(app)
+    broadcaster, host_broadcaster = _get_broadcasters(app)
     registration_manager = GroupRegistrationManager(
         app.registered_groups, app._register_group, app._send_clear_confirmation
     )
@@ -208,7 +179,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
 
 def make_git_sync_deps(app: PynchyApp) -> GitSyncDeps:
     """Create the dependency object for the git sync loop."""
-    _broadcaster, host_broadcaster = make_host_broadcaster(app)
+    _broadcaster, host_broadcaster = _get_broadcasters(app)
     group_registry = GroupRegistry(app.registered_groups)
     session_manager = SessionManager(app.sessions, app._session_cleared)
 

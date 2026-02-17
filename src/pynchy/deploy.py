@@ -6,10 +6,48 @@ import asyncio
 import json
 import os
 import signal
+import subprocess
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
+
+
+@dataclass
+class BuildResult:
+    """Result of a container image build attempt."""
+
+    success: bool
+    skipped: bool = False  # True when build.sh doesn't exist
+    stderr: str = ""
+
+
+def build_container_image(*, timeout: int = 600) -> BuildResult:
+    """Run container/build.sh to rebuild the container image.
+
+    Returns a BuildResult so callers can decide how to handle success/failure.
+    This is the single code path for all container image rebuilds.
+    """
+    build_script = get_settings().project_root / "container" / "build.sh"
+    if not build_script.exists():
+        logger.warning("Container rebuild requested but build.sh not found")
+        return BuildResult(success=True, skipped=True)
+
+    logger.info("Rebuilding container image...")
+    result = subprocess.run(
+        [str(build_script)],
+        cwd=str(get_settings().project_root / "container"),
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    if result.returncode != 0:
+        logger.error("Container rebuild failed", stderr=result.stderr[-500:])
+        return BuildResult(success=False, stderr=result.stderr[-500:])
+
+    logger.info("Container image rebuilt successfully")
+    return BuildResult(success=True)
 
 
 async def finalize_deploy(

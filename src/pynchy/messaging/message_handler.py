@@ -19,7 +19,7 @@ from pynchy.event_bus import AgentActivityEvent, MessageEvent
 from pynchy.git_ops.utils import is_repo_dirty
 from pynchy.logger import logger
 from pynchy.messaging.commands import is_context_reset, is_end_session, is_redeploy
-from pynchy.utils import IdleTimer, create_background_task
+from pynchy.utils import IdleTimer, create_background_task, generate_message_id
 
 if TYPE_CHECKING:
     from pynchy.group_queue import GroupQueue
@@ -156,7 +156,7 @@ async def execute_direct_command(
         )
 
         await store_message_direct(
-            id=f"cmd-{int(datetime.now(UTC).timestamp() * 1000)}",
+            id=generate_message_id("cmd"),
             chat_jid=chat_jid,
             sender="command_output",
             sender_name="command",
@@ -406,14 +406,9 @@ async def process_group_messages(
         return False
 
     # Merge worktree commits into main and push for all project_access groups
-    from pynchy.git_ops.worktree import merge_and_push_worktree
-    from pynchy.workspace_config import has_project_access
+    from pynchy.git_ops.worktree import background_merge_worktree
 
-    if has_project_access(group):
-        create_background_task(
-            asyncio.to_thread(merge_and_push_worktree, group.folder),
-            name=f"worktree-merge-{group.folder}",
-        )
+    background_merge_worktree(group)
 
     return True
 
