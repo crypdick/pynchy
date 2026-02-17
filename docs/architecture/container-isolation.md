@@ -43,7 +43,7 @@ Configure additional directory mounts via `containerConfig` in the SQLite `regis
 
 Each group gets its own env file at `data/env/{group}/env`. Only allowlisted variables pass through.
 
-**LLM credentials** flow through the host gateway (see [Security Model](security.md#5-credential-handling)). Containers receive gateway URLs and an ephemeral key — never real API keys:
+**LLM credentials** flow through the host gateway (see [Security Model](security.md#6-credential-handling)). Containers receive gateway URLs and an ephemeral key — never real API keys:
 - `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` — points to host gateway
 - `OPENAI_BASE_URL` / `OPENAI_API_KEY` — points to host gateway
 

@@ -1,97 +1,17 @@
 """Tests for src/pynchy/system_checks.py.
 
-Tests Tailscale status checking and container system bootstrap logic.
+Tests container system bootstrap logic.
 """
 
 from __future__ import annotations
 
-import json
 import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
+from conftest import make_settings
 
-from pynchy.config import (
-    AgentConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    IntervalsConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
-    Settings,
-    WorkspaceDefaultsConfig,
-)
-from pynchy.system_checks import check_tailscale, ensure_container_system_running
-
-# ---------------------------------------------------------------------------
-# check_tailscale
-# ---------------------------------------------------------------------------
-
-
-class TestCheckTailscale:
-    """Test Tailscale connectivity checking (non-fatal, logging-only)."""
-
-    def test_tailscale_running(self):
-        """Connected and running — should log info, not warning."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = json.dumps({"BackendState": "Running"})
-        mock_result.stderr = ""
-
-        with patch("pynchy.system_checks.subprocess.run", return_value=mock_result):
-            # Should not raise
-            check_tailscale()
-
-    def test_tailscale_not_running_state(self):
-        """Tailscale returns success but state is not Running."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = json.dumps({"BackendState": "Stopped"})
-        mock_result.stderr = ""
-
-        with patch("pynchy.system_checks.subprocess.run", return_value=mock_result):
-            check_tailscale()  # Should not raise
-
-    def test_tailscale_command_fails(self):
-        """tailscale CLI returns non-zero exit."""
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stdout = ""
-        mock_result.stderr = "not connected"
-
-        with patch("pynchy.system_checks.subprocess.run", return_value=mock_result):
-            check_tailscale()  # Non-fatal, should not raise
-
-    def test_tailscale_not_installed(self):
-        """tailscale CLI not found."""
-        with patch(
-            "pynchy.system_checks.subprocess.run",
-            side_effect=FileNotFoundError("No such file"),
-        ):
-            check_tailscale()  # Non-fatal, should not raise
-
-    def test_tailscale_unexpected_error(self):
-        """Unexpected exception during check."""
-        with patch(
-            "pynchy.system_checks.subprocess.run",
-            side_effect=RuntimeError("boom"),
-        ):
-            check_tailscale()  # Non-fatal, should not raise
-
-    def test_tailscale_missing_backend_state(self):
-        """JSON response without BackendState key."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = json.dumps({"Health": "ok"})
-        mock_result.stderr = ""
-
-        with patch("pynchy.system_checks.subprocess.run", return_value=mock_result):
-            check_tailscale()  # Should handle gracefully
-
+from pynchy.system_checks import ensure_container_system_running
 
 # ---------------------------------------------------------------------------
 # ensure_container_system_running
@@ -111,22 +31,7 @@ class TestEnsureContainerSystemRunning:
 
     @staticmethod
     def _settings(tmp_path):
-        s = Settings.model_construct(
-            agent=AgentConfig(),
-            container=ContainerConfig(),
-            server=ServerConfig(),
-            logging=LoggingConfig(),
-            secrets=SecretsConfig(),
-            workspace_defaults=WorkspaceDefaultsConfig(),
-            workspaces={},
-            commands=CommandWordsConfig(),
-            scheduler=SchedulerConfig(),
-            intervals=IntervalsConfig(),
-            queue=QueueConfig(),
-            security=SecurityConfig(),
-        )
-        s.__dict__["project_root"] = tmp_path
-        return s
+        return make_settings(project_root=tmp_path)
 
     def test_image_exists_no_orphans(self, mock_runtime):
         """Happy path: image exists, no orphaned containers."""
