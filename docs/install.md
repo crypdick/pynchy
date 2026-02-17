@@ -59,13 +59,10 @@ cp config-examples/config.toml.EXAMPLE config.toml
 # Edit config.toml with your preferred settings
 ```
 
-Enable WhatsApp plugin via config-managed plugins:
+Enable WhatsApp (requires optional dependency):
 
-```toml
-[plugins.whatsapp]
-repo = "crypdick/pynchy-plugin-whatsapp"
-ref = "main"
-enabled = true
+```bash
+uv sync --extra whatsapp
 ```
 
 Common configurations:
@@ -88,7 +85,7 @@ master_key = "your-master-key-here"    # required — used for LiteLLM UI and AP
 
 # Optional: LiteLLM admin UI credentials
 ui_username = "admin"
-ui_password = "your-ui-password-here"
+ui_password = "your-ui-password-here"    # pragma: allowlist secret
 ```
 
 Then configure your models and API keys in `litellm_config.yaml` (see `litellm_config.yaml.example` for a starting point):

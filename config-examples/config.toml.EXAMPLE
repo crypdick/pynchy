@@ -147,21 +147,13 @@
 # default = "tui"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Plugins (config-managed repositories)
+# Plugin Overrides
 # ─────────────────────────────────────────────────────────────────────────────
-# On startup, pynchy ensures enabled plugin repositories are cloned/updated
-# under ~/.config/pynchy/plugins/<plugin_name>.
+# Built-in plugins are auto-loaded from the monorepo. Use [plugins.<key>] to
+# disable a specific built-in plugin:
 #
 # [plugins.whatsapp]
-# repo = "crypdick/pynchy-plugin-whatsapp"
-# ref = "main"   # branch, tag, or commit SHA
-# enabled = true
-#
-# Optional: Apple Container runtime provider (macOS)
-# [plugins.apple-runtime]
-# repo = "crypdick/pynchy-plugin-apple-runtime"
-# ref = "main"
-# enabled = true
+# enabled = false
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Workspace Defaults

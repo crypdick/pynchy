@@ -10,7 +10,7 @@
 ## Features
 
 - Agents run in containers, providing process, filesystem, and network isolation.
-- Plugins are scanned by an LLM before being installed, providing a basic security audit.
+- Built-in plugins ship with the monorepo; third-party plugins are discoverable via Python entry points.
 - Uses [LiteLLM](https://docs.litellm.ai/docs/) as the LLM gateway, providing automatic load balancing across APIs and access to [100+ LLM providers](https://docs.litellm.ai/docs/providers).
 - Customizable; [five types of plugins](docs/plugins/index.md) are supported:
   - LLM Providers

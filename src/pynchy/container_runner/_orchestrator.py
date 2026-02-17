@@ -169,9 +169,8 @@ async def run_container_agent(
     routing.  Direct callers bypass the unified message pipeline and the UI
     will not faithfully represent the agent's token stream.
 
-    The only legitimate direct callers are:
+    The only legitimate direct caller is:
     - ``agent_runner.run_agent`` (the unified public entry point)
-    - ``plugin_verifier`` (one-off verification containers, not conversations)
 
     Args:
         group: The registered group configuration.
