@@ -19,9 +19,9 @@ from conftest import make_settings
 
 from pynchy.app import PynchyApp
 from pynchy.config import Settings
-from pynchy.db import _init_test_database, store_message
+from pynchy.db import _init_test_database
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
-from pynchy.types import ContainerOutput, NewMessage, RegisteredGroup
+from pynchy.types import NewMessage, RegisteredGroup
 
 # ---------------------------------------------------------------------------
 # Channel stubs — each mimics the real channel's protocol surface
@@ -182,9 +182,7 @@ class FakeProcess:
     def feed_output(self, output: dict[str, Any]) -> None:
         """Feed a single container output event."""
         payload = (
-            f"{Settings.OUTPUT_START_MARKER}\n"
-            f"{json.dumps(output)}\n"
-            f"{Settings.OUTPUT_END_MARKER}\n"
+            f"{Settings.OUTPUT_START_MARKER}\n{json.dumps(output)}\n{Settings.OUTPUT_END_MARKER}\n"
         )
         self.stdout.feed_data(payload.encode())
 
@@ -238,8 +236,8 @@ def patch_test_settings(tmp_path: Path):
             "pynchy.container_runner._session_prep",
             "pynchy.container_runner._orchestrator",
             "pynchy.container_runner._snapshots",
-            "pynchy.messaging.message_handler",
-            "pynchy.messaging.output_handler",
+            "pynchy.chat.message_handler",
+            "pynchy.chat.output_handler",
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         yield s

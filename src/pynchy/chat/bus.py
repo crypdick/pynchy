@@ -88,7 +88,7 @@ async def broadcast_formatted(
     the text per channel (e.g. Markdown for Slack, plain for WhatsApp).
     Used by the scheduler for periodic task output.
     """
-    from pynchy.messaging.router import format_outbound
+    from pynchy.chat.router import format_outbound
 
     for ch in deps.channels:
         if not ch.is_connected():

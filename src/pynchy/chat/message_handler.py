@@ -13,17 +13,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
-from pynchy.config import get_settings
-from pynchy.db import get_messages_since, get_new_messages, store_message_direct
-from pynchy.event_bus import AgentActivityEvent, MessageEvent
-from pynchy.git_ops.utils import is_repo_dirty
-from pynchy.logger import logger
-from pynchy.messaging.commands import (
+from pynchy.chat.commands import (
     is_any_magic_command,
     is_context_reset,
     is_end_session,
     is_redeploy,
 )
+from pynchy.config import get_settings
+from pynchy.db import get_messages_since, get_new_messages, store_message_direct
+from pynchy.event_bus import AgentActivityEvent, MessageEvent
+from pynchy.git_ops.utils import is_repo_dirty
+from pynchy.logger import logger
 from pynchy.utils import IdleTimer, create_background_task, generate_message_id
 
 if TYPE_CHECKING:
@@ -341,7 +341,7 @@ async def process_group_messages(
         if not has_trigger:
             return True
 
-    from pynchy.messaging.router import format_messages_for_sdk
+    from pynchy.chat.router import format_messages_for_sdk
 
     messages = format_messages_for_sdk(missed_messages)
 

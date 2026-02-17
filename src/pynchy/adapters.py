@@ -74,7 +74,7 @@ class MessageBroadcaster:
         Delegates to ``bus.broadcast()`` — the single code path for channel
         iteration, JID resolution, ownership checks, and error handling.
         """
-        from pynchy.messaging.bus import broadcast
+        from pynchy.chat.bus import broadcast
 
         await broadcast(self, jid, text, suppress_errors=suppress_errors)
 
@@ -85,7 +85,7 @@ class MessageBroadcaster:
         per channel (e.g. Markdown for Slack, plain text for WhatsApp).
         Used by the scheduler for periodic task output.
         """
-        from pynchy.messaging.bus import broadcast_formatted
+        from pynchy.chat.bus import broadcast_formatted
 
         await broadcast_formatted(self, jid, raw_text)
 

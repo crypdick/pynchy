@@ -13,7 +13,7 @@ from aiohttp.test_utils import AioHTTPTestCase
 from conftest import make_settings
 
 from pynchy.git_ops.utils import get_head_sha, is_repo_dirty, push_local_commits
-from pynchy.infra.http_server import (
+from pynchy.runtime.http_server import (
     _get_head_commit_message,
     _write_boot_warning,
     deps_key,
@@ -24,7 +24,7 @@ from pynchy.types import NewMessage
 @contextlib.contextmanager
 def _patch_settings(*, data_dir: Path):
     s = make_settings(data_dir=data_dir)
-    with patch("pynchy.infra.http_server.get_settings", return_value=s):
+    with patch("pynchy.runtime.http_server.get_settings", return_value=s):
         yield
 
 
@@ -291,7 +291,7 @@ class TestHealthEndpoint(AioHTTPTestCase):
     """Tests for /health endpoint."""
 
     async def get_application(self) -> web.Application:
-        from pynchy.infra.http_server import _handle_health
+        from pynchy.runtime.http_server import _handle_health
 
         app = web.Application()
         self.deps = MockHttpDeps()
@@ -302,9 +302,12 @@ class TestHealthEndpoint(AioHTTPTestCase):
     async def test_health_returns_status_ok(self):
         """Health endpoint returns ok status."""
         with (
-            patch("pynchy.infra.http_server.get_head_sha", return_value="abc123"),
-            patch("pynchy.infra.http_server._get_head_commit_message", return_value="Test commit"),
-            patch("pynchy.infra.http_server.is_repo_dirty", return_value=False),
+            patch("pynchy.runtime.http_server.get_head_sha", return_value="abc123"),
+            patch(
+                "pynchy.runtime.http_server._get_head_commit_message",
+                return_value="Test commit",
+            ),
+            patch("pynchy.runtime.http_server.is_repo_dirty", return_value=False),
         ):
             resp = await self.client.get("/health")
             assert resp.status == 200
@@ -319,9 +322,9 @@ class TestHealthEndpoint(AioHTTPTestCase):
     async def test_health_includes_uptime(self):
         """Health endpoint includes uptime_seconds."""
         with (
-            patch("pynchy.infra.http_server.get_head_sha", return_value="abc123"),
-            patch("pynchy.infra.http_server._get_head_commit_message", return_value="Test"),
-            patch("pynchy.infra.http_server.is_repo_dirty", return_value=False),
+            patch("pynchy.runtime.http_server.get_head_sha", return_value="abc123"),
+            patch("pynchy.runtime.http_server._get_head_commit_message", return_value="Test"),
+            patch("pynchy.runtime.http_server.is_repo_dirty", return_value=False),
         ):
             resp = await self.client.get("/health")
             data = await resp.json()
@@ -333,7 +336,7 @@ class TestTUIAPIEndpoints(AioHTTPTestCase):
     """Tests for TUI API endpoints."""
 
     async def get_application(self) -> web.Application:
-        from pynchy.infra.http_server import (
+        from pynchy.runtime.http_server import (
             _handle_api_groups,
             _handle_api_messages,
             _handle_api_periodic,

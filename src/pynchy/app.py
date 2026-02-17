@@ -17,6 +17,16 @@ from pynchy import (
     startup_handler,
 )
 from pynchy.adapters import HostMessageBroadcaster, MessageBroadcaster
+from pynchy.chat import (
+    channel_handler,
+    message_handler,
+    output_handler,
+)
+from pynchy.chat.channel_runtime import (
+    ChannelPluginContext,
+    load_channels,
+    resolve_default_channel,
+)
 from pynchy.config import get_settings
 from pynchy.db import (
     get_aliases_for_jid,
@@ -33,20 +43,10 @@ from pynchy.db import (
 )
 from pynchy.event_bus import EventBus
 from pynchy.group_queue import GroupQueue
-from pynchy.infra.http_server import start_http_server
-from pynchy.infra.service_installer import install_service
-from pynchy.infra.system_checks import ensure_container_system_running
 from pynchy.logger import logger
-from pynchy.messaging import (
-    channel_handler,
-    message_handler,
-    output_handler,
-)
-from pynchy.messaging.channel_runtime import (
-    ChannelPluginContext,
-    load_channels,
-    resolve_default_channel,
-)
+from pynchy.runtime.http_server import start_http_server
+from pynchy.runtime.service_installer import install_service
+from pynchy.runtime.system_checks import ensure_container_system_running
 from pynchy.tunnels import check_tunnels
 from pynchy.types import (
     Channel,
@@ -400,7 +400,7 @@ class PynchyApp:
 
     async def _on_reaction(self, jid: str, message_ts: str, user_id: str, emoji: str) -> None:
         """Handle an inbound reaction from a channel."""
-        from pynchy.messaging.reaction_handler import handle_reaction
+        from pynchy.chat.reaction_handler import handle_reaction
 
         await handle_reaction(self, jid, message_ts, user_id, emoji)
 
@@ -442,7 +442,7 @@ class PynchyApp:
             await asyncio.sleep(0.3)
             await self._http_runner.cleanup()
 
-        from pynchy.infra.gateway import stop_gateway
+        from pynchy.runtime.gateway import stop_gateway
 
         await stop_gateway()
         await self.queue.shutdown(10.0)
@@ -476,7 +476,7 @@ class PynchyApp:
 
             # Start the LLM gateway before any containers launch so they can
             # reach it for credential-isolated API calls.
-            from pynchy.infra.gateway import start_gateway
+            from pynchy.runtime.gateway import start_gateway
 
             await start_gateway()
 

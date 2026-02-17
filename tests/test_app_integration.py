@@ -69,8 +69,8 @@ def _patch_test_settings(tmp_path: Path):
             "pynchy.container_runner._session_prep",
             "pynchy.container_runner._orchestrator",
             "pynchy.container_runner._snapshots",
-            "pynchy.messaging.message_handler",
-            "pynchy.messaging.output_handler",
+            "pynchy.chat.message_handler",
+            "pynchy.chat.output_handler",
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         yield
@@ -178,7 +178,7 @@ class TestAppImports:
 
     def test_channel_runtime_import(self):
         """Channel runtime helper import in app.run() must resolve."""
-        from pynchy.messaging.channel_runtime import ChannelPluginContext  # noqa: F401
+        from pynchy.chat.channel_runtime import ChannelPluginContext  # noqa: F401
 
 
 class TestFirstRunBootstrap:

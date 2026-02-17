@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.messaging.output_handler import _next_trace_id, broadcast_trace, handle_streamed_output
+from pynchy.chat.output_handler import _next_trace_id, broadcast_trace, handle_streamed_output
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -93,7 +93,7 @@ class TestBroadcastTrace:
         deps = _make_deps()
 
         with patch(
-            "pynchy.messaging.output_handler.store_message_direct",
+            "pynchy.chat.output_handler.store_message_direct",
             new_callable=AsyncMock,
         ) as mock_store:
             await broadcast_trace(
@@ -123,7 +123,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="thinking", thinking="hmm...")
 
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is False
@@ -134,7 +134,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="tool_use", tool_name="Bash", tool_input={"command": "ls"})
 
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is False
@@ -153,7 +153,7 @@ class TestHandleStreamedOutput:
             tool_result_is_error=False,
         )
 
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is False
@@ -164,7 +164,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="system", system_subtype="init", system_data={"foo": "bar"})
 
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is False
@@ -188,7 +188,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="result", result="Hello user!")
 
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is True
@@ -202,7 +202,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="result", result="<internal>hidden</internal>")
 
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         # After stripping internal tags, text is empty — no visible result
@@ -215,7 +215,7 @@ class TestHandleStreamedOutput:
         output = _make_output(type="result", result="<host>System rebooting</host>")
 
         with patch(
-            "pynchy.messaging.output_handler.store_message_direct",
+            "pynchy.chat.output_handler.store_message_direct",
             new_callable=AsyncMock,
         ) as mock_store:
             result = await handle_streamed_output(deps, "g@g.us", group, output)
@@ -236,7 +236,7 @@ class TestHandleStreamedOutput:
             result_metadata={"total_cost_usd": 0.05, "duration_ms": 12345, "num_turns": 3},
         )
 
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             await handle_streamed_output(deps, "g@g.us", group, output)
 
         # Channel should get a cost/duration summary
@@ -266,7 +266,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="result", result={"key": "value"})
 
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is True
@@ -280,7 +280,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="result", result="<internal>secret</internal>Hello visible!")
 
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is True
@@ -300,7 +300,7 @@ class TestHandleStreamedOutput:
             result_metadata={"total_cost_usd": 0.12},
         )
 
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             await handle_streamed_output(deps, "g@g.us", group, output)
 
         channel_text = deps.broadcast_to_channels.call_args[0][1]
@@ -316,7 +316,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="result", result=None, result_metadata={})
 
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             await handle_streamed_output(deps, "g@g.us", group, output)
 
         # Store is called for metadata, but no channel broadcast for empty parts
@@ -330,7 +330,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="tool_use", tool_name=None, tool_input=None)
 
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is False
@@ -344,7 +344,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="system", system_subtype=None, system_data=None)
 
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is False
@@ -358,7 +358,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="result", result="<host>Restarting</host>")
 
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             await handle_streamed_output(deps, "g@g.us", group, output)
 
         channel_text = deps._test_channel.send_message.call_args[0][1]
@@ -372,7 +372,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="result", result="Hello!")
 
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             await handle_streamed_output(deps, "g@g.us", group, output)
 
         channel_text = deps._test_channel.send_message.call_args[0][1]
@@ -391,7 +391,7 @@ class TestHandleStreamedOutput:
         )
 
         with patch(
-            "pynchy.messaging.output_handler.store_message_direct",
+            "pynchy.chat.output_handler.store_message_direct",
             new_callable=AsyncMock,
         ) as mock_store:
             result = await handle_streamed_output(deps, "g@g.us", group, output)
@@ -409,7 +409,7 @@ class TestHandleStreamedOutput:
         """broadcast_trace should emit an AgentTraceEvent with correct trace_type."""
         deps = _make_deps()
 
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             await broadcast_trace(
                 deps,
                 "g@g.us",
@@ -431,7 +431,7 @@ class TestHandleStreamedOutput:
         deps = _make_deps()
 
         with patch(
-            "pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock
+            "pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock
         ) as mock_store:
             await broadcast_trace(
                 deps,
@@ -460,7 +460,7 @@ class TestHandleStreamedOutput:
 
         # First: send the tool_use for ExitPlanMode
         tool_use_output = _make_output(type="tool_use", tool_name="ExitPlanMode", tool_input={})
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             await handle_streamed_output(deps, "plan@g.us", group, tool_use_output)
 
         # Then: send the tool_result
@@ -470,7 +470,7 @@ class TestHandleStreamedOutput:
             tool_result_content=plan_content,
             tool_result_is_error=False,
         )
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             result = await handle_streamed_output(deps, "plan@g.us", group, tool_result_output)
 
         assert result is False
@@ -488,7 +488,7 @@ class TestHandleStreamedOutput:
         tool_use_output = _make_output(
             type="tool_use", tool_name="Bash", tool_input={"command": "ls"}
         )
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             await handle_streamed_output(deps, "normal@g.us", group, tool_use_output)
 
         # Then: send the tool_result
@@ -498,7 +498,7 @@ class TestHandleStreamedOutput:
             tool_result_content="file1.txt\nfile2.txt",
             tool_result_is_error=False,
         )
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             await handle_streamed_output(deps, "normal@g.us", group, tool_result_output)
 
         channel_text = deps.broadcast_to_channels.call_args[0][1]
@@ -511,7 +511,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
 
         tool_use_output = _make_output(type="tool_use", tool_name="ExitPlanMode", tool_input={})
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             await handle_streamed_output(deps, "empty@g.us", group, tool_use_output)
 
         tool_result_output = _make_output(
@@ -520,7 +520,7 @@ class TestHandleStreamedOutput:
             tool_result_content="",
             tool_result_is_error=False,
         )
-        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
             await handle_streamed_output(deps, "empty@g.us", group, tool_result_output)
 
         channel_text = deps.broadcast_to_channels.call_args[0][1]

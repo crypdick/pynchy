@@ -14,8 +14,8 @@ from dataclasses import dataclass
 
 from pynchy.config import Settings
 from pynchy.container_runner._serialization import _parse_container_output
-from pynchy.infra.runtime import get_runtime
 from pynchy.logger import logger
+from pynchy.runtime.runtime import get_runtime
 from pynchy.types import ContainerOutput
 
 OnOutput = Callable[[ContainerOutput], Awaitable[None]]

@@ -1,4 +1,4 @@
-"""Tests for pynchy.messaging.bus — unified message broadcast."""
+"""Tests for pynchy.chat.bus — unified message broadcast."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from pynchy.messaging.bus import broadcast, finalize_stream_or_broadcast
+from pynchy.chat.bus import broadcast, finalize_stream_or_broadcast
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+from pynchy.chat.commands import is_context_reset, is_end_session, is_redeploy
 from pynchy.config import CronJobConfig, _detect_timezone
-from pynchy.messaging.commands import is_context_reset, is_end_session, is_redeploy
 
 
 class TestIsContextReset:

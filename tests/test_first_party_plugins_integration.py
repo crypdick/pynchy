@@ -93,7 +93,7 @@ class TestSlackPluginFunctionality:
         mock_settings.slack.bot_token = None
         mock_settings.slack.app_token = None
 
-        with patch("pynchy.messaging.plugins.slack.get_settings", return_value=mock_settings):
+        with patch("pynchy.chat.plugins.slack.get_settings", return_value=mock_settings):
             channels = pm.hook.pynchy_create_channel(context=MagicMock())
 
         # Slack should return None when no tokens

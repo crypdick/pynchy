@@ -35,10 +35,10 @@ __all__ = [
 _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
     ("pynchy.agent_framework.plugins.claude", "ClaudeAgentCorePlugin", "claude"),
     ("pynchy.agent_framework.plugins.openai", "OpenAIAgentCorePlugin", "openai"),
-    ("pynchy.messaging.plugins.slack", "SlackChannelPlugin", "slack"),
-    ("pynchy.messaging.plugins.whatsapp", "WhatsAppPlugin", "whatsapp"),
+    ("pynchy.chat.plugins.slack", "SlackChannelPlugin", "slack"),
+    ("pynchy.chat.plugins.whatsapp", "WhatsAppPlugin", "whatsapp"),
     ("pynchy.tunnels.plugins.tailscale", "TailscaleTunnelPlugin", "tailscale"),
-    ("pynchy.infra.plugins.apple_runtime", "AppleRuntimePlugin", "apple-runtime"),
+    ("pynchy.runtime.plugins.apple_runtime", "AppleRuntimePlugin", "apple-runtime"),
     ("pynchy.integrations.plugins.caldav", "CalDAVMcpServerPlugin", "caldav"),
 ]
 

@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
-from pynchy.policy.middleware import PolicyDeniedError
+from pynchy.security.middleware import PolicyDeniedError
 
 
 @dataclass

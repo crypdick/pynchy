@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
 
+from pynchy.chat.bus import broadcast
 from pynchy.logger import logger
-from pynchy.messaging.bus import broadcast
 
 if TYPE_CHECKING:
     from pynchy.types import Channel

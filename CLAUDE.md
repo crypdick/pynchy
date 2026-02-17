@@ -13,11 +13,11 @@ Python process that connects to messaging channels (WhatsApp, Slack, etc. via pl
 | `src/pynchy/db/` | SQLite operations (async, aiosqlite) — package with domain submodules |
 | `src/pynchy/ipc/` | IPC watcher, registry-based dispatch, service handlers — package |
 | `src/pynchy/git_ops/` | Git sync, worktrees, and shared helpers — package |
-| `src/pynchy/messaging/` | Message pipeline — channels, commands, routing, output handling |
-| `src/pynchy/infra/` | Gateway, HTTP server, runtime detection, platform services |
+| `src/pynchy/chat/` | Message pipeline — channels, commands, routing, output handling |
+| `src/pynchy/runtime/` | Gateway, HTTP server, runtime detection, platform services |
 | `src/pynchy/plugin/` | Plugin system, sync, verification, built-in plugins |
 | `src/pynchy/container_runner/` | Container orchestration — mounts, credentials, process management |
-| `src/pynchy/policy/` | Security policy middleware and audit logging |
+| `src/pynchy/security/` | Security policy middleware and audit logging |
 | `src/pynchy/config.py` | Pydantic BaseSettings config (TOML + env overrides) |
 | `src/pynchy/group_queue.py` | Per-group queue with global concurrency limit |
 | `src/pynchy/task_scheduler.py` | Runs scheduled tasks |

@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.infra.system_checks import ensure_container_system_running
+from pynchy.runtime.system_checks import ensure_container_system_running
 
 # ---------------------------------------------------------------------------
 # ensure_container_system_running
@@ -38,8 +38,8 @@ class TestEnsureContainerSystemRunning:
         image_inspect = MagicMock(returncode=0)
 
         with (
-            patch("pynchy.infra.system_checks.get_runtime", return_value=mock_runtime),
-            patch("pynchy.infra.system_checks.subprocess.run", return_value=image_inspect),
+            patch("pynchy.runtime.system_checks.get_runtime", return_value=mock_runtime),
+            patch("pynchy.runtime.system_checks.subprocess.run", return_value=image_inspect),
         ):
             ensure_container_system_running()
 
@@ -56,12 +56,15 @@ class TestEnsureContainerSystemRunning:
         (container_dir / "Dockerfile").touch()
 
         with (
-            patch("pynchy.infra.system_checks.get_runtime", return_value=mock_runtime),
+            patch("pynchy.runtime.system_checks.get_runtime", return_value=mock_runtime),
             patch(
-                "pynchy.infra.system_checks.subprocess.run",
+                "pynchy.runtime.system_checks.subprocess.run",
                 side_effect=[inspect_fail, build_ok],
             ),
-            patch("pynchy.infra.system_checks.get_settings", return_value=self._settings(tmp_path)),
+            patch(
+                "pynchy.runtime.system_checks.get_settings",
+                return_value=self._settings(tmp_path),
+            ),
         ):
             ensure_container_system_running()
 
@@ -74,9 +77,12 @@ class TestEnsureContainerSystemRunning:
         container_dir.mkdir()
 
         with (
-            patch("pynchy.infra.system_checks.get_runtime", return_value=mock_runtime),
-            patch("pynchy.infra.system_checks.subprocess.run", return_value=inspect_fail),
-            patch("pynchy.infra.system_checks.get_settings", return_value=self._settings(tmp_path)),
+            patch("pynchy.runtime.system_checks.get_runtime", return_value=mock_runtime),
+            patch("pynchy.runtime.system_checks.subprocess.run", return_value=inspect_fail),
+            patch(
+                "pynchy.runtime.system_checks.get_settings",
+                return_value=self._settings(tmp_path),
+            ),
             pytest.raises(RuntimeError, match="not found"),
         ):
             ensure_container_system_running()
@@ -91,12 +97,15 @@ class TestEnsureContainerSystemRunning:
         (container_dir / "Dockerfile").touch()
 
         with (
-            patch("pynchy.infra.system_checks.get_runtime", return_value=mock_runtime),
+            patch("pynchy.runtime.system_checks.get_runtime", return_value=mock_runtime),
             patch(
-                "pynchy.infra.system_checks.subprocess.run",
+                "pynchy.runtime.system_checks.subprocess.run",
                 side_effect=[inspect_fail, build_fail],
             ),
-            patch("pynchy.infra.system_checks.get_settings", return_value=self._settings(tmp_path)),
+            patch(
+                "pynchy.runtime.system_checks.get_settings",
+                return_value=self._settings(tmp_path),
+            ),
             pytest.raises(RuntimeError, match="Failed to build"),
         ):
             ensure_container_system_running()
@@ -118,8 +127,8 @@ class TestEnsureContainerSystemRunning:
             return image_inspect
 
         with (
-            patch("pynchy.infra.system_checks.get_runtime", return_value=mock_runtime),
-            patch("pynchy.infra.system_checks.subprocess.run", side_effect=track_run),
+            patch("pynchy.runtime.system_checks.get_runtime", return_value=mock_runtime),
+            patch("pynchy.runtime.system_checks.subprocess.run", side_effect=track_run),
         ):
             ensure_container_system_running()
 
@@ -139,7 +148,7 @@ class TestEnsureContainerSystemRunning:
             return MagicMock(returncode=0)
 
         with (
-            patch("pynchy.infra.system_checks.get_runtime", return_value=mock_runtime),
-            patch("pynchy.infra.system_checks.subprocess.run", side_effect=track_run),
+            patch("pynchy.runtime.system_checks.get_runtime", return_value=mock_runtime),
+            patch("pynchy.runtime.system_checks.subprocess.run", side_effect=track_run),
         ):
             ensure_container_system_running()  # Should not raise

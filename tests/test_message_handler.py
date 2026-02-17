@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.messaging.message_handler import (
+from pynchy.chat.message_handler import (
     _advance_cursor,
     _check_dirty_repo,
     _handle_reset_handoff,
@@ -30,16 +30,16 @@ from pynchy.types import NewMessage
 
 # Commonly patched module paths — avoids repeating long strings and keeps
 # line lengths under 100 chars.
-_P_SETTINGS = "pynchy.messaging.message_handler.get_settings"
-_P_MSGS_SINCE = "pynchy.messaging.message_handler.get_messages_since"
-_P_NEW_MSGS = "pynchy.messaging.message_handler.get_new_messages"
-_P_INTERCEPT = "pynchy.messaging.message_handler.intercept_special_command"
-_P_FMT_SDK = "pynchy.messaging.router.format_messages_for_sdk"
-_P_STORE = "pynchy.messaging.message_handler.store_message_direct"
-_P_DIRTY = "pynchy.messaging.message_handler.is_repo_dirty"
+_P_SETTINGS = "pynchy.chat.message_handler.get_settings"
+_P_MSGS_SINCE = "pynchy.chat.message_handler.get_messages_since"
+_P_NEW_MSGS = "pynchy.chat.message_handler.get_new_messages"
+_P_INTERCEPT = "pynchy.chat.message_handler.intercept_special_command"
+_P_FMT_SDK = "pynchy.chat.router.format_messages_for_sdk"
+_P_STORE = "pynchy.chat.message_handler.store_message_direct"
+_P_DIRTY = "pynchy.chat.message_handler.is_repo_dirty"
 _P_HAS_PA = "pynchy.workspace_config.has_project_access"
 _P_MERGE = "pynchy.git_ops.worktree.merge_and_push_worktree"
-_P_BG_TASK = "pynchy.messaging.message_handler.create_background_task"
+_P_BG_TASK = "pynchy.chat.message_handler.create_background_task"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -154,7 +154,7 @@ class TestInterceptSpecialCommand:
         deps = _make_deps(groups={"g@g.us": group})
         msg = _make_message("reset context")
 
-        with patch("pynchy.messaging.message_handler.is_context_reset", return_value=True):
+        with patch("pynchy.chat.message_handler.is_context_reset", return_value=True):
             result = await intercept_special_command(deps, "g@g.us", group, msg)
 
         assert result is True
@@ -168,11 +168,11 @@ class TestInterceptSpecialCommand:
 
         with (
             patch(
-                "pynchy.messaging.message_handler.is_context_reset",
+                "pynchy.chat.message_handler.is_context_reset",
                 return_value=False,
             ),
             patch(
-                "pynchy.messaging.message_handler.is_end_session",
+                "pynchy.chat.message_handler.is_end_session",
                 return_value=True,
             ),
         ):
@@ -189,15 +189,15 @@ class TestInterceptSpecialCommand:
 
         with (
             patch(
-                "pynchy.messaging.message_handler.is_context_reset",
+                "pynchy.chat.message_handler.is_context_reset",
                 return_value=False,
             ),
             patch(
-                "pynchy.messaging.message_handler.is_end_session",
+                "pynchy.chat.message_handler.is_end_session",
                 return_value=False,
             ),
             patch(
-                "pynchy.messaging.message_handler.is_redeploy",
+                "pynchy.chat.message_handler.is_redeploy",
                 return_value=True,
             ),
         ):
@@ -217,19 +217,19 @@ class TestInterceptSpecialCommand:
 
         with (
             patch(
-                "pynchy.messaging.message_handler.is_context_reset",
+                "pynchy.chat.message_handler.is_context_reset",
                 return_value=False,
             ),
             patch(
-                "pynchy.messaging.message_handler.is_end_session",
+                "pynchy.chat.message_handler.is_end_session",
                 return_value=False,
             ),
             patch(
-                "pynchy.messaging.message_handler.is_redeploy",
+                "pynchy.chat.message_handler.is_redeploy",
                 return_value=False,
             ),
             patch(
-                "pynchy.messaging.message_handler.execute_direct_command",
+                "pynchy.chat.message_handler.execute_direct_command",
                 new_callable=AsyncMock,
             ) as mock_exec,
         ):
@@ -247,15 +247,15 @@ class TestInterceptSpecialCommand:
 
         with (
             patch(
-                "pynchy.messaging.message_handler.is_context_reset",
+                "pynchy.chat.message_handler.is_context_reset",
                 return_value=False,
             ),
             patch(
-                "pynchy.messaging.message_handler.is_end_session",
+                "pynchy.chat.message_handler.is_end_session",
                 return_value=False,
             ),
             patch(
-                "pynchy.messaging.message_handler.is_redeploy",
+                "pynchy.chat.message_handler.is_redeploy",
                 return_value=False,
             ),
         ):
@@ -271,15 +271,15 @@ class TestInterceptSpecialCommand:
 
         with (
             patch(
-                "pynchy.messaging.message_handler.is_context_reset",
+                "pynchy.chat.message_handler.is_context_reset",
                 return_value=False,
             ),
             patch(
-                "pynchy.messaging.message_handler.is_end_session",
+                "pynchy.chat.message_handler.is_end_session",
                 return_value=False,
             ),
             patch(
-                "pynchy.messaging.message_handler.is_redeploy",
+                "pynchy.chat.message_handler.is_redeploy",
                 return_value=False,
             ),
         ):
@@ -294,7 +294,7 @@ class TestInterceptSpecialCommand:
         deps = _make_deps()
         msg = _make_message("  reset context  ")
 
-        with patch("pynchy.messaging.message_handler.is_context_reset", return_value=True):
+        with patch("pynchy.chat.message_handler.is_context_reset", return_value=True):
             result = await intercept_special_command(deps, "g@g.us", group, msg)
 
         assert result is True

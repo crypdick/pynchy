@@ -15,7 +15,7 @@ from unittest.mock import Mock, patch
 
 from conftest import make_settings
 
-from pynchy.infra.service_installer import (
+from pynchy.runtime.service_installer import (
     _install_launchd_service,
     _install_systemd_service,
     install_service,
@@ -76,25 +76,25 @@ class TestInstallService:
     """Test platform-based dispatch."""
 
     def test_dispatches_to_launchd_on_darwin(self):
-        with patch("pynchy.infra.service_installer.sys") as mock_sys:
+        with patch("pynchy.runtime.service_installer.sys") as mock_sys:
             mock_sys.platform = "darwin"
-            with patch("pynchy.infra.service_installer._install_launchd_service") as mock_launchd:
+            with patch("pynchy.runtime.service_installer._install_launchd_service") as mock_launchd:
                 install_service()
                 mock_launchd.assert_called_once()
 
     def test_dispatches_to_systemd_on_linux(self):
-        with patch("pynchy.infra.service_installer.sys") as mock_sys:
+        with patch("pynchy.runtime.service_installer.sys") as mock_sys:
             mock_sys.platform = "linux"
-            with patch("pynchy.infra.service_installer._install_systemd_service") as mock_systemd:
+            with patch("pynchy.runtime.service_installer._install_systemd_service") as mock_systemd:
                 install_service()
                 mock_systemd.assert_called_once()
 
     def test_does_nothing_on_unsupported_platform(self):
-        with patch("pynchy.infra.service_installer.sys") as mock_sys:
+        with patch("pynchy.runtime.service_installer.sys") as mock_sys:
             mock_sys.platform = "win32"
             with (
-                patch("pynchy.infra.service_installer._install_launchd_service") as mock_launchd,
-                patch("pynchy.infra.service_installer._install_systemd_service") as mock_systemd,
+                patch("pynchy.runtime.service_installer._install_launchd_service") as mock_launchd,
+                patch("pynchy.runtime.service_installer._install_systemd_service") as mock_systemd,
             ):
                 install_service()
                 mock_launchd.assert_not_called()
@@ -112,7 +112,7 @@ class TestInstallLaunchdService:
     def test_skips_when_plist_source_does_not_exist(self, tmp_path: Path):
         """Should log warning and return when source plist is missing."""
         with patch(
-            "pynchy.infra.service_installer.get_settings",
+            "pynchy.runtime.service_installer.get_settings",
             return_value=_test_settings(project_root=tmp_path),
         ):
             # Source file does not exist
@@ -131,12 +131,12 @@ class TestInstallLaunchdService:
 
         with (
             patch(
-                "pynchy.infra.service_installer.get_settings",
+                "pynchy.runtime.service_installer.get_settings",
                 return_value=_test_settings(project_root=tmp_path),
             ),
-            patch("pynchy.infra.service_installer.Path.home", return_value=tmp_path),
-            patch("pynchy.infra.service_installer.is_launchd_loaded", return_value=False),
-            patch("pynchy.infra.service_installer.is_launchd_managed", return_value=False),
+            patch("pynchy.runtime.service_installer.Path.home", return_value=tmp_path),
+            patch("pynchy.runtime.service_installer.is_launchd_loaded", return_value=False),
+            patch("pynchy.runtime.service_installer.is_launchd_managed", return_value=False),
             patch("subprocess.run") as mock_run,
         ):
             _install_launchd_service()
@@ -161,11 +161,11 @@ class TestInstallLaunchdService:
 
         with (
             patch(
-                "pynchy.infra.service_installer.get_settings",
+                "pynchy.runtime.service_installer.get_settings",
                 return_value=_test_settings(project_root=tmp_path),
             ),
-            patch("pynchy.infra.service_installer.Path.home", return_value=tmp_path),
-            patch("pynchy.infra.service_installer.is_launchd_loaded", return_value=True),
+            patch("pynchy.runtime.service_installer.Path.home", return_value=tmp_path),
+            patch("pynchy.runtime.service_installer.is_launchd_loaded", return_value=True),
             patch("subprocess.run") as mock_run,
         ):
             _install_launchd_service()
@@ -185,12 +185,12 @@ class TestInstallLaunchdService:
 
         with (
             patch(
-                "pynchy.infra.service_installer.get_settings",
+                "pynchy.runtime.service_installer.get_settings",
                 return_value=_test_settings(project_root=tmp_path),
             ),
-            patch("pynchy.infra.service_installer.Path.home", return_value=tmp_path),
-            patch("pynchy.infra.service_installer.is_launchd_loaded", return_value=True),
-            patch("pynchy.infra.service_installer.is_launchd_managed", return_value=False),
+            patch("pynchy.runtime.service_installer.Path.home", return_value=tmp_path),
+            patch("pynchy.runtime.service_installer.is_launchd_loaded", return_value=True),
+            patch("pynchy.runtime.service_installer.is_launchd_managed", return_value=False),
             patch("subprocess.run") as mock_run,
         ):
             _install_launchd_service()
@@ -214,12 +214,12 @@ class TestInstallLaunchdService:
 
         with (
             patch(
-                "pynchy.infra.service_installer.get_settings",
+                "pynchy.runtime.service_installer.get_settings",
                 return_value=_test_settings(project_root=tmp_path),
             ),
-            patch("pynchy.infra.service_installer.Path.home", return_value=tmp_path),
-            patch("pynchy.infra.service_installer.is_launchd_loaded", return_value=False),
-            patch("pynchy.infra.service_installer.is_launchd_managed", return_value=True),
+            patch("pynchy.runtime.service_installer.Path.home", return_value=tmp_path),
+            patch("pynchy.runtime.service_installer.is_launchd_loaded", return_value=False),
+            patch("pynchy.runtime.service_installer.is_launchd_managed", return_value=True),
             patch("subprocess.run") as mock_run,
         ):
             _install_launchd_service()
@@ -247,10 +247,10 @@ class TestInstallSystemdService:
         with (
             patch("shutil.which", return_value="/usr/local/bin/uv"),
             patch(
-                "pynchy.infra.service_installer.get_settings",
+                "pynchy.runtime.service_installer.get_settings",
                 return_value=_test_settings(project_root=tmp_path),
             ),
-            patch("pynchy.infra.service_installer.Path.home", return_value=tmp_path),
+            patch("pynchy.runtime.service_installer.Path.home", return_value=tmp_path),
             patch("subprocess.run"),
         ):
             _install_systemd_service()
@@ -269,10 +269,10 @@ class TestInstallSystemdService:
         with (
             patch("shutil.which", return_value="/usr/local/bin/uv"),
             patch(
-                "pynchy.infra.service_installer.get_settings",
+                "pynchy.runtime.service_installer.get_settings",
                 return_value=_test_settings(project_root=tmp_path),
             ),
-            patch("pynchy.infra.service_installer.Path.home", return_value=tmp_path),
+            patch("pynchy.runtime.service_installer.Path.home", return_value=tmp_path),
             patch("subprocess.run") as mock_run,
         ):
             _install_systemd_service()
@@ -288,10 +288,10 @@ class TestInstallSystemdService:
         with (
             patch("shutil.which", return_value="/usr/local/bin/uv"),
             patch(
-                "pynchy.infra.service_installer.get_settings",
+                "pynchy.runtime.service_installer.get_settings",
                 return_value=_test_settings(project_root=tmp_path),
             ),
-            patch("pynchy.infra.service_installer.Path.home", return_value=tmp_path),
+            patch("pynchy.runtime.service_installer.Path.home", return_value=tmp_path),
             patch("subprocess.run") as mock_run,
         ):
             # First install creates the file
@@ -311,10 +311,10 @@ class TestInstallSystemdService:
         with (
             patch("shutil.which", return_value="/usr/local/bin/uv"),
             patch(
-                "pynchy.infra.service_installer.get_settings",
+                "pynchy.runtime.service_installer.get_settings",
                 return_value=_test_settings(project_root=tmp_path),
             ),
-            patch("pynchy.infra.service_installer.Path.home", return_value=tmp_path),
+            patch("pynchy.runtime.service_installer.Path.home", return_value=tmp_path),
             patch("subprocess.run") as mock_run,
         ):
             _install_systemd_service()
