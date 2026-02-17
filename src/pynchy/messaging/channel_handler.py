@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Protocol
 from pynchy.db import store_message_direct
 from pynchy.event_bus import MessageEvent
 from pynchy.logger import logger
+from pynchy.messaging.bus import broadcast
 from pynchy.utils import generate_message_id
 
 if TYPE_CHECKING:
@@ -35,22 +36,15 @@ async def broadcast_to_channels(
 ) -> None:
     """Send a message to all connected channels.
 
+    Delegates to the unified message bus.
+
     Args:
-        deps: Channel dependencies
+        deps: Channel dependencies (must satisfy BusDeps protocol)
         chat_jid: Target chat JID
         text: Message text to send
         suppress_errors: If True, silently ignore channel send failures
     """
-    caught: tuple[type[BaseException], ...] = (
-        (OSError, TimeoutError, ConnectionError) if suppress_errors else (Exception,)
-    )
-    for ch in deps.channels:
-        if ch.is_connected():
-            target_jid = deps.get_channel_jid(chat_jid, ch.name) or chat_jid
-            try:
-                await ch.send_message(target_jid, text)
-            except caught as exc:
-                logger.warning("Channel send failed", channel=ch.name, err=str(exc))
+    await broadcast(deps, chat_jid, text, suppress_errors=suppress_errors)
 
 
 async def send_reaction_to_channels(

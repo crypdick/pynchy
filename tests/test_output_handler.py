@@ -17,6 +17,15 @@ def _make_deps() -> MagicMock:
     deps = MagicMock()
     deps.broadcast_to_channels = AsyncMock()
     deps.emit = MagicMock()
+    # Provide a mock channel so finalize_stream_or_broadcast (bus) can work.
+    # The bus iterates deps.channels directly for result finalization.
+    ch = MagicMock()
+    ch.name = "test"
+    ch.is_connected.return_value = True
+    ch.send_message = AsyncMock()
+    deps.channels = [ch]
+    deps.get_channel_jid = MagicMock(return_value=None)
+    deps._test_channel = ch  # Expose for test assertions
     return deps
 
 
@@ -183,7 +192,9 @@ class TestHandleStreamedOutput:
             result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is True
-        deps.broadcast_to_channels.assert_awaited()
+        # Result finalization goes through the bus (finalize_stream_or_broadcast)
+        # which calls ch.send_message on the mock channel.
+        deps._test_channel.send_message.assert_awaited()
 
     @pytest.mark.asyncio
     async def test_result_empty_text_returns_false(self):
@@ -259,7 +270,7 @@ class TestHandleStreamedOutput:
             result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is True
-        channel_text = deps.broadcast_to_channels.call_args[0][1]
+        channel_text = deps._test_channel.send_message.call_args[0][1]
         assert "key" in channel_text
 
     @pytest.mark.asyncio
@@ -273,7 +284,7 @@ class TestHandleStreamedOutput:
             result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is True
-        channel_text = deps.broadcast_to_channels.call_args[0][1]
+        channel_text = deps._test_channel.send_message.call_args[0][1]
         assert "visible" in channel_text
         assert "secret" not in channel_text
 
@@ -350,7 +361,7 @@ class TestHandleStreamedOutput:
         with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
             await handle_streamed_output(deps, "g@g.us", group, output)
 
-        channel_text = deps.broadcast_to_channels.call_args[0][1]
+        channel_text = deps._test_channel.send_message.call_args[0][1]
         assert channel_text.startswith("🏠")
         assert "Restarting" in channel_text
 
@@ -368,7 +379,7 @@ class TestHandleStreamedOutput:
             mock_settings.return_value.agent.name = "TestBot"
             await handle_streamed_output(deps, "g@g.us", group, output)
 
-        channel_text = deps.broadcast_to_channels.call_args[0][1]
+        channel_text = deps._test_channel.send_message.call_args[0][1]
         assert "TestBot" in channel_text
 
     @pytest.mark.asyncio
@@ -391,8 +402,10 @@ class TestHandleStreamedOutput:
         assert result is True
         # Should have stored both metadata and result
         assert mock_store.await_count >= 2
-        # Should have broadcast both stats and the result text
-        assert deps.broadcast_to_channels.await_count >= 2
+        # Metadata stats go through deps.broadcast_to_channels (trace path)
+        assert deps.broadcast_to_channels.await_count >= 1
+        # Result text goes through the bus (finalize_stream_or_broadcast → ch.send_message)
+        deps._test_channel.send_message.assert_awaited()
 
     @pytest.mark.asyncio
     async def test_broadcast_trace_emits_correct_event_type(self):

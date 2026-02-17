@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from pynchy.db import clear_session, set_chat_cleared_at, store_message
 from pynchy.event_bus import ChatClearedEvent, MessageEvent
 from pynchy.logger import logger
+from pynchy.messaging.bus import broadcast
 from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
@@ -177,19 +178,7 @@ async def ingest_user_message(
     # shows the bot username, WhatsApp shows contact names).  Adding a
     # "SenderName: " prefix here would break magic-word detection on
     # receiving channels and produce ugly double-attribution.
-    for ch in deps.channels:
-        if ch.is_connected():
-            # Skip broadcasting back to the source channel
-            if source_channel and ch.name == source_channel:
-                continue
-
-            # Use channel-specific alias JID if one exists
-            target_jid = deps.get_channel_jid(msg.chat_jid, ch.name) or msg.chat_jid
-
-            try:
-                await ch.send_message(target_jid, msg.content)
-            except (OSError, TimeoutError, ConnectionError) as exc:
-                logger.warning("Cross-channel broadcast failed", channel=ch.name, err=str(exc))
+    await broadcast(deps, msg.chat_jid, msg.content, skip_channel=source_channel)
 
 
 async def on_inbound(deps: SessionDeps, _jid: str, msg: NewMessage) -> None:
