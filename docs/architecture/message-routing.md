@@ -1,6 +1,8 @@
 # Message Routing
 
-This page explains how messages flow from channels to agents and back. Understanding the routing model helps you debug message delivery, configure trigger patterns, and reason about what the LLM sees in its context.
+This page explains how messages flow from channels to agents and back. Understanding the routing model helps you debug message delivery and reason about what the LLM sees in its context. For user-facing information on talking to your assistant (trigger words, message prefixes), see [Usage](../usage/index.md).
+
+Messages arrive from plugin-provided [channels](../usage/channels.md) (WhatsApp, Slack, TUI, etc.) and all flow through the same routing code path.
 
 ## Transparent Token Stream
 
@@ -27,18 +29,12 @@ The goal: if something went wrong, you can reconstruct what the LLM saw by readi
 
 ## Trigger Pattern
 
-Messages must start with the `@Pynchy` prefix (case insensitive, configurable via `ASSISTANT_NAME`). The `TRIGGER_ALIASES` setting (default: `ghost`) also triggers the bot. Examples:
-
-- `@Pynchy what's the weather?` — triggers
-- `@pynchy help me` — triggers (case insensitive)
-- `Hey @Pynchy` — ignored (trigger not at start)
-- `What's up?` — ignored (no trigger)
+Messages must start with the trigger prefix (default `@Pynchy`, case insensitive, configurable via `ASSISTANT_NAME`). The `TRIGGER_ALIASES` setting also triggers the bot. The prefix is stripped before the message reaches the agent.
 
 ## Routing Behavior
 
-- All channels send messages through the same code path
 - Only messages from registered groups get processed; the router ignores unregistered groups
-- All channels stay in sync — continue conversations from any channel, and every channel displays the same message history
+- All channels stay in sync — see [Channels](../usage/channels.md) for how multi-channel broadcast works
 - Messages that arrive while a task runs follow escalation rules — see [Messaging During Active Tasks](../usage/index.md#messaging-during-active-tasks)
 
 For how messages are typed and stored, see [Message types](message-types.md).

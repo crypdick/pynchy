@@ -6,19 +6,19 @@ This page tracks plugins that work with pynchy.
 
 These ship with pynchy and are always available. Some require optional dependencies (`uv sync --extra <name>`) and activate only when their config section is present:
 
-| Plugin | Type | Purpose | Config |
-|--------|------|---------|--------|
-| `agent_claude` | Agent Core | Default Claude SDK agent core. | Always active |
-| `agent_openai` | Agent Core | OpenAI Agents SDK alternative. | `PYNCHY_AGENT_CORE=openai` |
-| `whatsapp` | Channel | WhatsApp channel via neonize. | `uv sync --extra whatsapp` + QR auth |
-| `slack` | Channel | Slack channel via Socket Mode (bolt). Maps Slack channels/DMs to workspaces. | `[slack] bot_token / app_token` + `uv sync --extra slack` |
-| `caldav` | MCP Server Handler | CalDAV calendar tools (list, create, delete events). Works with Nextcloud and other CalDAV servers. | `[caldav] url / username / password` + `uv sync --extra caldav` |
-| `docker-runtime` | Container Runtime | Docker container runtime. Default on Linux, fallback on macOS. | Always active (requires `docker` CLI) |
-| `apple-runtime` | Container Runtime | Apple Container runtime for macOS hosts. | macOS only (auto-detected) |
-| `tui` | Channel | TUI client (Textual). Standalone terminal UI connecting via HTTP/SSE. | Always active |
-| `sqlite-memory` | Memory Backend | Persistent per-group memory with BM25-ranked full-text search (save, recall, forget, list). | Always active |
-| `sqlite-observer` | Observer | Persists EventBus events to a dedicated `events` table for observability. | Always active |
-| `tailscale` | Tunnel | Tailscale connectivity detection. Warns at startup if tunnel is down. | Always active (requires `tailscale` CLI) |
+| Plugin | Type | Purpose | Config | Docs |
+|--------|------|---------|--------|------|
+| `agent_claude` | Agent Core | Default Claude SDK agent core. | Always active | [Agent cores](../usage/agent-cores.md) |
+| `agent_openai` | Agent Core | OpenAI Agents SDK alternative. | `PYNCHY_AGENT_CORE=openai` | [Agent cores](../usage/agent-cores.md) |
+| `whatsapp` | Channel | WhatsApp channel via neonize. | `uv sync --extra whatsapp` + QR auth | [Channels](../usage/channels.md) |
+| `slack` | Channel | Slack channel via Socket Mode (bolt). Maps Slack channels/DMs to workspaces. | `[slack] bot_token / app_token` + `uv sync --extra slack` | [Channels](../usage/channels.md) |
+| `tui` | Channel | TUI client (Textual). Standalone terminal UI connecting via HTTP/SSE. | Always active | [Channels](../usage/channels.md) |
+| `sqlite-memory` | Memory Backend | Persistent per-group memory with BM25-ranked full-text search (save, recall, forget, list). | Always active | [Memory](../usage/memory.md) |
+| `caldav` | MCP Server Handler | CalDAV calendar tools (list, create, delete events). Works with Nextcloud and other CalDAV servers. | `[caldav] url / username / password` + `uv sync --extra caldav` | [MCP service tools](../architecture/mcp-service-tools.md) |
+| `docker-runtime` | Container Runtime | Docker container runtime. Default on Linux, fallback on macOS. | Always active (requires `docker` CLI) | [Container isolation](../architecture/container-isolation.md) |
+| `apple-runtime` | Container Runtime | Apple Container runtime for macOS hosts. | macOS only (auto-detected) | [Container isolation](../architecture/container-isolation.md) |
+| `sqlite-observer` | Observer | Persists EventBus events to a dedicated `events` table for observability. | Always active | [Observers](../architecture/observers.md) |
+| `tailscale` | Tunnel | Tailscale connectivity detection. Warns at startup if tunnel is down. | Always active (requires `tailscale` CLI) | [Tunnels](../architecture/tunnels.md) |
 
 Plugins with optional dependencies are gracefully skipped at startup if their dependencies aren't installed. Install all optional dependencies at once with `uv sync --extra all`.
 
