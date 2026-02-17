@@ -1,4 +1,4 @@
-site_name: Pynchy
+site_name: 🦞 Pynchy
 site_description: Personal Claude assistant that runs securely in containers
 repo_url: https://github.com/crypdick/pynchy
 repo_name: crypdick/pynchy
@@ -30,6 +30,8 @@ theme:
     - navigation.top
     - content.code.copy
     - search.highlight
+  favicon: assets/favicon.svg
+  logo: assets/favicon.svg
   icon:
     repo: fontawesome/brands/github
 

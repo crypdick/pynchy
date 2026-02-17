@@ -425,7 +425,7 @@ async def start_message_loop(
     """Main polling loop — checks for new messages every message_poll interval."""
     s = get_settings()
 
-    logger.info(f"Pynchy running (trigger: @{s.agent.name})")
+    logger.info(f"🦞 Pynchy running (trigger: @{s.agent.name})")
 
     while not shutting_down():
         try:

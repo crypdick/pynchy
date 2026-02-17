@@ -55,7 +55,7 @@ async def send_boot_notification(deps: StartupDeps) -> None:
     commit_msg = _get_head_commit_message(50)
     dirty = " (dirty)" if is_repo_dirty() else ""
     label = f"{sha}{dirty} {commit_msg}".strip() if commit_msg else f"{sha}{dirty}"
-    parts = [f"{s.agent.name} online -- {label}"]
+    parts = [f"🦞 online -- {label}"]
 
     # Check for API credentials and warn if missing
     from pynchy.container_runner import _write_env_file

@@ -390,7 +390,7 @@ async def handle_streamed_output(
                 sender = "bot"
                 sender_name = s.agent.name
                 db_content = text
-                channel_text = f"{s.agent.name}: {text}"
+                channel_text = f"🦞 {text}"
                 logger.info("Agent output", group=group.name, text=raw[:200])
             msg_type = "host" if sender == "host" else "assistant"
             await store_message_direct(
