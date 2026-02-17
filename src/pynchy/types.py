@@ -151,11 +151,6 @@ class WorkspaceProfile:
         return errors
 
 
-# Backward-compat alias — external plugins (e.g. pynchy-plugin-whatsapp) still
-# import this name.  Remove once all plugins have migrated to WorkspaceProfile.
-RegisteredGroup = WorkspaceProfile
-
-
 @dataclass
 class NewMessage:
     id: str
