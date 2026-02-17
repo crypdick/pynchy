@@ -65,7 +65,7 @@ Single source of truth for all pynchy work items.
 ### 3 - Ready
 *Plan approved or not needed. Ready for an agent to pick up.*
 
-- factor out tailscale support into a separate plugin. make sure that at least one tunnel is always active. we might need to create a new tunnel plugin type, and update the cookiecutter template.
+- factor out tailscale support into a separate plugin. make sure that at least one tunnel is always active. we might need to create a new tunnel plugin type.
 - factor out openai backend as a separate plugin (currently built-in at `plugin/builtin_agent_openai.py` — needs extraction to separate package)
 - factor out claude backend as a separate plugin (currently built-in at `plugin/builtin_agent_claude.py` — needs extraction to separate package)
 - make the code improver plugin able to update the plugin repos as well as the core pynchy repo.
@@ -75,7 +75,7 @@ Single source of truth for all pynchy work items.
 
 #### Docs updates
 - we've iterated on our plugin system but havent updated the docs of all the individual plugins to keep them up to date
-- we need to improve the docs on the plugins and the and the cookiecutter template so that it says a bit about pynchy and links back to the main pynchy repo.
+- we need to improve the docs on the plugins so that it says a bit about pynchy and links back to the main pynchy repo.
 
 
 ### 4 - In Progress

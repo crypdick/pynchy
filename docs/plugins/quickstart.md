@@ -9,9 +9,6 @@ This guide walks you through creating, installing, and testing a pynchy plugin. 
 
 ## 1. Scaffold the Plugin
 
-!!! tip
-    The [`cookiecutter-pynchy-plugin`](https://github.com/crypdick/cookiecutter-pynchy-plugin) repository provides a ready-made template for this structure. Use it if you want a generated starter project with optional hook scaffolding.
-
 Create a new directory for your plugin:
 
 ```bash

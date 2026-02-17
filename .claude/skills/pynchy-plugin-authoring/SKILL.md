@@ -11,18 +11,16 @@ Use this skill when the user asks to:
 
 - Create a new `pynchy` plugin
 - Add a new hook to an existing plugin
-- Scaffold plugin files from `cookiecutter-pynchy-plugin`
 - Register/enable plugins in `config.toml`
 - Validate plugin discovery and runtime behavior
 
 ## Core Rules
 
-1. Prefer scaffolding with the local cookiecutter template:
-   - `<path-to-cookiecutter-pynchy-plugin>` (often `../cookiecutter-pynchy-plugin` if repos are siblings)
-2. Keep plugin responsibilities narrow. One plugin can implement multiple hooks, but avoid unrelated concerns in one package.
-3. In the plugin repository `pyproject.toml` (not `pynchy/pyproject.toml`), define entry points under `[project.entry-points."pynchy"]`.
-4. For host runtime/channel code, treat plugin code as high trust and avoid risky side effects in import-time code.
-5. For plugin docs, cross-link to `pynchy/docs/plugins/*` instead of duplicating long explanations.
+1. Keep plugin responsibilities narrow. One plugin can implement multiple hooks, but avoid unrelated concerns in one package.
+2. In the plugin repository `pyproject.toml` (not `pynchy/pyproject.toml`), define entry points under `[project.entry-points."pynchy"]`.
+3. For host runtime/channel code, treat plugin code as high trust and avoid risky side effects in import-time code.
+4. For plugin docs, cross-link to `pynchy/docs/plugins/*` instead of duplicating long explanations.
+5. Refer to the [quickstart guide](docs/plugins/quickstart.md) for the recommended plugin directory structure.
 
 ## File Scope Conventions
 
@@ -40,40 +38,13 @@ Copy this checklist and complete it in order:
 ```text
 Plugin Authoring Checklist
 - [ ] Choose plugin scope and hook categories
-- [ ] Scaffold with cookiecutter (or update existing plugin)
+- [ ] Create plugin directory structure (or update existing plugin)
 - [ ] Implement hook methods and runtime logic
 - [ ] Add/update tests
 - [ ] Configure local pynchy [plugins.<name>] entry
 - [ ] Run tests and smoke checks
 - [ ] Update docs if behavior is user-visible
 ```
-
-## Recommended Scaffold Command
-
-From any working directory:
-
-```bash
-uvx cookiecutter --no-input \
-  https://github.com/crypdick/cookiecutter-pynchy-plugin.git \
-  plugin_slug="<slug>" \
-  plugin_repo_name="pynchy-plugin-<slug>" \
-  python_module="pynchy_plugin_<slug_with_underscores>" \
-  plugin_class_name="<PascalCase>Plugin" \
-  entry_point_name="<slug>" \
-  plugin_description="<short description>" \
-  include_mcp_server="no" \
-  include_skill="no" \
-  include_agent_core="no" \
-  include_channel="no" \
-  include_container_runtime="no" \
-  include_workspace="no" \
-  include_tests="yes"
-```
-
-You can also replace the URL with a local template path when iterating on template changes.
-
-Enable the needed `include_*` flags for the plugin type.
-Set `include_workspace="yes"` for periodic agent/workspace plugins.
 
 ## Hook Map
 
@@ -108,12 +79,6 @@ For plugin repositories:
 
 ```bash
 uv run pytest
-```
-
-For cookiecutter template repository:
-
-```bash
-python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
 For `pynchy` docs link safety after docs changes:
