@@ -27,8 +27,8 @@ from pynchy.git_ops.utils import get_head_sha
 if TYPE_CHECKING:
     from pynchy.app import PynchyApp
     from pynchy.git_ops.sync import GitSyncDeps
+    from pynchy.http_server import HttpDeps
     from pynchy.ipc import IpcDeps
-    from pynchy.runtime.http_server import HttpDeps
     from pynchy.task_scheduler import SchedulerDependencies
 
 

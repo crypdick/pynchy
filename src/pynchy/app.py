@@ -43,10 +43,10 @@ from pynchy.db import (
 )
 from pynchy.event_bus import EventBus
 from pynchy.group_queue import GroupQueue
+from pynchy.http_server import start_http_server
 from pynchy.logger import logger
-from pynchy.runtime.http_server import start_http_server
-from pynchy.runtime.service_installer import install_service
 from pynchy.runtime.system_checks import ensure_container_system_running
+from pynchy.service_installer import install_service
 from pynchy.tunnels import check_tunnels
 from pynchy.types import (
     Channel,
@@ -442,7 +442,7 @@ class PynchyApp:
             await asyncio.sleep(0.3)
             await self._http_runner.cleanup()
 
-        from pynchy.runtime.gateway import stop_gateway
+        from pynchy.container_runner.gateway import stop_gateway
 
         await stop_gateway()
         await self.queue.shutdown(10.0)
@@ -476,7 +476,7 @@ class PynchyApp:
 
             # Start the LLM gateway before any containers launch so they can
             # reach it for credential-isolated API calls.
-            from pynchy.runtime.gateway import start_gateway
+            from pynchy.container_runner.gateway import start_gateway
 
             await start_gateway()
 

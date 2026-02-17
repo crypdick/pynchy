@@ -1,3 +1,3 @@
-"""Infrastructure — gateway, HTTP server, runtime detection, and platform services."""
+"""Runtime detection, platform providers, and system checks."""
 
 from pynchy.runtime.plugins import apple_runtime  # noqa: F401
