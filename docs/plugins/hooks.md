@@ -115,7 +115,7 @@ async def handler(data: dict) -> dict:
 
 Provide agent skills (markdown instruction files) that get mounted into the container.
 
-**Calling strategy:** All results collected and flattened.
+**Calling strategy:** All results collected and flattened. Skills are filtered per-workspace based on the `skills` config field before being copied into the session directory.
 
 ```python
 @hookimpl
@@ -133,6 +133,42 @@ skills/
     ├── SKILL.md          # Required: skill definition
     └── examples.md       # Optional: supporting files
 ```
+
+**SKILL.md frontmatter:**
+
+Skills declare metadata via YAML frontmatter at the top of `SKILL.md`:
+
+```yaml
+---
+name: code-review
+description: Review code for bugs and style issues.
+tier: community
+---
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | No | Skill identifier (defaults to directory name) |
+| `description` | Yes | What the skill does (used by the agent to decide when to invoke it) |
+| `tier` | No | `core`, `community`, or `dev` (defaults to `community`) |
+| `allowed-tools` | No | Tool permissions (e.g., `Bash(agent-browser:*)`) |
+
+**Skill tiers:**
+
+| Tier | Purpose | Filtering behavior |
+|------|---------|-------------------|
+| `core` | Essential skills useful in all workspaces | Always included when any filtering is active |
+| `community` | General-purpose skills (default) | Included only when explicitly listed or no filtering is set |
+| `dev` | Skills for developing pynchy itself | Included only when explicitly listed |
+
+Workspaces opt into skills via the `skills` config field:
+
+```toml
+[workspaces.my-workspace]
+skills = ["core", "dev"]           # tier names and/or individual skill names
+```
+
+When `skills` is not set, all skills are included (backwards compatible). When set, entries are unioned — `["core", "agent-browser"]` means all core-tier skills plus `agent-browser` specifically. Core is always implicit when any filtering is active.
 
 ## pynchy_create_channel
 

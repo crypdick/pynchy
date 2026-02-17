@@ -24,7 +24,7 @@ Python process that connects to messaging channels (WhatsApp, Slack, etc. via pl
 | `src/pynchy/types.py` | Data models (dataclasses) |
 | `src/pynchy/logger.py` | Structured logging (structlog) |
 | `groups/{name}/CLAUDE.md` | Per-group memory (isolated) |
-| `container/skills/agent-browser.md` | Browser automation tool (available to all agents via Bash) |
+| `container/skills/` | Agent skills with YAML frontmatter (tier, name, description) |
 | `backlog/TODO.md` | Work item index — one-line items linking to plan files in status folders |
 
 ## Detailed Guides
