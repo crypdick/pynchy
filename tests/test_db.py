@@ -1253,3 +1253,56 @@ class TestUpdateById:
         assert job is not None
         assert job.command == "echo hi"  # unchanged
         assert job.status == "paused"  # allowed field updated
+
+
+@pytest.mark.anyio
+class TestEnsureColumns:
+    """Test that _ensure_columns adds missing columns to existing tables."""
+
+    async def test_adds_missing_column_to_existing_table(self):
+        """Simulate an old DB missing a column, then run _ensure_columns."""
+        import aiosqlite
+
+        from pynchy.db._connection import _ensure_columns
+
+        db = await aiosqlite.connect(":memory:")
+        # Create registered_groups WITHOUT is_god column (old schema)
+        await db.executescript("""
+            CREATE TABLE registered_groups (
+                jid TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                folder TEXT NOT NULL UNIQUE,
+                trigger_pattern TEXT NOT NULL,
+                added_at TEXT NOT NULL,
+                container_config TEXT,
+                requires_trigger INTEGER DEFAULT 1
+            );
+        """)
+
+        # Verify is_god is missing
+        cursor = await db.execute("PRAGMA table_info(registered_groups)")
+        cols = {row[1] for row in await cursor.fetchall()}
+        assert "is_god" not in cols
+
+        # Run _ensure_columns — should add is_god and security_profile
+        await _ensure_columns(db)
+
+        cursor = await db.execute("PRAGMA table_info(registered_groups)")
+        cols = {row[1] for row in await cursor.fetchall()}
+        assert "is_god" in cols
+        assert "security_profile" in cols
+
+        await db.close()
+
+    async def test_noop_when_all_columns_present(self):
+        """_ensure_columns is a no-op when schema is already up to date."""
+        import aiosqlite
+
+        from pynchy.db._connection import _SCHEMA, _ensure_columns
+
+        db = await aiosqlite.connect(":memory:")
+        await db.executescript(_SCHEMA)
+
+        # Should not raise
+        await _ensure_columns(db)
+        await db.close()

@@ -1,11 +1,18 @@
 """Database connection, schema, and migration internals.
 
 Single module-level connection, initialized by init_database().
+
+Schema philosophy: ``_SCHEMA`` is the source of truth for the latest table
+definitions.  ``CREATE TABLE IF NOT EXISTS`` handles brand-new databases.
+``_ensure_columns`` handles existing databases where tables predate newly
+added columns — it parses the schema string and issues ``ALTER TABLE ADD
+COLUMN`` for anything missing.  No numbered migration files needed.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import aiosqlite
@@ -154,8 +161,52 @@ async def _update_by_id(
     await db.commit()
 
 
+def _parse_schema_columns(schema: str) -> dict[str, list[tuple[str, str]]]:
+    """Parse CREATE TABLE statements and return {table: [(col_name, col_def), ...]}."""
+    tables: dict[str, list[tuple[str, str]]] = {}
+    for match in re.finditer(
+        r"CREATE TABLE IF NOT EXISTS (\w+)\s*\((.*?)\);",
+        schema,
+        re.DOTALL,
+    ):
+        table = match.group(1)
+        body = match.group(2)
+        cols: list[tuple[str, str]] = []
+        for line in body.split("\n"):
+            line = line.strip().rstrip(",")
+            if not line or line.startswith("--"):
+                continue
+            # Skip constraints (PRIMARY KEY, FOREIGN KEY, UNIQUE, CHECK, INDEX)
+            upper = line.upper()
+            if any(upper.startswith(kw) for kw in ("PRIMARY", "FOREIGN", "UNIQUE", "CHECK")):
+                continue
+            # First word is the column name
+            parts = line.split(None, 1)
+            if len(parts) >= 2:
+                cols.append((parts[0], line))
+        tables[table] = cols
+    return tables
+
+
+async def _ensure_columns(database: aiosqlite.Connection) -> None:
+    """Add any columns present in _SCHEMA but missing from existing tables."""
+    expected = _parse_schema_columns(_SCHEMA)
+    for table, columns in expected.items():
+        cursor = await database.execute(f"PRAGMA table_info({table})")
+        rows = await cursor.fetchall()
+        if not rows:  # table doesn't exist yet (CREATE TABLE IF NOT EXISTS handles it)
+            continue
+        existing = {row[1] for row in rows}  # row[1] = column name
+        for col_name, col_def in columns:
+            if col_name not in existing:
+                await database.execute(f"ALTER TABLE {table} ADD COLUMN {col_def}")
+                logger.info("Added missing column", table=table, column=col_name)
+    await database.commit()
+
+
 async def _create_schema(database: aiosqlite.Connection) -> None:
     await database.executescript(_SCHEMA)
+    await _ensure_columns(database)
 
 
 async def init_database() -> None:
