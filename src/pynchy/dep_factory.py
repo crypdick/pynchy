@@ -30,6 +30,10 @@ from pynchy.logger import logger
 
 if TYPE_CHECKING:
     from pynchy.app import PynchyApp
+    from pynchy.git_sync import GitSyncDeps
+    from pynchy.http_server import HttpDeps
+    from pynchy.ipc import IpcDeps
+    from pynchy.task_scheduler import SchedulerDependencies
 
 
 def make_host_broadcaster(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBroadcaster]:
@@ -53,7 +57,7 @@ def make_host_broadcaster(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessa
     return broadcaster, host_broadcaster
 
 
-def make_scheduler_deps(app: PynchyApp) -> Any:
+def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
     """Create the dependency object for the task scheduler."""
     group_registry = GroupRegistry(app.registered_groups)
     queue_manager = QueueManager(app.queue)
@@ -127,7 +131,7 @@ async def _rebuild_and_deploy(
     )
 
 
-def make_http_deps(app: PynchyApp) -> Any:
+def make_http_deps(app: PynchyApp) -> HttpDeps:
     """Create the dependency object for the HTTP server."""
     _broadcaster, host_broadcaster = make_host_broadcaster(app)
     group_registry = GroupRegistry(app.registered_groups)
@@ -160,7 +164,7 @@ def make_http_deps(app: PynchyApp) -> Any:
     return HttpDeps()
 
 
-def make_ipc_deps(app: PynchyApp) -> Any:
+def make_ipc_deps(app: PynchyApp) -> IpcDeps:
     """Create the dependency object for the IPC watcher."""
     broadcaster, host_broadcaster = make_host_broadcaster(app)
     registration_manager = GroupRegistrationManager(
@@ -202,7 +206,7 @@ def make_ipc_deps(app: PynchyApp) -> Any:
     return IpcDeps()
 
 
-def make_git_sync_deps(app: PynchyApp) -> Any:
+def make_git_sync_deps(app: PynchyApp) -> GitSyncDeps:
     """Create the dependency object for the git sync loop."""
     _broadcaster, host_broadcaster = make_host_broadcaster(app)
     group_registry = GroupRegistry(app.registered_groups)
