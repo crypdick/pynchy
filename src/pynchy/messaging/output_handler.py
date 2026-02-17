@@ -54,7 +54,7 @@ _stream_states: dict[str, _StreamState] = {}
 
 
 async def _stream_text_to_channels(
-    channels: list[Channel],
+    deps: OutputDeps,
     chat_jid: str,
     state: _StreamState,
     *,
@@ -64,6 +64,9 @@ async def _stream_text_to_channels(
 
     On first call, posts a new message. Subsequent calls update it in-place.
     Throttled to _STREAM_THROTTLE unless ``final`` is True.
+
+    Uses JID alias resolution so channels that don't own the canonical JID
+    (e.g. Slack when the primary is a WhatsApp JID) can still stream.
     """
     now = time.monotonic()
     if not final and (now - state.last_update) < _STREAM_THROTTLE:
@@ -72,10 +75,15 @@ async def _stream_text_to_channels(
     display = state.buffer + (" \u258c" if not final else "")
     state.last_update = now
 
-    for ch in channels:
-        if not ch.is_connected() or not ch.owns_jid(chat_jid):
+    for ch in deps.channels:
+        if not ch.is_connected():
             continue
         if not hasattr(ch, "update_message") or not hasattr(ch, "post_message"):
+            continue
+
+        # Resolve alias so e.g. Slack can stream using its slack:CHANNEL_ID JID
+        target_jid = deps.get_channel_jid(chat_jid, ch.name) or chat_jid
+        if not ch.owns_jid(target_jid):
             continue
 
         ch_name = getattr(ch, "name", "?")
@@ -83,11 +91,11 @@ async def _stream_text_to_channels(
 
         try:
             if msg_id is None:
-                msg_id = await ch.post_message(chat_jid, display)
+                msg_id = await ch.post_message(target_jid, display)
                 if msg_id:
                     state.message_ids[ch_name] = msg_id
             else:
-                await ch.update_message(chat_jid, msg_id, display)
+                await ch.update_message(target_jid, msg_id, display)
         except Exception as exc:
             logger.debug("Stream update failed", channel=ch_name, err=str(exc))
 
@@ -337,7 +345,7 @@ async def handle_streamed_output(
                 state = _StreamState()
                 _stream_states[chat_jid] = state
             state.buffer += delta
-            await _stream_text_to_channels(deps.channels, chat_jid, state)
+            await _stream_text_to_channels(deps, chat_jid, state)
         return False
 
     # Persist result metadata if present (cost, usage, duration)
