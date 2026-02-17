@@ -51,11 +51,13 @@ class SlackChannel:
         app_token: str,
         on_message: Callable[[str, NewMessage], None],
         on_chat_metadata: Callable[[str, str, str | None], None],
+        on_reaction: Callable[[str, str, str, str], None] | None = None,
     ) -> None:
         self._bot_token = bot_token
         self._app_token = app_token
         self._on_message = on_message
         self._on_chat_metadata = on_chat_metadata
+        self._on_reaction = on_reaction
         self._connected = False
 
         # Lazy-initialised in connect()
@@ -134,6 +136,25 @@ class SlackChannel:
     async def set_typing(self, jid: str, is_typing: bool) -> None:  # noqa: ARG002
         """Slack doesn't have a user-level typing indicator API, so this is a no-op."""
 
+    async def post_message(self, jid: str, text: str) -> str | None:
+        """Post a message and return its ``ts`` (message ID) for later updates."""
+        if not self._app or not self.owns_jid(jid):
+            return None
+        channel_id = _channel_id_from_jid(jid)
+        resp = await self._app.client.chat_postMessage(channel=channel_id, text=text)
+        return resp.get("ts")
+
+    async def update_message(self, jid: str, message_id: str, text: str) -> None:
+        """Update an existing Slack message in-place."""
+        if not self._app or not self.owns_jid(jid):
+            return
+        channel_id = _channel_id_from_jid(jid)
+        chunks = _split_text(text, max_len=3000)
+        try:
+            await self._app.client.chat_update(channel=channel_id, ts=message_id, text=chunks[0])
+        except Exception as exc:
+            logger.debug("Slack message update failed", err=str(exc))
+
     async def send_reaction(
         self,
         jid: str,
@@ -171,6 +192,72 @@ class SlackChannel:
         @self._app.event("app_mention")
         async def _handle_mention(event: dict[str, Any], say: Any) -> None:  # noqa: ARG001
             await self._on_slack_message(event)
+
+        @self._app.event("reaction_added")
+        async def _handle_reaction(event: dict[str, Any]) -> None:  # noqa: ARG001
+            await self._on_slack_reaction(event)
+
+        # --- Slack Assistant panel (sidebar DM experience) ---
+        self._register_assistant_handlers()
+
+    def _register_assistant_handlers(self) -> None:
+        """Register Slack Assistant API handlers for the sidebar panel."""
+        from slack_bolt.context.async_context import AsyncBoltContext
+        from slack_bolt.middleware.assistant.async_assistant import AsyncAssistant
+
+        assistant = AsyncAssistant()
+
+        @assistant.thread_started
+        async def _on_thread_started(
+            say: Any,
+            set_suggested_prompts: Any,
+        ) -> None:
+            await say("How can I help?")
+            await set_suggested_prompts(
+                prompts=[
+                    {"title": "Status", "message": "What are you working on?"},
+                    {"title": "Tasks", "message": "Show my scheduled tasks"},
+                ],
+            )
+
+        @assistant.user_message
+        async def _on_user_message(
+            payload: dict[str, Any],
+            context: AsyncBoltContext,
+            set_status: Any,
+        ) -> None:
+            await set_status("thinking...")
+            channel_id = context.channel_id
+            user_id = payload.get("user", "")
+            text = payload.get("text", "")
+            ts = payload.get("ts", "")
+
+            if not channel_id or not user_id:
+                return
+
+            jid = _jid(channel_id)
+            sender_name = await self._resolve_user_name(user_id)
+            timestamp = datetime.now(UTC).isoformat()
+
+            self._on_chat_metadata(jid, timestamp, f"assistant:{user_id}")
+
+            msg = NewMessage(
+                id=generate_message_id("slack-assistant"),
+                chat_jid=jid,
+                sender=user_id,
+                sender_name=sender_name,
+                content=text,
+                timestamp=timestamp,
+                is_from_me=False,
+                metadata={
+                    "slack_ts": ts,
+                    "slack_channel_type": "assistant",
+                },
+            )
+            logger.info("Slack assistant message", user=user_id, text_len=len(text))
+            self._on_message(jid, msg)
+
+        self._app.use(assistant)
 
     async def _on_slack_message(self, event: dict[str, Any]) -> None:
         """Route an inbound Slack event to the pynchy message callback."""
@@ -219,6 +306,23 @@ class SlackChannel:
             text_len=len(text),
         )
         self._on_message(jid, msg)
+
+    async def _on_slack_reaction(self, event: dict[str, Any]) -> None:
+        """Route an inbound Slack reaction to the pynchy reaction callback."""
+        if not self._on_reaction:
+            return
+
+        user_id = event.get("user", "")
+        reaction = event.get("reaction", "")
+        item = event.get("item", {})
+        channel_id = item.get("channel", "")
+        message_ts = item.get("ts", "")
+
+        if not channel_id or not user_id or not reaction:
+            return
+
+        jid = _jid(channel_id)
+        self._on_reaction(jid, message_ts, user_id, reaction)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -279,11 +383,14 @@ class SlackChannelPlugin:
         if on_message is None or on_metadata is None:
             return None
 
+        on_reaction = getattr(context, "on_reaction_callback", None)
+
         return SlackChannel(
             bot_token=bot_token,
             app_token=app_token,
             on_message=on_message,
             on_chat_metadata=on_metadata,
+            on_reaction=on_reaction,
         )
 
 

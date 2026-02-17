@@ -328,6 +328,12 @@ class PynchyApp:
     async def _on_inbound(self, _jid: str, msg: NewMessage) -> None:
         await session_handler.on_inbound(self, _jid, msg)
 
+    async def _on_reaction(self, jid: str, message_ts: str, user_id: str, emoji: str) -> None:
+        """Handle an inbound reaction from a channel."""
+        from pynchy.reaction_handler import handle_reaction
+
+        await handle_reaction(self, jid, message_ts, user_id, emoji)
+
     async def _send_clear_confirmation(self, chat_jid: str) -> None:
         await session_handler.send_clear_confirmation(self, chat_jid)
 
@@ -440,6 +446,9 @@ class PynchyApp:
             ),
             registered_groups=lambda: self.registered_groups,
             send_message=self.broadcast_to_channels,
+            on_reaction_callback=lambda jid, ts, user, emoji: asyncio.ensure_future(
+                self._on_reaction(jid, ts, user, emoji)
+            ),
         )
         self.channels = load_channels(self.plugin_manager, context)
         default_channel = resolve_default_channel(self.channels)
