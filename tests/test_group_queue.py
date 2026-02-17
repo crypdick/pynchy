@@ -751,3 +751,46 @@ class TestDrainGroupTaskOrdering:
 
             # Task should have been drained
             assert "task-group2" in execution
+
+
+class TestCleanupIpcInput:
+    """Tests for _cleanup_ipc_input: stale IPC file removal after task exit."""
+
+    def test_removes_json_files(self, tmp_path):
+        """Should remove all .json files from the IPC input dir."""
+        input_dir = tmp_path / "ipc" / "test-group" / "input"
+        input_dir.mkdir(parents=True)
+        (input_dir / "001.json").write_text('{"type": "message", "text": "stale"}')
+        (input_dir / "002.json").write_text('{"type": "message", "text": "also stale"}')
+
+        with _patch_settings(max_concurrent=2, data_dir=tmp_path):
+            GroupQueue._cleanup_ipc_input("test-group")
+
+        assert list(input_dir.glob("*.json")) == []
+
+    def test_preserves_non_json_files(self, tmp_path):
+        """Should NOT remove non-.json files (like _close sentinel)."""
+        input_dir = tmp_path / "ipc" / "test-group" / "input"
+        input_dir.mkdir(parents=True)
+        (input_dir / "_close").write_text("")
+        (input_dir / "readme.txt").write_text("notes")
+        (input_dir / "001.json").write_text('{"stale": true}')
+
+        with _patch_settings(max_concurrent=2, data_dir=tmp_path):
+            GroupQueue._cleanup_ipc_input("test-group")
+
+        assert (input_dir / "_close").exists()
+        assert (input_dir / "readme.txt").exists()
+        assert not (input_dir / "001.json").exists()
+
+    def test_noop_when_no_group_folder(self, tmp_path):
+        """Should silently do nothing when group_folder is None."""
+        with _patch_settings(max_concurrent=2, data_dir=tmp_path):
+            GroupQueue._cleanup_ipc_input(None)  # type: ignore[arg-type]
+        # No error raised
+
+    def test_noop_when_dir_doesnt_exist(self, tmp_path):
+        """Should silently do nothing when IPC input dir doesn't exist."""
+        with _patch_settings(max_concurrent=2, data_dir=tmp_path):
+            GroupQueue._cleanup_ipc_input("nonexistent-group")
+        # No error raised

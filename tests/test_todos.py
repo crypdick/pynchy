@@ -67,3 +67,54 @@ class TestGetTodos:
         assert items_a[0]["content"] == "item for a"
         assert len(items_b) == 1
         assert items_b[0]["content"] == "item for b"
+
+    def test_returns_empty_on_corrupted_json(self, tmp_path):
+        """Corrupted todos.json should not crash — returns empty list."""
+        todos_dir = tmp_path / "ipc" / "test-group"
+        todos_dir.mkdir(parents=True)
+        (todos_dir / "todos.json").write_text("not valid json {{{")
+
+        with patch("pynchy.todos.get_settings", return_value=make_settings(data_dir=tmp_path)):
+            items = get_todos("test-group")
+
+        assert items == []
+
+    def test_returns_empty_on_empty_file(self, tmp_path):
+        """Empty todos.json should not crash — returns empty list."""
+        todos_dir = tmp_path / "ipc" / "test-group"
+        todos_dir.mkdir(parents=True)
+        (todos_dir / "todos.json").write_text("")
+
+        with patch("pynchy.todos.get_settings", return_value=make_settings(data_dir=tmp_path)):
+            items = get_todos("test-group")
+
+        assert items == []
+
+
+class TestAddTodoAtomicWrite:
+    """Tests for atomic write behavior in _write_todos."""
+
+    def test_write_is_atomic(self, tmp_path):
+        """add_todo uses atomic rename; no partial writes should be visible."""
+        with patch("pynchy.todos.get_settings", return_value=make_settings(data_dir=tmp_path)):
+            add_todo("test-group", "item 1")
+
+        # No .tmp files should remain after write
+        todos_dir = tmp_path / "ipc" / "test-group"
+        tmp_files = list(todos_dir.glob("*.tmp"))
+        assert tmp_files == []
+
+    def test_add_todo_after_corruption_overwrites_cleanly(self, tmp_path):
+        """Adding a todo when the file is corrupted should create a fresh list."""
+        todos_dir = tmp_path / "ipc" / "test-group"
+        todos_dir.mkdir(parents=True)
+        (todos_dir / "todos.json").write_text("CORRUPTED DATA")
+
+        with patch("pynchy.todos.get_settings", return_value=make_settings(data_dir=tmp_path)):
+            # _read_todos returns [] for corrupted file, then add_todo appends
+            entry = add_todo("test-group", "fresh start")
+            items = get_todos("test-group")
+
+        assert len(items) == 1
+        assert items[0]["content"] == "fresh start"
+        assert items[0]["id"] == entry["id"]
