@@ -14,6 +14,7 @@ _SUBPROCESS_TIMEOUT = 30
 def run_git(
     *args: str,
     cwd: Path | None = None,
+    timeout: int = _SUBPROCESS_TIMEOUT,
 ) -> subprocess.CompletedProcess[str]:
     """Run a git command with standard timeout and error capture."""
     return subprocess.run(
@@ -21,7 +22,7 @@ def run_git(
         cwd=str(cwd or get_settings().project_root),
         capture_output=True,
         text=True,
-        timeout=_SUBPROCESS_TIMEOUT,
+        timeout=timeout,
     )
 
 

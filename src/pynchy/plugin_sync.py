@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 from pynchy.config import PluginConfig, get_settings
+from pynchy.git_utils import is_repo_dirty, require_success, run_git
 from pynchy.logger import logger
 
 _HEX_REF_RE = re.compile(r"^[0-9a-f]{7,40}$")
@@ -31,30 +32,12 @@ def normalize_repo_url(repo: str) -> str:
     return value
 
 
+_CLONE_TIMEOUT = 60  # Clones can take longer than the default 30s
+
+
 def _run_git(*args: str, cwd: Path | None = None) -> None:
-    result = subprocess.run(
-        ["git", *args],
-        cwd=str(cwd) if cwd else None,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    if result.returncode != 0:
-        stderr = (result.stderr or "").strip()
-        raise RuntimeError(f"git {' '.join(args)} failed: {stderr[-500:]}")
-
-
-def _is_dirty(repo_dir: Path) -> bool:
-    result = subprocess.run(
-        ["git", "status", "--porcelain"],
-        cwd=str(repo_dir),
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    if result.returncode != 0:
-        return True
-    return bool((result.stdout or "").strip())
+    result = run_git(*args, cwd=cwd, timeout=_CLONE_TIMEOUT)
+    require_success(result, args[0] if args else "git")
 
 
 def _sync_single_plugin(plugin_name: str, plugin_cfg: PluginConfig, root: Path) -> Path:
@@ -73,7 +56,7 @@ def _sync_single_plugin(plugin_name: str, plugin_cfg: PluginConfig, root: Path) 
         )
         return plugin_dir
 
-    if _is_dirty(plugin_dir):
+    if is_repo_dirty(cwd=plugin_dir):
         logger.warning(
             "Plugin repo has local changes, skipping update",
             plugin=plugin_name,
@@ -89,17 +72,8 @@ def _sync_single_plugin(plugin_name: str, plugin_cfg: PluginConfig, root: Path) 
 
 
 def _plugin_revision(plugin_dir: Path) -> str:
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=str(plugin_dir),
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    if result.returncode != 0:
-        stderr = (result.stderr or "").strip()
-        raise RuntimeError(f"git rev-parse HEAD failed: {stderr[-500:]}")
-    return (result.stdout or "").strip()
+    result = run_git("rev-parse", "HEAD", cwd=plugin_dir)
+    return require_success(result, "rev-parse")
 
 
 def _install_state_path(root: Path) -> Path:
@@ -203,6 +177,7 @@ def _is_plugin_importable(plugin_dir: Path) -> bool:
 
         # Try to import the package
         import importlib.util
+
         return importlib.util.find_spec(package_name) is not None
     except Exception:
         return False

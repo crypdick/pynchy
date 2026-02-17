@@ -79,6 +79,7 @@ def test_sync_configured_plugins_skips_reinstall_for_same_revision(tmp_path: Pat
         ),
         patch("pynchy.plugin_sync._save_install_state") as save_state,
         patch("pynchy.plugin_sync._install_plugin_in_host_env") as install_one,
+        patch("pynchy.plugin_sync._is_plugin_importable", return_value=True),
         patch("pynchy.plugin_sync.logger.info") as log_info,
     ):
         result = sync_configured_plugins()
