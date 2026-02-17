@@ -233,7 +233,7 @@ def pynchy_tunnel(self) -> Any | None:
 | `is_connected()` | `() -> bool` | Returns whether the tunnel is currently connected |
 | `status_summary()` | `() -> str` | Human-readable status string for logging |
 
-**Built-in:** Tailscale is provided as a built-in plugin (`builtin_tailscale.py`). It shells out to `tailscale status --json` and checks `BackendState`.
+**Built-in:** Tailscale is provided as a built-in plugin (`src/pynchy/tunnels/plugins/tailscale.py`). It shells out to `tailscale status --json` and checks `BackendState`.
 
 ## pynchy_workspace_spec
 
