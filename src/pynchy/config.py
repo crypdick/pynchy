@@ -95,6 +95,7 @@ class GatewayConfig(BaseModel):
     litellm_config: str | None = None  # path to litellm_config.yaml; None = builtin mode
     litellm_image: str = "ghcr.io/berriai/litellm:main-latest"
     postgres_image: str = "postgres:17-alpine"
+    master_key: SecretStr | None = None  # LiteLLM master key (required for LiteLLM mode)
     ui_username: str | None = None  # LiteLLM UI login username
     ui_password: SecretStr | None = None  # LiteLLM UI login password
 

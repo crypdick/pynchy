@@ -74,6 +74,32 @@ Common configurations:
 
 > **Note:** For most desktop setups, you can skip this step and authenticate using Claude Code OAuth (see step 4 in Headless Server Deployment).
 
+#### LiteLLM Gateway (recommended)
+
+Pynchy uses a [LiteLLM](https://docs.litellm.ai/) proxy as the LLM gateway. This runs in a Docker container and handles model routing, load balancing, and credential isolation — containers never see real API keys.
+
+To enable it, add these settings to your `config.toml`:
+
+```toml
+[gateway]
+litellm_config = "litellm_config.yaml"
+port = 4000
+master_key = "your-master-key-here"    # required — used for LiteLLM UI and API auth
+
+# Optional: LiteLLM admin UI credentials
+ui_username = "admin"
+ui_password = "your-ui-password-here"
+```
+
+Then configure your models and API keys in `litellm_config.yaml` (see `litellm_config.yaml.example` for a starting point):
+
+```bash
+cp litellm_config.yaml.example litellm_config.yaml
+# Edit litellm_config.yaml with your model providers and API keys
+```
+
+Pynchy starts the LiteLLM container automatically on boot. The admin UI is available at `http://localhost:4000/ui` (login with the `ui_username`/`ui_password` you configured).
+
 ### 3. Build Container Image
 
 ```bash

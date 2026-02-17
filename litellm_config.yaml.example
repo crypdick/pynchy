@@ -98,7 +98,7 @@ router_settings:
 # General settings
 # ---------------------------------------------------------------------------
 general_settings:
-  # Master key is dynamically generated at runtime by pynchy and passed via env var.
+  # Master key is set in config.toml [gateway].master_key and passed via env var.
   # Do NOT hardcode it here.
   master_key: os.environ/LITELLM_MASTER_KEY
 
