@@ -15,7 +15,6 @@ from pynchy.messaging.router import (
 from pynchy.types import NewMessage
 
 s = make_settings()
-ASSISTANT_NAME = s.agent.name
 TRIGGER_PATTERN = s.trigger_pattern
 
 # --- TRIGGER_PATTERN ---
@@ -88,9 +87,9 @@ class TestFormatOutbound:
 
         prefix_assistant_name: object = True  # object to allow None/missing
 
-    def test_prefixes_with_assistant_name(self):
+    def test_prefixes_with_lobster_emoji(self):
         ch = self._FakeChannel(prefix_assistant_name=True)
-        assert format_outbound(ch, "hello world") == f"{ASSISTANT_NAME}: hello world"
+        assert format_outbound(ch, "hello world") == "🦞 hello world"
 
     def test_does_not_prefix_when_opted_out(self):
         ch = self._FakeChannel(prefix_assistant_name=False)
@@ -98,7 +97,7 @@ class TestFormatOutbound:
 
     def test_defaults_to_prefixing_when_undefined(self):
         ch = self._FakeChannel(prefix_assistant_name=None)
-        assert format_outbound(ch, "hello world") == f"{ASSISTANT_NAME}: hello world"
+        assert format_outbound(ch, "hello world") == "🦞 hello world"
 
     def test_returns_empty_when_all_internal(self):
         ch = self._FakeChannel(prefix_assistant_name=True)
@@ -107,7 +106,7 @@ class TestFormatOutbound:
     def test_strips_internal_and_prefixes_remaining(self):
         ch = self._FakeChannel(prefix_assistant_name=True)
         result = format_outbound(ch, "<internal>thinking</internal>The answer is 42")
-        assert result == f"{ASSISTANT_NAME}: The answer is 42"
+        assert result == "🦞 The answer is 42"
 
 
 # --- Trigger gating with requiresTrigger flag ---
