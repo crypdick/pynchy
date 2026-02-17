@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from pynchy.config import PluginConfig
-from pynchy.plugin_sync import normalize_repo_url, sync_configured_plugins
+from pynchy.plugin.sync import normalize_repo_url, sync_configured_plugins
 
 
 def test_normalize_repo_url_expands_github_shorthand() -> None:
@@ -38,13 +38,13 @@ def test_sync_configured_plugins_skips_disabled(tmp_path: Path) -> None:
 
     enabled_dir = settings.plugins_dir / "enabled"
     with (
-        patch("pynchy.plugin_sync.get_settings", return_value=settings),
-        patch("pynchy.plugin_sync._sync_single_plugin", return_value=enabled_dir) as sync_one,
-        patch("pynchy.plugin_sync._plugin_revision", return_value="abc123"),
-        patch("pynchy.plugin_sync._load_install_state", return_value={}),
-        patch("pynchy.plugin_sync._save_install_state"),
-        patch("pynchy.plugin_sync._install_plugin_in_host_env") as install_one,
-        patch("pynchy.plugin_sync.logger.info") as log_info,
+        patch("pynchy.plugin.sync.get_settings", return_value=settings),
+        patch("pynchy.plugin.sync._sync_single_plugin", return_value=enabled_dir) as sync_one,
+        patch("pynchy.plugin.sync._plugin_revision", return_value="abc123"),
+        patch("pynchy.plugin.sync._load_install_state", return_value={}),
+        patch("pynchy.plugin.sync._save_install_state"),
+        patch("pynchy.plugin.sync._install_plugin_in_host_env") as install_one,
+        patch("pynchy.plugin.sync.logger.info") as log_info,
     ):
         result = sync_configured_plugins()
 
@@ -70,17 +70,17 @@ def test_sync_configured_plugins_skips_reinstall_for_same_revision(tmp_path: Pat
     )
     enabled_dir = settings.plugins_dir / "enabled"
     with (
-        patch("pynchy.plugin_sync.get_settings", return_value=settings),
-        patch("pynchy.plugin_sync._sync_single_plugin", return_value=enabled_dir),
-        patch("pynchy.plugin_sync._plugin_revision", return_value="abc123"),
+        patch("pynchy.plugin.sync.get_settings", return_value=settings),
+        patch("pynchy.plugin.sync._sync_single_plugin", return_value=enabled_dir),
+        patch("pynchy.plugin.sync._plugin_revision", return_value="abc123"),
         patch(
-            "pynchy.plugin_sync._load_install_state",
+            "pynchy.plugin.sync._load_install_state",
             return_value={"enabled": {"revision": "abc123"}},
         ),
-        patch("pynchy.plugin_sync._save_install_state") as save_state,
-        patch("pynchy.plugin_sync._install_plugin_in_host_env") as install_one,
-        patch("pynchy.plugin_sync._is_plugin_importable", return_value=True),
-        patch("pynchy.plugin_sync.logger.info") as log_info,
+        patch("pynchy.plugin.sync._save_install_state") as save_state,
+        patch("pynchy.plugin.sync._install_plugin_in_host_env") as install_one,
+        patch("pynchy.plugin.sync._is_plugin_importable", return_value=True),
+        patch("pynchy.plugin.sync.logger.info") as log_info,
     ):
         result = sync_configured_plugins()
 

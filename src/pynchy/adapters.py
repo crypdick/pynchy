@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from pynchy.db import clear_session, get_active_task_for_group, get_chat_history
 from pynchy.logger import logger
-from pynchy.router import format_outbound
+from pynchy.messaging.router import format_outbound
 from pynchy.utils import generate_message_id
 
 if TYPE_CHECKING:

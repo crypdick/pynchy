@@ -33,8 +33,8 @@ def _tui(host: str) -> None:
 
 def _build() -> None:
     from pynchy.config import get_settings
-    from pynchy.plugin_sync import sync_configured_plugins
-    from pynchy.runtime import get_runtime
+    from pynchy.infra.runtime import get_runtime
+    from pynchy.plugin.sync import sync_configured_plugins
 
     s = get_settings()
     # Runtime plugins may come from config-managed repositories.

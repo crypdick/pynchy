@@ -69,8 +69,8 @@ def _patch_test_settings(tmp_path: Path):
             "pynchy.container_runner._session_prep",
             "pynchy.container_runner._orchestrator",
             "pynchy.container_runner._snapshots",
-            "pynchy.message_handler",
-            "pynchy.output_handler",
+            "pynchy.messaging.message_handler",
+            "pynchy.messaging.output_handler",
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         yield
@@ -178,7 +178,7 @@ class TestAppImports:
 
     def test_channel_runtime_import(self):
         """Channel runtime helper import in app.run() must resolve."""
-        from pynchy.channel_runtime import ChannelPluginContext  # noqa: F401
+        from pynchy.messaging.channel_runtime import ChannelPluginContext  # noqa: F401
 
 
 class TestFirstRunBootstrap:
@@ -405,7 +405,7 @@ class TestProcessGroupMessages:
         with (
             patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", fake_create),
             _patch_test_settings(tmp_path),
-            patch("pynchy.worktree.ensure_worktree", return_value=fake_wt),
+            patch("pynchy.git_ops.worktree.ensure_worktree", return_value=fake_wt),
         ):
             (tmp_path / "groups" / "main").mkdir(parents=True)
             result = await app._process_group_messages("main@g.us")

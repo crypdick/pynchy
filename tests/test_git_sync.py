@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.git_sync import (
+from pynchy.git_ops.sync import (
     _hash_config_files,
     _host_container_files_changed,
     _host_get_origin_main_sha,
@@ -25,7 +25,7 @@ from pynchy.git_sync import (
     needs_deploy,
     write_ipc_response,
 )
-from pynchy.worktree import ensure_worktree
+from pynchy.git_ops.worktree import ensure_worktree
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -78,9 +78,9 @@ def git_env(tmp_path: Path):
     s = make_settings(project_root=project, worktrees_dir=worktrees_dir)
 
     with ExitStack() as stack:
-        stack.enter_context(patch("pynchy.git_utils.get_settings", return_value=s))
-        stack.enter_context(patch("pynchy.worktree.get_settings", return_value=s))
-        stack.enter_context(patch("pynchy.git_sync.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.git_ops.utils.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.git_ops.worktree.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.git_ops.sync.get_settings", return_value=s))
         yield {
             "origin": origin,
             "project": project,

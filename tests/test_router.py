@@ -8,7 +8,7 @@ means host messages leak into prompts or user messages get dropped.
 
 from __future__ import annotations
 
-from pynchy.router import (
+from pynchy.messaging.router import (
     format_messages_for_sdk,
     format_tool_preview,
     parse_host_tag,
@@ -155,7 +155,11 @@ class TestFormatToolPreview:
         long_question = "Should we " + "refactor " * 50 + "this module?"
         result = format_tool_preview(
             "AskUserQuestion",
-            {"questions": [{"question": long_question, "header": "Q", "options": [], "multiSelect": False}]},
+            {
+                "questions": [
+                    {"question": long_question, "header": "Q", "options": [], "multiSelect": False}
+                ]
+            },
         )
         assert long_question in result
         assert "..." not in result
@@ -165,8 +169,18 @@ class TestFormatToolPreview:
             "AskUserQuestion",
             {
                 "questions": [
-                    {"question": "First question?", "header": "Q1", "options": [], "multiSelect": False},
-                    {"question": "Second question?", "header": "Q2", "options": [], "multiSelect": False},
+                    {
+                        "question": "First question?",
+                        "header": "Q1",
+                        "options": [],
+                        "multiSelect": False,
+                    },
+                    {
+                        "question": "Second question?",
+                        "header": "Q2",
+                        "options": [],
+                        "multiSelect": False,
+                    },
                 ]
             },
         )

@@ -13,6 +13,7 @@ don't use Slack.
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -64,6 +65,11 @@ class SlackChannel:
         self._app: Any = None
         self._handler: Any = None
         self._handler_task: asyncio.Task[None] | None = None
+        self._bot_user_id: str = ""
+        # Dedup: track recent Slack ts values to avoid processing both
+        # message + app_mention events for the same user message.
+        self._seen_ts: dict[str, float] = {}
+        self._seen_ts_max = 500
 
     # ------------------------------------------------------------------
     # Channel protocol
@@ -74,6 +80,14 @@ class SlackChannel:
         from slack_bolt.async_app import AsyncApp
 
         self._app = AsyncApp(token=self._bot_token)
+
+        # Cache bot user ID so we can strip self-mentions from inbound text
+        try:
+            auth = await self._app.client.auth_test()
+            self._bot_user_id = auth.get("user_id", "")
+        except Exception:
+            logger.warning("Failed to resolve bot user ID (mention stripping disabled)")
+
         self._register_handlers()
 
         self._handler = AsyncSocketModeHandler(self._app, self._app_token)
@@ -81,7 +95,7 @@ class SlackChannel:
             self._handler.start_async(), name="slack-socket-mode"
         )
         self._connected = True
-        logger.info("Slack channel connected (Socket Mode)")
+        logger.info("Slack channel connected (Socket Mode)", bot_user_id=self._bot_user_id)
 
     async def send_message(self, jid: str, text: str) -> None:
         if not self._app or not self.owns_jid(jid):
@@ -282,6 +296,29 @@ class SlackChannel:
 
         self._app.use(assistant)
 
+    def _strip_bot_mention(self, text: str) -> str:
+        """Remove the bot's ``<@BOT_ID>`` mention from message text."""
+        if not self._bot_user_id:
+            return text
+        return re.sub(rf"<@{re.escape(self._bot_user_id)}>", "", text).strip()
+
+    def _dedup_ts(self, ts: str) -> bool:
+        """Return True if this ``ts`` was already seen (duplicate event).
+
+        Keeps a bounded dict so memory doesn't grow without limit.
+        """
+        import time as _time
+
+        now = _time.monotonic()
+        if ts in self._seen_ts:
+            return True
+        # Evict old entries when the dict gets too large
+        if len(self._seen_ts) >= self._seen_ts_max:
+            cutoff = now - 120  # 2 minutes
+            self._seen_ts = {k: v for k, v in self._seen_ts.items() if v > cutoff}
+        self._seen_ts[ts] = now
+        return False
+
     async def _on_slack_message(self, event: dict[str, Any]) -> None:
         """Route an inbound Slack event to the pynchy message callback."""
         # Ignore bot messages, edits, and deletions
@@ -299,7 +336,16 @@ class SlackChannel:
         if not channel_id or not user_id:
             return
 
+        # Deduplicate: Slack fires both `message` and `app_mention` events
+        # for the same @mention message — skip the second one.
+        if self._dedup_ts(ts):
+            return
+
         jid = _jid(channel_id)
+
+        # Strip the bot's own @mention so commands like "c" aren't
+        # polluted with "<@UBOTID> " prefix.
+        text = self._strip_bot_mention(text)
 
         # Resolve display name (fall back to user ID)
         sender_name = await self._resolve_user_name(user_id)

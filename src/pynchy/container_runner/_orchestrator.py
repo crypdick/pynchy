@@ -25,8 +25,8 @@ from pynchy.container_runner._process import (
     read_stdout,
 )
 from pynchy.container_runner._serialization import _input_to_dict
+from pynchy.infra.runtime import get_runtime
 from pynchy.logger import logger
-from pynchy.runtime import get_runtime
 from pynchy.types import ContainerInput, ContainerOutput, RegisteredGroup
 
 # ---------------------------------------------------------------------------
@@ -194,7 +194,7 @@ async def run_container_agent(
     # --- Resolve worktree ---
     worktree_path: Path | None = None
     if input_data.project_access:
-        from pynchy.worktree import ensure_worktree
+        from pynchy.git_ops.worktree import ensure_worktree
 
         wt_result = ensure_worktree(group.folder)
         worktree_path = wt_result.path

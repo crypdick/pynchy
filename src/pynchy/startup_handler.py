@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from pynchy.config import get_settings
 from pynchy.db import get_messages_since, store_message
-from pynchy.git_utils import get_head_sha, is_repo_dirty, run_git
-from pynchy.http_server import _get_head_commit_message
+from pynchy.git_ops.utils import get_head_sha, is_repo_dirty, run_git
+from pynchy.infra.http_server import _get_head_commit_message
 from pynchy.logger import logger
 from pynchy.types import NewMessage, WorkspaceProfile, WorkspaceSecurity
 from pynchy.utils import generate_message_id

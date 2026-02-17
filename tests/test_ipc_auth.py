@@ -867,7 +867,7 @@ class TestResetContextExecution:
                 "pynchy.ipc._handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
-            patch("pynchy.worktree.merge_and_push_worktree"),
+            patch("pynchy.git_ops.worktree.merge_and_push_worktree"),
         ):
             (tmp_path / "data" / "ipc" / "god").mkdir(parents=True)
             await dispatch(
@@ -892,7 +892,7 @@ class TestResetContextExecution:
                 "pynchy.ipc._handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
-            patch("pynchy.worktree.merge_and_push_worktree"),
+            patch("pynchy.git_ops.worktree.merge_and_push_worktree"),
         ):
             (tmp_path / "data" / "ipc" / "god").mkdir(parents=True)
             await dispatch(
@@ -955,7 +955,7 @@ class TestResetContextExecution:
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.worktree.merge_and_push_worktree",
+                "pynchy.git_ops.worktree.merge_and_push_worktree",
                 side_effect=Exception("merge failed"),
             ),
         ):
@@ -1001,7 +1001,7 @@ class TestFinishedWorkExecution:
     async def test_finished_work_merges_worktree_for_project_access(self, deps):
         with (
             patch("pynchy.workspace_config.has_project_access", return_value=True),
-            patch("pynchy.worktree.merge_and_push_worktree") as mock_merge,
+            patch("pynchy.git_ops.worktree.merge_and_push_worktree") as mock_merge,
         ):
             await dispatch(
                 {
@@ -1018,7 +1018,7 @@ class TestFinishedWorkExecution:
     async def test_finished_work_skips_merge_for_non_project_access(self, deps):
         with (
             patch("pynchy.workspace_config.has_project_access", return_value=False),
-            patch("pynchy.worktree.merge_and_push_worktree") as mock_merge,
+            patch("pynchy.git_ops.worktree.merge_and_push_worktree") as mock_merge,
         ):
             await dispatch(
                 {
@@ -1050,7 +1050,7 @@ class TestFinishedWorkExecution:
         with (
             patch("pynchy.workspace_config.has_project_access", return_value=True),
             patch(
-                "pynchy.worktree.merge_and_push_worktree",
+                "pynchy.git_ops.worktree.merge_and_push_worktree",
                 side_effect=Exception("merge boom"),
             ),
         ):

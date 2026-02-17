@@ -40,7 +40,7 @@ def _load_managed_plugin_entrypoints(pm: pluggy.PluginManager) -> set[str]:
     Only loads plugins that have passed verification (or are marked trusted).
     This prevents unverified plugin code from being imported into the host process.
     """
-    from pynchy.plugin_verifier import get_cached_verdict
+    from pynchy.plugin.verifier import get_cached_verdict
 
     s = get_settings()
     blocked_entrypoint_names: set[str] = set()
@@ -51,7 +51,7 @@ def _load_managed_plugin_entrypoints(pm: pluggy.PluginManager) -> set[str]:
 
         # Gate: skip unverified plugins unless trusted
         if not plugin_cfg.trusted:
-            from pynchy.plugin_sync import _plugin_revision
+            from pynchy.plugin.sync import _plugin_revision
 
             plugin_root = s.plugins_dir / plugin_name
             if plugin_root.exists():

@@ -21,7 +21,7 @@ from pynchy.app import PynchyApp
 from pynchy.config import Settings
 from pynchy.db import _init_test_database, store_message
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
-from pynchy.router import format_tool_preview
+from pynchy.messaging.router import format_tool_preview
 from pynchy.types import NewMessage, RegisteredGroup
 
 _CR_ORCH = "pynchy.container_runner._orchestrator"
@@ -72,8 +72,8 @@ def _patch_test_settings(tmp_path: Path):
             "pynchy.container_runner._session_prep",
             "pynchy.container_runner._orchestrator",
             "pynchy.container_runner._snapshots",
-            "pynchy.message_handler",
-            "pynchy.output_handler",
+            "pynchy.messaging.message_handler",
+            "pynchy.messaging.output_handler",
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         yield

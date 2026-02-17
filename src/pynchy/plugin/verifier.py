@@ -417,7 +417,7 @@ def load_verified_plugins() -> dict[str, tuple[Path, str, bool]]:
     :func:`scan_and_install_new_plugins` after the rest of the system
     has booted.
     """
-    from pynchy.plugin_sync import install_verified_plugins, sync_plugin_repos
+    from pynchy.plugin.sync import install_verified_plugins, sync_plugin_repos
 
     s = get_settings()
     synced = sync_plugin_repos()
@@ -452,7 +452,7 @@ async def scan_and_install_new_plugins(
         logger.info("No new plugins passed verification — continuing")
         return False
 
-    from pynchy.plugin_sync import install_verified_plugins
+    from pynchy.plugin.sync import install_verified_plugins
 
     install_verified_plugins(newly_passed)
     logger.info(

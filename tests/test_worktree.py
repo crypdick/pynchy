@@ -13,7 +13,7 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
-from pynchy.worktree import (
+from pynchy.git_ops.worktree import (
     WorktreeError,
     ensure_worktree,
     merge_and_push_worktree,
@@ -73,8 +73,8 @@ def git_env(tmp_path: Path):
     s = make_settings(project_root=project, worktrees_dir=worktrees_dir)
 
     with ExitStack() as stack:
-        stack.enter_context(patch("pynchy.git_utils.get_settings", return_value=s))
-        stack.enter_context(patch("pynchy.worktree.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.git_ops.utils.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.git_ops.worktree.get_settings", return_value=s))
         yield {
             "origin": origin,
             "project": project,

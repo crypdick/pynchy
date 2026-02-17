@@ -20,11 +20,6 @@ import pytest
 from conftest import make_settings
 
 from pynchy.app import PynchyApp
-from pynchy.channel_runtime import (
-    ChannelPluginContext,
-    load_channels,
-    resolve_default_channel,
-)
 from pynchy.config import (
     ChannelsConfig,
     PluginConfig,
@@ -32,8 +27,13 @@ from pynchy.config import (
     SlackConfig,
 )
 from pynchy.db import _init_test_database, store_message
+from pynchy.messaging.channel_runtime import (
+    ChannelPluginContext,
+    load_channels,
+    resolve_default_channel,
+)
 from pynchy.plugin import get_plugin_manager
-from pynchy.plugin_sync import sync_configured_plugins
+from pynchy.plugin.sync import sync_configured_plugins
 from pynchy.types import NewMessage, RegisteredGroup
 from pynchy.workspace_config import (
     configure_plugin_workspaces,
@@ -124,7 +124,7 @@ async def test_first_party_plugins_sync_install_and_functionality(tmp_path: Path
     """Validate first-party plugins via real clone + install + hook behavior."""
     settings = _integration_settings(tmp_path)
 
-    with patch("pynchy.plugin_sync.get_settings", return_value=settings):
+    with patch("pynchy.plugin.sync.get_settings", return_value=settings):
         synced = sync_configured_plugins()
     assert set(synced) == {"whatsapp", "code-improver"}
     assert (settings.plugins_dir / "whatsapp").exists()
@@ -139,7 +139,7 @@ async def test_first_party_plugins_sync_install_and_functionality(tmp_path: Path
     with (
         patch("pynchy.plugin.get_settings", return_value=settings),
         patch("pynchy.plugin.builtin_slack.get_settings", return_value=settings),
-        patch("pynchy.channel_runtime.get_settings", return_value=settings),
+        patch("pynchy.messaging.channel_runtime.get_settings", return_value=settings),
         patch("pynchy.workspace_config.get_settings", return_value=settings),
     ):
         pm = get_plugin_manager()
@@ -217,7 +217,7 @@ async def test_first_party_plugins_app_flow_with_llm_boundary_mocked(tmp_path: P
     """Validate app message flow with first-party plugins while stubbing LLM calls."""
     settings = _integration_settings(tmp_path)
 
-    with patch("pynchy.plugin_sync.get_settings", return_value=settings):
+    with patch("pynchy.plugin.sync.get_settings", return_value=settings):
         sync_configured_plugins()
 
     await _init_test_database()
@@ -234,10 +234,10 @@ async def test_first_party_plugins_app_flow_with_llm_boundary_mocked(tmp_path: P
     with (
         patch("pynchy.plugin.get_settings", return_value=settings),
         patch("pynchy.plugin.builtin_slack.get_settings", return_value=settings),
-        patch("pynchy.channel_runtime.get_settings", return_value=settings),
+        patch("pynchy.messaging.channel_runtime.get_settings", return_value=settings),
         patch("pynchy.workspace_config.get_settings", return_value=settings),
-        patch("pynchy.message_handler.get_settings", return_value=settings),
-        patch("pynchy.output_handler.get_settings", return_value=settings),
+        patch("pynchy.messaging.message_handler.get_settings", return_value=settings),
+        patch("pynchy.messaging.output_handler.get_settings", return_value=settings),
         patch("pynchy.container_runner._credentials.get_settings", return_value=settings),
         patch("pynchy.container_runner._mounts.get_settings", return_value=settings),
         patch("pynchy.container_runner._session_prep.get_settings", return_value=settings),

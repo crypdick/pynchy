@@ -158,7 +158,7 @@ class TestOutboundTranslation:
     @pytest.mark.asyncio
     async def test_uses_alias_jid_for_channel(self):
         """broadcast_to_channels should use the alias JID for channels that have one."""
-        from pynchy.channel_handler import broadcast_to_channels
+        from pynchy.messaging.channel_handler import broadcast_to_channels
 
         ch = MagicMock()
         ch.name = "slack"
@@ -176,7 +176,7 @@ class TestOutboundTranslation:
     @pytest.mark.asyncio
     async def test_falls_back_to_canonical_when_no_alias(self):
         """When no alias exists, use the canonical JID."""
-        from pynchy.channel_handler import broadcast_to_channels
+        from pynchy.messaging.channel_handler import broadcast_to_channels
 
         ch = MagicMock()
         ch.name = "whatsapp"
@@ -194,7 +194,7 @@ class TestOutboundTranslation:
     @pytest.mark.asyncio
     async def test_each_channel_gets_its_own_jid(self):
         """Two channels should each receive the correct JID."""
-        from pynchy.channel_handler import broadcast_to_channels
+        from pynchy.messaging.channel_handler import broadcast_to_channels
 
         wa_ch = MagicMock()
         wa_ch.name = "whatsapp"

@@ -13,12 +13,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
-from pynchy.commands import is_context_reset, is_end_session, is_redeploy
 from pynchy.config import get_settings
 from pynchy.db import get_messages_since, get_new_messages, store_message_direct
 from pynchy.event_bus import AgentActivityEvent, MessageEvent
-from pynchy.git_utils import is_repo_dirty
+from pynchy.git_ops.utils import is_repo_dirty
 from pynchy.logger import logger
+from pynchy.messaging.commands import is_context_reset, is_end_session, is_redeploy
 from pynchy.utils import IdleTimer, create_background_task
 
 if TYPE_CHECKING:
@@ -335,7 +335,7 @@ async def process_group_messages(
     if await intercept_special_command(deps, chat_jid, group, missed_messages[-1]):
         return True
 
-    from pynchy.router import format_messages_for_sdk
+    from pynchy.messaging.router import format_messages_for_sdk
 
     messages = format_messages_for_sdk(missed_messages)
 
@@ -406,8 +406,8 @@ async def process_group_messages(
         return False
 
     # Merge worktree commits into main and push for all project_access groups
+    from pynchy.git_ops.worktree import merge_and_push_worktree
     from pynchy.workspace_config import has_project_access
-    from pynchy.worktree import merge_and_push_worktree
 
     if has_project_access(group):
         create_background_task(

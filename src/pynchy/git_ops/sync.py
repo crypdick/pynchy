@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from pynchy.config import get_settings
-from pynchy.git_utils import (
+from pynchy.git_ops.utils import (
     detect_main_branch,
     files_changed_between,
     get_head_sha,
@@ -388,9 +388,8 @@ def _host_source_files_changed(old_sha: str, new_sha: str) -> bool:
 
 def needs_deploy(old_sha: str, new_sha: str) -> bool:
     """Check if a restart is needed between two commits."""
-    return (
-        _host_container_files_changed(old_sha, new_sha)
-        or _host_source_files_changed(old_sha, new_sha)
+    return _host_container_files_changed(old_sha, new_sha) or _host_source_files_changed(
+        old_sha, new_sha
     )
 
 

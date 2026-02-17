@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 from pynchy.config import PluginConfig, get_settings
-from pynchy.git_utils import is_repo_dirty, require_success, run_git
+from pynchy.git_ops.utils import is_repo_dirty, require_success, run_git
 from pynchy.logger import logger
 
 _HEX_REF_RE = re.compile(r"^[0-9a-f]{7,40}$")

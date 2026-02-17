@@ -77,7 +77,7 @@ def _marker_wrap(output: dict[str, Any]) -> bytes:
 
 _CR_CREDS = "pynchy.container_runner._credentials"
 _CR_ORCH = "pynchy.container_runner._orchestrator"
-_GATEWAY = "pynchy.gateway"
+_GATEWAY = "pynchy.infra.gateway"
 
 
 class _MockGateway:

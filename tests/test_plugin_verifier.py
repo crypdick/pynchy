@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from pynchy.config import PluginConfig
-from pynchy.plugin_verifier import (
+from pynchy.plugin.verifier import (
     _parse_verdict,
     audit_unverified_plugins,
     get_already_verified,
@@ -205,7 +205,7 @@ class TestAuditUnverifiedPlugins:
         unverified = {"p": (d, "sha1")}
 
         with patch(
-            "pynchy.plugin_verifier._audit_single_plugin",
+            "pynchy.plugin.verifier._audit_single_plugin",
             new_callable=AsyncMock,
             return_value=("pass", "Clean plugin"),
         ):
@@ -222,7 +222,7 @@ class TestAuditUnverifiedPlugins:
         unverified = {"p": (d, "sha1")}
 
         with patch(
-            "pynchy.plugin_verifier._audit_single_plugin",
+            "pynchy.plugin.verifier._audit_single_plugin",
             new_callable=AsyncMock,
             return_value=("fail", "Found malicious patterns"),
         ):
@@ -241,7 +241,7 @@ class TestAuditUnverifiedPlugins:
         unverified = {"p": (d, "sha1")}
 
         with patch(
-            "pynchy.plugin_verifier._audit_single_plugin",
+            "pynchy.plugin.verifier._audit_single_plugin",
             new_callable=AsyncMock,
             side_effect=RuntimeError("container crashed"),
         ):
@@ -259,7 +259,7 @@ class TestAuditUnverifiedPlugins:
         unverified = {"p": (d, "sha1")}
 
         with patch(
-            "pynchy.plugin_verifier._audit_single_plugin",
+            "pynchy.plugin.verifier._audit_single_plugin",
             new_callable=AsyncMock,
             return_value=("error", "Auth failure: 401"),
         ):
@@ -282,7 +282,7 @@ class TestAuditUnverifiedPlugins:
             return ("fail", "Malicious")
 
         with patch(
-            "pynchy.plugin_verifier._audit_single_plugin",
+            "pynchy.plugin.verifier._audit_single_plugin",
             side_effect=mock_audit,
         ):
             result = await audit_unverified_plugins(unverified, tmp_path)
@@ -297,7 +297,7 @@ class TestAuditUnverifiedPlugins:
 
 class TestPluginSyncSplit:
     def test_sync_plugin_repos_returns_trusted_flag(self, tmp_path: Path) -> None:
-        from pynchy.plugin_sync import sync_plugin_repos
+        from pynchy.plugin.sync import sync_plugin_repos
 
         settings = SimpleNamespace(
             plugins_dir=tmp_path / "plugins",
@@ -314,12 +314,12 @@ class TestPluginSyncSplit:
         untrusted_dir = settings.plugins_dir / "untrusted"
 
         with (
-            patch("pynchy.plugin_sync.get_settings", return_value=settings),
+            patch("pynchy.plugin.sync.get_settings", return_value=settings),
             patch(
-                "pynchy.plugin_sync._sync_single_plugin",
+                "pynchy.plugin.sync._sync_single_plugin",
                 side_effect=lambda name, cfg, root: root / name,
             ),
-            patch("pynchy.plugin_sync._plugin_revision", return_value="abc123"),
+            patch("pynchy.plugin.sync._plugin_revision", return_value="abc123"),
         ):
             result = sync_plugin_repos()
 
@@ -330,7 +330,7 @@ class TestPluginSyncSplit:
         assert result["untrusted"] == (untrusted_dir, "abc123", False)
 
     def test_install_verified_plugins_only_installs_verified(self, tmp_path: Path) -> None:
-        from pynchy.plugin_sync import install_verified_plugins
+        from pynchy.plugin.sync import install_verified_plugins
 
         settings = SimpleNamespace(plugins_dir=tmp_path / "plugins")
         settings.plugins_dir.mkdir(parents=True)
@@ -340,10 +340,10 @@ class TestPluginSyncSplit:
         }
 
         with (
-            patch("pynchy.plugin_sync.get_settings", return_value=settings),
-            patch("pynchy.plugin_sync._load_install_state", return_value={}),
-            patch("pynchy.plugin_sync._save_install_state"),
-            patch("pynchy.plugin_sync._install_plugin_in_host_env") as mock_install,
+            patch("pynchy.plugin.sync.get_settings", return_value=settings),
+            patch("pynchy.plugin.sync._load_install_state", return_value={}),
+            patch("pynchy.plugin.sync._save_install_state"),
+            patch("pynchy.plugin.sync._install_plugin_in_host_env") as mock_install,
         ):
             result = install_verified_plugins(verified)
 

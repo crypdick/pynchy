@@ -6,14 +6,14 @@ import json
 from typing import Any
 
 from pynchy.config import get_settings
-from pynchy.git_sync import (
+from pynchy.git_ops.sync import (
     host_notify_worktree_updates,
     host_sync_worktree,
     needs_container_rebuild,
     needs_deploy,
     write_ipc_response,
 )
-from pynchy.git_utils import get_head_sha
+from pynchy.git_ops.utils import get_head_sha
 from pynchy.ipc._deps import IpcDeps
 from pynchy.ipc._registry import register
 from pynchy.logger import logger
@@ -42,7 +42,7 @@ async def _handle_reset_context(
         group=group_folder,
     )
     try:
-        from pynchy.worktree import merge_and_push_worktree
+        from pynchy.git_ops.worktree import merge_and_push_worktree
 
         merge_and_push_worktree(group_folder)
     except Exception as exc:
@@ -85,8 +85,8 @@ async def _handle_finished_work(
         logger.warning("finished_work missing chatJid", source_group=source_group)
         return
 
+    from pynchy.git_ops.worktree import merge_and_push_worktree
     from pynchy.workspace_config import has_project_access
-    from pynchy.worktree import merge_and_push_worktree
 
     group = next(
         (g for g in deps.registered_groups().values() if g.folder == source_group),
@@ -135,9 +135,7 @@ async def _handle_sync_worktree_to_main(
             def registered_groups(self) -> dict[str, RegisteredGroup]:
                 return deps.registered_groups()
 
-            async def trigger_deploy(
-                self, previous_sha: str, rebuild: bool = True
-            ) -> None:
+            async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
                 pass  # adapter only used for worktree notifications
 
         await host_notify_worktree_updates(source_group, _GitSyncAdapter())
