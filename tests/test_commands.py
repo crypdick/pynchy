@@ -95,6 +95,18 @@ class TestIsContextReset:
         assert is_context_reset("BOOM")
         assert is_context_reset("Reset Context")
 
+    def test_trigger_prefix_stripped(self):
+        """Commands prefixed with @trigger (e.g. from Slack) should still match."""
+        assert is_context_reset("@pynchy c")
+        assert is_context_reset("@pynchy boom")
+        assert is_context_reset("@pynchy clear context")
+        assert is_context_reset("@pynchy context reset")
+
+    def test_trigger_alias_prefix_stripped(self):
+        """Trigger aliases (e.g. @ghost) should also be stripped."""
+        assert is_context_reset("@ghost c")
+        assert is_context_reset("@ghost clear context")
+
     def test_not_triggered_by_partial(self):
         assert not is_context_reset("reset")
         assert not is_context_reset("context")
@@ -129,6 +141,11 @@ class TestIsEndSession:
         assert is_end_session("DONE")
         assert is_end_session("End Session")
 
+    def test_trigger_prefix_stripped(self):
+        """Commands prefixed with @trigger should still match."""
+        assert is_end_session("@pynchy done")
+        assert is_end_session("@pynchy end session")
+
     def test_not_triggered_by_partial(self):
         assert not is_end_session("end")
         assert not is_end_session("session")
@@ -155,6 +172,11 @@ class TestIsRedeploy:
     def test_whitespace_trimmed(self):
         assert is_redeploy("  r  ")
         assert is_redeploy("  redeploy  ")
+
+    def test_trigger_prefix_stripped(self):
+        """Commands prefixed with @trigger should still match."""
+        assert is_redeploy("@pynchy r")
+        assert is_redeploy("@pynchy redeploy")
 
     def test_not_triggered_by_sentences(self):
         assert not is_redeploy("please redeploy now")

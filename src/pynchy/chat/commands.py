@@ -9,6 +9,17 @@ from __future__ import annotations
 from pynchy.config import get_settings
 
 
+def _strip_trigger(text: str) -> str:
+    """Remove the leading trigger prefix (e.g. ``@pynchy``) if present.
+
+    Slack normalises ``<@UBOTID>`` to ``@AgentName`` before the text reaches
+    command detection.  A message like ``@pynchy c`` should be treated the
+    same as a bare ``c``.
+    """
+    s = get_settings()
+    return s.trigger_pattern.sub("", text).strip()
+
+
 def _is_magic_command(
     text: str,
     verbs: set[str],
@@ -32,18 +43,21 @@ def _word_sets(w: object) -> tuple[set[str], set[str], set[str]]:
 
 def is_context_reset(text: str) -> bool:
     """Check if a message is a context reset command."""
+    text = _strip_trigger(text)
     verbs, nouns, aliases = _word_sets(get_settings().commands.reset)
     return _is_magic_command(text, verbs, nouns, aliases)
 
 
 def is_end_session(text: str) -> bool:
     """Check if a message is an end session command."""
+    text = _strip_trigger(text)
     verbs, nouns, aliases = _word_sets(get_settings().commands.end_session)
     return _is_magic_command(text, verbs, nouns, aliases)
 
 
 def is_redeploy(text: str) -> bool:
     """Check if a message is a manual redeploy command."""
+    text = _strip_trigger(text)
     w = get_settings().commands.redeploy
     word = text.strip().lower()
     aliases = set(w.aliases)
