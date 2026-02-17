@@ -376,7 +376,7 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
 
         # Merge worktree commits and push for all project_access tasks
         if not error and task.project_access:
-            from pynchy.worktree import merge_and_push_worktree
+            from pynchy.git_ops.worktree import merge_and_push_worktree
 
             merge_and_push_worktree(task.group_folder)
     except Exception as exc:

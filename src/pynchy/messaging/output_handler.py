@@ -16,7 +16,7 @@ from pynchy.config import get_settings
 from pynchy.db import store_message_direct
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.logger import logger
-from pynchy.router import format_tool_preview, parse_host_tag
+from pynchy.messaging.router import format_tool_preview, parse_host_tag
 
 if TYPE_CHECKING:
     from pynchy.types import Channel, ContainerOutput, RegisteredGroup
@@ -221,7 +221,7 @@ async def handle_streamed_output(
     Broadcasts trace events and results to channels/TUI.
     Returns True if a user-visible result was sent.
     """
-    from pynchy.router import strip_internal_tags
+    from pynchy.messaging.router import strip_internal_tags
 
     s = get_settings()
     ts = datetime.now(UTC).isoformat()

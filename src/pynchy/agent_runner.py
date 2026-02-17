@@ -14,7 +14,7 @@ from pynchy.container_runner import (
 )
 from pynchy.container_runner._orchestrator import run_container_agent
 from pynchy.db import get_all_host_jobs, get_all_tasks, set_session
-from pynchy.git_utils import count_unpushed_commits, is_repo_dirty
+from pynchy.git_ops.utils import count_unpushed_commits, is_repo_dirty
 from pynchy.logger import logger
 from pynchy.types import ContainerInput, ContainerOutput
 

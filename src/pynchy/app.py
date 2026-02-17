@@ -13,13 +13,9 @@ if TYPE_CHECKING:
     import pluggy
 
 from pynchy import (
-    channel_handler,
-    message_handler,
-    output_handler,
     session_handler,
     startup_handler,
 )
-from pynchy.channel_runtime import ChannelPluginContext, load_channels, resolve_default_channel
 from pynchy.config import get_settings
 from pynchy.db import (
     get_aliases_for_jid,
@@ -36,11 +32,21 @@ from pynchy.db import (
 )
 from pynchy.event_bus import EventBus
 from pynchy.group_queue import GroupQueue
-from pynchy.http_server import start_http_server
+from pynchy.infra.http_server import start_http_server
+from pynchy.infra.service_installer import install_service
+from pynchy.infra.system_checks import ensure_container_system_running
 from pynchy.logger import logger
-from pynchy.plugin_verifier import load_verified_plugins, scan_and_install_new_plugins
-from pynchy.service_installer import install_service
-from pynchy.system_checks import ensure_container_system_running
+from pynchy.messaging import (
+    channel_handler,
+    message_handler,
+    output_handler,
+)
+from pynchy.messaging.channel_runtime import (
+    ChannelPluginContext,
+    load_channels,
+    resolve_default_channel,
+)
+from pynchy.plugin.verifier import load_verified_plugins, scan_and_install_new_plugins
 from pynchy.tunnels import check_tunnels
 from pynchy.types import (
     Channel,
@@ -375,7 +381,7 @@ class PynchyApp:
 
     async def _on_reaction(self, jid: str, message_ts: str, user_id: str, emoji: str) -> None:
         """Handle an inbound reaction from a channel."""
-        from pynchy.reaction_handler import handle_reaction
+        from pynchy.messaging.reaction_handler import handle_reaction
 
         await handle_reaction(self, jid, message_ts, user_id, emoji)
 
@@ -392,7 +398,7 @@ class PynchyApp:
         Only the gateway and DB need closing — channels haven't connected
         yet and the queue has no in-flight work.
         """
-        from pynchy.gateway import stop_gateway
+        from pynchy.infra.gateway import stop_gateway
 
         await stop_gateway()
 
@@ -416,7 +422,7 @@ class PynchyApp:
             await asyncio.sleep(0.3)
             await self._http_runner.cleanup()
 
-        from pynchy.gateway import stop_gateway
+        from pynchy.infra.gateway import stop_gateway
 
         await stop_gateway()
         await self.queue.shutdown(10.0)
@@ -431,7 +437,7 @@ class PynchyApp:
             make_ipc_deps,
             make_scheduler_deps,
         )
-        from pynchy.git_sync import start_host_git_sync_loop
+        from pynchy.git_ops.sync import start_host_git_sync_loop
         from pynchy.ipc import start_ipc_watcher
         from pynchy.task_scheduler import start_scheduler_loop
 
@@ -454,7 +460,7 @@ class PynchyApp:
 
             # Start the LLM gateway before any containers launch so they can
             # reach it for credential-isolated API calls.
-            from pynchy.gateway import start_gateway
+            from pynchy.infra.gateway import start_gateway
 
             await start_gateway()
 
@@ -512,8 +518,8 @@ class PynchyApp:
 
         # Reconcile worktrees: create missing ones for project_access groups,
         # fix broken worktrees, and rebase diverged branches before containers launch
+        from pynchy.git_ops.worktree import reconcile_worktrees_at_startup
         from pynchy.workspace_config import get_project_access_folders, reconcile_workspaces
-        from pynchy.worktree import reconcile_worktrees_at_startup
 
         project_access_folders = get_project_access_folders(self.workspaces)
 

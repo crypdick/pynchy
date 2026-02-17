@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from pynchy.config import get_settings
-from pynchy.git_utils import detect_main_branch, push_local_commits, run_git
+from pynchy.git_ops.utils import detect_main_branch, push_local_commits, run_git
 from pynchy.logger import logger
 
 

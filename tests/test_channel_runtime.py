@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 from unittest.mock import patch
 
-from pynchy import channel_runtime
+from pynchy.messaging import channel_runtime
 
 
 @dataclass
@@ -52,7 +52,7 @@ def test_resolve_default_channel_returns_none_for_tui_default() -> None:
 
 def test_resolve_default_channel_uses_explicit_configured_channel() -> None:
     settings = type("Settings", (), {"channels": type("Channels", (), {"default": "whatsapp"})()})()
-    with patch("pynchy.channel_runtime.get_settings", return_value=settings):
+    with patch("pynchy.messaging.channel_runtime.get_settings", return_value=settings):
         selected = channel_runtime.resolve_default_channel([_FakeChannel("whatsapp")])
     assert selected is not None
     assert selected.name == "whatsapp"

@@ -12,17 +12,14 @@ Python process that connects to messaging channels (WhatsApp, Slack, etc. via pl
 |------|---------|
 | `src/pynchy/db/` | SQLite operations (async, aiosqlite) — package with domain submodules |
 | `src/pynchy/ipc/` | IPC watcher, registry-based dispatch, service handlers — package |
-| `src/pynchy/gateway.py` | LLM API gateway (credential-isolating reverse proxy) |
-| `src/pynchy/git_sync.py` | Host git sync loop, drift detection, worktree merges |
-| `src/pynchy/router.py` | Message formatting and outbound routing |
+| `src/pynchy/git_ops/` | Git sync, worktrees, and shared helpers — package |
+| `src/pynchy/messaging/` | Message pipeline — channels, commands, routing, output handling |
+| `src/pynchy/infra/` | Gateway, HTTP server, runtime detection, platform services |
+| `src/pynchy/plugin/` | Plugin system, sync, verification, built-in plugins |
+| `src/pynchy/container_runner/` | Container orchestration — mounts, credentials, process management |
+| `src/pynchy/policy/` | Security policy middleware and audit logging |
 | `src/pynchy/config.py` | Pydantic BaseSettings config (TOML + env overrides) |
-| `src/pynchy/commands.py` | Special command matching (reset/end/redeploy) |
-| `src/pynchy/message_handler.py` | Message processing pipeline and loop |
-| `src/pynchy/output_handler.py` | Streamed output/trace persistence and broadcast |
 | `src/pynchy/group_queue.py` | Per-group queue with global concurrency limit |
-| `src/pynchy/runtime.py` | Container runtime detection (Apple Container / Docker) |
-| `src/pynchy/mount_security.py` | Mount path validation and allowlist |
-| `src/pynchy/worktree.py` | Git worktree isolation for non-god project_access groups |
 | `src/pynchy/task_scheduler.py` | Runs scheduled tasks |
 | `src/pynchy/types.py` | Data models (dataclasses) |
 | `src/pynchy/logger.py` | Structured logging (structlog) |

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.channel_handler import (
+from pynchy.messaging.channel_handler import (
     broadcast_host_message,
     broadcast_to_channels,
     send_reaction_to_channels,
@@ -190,7 +190,7 @@ class TestBroadcastHostMessage:
         deps = _make_deps([ch])
 
         with patch(
-            "pynchy.channel_handler.store_message_direct",
+            "pynchy.messaging.channel_handler.store_message_direct",
             new_callable=AsyncMock,
         ) as mock_store:
             await broadcast_host_message(deps, "group@g.us", "⚠️ Error occurred")

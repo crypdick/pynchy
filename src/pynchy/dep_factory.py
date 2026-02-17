@@ -25,13 +25,13 @@ from pynchy.adapters import (
 from pynchy.config import get_settings
 from pynchy.container_runner import write_groups_snapshot as _write_groups_snapshot
 from pynchy.db import store_message_direct
-from pynchy.git_utils import get_head_sha
+from pynchy.git_ops.utils import get_head_sha
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
     from pynchy.app import PynchyApp
-    from pynchy.git_sync import GitSyncDeps
-    from pynchy.http_server import HttpDeps
+    from pynchy.git_ops.sync import GitSyncDeps
+    from pynchy.infra.http_server import HttpDeps
     from pynchy.ipc import IpcDeps
     from pynchy.task_scheduler import SchedulerDependencies
 

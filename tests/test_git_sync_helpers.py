@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from conftest import make_settings
 
-from pynchy.git_sync import (
+from pynchy.git_ops.sync import (
     _build_rebase_notice,
     _get_local_head_sha,
     _host_source_files_changed,
@@ -118,13 +118,13 @@ class TestGetLocalHeadSha:
         expected = _git(repo, "rev-parse", "HEAD").stdout.strip()
 
         s = make_settings(project_root=repo)
-        with patch("pynchy.git_utils.get_settings", return_value=s):
+        with patch("pynchy.git_ops.utils.get_settings", return_value=s):
             result = _get_local_head_sha()
             assert result == expected
 
     def test_returns_empty_string_on_failure(self):
         """Should return empty string when get_head_sha returns 'unknown'."""
-        with patch("pynchy.git_sync.get_head_sha", return_value="unknown"):
+        with patch("pynchy.git_ops.sync.get_head_sha", return_value="unknown"):
             result = _get_local_head_sha()
             assert result == ""
 

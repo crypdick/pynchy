@@ -115,7 +115,7 @@ def _write_env_file(*, is_god: bool, group_folder: str) -> Path | None:
     Non-LLM credentials (GH_TOKEN, git identity) are written directly —
     they are not proxied through the gateway.
     """
-    from pynchy.gateway import get_gateway
+    from pynchy.infra.gateway import get_gateway
 
     s = get_settings()
     env_dir = s.data_dir / "env" / group_folder

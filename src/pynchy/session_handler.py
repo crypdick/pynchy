@@ -56,8 +56,8 @@ async def handle_context_reset(
     deps: SessionDeps, chat_jid: str, group: RegisteredGroup, timestamp: str
 ) -> None:
     """Clear session state, merge worktree, and confirm context reset."""
+    from pynchy.git_ops.worktree import merge_and_push_worktree
     from pynchy.workspace_config import has_project_access
-    from pynchy.worktree import merge_and_push_worktree
 
     # Merge worktree commits before clearing session so work isn't stranded
     if has_project_access(group):
@@ -87,8 +87,8 @@ async def handle_end_session(
     Unlike context reset, this preserves conversation history. The next
     message will start a fresh container that picks up where it left off.
     """
+    from pynchy.git_ops.worktree import merge_and_push_worktree
     from pynchy.workspace_config import has_project_access
-    from pynchy.worktree import merge_and_push_worktree
 
     # Merge worktree commits before stopping so work isn't stranded
     if has_project_access(group):
@@ -122,7 +122,7 @@ async def trigger_manual_redeploy(deps: SessionDeps, chat_jid: str) -> None:
     """Handle a manual redeploy command — restart the service in-place."""
     from pynchy.adapters import SessionManager
     from pynchy.deploy import finalize_deploy
-    from pynchy.git_utils import get_head_sha
+    from pynchy.git_ops.utils import get_head_sha
 
     sha = get_head_sha()
     logger.info("Manual redeploy triggered via magic word", chat_jid=chat_jid)

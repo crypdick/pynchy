@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
-from pynchy.mount_security import (
+from pynchy.infra.mount_security import (
     _expand_path,
     _find_allowed_root,
     _is_valid_container_path,
@@ -74,7 +74,9 @@ allow_read_write = true
 description = "Dev"
 """.strip(),
         )
-        with patch("pynchy.mount_security.get_settings", return_value=_test_settings(allowlist)):
+        with patch(
+            "pynchy.infra.mount_security.get_settings", return_value=_test_settings(allowlist)
+        ):
             data = load_mount_allowlist()
         assert data is not None
         assert data.non_god_read_only is True
@@ -83,13 +85,17 @@ description = "Dev"
 
     def test_missing_file_returns_none(self, tmp_path: Path):
         allowlist = tmp_path / "missing.toml"
-        with patch("pynchy.mount_security.get_settings", return_value=_test_settings(allowlist)):
+        with patch(
+            "pynchy.infra.mount_security.get_settings", return_value=_test_settings(allowlist)
+        ):
             assert load_mount_allowlist() is None
 
     def test_invalid_toml_returns_none(self, tmp_path: Path):
         allowlist = tmp_path / "mount-allowlist.toml"
         _write_allowlist(allowlist, "not = [valid")
-        with patch("pynchy.mount_security.get_settings", return_value=_test_settings(allowlist)):
+        with patch(
+            "pynchy.infra.mount_security.get_settings", return_value=_test_settings(allowlist)
+        ):
             assert load_mount_allowlist() is None
 
 
@@ -111,7 +117,9 @@ path = "{allowed}"
 allow_read_write = true
 """.strip(),
         )
-        with patch("pynchy.mount_security.get_settings", return_value=_test_settings(allowlist)):
+        with patch(
+            "pynchy.infra.mount_security.get_settings", return_value=_test_settings(allowlist)
+        ):
             result = validate_mount(
                 AdditionalMount(host_path=str(target), container_path="repo"), is_god=True
             )
@@ -134,7 +142,9 @@ path = "{allowed}"
 allow_read_write = true
 """.strip(),
         )
-        with patch("pynchy.mount_security.get_settings", return_value=_test_settings(allowlist)):
+        with patch(
+            "pynchy.infra.mount_security.get_settings", return_value=_test_settings(allowlist)
+        ):
             result = validate_mount(
                 AdditionalMount(host_path=str(outside), container_path="outside"),
                 is_god=True,
@@ -156,7 +166,9 @@ path = "{tmp_path}"
 allow_read_write = true
 """.strip(),
         )
-        with patch("pynchy.mount_security.get_settings", return_value=_test_settings(allowlist)):
+        with patch(
+            "pynchy.infra.mount_security.get_settings", return_value=_test_settings(allowlist)
+        ):
             result = validate_mount(
                 AdditionalMount(host_path=str(data), container_path="data", readonly=False),
                 is_god=False,
@@ -187,7 +199,9 @@ allow_read_write = true
             AdditionalMount(host_path=str(good), container_path="good"),
             AdditionalMount(host_path=str(tmp_path / "missing"), container_path="bad"),
         ]
-        with patch("pynchy.mount_security.get_settings", return_value=_test_settings(allowlist)):
+        with patch(
+            "pynchy.infra.mount_security.get_settings", return_value=_test_settings(allowlist)
+        ):
             result = validate_additional_mounts(mounts, "TestGroup", is_god=True)
         assert len(result) == 1
         assert result[0]["containerPath"] == "/workspace/extra/good"

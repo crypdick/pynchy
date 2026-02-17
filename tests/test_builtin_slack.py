@@ -151,6 +151,54 @@ class TestSlackChannelDisconnect:
         assert ch.is_connected() is False
 
 
+class TestStripBotMention:
+    def test_strips_bot_mention_from_start(self) -> None:
+        ch = _make_channel()
+        ch._bot_user_id = "U_BOT"
+        assert ch._strip_bot_mention("<@U_BOT> hello") == "hello"
+
+    def test_strips_bot_mention_from_middle(self) -> None:
+        ch = _make_channel()
+        ch._bot_user_id = "U_BOT"
+        assert ch._strip_bot_mention("hey <@U_BOT> hello") == "hey  hello"
+
+    def test_preserves_other_mentions(self) -> None:
+        ch = _make_channel()
+        ch._bot_user_id = "U_BOT"
+        assert ch._strip_bot_mention("<@U_OTHER> hello") == "<@U_OTHER> hello"
+
+    def test_noop_when_no_bot_id(self) -> None:
+        ch = _make_channel()
+        ch._bot_user_id = ""
+        assert ch._strip_bot_mention("<@U_BOT> hello") == "<@U_BOT> hello"
+
+    def test_single_word_command_after_mention(self) -> None:
+        ch = _make_channel()
+        ch._bot_user_id = "U_BOT"
+        assert ch._strip_bot_mention("<@U_BOT> c") == "c"
+
+    def test_mention_only(self) -> None:
+        ch = _make_channel()
+        ch._bot_user_id = "U_BOT"
+        assert ch._strip_bot_mention("<@U_BOT>") == ""
+
+
+class TestDedupTs:
+    def test_first_ts_returns_false(self) -> None:
+        ch = _make_channel()
+        assert ch._dedup_ts("1234567890.000001") is False
+
+    def test_duplicate_ts_returns_true(self) -> None:
+        ch = _make_channel()
+        ch._dedup_ts("1234567890.000001")
+        assert ch._dedup_ts("1234567890.000001") is True
+
+    def test_different_ts_returns_false(self) -> None:
+        ch = _make_channel()
+        ch._dedup_ts("1234567890.000001")
+        assert ch._dedup_ts("1234567890.000002") is False
+
+
 class TestSlackChannelInbound:
     @pytest.mark.asyncio
     async def test_on_slack_message_calls_callback(self) -> None:
@@ -183,6 +231,49 @@ class TestSlackChannelInbound:
         assert msg.sender == "U999"
         assert msg.sender_name == "Alice"
         assert msg.content == "hello pynchy"
+
+    @pytest.mark.asyncio
+    async def test_on_slack_message_strips_bot_mention(self) -> None:
+        on_message = MagicMock()
+        on_metadata = MagicMock()
+        ch = _make_channel(on_message=on_message, on_chat_metadata=on_metadata)
+        ch._app = MagicMock()
+        ch._bot_user_id = "U_BOT"
+        ch._resolve_user_name = AsyncMock(return_value="Alice")
+        ch._resolve_channel_name = AsyncMock(return_value="general")
+
+        event = {
+            "channel": "C12345",
+            "user": "U999",
+            "text": "<@U_BOT> c",
+            "ts": "1234567890.000010",
+            "channel_type": "channel",
+        }
+        await ch._on_slack_message(event)
+
+        msg = on_message.call_args[0][1]
+        assert msg.content == "c"
+
+    @pytest.mark.asyncio
+    async def test_on_slack_message_deduplicates_same_ts(self) -> None:
+        on_message = MagicMock()
+        on_metadata = MagicMock()
+        ch = _make_channel(on_message=on_message, on_chat_metadata=on_metadata)
+        ch._app = MagicMock()
+        ch._resolve_user_name = AsyncMock(return_value="Alice")
+        ch._resolve_channel_name = AsyncMock(return_value="general")
+
+        event = {
+            "channel": "C12345",
+            "user": "U999",
+            "text": "hello",
+            "ts": "1234567890.000020",
+            "channel_type": "channel",
+        }
+        await ch._on_slack_message(event)
+        await ch._on_slack_message(event)  # duplicate (app_mention)
+
+        on_message.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_on_slack_message_ignores_bot_messages(self) -> None:

@@ -19,7 +19,7 @@ from aiohttp import web
 
 from pynchy.config import get_settings
 from pynchy.deploy import finalize_deploy
-from pynchy.git_utils import (
+from pynchy.git_ops.utils import (
     files_changed_between,
     get_head_sha,
     is_repo_dirty,

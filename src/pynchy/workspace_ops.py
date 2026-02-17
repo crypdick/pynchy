@@ -13,7 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from pynchy.config import get_settings
-from pynchy.git_utils import run_git
+from pynchy.git_ops.utils import run_git
 from pynchy.logger import logger
 
 

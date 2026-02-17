@@ -316,9 +316,12 @@ class LiteLLMGateway:
 
         # Build environment variables
         env_vars = [
-            "-e", f"LITELLM_MASTER_KEY={self.key}",
-            "-e", f"LITELLM_SALT_KEY={self._salt_key}",
-            "-e", f"DATABASE_URL={self._database_url}",
+            "-e",
+            f"LITELLM_MASTER_KEY={self.key}",
+            "-e",
+            f"LITELLM_SALT_KEY={self._salt_key}",
+            "-e",
+            f"DATABASE_URL={self._database_url}",
         ]
 
         # Add UI credentials if configured
