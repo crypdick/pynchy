@@ -6,6 +6,8 @@ Extracted from app.py to keep the orchestrator focused on wiring.
 from __future__ import annotations
 
 import json
+import time
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from itertools import count
 from typing import TYPE_CHECKING, Any, Protocol
@@ -17,7 +19,7 @@ from pynchy.logger import logger
 from pynchy.router import format_tool_preview, parse_host_tag
 
 if TYPE_CHECKING:
-    from pynchy.types import ContainerOutput, RegisteredGroup
+    from pynchy.types import Channel, ContainerOutput, RegisteredGroup
 
 _trace_counter = count(1)
 
@@ -27,6 +29,66 @@ _VERBOSE_RESULT_TOOLS = frozenset({"ExitPlanMode", "EnterPlanMode"})
 
 # Tracks the last tool_use name per chat so we can enrich the subsequent tool_result.
 _last_tool_name: dict[str, str] = {}
+
+# Channel broadcast truncation threshold for tool results.
+# Full content is always persisted to DB; only the channel broadcast is truncated.
+_MAX_TOOL_OUTPUT = 4000
+
+# Minimum interval between streaming updates to channels (seconds).
+_STREAM_THROTTLE = 0.5
+
+
+@dataclass
+class _StreamState:
+    """Tracks in-progress streaming text for a single chat."""
+
+    buffer: str = ""
+    # channel → message_id for in-place updates
+    message_ids: dict[str, str] = field(default_factory=dict)
+    last_update: float = 0.0
+
+
+# Per-chat streaming state, created on first text event, cleaned up on result.
+_stream_states: dict[str, _StreamState] = {}
+
+
+async def _stream_text_to_channels(
+    channels: list[Channel],
+    chat_jid: str,
+    state: _StreamState,
+    *,
+    final: bool = False,
+) -> None:
+    """Push buffered text to channels that support update_message.
+
+    On first call, posts a new message. Subsequent calls update it in-place.
+    Throttled to _STREAM_THROTTLE unless ``final`` is True.
+    """
+    now = time.monotonic()
+    if not final and (now - state.last_update) < _STREAM_THROTTLE:
+        return
+
+    display = state.buffer + (" \u258c" if not final else "")
+    state.last_update = now
+
+    for ch in channels:
+        if not ch.is_connected() or not ch.owns_jid(chat_jid):
+            continue
+        if not hasattr(ch, "update_message") or not hasattr(ch, "post_message"):
+            continue
+
+        ch_name = getattr(ch, "name", "?")
+        msg_id = state.message_ids.get(ch_name)
+
+        try:
+            if msg_id is None:
+                msg_id = await ch.post_message(chat_jid, display)
+                if msg_id:
+                    state.message_ids[ch_name] = msg_id
+            else:
+                await ch.update_message(chat_jid, msg_id, display)
+        except Exception as exc:
+            logger.debug("Stream update failed", channel=ch_name, err=str(exc))
 
 
 def _next_trace_id(prefix: str) -> str:
@@ -38,8 +100,19 @@ def _next_trace_id(prefix: str) -> str:
     return f"{prefix}-{ts_ms}-{next(_trace_counter)}"
 
 
+def _truncate_output(content: str) -> str:
+    """Truncate long tool output for channel broadcast, keeping head and tail."""
+    head = content[:2000]
+    tail = content[-500:]
+    omitted = len(content) - 2500
+    return f"{head}\n\n... ({omitted} chars omitted) ...\n\n{tail}"
+
+
 class OutputDeps(Protocol):
     """Dependencies for output handling."""
+
+    @property
+    def channels(self) -> list[Channel]: ...
 
     async def broadcast_to_channels(
         self, chat_jid: str, text: str, *, suppress_errors: bool = True
@@ -187,10 +260,12 @@ async def handle_streamed_output(
         content = result.tool_result_content or ""
         preceding_tool = _last_tool_name.pop(chat_jid, "")
 
-        # For select tools, broadcast the full result content instead of
-        # the generic placeholder so users can review it (e.g. plan files).
+        # For select tools, broadcast the result content instead of the
+        # generic placeholder so users can review it (e.g. plan files).
+        # Truncate if it exceeds the channel broadcast threshold.
         if preceding_tool in _VERBOSE_RESULT_TOOLS and content:
-            channel_text = f"\U0001f4cb {preceding_tool}:\n{content}"
+            display = _truncate_output(content) if len(content) > _MAX_TOOL_OUTPUT else content
+            channel_text = f"\U0001f4cb {preceding_tool}:\n{display}"
         else:
             channel_text = "\U0001f4cb tool result"
 
@@ -244,13 +319,22 @@ async def handle_streamed_output(
 
         return False
     if result.type == "text":
+        delta = result.text or ""
         deps.emit(
             AgentTraceEvent(
                 chat_jid=chat_jid,
                 trace_type="text",
-                data={"text": result.text or ""},
+                data={"text": delta},
             )
         )
+        # Stream text deltas to channels that support update_message
+        if delta:
+            state = _stream_states.get(chat_jid)
+            if state is None:
+                state = _StreamState()
+                _stream_states[chat_jid] = state
+            state.buffer += delta
+            await _stream_text_to_channels(deps.channels, chat_jid, state)
         return False
 
     # Persist result metadata if present (cost, usage, duration)
@@ -287,6 +371,10 @@ async def handle_streamed_output(
             )
         )
 
+    # Finalize any streaming state — update streamed messages with final text
+    # or clean up if the result is empty.
+    stream_state = _stream_states.pop(chat_jid, None)
+
     if result.result:
         raw = result.result if isinstance(result.result, str) else json.dumps(result.result)
         text = strip_internal_tags(raw)
@@ -315,7 +403,27 @@ async def handle_streamed_output(
                 is_from_me=True,
                 message_type=msg_type,
             )
-            await deps.broadcast_to_channels(chat_jid, channel_text, suppress_errors=False)
+
+            # For channels that were streaming, finalize the existing message.
+            # For all others, post normally via broadcast.
+            if stream_state and stream_state.message_ids:
+                # Update streamed messages with final text
+                for ch in deps.channels:
+                    ch_name = getattr(ch, "name", "?")
+                    msg_id = stream_state.message_ids.get(ch_name)
+                    if msg_id and hasattr(ch, "update_message"):
+                        try:
+                            await ch.update_message(chat_jid, msg_id, channel_text)
+                        except Exception as exc:
+                            logger.debug("Final stream update failed", err=str(exc))
+                    elif ch.is_connected():
+                        # Channel wasn't streaming — post normally
+                        try:
+                            await ch.send_message(chat_jid, channel_text)
+                        except Exception as exc:
+                            logger.warning("Channel send failed", channel=ch_name, err=str(exc))
+            else:
+                await deps.broadcast_to_channels(chat_jid, channel_text, suppress_errors=False)
             deps.emit(
                 MessageEvent(
                     chat_jid=chat_jid,

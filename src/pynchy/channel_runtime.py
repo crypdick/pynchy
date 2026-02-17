@@ -25,6 +25,7 @@ class ChannelPluginContext:
     on_chat_metadata_callback: Callable[[str, str, str | None], None]
     registered_groups: Callable[[], dict[str, RegisteredGroup]]
     send_message: Callable[[str, str], Any]
+    on_reaction_callback: Callable[[str, str, str, str], None] | None = None
 
 
 def default_channel_name() -> str:

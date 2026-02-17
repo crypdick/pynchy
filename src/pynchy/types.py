@@ -388,6 +388,11 @@ class Channel(Protocol):
     # WhatsApp returns true. Default true if not implemented.
     # prefix_assistant_name is NOT part of the protocol — use getattr with default.
 
+    # Optional: streaming message updates. Channels that support it implement:
+    #   post_message(jid, text) -> str | None   (returns message ID)
+    #   update_message(jid, message_id, text)   (updates in-place)
+    # Used by output_handler for real-time text streaming with a cursor indicator.
+
 
 # Callback types
 OnInboundMessage = Callable[[str, NewMessage], None]
