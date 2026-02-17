@@ -15,12 +15,7 @@ from pynchy.config import (
     WorkspaceSecurityConfig,
 )
 from pynchy.db import _init_test_database
-from pynchy.ipc._handlers_service import (
-    _handle_service_request,
-    clear_plugin_handler_cache,
-    clear_policy_cache,
-)
-from pynchy.plugin.builtin_mcp_caldav import (
+from pynchy.integrations.plugins.caldav import (
     _handle_create_event,
     _handle_delete_event,
     _handle_list_calendar,
@@ -28,6 +23,11 @@ from pynchy.plugin.builtin_mcp_caldav import (
     _is_calendar_visible,
     _resolve_server,
     clear_caldav_client_cache,
+)
+from pynchy.ipc._handlers_service import (
+    _handle_service_request,
+    clear_plugin_handler_cache,
+    clear_policy_cache,
 )
 from pynchy.types import RegisteredGroup
 
@@ -58,14 +58,14 @@ TEST_GROUP = RegisteredGroup(
 WORK_SERVER = CalDAVServerConfig(
     url="https://work.nextcloud.com/remote.php/dav/",
     username="user@work.com",
-    password="workpass",
+    password="workpass",  # pragma: allowlist secret
     default_calendar="meetings",
 )
 
 PERSONAL_SERVER = CalDAVServerConfig(
     url="https://personal.nextcloud.com/remote.php/dav/",
     username="me@example.com",
-    password="personalpass",
+    password="personalpass",  # pragma: allowlist secret
 )
 
 CALDAV_CONFIG = CalDAVConfig(
@@ -149,7 +149,7 @@ def _make_fake_client(*calendar_names):
 async def test_list_calendar_not_configured():
     """Returns error when no CalDAV servers are configured."""
     settings = _make_settings(caldav_cfg=EMPTY_CALDAV_CONFIG)
-    with patch("pynchy.plugin.builtin_mcp_caldav.get_settings", return_value=settings):
+    with patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings):
         result = await _handle_list_calendar({"calendar": "primary"})
     assert "error" in result
     assert "not configured" in result["error"].lower()
@@ -158,7 +158,7 @@ async def test_list_calendar_not_configured():
 @pytest.mark.asyncio
 async def test_create_event_not_configured():
     settings = _make_settings(caldav_cfg=EMPTY_CALDAV_CONFIG)
-    with patch("pynchy.plugin.builtin_mcp_caldav.get_settings", return_value=settings):
+    with patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings):
         result = await _handle_create_event(
             {
                 "title": "Test",
@@ -173,7 +173,7 @@ async def test_create_event_not_configured():
 @pytest.mark.asyncio
 async def test_delete_event_not_configured():
     settings = _make_settings(caldav_cfg=EMPTY_CALDAV_CONFIG)
-    with patch("pynchy.plugin.builtin_mcp_caldav.get_settings", return_value=settings):
+    with patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings):
         result = await _handle_delete_event({"event_id": "uid-123", "calendar": "primary"})
     assert "error" in result
     assert "not configured" in result["error"].lower()
@@ -182,7 +182,7 @@ async def test_delete_event_not_configured():
 @pytest.mark.asyncio
 async def test_list_calendars_not_configured():
     settings = _make_settings(caldav_cfg=EMPTY_CALDAV_CONFIG)
-    with patch("pynchy.plugin.builtin_mcp_caldav.get_settings", return_value=settings):
+    with patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings):
         result = await _handle_list_calendars({})
     assert "error" in result
     assert "not configured" in result["error"].lower()
@@ -284,9 +284,7 @@ def test_is_visible_ignore_no_match():
 
 def test_allow_overrides_ignore():
     """When both allow and ignore are set, allow wins."""
-    cfg = CalDAVServerConfig(
-        url="http://x", username="u", allow=["meetings"], ignore=["meetings"]
-    )
+    cfg = CalDAVServerConfig(url="http://x", username="u", allow=["meetings"], ignore=["meetings"])
     # "meetings" is in both — allow wins, so it's visible
     assert _is_calendar_visible("meetings", cfg) is True
     # "other" is not in allow, so it's hidden (allow list is exclusive)
@@ -316,8 +314,8 @@ async def test_list_calendar_returns_events():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugin.builtin_mcp_caldav.get_settings", return_value=settings),
-        patch("pynchy.plugin.builtin_mcp_caldav._get_caldav_client", return_value=fake_client),
+        patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings),
+        patch("pynchy.integrations.plugins.caldav._get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_list_calendar(
             {
@@ -345,8 +343,8 @@ async def test_list_calendar_defaults_to_7_days():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugin.builtin_mcp_caldav.get_settings", return_value=settings),
-        patch("pynchy.plugin.builtin_mcp_caldav._get_caldav_client", return_value=fake_client),
+        patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings),
+        patch("pynchy.integrations.plugins.caldav._get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_list_calendar({"calendar": "primary"})
 
@@ -370,8 +368,8 @@ async def test_list_calendar_explicit_server():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugin.builtin_mcp_caldav.get_settings", return_value=settings),
-        patch("pynchy.plugin.builtin_mcp_caldav._get_caldav_client", return_value=fake_client),
+        patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings),
+        patch("pynchy.integrations.plugins.caldav._get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_list_calendar({"calendar": "personal/my-cal"})
 
@@ -386,8 +384,8 @@ async def test_list_calendar_not_found():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugin.builtin_mcp_caldav.get_settings", return_value=settings),
-        patch("pynchy.plugin.builtin_mcp_caldav._get_caldav_client", return_value=fake_client),
+        patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings),
+        patch("pynchy.integrations.plugins.caldav._get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_list_calendar({"calendar": "nonexistent"})
 
@@ -414,8 +412,8 @@ async def test_list_calendar_filtered_out():
     settings = _make_settings(caldav_cfg=cfg)
 
     with (
-        patch("pynchy.plugin.builtin_mcp_caldav.get_settings", return_value=settings),
-        patch("pynchy.plugin.builtin_mcp_caldav._get_caldav_client", return_value=fake_client),
+        patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings),
+        patch("pynchy.integrations.plugins.caldav._get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_list_calendar({"calendar": "secret-cal"})
 
@@ -436,8 +434,8 @@ async def test_list_calendars_discovers_all():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugin.builtin_mcp_caldav.get_settings", return_value=settings),
-        patch("pynchy.plugin.builtin_mcp_caldav._get_caldav_client", return_value=fake_client),
+        patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings),
+        patch("pynchy.integrations.plugins.caldav._get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_list_calendars({})
 
@@ -469,8 +467,8 @@ async def test_list_calendars_respects_ignore():
     settings = _make_settings(caldav_cfg=cfg)
 
     with (
-        patch("pynchy.plugin.builtin_mcp_caldav.get_settings", return_value=settings),
-        patch("pynchy.plugin.builtin_mcp_caldav._get_caldav_client", return_value=fake_client),
+        patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings),
+        patch("pynchy.integrations.plugins.caldav._get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_list_calendars({})
 
@@ -499,8 +497,8 @@ async def test_list_calendars_respects_allow():
     settings = _make_settings(caldav_cfg=cfg)
 
     with (
-        patch("pynchy.plugin.builtin_mcp_caldav.get_settings", return_value=settings),
-        patch("pynchy.plugin.builtin_mcp_caldav._get_caldav_client", return_value=fake_client),
+        patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings),
+        patch("pynchy.integrations.plugins.caldav._get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_list_calendars({})
 
@@ -524,8 +522,8 @@ async def test_create_event_success():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugin.builtin_mcp_caldav.get_settings", return_value=settings),
-        patch("pynchy.plugin.builtin_mcp_caldav._get_caldav_client", return_value=fake_client),
+        patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings),
+        patch("pynchy.integrations.plugins.caldav._get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_create_event(
             {
@@ -562,8 +560,8 @@ async def test_create_event_minimal():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugin.builtin_mcp_caldav.get_settings", return_value=settings),
-        patch("pynchy.plugin.builtin_mcp_caldav._get_caldav_client", return_value=fake_client),
+        patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings),
+        patch("pynchy.integrations.plugins.caldav._get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_create_event(
             {
@@ -591,8 +589,8 @@ async def test_create_event_explicit_server():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugin.builtin_mcp_caldav.get_settings", return_value=settings),
-        patch("pynchy.plugin.builtin_mcp_caldav._get_caldav_client", return_value=fake_client),
+        patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings),
+        patch("pynchy.integrations.plugins.caldav._get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_create_event(
             {
@@ -622,8 +620,8 @@ async def test_delete_event_success():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugin.builtin_mcp_caldav.get_settings", return_value=settings),
-        patch("pynchy.plugin.builtin_mcp_caldav._get_caldav_client", return_value=fake_client),
+        patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings),
+        patch("pynchy.integrations.plugins.caldav._get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_delete_event(
             {
@@ -650,9 +648,9 @@ async def test_caldav_connection_error():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugin.builtin_mcp_caldav.get_settings", return_value=settings),
+        patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings),
         patch(
-            "pynchy.plugin.builtin_mcp_caldav._get_caldav_client",
+            "pynchy.integrations.plugins.caldav._get_caldav_client",
             side_effect=Exception("Connection refused"),
         ),
     ):
@@ -667,7 +665,7 @@ async def test_unknown_server_error():
     """Requesting a nonexistent server returns error."""
     settings = _make_settings()
 
-    with patch("pynchy.plugin.builtin_mcp_caldav.get_settings", return_value=settings):
+    with patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings):
         result = await _handle_list_calendar({"calendar": "nonexistent-server/cal"})
 
     assert "error" in result
@@ -693,7 +691,7 @@ async def test_calendar_tool_dispatches_to_plugin_handler(tmp_path):
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
     # Mock the plugin manager to return our CalDAV handlers
-    from pynchy.plugin.builtin_mcp_caldav import CalDAVMcpServerPlugin
+    from pynchy.integrations.plugins.caldav import CalDAVMcpServerPlugin
 
     fake_pm = MagicMock()
     fake_pm.hook.pynchy_mcp_server_handler.return_value = [
@@ -703,8 +701,8 @@ async def test_calendar_tool_dispatches_to_plugin_handler(tmp_path):
     with (
         patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
         patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
-        patch("pynchy.plugin.builtin_mcp_caldav.get_settings", return_value=settings),
-        patch("pynchy.plugin.builtin_mcp_caldav._get_caldav_client", return_value=fake_client),
+        patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings),
+        patch("pynchy.integrations.plugins.caldav._get_caldav_client", return_value=fake_client),
     ):
         data = {
             "type": "service:list_calendar",

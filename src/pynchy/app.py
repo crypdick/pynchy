@@ -47,7 +47,6 @@ from pynchy.messaging.channel_runtime import (
     load_channels,
     resolve_default_channel,
 )
-from pynchy.plugin.verifier import load_verified_plugins, scan_and_install_new_plugins
 from pynchy.tunnels import check_tunnels
 from pynchy.types import (
     Channel,
@@ -412,16 +411,6 @@ class PynchyApp:
     # Lifecycle
     # ------------------------------------------------------------------
 
-    async def _pre_restart_cleanup(self) -> None:
-        """Minimal cleanup before os.execv restart (plugin reload).
-
-        Only the gateway and DB need closing — channels haven't connected
-        yet and the queue has no in-flight work.
-        """
-        from pynchy.infra.gateway import stop_gateway
-
-        await stop_gateway()
-
     async def _shutdown(self, sig_name: str) -> None:
         """Graceful shutdown handler. Second signal force-exits."""
         if self._shutting_down:
@@ -439,9 +428,7 @@ class PynchyApp:
         # Notify the god group that the service is going down.
         # Best-effort: don't let notification failure block shutdown.
         try:
-            god_jid = next(
-                (jid for jid, g in self.registered_groups.items() if g.is_god), None
-            )
+            god_jid = next((jid for jid, g in self.registered_groups.items() if g.is_god), None)
             if god_jid and self.channels:
                 await self.broadcast_host_message(god_jid, f"Shutting down ({sig_name})")
         except Exception:
@@ -478,10 +465,6 @@ class PynchyApp:
         try:
             install_service()
 
-            # Sync plugin repos, install only trusted / already-verified ones.
-            # Unverified plugins are left out until audited below.
-            synced = load_verified_plugins()
-
             from pynchy.plugin import get_plugin_manager
             from pynchy.workspace_config import configure_plugin_workspaces
 
@@ -503,14 +486,6 @@ class PynchyApp:
             if continuation_path.exists():
                 await self._auto_rollback(continuation_path, exc)
             raise
-
-        # Audit unverified plugins using the now-running container infra.
-        # Blocks channel connections so no user messages arrive during audit.
-        if await scan_and_install_new_plugins(synced, self.plugin_manager):
-            await self._pre_restart_cleanup()
-            import sys
-
-            os.execv(sys.executable, [sys.executable] + sys.argv)
 
         loop = asyncio.get_running_loop()
 

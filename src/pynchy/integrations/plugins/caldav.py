@@ -109,9 +109,7 @@ def _resolve_server(
     return server_name, server_cfg, cal_name
 
 
-def _resolve_calendar(
-    server_name: str, server_cfg: CalDAVServerConfig, calendar_name: str | None
-):
+def _resolve_calendar(server_name: str, server_cfg: CalDAVServerConfig, calendar_name: str | None):
     """Resolve a calendar object from a specific server.
 
     If calendar_name is None, returns the first visible calendar.

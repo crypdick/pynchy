@@ -17,14 +17,10 @@ from __future__ import annotations
 
 import asyncio
 import importlib
-import pkgutil
-import sys
-import tomllib
 import warnings
 
 import pluggy
 
-import pynchy.plugin as plugin_pkg
 from pynchy.config import get_settings
 from pynchy.logger import logger
 from pynchy.plugin.hookspecs import PynchySpec
@@ -33,112 +29,24 @@ __all__ = [
     "get_plugin_manager",
 ]
 
-
-def _load_managed_plugin_entrypoints(pm: pluggy.PluginManager) -> set[str]:
-    """Register plugins from config-managed clones under ~/.config/pynchy/plugins.
-
-    Only loads plugins that have passed verification (or are marked trusted).
-    This prevents unverified plugin code from being imported into the host process.
-    """
-    from pynchy.plugin.verifier import get_cached_verdict
-
-    s = get_settings()
-    blocked_entrypoint_names: set[str] = set()
-
-    for plugin_name, plugin_cfg in s.plugins.items():
-        if not plugin_cfg.enabled:
-            continue
-
-        # Gate: skip unverified plugins unless trusted
-        if not plugin_cfg.trusted:
-            from pynchy.plugin.sync import _plugin_revision
-
-            plugin_root = s.plugins_dir / plugin_name
-            if plugin_root.exists():
-                try:
-                    sha = _plugin_revision(plugin_root)
-                    cached = get_cached_verdict(s.plugins_dir, plugin_name, sha)
-                    if cached is None or cached[0] != "pass":
-                        logger.warning(
-                            "Skipping unverified plugin — run pynchy to trigger verification",
-                            plugin=plugin_name,
-                            sha=sha[:12],
-                            verdict=cached[0] if cached else "unchecked",
-                        )
-                        continue
-                except Exception:
-                    logger.warning(
-                        "Cannot verify plugin status, skipping",
-                        plugin=plugin_name,
-                    )
-                    continue
-
-        plugin_root = s.plugins_dir / plugin_name
-        pyproject = plugin_root / "pyproject.toml"
-        if not pyproject.exists():
-            logger.warning(
-                "Configured plugin repo is missing pyproject.toml",
-                plugin=plugin_name,
-                path=str(pyproject),
-            )
-            continue
-        try:
-            data = tomllib.loads(pyproject.read_text())
-        except (OSError, tomllib.TOMLDecodeError):
-            logger.exception("Failed to parse plugin pyproject", plugin=plugin_name)
-            continue
-
-        entry_points = data.get("project", {}).get("entry-points", {}).get("pynchy", {})
-        if not isinstance(entry_points, dict):
-            continue
-
-        src_path = plugin_root / "src"
-        if src_path.exists():
-            src_path_str = str(src_path)
-            if src_path_str not in sys.path:
-                sys.path.insert(0, src_path_str)
-        else:
-            root_str = str(plugin_root)
-            if root_str not in sys.path:
-                sys.path.insert(0, root_str)
-
-        for entry_name, target in entry_points.items():
-            blocked_entrypoint_names.add(str(entry_name))
-            if not isinstance(target, str) or ":" not in target:
-                logger.warning(
-                    "Invalid pynchy entry point in managed plugin",
-                    plugin=plugin_name,
-                    entry=entry_name,
-                    target=target,
-                )
-                continue
-            module_name, attr_name = target.split(":", 1)
-            try:
-                module = importlib.import_module(module_name)
-                plugin_obj = getattr(module, attr_name)
-                if isinstance(plugin_obj, type):
-                    plugin_obj = plugin_obj()
-                pm.register(plugin_obj, name=f"managed-{plugin_name}-{entry_name}")
-                logger.info(
-                    "Registered managed plugin",
-                    plugin=plugin_name,
-                    entry=entry_name,
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to register managed plugin entry point",
-                    plugin=plugin_name,
-                    entry=entry_name,
-                    target=target,
-                )
-
-    return blocked_entrypoint_names
+# Static registry of built-in plugins.
+# Each entry: (module_path, class_name, config_key)
+# config_key is checked against [plugins.<key>].enabled in config.toml.
+_BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
+    ("pynchy.agent_framework.plugins.claude", "ClaudeAgentCorePlugin", "claude"),
+    ("pynchy.agent_framework.plugins.openai", "OpenAIAgentCorePlugin", "openai"),
+    ("pynchy.messaging.plugins.slack", "SlackChannelPlugin", "slack"),
+    ("pynchy.messaging.plugins.whatsapp", "WhatsAppPlugin", "whatsapp"),
+    ("pynchy.tunnels.plugins.tailscale", "TailscaleTunnelPlugin", "tailscale"),
+    ("pynchy.infra.plugins.apple_runtime", "AppleRuntimePlugin", "apple-runtime"),
+    ("pynchy.integrations.plugins.caldav", "CalDAVMcpServerPlugin", "caldav"),
+]
 
 
 def get_plugin_manager() -> pluggy.PluginManager:
     """Create and configure the plugin manager.
 
-    Discovers plugins from entry points and registers built-in plugins.
+    Discovers plugins from the static registry and entry points.
     All hook specifications are validated at registration time.
 
     Returns:
@@ -147,30 +55,26 @@ def get_plugin_manager() -> pluggy.PluginManager:
     pm = pluggy.PluginManager("pynchy")
     pm.add_hookspecs(PynchySpec)
 
-    # Auto-discover and register all builtin_*.py plugins in this directory.
-    # Any file matching builtin_*.py with a class ending in "Plugin" gets registered.
-    for _finder, module_name, _is_pkg in pkgutil.iter_modules(
-        plugin_pkg.__path__, plugin_pkg.__name__ + "."
-    ):
-        short = module_name.split(".")[-1]
-        if not short.startswith("builtin_"):
+    s = get_settings()
+
+    # Register built-in plugins from the static registry.
+    for module_path, class_name, config_key in _BUILTIN_PLUGIN_SPECS:
+        # Check if plugin is disabled via config.toml [plugins.<key>]
+        plugin_cfg = s.plugins.get(config_key)
+        if plugin_cfg is not None and not plugin_cfg.enabled:
+            logger.info("Plugin disabled via config", plugin=config_key)
             continue
+
         try:
-            mod = importlib.import_module(module_name)
+            mod = importlib.import_module(module_path)
+            cls = getattr(mod, class_name)
+            pm.register(cls(), name=f"builtin-{config_key}")
+            logger.info("Registered built-in plugin", name=config_key)
+        except ImportError:
+            # Graceful skip for plugins with optional deps (whatsapp, slack, caldav)
+            logger.debug("Plugin skipped (optional dependency missing)", plugin=config_key)
         except Exception:
-            logger.exception("Failed to import built-in plugin", module=module_name)
-            continue
-
-        for attr_name in dir(mod):
-            cls = getattr(mod, attr_name)
-            if isinstance(cls, type) and attr_name.endswith("Plugin"):
-                plugin_name = short.removeprefix("builtin_")
-                pm.register(cls(), name=f"builtin-{plugin_name}")
-                logger.info("Registered built-in plugin", name=plugin_name)
-
-    blocked = _load_managed_plugin_entrypoints(pm)
-    for entry_name in blocked:
-        pm.set_blocked(entry_name)
+            logger.exception("Failed to load built-in plugin", plugin=config_key)
 
     # Some third-party plugins (e.g. neonize, used by the WhatsApp channel)
     # call asyncio.get_event_loop() at import time.  Ensure a loop exists so
