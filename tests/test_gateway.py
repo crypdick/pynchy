@@ -26,6 +26,7 @@ _LITELLM_KWARGS = dict(
     container_host="host.docker.internal",
     image="ghcr.io/berriai/litellm:main-latest",
     postgres_image="postgres:17-alpine",
+    master_key="test-master-key",
 )
 
 
@@ -51,14 +52,13 @@ class TestPersistentKey:
 
 
 class TestLiteLLMGatewayInit:
-    def test_generates_ephemeral_key(self, tmp_path: Path):
+    def test_uses_configured_master_key(self, tmp_path: Path):
         gw = LiteLLMGateway(
             config_path=str(tmp_path / "config.yaml"),
             data_dir=tmp_path,
             **_LITELLM_KWARGS,
         )
-        assert gw.key.startswith("sk-pynchy-")
-        assert len(gw.key) > 20
+        assert gw.key == "test-master-key"
 
     def test_base_url(self, tmp_path: Path):
         gw = LiteLLMGateway(
@@ -236,6 +236,7 @@ class TestGatewayModeSelection:
         mock_settings.gateway.container_host = "host.docker.internal"
         mock_settings.gateway.litellm_image = "ghcr.io/berriai/litellm:main-latest"
         mock_settings.gateway.postgres_image = "postgres:17-alpine"
+        mock_settings.gateway.master_key.get_secret_value.return_value = "test-key"
         mock_settings.data_dir = tmp_path
 
         with (

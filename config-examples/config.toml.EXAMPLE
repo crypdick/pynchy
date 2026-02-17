@@ -86,9 +86,12 @@
 # Gateway port (set to 4000 when using LiteLLM mode)
 # port = 4000
 
+# LiteLLM master key for API authentication (required for LiteLLM mode).
+# Used to authenticate with the LiteLLM UI and API.
+# master_key = "your-master-key-here"
+
 # LiteLLM UI credentials (optional)
 # These are passed as UI_USERNAME and UI_PASSWORD environment variables.
-# If not set, LiteLLM will use default authentication (master_key).
 # ui_username = "admin"
 # ui_password = "your-secure-password-here"
 

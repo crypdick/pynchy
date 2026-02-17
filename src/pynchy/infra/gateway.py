@@ -128,10 +128,11 @@ class LiteLLMGateway:
         image: str,
         postgres_image: str,
         data_dir: Path,
+        master_key: str,
     ) -> None:
         self.port = port
         self.container_host = container_host
-        self.key: str = f"sk-pynchy-{secrets.token_urlsafe(32)}"
+        self.key: str = master_key
 
         self._config_path = Path(config_path).resolve()
         self._image = image
@@ -630,6 +631,11 @@ async def start_gateway() -> LiteLLMGateway | BuiltinGateway:
 
     if s.gateway.litellm_config:
         logger.info("Using LiteLLM gateway mode", config=s.gateway.litellm_config)
+        if not s.gateway.master_key:
+            raise ValueError(
+                "[gateway].master_key is required when using LiteLLM mode. "
+                "Set it in config.toml."
+            )
         _gateway = LiteLLMGateway(
             config_path=s.gateway.litellm_config,
             port=s.gateway.port,
@@ -637,6 +643,7 @@ async def start_gateway() -> LiteLLMGateway | BuiltinGateway:
             image=s.gateway.litellm_image,
             postgres_image=s.gateway.postgres_image,
             data_dir=s.data_dir,
+            master_key=s.gateway.master_key.get_secret_value(),
         )
     else:
         logger.info("Using builtin gateway mode (no litellm_config set)")
