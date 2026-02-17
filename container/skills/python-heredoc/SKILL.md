@@ -1,6 +1,7 @@
 ---
 name: python-heredoc
 description: When running multi-line Python code or code with quotes, apostrophes, or f-strings via Bash, always use heredoc syntax instead of python -c to avoid shell quoting issues.
+tier: core
 ---
 
 # Python Heredoc Pattern

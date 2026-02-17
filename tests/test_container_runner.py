@@ -21,8 +21,10 @@ from pynchy.container_runner import (
     _build_volume_mounts,
     _determine_result,
     _input_to_dict,
+    _is_skill_selected,
     _parse_container_output,
     _parse_final_output,
+    _parse_skill_tier,
     _read_gh_token,
     _read_git_identity,
     _read_oauth_token,
@@ -1162,6 +1164,240 @@ class TestSyncSkills:
 
         # Only the skills/ directory should exist, no README.md copied
         assert not (session_dir / "skills" / "README.md").exists()
+
+
+# ---------------------------------------------------------------------------
+# Skill tier helpers
+# ---------------------------------------------------------------------------
+
+
+class TestParseSkillTier:
+    """Test SKILL.md frontmatter parsing for name and tier."""
+
+    def test_valid_frontmatter(self, tmp_path: Path):
+        skill_dir = tmp_path / "my-skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text("---\nname: my-skill\ntier: core\n---\n# My Skill\n")
+        name, tier = _parse_skill_tier(skill_dir)
+        assert name == "my-skill"
+        assert tier == "core"
+
+    def test_missing_tier_defaults_to_community(self, tmp_path: Path):
+        skill_dir = tmp_path / "my-skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill\n")
+        name, tier = _parse_skill_tier(skill_dir)
+        assert name == "my-skill"
+        assert tier == "community"
+
+    def test_no_skill_md_defaults(self, tmp_path: Path):
+        skill_dir = tmp_path / "my-skill"
+        skill_dir.mkdir()
+        name, tier = _parse_skill_tier(skill_dir)
+        assert name == "my-skill"
+        assert tier == "community"
+
+    def test_no_frontmatter_delimiters(self, tmp_path: Path):
+        skill_dir = tmp_path / "my-skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text("# Just a heading\nNo frontmatter here.\n")
+        name, tier = _parse_skill_tier(skill_dir)
+        assert name == "my-skill"
+        assert tier == "community"
+
+    def test_dev_tier(self, tmp_path: Path):
+        skill_dir = tmp_path / "code-improver"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: code-improver\ntier: dev\n---\n# Code Improver\n"
+        )
+        name, tier = _parse_skill_tier(skill_dir)
+        assert name == "code-improver"
+        assert tier == "dev"
+
+    def test_name_defaults_to_dir_name(self, tmp_path: Path):
+        """When name is missing from frontmatter, use directory name."""
+        skill_dir = tmp_path / "agent-browser"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text("---\ntier: core\n---\n# Browser\n")
+        name, tier = _parse_skill_tier(skill_dir)
+        assert name == "agent-browser"
+        assert tier == "core"
+
+
+class TestIsSkillSelected:
+    """Test skill selection resolution logic."""
+
+    def test_none_includes_everything(self):
+        assert _is_skill_selected("any-skill", "community", None) is True
+
+    def test_all_includes_everything(self):
+        assert _is_skill_selected("any-skill", "community", ["all"]) is True
+
+    def test_tier_match(self):
+        assert _is_skill_selected("my-skill", "dev", ["dev"]) is True
+
+    def test_name_match(self):
+        assert _is_skill_selected("agent-browser", "community", ["agent-browser"]) is True
+
+    def test_core_always_included_when_filtering_active(self):
+        """Core tier is implicit when any filtering is set."""
+        assert _is_skill_selected("browser", "core", ["dev"]) is True
+
+    def test_community_excluded_when_not_listed(self):
+        assert _is_skill_selected("some-skill", "community", ["core"]) is False
+
+    def test_dev_excluded_when_not_listed(self):
+        assert _is_skill_selected("code-improver", "dev", ["core"]) is False
+
+    def test_union_of_tier_and_name(self):
+        """Tiers and names are unioned."""
+        ws = ["core", "agent-browser"]
+        assert _is_skill_selected("agent-browser", "community", ws) is True
+        assert _is_skill_selected("python-heredoc", "core", ws) is True
+        assert _is_skill_selected("code-improver", "dev", ws) is False
+
+    def test_empty_list_still_includes_core(self):
+        """Even an empty skills list includes core (filtering is active)."""
+        assert _is_skill_selected("browser", "core", []) is True
+        assert _is_skill_selected("other", "community", []) is False
+
+
+class TestSyncSkillsFiltering:
+    """Test _sync_skills with workspace_skills filtering."""
+
+    def _create_skill(self, base: Path, name: str, tier: str) -> None:
+        skill_dir = base / name
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(f"---\nname: {name}\ntier: {tier}\n---\n# {name}\n")
+
+    def test_none_copies_all_skills(self, tmp_path: Path):
+        """workspace_skills=None copies everything (backwards compat)."""
+        skills_src = tmp_path / "container" / "skills"
+        self._create_skill(skills_src, "browser", "core")
+        self._create_skill(skills_src, "improver", "dev")
+        self._create_skill(skills_src, "extra", "community")
+
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with _patch_settings(tmp_path):
+            _sync_skills(session_dir, workspace_skills=None)
+
+        copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
+        assert copied == {"browser", "improver", "extra"}
+
+    def test_core_only_filters_correctly(self, tmp_path: Path):
+        """workspace_skills=["core"] copies only core-tier skills."""
+        skills_src = tmp_path / "container" / "skills"
+        self._create_skill(skills_src, "browser", "core")
+        self._create_skill(skills_src, "improver", "dev")
+        self._create_skill(skills_src, "extra", "community")
+
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with _patch_settings(tmp_path):
+            _sync_skills(session_dir, workspace_skills=["core"])
+
+        copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
+        assert copied == {"browser"}
+
+    def test_core_plus_dev(self, tmp_path: Path):
+        """workspace_skills=["core", "dev"] copies core + dev skills."""
+        skills_src = tmp_path / "container" / "skills"
+        self._create_skill(skills_src, "browser", "core")
+        self._create_skill(skills_src, "improver", "dev")
+        self._create_skill(skills_src, "extra", "community")
+
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with _patch_settings(tmp_path):
+            _sync_skills(session_dir, workspace_skills=["core", "dev"])
+
+        copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
+        assert copied == {"browser", "improver"}
+
+    def test_core_plus_specific_name(self, tmp_path: Path):
+        """workspace_skills=["core", "extra"] includes core tier + named skill."""
+        skills_src = tmp_path / "container" / "skills"
+        self._create_skill(skills_src, "browser", "core")
+        self._create_skill(skills_src, "improver", "dev")
+        self._create_skill(skills_src, "extra", "community")
+
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with _patch_settings(tmp_path):
+            _sync_skills(session_dir, workspace_skills=["core", "extra"])
+
+        copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
+        assert copied == {"browser", "extra"}
+
+    def test_all_copies_everything(self, tmp_path: Path):
+        """workspace_skills=["all"] is equivalent to None."""
+        skills_src = tmp_path / "container" / "skills"
+        self._create_skill(skills_src, "browser", "core")
+        self._create_skill(skills_src, "improver", "dev")
+
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with _patch_settings(tmp_path):
+            _sync_skills(session_dir, workspace_skills=["all"])
+
+        copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
+        assert copied == {"browser", "improver"}
+
+    def test_plugin_skills_filtered(self, tmp_path: Path):
+        """Plugin skills are also filtered by workspace_skills."""
+        plugin_skill = tmp_path / "plugins" / "ext-tool"
+        plugin_skill.mkdir(parents=True)
+        (plugin_skill / "SKILL.md").write_text(
+            "---\nname: ext-tool\ntier: community\n---\n# External\n"
+        )
+
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        class FakeHook:
+            def pynchy_skill_paths(self):
+                return [[str(plugin_skill)]]
+
+        class FakePM:
+            hook = FakeHook()
+
+        with _patch_settings(tmp_path):
+            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["core"])
+
+        # Plugin skill is community tier, should be excluded
+        assert not (session_dir / "skills" / "ext-tool").exists()
+
+    def test_plugin_skill_included_by_name(self, tmp_path: Path):
+        """Plugin skill included when referenced by name."""
+        plugin_skill = tmp_path / "plugins" / "ext-tool"
+        plugin_skill.mkdir(parents=True)
+        (plugin_skill / "SKILL.md").write_text(
+            "---\nname: ext-tool\ntier: community\n---\n# External\n"
+        )
+
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        class FakeHook:
+            def pynchy_skill_paths(self):
+                return [[str(plugin_skill)]]
+
+        class FakePM:
+            hook = FakeHook()
+
+        with _patch_settings(tmp_path):
+            _sync_skills(
+                session_dir, plugin_manager=FakePM(), workspace_skills=["core", "ext-tool"]
+            )
+
+        assert (session_dir / "skills" / "ext-tool").exists()
 
 
 # ---------------------------------------------------------------------------

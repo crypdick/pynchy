@@ -149,6 +149,7 @@ class WorkspaceConfig(BaseModel):
     prompt: str | None = None  # prompt for scheduled tasks
     context_mode: str | None = None  # None → use workspace_defaults
     security: WorkspaceSecurityConfig | None = None  # MCP tool access control
+    skills: list[str] | None = None  # tier names and/or skill names; None = all
 
     @field_validator("schedule")
     @classmethod
