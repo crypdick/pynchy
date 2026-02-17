@@ -11,12 +11,13 @@
 
 - Agents run in containers, providing process, filesystem, and network isolation.
 - Plugins are scanned by an LLM before being installed, providing a basic security audit.
-- Customizable; [five types of plugins](docs/plugins/index.md) are supported:
+- Customizable; [six types of plugins](docs/plugins/index.md) are supported: FIXME: update with actual number of plugin types
   - LLM Providers
   - MCP Clients/Servers
   - Agents (prompt templates, instructions, and capabilities)
   - Communication channels (Slack, WhatsApp, etc.)
   - Workspaces with isolated memory and Git worktrees.
+  - Skills (agent instructions and scripts)
 - Reoccurring tasks can be scheduled to run at a specific time or interval.
 - (work in progress) policy groups to prevent [lethal trifecta prompt injection attacks](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/).
 

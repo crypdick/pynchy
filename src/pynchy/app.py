@@ -40,7 +40,8 @@ from pynchy.http_server import start_http_server
 from pynchy.logger import logger
 from pynchy.plugin_verifier import load_verified_plugins, scan_and_install_new_plugins
 from pynchy.service_installer import install_service
-from pynchy.system_checks import check_tailscale, ensure_container_system_running
+from pynchy.system_checks import ensure_container_system_running
+from pynchy.tunnels import check_tunnels
 from pynchy.types import (
     Channel,
     ContainerOutput,
@@ -537,7 +538,7 @@ class PynchyApp:
         self.queue.set_process_messages_fn(self._process_group_messages)
 
         # HTTP server for remote health checks, deploys, and TUI API
-        check_tailscale()
+        check_tunnels(self.plugin_manager)
         self._http_runner = await start_http_server(make_http_deps(self))
         logger.info("HTTP server ready", port=s.server.port)
 

@@ -200,6 +200,29 @@ def pynchy_container_runtime(self) -> Any | None:
 | `ensure_running()` | `() -> None` | Ensures daemon/service is running (or raises) |
 | `list_running_containers(prefix)` | `(str) -> list[str]` | Lists active container names for orphan cleanup |
 
+## pynchy_tunnel
+
+Provide a tunnel provider for remote connectivity detection (Tailscale, Cloudflare Tunnel, WireGuard, etc.).
+
+**Calling strategy:** All results collected; pynchy checks each provider at startup and warns if none are connected.
+
+```python
+@hookimpl
+def pynchy_tunnel(self) -> Any | None:
+    return MyTunnelProvider()
+```
+
+**Tunnel provider contract:**
+
+| Attribute / Method | Type | Description |
+|--------------------|------|-------------|
+| `name` | `str` | Tunnel identifier (e.g., `"tailscale"`, `"cloudflare"`) |
+| `is_available()` | `() -> bool` | Returns whether the tunnel software is installed on this host |
+| `is_connected()` | `() -> bool` | Returns whether the tunnel is currently connected |
+| `status_summary()` | `() -> str` | Human-readable status string for logging |
+
+**Built-in:** Tailscale is provided as a built-in plugin (`builtin_tailscale.py`). It shells out to `tailscale status --json` and checks `BackendState`.
+
 ## pynchy_workspace_spec
 
 Provide a managed workspace definition (for example a periodic agent).

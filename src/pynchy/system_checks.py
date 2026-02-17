@@ -1,39 +1,14 @@
-"""System checks and setup for external dependencies (Tailscale, containers)."""
+"""System checks and setup for external dependencies (containers)."""
 
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 import subprocess
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
 from pynchy.runtime import get_runtime
-
-
-def check_tailscale() -> None:
-    """Log a warning if Tailscale is not connected. Non-fatal."""
-    try:
-        result = subprocess.run(
-            ["tailscale", "status", "--json"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode != 0:
-            logger.warning("Tailscale not connected (non-fatal)", stderr=result.stderr.strip())
-            return
-        status = json.loads(result.stdout)
-        backend = status.get("BackendState", "")
-        if backend != "Running":
-            logger.warning("Tailscale backend not running", state=backend)
-        else:
-            logger.info("Tailscale connected", state=backend)
-    except FileNotFoundError:
-        logger.warning("Tailscale CLI not found (non-fatal)")
-    except Exception as exc:
-        logger.warning("Tailscale check failed (non-fatal)", err=str(exc))
 
 
 def ensure_container_system_running() -> None:

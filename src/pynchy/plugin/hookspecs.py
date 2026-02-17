@@ -37,6 +37,22 @@ class PynchySpec:
         """
 
     @hookspec
+    def pynchy_tunnel(self) -> Any | None:
+        """Provide a tunnel provider implementation.
+
+        Tunnel plugins detect and report network tunnel connectivity
+        (Tailscale, Cloudflare Tunnel, WireGuard, etc.).
+
+        Returns:
+            Tunnel provider object with:
+                - name (str): tunnel identifier (e.g., "tailscale")
+                - is_available() -> bool
+                - is_connected() -> bool
+                - status_summary() -> str
+            Or None if this plugin doesn't provide one.
+        """
+
+    @hookspec
     def pynchy_agent_core_info(self) -> dict[str, Any]:
         """Provide agent core implementation info.
 
