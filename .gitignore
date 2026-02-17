@@ -52,3 +52,4 @@ dist/
 
 # Generated build artifacts
 container/requirements-plugins.txt
+.claude/ralph-loop.local.md
