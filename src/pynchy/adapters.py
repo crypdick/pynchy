@@ -191,6 +191,19 @@ class HostMessageBroadcaster:
         )
 
 
+def find_god_jid(groups: dict[str, RegisteredGroup]) -> str:
+    """Find the JID of the god group from a groups dict.
+
+    Returns the first god group's JID, or empty string if none found.
+    This is the single code path for all god-group lookups — used by
+    GroupRegistry, startup, shutdown, and IPC deploy handlers.
+    """
+    for jid, group in groups.items():
+        if group.is_god:
+            return jid
+    return ""
+
+
 class GroupRegistry:
     """Manages registered group lookup and metadata."""
 
@@ -203,10 +216,7 @@ class GroupRegistry:
 
     def god_chat_jid(self) -> str:
         """Find the JID of a god group (returns first match)."""
-        for jid, group in self._groups.items():
-            if group.is_god:
-                return jid
-        return ""
+        return find_god_jid(self._groups)
 
 
 class SessionManager:

@@ -428,7 +428,9 @@ class PynchyApp:
         # Notify the god group that the service is going down.
         # Best-effort: don't let notification failure block shutdown.
         try:
-            god_jid = next((jid for jid, g in self.registered_groups.items() if g.is_god), None)
+            from pynchy.adapters import find_god_jid
+
+            god_jid = find_god_jid(self.registered_groups) or None
             if god_jid and self.channels:
                 await self.broadcast_host_message(god_jid, f"Shutting down ({sig_name})")
         except Exception:

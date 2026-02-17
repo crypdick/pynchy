@@ -40,10 +40,9 @@ async def _handle_deploy(
 
     if not chat_jid:
         groups = deps.registered_groups()
-        chat_jid = next(
-            (jid for jid, g in groups.items() if g.is_god),
-            "",
-        )
+        from pynchy.adapters import find_god_jid
+
+        chat_jid = find_god_jid(groups)
         if not chat_jid:
             logger.error("Deploy request missing chatJid and no god group registered")
             return
