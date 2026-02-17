@@ -12,9 +12,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from pynchy.db import clear_session, get_active_task_for_group, get_chat_history
-from pynchy.logger import logger
-from pynchy.messaging.router import format_outbound
-from pynchy.utils import generate_message_id
+from pynchy.utils import create_background_task, generate_message_id
 
 if TYPE_CHECKING:
     from pynchy.event_bus import EventBus
@@ -32,6 +30,10 @@ class MessageBroadcaster:
     The public API is on HostMessageBroadcaster — typed methods with correct
     emoji prefixes and DB persistence. Raw channel sends are private.
 
+    Satisfies the ``BusDeps`` protocol from ``messaging.bus`` so that
+    ``_broadcast_to_channels`` delegates to the single ``bus.broadcast()``
+    code path (JID resolution, ownership check, error handling).
+
     Uses a callable for channel list so the broadcaster always reads the
     current state (channels may be replaced at runtime or in tests).
     """
@@ -39,7 +41,7 @@ class MessageBroadcaster:
     def __init__(
         self,
         channels: Callable[[], list[Channel]] | list[Channel],
-        get_channel_jid: Callable[[str, str], str | None] | None = None,
+        get_channel_jid_fn: Callable[[str, str], str | None] | None = None,
     ) -> None:
         # Accept either a list or a callable returning a list.
         # Callable form ensures the broadcaster always reads the current channels
@@ -47,47 +49,45 @@ class MessageBroadcaster:
         self._get_channels: Callable[[], list[Channel]] = (
             channels if callable(channels) else lambda: channels
         )
-        self._get_channel_jid = get_channel_jid
+        self._get_channel_jid_fn = get_channel_jid_fn
 
-    def _resolve_jid(self, canonical_jid: str, channel_name: str) -> str:
-        """Resolve a canonical JID to a channel-specific alias, falling back to canonical."""
-        if self._get_channel_jid is not None:
-            return self._get_channel_jid(canonical_jid, channel_name) or canonical_jid
-        return canonical_jid
+    # -- BusDeps protocol implementation --
+
+    @property
+    def channels(self) -> list[Channel]:
+        """Return current channel list (satisfies BusDeps protocol)."""
+        return self._get_channels()
+
+    def get_channel_jid(self, canonical_jid: str, channel_name: str) -> str | None:
+        """Resolve canonical JID to channel-specific alias (satisfies BusDeps protocol)."""
+        if self._get_channel_jid_fn is not None:
+            return self._get_channel_jid_fn(canonical_jid, channel_name)
+        return None
+
+    # -- Broadcast methods --
 
     async def _broadcast_to_channels(
         self, jid: str, text: str, *, suppress_errors: bool = True
     ) -> None:
-        """Send message to all connected channels (internal use).
+        """Send message to all connected channels.
 
-        Args:
-            suppress_errors: When True (default), catches network errors silently.
-                When False, catches all exceptions (wider net for critical sends).
+        Delegates to ``bus.broadcast()`` — the single code path for channel
+        iteration, JID resolution, ownership checks, and error handling.
         """
-        caught: tuple[type[BaseException], ...] = (
-            (OSError, TimeoutError, ConnectionError) if suppress_errors else (Exception,)
-        )
-        for ch in self._get_channels():
-            if ch.is_connected():
-                target_jid = self._resolve_jid(jid, ch.name)
-                try:
-                    await ch.send_message(target_jid, text)
-                except caught as exc:
-                    ch_name = getattr(ch, "name", "?")
-                    logger.warning("Channel send failed", channel=ch_name, err=str(exc))
+        from pynchy.messaging.bus import broadcast
+
+        await broadcast(self, jid, text, suppress_errors=suppress_errors)
 
     async def _broadcast_formatted(self, jid: str, raw_text: str) -> None:
-        """Send message with per-channel formatting (internal use)."""
-        for ch in self._get_channels():
-            if ch.is_connected():
-                text = format_outbound(ch, raw_text)
-                if text:
-                    target_jid = self._resolve_jid(jid, ch.name)
-                    try:
-                        await ch.send_message(target_jid, text)
-                    except (OSError, TimeoutError, ConnectionError) as exc:
-                        ch_name = getattr(ch, "name", "?")
-                        logger.warning("Formatted send failed", channel=ch_name, err=str(exc))
+        """Send message with per-channel formatting (internal use).
+
+        Unlike ``_broadcast_to_channels``, this applies ``format_outbound``
+        per channel (e.g. Markdown for Slack, plain text for WhatsApp).
+        Used by the scheduler for periodic task output.
+        """
+        from pynchy.messaging.bus import broadcast_formatted
+
+        await broadcast_formatted(self, jid, raw_text)
 
 
 class HostMessageBroadcaster:
@@ -462,7 +462,10 @@ class GroupRegistrationManager:
 
     def register_group(self, jid: str, group: RegisteredGroup) -> None:
         """Register a new group (async operation scheduled)."""
-        asyncio.ensure_future(self._register_group(jid, group))
+        create_background_task(
+            self._register_group(jid, group),
+            name=f"register-group-{group.folder}",
+        )
 
     async def clear_chat_history(self, chat_jid: str) -> None:
         """Clear chat history and send confirmation."""

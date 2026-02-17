@@ -1,21 +1,18 @@
-"""Channel communication — broadcasting messages, reactions, typing, and host messages.
+"""Channel communication — broadcasting messages, reactions, and typing.
 
 Extracted from app.py to keep the orchestrator focused on wiring.
+All broadcast logic delegates to ``messaging.bus`` — the single code path
+for channel iteration, JID resolution, and error handling.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol
 
-from pynchy.db import store_message_direct
-from pynchy.event_bus import MessageEvent
 from pynchy.logger import logger
 from pynchy.messaging.bus import broadcast
-from pynchy.utils import generate_message_id
 
 if TYPE_CHECKING:
-    from pynchy.event_bus import EventBus
     from pynchy.types import Channel
 
 
@@ -24,9 +21,6 @@ class ChannelDeps(Protocol):
 
     @property
     def channels(self) -> list[Channel]: ...
-
-    @property
-    def event_bus(self) -> EventBus: ...
 
     def get_channel_jid(self, canonical_jid: str, channel_name: str) -> str | None: ...
 
@@ -69,41 +63,3 @@ async def set_typing_on_channels(deps: ChannelDeps, chat_jid: str, is_typing: bo
                 await ch.set_typing(target_jid, is_typing)
             except (OSError, TimeoutError, ConnectionError) as exc:
                 logger.debug("Typing indicator send failed", channel=ch.name, err=str(exc))
-
-
-async def broadcast_host_message(deps: ChannelDeps, chat_jid: str, text: str) -> None:
-    """Send operational notification from the host/platform to the user.
-
-    Host messages are purely operational notifications (errors, status updates,
-    confirmations) that are OUTSIDE the LLM's conversation. They are:
-    - Sent to the user via active channels
-    - Stored in message history for user reference
-    - NOT sent to the LLM as system messages or user messages
-    - NOT part of the SDK conversation flow
-
-    This is distinct from SDK system messages, which provide context TO the LLM.
-
-    Examples: "⚠️ Agent error occurred", "Context cleared", deployment notifications.
-    """
-    ts = datetime.now(UTC).isoformat()
-    await store_message_direct(
-        id=generate_message_id("host"),
-        chat_jid=chat_jid,
-        sender="host",
-        sender_name="host",
-        content=text,
-        timestamp=ts,
-        is_from_me=True,
-        message_type="host",
-    )
-    channel_text = f"\U0001f3e0 {text}"
-    await broadcast_to_channels(deps, chat_jid, channel_text)
-    deps.event_bus.emit(
-        MessageEvent(
-            chat_jid=chat_jid,
-            sender_name="host",
-            content=text,
-            timestamp=ts,
-            is_bot=True,
-        )
-    )
