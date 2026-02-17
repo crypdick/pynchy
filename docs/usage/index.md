@@ -4,11 +4,12 @@ This section covers day-to-day operation of Pynchy — managing groups, scheduli
 
 ## What You Can Do
 
-- **Channel I/O** — Message Claude from WhatsApp, Slack, or the built-in TUI
-- **Isolated group context** — Each group has its own `CLAUDE.md` memory, isolated filesystem, and runs in its own container sandbox
+- **[Channels](channels.md)** — Message your assistant from WhatsApp, Slack, or the built-in TUI (plugin-provided — more can be added)
+- **[Groups](groups.md)** — Each group has its own memory, isolated filesystem, and runs in its own container sandbox
 - **God channel** — Your private channel (self-chat) for admin control; every other group is completely isolated
-- **Persistent memory** — Agents save and recall facts across sessions using structured memory tools with ranked search
-- **Scheduled tasks** — Recurring jobs that run Claude and can message you back
+- **[Persistent memory](memory.md)** — Agents save and recall facts across sessions using structured memory tools with ranked search (plugin-provided backend)
+- **[Scheduled tasks](scheduled-tasks.md)** — Recurring jobs that run Claude and can message you back
+- **[Agent cores](agent-cores.md)** — Choose which LLM powers your agents — Claude SDK or OpenAI SDK (plugin-provided — more can be added)
 - **Web access** — Search and fetch content
 - **Container isolation** — Agents sandboxed in Apple Container (macOS) or Docker (macOS/Linux)
 - **Agent Swarms** — Spin up teams of specialized agents that collaborate on complex tasks
@@ -53,5 +54,8 @@ No configuration files to learn. Just tell Pynchy what you want:
 
 | Topic | What it covers |
 |-------|---------------|
+| [Channels](channels.md) | WhatsApp, Slack, TUI — multi-channel sync |
 | [Groups](groups.md) | Group management, god channel privileges |
+| [Memory](memory.md) | Structured memory tools, file-based memory, conversation archives |
 | [Scheduled tasks](scheduled-tasks.md) | Task types, MCP tools, execution model |
+| [Agent cores](agent-cores.md) | LLM framework selection, LiteLLM gateway |
