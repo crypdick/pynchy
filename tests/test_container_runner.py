@@ -16,8 +16,10 @@ from pydantic import SecretStr
 
 from pynchy.config import GatewayConfig, Settings
 from pynchy.container_runner import (
+    StreamState,
     _build_container_args,
     _build_volume_mounts,
+    _determine_result,
     _input_to_dict,
     _parse_container_output,
     _parse_final_output,
@@ -1367,3 +1369,273 @@ class TestOutputParsingEdgeCases:
         assert result.status == "error"
         # The error message should exist but be reasonable length
         assert len(result.error or "") < 1000
+
+
+# ---------------------------------------------------------------------------
+# _determine_result tests
+# ---------------------------------------------------------------------------
+
+
+class TestDetermineResult:
+    """Tests for _determine_result — the branching logic that maps container
+    run state (timeout, exit code, streaming vs legacy) to ContainerOutput."""
+
+    def _make_state(self, **kwargs) -> StreamState:
+        """Create a StreamState with test defaults."""
+        return StreamState(**kwargs)
+
+    def test_timeout_with_streaming_output_returns_success(self):
+        """Timeout after streaming output = idle cleanup, not an error."""
+        state = self._make_state(
+            timed_out=True,
+            had_streaming_output=True,
+            new_session_id="session-1",
+        )
+        result = _determine_result(
+            state=state,
+            exit_code=None,
+            config_timeout=300.0,
+            container_name="test-container",
+            group_name="test-group",
+            duration_ms=300000.0,
+            on_output=AsyncMock(),
+            stdout_buf="",
+            stderr_buf="",
+        )
+        assert result.status == "success"
+        assert result.new_session_id == "session-1"
+
+    def test_timeout_without_output_returns_error(self):
+        """Timeout with no output at all = real error."""
+        state = self._make_state(timed_out=True, had_streaming_output=False)
+        result = _determine_result(
+            state=state,
+            exit_code=None,
+            config_timeout=300.0,
+            container_name="test-container",
+            group_name="test-group",
+            duration_ms=300000.0,
+            on_output=AsyncMock(),
+            stdout_buf="",
+            stderr_buf="",
+        )
+        assert result.status == "error"
+        assert "timed out" in (result.error or "").lower()
+        assert "300" in (result.error or "")
+
+    def test_nonzero_exit_code_returns_error(self):
+        """Non-zero exit code always means error, with stderr tail in message."""
+        state = self._make_state()
+        result = _determine_result(
+            state=state,
+            exit_code=1,
+            config_timeout=300.0,
+            container_name="test-container",
+            group_name="test-group",
+            duration_ms=5000.0,
+            on_output=AsyncMock(),
+            stdout_buf="",
+            stderr_buf="some error output from container",
+        )
+        assert result.status == "error"
+        assert "code 1" in (result.error or "")
+        assert "some error output" in (result.error or "")
+
+    def test_nonzero_exit_code_truncates_long_stderr(self):
+        """Stderr in error message is truncated to last 200 chars."""
+        state = self._make_state()
+        long_stderr = "x" * 500
+        result = _determine_result(
+            state=state,
+            exit_code=2,
+            config_timeout=300.0,
+            container_name="test-container",
+            group_name="test-group",
+            duration_ms=5000.0,
+            on_output=AsyncMock(),
+            stdout_buf="",
+            stderr_buf=long_stderr,
+        )
+        assert result.status == "error"
+        # Error message includes at most 200 chars of stderr
+        assert len(result.error or "") < 300
+
+    def test_streaming_mode_success(self):
+        """Streaming mode (on_output set) returns success with session ID."""
+        state = self._make_state(new_session_id="session-42")
+        result = _determine_result(
+            state=state,
+            exit_code=0,
+            config_timeout=300.0,
+            container_name="test-container",
+            group_name="test-group",
+            duration_ms=5000.0,
+            on_output=AsyncMock(),
+            stdout_buf="",
+            stderr_buf="",
+        )
+        assert result.status == "success"
+        assert result.new_session_id == "session-42"
+        assert result.result is None  # result delivered via callbacks
+
+    def test_legacy_mode_parses_stdout(self):
+        """Legacy mode (on_output=None) parses final output from stdout."""
+        output_json = json.dumps({"status": "success", "result": "hello world"})
+        stdout = f"{Settings.OUTPUT_START_MARKER}\n{output_json}\n{Settings.OUTPUT_END_MARKER}"
+        state = self._make_state()
+        result = _determine_result(
+            state=state,
+            exit_code=0,
+            config_timeout=300.0,
+            container_name="test-container",
+            group_name="test-group",
+            duration_ms=5000.0,
+            on_output=None,
+            stdout_buf=stdout,
+            stderr_buf="",
+        )
+        assert result.status == "success"
+        assert result.result == "hello world"
+
+    def test_timeout_takes_priority_over_exit_code(self):
+        """If both timed_out and exit_code are set, timeout path wins."""
+        state = self._make_state(timed_out=True, had_streaming_output=False)
+        result = _determine_result(
+            state=state,
+            exit_code=137,  # SIGKILL
+            config_timeout=300.0,
+            container_name="test-container",
+            group_name="test-group",
+            duration_ms=300000.0,
+            on_output=AsyncMock(),
+            stdout_buf="",
+            stderr_buf="",
+        )
+        assert result.status == "error"
+        assert "timed out" in (result.error or "").lower()
+
+    def test_streaming_mode_no_session_id(self):
+        """Streaming success without a session ID returns None for session."""
+        state = self._make_state(new_session_id=None)
+        result = _determine_result(
+            state=state,
+            exit_code=0,
+            config_timeout=300.0,
+            container_name="test-container",
+            group_name="test-group",
+            duration_ms=1000.0,
+            on_output=AsyncMock(),
+            stdout_buf="",
+            stderr_buf="",
+        )
+        assert result.status == "success"
+        assert result.new_session_id is None
+
+
+# ---------------------------------------------------------------------------
+# _input_to_dict edge case tests
+# ---------------------------------------------------------------------------
+
+
+class TestInputToDictEdgeCases:
+    """Tests for _input_to_dict with various combinations of optional fields."""
+
+    def test_minimal_input(self):
+        """Only required fields, all optionals at defaults."""
+        inp = ContainerInput(
+            messages=[{"content": "hi"}],
+            group_folder="test",
+            chat_jid="test@g.us",
+            is_god=False,
+        )
+        d = _input_to_dict(inp)
+        assert d["messages"] == [{"content": "hi"}]
+        assert d["group_folder"] == "test"
+        assert d["chat_jid"] == "test@g.us"
+        assert d["is_god"] is False
+        # Optional fields should not be present when at defaults
+        assert "session_id" not in d
+        assert "is_scheduled_task" not in d
+        assert "plugin_mcp_servers" not in d
+        assert "system_notices" not in d
+        assert "project_access" not in d
+
+    def test_all_optional_fields_set(self):
+        """All optional fields populated should appear in dict."""
+        inp = ContainerInput(
+            messages=[],
+            group_folder="g",
+            chat_jid="j@g.us",
+            is_god=True,
+            session_id="s-1",
+            is_scheduled_task=True,
+            plugin_mcp_servers={"pynchy": {"command": "uv", "args": [], "env": {}}},
+            system_notices=["notice 1"],
+            project_access=True,
+        )
+        d = _input_to_dict(inp)
+        assert d["session_id"] == "s-1"
+        assert d["is_scheduled_task"] is True
+        assert d["plugin_mcp_servers"] == {"pynchy": {"command": "uv", "args": [], "env": {}}}
+        assert d["system_notices"] == ["notice 1"]
+        assert d["project_access"] is True
+
+    def test_is_scheduled_task_false_omitted(self):
+        """is_scheduled_task=False should NOT be included."""
+        inp = ContainerInput(
+            messages=[],
+            group_folder="g",
+            chat_jid="j@g.us",
+            is_god=False,
+            is_scheduled_task=False,
+        )
+        d = _input_to_dict(inp)
+        assert "is_scheduled_task" not in d
+
+    def test_project_access_false_omitted(self):
+        """project_access=False should NOT be included."""
+        inp = ContainerInput(
+            messages=[],
+            group_folder="g",
+            chat_jid="j@g.us",
+            is_god=False,
+            project_access=False,
+        )
+        d = _input_to_dict(inp)
+        assert "project_access" not in d
+
+    def test_agent_core_fields_always_present(self):
+        """agent_core_module and agent_core_class should always be in output."""
+        inp = ContainerInput(
+            messages=[],
+            group_folder="g",
+            chat_jid="j@g.us",
+            is_god=False,
+        )
+        d = _input_to_dict(inp)
+        assert "agent_core_module" in d
+        assert "agent_core_class" in d
+
+    def test_agent_core_config_included_when_set(self):
+        """agent_core_config should appear when not None."""
+        inp = ContainerInput(
+            messages=[],
+            group_folder="g",
+            chat_jid="j@g.us",
+            is_god=False,
+            agent_core_config={"model": "opus"},
+        )
+        d = _input_to_dict(inp)
+        assert d["agent_core_config"] == {"model": "opus"}
+
+    def test_agent_core_config_omitted_when_none(self):
+        """agent_core_config=None should not appear in dict."""
+        inp = ContainerInput(
+            messages=[],
+            group_folder="g",
+            chat_jid="j@g.us",
+            is_god=False,
+            agent_core_config=None,
+        )
+        d = _input_to_dict(inp)
+        assert "agent_core_config" not in d
