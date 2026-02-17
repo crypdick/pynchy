@@ -127,6 +127,21 @@ class PynchySpec:
         """
 
     @hookspec
+    def pynchy_observer(self) -> Any | None:
+        """Provide an event observer implementation.
+
+        Observers subscribe to the EventBus and persist or process events
+        (e.g., store to SQLite, forward to OpenTelemetry, write to log files).
+
+        Returns:
+            Observer object with:
+                - name (str): observer identifier (e.g., "sqlite", "otel")
+                - subscribe(event_bus: EventBus) -> None: attach listeners
+                - close() -> coroutine: async teardown / flush
+            Or None if this plugin doesn't provide one.
+        """
+
+    @hookspec
     def pynchy_workspace_spec(self) -> dict[str, Any]:
         """Provide a managed workspace definition.
 

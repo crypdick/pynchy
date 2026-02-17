@@ -235,6 +235,40 @@ def pynchy_tunnel(self) -> Any | None:
 
 **Built-in:** Tailscale is provided as a built-in plugin (`src/pynchy/tunnels/plugins/tailscale.py`). It shells out to `tailscale status --json` and checks `BackendState`.
 
+## pynchy_observer
+
+Provide an event observer that subscribes to the EventBus and persists or processes events (SQLite, OpenTelemetry, log files, etc.).
+
+**Calling strategy:** All results collected; each observer's `subscribe()` is called with the event bus during startup.
+
+```python
+@hookimpl
+def pynchy_observer(self) -> Any | None:
+    return SqliteEventObserver()
+```
+
+**Observer object contract:**
+
+| Attribute / Method | Type | Description |
+|--------------------|------|-------------|
+| `name` | `str` | Observer identifier (e.g., `"sqlite"`, `"otel"`) |
+| `subscribe(event_bus)` | `(EventBus) -> None` | Attach listeners to the event bus |
+| `close()` | `async () -> None` | Async teardown — unsubscribe and flush |
+
+**Event types available:**
+
+| Event | Fields | Description |
+|-------|--------|-------------|
+| `MessageEvent` | `chat_jid`, `sender_name`, `content`, `timestamp`, `is_bot` | New message stored |
+| `AgentActivityEvent` | `chat_jid`, `active` | Agent started/stopped processing |
+| `AgentTraceEvent` | `chat_jid`, `trace_type`, `data` | Ephemeral trace (thinking, tool use, text) |
+| `ChatClearedEvent` | `chat_jid` | Chat history cleared |
+
+**Built-in:** The SQLite observer (`src/pynchy/observers/plugins/sqlite_observer/`) stores all events to a dedicated `events` table in the main database.
+
+!!! warning
+    Observer plugins run **in the host process** and subscribe to all events. A misbehaving observer can slow down event dispatch. Keep handlers lightweight and non-blocking.
+
 ## pynchy_workspace_spec
 
 Provide a managed workspace definition (for example a periodic agent).

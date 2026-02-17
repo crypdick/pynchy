@@ -1,16 +1,13 @@
 """Container runtime detection with plugin-extensible providers.
 
-Docker is built in. Additional runtimes (for example Apple Container)
-can be provided by plugins via ``pynchy_container_runtime``.
+All runtimes — including Docker — are provided by plugins via
+``pynchy_container_runtime``.  Detection picks the best available
+runtime based on config overrides and platform heuristics.
 """
 
 from __future__ import annotations
 
-import json
-import shutil
-import subprocess
 import sys
-from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from pynchy.logger import logger
@@ -18,7 +15,7 @@ from pynchy.logger import logger
 
 @runtime_checkable
 class RuntimeProvider(Protocol):
-    """Runtime provider contract implemented by built-ins and plugins."""
+    """Runtime provider contract implemented by plugins."""
 
     name: str
     cli: str
@@ -26,115 +23,6 @@ class RuntimeProvider(Protocol):
     def is_available(self) -> bool: ...
     def ensure_running(self) -> None: ...
     def list_running_containers(self, prefix: str = "pynchy-") -> list[str]: ...
-
-
-@dataclass(frozen=True)
-class ContainerRuntime:
-    """Built-in runtime implementation wrapper."""
-
-    name: str
-    cli: str
-    _available: Any
-    _ensure: Any
-    _list: Any
-
-    def is_available(self) -> bool:
-        return bool(self._available())
-
-    def ensure_running(self) -> None:
-        self._ensure()
-
-    def list_running_containers(self, prefix: str = "pynchy-") -> list[str]:
-        try:
-            return self._list(prefix)
-        except Exception as exc:
-            logger.warning("Failed to list containers", err=str(exc), runtime=self.name)
-            return []
-
-
-def _docker_available() -> bool:
-    return shutil.which("docker") is not None
-
-
-def _ensure_docker() -> None:
-    try:
-        subprocess.run(
-            ["docker", "info"],
-            capture_output=True,
-            check=True,
-        )
-        logger.debug("Docker daemon is running")
-    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-        if sys.platform == "darwin":
-            _start_docker_desktop(exc)
-        else:
-            raise RuntimeError(
-                "Docker is required but not running. Start with: sudo systemctl start docker"
-            ) from exc
-
-
-def _start_docker_desktop(original_exc: Exception) -> None:
-    """Attempt to launch Docker Desktop on macOS and wait for the daemon."""
-    logger.info("Docker not running, attempting to start Docker Desktop...")
-    try:
-        subprocess.run(
-            ["open", "-a", "Docker"],
-            capture_output=True,
-            check=True,
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-        raise RuntimeError(
-            "Docker Desktop is required but could not be started. "
-            "Install from https://www.docker.com/products/docker-desktop/"
-        ) from exc
-
-    import time
-
-    for i in range(30):
-        try:
-            subprocess.run(
-                ["docker", "info"],
-                capture_output=True,
-                check=True,
-            )
-            logger.info("Docker Desktop started successfully")
-            return
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            if i % 5 == 0:
-                logger.info("Waiting for Docker Desktop to start...")
-            time.sleep(2)
-
-    raise RuntimeError(
-        "Docker Desktop was launched but the daemon did not become ready "
-        "within 60s. Check Docker Desktop for errors."
-    ) from original_exc
-
-
-def _list_docker(prefix: str) -> list[str]:
-    result = subprocess.run(
-        ["docker", "ps", "--format", "{{json .}}"],
-        capture_output=True,
-        text=True,
-    )
-    names: list[str] = []
-    for line in result.stdout.strip().splitlines():
-        if not line:
-            continue
-        c = json.loads(line)
-        name = c.get("Names", "")
-        if name.startswith(prefix):
-            names.append(name)
-    return names
-
-
-def _docker_runtime() -> ContainerRuntime:
-    return ContainerRuntime(
-        name="docker",
-        cli="docker",
-        _available=_docker_available,
-        _ensure=_ensure_docker,
-        _list=_list_docker,
-    )
 
 
 def _is_valid_plugin_runtime(candidate: Any) -> bool:
@@ -188,8 +76,7 @@ def detect_runtime() -> RuntimeProvider:
     from pynchy.config import get_settings
 
     override = (get_settings().container.runtime or "").lower()
-    docker = _docker_runtime()
-    candidates: dict[str, RuntimeProvider] = {"docker": docker}
+    candidates: dict[str, RuntimeProvider] = {}
     for runtime in _iter_plugin_runtimes():
         name = str(runtime.name).lower().strip()
         if not name:
@@ -198,6 +85,12 @@ def detect_runtime() -> RuntimeProvider:
             logger.warning("Duplicate runtime provider ignored", runtime=name)
             continue
         candidates[name] = runtime
+
+    if not candidates:
+        raise RuntimeError(
+            "No container runtime plugins available. "
+            "Ensure the Docker or Apple runtime plugin is enabled in config.toml."
+        )
 
     if override:
         selected = candidates.get(override)
@@ -209,7 +102,8 @@ def detect_runtime() -> RuntimeProvider:
         apple = candidates.get("apple")
         if apple and apple.is_available():
             return apple
-        if docker.is_available():
+        docker = candidates.get("docker")
+        if docker and docker.is_available():
             if apple is None:
                 logger.info(
                     "Apple runtime plugin not installed, falling back to Docker. "
@@ -218,16 +112,21 @@ def detect_runtime() -> RuntimeProvider:
             else:
                 logger.info("Apple runtime unavailable, falling back to Docker")
             return docker
+        # Last resort on macOS: return apple if present, even if not available yet
         if apple is not None:
             return apple
 
-    for name, runtime in candidates.items():
-        if name == "docker":
-            continue
+    # Non-macOS or macOS fallthrough: prefer docker, then any available plugin
+    docker = candidates.get("docker")
+    if docker is not None:
+        return docker
+
+    for runtime in candidates.values():
         if runtime.is_available():
             return runtime
 
-    return docker
+    # Return first candidate even if not available (will fail at ensure_running)
+    return next(iter(candidates.values()))
 
 
 _runtime: RuntimeProvider | None = None

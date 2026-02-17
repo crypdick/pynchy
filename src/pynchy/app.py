@@ -445,6 +445,8 @@ class PynchyApp:
         from pynchy.container_runner.gateway import stop_gateway
 
         await stop_gateway()
+        for obs in getattr(self, "_observers", []):
+            await obs.close()
         await self.queue.shutdown(10.0)
         for ch in self.channels:
             await ch.disconnect()
@@ -482,6 +484,11 @@ class PynchyApp:
 
             await init_database()
             logger.info("Database initialized")
+
+            from pynchy.observers import attach_observers
+
+            self._observers = attach_observers(self.event_bus)
+
             await self._load_state()
         except Exception as exc:
             # Auto-rollback if we crash during startup after a deploy
