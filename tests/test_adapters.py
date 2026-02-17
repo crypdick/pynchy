@@ -47,6 +47,9 @@ class FakeChannel:
     def is_connected(self) -> bool:
         return self._connected
 
+    def owns_jid(self, jid: str) -> bool:
+        return True
+
     async def send_message(self, jid: str, text: str) -> None:
         self.sent.append((jid, text))
 
@@ -259,7 +262,7 @@ class TestMessageBroadcaster:
         # format_outbound strips internal tags and may adjust text
         from unittest.mock import patch as _patch
 
-        with _patch("pynchy.adapters.format_outbound", return_value="formatted text"):
+        with _patch("pynchy.messaging.router.format_outbound", return_value="formatted text"):
             await broadcaster._broadcast_formatted("group@g.us", "raw text")
 
         assert len(ch.sent) == 1
@@ -272,7 +275,7 @@ class TestMessageBroadcaster:
 
         from unittest.mock import patch as _patch
 
-        with _patch("pynchy.adapters.format_outbound", return_value=""):
+        with _patch("pynchy.messaging.router.format_outbound", return_value=""):
             await broadcaster._broadcast_formatted("group@g.us", "raw text")
 
         assert len(ch.sent) == 0
@@ -290,7 +293,7 @@ class TestMessageBroadcaster:
 
         from unittest.mock import patch as _patch
 
-        with _patch("pynchy.adapters.format_outbound", return_value="ok"):
+        with _patch("pynchy.messaging.router.format_outbound", return_value="ok"):
             await broadcaster._broadcast_formatted("group@g.us", "raw")
 
         assert len(working.sent) == 1

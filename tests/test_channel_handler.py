@@ -1,13 +1,12 @@
-"""Tests for pynchy.channel_handler — channel broadcasting, reactions, typing, and host messages."""
+"""Tests for pynchy.channel_handler — channel broadcasting, reactions, and typing."""
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from pynchy.messaging.channel_handler import (
-    broadcast_host_message,
     broadcast_to_channels,
     send_reaction_to_channels,
     set_typing_on_channels,
@@ -176,40 +175,3 @@ class TestSetTypingOnChannels:
         deps = _make_deps([ch])
 
         await set_typing_on_channels(deps, "group@g.us", True)
-
-
-# ---------------------------------------------------------------------------
-# broadcast_host_message
-# ---------------------------------------------------------------------------
-
-
-class TestBroadcastHostMessage:
-    @pytest.mark.asyncio
-    async def test_stores_and_broadcasts_host_message(self):
-        ch = _make_channel()
-        deps = _make_deps([ch])
-
-        with patch(
-            "pynchy.messaging.channel_handler.store_message_direct",
-            new_callable=AsyncMock,
-        ) as mock_store:
-            await broadcast_host_message(deps, "group@g.us", "⚠️ Error occurred")
-
-            # Verify DB storage
-            mock_store.assert_awaited_once()
-            call_kwargs = mock_store.call_args[1]
-            assert call_kwargs["sender"] == "host"
-            assert call_kwargs["content"] == "⚠️ Error occurred"
-            assert call_kwargs["message_type"] == "host"
-
-            # Verify channel broadcast includes house emoji prefix
-            ch.send_message.assert_awaited_once()
-            sent_text = ch.send_message.call_args[0][1]
-            assert "🏠" in sent_text
-            assert "Error occurred" in sent_text
-
-            # Verify event bus emission
-            deps.event_bus.emit.assert_called_once()
-            event = deps.event_bus.emit.call_args[0][0]
-            assert event.sender_name == "host"
-            assert event.is_bot is True

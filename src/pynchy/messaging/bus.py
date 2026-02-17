@@ -77,6 +77,35 @@ async def broadcast(
             logger.warning("Channel send failed", channel=ch.name, err=str(exc))
 
 
+async def broadcast_formatted(
+    deps: BusDeps,
+    chat_jid: str,
+    raw_text: str,
+) -> None:
+    """Send a message with per-channel formatting.
+
+    Unlike ``broadcast()``, this applies ``format_outbound()`` to transform
+    the text per channel (e.g. Markdown for Slack, plain for WhatsApp).
+    Used by the scheduler for periodic task output.
+    """
+    from pynchy.messaging.router import format_outbound
+
+    for ch in deps.channels:
+        if not ch.is_connected():
+            continue
+        text = format_outbound(ch, raw_text)
+        if not text:
+            continue
+        alias = deps.get_channel_jid(chat_jid, ch.name)
+        target_jid = alias or chat_jid
+        if not alias and not ch.owns_jid(chat_jid):
+            continue
+        try:
+            await ch.send_message(target_jid, text)
+        except (OSError, TimeoutError, ConnectionError) as exc:
+            logger.warning("Formatted send failed", channel=getattr(ch, "name", "?"), err=str(exc))
+
+
 async def finalize_stream_or_broadcast(
     deps: BusDeps,
     chat_jid: str,
