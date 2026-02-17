@@ -79,6 +79,10 @@ mount tables, user names, etc.), add a comment at the code site:
 This keeps docs in sync without requiring developers to memorize which docs reference which code.
 The comment should reference the specific doc file and section.
 
+## No Hard-Coded Usernames
+
+Never hard-code a user's name, username, email, or home directory path into documentation. Use generic placeholders instead (e.g., `<user>`, `~`, `your-key-here`). This keeps docs portable and avoids leaking personal info into the repo.
+
 ## Code Comments: Capture User Reasoning
 
 When the user gives an instruction or makes a design decision **and explains their reasoning**, capture that reasoning as a comment in the code — right where the decision is implemented. Future maintainers should be able to understand the intent without leaving the code context.
