@@ -7,6 +7,7 @@ This section covers day-to-day operation of Pynchy — managing groups, scheduli
 - **Channel I/O** — Message Claude from WhatsApp, Slack, or the built-in TUI
 - **Isolated group context** — Each group has its own `CLAUDE.md` memory, isolated filesystem, and runs in its own container sandbox
 - **God channel** — Your private channel (self-chat) for admin control; every other group is completely isolated
+- **Persistent memory** — Agents save and recall facts across sessions using structured memory tools with ranked search
 - **Scheduled tasks** — Recurring jobs that run Claude and can message you back
 - **Web access** — Search and fetch content
 - **Container isolation** — Agents sandboxed in Apple Container (macOS) or Docker (macOS/Linux)

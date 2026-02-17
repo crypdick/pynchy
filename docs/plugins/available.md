@@ -16,6 +16,7 @@ These ship with pynchy and are always available. Some require optional dependenc
 | `docker-runtime` | Container Runtime | Docker container runtime. Default on Linux, fallback on macOS. | Always active (requires `docker` CLI) |
 | `apple-runtime` | Container Runtime | Apple Container runtime for macOS hosts. | macOS only (auto-detected) |
 | `tui` | Channel | TUI client (Textual). Standalone terminal UI connecting via HTTP/SSE. | Always active |
+| `sqlite-memory` | Memory Backend | Persistent per-group memory with BM25-ranked full-text search (save, recall, forget, list). | Always active |
 | `sqlite-observer` | Observer | Persists EventBus events to a dedicated `events` table for observability. | Always active |
 | `tailscale` | Tunnel | Tailscale connectivity detection. Warns at startup if tunnel is down. | Always active (requires `tailscale` CLI) |
 
