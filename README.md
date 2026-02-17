@@ -11,7 +11,12 @@
 
 - Agents run in containers, providing process, filesystem, and network isolation.
 - Built-in plugins ship with the monorepo; third-party plugins are discoverable via Python entry points.
-- Uses [LiteLLM](https://docs.litellm.ai/docs/) as the LLM gateway, providing automatic load balancing across APIs and access to [100+ LLM providers](https://docs.litellm.ai/docs/providers).
+- Uses [LiteLLM](https://docs.litellm.ai/docs/) as the LLM gateway, providing a bunch of features out of the box:
+  - Automatic load balancing across APIs, to soak up your various allowances from different providers.
+  - Access to [100+ LLM providers](https://docs.litellm.ai/docs/providers)
+  - Cost tracking and budget management.
+  - Rate limiting
+  - (see the [LiteLLM docs](https://docs.litellm.ai/docs/) for more details)
 - Customizable; [five types of plugins](docs/plugins/index.md) are supported:
   - LLM Providers
   - MCP Clients/Servers
