@@ -15,6 +15,7 @@ Plugins come as regular Python packages, discovered automatically at startup. In
 | **Channel** | `pynchy_create_channel()` | Communication platform (Telegram, Slack, Discord) | Host |
 | **Container Runtime** | `pynchy_container_runtime()` | Container runtime implementation (Docker, Apple Container) | Host |
 | **Tunnel** | `pynchy_tunnel()` | Remote connectivity detection (Tailscale, Cloudflare, etc.) | Host |
+| **Observer** | `pynchy_observer()` | Event persistence and processing (SQLite, OpenTelemetry) | Host |
 | **Workspace** | `pynchy_workspace_spec()` | Managed workspace/task definitions (e.g. periodic agents) | Host |
 
 A single plugin can implement multiple hooks. For example, a "voice" plugin might provide both an MCP server (transcription tools) and a skill (voice interaction patterns).
@@ -45,6 +46,7 @@ All plugin Python code runs on the **host** during discovery. See [Security Mode
 | **Container Runtime** | None — host-side process management | Highest |
 | **Tunnel** | None — host-side network detection | High |
 | **MCP Server Handler** | None — host-side handlers with policy enforcement | High |
+| **Observer** | Host-side event subscriber, writes to DB or external services | High |
 | **Workspace** | Host-side config only — agent runs in container | Medium |
 | **Skill** | Partial — `skill_paths()` on host, content in container | Medium |
 | **MCP Server** | Mostly sandboxed — spec on host, server in container | Lower |

@@ -26,7 +26,7 @@ def _run() -> None:
 
 
 def _tui(host: str) -> None:
-    from pynchy.tui import run_tui
+    from pynchy.chat.plugins.tui.client import run_tui
 
     run_tui(host)
 

@@ -13,7 +13,10 @@ These ship with pynchy and are always available. Some require optional dependenc
 | `whatsapp` | Channel | WhatsApp channel via neonize. | `uv sync --extra whatsapp` + QR auth |
 | `slack` | Channel | Slack channel via Socket Mode (bolt). Maps Slack channels/DMs to workspaces. | `[slack] bot_token / app_token` + `uv sync --extra slack` |
 | `caldav` | MCP Server Handler | CalDAV calendar tools (list, create, delete events). Works with Nextcloud and other CalDAV servers. | `[caldav] url / username / password` + `uv sync --extra caldav` |
+| `docker-runtime` | Container Runtime | Docker container runtime. Default on Linux, fallback on macOS. | Always active (requires `docker` CLI) |
 | `apple-runtime` | Container Runtime | Apple Container runtime for macOS hosts. | macOS only (auto-detected) |
+| `tui` | Channel | TUI client (Textual). Standalone terminal UI connecting via HTTP/SSE. | Always active |
+| `sqlite-observer` | Observer | Persists EventBus events to a dedicated `events` table for observability. | Always active |
 | `tailscale` | Tunnel | Tailscale connectivity detection. Warns at startup if tunnel is down. | Always active (requires `tailscale` CLI) |
 
 Plugins with optional dependencies are gracefully skipped at startup if their dependencies aren't installed. Install all optional dependencies at once with `uv sync --extra all`.

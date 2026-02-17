@@ -109,6 +109,17 @@ CREATE TABLE IF NOT EXISTS sessions (
     group_folder TEXT PRIMARY KEY,
     session_id TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,
+    chat_jid TEXT,
+    timestamp TEXT NOT NULL,
+    payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
+CREATE INDEX IF NOT EXISTS idx_events_chat ON events(chat_jid);
+CREATE INDEX IF NOT EXISTS idx_events_ts ON events(timestamp);
+
 CREATE TABLE IF NOT EXISTS registered_groups (
     jid TEXT PRIMARY KEY,
     name TEXT NOT NULL,
