@@ -102,6 +102,94 @@ class TestLiteLLMGatewayInit:
         assert gw1._pg_password == gw2._pg_password
 
 
+class TestLiteLLMCredentialDiscovery:
+    """Verify _discover_anthropic_token reads from config and credentials file."""
+
+    def test_prefers_api_key_from_config(self, tmp_path: Path):
+        mock_settings = MagicMock()
+        mock_settings.secrets.anthropic_api_key.get_secret_value.return_value = "sk-ant-api03-test"
+        mock_settings.secrets.claude_code_oauth_token = None
+
+        with patch(f"{_GATEWAY_MOD}.get_settings", return_value=mock_settings):
+            token = LiteLLMGateway._discover_anthropic_token()
+        assert token == "sk-ant-api03-test"
+
+    def test_falls_back_to_oauth_config(self, tmp_path: Path):
+        mock_settings = MagicMock()
+        mock_settings.secrets.anthropic_api_key = None
+        oauth = mock_settings.secrets.claude_code_oauth_token
+        oauth.get_secret_value.return_value = "sk-ant-oat01-cfg"
+
+        with patch(f"{_GATEWAY_MOD}.get_settings", return_value=mock_settings):
+            token = LiteLLMGateway._discover_anthropic_token()
+        assert token == "sk-ant-oat01-cfg"
+
+    def test_falls_back_to_credentials_file(self, tmp_path: Path):
+        mock_settings = MagicMock()
+        mock_settings.secrets.anthropic_api_key = None
+        mock_settings.secrets.claude_code_oauth_token = None
+
+        with (
+            patch(f"{_GATEWAY_MOD}.get_settings", return_value=mock_settings),
+            patch(
+                "pynchy.container_runner._credentials._read_oauth_token",
+                return_value="sk-ant-oat01-file",
+            ),
+        ):
+            token = LiteLLMGateway._discover_anthropic_token()
+        assert token == "sk-ant-oat01-file"
+
+    def test_returns_none_when_no_credentials(self, tmp_path: Path):
+        mock_settings = MagicMock()
+        mock_settings.secrets.anthropic_api_key = None
+        mock_settings.secrets.claude_code_oauth_token = None
+
+        with (
+            patch(f"{_GATEWAY_MOD}.get_settings", return_value=mock_settings),
+            patch(
+                "pynchy.container_runner._credentials._read_oauth_token",
+                return_value=None,
+            ),
+        ):
+            token = LiteLLMGateway._discover_anthropic_token()
+        assert token is None
+
+    @pytest.mark.asyncio
+    async def test_start_passes_token_as_docker_env(self, tmp_path: Path):
+        """Verify start() includes PYNCHY_ANTHROPIC_TOKEN in docker run."""
+        cfg = tmp_path / "litellm_config.yaml"
+        cfg.write_text("model_list: []\n")
+        gw = LiteLLMGateway(config_path=str(cfg), data_dir=tmp_path, **_LITELLM_KWARGS)
+
+        calls: list[list[str]] = []
+
+        def fake_docker(*args: str, check: bool = True, timeout: int = 30):
+            calls.append(list(args))
+            result = MagicMock()
+            result.stdout = ""
+            result.returncode = 0
+            return result
+
+        with (
+            patch("shutil.which", return_value="/usr/bin/docker"),
+            patch.object(type(gw), "_run_docker", staticmethod(fake_docker)),
+            patch.object(gw, "_wait_postgres_healthy", new_callable=AsyncMock),
+            patch.object(gw, "_wait_healthy", new_callable=AsyncMock),
+            patch.object(
+                type(gw),
+                "_discover_anthropic_token",
+                staticmethod(lambda: "sk-ant-oat01-discovered"),
+            ),
+        ):
+            await gw.start()
+
+        litellm_run = " ".join(next(c for c in calls if "LITELLM_MASTER_KEY" in " ".join(c)))
+        assert (
+            "PYNCHY_ANTHROPIC_TOKEN=sk-ant-oat01-discovered"  # pragma: allowlist secret
+            in litellm_run
+        )
+
+
 class TestLiteLLMGatewayStart:
     @pytest.fixture
     def litellm_config(self, tmp_path: Path) -> Path:
@@ -155,6 +243,7 @@ class TestLiteLLMGatewayStart:
             patch.object(type(gw), "_run_docker", staticmethod(fake_docker)),
             patch.object(gw, "_wait_postgres_healthy", new_callable=AsyncMock),
             patch.object(gw, "_wait_healthy", new_callable=AsyncMock),
+            patch.object(type(gw), "_discover_anthropic_token", staticmethod(lambda: None)),
         ):
             await gw.start()
 

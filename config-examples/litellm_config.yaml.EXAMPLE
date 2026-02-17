@@ -1,0 +1,37 @@
+# LiteLLM Proxy — Pynchy Gateway
+#
+# Pynchy auto-discovers the Anthropic OAuth token at startup from
+# ~/.claude/.credentials.json (via `claude setup-token`) and injects it
+# as the PYNCHY_ANTHROPIC_TOKEN environment variable into this container.
+#
+# No need to paste API keys here — just run `claude setup-token` on the host.
+# For pay-as-you-go API keys, set [secrets].anthropic_api_key in config.toml.
+
+model_list:
+  # --- Anthropic (auto-discovered token) ---
+  - model_name: claude-opus-4-6
+    litellm_params:
+      model: anthropic/claude-opus-4-6
+      api_key: os.environ/PYNCHY_ANTHROPIC_TOKEN
+
+  # --- OpenAI (optional — uncomment and set your key) ---
+  # - model_name: gpt-4o
+  #   litellm_params:
+  #     model: openai/gpt-4o
+  #     api_key: os.environ/OPENAI_API_KEY
+
+  # --- Add other models your agents might use ---
+  # - model_name: claude-sonnet-4-5-20250514
+  #   litellm_params:
+  #     model: anthropic/claude-sonnet-4-5-20250514
+  #     api_key: os.environ/PYNCHY_ANTHROPIC_TOKEN
+
+router_settings:
+  routing_strategy: usage-based-routing
+  num_retries: 2
+  timeout: 300
+  allowed_fails: 3
+  cooldown_time: 60
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

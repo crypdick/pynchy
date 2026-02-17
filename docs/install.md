@@ -198,36 +198,39 @@ uv run pynchy-whatsapp-auth
 
 Wait for "Successfully authenticated" before pressing Ctrl+C.
 
-### 4. Install Claude Code and Authenticate
+### 4. Authenticate Claude Code
 
-Pynchy runs agents using the Claude Agent SDK, which requires Claude Code installed and authenticated.
+Pynchy runs agents using the Claude Agent SDK, which requires Claude Code installed and authenticated. Pynchy auto-discovers credentials at startup — no manual config needed.
 
 ```bash
 # Install Claude Code on the server
 npm install -g @anthropic-ai/claude-code
 ```
 
-The easiest way to authenticate on a headless server: copy credentials from a machine where you already have them:
+**Pro/Max subscribers (recommended):** Generate a long-lived token (~1 year):
+
+1. Run `claude setup-token` on the server
+2. It prints a URL — paste it into a browser (can be on any machine)
+3. Authorize in the browser and copy the code it gives you
+4. Paste the code back into the `setup-token` prompt
+5. Copy the long-lived token it outputs (starts with `sk-ant-oat01-...`)
+6. Create the credentials file on the server:
 
 ```bash
-# From your local machine (where claude is already authenticated):
-ssh user@your-server "mkdir -p ~/.claude"
-scp ~/.claude/.credentials.json user@your-server:~/.claude/.credentials.json
+mkdir -p ~/.claude
+cat > ~/.claude/.credentials.json << 'EOF'
+{"claudeAiOauth": {"accessToken": "sk-ant-oat01-YOUR_TOKEN_HERE"}}
+EOF
+chmod 600 ~/.claude/.credentials.json
 ```
 
-Verify it works on the server:
+Pynchy auto-discovers this token at startup and injects it into the LiteLLM container as `PYNCHY_ANTHROPIC_TOKEN` — no config.toml changes needed.
 
-```bash
-ssh your-server "claude -p 'say hello'"
-```
-
-**Alternative: API key instead of OAuth**
-
-To use an API key directly instead, skip the `claude` authentication and create `config.toml`:
+**API key (pay-as-you-go):** Get a key from [console.anthropic.com](https://console.anthropic.com), then set it in `config.toml`:
 
 ```bash
 cp ~/src/pynchy/config-examples/config.toml.EXAMPLE ~/src/pynchy/config.toml
-# Then set [secrets].anthropic_api_key in config.toml
+# Set [secrets].anthropic_api_key in config.toml
 ```
 
 > **Warning:** Without credentials, Pynchy will start and connect to WhatsApp, but all messages to the agent will fail. The boot notification will warn you if credentials are missing.
@@ -297,7 +300,15 @@ This pulls the latest code, validates the import, and restarts the service. If t
 
 ### "No API credentials found" in boot message
 
-Run `claude` on the server to authenticate, or set `[secrets].anthropic_api_key` in `config.toml`. Then restart: `systemctl --user restart pynchy`
+Run `claude setup-token` on the server to generate a long-lived token, or set `[secrets].anthropic_api_key` in `config.toml`. Then restart: `systemctl --user restart pynchy`
+
+### OAuth token expired (401 authentication_error)
+
+Short-lived OAuth tokens from `claude` login expire every ~8 hours. Generate a long-lived token (~1 year) instead — follow the `claude setup-token` steps in [section 4](#4-authenticate-claude-code), then restart:
+
+```bash
+systemctl --user restart pynchy
+```
 
 ### WhatsApp QR code not scanning
 
