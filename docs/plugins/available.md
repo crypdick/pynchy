@@ -4,12 +4,15 @@ This page tracks plugins that work with pynchy.
 
 ## Built-in Plugins
 
-These ship with pynchy and activate when their config section is present:
+These ship with pynchy and are always available. Some activate only when their config section is present:
 
-| Plugin | Purpose | Config |
-|--------|---------|--------|
-| `slack` | Slack channel via Socket Mode (bolt). Maps Slack channels/DMs to workspaces. | `[slack] bot_token / app_token` |
-| `caldav` | CalDAV calendar tools (list, create, delete events). Works with Nextcloud and other CalDAV servers. | `[caldav] url / username / password` |
+| Plugin | Type | Purpose | Config |
+|--------|------|---------|--------|
+| `agent_claude` | Agent Core | Default Claude SDK agent core. | Always active |
+| `agent_openai` | Agent Core | OpenAI Agents SDK alternative. | `PYNCHY_AGENT_CORE=openai` |
+| `slack` | Channel | Slack channel via Socket Mode (bolt). Maps Slack channels/DMs to workspaces. | `[slack] bot_token / app_token` |
+| `caldav` | MCP Server Handler | CalDAV calendar tools (list, create, delete events). Works with Nextcloud and other CalDAV servers. | `[caldav] url / username / password` |
+| `tailscale` | Tunnel | Tailscale connectivity detection. Warns at startup if tunnel is down. | Always active (requires `tailscale` CLI) |
 
 ## First-Party Plugins
 

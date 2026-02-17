@@ -149,6 +149,7 @@ def pynchy_create_channel(self, context: Any) -> Any | None:
     return TelegramChannel(
         bot_token=bot_token,
         on_message=context.on_message_callback,
+        on_chat_metadata=context.on_chat_metadata_callback,
         registered_groups=context.registered_groups,
     )
 ```
@@ -157,7 +158,17 @@ def pynchy_create_channel(self, context: Any) -> Any | None:
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `context` | `PluginContext` | Provides `registered_groups` and `send_message` callbacks |
+| `context` | `ChannelPluginContext` | Frozen dataclass with callbacks (see below) |
+
+**`ChannelPluginContext` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `on_message_callback` | `Callable[[str, NewMessage], None]` | Ingest a message for a JID |
+| `on_chat_metadata_callback` | `Callable[[str, str, str \| None], None]` | Update chat metadata (JID, timestamp, display name) |
+| `registered_groups` | `Callable[[], dict[str, RegisteredGroup]]` | Get all registered workspaces |
+| `send_message` | `Callable[[str, str], Any]` | Send outbound text to a JID |
+| `on_reaction_callback` | `Callable[..., None] \| None` | Optional reaction handler |
 
 **Return value:** A `Channel` instance implementing the channel protocol, or `None` to pass.
 
@@ -166,14 +177,15 @@ def pynchy_create_channel(self, context: Any) -> Any | None:
 ```python
 class Channel(Protocol):
     name: str
-    prefix_assistant_name: bool
 
     async def connect(self) -> None: ...
     async def send_message(self, jid: str, text: str) -> None: ...
-    async def disconnect(self) -> None: ...
     def is_connected(self) -> bool: ...
     def owns_jid(self, jid: str) -> bool: ...
+    async def disconnect(self) -> None: ...
 ```
+
+Optional attributes (check with `hasattr`/`getattr`): `prefix_assistant_name` (bool, default `True`), `set_typing`, `create_group`.
 
 !!! warning
     Channel plugins run **persistently on the host** with full filesystem and network access. This is the highest-risk plugin category. See [Security Model](../architecture/security.md).
