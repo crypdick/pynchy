@@ -111,6 +111,26 @@ class SlackChannel:
     # Optional protocol extensions
     # ------------------------------------------------------------------
 
+    async def create_group(self, name: str) -> str:
+        """Create a Slack channel and return its pynchy JID.
+
+        Requires the ``channels:manage`` (public) or ``groups:write``
+        (private) OAuth scope on the bot token.
+        """
+        assert self._app is not None
+        # Slack channel names: lowercase, no spaces, max 80 chars.
+        slack_name = name.lower().replace(" ", "-")[:80]
+        resp = await self._app.client.conversations_create(
+            name=slack_name, is_private=False
+        )
+        channel_id = resp["channel"]["id"]
+        logger.info(
+            "Created Slack channel",
+            name=slack_name,
+            channel_id=channel_id,
+        )
+        return _jid(channel_id)
+
     async def set_typing(self, jid: str, is_typing: bool) -> None:  # noqa: ARG002
         """Slack doesn't have a user-level typing indicator API, so this is a no-op."""
 
