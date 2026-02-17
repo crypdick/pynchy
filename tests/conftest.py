@@ -153,6 +153,22 @@ def reset_settings(monkeypatch):
     monkeypatch.setattr("pynchy.config._settings", safe)
 
 
+@pytest.fixture(autouse=True, scope="session")
+async def _close_test_database():
+    """Close the aiosqlite connection after all tests complete.
+
+    aiosqlite spawns a non-daemon worker thread per connection. Without an
+    explicit close, Python's interpreter shutdown blocks in threading._shutdown()
+    waiting for that thread to exit — causing a hang after all tests pass.
+    """
+    yield
+    import pynchy.db._connection as db_conn
+
+    if db_conn._db is not None:
+        await db_conn._db.close()
+        db_conn._db = None
+
+
 # ---------------------------------------------------------------------------
 # Reusable fixtures
 # ---------------------------------------------------------------------------
