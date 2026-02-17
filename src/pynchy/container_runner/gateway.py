@@ -15,7 +15,7 @@ Two modes, selected by ``[gateway].litellm_config`` in config.toml:
     and OpenAI at ``/v1/chat/completions``, so agent containers work
     without URL changes.
 
-**Builtin mode** (fallback)  TODO - delete this section once LiteLLM mode is fully tested
+**Builtin mode** (fallback)
     Simple aiohttp reverse proxy for single-key setups.  Used when
     ``litellm_config`` is not set.  Reads keys from ``[secrets]``.
 
@@ -293,9 +293,10 @@ class LiteLLMGateway:
 
     async def _wait_postgres_healthy(self) -> None:
         """Poll pg_isready inside the container until Postgres is up."""
-        deadline = asyncio.get_event_loop().time() + _POSTGRES_HEALTH_TIMEOUT
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + _POSTGRES_HEALTH_TIMEOUT
 
-        while asyncio.get_event_loop().time() < deadline:
+        while loop.time() < deadline:
             result = self._run_docker(
                 "exec",
                 _POSTGRES_CONTAINER,
@@ -411,14 +412,15 @@ class LiteLLMGateway:
     async def _wait_healthy(self) -> None:
         """Poll litellm's health endpoint until it responds."""
         url = f"http://localhost:{self.port}/health"
-        deadline = asyncio.get_event_loop().time() + _HEALTH_TIMEOUT
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + _HEALTH_TIMEOUT
 
         headers = {"Authorization": f"Bearer {self.key}"}
 
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=5),
         ) as session:
-            while asyncio.get_event_loop().time() < deadline:
+            while loop.time() < deadline:
                 try:
                     async with session.get(url, headers=headers) as resp:
                         if resp.status == 200:
