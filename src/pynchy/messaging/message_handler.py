@@ -18,7 +18,12 @@ from pynchy.db import get_messages_since, get_new_messages, store_message_direct
 from pynchy.event_bus import AgentActivityEvent, MessageEvent
 from pynchy.git_ops.utils import is_repo_dirty
 from pynchy.logger import logger
-from pynchy.messaging.commands import is_context_reset, is_end_session, is_redeploy
+from pynchy.messaging.commands import (
+    is_any_magic_command,
+    is_context_reset,
+    is_end_session,
+    is_redeploy,
+)
 from pynchy.utils import IdleTimer, create_background_task, generate_message_id
 
 if TYPE_CHECKING:
@@ -325,15 +330,16 @@ async def process_group_messages(
     if all(m.sender == "system_notice" for m in missed_messages):
         return True
 
+    # Intercept special commands before trigger check — magic commands
+    # (context reset, end session, redeploy) should work without a trigger
+    if await intercept_special_command(deps, chat_jid, group, missed_messages[-1]):
+        return True
+
     # For non-god groups, check if trigger is required and present
     if not is_god_group and group.requires_trigger is not False:
         has_trigger = any(s.trigger_pattern.search(m.content.strip()) for m in missed_messages)
         if not has_trigger:
             return True
-
-    # Intercept special commands
-    if await intercept_special_command(deps, chat_jid, group, missed_messages[-1]):
-        return True
 
     from pynchy.messaging.router import format_messages_for_sdk
 
@@ -448,10 +454,12 @@ async def start_message_loop(
                     needs_trigger = not is_god_group and group.requires_trigger is not False
 
                     if needs_trigger:
+                        last_content = group_messages[-1].content.strip()
                         has_trigger = any(
                             s.trigger_pattern.search(m.content.strip()) for m in group_messages
                         )
-                        if not has_trigger:
+                        # Magic commands (c, boom, done, r, etc.) bypass trigger
+                        if not has_trigger and not is_any_magic_command(last_content):
                             continue
 
                     all_pending = await get_messages_since(
