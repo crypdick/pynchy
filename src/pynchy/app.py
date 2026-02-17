@@ -416,6 +416,17 @@ class PynchyApp:
         loop = asyncio.get_running_loop()
         loop.call_later(12, lambda: os._exit(1))
 
+        # Notify the god group that the service is going down.
+        # Best-effort: don't let notification failure block shutdown.
+        try:
+            god_jid = next(
+                (jid for jid, g in self.registered_groups.items() if g.is_god), None
+            )
+            if god_jid and self.channels:
+                await self.broadcast_host_message(god_jid, f"Shutting down ({sig_name})")
+        except Exception:
+            logger.debug("Shutdown notification failed (ignored)")
+
         if self._http_runner:
             # Give SSE handlers a brief chance to observe shutdown state and
             # exit before aiohttp forcibly tears down request tasks.
