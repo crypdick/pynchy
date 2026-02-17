@@ -44,7 +44,7 @@ async def _handle_schedule_task(
     is_god: bool,
     deps: IpcDeps,
 ) -> None:
-    registered_groups = deps.registered_groups()
+    workspaces = deps.workspaces()
 
     prompt = data.get("prompt")
     schedule_type = data.get("schedule_type")
@@ -54,7 +54,7 @@ async def _handle_schedule_task(
     if not (prompt and schedule_type and schedule_value and target_jid):
         return
 
-    target_group_entry = registered_groups.get(target_jid)
+    target_group_entry = workspaces.get(target_jid)
     if not target_group_entry:
         logger.warning(
             "Cannot schedule task: target group not registered",

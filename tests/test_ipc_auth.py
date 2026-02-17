@@ -74,7 +74,7 @@ class MockDeps:
     async def send_message(self, jid: str, text: str) -> None:
         pass
 
-    def registered_groups(self) -> dict[str, WorkspaceProfile]:
+    def workspaces(self) -> dict[str, WorkspaceProfile]:
         return self._groups
 
     def register_workspace(self, profile: WorkspaceProfile) -> None:
@@ -411,7 +411,7 @@ class TestRegisterGroupAuth:
             deps,
         )
 
-        assert deps.registered_groups().get("new@g.us") is None
+        assert deps.workspaces().get("new@g.us") is None
 
 
 # --- IPC message authorization ---
@@ -423,31 +423,31 @@ class TestIpcMessageAuth:
         source_group: str,
         is_god: bool,
         target_chat_jid: str,
-        registered_groups: dict[str, WorkspaceProfile],
+        workspaces: dict[str, WorkspaceProfile],
     ) -> bool:
-        target_group = registered_groups.get(target_chat_jid)
+        target_group = workspaces.get(target_chat_jid)
         return is_god or (target_group is not None and target_group.folder == source_group)
 
     def test_god_can_send_to_any_group(self, deps):
-        groups = deps.registered_groups()
+        groups = deps.workspaces()
         assert self.is_message_authorized("god", True, "other@g.us", groups)
         assert self.is_message_authorized("god", True, "third@g.us", groups)
 
     def test_non_god_can_send_to_own_chat(self, deps):
-        groups = deps.registered_groups()
+        groups = deps.workspaces()
         assert self.is_message_authorized("other-group", False, "other@g.us", groups)
 
     def test_non_god_cannot_send_to_other_chat(self, deps):
-        groups = deps.registered_groups()
+        groups = deps.workspaces()
         assert not self.is_message_authorized("other-group", False, "god@g.us", groups)
         assert not self.is_message_authorized("other-group", False, "third@g.us", groups)
 
     def test_non_god_cannot_send_to_unregistered(self, deps):
-        groups = deps.registered_groups()
+        groups = deps.workspaces()
         assert not self.is_message_authorized("other-group", False, "unknown@g.us", groups)
 
     def test_god_can_send_to_unregistered(self, deps):
-        groups = deps.registered_groups()
+        groups = deps.workspaces()
         assert self.is_message_authorized("god", True, "unknown@g.us", groups)
 
 
@@ -652,7 +652,7 @@ class TestRegisterGroupSuccess:
             deps,
         )
 
-        group = deps.registered_groups().get("new@g.us")
+        group = deps.workspaces().get("new@g.us")
         assert group is not None
         assert group.name == "New Group"
         assert group.folder == "new-group"
@@ -671,7 +671,7 @@ class TestRegisterGroupSuccess:
             deps,
         )
 
-        assert deps.registered_groups().get("partial@g.us") is None
+        assert deps.workspaces().get("partial@g.us") is None
 
 
 # --- schedule_task missing fields ---

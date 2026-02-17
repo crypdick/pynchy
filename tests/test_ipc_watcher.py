@@ -62,7 +62,7 @@ class MockDeps:
     async def broadcast_system_notice(self, jid: str, text: str) -> None:
         self.system_notices.append((jid, text))
 
-    def registered_groups(self) -> dict[str, WorkspaceProfile]:
+    def workspaces(self) -> dict[str, WorkspaceProfile]:
         return self._groups
 
     def register_workspace(self, profile: WorkspaceProfile) -> None:
@@ -170,7 +170,7 @@ class TestIpcMessageProcessing:
     async def test_god_group_can_send_to_any_chat(self, deps, tmp_path: Path):
         """God group messages to any chat JID should be broadcast."""
         # Here we test the message file authorization logic directly
-        groups = deps.registered_groups()
+        groups = deps.workspaces()
         target_group = groups.get("other@g.us")
         source_group = "god"
         is_god = True
@@ -181,7 +181,7 @@ class TestIpcMessageProcessing:
 
     async def test_non_god_can_send_to_own_chat(self, deps):
         """Non-god group should be authorized to send to its own chat."""
-        groups = deps.registered_groups()
+        groups = deps.workspaces()
         target_group = groups.get("other@g.us")
         source_group = "other-group"
         is_god = False
@@ -191,7 +191,7 @@ class TestIpcMessageProcessing:
 
     async def test_non_god_blocked_from_other_chat(self, deps):
         """Non-god group should NOT be authorized to send to another group's chat."""
-        groups = deps.registered_groups()
+        groups = deps.workspaces()
         target_group = groups.get("god@g.us")
         source_group = "other-group"
         is_god = False
@@ -201,7 +201,7 @@ class TestIpcMessageProcessing:
 
     async def test_non_god_blocked_from_unregistered_chat(self, deps):
         """Non-god sending to an unregistered JID should be blocked."""
-        groups = deps.registered_groups()
+        groups = deps.workspaces()
         target_group = groups.get("unknown@g.us")
         source_group = "other-group"
         is_god = False

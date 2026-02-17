@@ -23,7 +23,7 @@ class ChannelPluginContext:
 
     on_message_callback: Callable[[str, NewMessage], None]
     on_chat_metadata_callback: Callable[[str, str, str | None], None]
-    registered_groups: Callable[[], dict[str, WorkspaceProfile]]
+    workspaces: Callable[[], dict[str, WorkspaceProfile]]
     send_message: Callable[[str, str], Any]
     on_reaction_callback: Callable[[str, str, str, str], None] | None = None
 

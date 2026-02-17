@@ -35,7 +35,7 @@ class FakeDeps:
     def __init__(self, groups: dict[str, WorkspaceProfile] | None = None):
         self._groups = groups or {}
 
-    def registered_groups(self) -> dict[str, WorkspaceProfile]:
+    def workspaces(self) -> dict[str, WorkspaceProfile]:
         return self._groups
 
 

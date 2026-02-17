@@ -151,10 +151,6 @@ class WorkspaceProfile:
         return errors
 
 
-# Deprecated alias — kept for external plugins that haven't migrated yet.
-RegisteredGroup = WorkspaceProfile
-
-
 @dataclass
 class NewMessage:
     id: str

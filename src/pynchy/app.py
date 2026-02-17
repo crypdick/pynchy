@@ -80,11 +80,6 @@ class PynchyApp:
         self._broadcaster = MessageBroadcaster(lambda: self.channels, self.get_channel_jid)
         self._host_broadcaster = self._make_host_broadcaster()
 
-    @property
-    def registered_groups(self) -> dict[str, WorkspaceProfile]:
-        """Alias for workspaces — satisfies protocol contracts."""
-        return self.workspaces
-
     # ------------------------------------------------------------------
     # State persistence
     # ------------------------------------------------------------------
@@ -497,7 +492,7 @@ class PynchyApp:
             on_chat_metadata_callback=lambda jid, ts, name=None: asyncio.ensure_future(
                 store_chat_metadata(jid, ts, name)
             ),
-            registered_groups=lambda: self.workspaces,
+            workspaces=lambda: self.workspaces,
             send_message=self.broadcast_to_channels,
             on_reaction_callback=lambda jid, ts, user, emoji: asyncio.ensure_future(
                 self._on_reaction(jid, ts, user, emoji)
@@ -532,7 +527,7 @@ class PynchyApp:
 
         # Reconcile workspaces (create chat groups + tasks from workspace.yaml)
         await reconcile_workspaces(
-            registered_groups=self.workspaces,
+            workspaces=self.workspaces,
             channels=self.channels,
             register_fn=self._register_workspace,
             register_alias_fn=self.register_jid_alias,

@@ -15,7 +15,7 @@ class ReactionDeps(Protocol):
     """Dependencies for reaction processing."""
 
     @property
-    def registered_groups(self) -> dict[str, Any]: ...
+    def workspaces(self) -> dict[str, Any]: ...
 
     @property
     def queue(self) -> Any: ...
@@ -46,7 +46,7 @@ async def handle_reaction(
     if not action:
         return
 
-    group = deps.registered_groups.get(jid)
+    group = deps.workspaces.get(jid)
     if not group:
         return
 

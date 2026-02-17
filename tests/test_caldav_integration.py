@@ -44,7 +44,7 @@ class FakeDeps:
     def __init__(self, groups=None):
         self._groups = groups or {}
 
-    def registered_groups(self):
+    def workspaces(self):
         return self._groups
 
 

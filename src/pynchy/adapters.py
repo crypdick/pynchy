@@ -210,7 +210,7 @@ class GroupRegistry:
     def __init__(self, groups_dict: dict[str, WorkspaceProfile]) -> None:
         self._groups = groups_dict
 
-    def registered_groups(self) -> dict[str, WorkspaceProfile]:
+    def workspaces(self) -> dict[str, WorkspaceProfile]:
         """Return all registered groups."""
         return self._groups
 
@@ -462,7 +462,7 @@ class GroupRegistrationManager:
         self._register_workspace = register_workspace_fn
         self._send_clear_confirmation = send_clear_confirmation_fn
 
-    def registered_groups(self) -> dict[str, WorkspaceProfile]:
+    def workspaces(self) -> dict[str, WorkspaceProfile]:
         """Return all registered groups."""
         return self._groups
 

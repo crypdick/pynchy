@@ -26,7 +26,7 @@ async def _setup_db():
 def mock_ipc_deps():
     """Mock IPC dependencies."""
     deps = MagicMock()
-    deps.registered_groups.return_value = {
+    deps.workspaces.return_value = {
         "god-jid": MagicMock(folder="god", is_god=True),
     }
     return deps
@@ -63,7 +63,7 @@ class TestHostJobScheduling:
 
     async def test_create_host_job_rejects_non_god(self, mock_ipc_deps):
         """Non-god groups cannot schedule host jobs."""
-        mock_ipc_deps.registered_groups.return_value = {
+        mock_ipc_deps.workspaces.return_value = {
             "user-jid": MagicMock(folder="user-group", is_god=False),
         }
 

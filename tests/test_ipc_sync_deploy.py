@@ -75,7 +75,7 @@ class MockDeps:
     async def broadcast_system_notice(self, jid: str, text: str) -> None:
         self.system_notices.append((jid, text))
 
-    def registered_groups(self) -> dict[str, WorkspaceProfile]:
+    def workspaces(self) -> dict[str, WorkspaceProfile]:
         return self._groups
 
     def register_workspace(self, profile: WorkspaceProfile) -> None:

@@ -35,7 +35,7 @@ class AgentRunnerDeps(Protocol):
     def _session_cleared(self) -> set[str]: ...
 
     @property
-    def registered_groups(self) -> dict[str, WorkspaceProfile]: ...
+    def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
     @property
     def queue(self) -> GroupQueue: ...
@@ -102,7 +102,7 @@ async def run_agent(
         group.folder,
         is_god,
         available_groups,
-        set(deps.registered_groups.keys()),
+        set(deps.workspaces.keys()),
     )
 
     # Wrap on_output to track session ID from streamed results

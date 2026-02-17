@@ -90,7 +90,7 @@ async def _handle_finished_work(
     from pynchy.git_ops.worktree import background_merge_worktree
 
     group = next(
-        (g for g in deps.registered_groups().values() if g.folder == source_group),
+        (g for g in deps.workspaces().values() if g.folder == source_group),
         None,
     )
     if group:
@@ -126,8 +126,8 @@ async def _handle_sync_worktree_to_main(
             async def broadcast_system_notice(self, jid: str, text: str) -> None:
                 await deps.broadcast_system_notice(jid, text)
 
-            def registered_groups(self) -> dict[str, WorkspaceProfile]:
-                return deps.registered_groups()
+            def workspaces(self) -> dict[str, WorkspaceProfile]:
+                return deps.workspaces()
 
             async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
                 pass  # adapter only used for worktree notifications

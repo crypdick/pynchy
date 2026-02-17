@@ -31,7 +31,7 @@ from pynchy.utils import IdleTimer, compute_next_run
 class SchedulerDependencies(Protocol):
     """Dependencies for the task scheduler."""
 
-    def registered_groups(self) -> dict[str, WorkspaceProfile]: ...
+    def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
     @property
     def queue(self) -> GroupQueue: ...
@@ -293,7 +293,7 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
 
     logger.info("Running scheduled task", task_id=task.id, group=task.group_folder)
 
-    groups = deps.registered_groups()
+    groups = deps.workspaces()
     group = next((g for g in groups.values() if g.folder == task.group_folder), None)
 
     if group:

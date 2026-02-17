@@ -43,8 +43,8 @@ async def _process_message_file(
         data = parse_ipc_file(file_path)
 
         if data.get("type") == "message" and data.get("chatJid") and data.get("text"):
-            registered_groups = deps.registered_groups()
-            target_group = registered_groups.get(data["chatJid"])
+            workspaces = deps.workspaces()
+            target_group = workspaces.get(data["chatJid"])
             if is_god or (target_group and target_group.folder == source_group):
                 sender = data.get("sender")
                 prefix = f"{sender}" if sender else s.agent.name
@@ -125,14 +125,14 @@ async def _handle_signal(
                 "Group metadata refresh requested via signal",
                 source_group=source_group,
             )
-            registered_groups = deps.registered_groups()
+            workspaces = deps.workspaces()
             await deps.sync_group_metadata(True)
             available_groups = await deps.get_available_groups()
             deps.write_groups_snapshot(
                 source_group,
                 True,
                 available_groups,
-                set(registered_groups.keys()),
+                set(workspaces.keys()),
             )
         else:
             logger.warning(
@@ -164,8 +164,8 @@ async def _sweep_directory(
         logger.error("Error reading IPC base directory during sweep", err=str(exc))
         return 0
 
-    registered_groups = deps.registered_groups()
-    god_folders = {g.folder for g in registered_groups.values() if g.is_god}
+    workspaces = deps.workspaces()
+    god_folders = {g.folder for g in workspaces.values() if g.is_god}
 
     for source_group in group_folders:
         is_god = source_group in god_folders
@@ -257,7 +257,7 @@ async def _process_queue(
             subdir = parts[1]
 
             # Re-check god status (groups can change at runtime)
-            current_groups = deps.registered_groups()
+            current_groups = deps.workspaces()
             current_god_folders = {g.folder for g in current_groups.values() if g.is_god}
             is_god = source_group in current_god_folders
 

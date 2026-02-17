@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 class StartupDeps(Protocol):
     @property
-    def registered_groups(self) -> dict[str, WorkspaceProfile]: ...
+    def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
     @property
     def last_agent_timestamp(self) -> dict[str, str]: ...
@@ -49,7 +49,7 @@ async def send_boot_notification(deps: StartupDeps) -> None:
     s = get_settings()
     from pynchy.adapters import find_god_jid
 
-    god_jid = find_god_jid(deps.registered_groups) or None
+    god_jid = find_god_jid(deps.workspaces) or None
     if not god_jid:
         return
 
@@ -87,7 +87,7 @@ async def send_boot_notification(deps: StartupDeps) -> None:
 
 async def recover_pending_messages(deps: StartupDeps) -> None:
     """Startup recovery: check for unprocessed messages in registered groups."""
-    for chat_jid, group in deps.registered_groups.items():
+    for chat_jid, group in deps.workspaces.items():
         since_timestamp = deps.last_agent_timestamp.get(chat_jid, "")
         pending = await get_messages_since(chat_jid, since_timestamp)
         if pending:
