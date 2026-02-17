@@ -11,23 +11,10 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from conftest import make_settings
 from pydantic import SecretStr
 
-from pynchy.config import (
-    AgentConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    GatewayConfig,
-    IntervalsConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
-    Settings,
-    WorkspaceDefaultsConfig,
-)
+from pynchy.config import GatewayConfig, Settings
 from pynchy.container_runner import (
     _build_container_args,
     _build_volume_mounts,
@@ -125,31 +112,20 @@ def _patch_settings(
     secret_overrides: dict[str, str] | None = None,
 ):
     """Patch get_settings() across all container_runner submodules."""
-    s = Settings.model_construct(
-        agent=AgentConfig(),
-        container=ContainerConfig(),
-        server=ServerConfig(),
-        logging=LoggingConfig(),
-        secrets=SecretsConfig(),
-        gateway=GatewayConfig(),
-        workspace_defaults=WorkspaceDefaultsConfig(),
-        workspaces={},
-        commands=CommandWordsConfig(),
-        scheduler=SchedulerConfig(),
-        intervals=IntervalsConfig(),
-        queue=QueueConfig(),
-        security=SecurityConfig(),
-    )
+    overrides: dict = {"gateway": GatewayConfig()}
     if tmp_path is not None:
-        s.__dict__["project_root"] = tmp_path
-        s.__dict__["groups_dir"] = tmp_path / "groups"
-        s.__dict__["data_dir"] = tmp_path / "data"
+        overrides.update(
+            project_root=tmp_path,
+            groups_dir=tmp_path / "groups",
+            data_dir=tmp_path / "data",
+        )
+    if container_timeout is not None:
+        overrides["container_timeout"] = container_timeout
+    if idle_timeout is not None:
+        overrides["idle_timeout"] = idle_timeout
+    s = make_settings(**overrides)
     if core is not None:
         s.agent.core = core
-    if container_timeout is not None:
-        s.__dict__["container_timeout"] = container_timeout
-    if idle_timeout is not None:
-        s.__dict__["idle_timeout"] = idle_timeout
     if max_output_size is not None:
         s.container.max_output_size = max_output_size
     if secret_overrides:

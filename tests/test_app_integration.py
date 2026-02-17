@@ -14,22 +14,10 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from conftest import make_settings
 
 from pynchy.app import PynchyApp
-from pynchy.config import (
-    AgentConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    IntervalsConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
-    Settings,
-    WorkspaceDefaultsConfig,
-)
+from pynchy.config import Settings
 from pynchy.db import _init_test_database, get_chat_history, store_message
 from pynchy.types import NewMessage, RegisteredGroup
 
@@ -69,23 +57,11 @@ def _marker_wrap(output: dict[str, Any]) -> bytes:
 @contextlib.contextmanager
 def _patch_test_settings(tmp_path: Path):
     """Patch settings accessors to use tmp test directories."""
-    s = Settings.model_construct(
-        agent=AgentConfig(),
-        container=ContainerConfig(),
-        server=ServerConfig(),
-        logging=LoggingConfig(),
-        secrets=SecretsConfig(),
-        workspace_defaults=WorkspaceDefaultsConfig(),
-        workspaces={},
-        commands=CommandWordsConfig(),
-        scheduler=SchedulerConfig(),
-        intervals=IntervalsConfig(),
-        queue=QueueConfig(),
-        security=SecurityConfig(),
+    s = make_settings(
+        project_root=tmp_path,
+        groups_dir=tmp_path / "groups",
+        data_dir=tmp_path / "data",
     )
-    s.__dict__["project_root"] = tmp_path
-    s.__dict__["groups_dir"] = tmp_path / "groups"
-    s.__dict__["data_dir"] = tmp_path / "data"
     with contextlib.ExitStack() as stack:
         for mod in (
             "pynchy.container_runner._credentials",

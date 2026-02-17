@@ -19,21 +19,8 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from conftest import make_settings
 
-from pynchy.config import (
-    AgentConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    IntervalsConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
-    Settings,
-    WorkspaceDefaultsConfig,
-)
 from pynchy.db import _init_test_database
 from pynchy.ipc import dispatch
 from pynchy.ipc._handlers_deploy import _handle_deploy
@@ -56,25 +43,12 @@ OTHER_GROUP = RegisteredGroup(
 
 
 def _test_settings(*, data_dir=None, project_root=None):
-    s = Settings.model_construct(
-        agent=AgentConfig(),
-        container=ContainerConfig(),
-        server=ServerConfig(),
-        logging=LoggingConfig(),
-        secrets=SecretsConfig(),
-        workspace_defaults=WorkspaceDefaultsConfig(),
-        workspaces={},
-        commands=CommandWordsConfig(),
-        scheduler=SchedulerConfig(),
-        intervals=IntervalsConfig(),
-        queue=QueueConfig(),
-        security=SecurityConfig(),
-    )
+    overrides = {}
     if data_dir is not None:
-        s.__dict__["data_dir"] = data_dir
+        overrides["data_dir"] = data_dir
     if project_root is not None:
-        s.__dict__["project_root"] = project_root
-    return s
+        overrides["project_root"] = project_root
+    return make_settings(**overrides)
 
 
 class MockDeps:

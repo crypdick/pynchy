@@ -12,21 +12,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from conftest import make_settings
 
-from pynchy.config import (
-    AgentConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    IntervalsConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
-    Settings,
-    WorkspaceDefaultsConfig,
-)
 from pynchy.db import (
     _init_test_database,
     create_task,
@@ -41,23 +28,7 @@ from pynchy.workspace_ops import RenameError, _rename_dir, rename_workspace
 
 @contextlib.contextmanager
 def _patch_settings(*, groups_dir: Path, data_dir: Path, worktrees_dir: Path):
-    s = Settings.model_construct(
-        agent=AgentConfig(),
-        container=ContainerConfig(),
-        server=ServerConfig(),
-        logging=LoggingConfig(),
-        secrets=SecretsConfig(),
-        workspace_defaults=WorkspaceDefaultsConfig(),
-        workspaces={},
-        commands=CommandWordsConfig(),
-        scheduler=SchedulerConfig(),
-        intervals=IntervalsConfig(),
-        queue=QueueConfig(),
-        security=SecurityConfig(),
-    )
-    s.__dict__["groups_dir"] = groups_dir
-    s.__dict__["data_dir"] = data_dir
-    s.__dict__["worktrees_dir"] = worktrees_dir
+    s = make_settings(groups_dir=groups_dir, data_dir=data_dir, worktrees_dir=worktrees_dir)
     with patch("pynchy.workspace_ops.get_settings", return_value=s):
         yield
 

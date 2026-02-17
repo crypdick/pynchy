@@ -58,6 +58,7 @@ packages = ["src/pynchy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["tests"]
 asyncio_mode = "auto"
 addopts = "-n auto --tb=short -q --no-header"
 timeout = 30

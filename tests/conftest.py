@@ -10,6 +10,86 @@ from pydantic import BaseModel, SecretStr
 from pynchy.types import NewMessage
 
 # ---------------------------------------------------------------------------
+# Shared helpers (plain functions, not fixtures — importable by test files)
+# ---------------------------------------------------------------------------
+
+# Cached property names that must be set via __dict__ (not model_construct).
+_CACHED_PROPERTY_NAMES = frozenset(
+    {
+        "project_root",
+        "home_dir",
+        "store_dir",
+        "groups_dir",
+        "data_dir",
+        "mount_allowlist_path",
+        "worktrees_dir",
+        "plugins_dir",
+        "container_timeout",
+        "idle_timeout",
+        "trigger_pattern",
+        "timezone",
+    }
+)
+
+
+def make_settings(**overrides):
+    """Create a Settings object with sensible defaults for testing.
+
+    Accepts both model fields (agent, container, etc.) and cached property
+    overrides (project_root, data_dir, groups_dir, etc.).
+
+    Usage::
+
+        s = make_settings(data_dir=tmp_path)
+        s = make_settings(container=ContainerConfig(max_concurrent=3))
+        s = make_settings(project_root=tmp_path, groups_dir=tmp_path / "groups")
+    """
+    from pynchy.config import (
+        AgentConfig,
+        ChannelsConfig,
+        CommandWordsConfig,
+        ContainerConfig,
+        IntervalsConfig,
+        LoggingConfig,
+        QueueConfig,
+        SchedulerConfig,
+        SecretsConfig,
+        SecurityConfig,
+        ServerConfig,
+        Settings,
+        WorkspaceDefaultsConfig,
+    )
+
+    # Separate cached properties from model fields
+    cached = {k: overrides.pop(k) for k in list(overrides) if k in _CACHED_PROPERTY_NAMES}
+
+    defaults = {
+        "agent": AgentConfig(),
+        "container": ContainerConfig(),
+        "server": ServerConfig(),
+        "logging": LoggingConfig(),
+        "secrets": SecretsConfig(),
+        "workspace_defaults": WorkspaceDefaultsConfig(),
+        "workspaces": {},
+        "commands": CommandWordsConfig(),
+        "scheduler": SchedulerConfig(),
+        "intervals": IntervalsConfig(),
+        "queue": QueueConfig(),
+        "security": SecurityConfig(),
+        "channels": ChannelsConfig(),
+        "plugins": {},
+        "cron_jobs": {},
+    }
+    defaults.update(overrides)
+    s = Settings.model_construct(**defaults)
+
+    for key, value in cached.items():
+        s.__dict__[key] = value
+
+    return s
+
+
+# ---------------------------------------------------------------------------
 # Secret scrubbing — detect credentials in both SecretStr and plain str fields
 # ---------------------------------------------------------------------------
 

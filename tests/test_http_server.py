@@ -10,21 +10,8 @@ from unittest.mock import Mock, patch
 
 from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
+from conftest import make_settings
 
-from pynchy.config import (
-    AgentConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    IntervalsConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
-    Settings,
-    WorkspaceDefaultsConfig,
-)
 from pynchy.git_utils import get_head_sha, is_repo_dirty, push_local_commits
 from pynchy.http_server import (
     _get_head_commit_message,
@@ -36,21 +23,7 @@ from pynchy.types import NewMessage
 
 @contextlib.contextmanager
 def _patch_settings(*, data_dir: Path):
-    s = Settings.model_construct(
-        agent=AgentConfig(),
-        container=ContainerConfig(),
-        server=ServerConfig(),
-        logging=LoggingConfig(),
-        secrets=SecretsConfig(),
-        workspace_defaults=WorkspaceDefaultsConfig(),
-        workspaces={},
-        commands=CommandWordsConfig(),
-        scheduler=SchedulerConfig(),
-        intervals=IntervalsConfig(),
-        queue=QueueConfig(),
-        security=SecurityConfig(),
-    )
-    s.__dict__["data_dir"] = data_dir
+    s = make_settings(data_dir=data_dir)
     with patch("pynchy.http_server.get_settings", return_value=s):
         yield
 

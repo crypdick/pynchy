@@ -12,22 +12,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from conftest import make_settings
 
-from pynchy.config import (
-    AgentConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    IntervalsConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
-    Settings,
-    WorkspaceConfig,
-    WorkspaceDefaultsConfig,
-)
+from pynchy.config import WorkspaceConfig
 from pynchy.db import _init_test_database, create_task, get_active_task_for_group, get_all_tasks
 from pynchy.types import RegisteredGroup
 from pynchy.workspace_config import configure_plugin_workspaces, reconcile_workspaces
@@ -48,21 +35,7 @@ class TestReconcileWorkspaces:
     @pytest.fixture
     def groups_dir(self, monkeypatch, tmp_path):
         workspaces: dict[str, WorkspaceConfig] = {}
-        s = Settings.model_construct(
-            agent=AgentConfig(),
-            container=ContainerConfig(),
-            server=ServerConfig(),
-            logging=LoggingConfig(),
-            secrets=SecretsConfig(),
-            workspace_defaults=WorkspaceDefaultsConfig(),
-            workspaces=workspaces,
-            commands=CommandWordsConfig(),
-            scheduler=SchedulerConfig(),
-            intervals=IntervalsConfig(),
-            queue=QueueConfig(),
-            security=SecurityConfig(),
-        )
-        s.__dict__["groups_dir"] = tmp_path / "groups"
+        s = make_settings(workspaces=workspaces, groups_dir=tmp_path / "groups")
         monkeypatch.setattr("pynchy.workspace_config.get_settings", lambda: s)
         return workspaces
 

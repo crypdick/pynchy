@@ -19,22 +19,9 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from conftest import make_settings
 
-from pynchy.config import (
-    AgentConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    CronJobConfig,
-    IntervalsConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
-    Settings,
-    WorkspaceDefaultsConfig,
-)
+from pynchy.config import CronJobConfig, SchedulerConfig
 from pynchy.group_queue import GroupQueue
 from pynchy.task_scheduler import start_scheduler_loop
 from pynchy.types import (
@@ -47,23 +34,13 @@ from pynchy.types import (
 
 @contextlib.contextmanager
 def _patch_settings(*, poll_interval: float = 5.0, groups_dir=None, cron_jobs=None):
-    s = Settings.model_construct(
-        agent=AgentConfig(),
-        container=ContainerConfig(),
-        server=ServerConfig(),
-        logging=LoggingConfig(),
-        secrets=SecretsConfig(),
-        workspace_defaults=WorkspaceDefaultsConfig(),
-        workspaces={},
-        commands=CommandWordsConfig(),
-        scheduler=SchedulerConfig(poll_interval=poll_interval),
-        cron_jobs=cron_jobs or {},
-        intervals=IntervalsConfig(),
-        queue=QueueConfig(),
-        security=SecurityConfig(),
-    )
+    overrides = {
+        "scheduler": SchedulerConfig(poll_interval=poll_interval),
+        "cron_jobs": cron_jobs or {},
+    }
     if groups_dir is not None:
-        s.__dict__["groups_dir"] = groups_dir
+        overrides["groups_dir"] = groups_dir
+    s = make_settings(**overrides)
     with patch("pynchy.task_scheduler.get_settings", return_value=s):
         yield
 
@@ -190,18 +167,23 @@ class MockSchedulerDeps:
         project_access_override=None,
         input_source="user",
     ) -> str:
-        self.agent_runs.append({
-            "group": group,
-            "chat_jid": chat_jid,
-            "messages": messages,
-            "on_output": on_output,
-            "is_scheduled_task": is_scheduled_task,
-            "project_access_override": project_access_override,
-            "input_source": input_source,
-        })
+        self.agent_runs.append(
+            {
+                "group": group,
+                "chat_jid": chat_jid,
+                "messages": messages,
+                "on_output": on_output,
+                "is_scheduled_task": is_scheduled_task,
+                "project_access_override": project_access_override,
+                "input_source": input_source,
+            }
+        )
         if self._run_agent_side_effect:
             return await self._run_agent_side_effect(
-                group, chat_jid, messages, on_output,
+                group,
+                chat_jid,
+                messages,
+                on_output,
                 is_scheduled_task=is_scheduled_task,
                 project_access_override=project_access_override,
                 input_source=input_source,
@@ -477,9 +459,7 @@ class TestRunScheduledAgent:
         assert mock_deps.agent_runs[0]["project_access_override"] is True
 
     @pytest.mark.asyncio
-    async def test_sends_start_notification(
-        self, mock_deps, sample_task, sample_group, tmp_path
-    ):
+    async def test_sends_start_notification(self, mock_deps, sample_task, sample_group, tmp_path):
         """Should broadcast start notification before running agent."""
         mock_deps.groups["test-jid"] = sample_group
 
@@ -533,9 +513,7 @@ class TestRunScheduledAgent:
             updates.append((task_id, next_run, result_summary))
 
         with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
-            with patch(
-                "pynchy.task_scheduler.update_task_after_run", side_effect=mock_update
-            ):
+            with patch("pynchy.task_scheduler.update_task_after_run", side_effect=mock_update):
                 with _patch_settings(groups_dir=tmp_path):
                     from pynchy.task_scheduler import _run_scheduled_agent
 
@@ -563,9 +541,7 @@ class TestRunScheduledAgent:
             updates.append((task_id, next_run, result_summary))
 
         with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
-            with patch(
-                "pynchy.task_scheduler.update_task_after_run", side_effect=mock_update
-            ):
+            with patch("pynchy.task_scheduler.update_task_after_run", side_effect=mock_update):
                 with _patch_settings(groups_dir=tmp_path):
                     from pynchy.task_scheduler import _run_scheduled_agent
 
@@ -595,9 +571,7 @@ class TestRunScheduledAgent:
             updates.append((task_id, next_run, result_summary))
 
         with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
-            with patch(
-                "pynchy.task_scheduler.update_task_after_run", side_effect=mock_update
-            ):
+            with patch("pynchy.task_scheduler.update_task_after_run", side_effect=mock_update):
                 with _patch_settings(groups_dir=tmp_path):
                     from pynchy.task_scheduler import _run_scheduled_agent
 
