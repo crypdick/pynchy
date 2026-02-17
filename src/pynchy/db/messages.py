@@ -101,7 +101,7 @@ async def get_new_messages(jids: list[str], last_timestamp: str) -> tuple[list[N
         SELECT id, chat_jid, sender, sender_name, content, timestamp, message_type, metadata
         FROM messages
         WHERE timestamp > ? AND chat_jid IN ({placeholders})
-              AND (sender LIKE '%@%' OR sender IN ('tui-user', 'deploy', 'system_notice'))
+              AND is_from_me = 0
         ORDER BY timestamp
     """
     cursor = await db.execute(sql, [last_timestamp, *jids])
@@ -124,7 +124,7 @@ async def get_messages_since(chat_jid: str, since_timestamp: str) -> list[NewMes
         SELECT id, chat_jid, sender, sender_name, content, timestamp, message_type, metadata
         FROM messages
         WHERE chat_jid = ? AND timestamp > ?
-              AND (sender LIKE '%@%' OR sender IN ('tui-user', 'deploy', 'system_notice'))
+              AND is_from_me = 0
         ORDER BY timestamp
     """
     cursor = await db.execute(sql, (chat_jid, since_timestamp))

@@ -133,8 +133,12 @@ class TestStoreMessage:
             )
         )
 
-        messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z")
-        assert len(messages) == 1
+        # Verify the flag is persisted via get_chat_history (which returns all messages).
+        # get_messages_since filters out is_from_me=True (bot/self messages).
+        messages = await get_chat_history("group@g.us", limit=50)
+        mine = [m for m in messages if m.id == "msg-3"]
+        assert len(mine) == 1
+        assert mine[0].is_from_me is True
 
     async def test_upserts_on_duplicate_id_chat_jid(self):
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
@@ -370,9 +374,9 @@ class TestTaskCRUD:
 
 
 class TestSenderFiltering:
-    """Verify opt-in sender filter: only WhatsApp JIDs, tui-user, and deploy
-    pass through get_new_messages() / get_messages_since(). Internal senders
-    (thinking, tool_use, system, etc.) are excluded."""
+    """Verify that get_new_messages() / get_messages_since() return only
+    user-originated messages (is_from_me=False) and exclude internal
+    bot/system messages (is_from_me=True)."""
 
     @pytest.fixture(autouse=True)
     async def _seed_messages(self):
@@ -406,6 +410,16 @@ class TestSenderFiltering:
             timestamp="2024-01-01T00:00:03.000Z",
             is_from_me=False,
         )
+        # Slack user message — sender is a Slack user ID (no @ sign)
+        await store_message_direct(
+            id="m-slack",
+            chat_jid="group@g.us",
+            sender="U07ABC123",
+            sender_name="Bob",
+            content="slack message",
+            timestamp="2024-01-01T00:00:03.500Z",
+            is_from_me=False,
+        )
         # Internal senders (should be excluded)
         for sender, id_suffix in [
             ("thinking", "think"),
@@ -432,6 +446,7 @@ class TestSenderFiltering:
         assert "123@s.whatsapp.net" in senders
         assert "tui-user" in senders
         assert "deploy" in senders
+        assert "U07ABC123" in senders  # Slack user ID
         # Internal senders excluded
         for internal in (
             "thinking",
@@ -450,6 +465,7 @@ class TestSenderFiltering:
         assert "123@s.whatsapp.net" in senders
         assert "tui-user" in senders
         assert "deploy" in senders
+        assert "U07ABC123" in senders  # Slack user ID
         for internal in (
             "thinking",
             "tool_use",

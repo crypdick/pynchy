@@ -366,21 +366,18 @@ class TestHandleStreamedOutput:
         assert "Restarting" in channel_text
 
     @pytest.mark.asyncio
-    async def test_normal_result_uses_agent_name(self):
-        """Normal (non-host) results should be prefixed with agent name."""
+    async def test_normal_result_uses_lobster_prefix(self):
+        """Normal (non-host) results should be prefixed with 🦞."""
         deps = _make_deps()
         group = _make_group()
         output = _make_output(type="result", result="Hello!")
 
-        with (
-            patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock),
-            patch("pynchy.messaging.output_handler.get_settings") as mock_settings,
-        ):
-            mock_settings.return_value.agent.name = "TestBot"
+        with patch("pynchy.messaging.output_handler.store_message_direct", new_callable=AsyncMock):
             await handle_streamed_output(deps, "g@g.us", group, output)
 
         channel_text = deps._test_channel.send_message.call_args[0][1]
-        assert "TestBot" in channel_text
+        assert channel_text.startswith("🦞")
+        assert "Hello!" in channel_text
 
     @pytest.mark.asyncio
     async def test_result_and_metadata_both_processed(self):
