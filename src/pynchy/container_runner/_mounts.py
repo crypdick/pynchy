@@ -14,6 +14,7 @@ from pynchy.container_runner._session_prep import _sync_skills, _write_settings_
 from pynchy.logger import logger
 from pynchy.security.mount_security import validate_additional_mounts
 from pynchy.types import RegisteredGroup, VolumeMount
+from pynchy.workspace_config import load_workspace_config
 
 
 def _build_volume_mounts(
@@ -58,7 +59,12 @@ def _build_volume_mounts(
     session_dir = s.data_dir / "sessions" / group.folder / ".claude"
     session_dir.mkdir(parents=True, exist_ok=True)
     _write_settings_json(session_dir)
-    _sync_skills(session_dir, plugin_manager)
+    ws_config = load_workspace_config(group.folder)
+    _sync_skills(
+        session_dir,
+        plugin_manager,
+        workspace_skills=ws_config.skills if ws_config else None,
+    )
     mounts.append(VolumeMount(str(session_dir), "/home/agent/.claude", readonly=False))
 
     # Per-group IPC namespace

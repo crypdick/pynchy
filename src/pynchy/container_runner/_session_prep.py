@@ -16,13 +16,85 @@ if TYPE_CHECKING:
 from pynchy.config import get_settings
 from pynchy.logger import logger
 
+# ---------------------------------------------------------------------------
+# Skill tier helpers
+# ---------------------------------------------------------------------------
 
-def _sync_skills(session_dir: Path, plugin_manager: pluggy.PluginManager | None = None) -> None:
+_DEFAULT_TIER = "community"
+
+
+def _parse_skill_tier(skill_dir: Path) -> tuple[str, str]:
+    """Read ``name`` and ``tier`` from a skill's SKILL.md YAML frontmatter.
+
+    Uses simple line-based parsing (no PyYAML dependency). Returns
+    ``(name, tier)`` where *name* defaults to the directory name and *tier*
+    defaults to ``"community"`` when the field is absent.
+    """
+    name = skill_dir.name
+    tier = _DEFAULT_TIER
+
+    skill_md = skill_dir / "SKILL.md"
+    if not skill_md.exists():
+        return name, tier
+
+    try:
+        lines = skill_md.read_text().splitlines()
+    except OSError:
+        return name, tier
+
+    if not lines or lines[0].strip() != "---":
+        return name, tier
+
+    for line in lines[1:]:
+        stripped = line.strip()
+        if stripped == "---":
+            break
+        if stripped.startswith("name:"):
+            name = stripped.split(":", 1)[1].strip()
+        elif stripped.startswith("tier:"):
+            tier = stripped.split(":", 1)[1].strip()
+
+    return name, tier
+
+
+def _is_skill_selected(name: str, tier: str, workspace_skills: list[str] | None) -> bool:
+    """Determine whether a skill should be included for a workspace.
+
+    Resolution rules:
+    - ``workspace_skills is None`` → include everything (backwards compat)
+    - ``"all"`` in the list → include everything
+    - Tier matches an entry → include
+    - Name matches an entry → include
+    - ``tier == "core"`` → always included when any filtering is active
+    """
+    if workspace_skills is None:
+        return True
+    if "all" in workspace_skills:
+        return True
+    if tier in workspace_skills:
+        return True
+    if name in workspace_skills:
+        return True
+    return tier == "core"
+
+
+# ---------------------------------------------------------------------------
+# Skill sync
+# ---------------------------------------------------------------------------
+
+
+def _sync_skills(
+    session_dir: Path,
+    plugin_manager: pluggy.PluginManager | None = None,
+    *,
+    workspace_skills: list[str] | None = None,
+) -> None:
     """Copy container/skills/ and plugin skills into the session's .claude/skills/ directory.
 
     Args:
         session_dir: Path to the .claude directory for this session
         plugin_manager: Optional pluggy.PluginManager for plugin skills
+        workspace_skills: Skill tier/name filter from workspace config; None = all
     """
     s = get_settings()
     skills_dst = session_dir / "skills"
@@ -33,6 +105,10 @@ def _sync_skills(session_dir: Path, plugin_manager: pluggy.PluginManager | None 
     if skills_src.exists():
         for skill_dir in skills_src.iterdir():
             if not skill_dir.is_dir():
+                continue
+            name, tier = _parse_skill_tier(skill_dir)
+            if not _is_skill_selected(name, tier, workspace_skills):
+                logger.debug("Skipping skill (not selected)", skill=name, tier=tier)
                 continue
             dst_dir = skills_dst / skill_dir.name
             dst_dir.mkdir(parents=True, exist_ok=True)
@@ -53,6 +129,11 @@ def _sync_skills(session_dir: Path, plugin_manager: pluggy.PluginManager | None 
                             "Plugin skill path does not exist or is not a directory",
                             path=str(skill_path),
                         )
+                        continue
+
+                    name, tier = _parse_skill_tier(skill_path)
+                    if not _is_skill_selected(name, tier, workspace_skills):
+                        logger.debug("Skipping plugin skill (not selected)", skill=name, tier=tier)
                         continue
 
                     dst_dir = skills_dst / skill_path.name

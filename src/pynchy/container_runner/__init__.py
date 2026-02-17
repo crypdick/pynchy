@@ -52,6 +52,8 @@ from pynchy.container_runner._serialization import (
     _parse_container_output,
 )
 from pynchy.container_runner._session_prep import (
+    _is_skill_selected,
+    _parse_skill_tier,
     _sync_skills,
     _write_settings_json,
 )
@@ -90,6 +92,8 @@ __all__ = [
     "_input_to_dict",
     "_parse_container_output",
     # session_prep
+    "_is_skill_selected",
+    "_parse_skill_tier",
     "_sync_skills",
     "_write_settings_json",
     # snapshots
