@@ -88,10 +88,10 @@ ui_username = "admin"
 ui_password = "your-ui-password-here"    # pragma: allowlist secret
 ```
 
-Then configure your models and API keys in `litellm_config.yaml` (see `litellm_config.yaml.example` for a starting point):
+Then configure your models and API keys in `litellm_config.yaml` (see `config-examples/litellm_config.yaml.EXAMPLE` for a starting point):
 
 ```bash
-cp litellm_config.yaml.example litellm_config.yaml
+cp config-examples/litellm_config.yaml.EXAMPLE litellm_config.yaml
 # Edit litellm_config.yaml with your model providers and API keys
 ```
 

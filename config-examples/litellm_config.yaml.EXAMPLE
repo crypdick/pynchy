@@ -1,37 +1,113 @@
-# LiteLLM Proxy — Pynchy Gateway
+# LiteLLM Proxy Configuration
+# ============================
+# Copy to litellm_config.yaml (project root) and fill in your API keys.
+# This file is the single source of truth for LLM routing — pynchy reads
+# it but never modifies it.
 #
 # Pynchy auto-discovers the Anthropic OAuth token at startup from
 # ~/.claude/.credentials.json (via `claude setup-token`) and injects it
 # as the PYNCHY_ANTHROPIC_TOKEN environment variable into this container.
-#
 # No need to paste API keys here — just run `claude setup-token` on the host.
 # For pay-as-you-go API keys, set [secrets].anthropic_api_key in config.toml.
+#
+# Docs: https://docs.litellm.ai/docs/proxy/configs
+# Wildcard routing: https://docs.litellm.ai/docs/wildcard_routing
+#
+# To enable: set gateway.litellm_config = "litellm_config.yaml" in config.toml
+
+# ---------------------------------------------------------------------------
+# Model deployments
+# ---------------------------------------------------------------------------
+# Wildcard routing proxies all models from a provider without listing each
+# one individually. When you change the model in the Claude SDK config,
+# it just works — no config update needed here.
+#
+# Multiple entries with the same model_name are load-balanced automatically.
 
 model_list:
   # --- Anthropic (auto-discovered token) ---
-  - model_name: claude-opus-4-6
+  - model_name: "anthropic/*"
     litellm_params:
-      model: anthropic/claude-opus-4-6
+      model: "anthropic/*"
       api_key: os.environ/PYNCHY_ANTHROPIC_TOKEN
+      budget_duration: 7d
+      custom_llm_provider: anthropic
+    model_info:
+      id: anthropic-primary
+      tags: ["primary"]
 
-  # --- OpenAI (optional — uncomment and set your key) ---
-  # - model_name: gpt-4o
+  # --- Anthropic (secondary account, for load balancing) ---
+  # Uncomment to spread requests across two accounts:
+  # - model_name: "anthropic/*"
   #   litellm_params:
-  #     model: openai/gpt-4o
+  #     model: "anthropic/*"
+  #     api_key: "sk-ant-api03-SECONDARY-KEY-HERE"
+  #     max_budget: 50.0  # USD
+  #     budget_duration: 7d
+  #     custom_llm_provider: anthropic
+  #   model_info:
+  #     id: anthropic-secondary
+  #     tags: ["secondary"]
+
+  # --- OpenAI ---
+  # - model_name: "openai/*"
+  #   litellm_params:
+  #     model: "openai/*"
   #     api_key: os.environ/OPENAI_API_KEY
+  #     budget_duration: 7d
+  #     custom_llm_provider: openai
+  #   model_info:
+  #     id: openai-primary
+  #     tags: ["primary"]
 
-  # --- Add other models your agents might use ---
-  # - model_name: claude-sonnet-4-5-20250514
-  #   litellm_params:
-  #     model: anthropic/claude-sonnet-4-5-20250514
-  #     api_key: os.environ/PYNCHY_ANTHROPIC_TOKEN
-
+# ---------------------------------------------------------------------------
+# Router settings
+# ---------------------------------------------------------------------------
 router_settings:
+  # How to distribute requests across deployments with the same model_name.
+  # Options: simple-shuffle, least-busy, usage-based-routing,
+  #          latency-based-routing, cost-based-routing
   routing_strategy: usage-based-routing
+
+  # Retry failed requests on a different deployment
   num_retries: 2
   timeout: 300
+
+  # Cool down a deployment for 60s after 3 consecutive failures
   allowed_fails: 3
   cooldown_time: 60
 
+  # Provider-level budget caps (combined across all keys for that provider).
+  # Requires the PostgreSQL sidecar (started automatically by pynchy).
+  # For per-key budgets, use max_budget in litellm_params above.
+  #
+  # provider_budget_config:
+  #   anthropic:
+  #     budget_limit: 200.0   # USD
+  #     time_period: 30d
+  #   openai:
+  #     budget_limit: 50.0
+  #     time_period: 30d
+
+# ---------------------------------------------------------------------------
+# General settings
+# ---------------------------------------------------------------------------
 general_settings:
+  # Master key is set in config.toml [gateway].master_key and passed via env var.
+  # Do NOT hardcode it here.
   master_key: os.environ/LITELLM_MASTER_KEY
+
+  # Max parallel requests across all models
+  global_max_parallel_requests: 50
+
+  # Public routes: Make routes accessible without auth
+  # Only use this if LiteLLM is behind a secure network (e.g., Tailnet, VPN).
+  # This allows the UI dashboard and API to be accessed without auth tokens.
+  #
+  # public_routes:
+  #   - "/*"  # All routes public (only use on private networks!)
+
+  # UI credentials are set in config.toml under [gateway]:
+  #   ui_username = "admin"
+  #   ui_password = "your-secure-password"
+  # They're passed to LiteLLM as UI_USERNAME and UI_PASSWORD env vars.
