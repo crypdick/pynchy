@@ -49,3 +49,8 @@ def is_redeploy(text: str) -> bool:
     aliases = set(w.aliases)
     verbs = set(w.verbs)
     return word in aliases or word in verbs
+
+
+def is_any_magic_command(text: str) -> bool:
+    """Check if a message matches any magic command (reset, end session, redeploy)."""
+    return is_context_reset(text) or is_end_session(text) or is_redeploy(text)
