@@ -6,21 +6,9 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from pynchy.config import (
-    AgentConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    IntervalsConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
-    Settings,
-    WorkspaceConfig,
-    WorkspaceDefaultsConfig,
-)
+from conftest import make_settings
+
+from pynchy.config import WorkspaceConfig, WorkspaceDefaultsConfig
 from pynchy.workspace_config import (
     configure_plugin_workspaces,
     get_project_access_folders,
@@ -35,19 +23,9 @@ def _settings_with_workspaces(
     workspaces: dict[str, WorkspaceConfig] | None = None,
     defaults: WorkspaceDefaultsConfig | None = None,
 ):
-    return Settings.model_construct(
-        agent=AgentConfig(),
-        container=ContainerConfig(),
-        server=ServerConfig(),
-        logging=LoggingConfig(),
-        secrets=SecretsConfig(),
-        workspace_defaults=defaults or WorkspaceDefaultsConfig(),
+    return make_settings(
         workspaces=workspaces or {},
-        commands=CommandWordsConfig(),
-        scheduler=SchedulerConfig(),
-        intervals=IntervalsConfig(),
-        queue=QueueConfig(),
-        security=SecurityConfig(),
+        workspace_defaults=defaults or WorkspaceDefaultsConfig(),
     )
 
 

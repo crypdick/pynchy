@@ -11,21 +11,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from conftest import make_settings
 
-from pynchy.config import (
-    AgentConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    IntervalsConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
-    Settings,
-    WorkspaceDefaultsConfig,
-)
 from pynchy.worktree import (
     WorktreeError,
     ensure_worktree,
@@ -83,22 +70,7 @@ def git_env(tmp_path: Path):
     project = _make_project(tmp_path, origin)
     worktrees_dir = tmp_path / "worktrees"
 
-    s = Settings.model_construct(
-        agent=AgentConfig(),
-        container=ContainerConfig(),
-        server=ServerConfig(),
-        logging=LoggingConfig(),
-        secrets=SecretsConfig(),
-        workspace_defaults=WorkspaceDefaultsConfig(),
-        workspaces={},
-        commands=CommandWordsConfig(),
-        scheduler=SchedulerConfig(),
-        intervals=IntervalsConfig(),
-        queue=QueueConfig(),
-        security=SecurityConfig(),
-    )
-    s.__dict__["project_root"] = project
-    s.__dict__["worktrees_dir"] = worktrees_dir
+    s = make_settings(project_root=project, worktrees_dir=worktrees_dir)
 
     with ExitStack() as stack:
         stack.enter_context(patch("pynchy.git_utils.get_settings", return_value=s))

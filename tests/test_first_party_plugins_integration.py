@@ -17,6 +17,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from conftest import make_settings
 
 from pynchy.app import PynchyApp
 from pynchy.channel_runtime import (
@@ -25,21 +26,10 @@ from pynchy.channel_runtime import (
     resolve_default_channel,
 )
 from pynchy.config import (
-    AgentConfig,
     ChannelsConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    IntervalsConfig,
-    LoggingConfig,
     PluginConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
     Settings,
     SlackConfig,
-    WorkspaceDefaultsConfig,
 )
 from pynchy.db import _init_test_database, store_message
 from pynchy.plugin import get_plugin_manager
@@ -53,18 +43,7 @@ from pynchy.workspace_config import (
 
 
 def _integration_settings(tmp_path: Path) -> Settings:
-    settings = Settings.model_construct(
-        agent=AgentConfig(),
-        container=ContainerConfig(),
-        server=ServerConfig(),
-        logging=LoggingConfig(),
-        secrets=SecretsConfig(),
-        workspace_defaults=WorkspaceDefaultsConfig(),
-        workspaces={},
-        commands=CommandWordsConfig(),
-        scheduler=SchedulerConfig(),
-        intervals=IntervalsConfig(),
-        queue=QueueConfig(),
+    return make_settings(
         channels=ChannelsConfig(default="whatsapp"),
         plugins={
             "whatsapp": PluginConfig(
@@ -80,14 +59,12 @@ def _integration_settings(tmp_path: Path) -> Settings:
                 trusted=True,
             ),
         },
-        security=SecurityConfig(),
         slack=SlackConfig(),
+        plugins_dir=tmp_path / "plugins",
+        groups_dir=tmp_path / "groups",
+        store_dir=tmp_path / "store",
+        home_dir=tmp_path,
     )
-    settings.__dict__["plugins_dir"] = tmp_path / "plugins"
-    settings.__dict__["groups_dir"] = tmp_path / "groups"
-    settings.__dict__["store_dir"] = tmp_path / "store"
-    settings.__dict__["home_dir"] = tmp_path
-    return settings
 
 
 class _FakeProvisioningChannel:

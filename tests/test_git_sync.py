@@ -13,21 +13,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from conftest import make_settings
 
-from pynchy.config import (
-    AgentConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    IntervalsConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
-    Settings,
-    WorkspaceDefaultsConfig,
-)
 from pynchy.git_sync import (
     _hash_config_files,
     _host_container_files_changed,
@@ -88,22 +75,7 @@ def git_env(tmp_path: Path):
     project = _make_project(tmp_path, origin)
     worktrees_dir = tmp_path / "worktrees"
 
-    s = Settings.model_construct(
-        agent=AgentConfig(),
-        container=ContainerConfig(),
-        server=ServerConfig(),
-        logging=LoggingConfig(),
-        secrets=SecretsConfig(),
-        workspace_defaults=WorkspaceDefaultsConfig(),
-        workspaces={},
-        commands=CommandWordsConfig(),
-        scheduler=SchedulerConfig(),
-        intervals=IntervalsConfig(),
-        queue=QueueConfig(),
-        security=SecurityConfig(),
-    )
-    s.__dict__["project_root"] = project
-    s.__dict__["worktrees_dir"] = worktrees_dir
+    s = make_settings(project_root=project, worktrees_dir=worktrees_dir)
 
     with ExitStack() as stack:
         stack.enter_context(patch("pynchy.git_utils.get_settings", return_value=s))
@@ -224,14 +196,16 @@ class TestHostNotifyWorktreeUpdates:
 
         from pynchy.types import RegisteredGroup
 
-        deps = self._make_deps({
-            "jid-1@g.us": RegisteredGroup(
-                name="Agent 1",
-                folder="agent-1",
-                trigger="@test",
-                added_at="2024-01-01",
-            ),
-        })
+        deps = self._make_deps(
+            {
+                "jid-1@g.us": RegisteredGroup(
+                    name="Agent 1",
+                    folder="agent-1",
+                    trigger="@test",
+                    added_at="2024-01-01",
+                ),
+            }
+        )
 
         await host_notify_worktree_updates(exclude_group=None, deps=deps)
 
@@ -262,14 +236,16 @@ class TestHostNotifyWorktreeUpdates:
 
         from pynchy.types import RegisteredGroup
 
-        deps = self._make_deps({
-            "jid-1@g.us": RegisteredGroup(
-                name="Agent 1",
-                folder="agent-1",
-                trigger="@test",
-                added_at="2024-01-01",
-            ),
-        })
+        deps = self._make_deps(
+            {
+                "jid-1@g.us": RegisteredGroup(
+                    name="Agent 1",
+                    folder="agent-1",
+                    trigger="@test",
+                    added_at="2024-01-01",
+                ),
+            }
+        )
 
         await host_notify_worktree_updates(exclude_group=None, deps=deps)
 
@@ -293,14 +269,16 @@ class TestHostNotifyWorktreeUpdates:
 
         from pynchy.types import RegisteredGroup
 
-        deps = self._make_deps({
-            "jid-1@g.us": RegisteredGroup(
-                name="Agent 1",
-                folder="agent-1",
-                trigger="@test",
-                added_at="2024-01-01",
-            ),
-        })
+        deps = self._make_deps(
+            {
+                "jid-1@g.us": RegisteredGroup(
+                    name="Agent 1",
+                    folder="agent-1",
+                    trigger="@test",
+                    added_at="2024-01-01",
+                ),
+            }
+        )
 
         await host_notify_worktree_updates(exclude_group="agent-1", deps=deps)
 
@@ -323,14 +301,16 @@ class TestHostNotifyWorktreeUpdates:
 
         from pynchy.types import RegisteredGroup
 
-        deps = self._make_deps({
-            "jid-1@g.us": RegisteredGroup(
-                name="Agent 1",
-                folder="agent-1",
-                trigger="@test",
-                added_at="2024-01-01",
-            ),
-        })
+        deps = self._make_deps(
+            {
+                "jid-1@g.us": RegisteredGroup(
+                    name="Agent 1",
+                    folder="agent-1",
+                    trigger="@test",
+                    added_at="2024-01-01",
+                ),
+            }
+        )
 
         await host_notify_worktree_updates(exclude_group=None, deps=deps)
 
@@ -345,14 +325,16 @@ class TestHostNotifyWorktreeUpdates:
 
         from pynchy.types import RegisteredGroup
 
-        deps = self._make_deps({
-            "jid-1@g.us": RegisteredGroup(
-                name="Agent 1",
-                folder="agent-1",
-                trigger="@test",
-                added_at="2024-01-01",
-            ),
-        })
+        deps = self._make_deps(
+            {
+                "jid-1@g.us": RegisteredGroup(
+                    name="Agent 1",
+                    folder="agent-1",
+                    trigger="@test",
+                    added_at="2024-01-01",
+                ),
+            }
+        )
 
         await host_notify_worktree_updates(exclude_group=None, deps=deps)
 
@@ -372,14 +354,16 @@ class TestHostNotifyWorktreeUpdates:
 
         from pynchy.types import RegisteredGroup
 
-        deps = self._make_deps({
-            "jid-1@g.us": RegisteredGroup(
-                name="Agent 1",
-                folder="agent-1",
-                trigger="@test",
-                added_at="2024-01-01",
-            ),
-        })
+        deps = self._make_deps(
+            {
+                "jid-1@g.us": RegisteredGroup(
+                    name="Agent 1",
+                    folder="agent-1",
+                    trigger="@test",
+                    added_at="2024-01-01",
+                ),
+            }
+        )
 
         await host_notify_worktree_updates(exclude_group=None, deps=deps)
 
@@ -404,14 +388,16 @@ class TestHostNotifyWorktreeUpdates:
 
         from pynchy.types import RegisteredGroup
 
-        deps = self._make_deps({
-            "jid-1@g.us": RegisteredGroup(
-                name="Agent 1",
-                folder="agent-1",
-                trigger="@test",
-                added_at="2024-01-01",
-            ),
-        })
+        deps = self._make_deps(
+            {
+                "jid-1@g.us": RegisteredGroup(
+                    name="Agent 1",
+                    folder="agent-1",
+                    trigger="@test",
+                    added_at="2024-01-01",
+                ),
+            }
+        )
 
         await host_notify_worktree_updates(exclude_group=None, deps=deps)
 

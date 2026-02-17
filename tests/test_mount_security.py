@@ -8,21 +8,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from conftest import make_settings
 
-from pynchy.config import (
-    AgentConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    IntervalsConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
-    Settings,
-    WorkspaceDefaultsConfig,
-)
 from pynchy.mount_security import (
     _expand_path,
     _find_allowed_root,
@@ -37,23 +24,8 @@ from pynchy.mount_security import (
 from pynchy.types import AdditionalMount, AllowedRoot
 
 
-def _test_settings(allowlist_path: Path) -> Settings:
-    s = Settings.model_construct(
-        agent=AgentConfig(),
-        container=ContainerConfig(),
-        server=ServerConfig(),
-        logging=LoggingConfig(),
-        secrets=SecretsConfig(),
-        workspace_defaults=WorkspaceDefaultsConfig(),
-        workspaces={},
-        commands=CommandWordsConfig(),
-        scheduler=SchedulerConfig(),
-        intervals=IntervalsConfig(),
-        queue=QueueConfig(),
-        security=SecurityConfig(),
-    )
-    s.__dict__["mount_allowlist_path"] = allowlist_path
-    return s
+def _test_settings(allowlist_path: Path):
+    return make_settings(mount_allowlist_path=allowlist_path)
 
 
 @pytest.fixture(autouse=True)

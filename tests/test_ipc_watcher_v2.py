@@ -13,21 +13,8 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from conftest import make_settings
 
-from pynchy.config import (
-    AgentConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    IntervalsConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
-    Settings,
-    WorkspaceDefaultsConfig,
-)
 from pynchy.db import _init_test_database
 from pynchy.ipc._watcher import (
     _handle_signal,
@@ -54,23 +41,8 @@ OTHER_GROUP = RegisteredGroup(
 )
 
 
-def _test_settings(*, data_dir: Path) -> Settings:
-    s = Settings.model_construct(
-        agent=AgentConfig(),
-        container=ContainerConfig(),
-        server=ServerConfig(),
-        logging=LoggingConfig(),
-        secrets=SecretsConfig(),
-        workspace_defaults=WorkspaceDefaultsConfig(),
-        workspaces={},
-        commands=CommandWordsConfig(),
-        scheduler=SchedulerConfig(),
-        intervals=IntervalsConfig(),
-        queue=QueueConfig(),
-        security=SecurityConfig(),
-    )
-    s.__dict__["data_dir"] = data_dir
-    return s
+def _test_settings(*, data_dir: Path):
+    return make_settings(data_dir=data_dir)
 
 
 class MockDeps:

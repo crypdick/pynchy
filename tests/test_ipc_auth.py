@@ -6,21 +6,8 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from conftest import make_settings
 
-from pynchy.config import (
-    AgentConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    IntervalsConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
-    Settings,
-    WorkspaceDefaultsConfig,
-)
 from pynchy.db import (
     _init_test_database,
     create_host_job,
@@ -57,23 +44,7 @@ THIRD_GROUP = RegisteredGroup(
 
 
 def _test_settings(*, data_dir=None):
-    s = Settings.model_construct(
-        agent=AgentConfig(),
-        container=ContainerConfig(),
-        server=ServerConfig(),
-        logging=LoggingConfig(),
-        secrets=SecretsConfig(),
-        workspace_defaults=WorkspaceDefaultsConfig(),
-        workspaces={},
-        commands=CommandWordsConfig(),
-        scheduler=SchedulerConfig(),
-        intervals=IntervalsConfig(),
-        queue=QueueConfig(),
-        security=SecurityConfig(),
-    )
-    if data_dir is not None:
-        s.__dict__["data_dir"] = data_dir
-    return s
+    return make_settings(**({"data_dir": data_dir} if data_dir is not None else {}))
 
 
 class MockDeps:

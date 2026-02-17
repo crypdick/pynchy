@@ -11,21 +11,8 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from conftest import make_settings
 
-from pynchy.config import (
-    AgentConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    IntervalsConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
-    Settings,
-    WorkspaceDefaultsConfig,
-)
 from pynchy.db import _init_test_database, get_all_tasks
 from pynchy.ipc import dispatch
 from pynchy.ipc._watcher import _move_to_error_dir
@@ -109,23 +96,7 @@ class TestCreatePeriodicAgent:
 
     @staticmethod
     def _settings(tmp_path):
-        s = Settings.model_construct(
-            agent=AgentConfig(),
-            container=ContainerConfig(),
-            server=ServerConfig(),
-            logging=LoggingConfig(),
-            secrets=SecretsConfig(),
-            workspace_defaults=WorkspaceDefaultsConfig(),
-            workspaces={},
-            commands=CommandWordsConfig(),
-            scheduler=SchedulerConfig(),
-            intervals=IntervalsConfig(),
-            queue=QueueConfig(),
-            security=SecurityConfig(),
-        )
-        s.__dict__["groups_dir"] = tmp_path
-        s.__dict__["project_root"] = tmp_path
-        return s
+        return make_settings(groups_dir=tmp_path, project_root=tmp_path)
 
     async def test_creates_full_periodic_agent(self, deps, tmp_path, monkeypatch):
         """Should create folder, config, CLAUDE.md, chat group, and task."""

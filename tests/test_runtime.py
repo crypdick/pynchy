@@ -7,40 +7,15 @@ import subprocess
 from unittest.mock import patch
 
 import pytest
+from conftest import make_settings
 
 import pynchy.runtime as runtime_mod
-from pynchy.config import (
-    AgentConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    IntervalsConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
-    Settings,
-    WorkspaceDefaultsConfig,
-)
+from pynchy.config import ContainerConfig
 from pynchy.runtime import detect_runtime
 
 
-def _settings(*, runtime_override: str | None = None) -> Settings:
-    return Settings.model_construct(
-        agent=AgentConfig(),
-        container=ContainerConfig(runtime=runtime_override),
-        server=ServerConfig(),
-        logging=LoggingConfig(),
-        secrets=SecretsConfig(),
-        workspace_defaults=WorkspaceDefaultsConfig(),
-        workspaces={},
-        commands=CommandWordsConfig(),
-        scheduler=SchedulerConfig(),
-        intervals=IntervalsConfig(),
-        queue=QueueConfig(),
-        security=SecurityConfig(),
-    )
+def _settings(*, runtime_override: str | None = None):
+    return make_settings(container=ContainerConfig(runtime=runtime_override))
 
 
 class FakePluginRuntime:

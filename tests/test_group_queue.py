@@ -7,21 +7,9 @@ import contextlib
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from conftest import make_settings
 
-from pynchy.config import (
-    AgentConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    IntervalsConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
-    Settings,
-    WorkspaceDefaultsConfig,
-)
+from pynchy.config import ContainerConfig, QueueConfig
 from pynchy.group_queue import GroupQueue
 
 
@@ -32,22 +20,13 @@ def _patch_settings(
     base_retry_seconds: float = 5.0,
     data_dir=None,
 ):
-    s = Settings.model_construct(
-        agent=AgentConfig(),
-        container=ContainerConfig(max_concurrent=max_concurrent),
-        server=ServerConfig(),
-        logging=LoggingConfig(),
-        secrets=SecretsConfig(),
-        workspace_defaults=WorkspaceDefaultsConfig(),
-        workspaces={},
-        commands=CommandWordsConfig(),
-        scheduler=SchedulerConfig(),
-        intervals=IntervalsConfig(),
-        queue=QueueConfig(base_retry_seconds=base_retry_seconds),
-        security=SecurityConfig(),
-    )
+    overrides = {
+        "container": ContainerConfig(max_concurrent=max_concurrent),
+        "queue": QueueConfig(base_retry_seconds=base_retry_seconds),
+    }
     if data_dir is not None:
-        s.__dict__["data_dir"] = data_dir
+        overrides["data_dir"] = data_dir
+    s = make_settings(**overrides)
     with patch("pynchy.group_queue.get_settings", return_value=s):
         yield
 

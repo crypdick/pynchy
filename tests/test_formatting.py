@@ -4,20 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pynchy.config import (
-    AgentConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    IntervalsConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
-    Settings,
-    WorkspaceDefaultsConfig,
-)
+from conftest import make_settings
+
 from pynchy.router import (
     format_outbound,
     format_tool_preview,
@@ -26,20 +14,7 @@ from pynchy.router import (
 )
 from pynchy.types import NewMessage
 
-s = Settings.model_construct(
-    agent=AgentConfig(),
-    container=ContainerConfig(),
-    server=ServerConfig(),
-    logging=LoggingConfig(),
-    secrets=SecretsConfig(),
-    workspace_defaults=WorkspaceDefaultsConfig(),
-    workspaces={},
-    commands=CommandWordsConfig(),
-    scheduler=SchedulerConfig(),
-    intervals=IntervalsConfig(),
-    queue=QueueConfig(),
-    security=SecurityConfig(),
-)
+s = make_settings()
 ASSISTANT_NAME = s.agent.name
 TRIGGER_PATTERN = s.trigger_pattern
 

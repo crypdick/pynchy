@@ -13,20 +13,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from pynchy.config import (
-    AgentConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    IntervalsConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
-    Settings,
-    WorkspaceDefaultsConfig,
-)
+from conftest import make_settings
+
 from pynchy.service_installer import (
     _install_launchd_service,
     _install_systemd_service,
@@ -37,22 +25,7 @@ from pynchy.service_installer import (
 
 
 def _test_settings(*, project_root: Path):
-    s = Settings.model_construct(
-        agent=AgentConfig(),
-        container=ContainerConfig(),
-        server=ServerConfig(),
-        logging=LoggingConfig(),
-        secrets=SecretsConfig(),
-        workspace_defaults=WorkspaceDefaultsConfig(),
-        workspaces={},
-        commands=CommandWordsConfig(),
-        scheduler=SchedulerConfig(),
-        intervals=IntervalsConfig(),
-        queue=QueueConfig(),
-        security=SecurityConfig(),
-    )
-    s.__dict__["project_root"] = project_root
-    return s
+    return make_settings(project_root=project_root)
 
 
 # ---------------------------------------------------------------------------
