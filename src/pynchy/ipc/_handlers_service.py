@@ -231,6 +231,7 @@ async def _handle_service_request(
         tier=tier,
     )
 
+    data["source_group"] = source_group
     response = await handler(data)
     _write_response(source_group, request_id, response)
 
