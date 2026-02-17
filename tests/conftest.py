@@ -23,7 +23,6 @@ _CACHED_PROPERTY_NAMES = frozenset(
         "data_dir",
         "mount_allowlist_path",
         "worktrees_dir",
-        "plugins_dir",
         "container_timeout",
         "idle_timeout",
         "trigger_pattern",

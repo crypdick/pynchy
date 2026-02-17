@@ -237,10 +237,7 @@ class ChannelsConfig(BaseModel):
 
 
 class PluginConfig(BaseModel):
-    repo: str
-    ref: str = "main"
     enabled: bool = True
-    trusted: bool = False  # Skip verification — use for self-authored plugins
 
 
 # TODO: move this when we split out the slack plugin to its own repo.
@@ -387,10 +384,6 @@ class Settings(BaseSettings):
     @cached_property
     def worktrees_dir(self) -> Path:
         return self.home_dir / ".config" / "pynchy" / "worktrees"
-
-    @cached_property
-    def plugins_dir(self) -> Path:
-        return self.home_dir / ".config" / "pynchy" / "plugins"
 
 
 # ---------------------------------------------------------------------------

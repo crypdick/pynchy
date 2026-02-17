@@ -32,7 +32,7 @@ class TestOpenAIPluginInfo:
 
     def test_plugin_info_structure(self):
         """Plugin returns all required fields."""
-        from pynchy.plugin.builtin_agent_openai import OpenAIAgentCorePlugin
+        from pynchy.agent_framework.plugins.openai import OpenAIAgentCorePlugin
 
         plugin = OpenAIAgentCorePlugin()
         info = plugin.pynchy_agent_core_info()

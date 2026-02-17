@@ -34,11 +34,8 @@ def _tui(host: str) -> None:
 def _build() -> None:
     from pynchy.config import get_settings
     from pynchy.infra.runtime import get_runtime
-    from pynchy.plugin.sync import sync_configured_plugins
 
     s = get_settings()
-    # Runtime plugins may come from config-managed repositories.
-    sync_configured_plugins()
     runtime = get_runtime()
     container_dir = s.project_root / "container"
 
