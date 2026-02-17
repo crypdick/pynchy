@@ -116,22 +116,45 @@ class SlackChannel:
     async def create_group(self, name: str) -> str:
         """Create a Slack channel and return its pynchy JID.
 
-        Requires the ``channels:manage`` (public) or ``groups:write``
+        If a channel with the same name already exists, reuses it instead of
+        failing.  Requires the ``channels:manage`` (public) or ``groups:write``
         (private) OAuth scope on the bot token.
         """
         assert self._app is not None
         # Slack channel names: lowercase, no spaces, max 80 chars.
         slack_name = name.lower().replace(" ", "-")[:80]
-        resp = await self._app.client.conversations_create(
-            name=slack_name, is_private=False
-        )
-        channel_id = resp["channel"]["id"]
-        logger.info(
-            "Created Slack channel",
-            name=slack_name,
-            channel_id=channel_id,
-        )
+        try:
+            resp = await self._app.client.conversations_create(name=slack_name, is_private=False)
+            channel_id = resp["channel"]["id"]
+            logger.info("Created Slack channel", name=slack_name, channel_id=channel_id)
+        except Exception as exc:
+            if "name_taken" not in str(exc):
+                raise
+            # Channel already exists — look it up by name and reuse it.
+            channel_id = await self._find_channel_by_name(slack_name)
+            if channel_id is None:
+                raise RuntimeError(
+                    f"Slack channel '{slack_name}' exists but could not be found via API"
+                ) from exc
+            logger.info("Reusing existing Slack channel", name=slack_name, channel_id=channel_id)
         return _jid(channel_id)
+
+    async def _find_channel_by_name(self, name: str) -> str | None:
+        """Find a Slack channel by name, returning its ID or None."""
+        assert self._app is not None
+        cursor = None
+        while True:
+            kwargs: dict[str, Any] = {"types": "public_channel,private_channel", "limit": 200}
+            if cursor:
+                kwargs["cursor"] = cursor
+            resp = await self._app.client.conversations_list(**kwargs)
+            for ch in resp.get("channels", []):
+                if ch.get("name") == name:
+                    return ch["id"]
+            cursor = resp.get("response_metadata", {}).get("next_cursor")
+            if not cursor:
+                break
+        return None
 
     async def set_typing(self, jid: str, is_typing: bool) -> None:  # noqa: ARG002
         """Slack doesn't have a user-level typing indicator API, so this is a no-op."""
