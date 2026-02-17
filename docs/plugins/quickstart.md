@@ -107,7 +107,7 @@ Restart pynchy. Check the logs for:
 
 ```
 Discovered third-party plugins  count=1
-Plugin manager ready  plugins=['builtin-agent_claude', 'builtin-agent_openai', 'hello']
+Plugin manager ready  plugins=['builtin-agent_claude', 'builtin-agent_openai', 'builtin-mcp_caldav', 'builtin-slack', 'builtin-tailscale', 'hello']
 ```
 
 The agent now has a `hello` tool available via MCP.
@@ -122,7 +122,7 @@ Restart pynchy — the tool disappears.
 
 ## What's Next
 
-- [**Hook Reference**](hooks.md) — Learn about all 4 plugin categories
+- [**Hook Reference**](hooks.md) — Learn about all 8 plugin hooks
 - [**Packaging**](packaging.md) — Publish your plugin to PyPI or share via git
 
 ## Final Plugin Structure
