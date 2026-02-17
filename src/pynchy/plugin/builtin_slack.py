@@ -296,11 +296,19 @@ class SlackChannel:
 
         self._app.use(assistant)
 
-    def _strip_bot_mention(self, text: str) -> str:
-        """Remove the bot's ``<@BOT_ID>`` mention from message text."""
+    def _normalize_bot_mention(self, text: str) -> str:
+        """Replace the bot's ``<@BOT_ID>`` mention with the canonical trigger.
+
+        Slack sends mentions as ``<@UBOTID>`` which is meaningless to the
+        trigger pattern.  Replacing it with ``@AgentName`` preserves the
+        trigger intent so the downstream pattern check (``^@AgentName\\b``)
+        still matches.  If the mention appears mid-text, it's replaced
+        inline rather than stripped so context is preserved.
+        """
         if not self._bot_user_id:
             return text
-        return re.sub(rf"<@{re.escape(self._bot_user_id)}>", "", text).strip()
+        trigger = f"@{get_settings().agent.name}"
+        return re.sub(rf"<@{re.escape(self._bot_user_id)}>", trigger, text).strip()
 
     def _dedup_ts(self, ts: str) -> bool:
         """Return True if this ``ts`` was already seen (duplicate event).
@@ -343,9 +351,9 @@ class SlackChannel:
 
         jid = _jid(channel_id)
 
-        # Strip the bot's own @mention so commands like "c" aren't
-        # polluted with "<@UBOTID> " prefix.
-        text = self._strip_bot_mention(text)
+        # Replace the bot's Slack-native @mention with the canonical
+        # trigger word so the downstream trigger pattern still matches.
+        text = self._normalize_bot_mention(text)
 
         # Resolve display name (fall back to user ID)
         sender_name = await self._resolve_user_name(user_id)

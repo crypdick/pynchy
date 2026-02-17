@@ -171,7 +171,12 @@ async def ingest_user_message(
     )
 
     # 3. Broadcast to all connected channels (except source)
-    # This ensures messages from one UI appear in all other UIs
+    # This ensures messages from one UI appear in all other UIs.
+    # Content is sent WITHOUT sender-name prefixing — each channel
+    # already shows message authorship via its native UI (e.g. Slack
+    # shows the bot username, WhatsApp shows contact names).  Adding a
+    # "SenderName: " prefix here would break magic-word detection on
+    # receiving channels and produce ugly double-attribution.
     for ch in deps.channels:
         if ch.is_connected():
             # Skip broadcasting back to the source channel
@@ -181,10 +186,8 @@ async def ingest_user_message(
             # Use channel-specific alias JID if one exists
             target_jid = deps.get_channel_jid(msg.chat_jid, ch.name) or msg.chat_jid
 
-            # Format the message with sender name
-            formatted = f"{msg.sender_name}: {msg.content}"
             try:
-                await ch.send_message(target_jid, formatted)
+                await ch.send_message(target_jid, msg.content)
             except (OSError, TimeoutError, ConnectionError) as exc:
                 logger.warning("Cross-channel broadcast failed", channel=ch.name, err=str(exc))
 

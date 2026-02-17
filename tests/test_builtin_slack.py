@@ -151,36 +151,52 @@ class TestSlackChannelDisconnect:
         assert ch.is_connected() is False
 
 
-class TestStripBotMention:
-    def test_strips_bot_mention_from_start(self) -> None:
-        ch = _make_channel()
-        ch._bot_user_id = "U_BOT"
-        assert ch._strip_bot_mention("<@U_BOT> hello") == "hello"
+class TestNormalizeBotMention:
+    """_normalize_bot_mention replaces <@BOTID> with the canonical trigger."""
 
-    def test_strips_bot_mention_from_middle(self) -> None:
+    def test_replaces_mention_at_start(self) -> None:
         ch = _make_channel()
         ch._bot_user_id = "U_BOT"
-        assert ch._strip_bot_mention("hey <@U_BOT> hello") == "hey  hello"
+        result = ch._normalize_bot_mention("<@U_BOT> hello")
+        assert result == "@pynchy hello"
+
+    def test_replaces_mention_in_middle(self) -> None:
+        ch = _make_channel()
+        ch._bot_user_id = "U_BOT"
+        result = ch._normalize_bot_mention("hey <@U_BOT> hello")
+        assert result == "hey @pynchy hello"
 
     def test_preserves_other_mentions(self) -> None:
         ch = _make_channel()
         ch._bot_user_id = "U_BOT"
-        assert ch._strip_bot_mention("<@U_OTHER> hello") == "<@U_OTHER> hello"
+        assert ch._normalize_bot_mention("<@U_OTHER> hello") == "<@U_OTHER> hello"
 
     def test_noop_when_no_bot_id(self) -> None:
         ch = _make_channel()
         ch._bot_user_id = ""
-        assert ch._strip_bot_mention("<@U_BOT> hello") == "<@U_BOT> hello"
+        assert ch._normalize_bot_mention("<@U_BOT> hello") == "<@U_BOT> hello"
 
     def test_single_word_command_after_mention(self) -> None:
         ch = _make_channel()
         ch._bot_user_id = "U_BOT"
-        assert ch._strip_bot_mention("<@U_BOT> c") == "c"
+        result = ch._normalize_bot_mention("<@U_BOT> c")
+        assert result == "@pynchy c"
 
     def test_mention_only(self) -> None:
         ch = _make_channel()
         ch._bot_user_id = "U_BOT"
-        assert ch._strip_bot_mention("<@U_BOT>") == ""
+        result = ch._normalize_bot_mention("<@U_BOT>")
+        assert result == "@pynchy"
+
+    def test_trigger_pattern_matches_after_normalize(self) -> None:
+        """Verify the canonical trigger survives the trigger pattern check."""
+        import re
+
+        ch = _make_channel()
+        ch._bot_user_id = "U_BOT"
+        result = ch._normalize_bot_mention("<@U_BOT> do something")
+        pattern = re.compile(r"^@pynchy\b", re.IGNORECASE)
+        assert pattern.search(result), f"Trigger pattern should match: {result!r}"
 
 
 class TestDedupTs:
@@ -233,7 +249,8 @@ class TestSlackChannelInbound:
         assert msg.content == "hello pynchy"
 
     @pytest.mark.asyncio
-    async def test_on_slack_message_strips_bot_mention(self) -> None:
+    async def test_on_slack_message_normalizes_bot_mention(self) -> None:
+        """Bot @mention is replaced with canonical trigger, not stripped."""
         on_message = MagicMock()
         on_metadata = MagicMock()
         ch = _make_channel(on_message=on_message, on_chat_metadata=on_metadata)
@@ -252,7 +269,7 @@ class TestSlackChannelInbound:
         await ch._on_slack_message(event)
 
         msg = on_message.call_args[0][1]
-        assert msg.content == "c"
+        assert msg.content == "@pynchy c"
 
     @pytest.mark.asyncio
     async def test_on_slack_message_deduplicates_same_ts(self) -> None:
