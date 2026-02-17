@@ -72,7 +72,7 @@ class EventBus:
     def emit(self, event: Event) -> None:
         """Emit an event to all subscribers. Non-blocking, fire-and-forget."""
         for listener in self._listeners[type(event)]:
-            asyncio.ensure_future(_safe_call(listener, event))
+            asyncio.create_task(_safe_call(listener, event))
 
 
 async def _safe_call(listener: Listener, event: Event) -> None:

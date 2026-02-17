@@ -266,7 +266,7 @@ async def run_container_agent(
             group=group.name,
             container=container_name,
         )
-        asyncio.ensure_future(_graceful_stop(proc, container_name))
+        asyncio.create_task(_graceful_stop(proc, container_name))
 
     def reset_timeout() -> None:
         nonlocal timeout_handle
