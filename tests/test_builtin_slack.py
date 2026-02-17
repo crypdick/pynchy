@@ -355,3 +355,204 @@ class TestSlackChannelPlugin:
         assert result is not None
         assert isinstance(result, SlackChannel)
         assert result.name == "slack"
+
+
+# ------------------------------------------------------------------
+# fetch_missed_messages (history catch-up)
+# ------------------------------------------------------------------
+
+
+class TestFetchMissedMessages:
+    @pytest.mark.asyncio
+    async def test_returns_messages_in_chronological_order(self) -> None:
+        ch = _make_channel()
+        ch._app = MagicMock()
+        ch._resolve_user_name = AsyncMock(return_value="Alice")
+
+        # Slack returns newest-first
+        ch._app.client.conversations_history = AsyncMock(
+            return_value={
+                "messages": [
+                    {"user": "U1", "text": "second", "ts": "1700000002.000000"},
+                    {"user": "U1", "text": "first", "ts": "1700000001.000000"},
+                ]
+            }
+        )
+
+        result = await ch.fetch_missed_messages("C12345", "1700000000.000000")
+
+        assert len(result) == 2
+        # Chronological order (oldest first)
+        assert result[0].content == "first"
+        assert result[1].content == "second"
+        assert result[0].id == "slack-1700000001.000000"
+        assert result[1].id == "slack-1700000002.000000"
+        assert result[0].chat_jid == "slack:C12345"
+
+    @pytest.mark.asyncio
+    async def test_filters_bot_messages(self) -> None:
+        ch = _make_channel()
+        ch._app = MagicMock()
+        ch._resolve_user_name = AsyncMock(return_value="Alice")
+
+        ch._app.client.conversations_history = AsyncMock(
+            return_value={
+                "messages": [
+                    {"user": "U1", "text": "human", "ts": "1700000001.000000"},
+                    {"user": "U2", "text": "bot", "ts": "1700000002.000000", "bot_id": "B1"},
+                ]
+            }
+        )
+
+        result = await ch.fetch_missed_messages("C12345", "1700000000.000000")
+
+        assert len(result) == 1
+        assert result[0].content == "human"
+
+    @pytest.mark.asyncio
+    async def test_filters_subtypes(self) -> None:
+        ch = _make_channel()
+        ch._app = MagicMock()
+        ch._resolve_user_name = AsyncMock(return_value="Alice")
+
+        ch._app.client.conversations_history = AsyncMock(
+            return_value={
+                "messages": [
+                    {"user": "U1", "text": "normal", "ts": "1700000001.000000"},
+                    {
+                        "user": "U1",
+                        "text": "edited",
+                        "ts": "1700000002.000000",
+                        "subtype": "message_changed",
+                    },
+                    {
+                        "user": "U1",
+                        "text": "joined",
+                        "ts": "1700000003.000000",
+                        "subtype": "channel_join",
+                    },
+                ]
+            }
+        )
+
+        result = await ch.fetch_missed_messages("C12345", "1700000000.000000")
+
+        assert len(result) == 1
+        assert result[0].content == "normal"
+
+    @pytest.mark.asyncio
+    async def test_normalizes_bot_mentions(self) -> None:
+        ch = _make_channel()
+        ch._app = MagicMock()
+        ch._bot_user_id = "U_BOT"
+        ch._resolve_user_name = AsyncMock(return_value="Alice")
+
+        ch._app.client.conversations_history = AsyncMock(
+            return_value={
+                "messages": [
+                    {"user": "U1", "text": "<@U_BOT> c", "ts": "1700000001.000000"},
+                ]
+            }
+        )
+
+        result = await ch.fetch_missed_messages("C12345", "1700000000.000000")
+
+        assert len(result) == 1
+        assert result[0].content == "@pynchy c"
+
+    @pytest.mark.asyncio
+    async def test_handles_api_error(self) -> None:
+        ch = _make_channel()
+        ch._app = MagicMock()
+        ch._app.client.conversations_history = AsyncMock(side_effect=Exception("API error"))
+
+        result = await ch.fetch_missed_messages("C12345", "1700000000.000000")
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_no_app(self) -> None:
+        ch = _make_channel()
+        ch._app = None
+
+        result = await ch.fetch_missed_messages("C12345", "1700000000.000000")
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_uses_actual_message_timestamp(self) -> None:
+        """Timestamp should be derived from Slack ts, not current time."""
+        from datetime import UTC, datetime
+
+        ch = _make_channel()
+        ch._app = MagicMock()
+        ch._resolve_user_name = AsyncMock(return_value="Alice")
+
+        ts = "1700000001.000000"
+        ch._app.client.conversations_history = AsyncMock(
+            return_value={"messages": [{"user": "U1", "text": "hi", "ts": ts}]}
+        )
+
+        result = await ch.fetch_missed_messages("C12345", "1700000000.000000")
+
+        expected = datetime.fromtimestamp(float(ts), tz=UTC).isoformat()
+        assert result[0].timestamp == expected
+
+
+# ------------------------------------------------------------------
+# Deterministic message IDs
+# ------------------------------------------------------------------
+
+
+class TestDeterministicMessageIds:
+    @pytest.mark.asyncio
+    async def test_on_slack_message_uses_deterministic_id(self) -> None:
+        on_message = MagicMock()
+        on_metadata = MagicMock()
+        ch = _make_channel(on_message=on_message, on_chat_metadata=on_metadata)
+        ch._app = MagicMock()
+        ch._resolve_user_name = AsyncMock(return_value="Alice")
+        ch._resolve_channel_name = AsyncMock(return_value="general")
+
+        ts = "1234567890.000099"
+        event = {
+            "channel": "C12345",
+            "user": "U999",
+            "text": "hello",
+            "ts": ts,
+            "channel_type": "channel",
+        }
+        await ch._on_slack_message(event)
+
+        msg = on_message.call_args[0][1]
+        assert msg.id == f"slack-{ts}"
+
+    @pytest.mark.asyncio
+    async def test_deterministic_id_is_stable_across_calls(self) -> None:
+        """Same ts always produces the same message ID."""
+        on_message = MagicMock()
+        on_metadata = MagicMock()
+
+        ts = "1234567890.000055"
+
+        # First call via _on_slack_message
+        ch1 = _make_channel(on_message=on_message, on_chat_metadata=on_metadata)
+        ch1._app = MagicMock()
+        ch1._resolve_user_name = AsyncMock(return_value="Alice")
+        ch1._resolve_channel_name = AsyncMock(return_value="general")
+        await ch1._on_slack_message(
+            {"channel": "C1", "user": "U1", "text": "hi", "ts": ts, "channel_type": "channel"}
+        )
+        id_from_live = on_message.call_args[0][1].id
+
+        # Second call via fetch_missed_messages
+        ch2 = _make_channel()
+        ch2._app = MagicMock()
+        ch2._resolve_user_name = AsyncMock(return_value="Alice")
+        ch2._app.client.conversations_history = AsyncMock(
+            return_value={"messages": [{"user": "U1", "text": "hi", "ts": ts}]}
+        )
+        msgs = await ch2.fetch_missed_messages("C1", "0")
+        id_from_catchup = msgs[0].id
+
+        assert id_from_live == id_from_catchup == f"slack-{ts}"

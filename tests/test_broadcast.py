@@ -2,7 +2,7 @@
 
 Verifies that BOTH channel sends AND EventBus emissions carry matching,
 meaningful content for every trace event type. Catches divergence between
-the WhatsApp/Telegram path and the TUI/SSE path.
+the channel path and the TUI/SSE path.
 """
 
 from __future__ import annotations
@@ -96,8 +96,8 @@ class FakeChannel:
     def is_connected(self) -> bool:
         return self.connected
 
-    def owns_jid(self, jid: str) -> bool:
-        return jid.endswith("@g.us") or jid.endswith("@s.whatsapp.net")
+    def owns_jid(self, jid: str) -> bool:  # noqa: ARG002
+        return True
 
     async def disconnect(self) -> None:
         self.connected = False
@@ -482,8 +482,8 @@ class TestBroadcastConsistency:
 class TestUserMessageBroadcast:
     """Verify that user messages from any UI are broadcast to all channels."""
 
-    async def test_tui_message_broadcasts_to_whatsapp(self, app: PynchyApp):
-        """TUI user messages should be stored, emitted to event bus, AND broadcast to WhatsApp."""
+    async def test_tui_message_broadcasts_to_channels(self, app: PynchyApp):
+        """TUI user messages should be stored, emitted to event bus, AND broadcast to channels."""
         channel = FakeChannel()
         app.channels = [channel]
         capture = EventCapture(app.event_bus)
@@ -504,36 +504,36 @@ class TestUserMessageBroadcast:
         assert capture.messages[0].sender_name == "You"
         assert capture.messages[0].is_bot is False
 
-        # 3. Message should be broadcast to WhatsApp channel
+        # 3. Message should be broadcast to channel
         assert len(channel.sent_messages) == 1
         sent_jid, sent_text = channel.sent_messages[0]
         assert sent_jid == "group@g.us"
         assert "Hello from TUI" in sent_text
 
-    async def test_whatsapp_message_broadcasts_to_other_channels(self, app: PynchyApp):
-        """WhatsApp user messages should be stored, emitted, AND broadcast to other channels."""
-        # Create two channels: WhatsApp (source) and another one (target)
-        whatsapp_channel = FakeChannel()
-        whatsapp_channel.name = "whatsapp"
-        other_channel = FakeChannel()
-        other_channel.name = "telegram"
+    async def test_inbound_message_broadcasts_to_other_channels(self, app: PynchyApp):
+        """Inbound messages from one channel should be broadcast to other channels."""
+        # Create two channels: source and target
+        source_channel = FakeChannel()
+        source_channel.name = "source"
+        target_channel = FakeChannel()
+        target_channel.name = "target"
 
-        app.channels = [whatsapp_channel, other_channel]
+        app.channels = [source_channel, target_channel]
         capture = EventCapture(app.event_bus)
 
-        # Simulate an inbound WhatsApp message
-        msg = _make_message(content="Hello from WhatsApp", sender="alice@s.whatsapp.net")
+        # Simulate an inbound message from the source channel
+        msg = _make_message(content="Hello from source")
         await app._on_inbound("group@g.us", msg)
         await capture.drain()
 
         # 1. EventBus should receive the message
         assert len(capture.messages) == 1
-        assert capture.messages[0].content == "Hello from WhatsApp"
+        assert capture.messages[0].content == "Hello from source"
         assert capture.messages[0].is_bot is False
 
         # 2. Message should be broadcast to OTHER channels (not back to source)
         # Currently this FAILS because _on_inbound doesn't broadcast
-        sent_to_other = [m for m in other_channel.sent_messages if "Hello from WhatsApp" in m[1]]
-        assert len(sent_to_other) == 1, (
-            "User messages from WhatsApp should be broadcast to other channels"
+        sent_to_target = [m for m in target_channel.sent_messages if "Hello from source" in m[1]]
+        assert len(sent_to_target) == 1, (
+            "User messages should be broadcast to other channels"
         )

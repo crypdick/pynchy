@@ -23,7 +23,6 @@ import pluggy
 from pynchy.config import get_settings
 from pynchy.logger import logger
 from pynchy.types import NewMessage
-from pynchy.utils import generate_message_id
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
@@ -216,6 +215,96 @@ class SlackChannel:
             logger.debug("Slack reaction failed", err=str(exc))
 
     # ------------------------------------------------------------------
+    # History catch-up (reconnect recovery)
+    # ------------------------------------------------------------------
+
+    async def fetch_missed_messages(
+        self, channel_id: str, oldest: str, *, limit: int = 200
+    ) -> list[NewMessage]:
+        """Fetch messages sent while disconnected via ``conversations.history``.
+
+        Args:
+            channel_id: Slack channel ID to query.
+            oldest: Epoch timestamp string — only messages after this are returned.
+            limit: Max messages to fetch (Slack cap: 1000).
+
+        Returns a chronologically ordered list of ``NewMessage`` objects with
+        deterministic IDs.  Bot messages and subtypes are filtered out.
+        """
+        if not self._app:
+            return []
+        try:
+            resp = await self._app.client.conversations_history(
+                channel=channel_id, oldest=oldest, limit=limit
+            )
+        except Exception:
+            logger.warning("Failed to fetch Slack history for catch-up", channel=channel_id)
+            return []
+
+        raw_messages: list[dict] = resp.get("messages", [])
+        # Slack returns newest-first; reverse for chronological order.
+        raw_messages.reverse()
+
+        results: list[NewMessage] = []
+        for event in raw_messages:
+            # Same filters as _on_slack_message
+            if event.get("bot_id") or event.get("subtype"):
+                continue
+            user_id = event.get("user")
+            text = event.get("text", "")
+            ts = event.get("ts", "")
+            if not user_id or not ts:
+                continue
+
+            text = self._normalize_bot_mention(text)
+            sender_name = await self._resolve_user_name(user_id)
+            timestamp = datetime.fromtimestamp(float(ts), tz=UTC).isoformat()
+
+            results.append(
+                NewMessage(
+                    id=f"slack-{ts}",
+                    chat_jid=_jid(channel_id),
+                    sender=user_id,
+                    sender_name=sender_name,
+                    content=text,
+                    timestamp=timestamp,
+                    is_from_me=False,
+                    metadata={"slack_ts": ts},
+                )
+            )
+        return results
+
+    async def catch_up(
+        self,
+        canonical_to_aliases: dict[str, dict[str, str]],
+        last_agent_timestamp: dict[str, str],
+    ) -> list[NewMessage]:
+        """Recover missed messages for all workspaces with a Slack alias.
+
+        Args:
+            canonical_to_aliases: ``{canonical_jid: {channel_name: alias_jid}}``
+            last_agent_timestamp: ``{canonical_jid: iso_timestamp}``
+
+        Returns all recovered messages with ``chat_jid`` set to the canonical JID.
+        """
+        results: list[NewMessage] = []
+        for canonical_jid, aliases in canonical_to_aliases.items():
+            slack_alias = aliases.get("slack")
+            if not slack_alias:
+                continue
+            since_iso = last_agent_timestamp.get(canonical_jid)
+            if not since_iso:
+                continue
+
+            channel_id = _channel_id_from_jid(slack_alias)
+            since_epoch = str(datetime.fromisoformat(since_iso).timestamp())
+            messages = await self.fetch_missed_messages(channel_id, since_epoch)
+            for msg in messages:
+                msg.chat_jid = canonical_jid
+            results.extend(messages)
+        return results
+
+    # ------------------------------------------------------------------
     # Internal: Slack event handlers
     # ------------------------------------------------------------------
 
@@ -279,7 +368,7 @@ class SlackChannel:
             self._on_chat_metadata(jid, timestamp, f"assistant:{user_id}")
 
             msg = NewMessage(
-                id=generate_message_id("slack-assistant"),
+                id=f"slack-assistant-{ts}",
                 chat_jid=jid,
                 sender=user_id,
                 sender_name=sender_name,
@@ -366,7 +455,7 @@ class SlackChannel:
         self._on_chat_metadata(jid, timestamp, chat_name)
 
         msg = NewMessage(
-            id=generate_message_id("slack"),
+            id=f"slack-{ts}",
             chat_jid=jid,
             sender=user_id,
             sender_name=sender_name,

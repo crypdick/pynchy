@@ -1228,11 +1228,11 @@ class TestParseSkillTier:
 
     def test_name_defaults_to_dir_name(self, tmp_path: Path):
         """When name is missing from frontmatter, use directory name."""
-        skill_dir = tmp_path / "agent-browser"
+        skill_dir = tmp_path / "web-search"
         skill_dir.mkdir()
-        (skill_dir / "SKILL.md").write_text("---\ntier: core\n---\n# Browser\n")
+        (skill_dir / "SKILL.md").write_text("---\ntier: core\n---\n# Web Search\n")
         name, tier = _parse_skill_tier(skill_dir)
-        assert name == "agent-browser"
+        assert name == "web-search"
         assert tier == "core"
 
 
@@ -1249,7 +1249,7 @@ class TestIsSkillSelected:
         assert _is_skill_selected("my-skill", "dev", ["dev"]) is True
 
     def test_name_match(self):
-        assert _is_skill_selected("agent-browser", "community", ["agent-browser"]) is True
+        assert _is_skill_selected("web-search", "community", ["web-search"]) is True
 
     def test_core_always_included_when_filtering_active(self):
         """Core tier is implicit when any filtering is set."""
@@ -1263,8 +1263,8 @@ class TestIsSkillSelected:
 
     def test_union_of_tier_and_name(self):
         """Tiers and names are unioned."""
-        ws = ["core", "agent-browser"]
-        assert _is_skill_selected("agent-browser", "community", ws) is True
+        ws = ["core", "web-search"]
+        assert _is_skill_selected("web-search", "community", ws) is True
         assert _is_skill_selected("python-heredoc", "core", ws) is True
         assert _is_skill_selected("code-improver", "dev", ws) is False
 

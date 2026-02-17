@@ -93,8 +93,8 @@ class FakeChannel:
     def is_connected(self) -> bool:
         return self.connected
 
-    def owns_jid(self, jid: str) -> bool:
-        return jid.endswith("@g.us") or jid.endswith("@s.whatsapp.net")
+    def owns_jid(self, jid: str) -> bool:  # noqa: ARG002
+        return True
 
     async def disconnect(self) -> None:
         self.connected = False
