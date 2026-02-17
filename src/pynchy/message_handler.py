@@ -320,6 +320,11 @@ async def process_group_messages(
     if not missed_messages:
         return True
 
+    # System notices alone shouldn't launch a container — they're context
+    # for the next real session, not actionable messages.
+    if all(m.sender == "system_notice" for m in missed_messages):
+        return True
+
     # For non-god groups, check if trigger is required and present
     if not is_god_group and group.requires_trigger is not False:
         has_trigger = any(s.trigger_pattern.search(m.content.strip()) for m in missed_messages)
@@ -459,6 +464,15 @@ async def start_message_loop(
                         deps.last_agent_timestamp.get(group_jid, ""),
                     )
                     if not all_pending:
+                        continue
+
+                    # System notices (e.g. clean rebase notifications) shouldn't
+                    # wake a sleeping agent — they're just context for the next
+                    # real session.  Skip if *all* pending messages are notices
+                    # and no container is already running for this group.
+                    if not deps.queue.is_active_task(group_jid) and all(
+                        m.sender == "system_notice" for m in all_pending
+                    ):
                         continue
 
                     if await intercept_special_command(deps, group_jid, group, all_pending[-1]):

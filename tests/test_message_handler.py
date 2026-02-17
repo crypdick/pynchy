@@ -657,6 +657,64 @@ class TestProcessGroupMessages:
         deps.set_typing_on_channels.assert_any_await("g@g.us", False)
 
     @pytest.mark.asyncio
+    async def test_system_notice_only_does_not_launch_agent(self, tmp_path):
+        """System notices alone shouldn't launch a container."""
+        group = _make_group(is_god=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
+
+        notice = _make_message(
+            "[System Notice] Auto-rebased 1 commit(s) onto your worktree.",
+            sender="system_notice",
+            sender_name="System",
+            timestamp="new-ts",
+        )
+
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([notice]),
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            result = await process_group_messages(deps, "g@g.us")
+
+        assert result is True
+        deps.run_agent.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_system_notice_plus_user_message_launches_agent(self, tmp_path):
+        """A mix of system notices and user messages should launch the agent."""
+        group = _make_group(is_god=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
+        deps.handle_streamed_output = AsyncMock(return_value=False)
+
+        notice = _make_message(
+            "[System Notice] Auto-rebased 1 commit(s) onto your worktree.",
+            id="notice-1",
+            sender="system_notice",
+            sender_name="System",
+            timestamp="ts-1",
+        )
+        user_msg = _make_message(
+            "hello",
+            id="msg-1",
+            sender="user@s.whatsapp.net",
+            sender_name="Alice",
+            timestamp="ts-2",
+        )
+
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([notice, user_msg]),
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+            patch(_P_HAS_PA, return_value=False),
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            result = await process_group_messages(deps, "g@g.us")
+
+        assert result is True
+        deps.run_agent.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_special_command_intercepts(self, tmp_path):
         """Special commands checked on the last message."""
         group = _make_group(is_god=True)
@@ -1154,6 +1212,136 @@ class TestBtwNonInterruptingMessages:
         assert deps.last_agent_timestamp.get(jid) == "old-ts"
         # No reaction sent (non-interrupting, will be reprocessed)
         deps.send_reaction_to_channels.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_system_notice_only_does_not_wake_sleeping_agent(self):
+        """System notices alone shouldn't enqueue a message check when
+        no container is active — the agent stays asleep."""
+        jid = "group@g.us"
+        group = _make_group(is_god=True)
+        deps = _make_deps(
+            groups={jid: group},
+            last_agent_ts={jid: "old-ts"},
+        )
+        deps.queue.is_active_task.return_value = False
+        deps.queue.send_message.return_value = False
+
+        notice = _make_message(
+            "[System Notice] Auto-rebased 3 commit(s) onto your worktree.",
+            sender="system_notice",
+            sender_name="System",
+            timestamp="new-ts",
+        )
+
+        with (
+            patch(_P_SETTINGS, return_value=_loop_settings_mock()),
+            patch(
+                _P_NEW_MSGS,
+                new_callable=AsyncMock,
+                return_value=([notice], "poll-ts"),
+            ),
+            patch(
+                _P_MSGS_SINCE,
+                new_callable=AsyncMock,
+                return_value=[notice],
+            ),
+        ):
+            await _run_loop_once(deps)
+
+        # Agent NOT woken up
+        deps.queue.enqueue_message_check.assert_not_called()
+        deps.queue.send_message.assert_not_called()
+        # Cursor NOT advanced (notice will be included in next real session)
+        assert deps.last_agent_timestamp.get(jid) == "old-ts"
+
+    @pytest.mark.asyncio
+    async def test_system_notice_forwarded_to_active_container(self):
+        """System notices SHOULD be forwarded when a container is already
+        active — the agent is awake and should see the notice."""
+        jid = "group@g.us"
+        group = _make_group(is_god=True)
+        deps = _make_deps(
+            groups={jid: group},
+            last_agent_ts={jid: "old-ts"},
+        )
+        deps.queue.is_active_task.return_value = True
+        deps.queue.send_message.return_value = True
+
+        notice = _make_message(
+            "[System Notice] Auto-rebased 3 commit(s) onto your worktree.",
+            sender="system_notice",
+            sender_name="System",
+            timestamp="new-ts",
+        )
+
+        with (
+            patch(_P_SETTINGS, return_value=_loop_settings_mock()),
+            patch(
+                _P_NEW_MSGS,
+                new_callable=AsyncMock,
+                return_value=([notice], "poll-ts"),
+            ),
+            patch(
+                _P_MSGS_SINCE,
+                new_callable=AsyncMock,
+                return_value=[notice],
+            ),
+            patch(_P_INTERCEPT, new_callable=AsyncMock, return_value=False),
+            _patch_bg_task(),
+        ):
+            await _run_loop_once(deps)
+
+        # Notice should reach the active container (interrupt path since
+        # it's not a "btw" message)
+        deps.queue.clear_pending_tasks.assert_called_once_with(jid)
+        deps.queue.stop_active_process.assert_called_once_with(jid)
+
+    @pytest.mark.asyncio
+    async def test_system_notice_with_user_message_wakes_agent(self):
+        """A system notice mixed with a real user message should wake
+        the agent normally."""
+        jid = "group@g.us"
+        group = _make_group(is_god=True)
+        deps = _make_deps(
+            groups={jid: group},
+            last_agent_ts={jid: "old-ts"},
+        )
+        deps.queue.is_active_task.return_value = False
+        deps.queue.send_message.return_value = False
+
+        notice = _make_message(
+            "[System Notice] Auto-rebased 1 commit(s).",
+            id="notice-1",
+            sender="system_notice",
+            sender_name="System",
+            timestamp="ts-1",
+        )
+        user_msg = _make_message(
+            "hello",
+            id="msg-1",
+            sender="user@s.whatsapp.net",
+            sender_name="Alice",
+            timestamp="ts-2",
+        )
+
+        with (
+            patch(_P_SETTINGS, return_value=_loop_settings_mock()),
+            patch(
+                _P_NEW_MSGS,
+                new_callable=AsyncMock,
+                return_value=([notice, user_msg], "poll-ts"),
+            ),
+            patch(
+                _P_MSGS_SINCE,
+                new_callable=AsyncMock,
+                return_value=[notice, user_msg],
+            ),
+            patch(_P_INTERCEPT, new_callable=AsyncMock, return_value=False),
+        ):
+            await _run_loop_once(deps)
+
+        # Agent SHOULD be woken up because there's a real user message
+        deps.queue.enqueue_message_check.assert_called_once_with(jid)
 
     @pytest.mark.asyncio
     async def test_btw_routed_normally_when_no_active_container(self):
