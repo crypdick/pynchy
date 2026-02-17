@@ -104,7 +104,7 @@ class PynchyTUI(App):
         try:
             health = await self._get("/health")
             connected = health.get("channels_connected", False)
-            status = "Connected" if connected else "WhatsApp disconnected"
+            status = "Connected" if connected else "Disconnected"
             self.sub_title = status
         except aiohttp.ClientError:
             self.sub_title = "Server unreachable"

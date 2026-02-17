@@ -1,29 +1,13 @@
 # Pynchy Agent Container
-# Runs agent cores (Claude SDK, OpenAI Agents SDK) in isolated Linux VM with browser automation
+# Runs agent cores (Claude SDK, OpenAI Agents SDK) in isolated Linux VM
 
 FROM python:3.13-slim
 
 # Install uv (available to all containers for running Python tools)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Install system dependencies for Chromium + common tools
+# Install system dependencies + common tools
 RUN apt-get update && apt-get install -y \
-    chromium \
-    fonts-liberation \
-    fonts-noto-color-emoji \
-    libgbm1 \
-    libnss3 \
-    libatk-bridge2.0-0 \
-    libgtk-3-0 \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    libasound2 \
-    libpangocairo-1.0-0 \
-    libcups2 \
-    libdrm2 \
-    libxshmfence1 \
     curl \
     git \
     ripgrep \
@@ -39,15 +23,11 @@ RUN apt-get update && apt-get install -y \
     && apt-get update && apt-get install -y gh nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Chromium path for agent-browser
-ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
-ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
-
 # Disable Python stdout buffering so streaming markers reach the host immediately
 ENV PYTHONUNBUFFERED=1
 
-# Install agent-browser and claude-code globally
-RUN npm install -g agent-browser @anthropic-ai/claude-code
+# Install claude-code globally
+RUN npm install -g @anthropic-ai/claude-code
 
 # Create app directory
 WORKDIR /app

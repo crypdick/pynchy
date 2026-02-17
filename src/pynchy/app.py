@@ -383,6 +383,32 @@ class PynchyApp:
         await session_handler.send_clear_confirmation(self, chat_jid)
 
     # ------------------------------------------------------------------
+    # Channel history catch-up
+    # ------------------------------------------------------------------
+
+    async def _catch_up_channel_history(self) -> None:
+        """Recover messages sent while the service was offline.
+
+        Channels that implement ``catch_up()`` can backfill messages missed
+        during downtime.  Currently only the Slack plugin uses this.
+        """
+        from pynchy.db import store_message
+
+        total = 0
+        for ch in self.channels:
+            if not hasattr(ch, "catch_up"):
+                continue
+            messages = await ch.catch_up(
+                self._canonical_to_aliases, self.last_agent_timestamp
+            )
+            for msg in messages:
+                await store_message(msg)
+            total += len(messages)
+
+        if total:
+            logger.info("Recovered missed channel messages", count=total)
+
+    # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
@@ -546,6 +572,7 @@ class PynchyApp:
         logger.info("HTTP server ready", port=s.server.port)
 
         await self._send_boot_notification()
+        await self._catch_up_channel_history()
         await self._recover_pending_messages()
         await self._check_deploy_continuation()
         await self._start_message_loop()

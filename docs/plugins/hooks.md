@@ -123,7 +123,7 @@ def pynchy_skill_paths(self) -> list[str]:
     return [str(Path(__file__).parent / "skills" / "code-review")]
 ```
 
-**Return value:** List of absolute paths to skill directories. Each directory should contain a `SKILL.md` file following the Claude Agent SDK skill format (see `container/skills/agent-browser/SKILL.md` for an example).
+**Return value:** List of absolute paths to skill directories. Each directory should contain a `SKILL.md` file following the Claude Agent SDK skill format.
 
 **Skill directory structure:**
 
@@ -151,7 +151,7 @@ tier: community
 | `name` | No | Skill identifier (defaults to directory name) |
 | `description` | Yes | What the skill does (used by the agent to decide when to invoke it) |
 | `tier` | No | `core`, `community`, or `dev` (defaults to `community`) |
-| `allowed-tools` | No | Tool permissions (e.g., `Bash(agent-browser:*)`) |
+| `allowed-tools` | No | Tool permissions (e.g., `Bash(my-tool:*)`) |
 
 **Skill tiers:**
 
@@ -168,7 +168,7 @@ Workspaces opt into skills via the `skills` config field:
 skills = ["core", "dev"]           # tier names and/or individual skill names
 ```
 
-When `skills` is not set, all skills are included (backwards compatible). When set, entries are unioned — `["core", "agent-browser"]` means all core-tier skills plus `agent-browser` specifically. Core is always implicit when any filtering is active.
+When `skills` is not set, all skills are included (backwards compatible). When set, entries are unioned — `["core", "my-skill"]` means all core-tier skills plus `my-skill` specifically. Core is always implicit when any filtering is active.
 
 ## pynchy_create_channel
 
