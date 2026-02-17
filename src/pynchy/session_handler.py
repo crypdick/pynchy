@@ -6,6 +6,7 @@ Extracted from app.py to keep the orchestrator focused on wiring.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -43,6 +44,10 @@ class SessionDeps(Protocol):
     async def save_state(self) -> None: ...
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
+
+    def resolve_canonical_jid(self, jid: str) -> str: ...
+
+    def get_channel_jid(self, canonical_jid: str, channel_name: str) -> str | None: ...
 
     def emit(self, event: Any) -> None: ...
 
@@ -173,10 +178,13 @@ async def ingest_user_message(
             if source_channel and ch.name == source_channel:
                 continue
 
+            # Use channel-specific alias JID if one exists
+            target_jid = deps.get_channel_jid(msg.chat_jid, ch.name) or msg.chat_jid
+
             # Format the message with sender name
             formatted = f"{msg.sender_name}: {msg.content}"
             try:
-                await ch.send_message(msg.chat_jid, formatted)
+                await ch.send_message(target_jid, formatted)
             except (OSError, TimeoutError, ConnectionError) as exc:
                 logger.warning("Cross-channel broadcast failed", channel=ch.name, err=str(exc))
 
@@ -189,5 +197,16 @@ async def on_inbound(deps: SessionDeps, _jid: str, msg: NewMessage) -> None:
         if ch.owns_jid(msg.chat_jid):
             source_channel = ch.name
             break
+
+    # Resolve alias JID to canonical so the message is stored under the
+    # workspace's primary JID (the one in registered_groups).
+    canonical = deps.resolve_canonical_jid(msg.chat_jid)
+    if canonical != msg.chat_jid:
+        logger.debug(
+            "Resolved alias JID to canonical",
+            alias=msg.chat_jid,
+            canonical=canonical,
+        )
+        msg = replace(msg, chat_jid=canonical)
 
     await ingest_user_message(deps, msg, source_channel=source_channel)

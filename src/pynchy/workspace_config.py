@@ -154,11 +154,14 @@ async def reconcile_workspaces(
     registered_groups: dict[str, RegisteredGroup],
     channels: list[Channel],
     register_fn: Callable[[str, RegisteredGroup], Awaitable[None]],
+    register_alias_fn: Callable[[str, str, str], Awaitable[None]] | None = None,
+    get_channel_jid_fn: Callable[[str, str], str | None] | None = None,
 ) -> None:
     """Ensure tasks + chat groups exist for workspaces defined in config.toml.
 
     Idempotent — safe to run on every startup. Creates WhatsApp groups for
     any workspace with no DB entry, and manages scheduled tasks for periodic agents.
+    Also creates JID aliases on channels that didn't create the primary JID.
     """
     from pynchy.types import RegisteredGroup as RG
 
@@ -217,6 +220,35 @@ async def reconcile_workspaces(
                 folder=folder,
                 is_god=config.is_god,
             )
+
+        # 1b. Ensure aliases exist on channels that didn't create the primary JID
+        if register_alias_fn and jid:
+            for ch in channels:
+                if not hasattr(ch, "create_group"):
+                    continue
+                # Skip if this channel already owns the canonical JID
+                if ch.owns_jid(jid):
+                    continue
+                # Skip if an alias already exists for this channel
+                if get_channel_jid_fn and get_channel_jid_fn(jid, ch.name):
+                    continue
+                try:
+                    alias_jid = await ch.create_group(display_name)
+                    await register_alias_fn(alias_jid, jid, ch.name)
+                    logger.info(
+                        "Created alias group on channel",
+                        channel=ch.name,
+                        alias_jid=alias_jid,
+                        canonical_jid=jid,
+                        folder=folder,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to create alias group on channel",
+                        channel=ch.name,
+                        folder=folder,
+                        err=str(exc),
+                    )
 
         # 2. For periodic agents, ensure scheduled task exists and is up to date
         if not config.is_periodic:

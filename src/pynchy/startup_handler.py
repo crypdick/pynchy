@@ -32,9 +32,16 @@ class StartupDeps(Protocol):
     @property
     def queue(self) -> GroupQueue: ...
 
+    @property
+    def channels(self) -> list[Any]: ...
+
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
 
     async def _register_workspace(self, profile: WorkspaceProfile) -> None: ...
+
+    async def register_jid_alias(
+        self, alias_jid: str, canonical_jid: str, channel_name: str
+    ) -> None: ...
 
 
 async def send_boot_notification(deps: StartupDeps) -> None:
@@ -238,6 +245,28 @@ async def setup_god_group(deps: StartupDeps, default_channel: Any | None) -> Non
     )
     await deps._register_workspace(profile)
     logger.info("God workspace created", group=group_name, jid=jid)
+
+    # Create aliases on other channels that support create_group
+    for ch in deps.channels:
+        if not hasattr(ch, "create_group"):
+            continue
+        if ch.owns_jid(jid):
+            continue
+        try:
+            alias_jid = await ch.create_group(group_name)
+            await deps.register_jid_alias(alias_jid, jid, ch.name)
+            logger.info(
+                "Created god group alias on channel",
+                channel=ch.name,
+                alias_jid=alias_jid,
+                canonical_jid=jid,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to create god group alias on channel",
+                channel=ch.name,
+                err=str(exc),
+            )
 
 
 def validate_plugin_credentials(plugin: Any) -> list[str]:

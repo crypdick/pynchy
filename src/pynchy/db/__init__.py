@@ -16,6 +16,12 @@ This package is split into domain-specific submodules:
 # Re-export every public symbol so that `from pynchy.db import X` keeps working.
 
 from pynchy.db._connection import _get_db, _init_test_database, init_database
+from pynchy.db.aliases import (
+    get_aliases_for_jid,
+    get_all_aliases,
+    get_canonical_jid,
+    set_jid_alias,
+)
 from pynchy.db.chats import (
     get_all_chats,
     get_last_group_sync,
@@ -75,6 +81,11 @@ __all__ = [
     "_get_db",
     "_init_test_database",
     "init_database",
+    # aliases
+    "get_aliases_for_jid",
+    "get_all_aliases",
+    "get_canonical_jid",
+    "set_jid_alias",
     # chats
     "get_all_chats",
     "get_last_group_sync",

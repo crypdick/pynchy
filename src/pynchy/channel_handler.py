@@ -27,6 +27,8 @@ class ChannelDeps(Protocol):
     @property
     def event_bus(self) -> EventBus: ...
 
+    def get_channel_jid(self, canonical_jid: str, channel_name: str) -> str | None: ...
+
 
 async def broadcast_to_channels(
     deps: ChannelDeps, chat_jid: str, text: str, *, suppress_errors: bool = True
@@ -44,8 +46,9 @@ async def broadcast_to_channels(
     )
     for ch in deps.channels:
         if ch.is_connected():
+            target_jid = deps.get_channel_jid(chat_jid, ch.name) or chat_jid
             try:
-                await ch.send_message(chat_jid, text)
+                await ch.send_message(target_jid, text)
             except caught as exc:
                 logger.warning("Channel send failed", channel=ch.name, err=str(exc))
 
@@ -56,8 +59,9 @@ async def send_reaction_to_channels(
     """Send a reaction emoji to a message on all channels that support it."""
     for ch in deps.channels:
         if ch.is_connected() and hasattr(ch, "send_reaction"):
+            target_jid = deps.get_channel_jid(chat_jid, ch.name) or chat_jid
             try:
-                await ch.send_reaction(chat_jid, message_id, sender, emoji)
+                await ch.send_reaction(target_jid, message_id, sender, emoji)
             except (OSError, TimeoutError, ConnectionError) as exc:
                 logger.debug("Reaction send failed", channel=ch.name, err=str(exc))
 
@@ -66,8 +70,9 @@ async def set_typing_on_channels(deps: ChannelDeps, chat_jid: str, is_typing: bo
     """Set typing indicator on all channels that support it."""
     for ch in deps.channels:
         if ch.is_connected() and hasattr(ch, "set_typing"):
+            target_jid = deps.get_channel_jid(chat_jid, ch.name) or chat_jid
             try:
-                await ch.set_typing(chat_jid, is_typing)
+                await ch.set_typing(target_jid, is_typing)
             except (OSError, TimeoutError, ConnectionError) as exc:
                 logger.debug("Typing indicator send failed", channel=ch.name, err=str(exc))
 

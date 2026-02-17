@@ -87,6 +87,13 @@ CREATE TABLE IF NOT EXISTS host_jobs (
 CREATE INDEX IF NOT EXISTS idx_host_jobs_next_run ON host_jobs(next_run);
 CREATE INDEX IF NOT EXISTS idx_host_jobs_status ON host_jobs(status);
 
+CREATE TABLE IF NOT EXISTS jid_aliases (
+    alias_jid TEXT PRIMARY KEY,
+    canonical_jid TEXT NOT NULL,
+    channel_name TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_jid_aliases_canonical ON jid_aliases(canonical_jid);
+
 CREATE TABLE IF NOT EXISTS router_state (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
