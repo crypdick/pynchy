@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <em>🦞 Pynchy</em> (pronounced "Pinchy") — A personal AI assistant inspired by [OpenClaw](https://github.com/openclaw/openclaw), with an emphasis on security and modularity, written in Python.
+  <em>🦞 Pynchy</em> (pronounced "Pinchy") — A personal AI assistant inspired by <a href="https://github.com/openclaw/openclaw">OpenClaw</a>, with an emphasis on security and modularity, written in Python.
 </p>
 
 
