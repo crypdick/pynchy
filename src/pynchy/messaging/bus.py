@@ -59,7 +59,18 @@ async def broadcast(
             continue
         if skip_channel and ch.name == skip_channel:
             continue
-        target_jid = deps.get_channel_jid(chat_jid, ch.name) or chat_jid
+        alias = deps.get_channel_jid(chat_jid, ch.name)
+        target_jid = alias or chat_jid
+        if not alias and not ch.owns_jid(chat_jid):
+            # No alias and channel doesn't own the canonical JID — the
+            # send_message call will be a no-op.  Log so we can diagnose
+            # missing aliases in production.
+            logger.warning(
+                "No JID alias for channel — message will not be delivered",
+                channel=ch.name,
+                canonical_jid=chat_jid,
+            )
+            continue
         try:
             await ch.send_message(target_jid, text)
         except caught as exc:
@@ -102,7 +113,15 @@ async def finalize_stream_or_broadcast(
             except Exception as exc:
                 logger.debug("Final stream update failed", channel=ch_name, err=str(exc))
         elif ch.is_connected():
-            target_jid = deps.get_channel_jid(chat_jid, ch.name) or chat_jid
+            alias = deps.get_channel_jid(chat_jid, ch.name)
+            target_jid = alias or chat_jid
+            if not alias and not ch.owns_jid(chat_jid):
+                logger.warning(
+                    "No JID alias for channel — message will not be delivered",
+                    channel=ch_name,
+                    canonical_jid=chat_jid,
+                )
+                continue
             try:
                 await ch.send_message(target_jid, text)
             except Exception as exc:

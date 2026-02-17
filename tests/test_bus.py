@@ -137,6 +137,30 @@ class TestBroadcast:
         ch2.send_message.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_skips_channel_without_alias_that_doesnt_own_jid(self):
+        """Channels that don't own the canonical JID and have no alias should be skipped."""
+        ch = _make_channel(name="slack")
+        ch.owns_jid = MagicMock(return_value=False)
+        deps = _make_deps([ch])
+        deps.get_channel_jid.return_value = None  # no alias
+
+        await broadcast(deps, "group@g.us", "hello")
+
+        ch.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_sends_when_channel_owns_jid_without_alias(self):
+        """Channel that owns the canonical JID directly should still receive messages."""
+        ch = _make_channel(name="whatsapp")
+        ch.owns_jid = MagicMock(return_value=True)
+        deps = _make_deps([ch])
+        deps.get_channel_jid.return_value = None  # no alias needed
+
+        await broadcast(deps, "group@g.us", "hello")
+
+        ch.send_message.assert_awaited_once_with("group@g.us", "hello")
+
+    @pytest.mark.asyncio
     async def test_empty_channels_list(self):
         deps = _make_deps([])
 
@@ -227,7 +251,20 @@ class TestFinalizeStreamOrBroadcast:
     async def test_fallback_send_failure_is_suppressed(self):
         ch = _make_channel(name="wa")
         ch.send_message.side_effect = OSError("network")
+        ch.owns_jid = MagicMock(return_value=True)
         deps = _make_deps([ch])
 
         # Should not raise — errors are caught in the finalize path
         await finalize_stream_or_broadcast(deps, "group@g.us", "final text", {"other": "x"})
+
+    @pytest.mark.asyncio
+    async def test_finalize_skips_channel_without_alias(self):
+        """Non-streaming channel without alias or JID ownership should be skipped."""
+        ch = _make_channel(name="slack")
+        ch.owns_jid = MagicMock(return_value=False)
+        deps = _make_deps([ch])
+        deps.get_channel_jid.return_value = None
+
+        await finalize_stream_or_broadcast(deps, "group@g.us", "text", {"other": "x"})
+
+        ch.send_message.assert_not_awaited()
