@@ -60,8 +60,12 @@ packages = ["src/pynchy"]
 testpaths = ["tests"]
 pythonpath = ["tests"]
 asyncio_mode = "auto"
-addopts = "-n auto --tb=short -q --no-header"
+addopts = "-n auto --tb=short -q --no-header -m 'not live'"
 timeout = 30
+markers = [
+    "live: live integration tests that require real service connections (deselected by default)",
+    "parity: channel parity tests — verify output consistency across TUI, WhatsApp, and Slack",
+]
 
 # Mirrored in: container/agent_runner/pyproject.toml
 [tool.ruff]
