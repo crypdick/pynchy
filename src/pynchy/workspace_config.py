@@ -150,6 +150,52 @@ def get_project_access_folders(workspaces: dict[str, Any]) -> list[str]:
     return folders
 
 
+async def create_channel_aliases(
+    jid: str,
+    name: str,
+    channels: list[Channel],
+    register_alias_fn: Callable[[str, str, str], Awaitable[None]],
+    get_channel_jid_fn: Callable[[str, str], str | None] | None = None,
+) -> int:
+    """Create aliases for a single JID across channels that support it.
+
+    This is the single code path for all channel alias creation — used by
+    workspace reconciliation, god group setup, and batch alias backfill.
+
+    For each channel that supports ``create_group``, skips if the channel
+    already owns the JID or an alias already exists, then creates and registers
+    a new alias.
+
+    Returns the number of aliases created.
+    """
+    created = 0
+    for ch in channels:
+        if not hasattr(ch, "create_group"):
+            continue
+        if ch.owns_jid(jid):
+            continue
+        if get_channel_jid_fn and get_channel_jid_fn(jid, ch.name):
+            continue
+        try:
+            alias_jid = await ch.create_group(name)
+            await register_alias_fn(alias_jid, jid, ch.name)
+            created += 1
+            logger.info(
+                "Created channel alias",
+                channel=ch.name,
+                alias_jid=alias_jid,
+                canonical_jid=jid,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to create channel alias",
+                channel=ch.name,
+                canonical_jid=jid,
+                err=str(exc),
+            )
+    return created
+
+
 async def _ensure_aliases_for_all_groups(
     registered_groups: dict[str, RegisteredGroup],
     channels: list[Channel],
@@ -163,31 +209,9 @@ async def _ensure_aliases_for_all_groups(
     """
     created = 0
     for jid, group in registered_groups.items():
-        for ch in channels:
-            if not hasattr(ch, "create_group"):
-                continue
-            if ch.owns_jid(jid):
-                continue
-            if get_channel_jid_fn and get_channel_jid_fn(jid, ch.name):
-                continue
-            try:
-                alias_jid = await ch.create_group(group.name)
-                await register_alias_fn(alias_jid, jid, ch.name)
-                created += 1
-                logger.info(
-                    "Created alias for registered group",
-                    channel=ch.name,
-                    alias_jid=alias_jid,
-                    canonical_jid=jid,
-                    folder=group.folder,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Failed to create alias for registered group",
-                    channel=ch.name,
-                    folder=group.folder,
-                    err=str(exc),
-                )
+        created += await create_channel_aliases(
+            jid, group.name, channels, register_alias_fn, get_channel_jid_fn
+        )
     if created:
         logger.info("Created missing channel aliases", count=created)
 
@@ -265,32 +289,9 @@ async def reconcile_workspaces(
 
         # 1b. Ensure aliases exist on channels that didn't create the primary JID
         if register_alias_fn and jid:
-            for ch in channels:
-                if not hasattr(ch, "create_group"):
-                    continue
-                # Skip if this channel already owns the canonical JID
-                if ch.owns_jid(jid):
-                    continue
-                # Skip if an alias already exists for this channel
-                if get_channel_jid_fn and get_channel_jid_fn(jid, ch.name):
-                    continue
-                try:
-                    alias_jid = await ch.create_group(display_name)
-                    await register_alias_fn(alias_jid, jid, ch.name)
-                    logger.info(
-                        "Created alias group on channel",
-                        channel=ch.name,
-                        alias_jid=alias_jid,
-                        canonical_jid=jid,
-                        folder=folder,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to create alias group on channel",
-                        channel=ch.name,
-                        folder=folder,
-                        err=str(exc),
-                    )
+            await create_channel_aliases(
+                jid, display_name, channels, register_alias_fn, get_channel_jid_fn
+            )
 
         # 2. For periodic agents, ensure scheduled task exists and is up to date
         if not config.is_periodic:

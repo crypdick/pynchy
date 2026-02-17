@@ -47,7 +47,9 @@ class StartupDeps(Protocol):
 async def send_boot_notification(deps: StartupDeps) -> None:
     """Send a system message to the god channel on startup."""
     s = get_settings()
-    god_jid = next((jid for jid, g in deps.registered_groups.items() if g.is_god), None)
+    from pynchy.adapters import find_god_jid
+
+    god_jid = find_god_jid(deps.registered_groups) or None
     if not god_jid:
         return
 
@@ -247,26 +249,9 @@ async def setup_god_group(deps: StartupDeps, default_channel: Any | None) -> Non
     logger.info("God workspace created", group=group_name, jid=jid)
 
     # Create aliases on other channels that support create_group
-    for ch in deps.channels:
-        if not hasattr(ch, "create_group"):
-            continue
-        if ch.owns_jid(jid):
-            continue
-        try:
-            alias_jid = await ch.create_group(group_name)
-            await deps.register_jid_alias(alias_jid, jid, ch.name)
-            logger.info(
-                "Created god group alias on channel",
-                channel=ch.name,
-                alias_jid=alias_jid,
-                canonical_jid=jid,
-            )
-        except Exception as exc:
-            logger.warning(
-                "Failed to create god group alias on channel",
-                channel=ch.name,
-                err=str(exc),
-            )
+    from pynchy.workspace_config import create_channel_aliases
+
+    await create_channel_aliases(jid, group_name, deps.channels, deps.register_jid_alias)
 
 
 def validate_plugin_credentials(plugin: Any) -> list[str]:

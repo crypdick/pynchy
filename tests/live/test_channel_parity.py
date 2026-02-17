@@ -16,40 +16,29 @@ Run with:
 
 from __future__ import annotations
 
-import asyncio
-import json
-import re
-from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from pynchy.config import Settings
+from pynchy.adapters import HostMessageBroadcaster, MessageBroadcaster
 from pynchy.messaging.channel_handler import (
-    broadcast_host_message,
     broadcast_to_channels,
     send_reaction_to_channels,
     set_typing_on_channels,
 )
 from pynchy.messaging.output_handler import (
     broadcast_agent_input,
-    broadcast_trace,
     handle_streamed_output,
 )
-from pynchy.messaging.router import format_outbound, strip_internal_tags
+from pynchy.messaging.router import format_outbound
 from pynchy.types import ContainerOutput, RegisteredGroup
 
 from .conftest import (
-    EventCapture,
-    FakeProcess,
     RecordingChannel,
-    StreamingChannel,
     make_slack_channel,
-    make_test_message,
     make_tui_channel,
     make_whatsapp_channel,
-    patch_test_settings,
 )
 
 pytestmark = [pytest.mark.live, pytest.mark.parity]
@@ -156,7 +145,7 @@ class TestBroadcastRawTextParity:
     async def test_unicode_and_special_chars_parity(self, channels):
         """Unicode, emoji, and special characters should pass through unchanged."""
         deps = _make_deps(channels)
-        text = "🇺🇸 Héllo wörld! 你好 — \"quotes\" & <tags>"
+        text = '🇺🇸 Héllo wörld! 你好 — "quotes" & <tags>'
         await broadcast_to_channels(deps, CHAT_JID, text)
 
         for ch in channels:
@@ -171,7 +160,7 @@ class TestBroadcastRawTextParity:
             assert ch.get_texts(CHAT_JID) == [""], f"{ch.name} empty text mismatch"
 
     async def test_long_text_parity(self, channels):
-        """Very long messages should arrive identically (no per-channel truncation at this level)."""
+        """Very long messages should arrive identically (no truncation)."""
         deps = _make_deps(channels)
         text = "x" * 10000
         await broadcast_to_channels(deps, CHAT_JID, text)
@@ -187,7 +176,6 @@ class TestBroadcastRawTextParity:
 
 class TestFormatOutboundParity:
     """Verify that format_outbound applies consistent prefix rules across channels."""
-
 
     def test_whatsapp_prefixes_assistant_name(self):
         ch = make_whatsapp_channel()
@@ -241,16 +229,20 @@ class TestFormatOutboundParity:
 class TestHostMessageParity:
     """Verify host message broadcast reaches all channels with consistent formatting."""
 
+    @staticmethod
+    def _make_host_broadcaster(
+        channels: list,
+    ) -> HostMessageBroadcaster:
+        """Create a HostMessageBroadcaster for test channels."""
+        broadcaster = MessageBroadcaster(channels)
+        return HostMessageBroadcaster(broadcaster, AsyncMock(), AsyncMock(), lambda _: None)
+
     async def test_host_message_emoji_prefix_consistent(self):
         """broadcast_host_message should prepend 🏠 for all channels."""
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
-        deps = _make_deps(channels)
+        host_broadcaster = self._make_host_broadcaster(channels)
 
-        with patch(
-            "pynchy.messaging.channel_handler.store_message_direct",
-            new_callable=AsyncMock,
-        ):
-            await broadcast_host_message(deps, CHAT_JID, "⚠️ Agent error occurred")
+        await host_broadcaster.broadcast_host_message(CHAT_JID, "⚠️ Agent error occurred")
 
         for ch in channels:
             texts = ch.get_texts(CHAT_JID)
@@ -261,7 +253,7 @@ class TestHostMessageParity:
     async def test_host_message_text_identical_across_channels(self):
         """All channels should receive the exact same host message text."""
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
-        deps = _make_deps(channels)
+        host_broadcaster = self._make_host_broadcaster(channels)
 
         messages = [
             "Context cleared. Starting fresh session.",
@@ -273,11 +265,7 @@ class TestHostMessageParity:
         for msg in messages:
             for ch in channels:
                 ch.clear()
-            with patch(
-                "pynchy.messaging.channel_handler.store_message_direct",
-                new_callable=AsyncMock,
-            ):
-                await broadcast_host_message(deps, CHAT_JID, msg)
+            await host_broadcaster.broadcast_host_message(CHAT_JID, msg)
 
             texts = {ch.name: ch.get_texts(CHAT_JID) for ch in channels}
             reference = texts[channels[0].name]
@@ -328,7 +316,6 @@ class TestReactionAndTypingParity:
 class TestAgentOutputParity:
     """Verify agent output messages reach all channels through handle_streamed_output."""
 
-
     def _make_output_deps(self, channels: list[RecordingChannel]) -> Any:
         """Create OutputDeps for handle_streamed_output."""
         from unittest.mock import MagicMock
@@ -349,9 +336,7 @@ class TestAgentOutputParity:
         """Agent result text should reach all channels (with prefix differences)."""
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
         deps = self._make_output_deps(channels)
-        group = RegisteredGroup(
-            name="Test", folder="test", trigger="@pynchy", added_at=""
-        )
+        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
 
         result = ContainerOutput(
             status="success",
@@ -382,9 +367,7 @@ class TestAgentOutputParity:
         """<host>...</host> wrapped results should get 🏠 prefix on all channels."""
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
         deps = self._make_output_deps(channels)
-        group = RegisteredGroup(
-            name="Test", folder="test", trigger="@pynchy", added_at=""
-        )
+        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
 
         result = ContainerOutput(
             status="success",
@@ -401,9 +384,7 @@ class TestAgentOutputParity:
         # All channels should receive house-emoji prefixed message
         for ch in channels:
             texts = ch.get_texts()
-            assert any("🏠" in t for t in texts), (
-                f"{ch.name} missing 🏠 prefix for host message"
-            )
+            assert any("🏠" in t for t in texts), f"{ch.name} missing 🏠 prefix for host message"
             assert any("Context cleared" in t for t in texts), (
                 f"{ch.name} missing host message content"
             )
@@ -411,7 +392,7 @@ class TestAgentOutputParity:
         # The actual text should be identical since host messages don't get
         # assistant name prefix — they use 🏠 prefix for all channels
         all_texts = [ch.get_texts() for ch in channels]
-        for i, ch in enumerate(channels):
+        for i, _ch in enumerate(channels):
             assert all_texts[i] == all_texts[0], (
                 f"Host message text differs: {ch.name}={all_texts[i]} vs "
                 f"{channels[0].name}={all_texts[0]}"
@@ -421,9 +402,7 @@ class TestAgentOutputParity:
         """Thinking trace events should broadcast consistently."""
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
         deps = self._make_output_deps(channels)
-        group = RegisteredGroup(
-            name="Test", folder="test", trigger="@pynchy", added_at=""
-        )
+        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
 
         result = ContainerOutput(
             status="success",
@@ -445,7 +424,7 @@ class TestAgentOutputParity:
 
         # Text should be identical across channels
         all_texts = [ch.get_texts() for ch in channels]
-        for i, ch in enumerate(channels):
+        for i, _ch in enumerate(channels):
             assert all_texts[i] == all_texts[0], (
                 f"Thinking parity violation: {ch.name}={all_texts[i]} vs "
                 f"{channels[0].name}={all_texts[0]}"
@@ -455,9 +434,7 @@ class TestAgentOutputParity:
         """Tool use trace events should broadcast consistently."""
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
         deps = self._make_output_deps(channels)
-        group = RegisteredGroup(
-            name="Test", folder="test", trigger="@pynchy", added_at=""
-        )
+        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
 
         tool_uses = [
             ("Bash", {"command": "git status"}),
@@ -488,16 +465,14 @@ class TestAgentOutputParity:
             # All channels should get the tool preview
             for ch in channels:
                 texts = ch.get_texts()
-                assert len(texts) >= 1, (
-                    f"{ch.name} received no messages for {tool_name}"
-                )
+                assert len(texts) >= 1, f"{ch.name} received no messages for {tool_name}"
                 assert any("🔧" in t for t in texts), (
                     f"{ch.name} missing wrench emoji for {tool_name}"
                 )
 
             # Text should be identical across channels
             all_texts = [ch.get_texts() for ch in channels]
-            for i, ch in enumerate(channels):
+            for i, _ch in enumerate(channels):
                 assert all_texts[i] == all_texts[0], (
                     f"Tool use parity violation for {tool_name}: "
                     f"{ch.name}={all_texts[i]} vs "
@@ -508,9 +483,7 @@ class TestAgentOutputParity:
         """Tool result trace events should broadcast consistently."""
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
         deps = self._make_output_deps(channels)
-        group = RegisteredGroup(
-            name="Test", folder="test", trigger="@pynchy", added_at=""
-        )
+        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
 
         result = ContainerOutput(
             status="success",
@@ -532,19 +505,16 @@ class TestAgentOutputParity:
 
         # Text should be identical
         all_texts = [ch.get_texts() for ch in channels]
-        for i, ch in enumerate(channels):
+        for i, _ch in enumerate(channels):
             assert all_texts[i] == all_texts[0], (
-                f"Tool result parity: {ch.name}={all_texts[i]} vs "
-                f"{channels[0].name}={all_texts[0]}"
+                f"Tool result parity: {ch.name}={all_texts[i]} vs {channels[0].name}={all_texts[0]}"
             )
 
     async def test_system_event_parity(self):
         """System events (non-init) should broadcast consistently."""
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
         deps = self._make_output_deps(channels)
-        group = RegisteredGroup(
-            name="Test", folder="test", trigger="@pynchy", added_at=""
-        )
+        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
 
         result = ContainerOutput(
             status="success",
@@ -559,12 +529,10 @@ class TestAgentOutputParity:
         # Non-init system events should reach channels
         for ch in channels:
             texts = ch.get_texts()
-            assert any("⚙️" in t for t in texts), (
-                f"{ch.name} missing gear emoji for system event"
-            )
+            assert any("⚙️" in t for t in texts), f"{ch.name} missing gear emoji for system event"
 
         all_texts = [ch.get_texts() for ch in channels]
-        for i, ch in enumerate(channels):
+        for i, _ch in enumerate(channels):
             assert all_texts[i] == all_texts[0], (
                 f"System event parity: {ch.name}={all_texts[i]} vs "
                 f"{channels[0].name}={all_texts[0]}"
@@ -574,9 +542,7 @@ class TestAgentOutputParity:
         """System init events should be suppressed from ALL channels equally."""
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
         deps = self._make_output_deps(channels)
-        group = RegisteredGroup(
-            name="Test", folder="test", trigger="@pynchy", added_at=""
-        )
+        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
 
         result = ContainerOutput(
             status="success",
@@ -631,7 +597,7 @@ class TestAgentInputBroadcastParity:
             assert "daily health check" in texts[0], f"{ch.name} missing content"
 
         all_texts = [ch.get_texts() for ch in channels]
-        for i, ch in enumerate(channels):
+        for i, _ch in enumerate(channels):
             assert all_texts[i] == all_texts[0], (
                 f"Scheduled task input parity: {ch.name}={all_texts[i]}"
             )
@@ -680,7 +646,7 @@ class TestAgentInputBroadcastParity:
             assert "Context Handoff" in texts[0]
 
         all_texts = [ch.get_texts() for ch in channels]
-        for i, ch in enumerate(channels):
+        for i, _ch in enumerate(channels):
             assert all_texts[i] == all_texts[0]
 
 
@@ -691,7 +657,6 @@ class TestAgentInputBroadcastParity:
 
 class TestFullTraceSequenceParity:
     """Simulate a complete agent interaction and verify parity across the full sequence."""
-
 
     async def test_complete_agent_interaction_parity(self):
         """Run a complete thinking → tool_use → tool_result → result sequence
@@ -708,14 +673,10 @@ class TestFullTraceSequenceParity:
         deps_mock.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps_mock.emit = lambda *a, **kw: None
 
-        group = RegisteredGroup(
-            name="Test", folder="test", trigger="@pynchy", added_at=""
-        )
+        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
 
         trace_sequence = [
-            ContainerOutput(
-                status="success", type="thinking", thinking="Let me check..."
-            ),
+            ContainerOutput(status="success", type="thinking", thinking="Let me check..."),
             ContainerOutput(
                 status="success",
                 type="tool_use",
@@ -742,7 +703,7 @@ class TestFullTraceSequenceParity:
             ),
             ContainerOutput(
                 status="success",
-                result="Here are the recent changes: the last 5 commits show a bug fix and a new feature.",
+                result="Recent changes: last 5 commits show a bug fix and a new feature.",
                 type="result",
                 new_session_id="s1",
             ),
@@ -803,9 +764,7 @@ class TestEdgeCaseParity:
         deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps.emit = lambda *a, **kw: None
 
-        group = RegisteredGroup(
-            name="Test", folder="test", trigger="@pynchy", added_at=""
-        )
+        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
 
         result = ContainerOutput(
             status="success",
@@ -823,12 +782,8 @@ class TestEdgeCaseParity:
         for ch in channels:
             texts = ch.get_texts()
             for text in texts:
-                assert "<internal>" not in text, (
-                    f"{ch.name} leaked internal tags: {text}"
-                )
-                assert "reasoning here" not in text, (
-                    f"{ch.name} leaked internal content: {text}"
-                )
+                assert "<internal>" not in text, f"{ch.name} leaked internal tags: {text}"
+                assert "reasoning here" not in text, f"{ch.name} leaked internal content: {text}"
 
     async def test_empty_result_parity(self):
         """Empty results should be handled the same across all channels."""
@@ -843,9 +798,7 @@ class TestEdgeCaseParity:
         deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps.emit = lambda *a, **kw: None
 
-        group = RegisteredGroup(
-            name="Test", folder="test", trigger="@pynchy", added_at=""
-        )
+        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
 
         result = ContainerOutput(
             status="success",
@@ -881,9 +834,7 @@ class TestEdgeCaseParity:
         deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps.emit = lambda *a, **kw: None
 
-        group = RegisteredGroup(
-            name="Test", folder="test", trigger="@pynchy", added_at=""
-        )
+        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
 
         result = ContainerOutput(
             status="success",
@@ -907,9 +858,7 @@ class TestEdgeCaseParity:
         for ch in channels:
             texts = ch.get_texts()
             meta_msgs = [t for t in texts if "📊" in t]
-            assert len(meta_msgs) == 1, (
-                f"{ch.name} got {len(meta_msgs)} metadata messages"
-            )
+            assert len(meta_msgs) == 1, f"{ch.name} got {len(meta_msgs)} metadata messages"
             assert "0.42 USD" in meta_msgs[0]
             assert "3.2s" in meta_msgs[0]
             assert "5 turns" in meta_msgs[0]
@@ -919,10 +868,9 @@ class TestEdgeCaseParity:
         for ch in channels:
             meta = [t for t in ch.get_texts() if "📊" in t]
             all_meta.append(meta)
-        for i, ch in enumerate(channels):
+        for i, _ch in enumerate(channels):
             assert all_meta[i] == all_meta[0], (
-                f"Metadata parity: {ch.name}={all_meta[i]} vs "
-                f"{channels[0].name}={all_meta[0]}"
+                f"Metadata parity: {ch.name}={all_meta[i]} vs {channels[0].name}={all_meta[0]}"
             )
 
     async def test_verbose_tool_result_parity(self):
@@ -938,9 +886,7 @@ class TestEdgeCaseParity:
         deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps.emit = lambda *a, **kw: None
 
-        group = RegisteredGroup(
-            name="Test", folder="test", trigger="@pynchy", added_at=""
-        )
+        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
 
         # First send a tool_use for ExitPlanMode to set up _last_tool_name
         tool_use = ContainerOutput(
@@ -981,7 +927,7 @@ class TestEdgeCaseParity:
 
         # Content should be identical across channels
         all_texts = [ch.get_texts() for ch in channels]
-        for i, ch in enumerate(channels):
+        for i, _ch in enumerate(channels):
             assert all_texts[i] == all_texts[0], (
                 f"Verbose tool result parity: {ch.name}={all_texts[i]}"
             )
