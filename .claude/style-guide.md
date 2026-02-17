@@ -37,6 +37,37 @@ Each file covers **one topic**. If a page grows to cover multiple concerns, spli
 - Prefer cross-linking over repeating information.
 - A file that requires scrolling through unrelated sections to find what you need is too big or too broad.
 
+## Usage Guide vs Architecture Guide
+
+User-facing features belong in the **usage guide** (`docs/usage/`), not the architecture guide. If a user needs to know about a subsystem to *use* Pynchy — how memory works, how scheduled tasks behave, what container mounts are available — document it in the usage guide.
+
+The **architecture guide** (`docs/architecture/`) is for internal design details that help developers and plugin authors understand *how* things work under the hood — message routing internals, IPC protocol, security boundaries.
+
+Rule of thumb: if the reader is a Pynchy *user*, it goes in usage. If the reader is building or debugging Pynchy internals or writing a plugin, it goes in architecture.
+
+## Document for a Pluggable System
+
+Everything in Pynchy is a plugin. Documentation should reflect this — no subsystem page should read as "this is how it works, period." Instead, frame each subsystem as "this is the **built-in** approach" and make it clear that alternatives can be swapped in via plugins.
+
+### Structure pages for extensibility
+
+- **Lead with the concept**, not the implementation. Explain *what* the subsystem does before describing *how* the built-in plugin does it.
+- **Use headings like "Built-in: \<plugin name\>"** when describing the default implementation, so it's visually clear this is one option, not the only option.
+- **Keep plugin-specific details in their own section** so a future alternative can be documented alongside without restructuring the page.
+- When listing capabilities, distinguish between what the *subsystem* guarantees (the hookspec contract) and what the *built-in plugin* provides.
+
+### Subsystem CTA
+
+Every page that documents a pluggable subsystem should end with a short call-to-action inviting users to customize it:
+
+```markdown
+---
+
+**Want to customize this?** Write your own plugin — see the [Plugin Authoring Guide](../plugins/index.md). Have an idea but don't want to build it? [Open a feature request](https://github.com/crypdick/pynchy/issues).
+```
+
+Adjust the relative link depth as needed. Keep the CTA brief — two sentences max.
+
 ## Doc-Code Coupling
 
 When a specific value in code is also documented (env var allowlists, blocked patterns,
