@@ -150,6 +150,48 @@ def get_project_access_folders(workspaces: dict[str, Any]) -> list[str]:
     return folders
 
 
+async def _ensure_aliases_for_all_groups(
+    registered_groups: dict[str, RegisteredGroup],
+    channels: list[Channel],
+    register_alias_fn: Callable[[str, str, str], Awaitable[None]],
+    get_channel_jid_fn: Callable[[str, str], str | None] | None = None,
+) -> None:
+    """Create missing channel aliases for every registered group.
+
+    Groups created via channel auto-registration (e.g. a new WhatsApp group)
+    won't have aliases on other channels like Slack. This fills the gaps.
+    """
+    created = 0
+    for jid, group in registered_groups.items():
+        for ch in channels:
+            if not hasattr(ch, "create_group"):
+                continue
+            if ch.owns_jid(jid):
+                continue
+            if get_channel_jid_fn and get_channel_jid_fn(jid, ch.name):
+                continue
+            try:
+                alias_jid = await ch.create_group(group.name)
+                await register_alias_fn(alias_jid, jid, ch.name)
+                created += 1
+                logger.info(
+                    "Created alias for registered group",
+                    channel=ch.name,
+                    alias_jid=alias_jid,
+                    canonical_jid=jid,
+                    folder=group.folder,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to create alias for registered group",
+                    channel=ch.name,
+                    folder=group.folder,
+                    err=str(exc),
+                )
+    if created:
+        logger.info("Created missing channel aliases", count=created)
+
+
 async def reconcile_workspaces(
     registered_groups: dict[str, RegisteredGroup],
     channels: list[Channel],
@@ -308,3 +350,11 @@ async def reconcile_workspaces(
 
     if reconciled:
         logger.info("Workspaces reconciled", count=reconciled)
+
+    # Ensure aliases exist for ALL registered groups, not just config-defined ones.
+    # Groups created via channel auto-registration (e.g. WhatsApp) won't appear
+    # in _workspace_specs() but still need aliases on other channels.
+    if register_alias_fn:
+        await _ensure_aliases_for_all_groups(
+            registered_groups, channels, register_alias_fn, get_channel_jid_fn
+        )

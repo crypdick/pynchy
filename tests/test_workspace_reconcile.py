@@ -17,7 +17,10 @@ from conftest import make_settings
 from pynchy.config import WorkspaceConfig
 from pynchy.db import _init_test_database, create_task, get_active_task_for_group, get_all_tasks
 from pynchy.types import RegisteredGroup
-from pynchy.workspace_config import configure_plugin_workspaces, reconcile_workspaces
+from pynchy.workspace_config import (
+    configure_plugin_workspaces,
+    reconcile_workspaces,
+)
 
 
 def _write_workspace_yaml(workspaces, folder_name, data):
@@ -395,3 +398,74 @@ class TestReconcileWorkspaces:
         assert tasks[0].project_access is True
         claude_path = tmp_path / "groups" / "code-improver" / "CLAUDE.md"
         assert claude_path.exists()
+
+    async def test_creates_aliases_for_groups_not_in_config(self, db, groups_dir):
+        """Groups created via channel auto-registration should get aliases on other channels."""
+        # Group exists in DB (created via WhatsApp) but NOT in config.toml
+        registered = {
+            "120363@g.us": RegisteredGroup(
+                name="Admin",
+                folder="admin",
+                trigger="@Pynchy",
+                added_at=datetime.now(UTC).isoformat(),
+                is_god=True,
+            ),
+        }
+
+        # Slack-like channel that supports create_group
+        slack_channel = AsyncMock()
+        slack_channel.name = "slack"
+        slack_channel.create_group = AsyncMock(return_value="slack:C123")
+        slack_channel.owns_jid = lambda jid: jid.startswith("slack:")
+
+        register_fn = AsyncMock()
+        register_alias_fn = AsyncMock()
+
+        def get_channel_jid_fn(jid, ch_name):  # No aliases exist yet
+            return None
+
+        await reconcile_workspaces(
+            registered,
+            [slack_channel],
+            register_fn,
+            register_alias_fn=register_alias_fn,
+            get_channel_jid_fn=get_channel_jid_fn,
+        )
+
+        # Should have created a Slack alias for the WhatsApp group
+        register_alias_fn.assert_called_once_with("slack:C123", "120363@g.us", "slack")
+        slack_channel.create_group.assert_called_once_with("Admin")
+
+    async def test_skips_alias_when_already_exists(self, db, groups_dir):
+        """Should not create duplicate aliases."""
+        registered = {
+            "120363@g.us": RegisteredGroup(
+                name="Admin",
+                folder="admin",
+                trigger="@Pynchy",
+                added_at=datetime.now(UTC).isoformat(),
+            ),
+        }
+
+        slack_channel = AsyncMock()
+        slack_channel.name = "slack"
+        slack_channel.create_group = AsyncMock(return_value="slack:C123")
+        slack_channel.owns_jid = lambda jid: jid.startswith("slack:")
+
+        register_fn = AsyncMock()
+        register_alias_fn = AsyncMock()
+
+        def get_channel_jid_fn(jid, ch_name):  # Alias already exists
+            return "slack:C_EXISTING" if ch_name == "slack" else None
+
+        await reconcile_workspaces(
+            registered,
+            [slack_channel],
+            register_fn,
+            register_alias_fn=register_alias_fn,
+            get_channel_jid_fn=get_channel_jid_fn,
+        )
+
+        # Should NOT have created any alias
+        register_alias_fn.assert_not_called()
+        slack_channel.create_group.assert_not_called()
