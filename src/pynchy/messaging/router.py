@@ -5,8 +5,6 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from pynchy.config import get_settings
-
 if TYPE_CHECKING:
     from pynchy.types import Channel, NewMessage
 
@@ -71,7 +69,7 @@ def format_outbound(channel: Channel, raw_text: str) -> str:
     if not text:
         return ""
     prefix_name = getattr(channel, "prefix_assistant_name", None)
-    prefix = f"{get_settings().agent.name}: " if prefix_name is not False else ""
+    prefix = "🦞 " if prefix_name is not False else ""
     return f"{prefix}{text}"
 
 

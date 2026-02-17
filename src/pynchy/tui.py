@@ -17,7 +17,7 @@ from textual.widgets import Footer, Header, Input, ListItem, ListView, RichLog, 
 class PynchyTUI(App):
     """Textual app that connects to a running pynchy HTTP server."""
 
-    TITLE = "pynchy"
+    TITLE = "🦞 pynchy"
 
     CSS = """
     #group-bar {
