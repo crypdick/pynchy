@@ -19,7 +19,7 @@ from pynchy.ipc._handlers_service import (
     clear_plugin_handler_cache,
     clear_policy_cache,
 )
-from pynchy.types import RegisteredGroup
+from pynchy.types import WorkspaceProfile
 
 
 @pytest.fixture(autouse=True)
@@ -32,14 +32,15 @@ async def _setup():
 class FakeDeps:
     """Minimal IpcDeps for testing."""
 
-    def __init__(self, groups: dict[str, RegisteredGroup] | None = None):
+    def __init__(self, groups: dict[str, WorkspaceProfile] | None = None):
         self._groups = groups or {}
 
-    def registered_groups(self) -> dict[str, RegisteredGroup]:
+    def registered_groups(self) -> dict[str, WorkspaceProfile]:
         return self._groups
 
 
-TEST_GROUP = RegisteredGroup(
+TEST_GROUP = WorkspaceProfile(
+    jid="test@g.us",
     name="Test",
     folder="test-ws",
     trigger="@Pynchy",

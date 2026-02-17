@@ -12,7 +12,6 @@ from pynchy.db import (
     delete_task,
     get_active_task_for_group,
     get_all_chats,
-    get_all_registered_groups,
     get_all_sessions,
     get_all_tasks,
     get_all_workspace_profiles,
@@ -21,7 +20,6 @@ from pynchy.db import (
     get_host_job_by_id,
     get_messages_since,
     get_new_messages,
-    get_registered_group,
     get_router_state,
     get_session,
     get_task_by_id,
@@ -29,7 +27,6 @@ from pynchy.db import (
     get_workspace_profile,
     log_task_run,
     set_chat_cleared_at,
-    set_registered_group,
     set_router_state,
     set_session,
     set_workspace_profile,
@@ -42,10 +39,8 @@ from pynchy.db import (
     update_task_after_run,
 )
 from pynchy.types import (
-    ContainerConfig,
     McpToolConfig,
     NewMessage,
-    RegisteredGroup,
     TaskRunLog,
     WorkspaceProfile,
     WorkspaceSecurity,
@@ -833,101 +828,6 @@ class TestTaskAdvanced:
         assert task.project_access is False
 
 
-# --- Registered groups ---
-
-
-class TestRegisteredGroups:
-    async def test_set_and_get_registered_group(self):
-        group = RegisteredGroup(
-            name="Test Group",
-            folder="test-group",
-            trigger="@Test",
-            added_at="2024-01-01T00:00:00Z",
-        )
-        await set_registered_group("test-jid@g.us", group)
-
-        result = await get_registered_group("test-jid@g.us")
-        assert result is not None
-        assert result["name"] == "Test Group"
-        assert result["folder"] == "test-group"
-        assert result["trigger"] == "@Test"
-
-    async def test_get_registered_group_returns_none(self):
-        result = await get_registered_group("nonexistent@g.us")
-        assert result is None
-
-    async def test_registered_group_with_container_config(self):
-        group = RegisteredGroup(
-            name="Configured Group",
-            folder="configured",
-            trigger="@Bot",
-            added_at="2024-01-01T00:00:00Z",
-            container_config=ContainerConfig(timeout=600.0),
-        )
-        await set_registered_group("config-jid@g.us", group)
-
-        result = await get_registered_group("config-jid@g.us")
-        assert result is not None
-        assert result["container_config"] is not None
-        assert result["container_config"]["timeout"] == 600.0
-
-    async def test_get_all_registered_groups(self):
-        for i in range(3):
-            group = RegisteredGroup(
-                name=f"Group {i}",
-                folder=f"group-{i}",
-                trigger=f"@G{i}",
-                added_at="2024-01-01T00:00:00Z",
-            )
-            await set_registered_group(f"jid-{i}@g.us", group)
-
-        groups = await get_all_registered_groups()
-        assert len(groups) == 3
-        assert all(isinstance(g, RegisteredGroup) for g in groups.values())
-
-    async def test_registered_group_is_god_flag(self):
-        group = RegisteredGroup(
-            name="God Group",
-            folder="god",
-            trigger="@Pynchy",
-            added_at="2024-01-01T00:00:00Z",
-            is_god=True,
-        )
-        await set_registered_group("god@g.us", group)
-
-        result = await get_registered_group("god@g.us")
-        assert result is not None
-        assert result["is_god"] is True
-
-    async def test_registered_group_requires_trigger(self):
-        # Default (None) → stored as 1 (True)
-        group = RegisteredGroup(
-            name="Default",
-            folder="default",
-            trigger="@Bot",
-            added_at="2024-01-01T00:00:00Z",
-            requires_trigger=None,
-        )
-        await set_registered_group("default@g.us", group)
-        result = await get_registered_group("default@g.us")
-        assert result is not None
-        # None → stored as 1 → True
-        assert result["requires_trigger"] is True
-
-        # Explicit False
-        group2 = RegisteredGroup(
-            name="NoTrigger",
-            folder="no-trigger",
-            trigger="@Bot",
-            added_at="2024-01-01T00:00:00Z",
-            requires_trigger=False,
-        )
-        await set_registered_group("notrig@g.us", group2)
-        result2 = await get_registered_group("notrig@g.us")
-        assert result2 is not None
-        assert result2["requires_trigger"] is False
-
-
 # --- Workspace profiles ---
 
 
@@ -1024,13 +924,14 @@ class TestWorkspaceProfiles:
 
     async def test_workspace_profile_defaults_security_on_missing(self):
         """If security_profile column is NULL, defaults are used."""
-        group = RegisteredGroup(
+        profile = WorkspaceProfile(
+            jid="legacy@g.us",
             name="Legacy",
             folder="legacy",
             trigger="@Legacy",
             added_at="2024-01-01T00:00:00Z",
         )
-        await set_registered_group("legacy@g.us", group)
+        await set_workspace_profile(profile)
 
         # get_workspace_profile reads from the same table
         result = await get_workspace_profile("legacy@g.us")

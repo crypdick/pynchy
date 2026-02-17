@@ -9,7 +9,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pynchy.logger import logger
-from pynchy.tunnels.plugins import tailscale  # noqa: F401
 
 if TYPE_CHECKING:
     import pluggy

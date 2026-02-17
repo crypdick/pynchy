@@ -17,7 +17,7 @@ from pynchy.utils import create_background_task, generate_message_id
 if TYPE_CHECKING:
     from pynchy.event_bus import EventBus
     from pynchy.group_queue import GroupQueue
-    from pynchy.types import Channel, NewMessage, RegisteredGroup
+    from pynchy.types import Channel, NewMessage, WorkspaceProfile
 
 # Type aliases for callback signatures used across adapters
 StoreMessageFn = Callable[..., Awaitable[None]]
@@ -191,7 +191,7 @@ class HostMessageBroadcaster:
         )
 
 
-def find_god_jid(groups: dict[str, RegisteredGroup]) -> str:
+def find_god_jid(groups: dict[str, WorkspaceProfile]) -> str:
     """Find the JID of the god group from a groups dict.
 
     Returns the first god group's JID, or empty string if none found.
@@ -207,10 +207,10 @@ def find_god_jid(groups: dict[str, RegisteredGroup]) -> str:
 class GroupRegistry:
     """Manages registered group lookup and metadata."""
 
-    def __init__(self, groups_dict: dict[str, RegisteredGroup]) -> None:
+    def __init__(self, groups_dict: dict[str, WorkspaceProfile]) -> None:
         self._groups = groups_dict
 
-    def registered_groups(self) -> dict[str, RegisteredGroup]:
+    def registered_groups(self) -> dict[str, WorkspaceProfile]:
         """Return all registered groups."""
         return self._groups
 
@@ -230,11 +230,7 @@ class SessionManager:
         self._sessions = sessions_dict
         self._session_cleared = session_cleared_set
 
-    def get_sessions(self) -> dict[str, str]:
-        """Return all active sessions."""
-        return self._sessions
-
-    def get_active_sessions(self, groups: dict[str, RegisteredGroup]) -> dict[str, str]:
+    def get_active_sessions(self, groups: dict[str, WorkspaceProfile]) -> dict[str, str]:
         """Build a {chat_jid: session_id} map from sessions and registered groups.
 
         ``self._sessions`` is keyed by group folder. This helper joins with the
@@ -359,7 +355,7 @@ class GroupMetadataManager:
 
     def __init__(
         self,
-        groups_dict: dict[str, RegisteredGroup],
+        groups_dict: dict[str, WorkspaceProfile],
         channels: list[Channel],
         get_available_groups_fn: Callable[[], Awaitable[list[dict[str, Any]]]],
     ) -> None:
@@ -393,7 +389,7 @@ class GroupMetadataManager:
 class PeriodicAgentManager:
     """Manages periodic agent configuration queries."""
 
-    def __init__(self, groups_dict: dict[str, RegisteredGroup]) -> None:
+    def __init__(self, groups_dict: dict[str, WorkspaceProfile]) -> None:
         self._groups = groups_dict
 
     async def get_periodic_agents(self) -> list[dict[str, Any]]:
@@ -458,23 +454,23 @@ class GroupRegistrationManager:
 
     def __init__(
         self,
-        groups_dict: dict[str, RegisteredGroup],
-        register_group_fn: Callable[..., Awaitable[None]],
+        groups_dict: dict[str, WorkspaceProfile],
+        register_workspace_fn: Callable[..., Awaitable[None]],
         send_clear_confirmation_fn: Callable[[str], Awaitable[None]],
     ) -> None:
         self._groups = groups_dict
-        self._register_group = register_group_fn
+        self._register_workspace = register_workspace_fn
         self._send_clear_confirmation = send_clear_confirmation_fn
 
-    def registered_groups(self) -> dict[str, RegisteredGroup]:
+    def registered_groups(self) -> dict[str, WorkspaceProfile]:
         """Return all registered groups."""
         return self._groups
 
-    def register_group(self, jid: str, group: RegisteredGroup) -> None:
-        """Register a new group (async operation scheduled)."""
+    def register_workspace(self, profile: WorkspaceProfile) -> None:
+        """Register a new workspace (async operation scheduled)."""
         create_background_task(
-            self._register_group(jid, group),
-            name=f"register-group-{group.folder}",
+            self._register_workspace(profile),
+            name=f"register-workspace-{profile.folder}",
         )
 
     async def clear_chat_history(self, chat_jid: str) -> None:

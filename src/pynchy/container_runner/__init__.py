@@ -15,88 +15,25 @@ This package is split into focused submodules:
   _orchestrator   — Main entry point (run_container_agent) and agent core resolution
 """
 
-# Re-export every public symbol so that `from pynchy.container_runner import X` keeps working.
+# Re-export public API so that `from pynchy.container_runner import X` keeps working.
+# Private helpers (_xxx) should be imported from their submodules directly.
 
-from pynchy.container_runner._credentials import (
-    _read_gh_token,
-    _read_git_identity,
-    _read_oauth_from_keychain,
-    _read_oauth_token,
-    _shell_quote,
-    _write_env_file,
-)
-from pynchy.container_runner._logging import (
-    RunContext,
-    _parse_final_output,
-    _write_run_log,
-)
-from pynchy.container_runner._mounts import (
-    _build_container_args,
-    _build_volume_mounts,
-)
-from pynchy.container_runner._orchestrator import (
-    OnOutput,
-    OnProcess,
-    _collect_plugin_mcp_specs,
-    _determine_result,
-    resolve_agent_core,
-)
-from pynchy.container_runner._process import (
-    StreamState,
-    _graceful_stop,
-    read_stderr,
-    read_stdout,
-)
-from pynchy.container_runner._serialization import (
-    _input_to_dict,
-    _parse_container_output,
-)
-from pynchy.container_runner._session_prep import (
-    _is_skill_selected,
-    _parse_skill_tier,
-    _sync_skills,
-    _write_settings_json,
-)
-from pynchy.container_runner._snapshots import (
-    write_groups_snapshot,
-    write_tasks_snapshot,
-)
+from pynchy.container_runner._credentials import _write_env_file
+from pynchy.container_runner._logging import RunContext
+from pynchy.container_runner._orchestrator import OnOutput, OnProcess, resolve_agent_core
+from pynchy.container_runner._process import StreamState, _graceful_stop, read_stderr, read_stdout
+from pynchy.container_runner._snapshots import write_groups_snapshot, write_tasks_snapshot
 
 __all__ = [
-    # credentials
-    "_read_gh_token",
-    "_read_git_identity",
-    "_read_oauth_from_keychain",
-    "_read_oauth_token",
-    "_shell_quote",
-    "_write_env_file",
-    # logging
-    "RunContext",
-    "_parse_final_output",
-    "_write_run_log",
-    # mounts
-    "_build_container_args",
-    "_build_volume_mounts",
-    # orchestrator
     "OnOutput",
     "OnProcess",
-    "_collect_plugin_mcp_specs",
-    "_determine_result",
-    "resolve_agent_core",
-    # process
+    "RunContext",
     "StreamState",
     "_graceful_stop",
+    "_write_env_file",
     "read_stderr",
     "read_stdout",
-    # serialization
-    "_input_to_dict",
-    "_parse_container_output",
-    # session_prep
-    "_is_skill_selected",
-    "_parse_skill_tier",
-    "_sync_skills",
-    "_write_settings_json",
-    # snapshots
+    "resolve_agent_core",
     "write_groups_snapshot",
     "write_tasks_snapshot",
 ]

@@ -15,39 +15,41 @@ from conftest import make_settings
 from pydantic import SecretStr
 
 from pynchy.config import GatewayConfig, Settings
-from pynchy.container_runner import (
-    StreamState,
-    _build_container_args,
-    _build_volume_mounts,
-    _determine_result,
-    _input_to_dict,
-    _is_skill_selected,
-    _parse_container_output,
-    _parse_final_output,
-    _parse_skill_tier,
+from pynchy.container_runner._credentials import (
     _read_gh_token,
     _read_git_identity,
     _read_oauth_token,
     _shell_quote,
-    _sync_skills,
     _write_env_file,
-    _write_settings_json,
-    resolve_agent_core,
-    write_groups_snapshot,
-    write_tasks_snapshot,
 )
-from pynchy.container_runner._orchestrator import run_container_agent
+from pynchy.container_runner._logging import _parse_final_output
+from pynchy.container_runner._mounts import _build_container_args, _build_volume_mounts
+from pynchy.container_runner._orchestrator import (
+    _determine_result,
+    resolve_agent_core,
+    run_container_agent,
+)
+from pynchy.container_runner._process import StreamState
+from pynchy.container_runner._serialization import _input_to_dict, _parse_container_output
+from pynchy.container_runner._session_prep import (
+    _is_skill_selected,
+    _parse_skill_tier,
+    _sync_skills,
+    _write_settings_json,
+)
+from pynchy.container_runner._snapshots import write_groups_snapshot, write_tasks_snapshot
 from pynchy.types import (
     ContainerInput,
-    RegisteredGroup,
     VolumeMount,
+    WorkspaceProfile,
 )
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-TEST_GROUP = RegisteredGroup(
+TEST_GROUP = WorkspaceProfile(
+    jid="test@g.us",
     name="Test Group",
     folder="test-group",
     trigger="@pynchy",
@@ -318,8 +320,8 @@ class TestMountBuilding:
             _patch_settings(tmp_path),
         ):
             (tmp_path / "groups" / "god").mkdir(parents=True)
-            group = RegisteredGroup(
-                name="God", folder="god", trigger="always", added_at="2024-01-01"
+            group = WorkspaceProfile(
+                jid="god@g.us", name="God", folder="god", trigger="always", added_at="2024-01-01"
             )
             mounts = _build_volume_mounts(
                 group, is_god=True, project_access=True, worktree_path=worktree_path
@@ -337,8 +339,12 @@ class TestMountBuilding:
         ):
             (tmp_path / "groups" / "other").mkdir(parents=True)
             (tmp_path / "groups" / "global").mkdir(parents=True)
-            group = RegisteredGroup(
-                name="Other", folder="other", trigger="@pynchy", added_at="2024-01-01"
+            group = WorkspaceProfile(
+                jid="other@g.us",
+                name="Other",
+                folder="other",
+                trigger="@pynchy",
+                added_at="2024-01-01",
             )
             mounts = _build_volume_mounts(group, is_god=False)
 
@@ -360,7 +366,8 @@ class TestMountBuilding:
             _patch_settings(tmp_path),
         ):
             (tmp_path / "groups" / "code-improver").mkdir(parents=True)
-            group = RegisteredGroup(
+            group = WorkspaceProfile(
+                jid="code-improver@g.us",
                 name="Code Improver",
                 folder="code-improver",
                 trigger="@pynchy",
@@ -386,8 +393,8 @@ class TestMountBuilding:
             _patch_settings(tmp_path),
         ):
             (tmp_path / "groups" / "god").mkdir(parents=True)
-            group = RegisteredGroup(
-                name="God", folder="god", trigger="always", added_at="2024-01-01"
+            group = WorkspaceProfile(
+                jid="god@g.us", name="God", folder="god", trigger="always", added_at="2024-01-01"
             )
             mounts = _build_volume_mounts(
                 group, is_god=True, project_access=True, worktree_path=worktree_path
@@ -402,8 +409,8 @@ class TestMountBuilding:
         with _patch_settings(tmp_path):
             (tmp_path / "groups" / "god").mkdir(parents=True)
             (tmp_path / "config.toml").write_text("[agent]\nname = 'pynchy'\n")
-            group = RegisteredGroup(
-                name="God", folder="god", trigger="always", added_at="2024-01-01"
+            group = WorkspaceProfile(
+                jid="god@g.us", name="God", folder="god", trigger="always", added_at="2024-01-01"
             )
             mounts = _build_volume_mounts(group, is_god=True)
 
@@ -418,8 +425,12 @@ class TestMountBuilding:
         with _patch_settings(tmp_path):
             (tmp_path / "groups" / "other").mkdir(parents=True)
             (tmp_path / "config.toml").write_text("[agent]\nname = 'pynchy'\n")
-            group = RegisteredGroup(
-                name="Other", folder="other", trigger="@pynchy", added_at="2024-01-01"
+            group = WorkspaceProfile(
+                jid="other@g.us",
+                name="Other",
+                folder="other",
+                trigger="@pynchy",
+                added_at="2024-01-01",
             )
             mounts = _build_volume_mounts(group, is_god=False)
 
@@ -430,8 +441,8 @@ class TestMountBuilding:
         """God group doesn't get config.toml mount if the file doesn't exist."""
         with _patch_settings(tmp_path):
             (tmp_path / "groups" / "god").mkdir(parents=True)
-            group = RegisteredGroup(
-                name="God", folder="god", trigger="always", added_at="2024-01-01"
+            group = WorkspaceProfile(
+                jid="god@g.us", name="God", folder="god", trigger="always", added_at="2024-01-01"
             )
             mounts = _build_volume_mounts(group, is_god=True)
 

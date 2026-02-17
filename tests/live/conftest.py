@@ -21,7 +21,7 @@ from pynchy.app import PynchyApp
 from pynchy.config import Settings
 from pynchy.db import _init_test_database
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
-from pynchy.types import NewMessage, RegisteredGroup
+from pynchy.types import NewMessage, WorkspaceProfile
 
 # ---------------------------------------------------------------------------
 # Channel stubs — each mimics the real channel's protocol surface
@@ -275,8 +275,9 @@ async def live_app(tmp_path: Path) -> PynchyApp:
     """Create a PynchyApp configured for live testing."""
     await _init_test_database()
     app = PynchyApp()
-    app.registered_groups = {
-        "group@g.us": RegisteredGroup(
+    app.workspaces = {
+        "group@g.us": WorkspaceProfile(
+            jid="group@g.us",
             name="Test Group",
             folder="test-group",
             trigger="@pynchy",

@@ -24,14 +24,14 @@ from pynchy.db import (
 )
 from pynchy.group_queue import GroupQueue
 from pynchy.logger import logger
-from pynchy.types import ContainerOutput, RegisteredGroup, ScheduledTask, TaskRunLog
+from pynchy.types import ContainerOutput, ScheduledTask, TaskRunLog, WorkspaceProfile
 from pynchy.utils import IdleTimer, compute_next_run
 
 
 class SchedulerDependencies(Protocol):
     """Dependencies for the task scheduler."""
 
-    def registered_groups(self) -> dict[str, RegisteredGroup]: ...
+    def registered_groups(self) -> dict[str, WorkspaceProfile]: ...
 
     @property
     def queue(self) -> GroupQueue: ...
@@ -40,7 +40,7 @@ class SchedulerDependencies(Protocol):
 
     async def run_agent(
         self,
-        group: RegisteredGroup,
+        group: WorkspaceProfile,
         chat_jid: str,
         messages: list[dict],
         on_output: Any | None = None,
@@ -52,7 +52,7 @@ class SchedulerDependencies(Protocol):
     ) -> str: ...
 
     async def handle_streamed_output(
-        self, chat_jid: str, group: RegisteredGroup, result: ContainerOutput
+        self, chat_jid: str, group: WorkspaceProfile, result: ContainerOutput
     ) -> bool: ...
 
 

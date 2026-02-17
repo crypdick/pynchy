@@ -17,7 +17,7 @@ from pynchy.git_ops.utils import get_head_sha
 from pynchy.ipc._deps import IpcDeps
 from pynchy.ipc._registry import register
 from pynchy.logger import logger
-from pynchy.types import RegisteredGroup
+from pynchy.types import WorkspaceProfile
 
 
 async def _handle_reset_context(
@@ -126,7 +126,7 @@ async def _handle_sync_worktree_to_main(
             async def broadcast_system_notice(self, jid: str, text: str) -> None:
                 await deps.broadcast_system_notice(jid, text)
 
-            def registered_groups(self) -> dict[str, RegisteredGroup]:
+            def registered_groups(self) -> dict[str, WorkspaceProfile]:
                 return deps.registered_groups()
 
             async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:

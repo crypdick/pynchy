@@ -16,13 +16,13 @@ from conftest import make_settings
 from pynchy.db import _init_test_database, get_all_tasks
 from pynchy.ipc import dispatch
 from pynchy.ipc._watcher import _move_to_error_dir
-from pynchy.types import RegisteredGroup
+from pynchy.types import WorkspaceProfile
 
 
 class MockDeps:
     """Mock IPC dependencies."""
 
-    def __init__(self, groups: dict[str, RegisteredGroup] | None = None):
+    def __init__(self, groups: dict[str, WorkspaceProfile] | None = None):
         self._groups = groups or {}
         self.broadcast_messages: list[tuple[str, str]] = []
         self.host_messages: list[tuple[str, str]] = []
@@ -41,11 +41,11 @@ class MockDeps:
     async def broadcast_system_notice(self, jid: str, text: str) -> None:
         self.system_notices.append((jid, text))
 
-    def registered_groups(self) -> dict[str, RegisteredGroup]:
+    def registered_groups(self) -> dict[str, WorkspaceProfile]:
         return self._groups
 
-    def register_group(self, jid: str, group: RegisteredGroup) -> None:
-        self._groups[jid] = group
+    def register_workspace(self, profile: WorkspaceProfile) -> None:
+        self._groups[profile.jid] = profile
 
     async def sync_group_metadata(self, force: bool) -> None:
         pass
@@ -80,7 +80,8 @@ async def deps():
     await _init_test_database()
     return MockDeps(
         {
-            "god@g.us": RegisteredGroup(
+            "god@g.us": WorkspaceProfile(
+                jid="god@g.us",
                 name="God",
                 folder="god",
                 trigger="always",

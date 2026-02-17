@@ -1,10 +1,8 @@
 """Tests for WorkspaceProfile and workspace security features (Phase B.1)."""
 
 from pynchy.types import (
-    ContainerConfig,
     McpToolConfig,
     RateLimitConfig,
-    RegisteredGroup,
     WorkspaceProfile,
     WorkspaceSecurity,
 )
@@ -191,85 +189,6 @@ def test_workspace_profile_validation_multiple_errors():
 
     errors = profile.validate()
     assert len(errors) == 4  # name, folder, tool1 tier, default tier
-
-
-def test_workspace_profile_from_registered_group():
-    """Test migration from RegisteredGroup to WorkspaceProfile."""
-    rg = RegisteredGroup(
-        name="Old Group",
-        folder="old-group",
-        trigger="@Bot",
-        added_at="2024-01-01T00:00:00Z",
-        requires_trigger=False,
-        container_config=ContainerConfig(timeout=600.0),
-    )
-
-    profile = WorkspaceProfile.from_registered_group("12345@g.us", rg)
-
-    assert profile.jid == "12345@g.us"
-    assert profile.name == "Old Group"
-    assert profile.folder == "old-group"
-    assert profile.trigger == "@Bot"
-    assert profile.requires_trigger is False
-    assert profile.added_at == "2024-01-01T00:00:00Z"
-    assert profile.container_config is not None
-    assert profile.container_config.timeout == 600.0
-    # Default security should be applied
-    assert isinstance(profile.security, WorkspaceSecurity)
-    assert profile.security.default_risk_tier == "human-approval"
-
-
-def test_workspace_profile_to_registered_group():
-    """Test conversion from WorkspaceProfile to RegisteredGroup (backward compat)."""
-    profile = WorkspaceProfile(
-        jid="12345@g.us",
-        name="New Workspace",
-        folder="new-workspace",
-        trigger="@Pynchy",
-        requires_trigger=True,
-        added_at="2024-01-01T00:00:00Z",
-        container_config=ContainerConfig(timeout=300.0),
-        security=WorkspaceSecurity(
-            mcp_tools={
-                "read_email": McpToolConfig(risk_tier="always-approve"),
-            }
-        ),
-    )
-
-    rg = profile.to_registered_group()
-
-    assert rg.name == "New Workspace"
-    assert rg.folder == "new-workspace"
-    assert rg.trigger == "@Pynchy"
-    assert rg.requires_trigger is True
-    assert rg.added_at == "2024-01-01T00:00:00Z"
-    assert rg.container_config is not None
-    assert rg.container_config.timeout == 300.0
-    # Security info is lost in conversion (expected)
-
-
-def test_workspace_profile_roundtrip():
-    """Test RegisteredGroup -> WorkspaceProfile -> RegisteredGroup roundtrip."""
-    original_rg = RegisteredGroup(
-        name="Test Group",
-        folder="test-group",
-        trigger="@Bot",
-        added_at="2024-01-01T00:00:00Z",
-        requires_trigger=True,
-    )
-
-    # Convert to WorkspaceProfile
-    profile = WorkspaceProfile.from_registered_group("12345@g.us", original_rg)
-
-    # Convert back to RegisteredGroup
-    final_rg = profile.to_registered_group()
-
-    # Should match original (except security is not preserved)
-    assert final_rg.name == original_rg.name
-    assert final_rg.folder == original_rg.folder
-    assert final_rg.trigger == original_rg.trigger
-    assert final_rg.added_at == original_rg.added_at
-    assert final_rg.requires_trigger == original_rg.requires_trigger
 
 
 def test_workspace_security_with_mixed_tool_states():

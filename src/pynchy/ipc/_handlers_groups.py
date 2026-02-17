@@ -13,7 +13,7 @@ from pynchy.db import create_task
 from pynchy.ipc._deps import IpcDeps
 from pynchy.ipc._registry import register
 from pynchy.logger import logger
-from pynchy.types import ContainerConfig, RegisteredGroup
+from pynchy.types import ContainerConfig, WorkspaceProfile
 from pynchy.utils import compute_next_run
 
 
@@ -36,9 +36,9 @@ async def _handle_register_group(
     trigger = data.get("trigger")
 
     if jid and name and folder and trigger:
-        deps.register_group(
-            jid,
-            RegisteredGroup(
+        deps.register_workspace(
+            WorkspaceProfile(
+                jid=jid,
                 name=name,
                 folder=folder,
                 trigger=trigger,
@@ -111,14 +111,15 @@ async def _handle_create_periodic_agent(
     agent_display_name = name.replace("-", " ").title()
     jid = await channel.create_group(agent_display_name)
 
-    group = RegisteredGroup(
+    profile = WorkspaceProfile(
+        jid=jid,
         name=agent_display_name,
         folder=name,
         trigger=f"@{s.agent.name}",
         added_at=datetime.now(UTC).isoformat(),
         requires_trigger=False,
     )
-    deps.register_group(jid, group)
+    deps.register_workspace(profile)
 
     next_run = compute_next_run("cron", schedule, s.timezone)
     task_id = f"periodic-{name}-{uuid.uuid4().hex[:8]}"

@@ -15,14 +15,14 @@ from zoneinfo import ZoneInfo
 
 from croniter import croniter
 
-from pynchy.config import WorkspaceConfig, add_workspace_to_toml, get_settings
+from pynchy.config import WorkspaceConfig, get_settings
 from pynchy.db import create_task, get_active_task_for_group, update_task
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
     import pluggy
 
-    from pynchy.types import Channel, RegisteredGroup
+    from pynchy.types import Channel, WorkspaceProfile
 
 
 @dataclass(frozen=True)
@@ -117,13 +117,7 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
     return config
 
 
-def write_workspace_config(group_folder: str, config: WorkspaceConfig) -> None:
-    """Write a workspace config to config.toml."""
-    add_workspace_to_toml(group_folder, config)
-    logger.debug("Wrote workspace config to config.toml", folder=group_folder)
-
-
-def has_project_access(group: RegisteredGroup) -> bool:
+def has_project_access(group: WorkspaceProfile) -> bool:
     """Check if a group has project_access (god groups always do)."""
     if group.is_god:
         return True
@@ -197,7 +191,7 @@ async def create_channel_aliases(
 
 
 async def _ensure_aliases_for_all_groups(
-    registered_groups: dict[str, RegisteredGroup],
+    registered_groups: dict[str, WorkspaceProfile],
     channels: list[Channel],
     register_alias_fn: Callable[[str, str, str], Awaitable[None]],
     get_channel_jid_fn: Callable[[str, str], str | None] | None = None,
@@ -217,9 +211,9 @@ async def _ensure_aliases_for_all_groups(
 
 
 async def reconcile_workspaces(
-    registered_groups: dict[str, RegisteredGroup],
+    registered_groups: dict[str, WorkspaceProfile],
     channels: list[Channel],
-    register_fn: Callable[[str, RegisteredGroup], Awaitable[None]],
+    register_fn: Callable[[WorkspaceProfile], Awaitable[None]],
     register_alias_fn: Callable[[str, str, str], Awaitable[None]] | None = None,
     get_channel_jid_fn: Callable[[str, str], str | None] | None = None,
 ) -> None:
@@ -229,7 +223,7 @@ async def reconcile_workspaces(
     any workspace with no DB entry, and manages scheduled tasks for periodic agents.
     Also creates JID aliases on channels that didn't create the primary JID.
     """
-    from pynchy.types import RegisteredGroup as RG
+    from pynchy.types import WorkspaceProfile
 
     s = get_settings()
     specs = _workspace_specs()
@@ -270,7 +264,8 @@ async def reconcile_workspaces(
                 continue
 
             jid = await channel.create_group(display_name)
-            group = RG(
+            profile = WorkspaceProfile(
+                jid=jid,
                 name=display_name,
                 folder=folder,
                 trigger=f"@{s.agent.name}",
@@ -278,7 +273,7 @@ async def reconcile_workspaces(
                 requires_trigger=requires_trigger,
                 is_god=config.is_god,
             )
-            await register_fn(jid, group)
+            await register_fn(profile)
             folder_to_jid[folder] = jid
             logger.info(
                 "Created chat group for workspace",

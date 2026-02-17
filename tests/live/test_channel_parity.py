@@ -22,8 +22,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from pynchy.adapters import HostMessageBroadcaster, MessageBroadcaster
+from pynchy.chat.bus import broadcast as broadcast_to_channels
 from pynchy.chat.channel_handler import (
-    broadcast_to_channels,
     send_reaction_to_channels,
     set_typing_on_channels,
 )
@@ -32,7 +32,7 @@ from pynchy.chat.output_handler import (
     handle_streamed_output,
 )
 from pynchy.chat.router import format_outbound
-from pynchy.types import ContainerOutput, RegisteredGroup
+from pynchy.types import ContainerOutput, WorkspaceProfile
 
 from .conftest import (
     RecordingChannel,
@@ -336,7 +336,9 @@ class TestAgentOutputParity:
         """Agent result text should reach all channels (with prefix differences)."""
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
         deps = self._make_output_deps(channels)
-        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
+        group = WorkspaceProfile(
+            jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
+        )
 
         result = ContainerOutput(
             status="success",
@@ -367,7 +369,9 @@ class TestAgentOutputParity:
         """<host>...</host> wrapped results should get 🏠 prefix on all channels."""
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
         deps = self._make_output_deps(channels)
-        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
+        group = WorkspaceProfile(
+            jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
+        )
 
         result = ContainerOutput(
             status="success",
@@ -402,7 +406,9 @@ class TestAgentOutputParity:
         """Thinking trace events should broadcast consistently."""
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
         deps = self._make_output_deps(channels)
-        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
+        group = WorkspaceProfile(
+            jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
+        )
 
         result = ContainerOutput(
             status="success",
@@ -434,7 +440,9 @@ class TestAgentOutputParity:
         """Tool use trace events should broadcast consistently."""
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
         deps = self._make_output_deps(channels)
-        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
+        group = WorkspaceProfile(
+            jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
+        )
 
         tool_uses = [
             ("Bash", {"command": "git status"}),
@@ -483,7 +491,9 @@ class TestAgentOutputParity:
         """Tool result trace events should broadcast consistently."""
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
         deps = self._make_output_deps(channels)
-        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
+        group = WorkspaceProfile(
+            jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
+        )
 
         result = ContainerOutput(
             status="success",
@@ -514,7 +524,9 @@ class TestAgentOutputParity:
         """System events (non-init) should broadcast consistently."""
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
         deps = self._make_output_deps(channels)
-        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
+        group = WorkspaceProfile(
+            jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
+        )
 
         result = ContainerOutput(
             status="success",
@@ -542,7 +554,9 @@ class TestAgentOutputParity:
         """System init events should be suppressed from ALL channels equally."""
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
         deps = self._make_output_deps(channels)
-        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
+        group = WorkspaceProfile(
+            jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
+        )
 
         result = ContainerOutput(
             status="success",
@@ -673,7 +687,9 @@ class TestFullTraceSequenceParity:
         deps_mock.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps_mock.emit = lambda *a, **kw: None
 
-        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
+        group = WorkspaceProfile(
+            jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
+        )
 
         trace_sequence = [
             ContainerOutput(status="success", type="thinking", thinking="Let me check..."),
@@ -764,7 +780,9 @@ class TestEdgeCaseParity:
         deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps.emit = lambda *a, **kw: None
 
-        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
+        group = WorkspaceProfile(
+            jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
+        )
 
         result = ContainerOutput(
             status="success",
@@ -798,7 +816,9 @@ class TestEdgeCaseParity:
         deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps.emit = lambda *a, **kw: None
 
-        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
+        group = WorkspaceProfile(
+            jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
+        )
 
         result = ContainerOutput(
             status="success",
@@ -834,7 +854,9 @@ class TestEdgeCaseParity:
         deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps.emit = lambda *a, **kw: None
 
-        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
+        group = WorkspaceProfile(
+            jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
+        )
 
         result = ContainerOutput(
             status="success",
@@ -886,7 +908,9 @@ class TestEdgeCaseParity:
         deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps.emit = lambda *a, **kw: None
 
-        group = RegisteredGroup(name="Test", folder="test", trigger="@pynchy", added_at="")
+        group = WorkspaceProfile(
+            jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
+        )
 
         # First send a tool_use for ExitPlanMode to set up _last_tool_name
         tool_use = ContainerOutput(

@@ -11,7 +11,6 @@ COLUMN`` for anything missing.  No numbered migration files needed.
 
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
 
@@ -229,7 +228,6 @@ async def init_database() -> None:
     _db = await aiosqlite.connect(str(db_path))
     _db.row_factory = aiosqlite.Row
     await _create_schema(_db)
-    await _migrate_json_state()
 
 
 async def _init_test_database() -> None:
@@ -240,52 +238,3 @@ async def _init_test_database() -> None:
     _db = await aiosqlite.connect(":memory:")
     _db.row_factory = aiosqlite.Row
     await _create_schema(_db)
-
-
-async def _migrate_json_state() -> None:
-    """Migrate state from legacy JSON files to SQLite."""
-    # Import here to avoid circular imports — these functions live in sibling modules
-    # but they depend on _get_db() which lives here.
-    from pynchy.db.groups import set_registered_group
-    from pynchy.db.sessions import set_router_state, set_session
-    from pynchy.types import RegisteredGroup
-
-    def _read_and_archive(filename: str) -> Any | None:
-        filepath = get_settings().data_dir / filename
-        if not filepath.exists():
-            return None
-        try:
-            data = json.loads(filepath.read_text())
-            filepath.rename(filepath.with_suffix(filepath.suffix + ".migrated"))
-            return data
-        except Exception as exc:
-            logger.warning("Failed to read/archive migration file", file=filename, err=str(exc))
-            return None
-
-    router_state = _read_and_archive("router_state.json")
-    if router_state:
-        if router_state.get("last_timestamp"):
-            await set_router_state("last_timestamp", router_state["last_timestamp"])
-        if router_state.get("last_agent_timestamp"):
-            await set_router_state(
-                "last_agent_timestamp",
-                json.dumps(router_state["last_agent_timestamp"]),
-            )
-
-    sessions = _read_and_archive("sessions.json")
-    if sessions:
-        for folder, session_id in sessions.items():
-            await set_session(folder, session_id)
-
-    groups = _read_and_archive("registered_groups.json")
-    if groups:
-        for jid, group_data in groups.items():
-            group = RegisteredGroup(
-                name=group_data["name"],
-                folder=group_data["folder"],
-                trigger=group_data["trigger"],
-                added_at=group_data["added_at"],
-                container_config=group_data.get("containerConfig"),
-                requires_trigger=group_data.get("requiresTrigger"),
-            )
-            await set_registered_group(jid, group)

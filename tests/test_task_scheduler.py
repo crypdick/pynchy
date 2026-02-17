@@ -26,9 +26,9 @@ from pynchy.group_queue import GroupQueue
 from pynchy.task_scheduler import start_scheduler_loop
 from pynchy.types import (
     ContainerOutput,
-    RegisteredGroup,
     ScheduledTask,
     TaskRunLog,
+    WorkspaceProfile,
 )
 
 
@@ -139,7 +139,7 @@ class MockSchedulerDeps:
     """Mock implementation of SchedulerDependencies protocol."""
 
     def __init__(self):
-        self.groups: dict[str, RegisteredGroup] = {}
+        self.groups: dict[str, WorkspaceProfile] = {}
         self.queue = GroupQueue()
         self.messages: list = []
         self.agent_runs: list = []
@@ -149,7 +149,7 @@ class MockSchedulerDeps:
         # Configurable side effect for run_agent (to call on_output)
         self._run_agent_side_effect = None
 
-    def registered_groups(self) -> dict[str, RegisteredGroup]:
+    def registered_groups(self) -> dict[str, WorkspaceProfile]:
         return self.groups
 
     async def broadcast_to_channels(self, jid: str, text: str) -> None:
@@ -220,7 +220,8 @@ def sample_task():
 @pytest.fixture
 def sample_group():
     """Create a sample registered group."""
-    return RegisteredGroup(
+    return WorkspaceProfile(
+        jid="test@g.us",
         name="Test Group",
         folder="test-group",
         trigger="@bot",

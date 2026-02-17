@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     import pluggy
 
     from pynchy.group_queue import GroupQueue
-    from pynchy.types import RegisteredGroup
+    from pynchy.types import WorkspaceProfile
 
 
 class AgentRunnerDeps(Protocol):
@@ -35,7 +35,7 @@ class AgentRunnerDeps(Protocol):
     def _session_cleared(self) -> set[str]: ...
 
     @property
-    def registered_groups(self) -> dict[str, RegisteredGroup]: ...
+    def registered_groups(self) -> dict[str, WorkspaceProfile]: ...
 
     @property
     def queue(self) -> GroupQueue: ...
@@ -52,7 +52,7 @@ class AgentRunnerDeps(Protocol):
 
 async def run_agent(
     deps: AgentRunnerDeps,
-    group: RegisteredGroup,
+    group: WorkspaceProfile,
     chat_jid: str,
     messages: list[dict],
     on_output: Any | None = None,

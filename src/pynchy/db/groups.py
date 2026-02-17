@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
-from typing import Any
 
 from pynchy.db._connection import _get_db
 from pynchy.logger import logger
@@ -12,92 +11,9 @@ from pynchy.types import (
     ContainerConfig,
     McpToolConfig,
     RateLimitConfig,
-    RegisteredGroup,
     WorkspaceProfile,
     WorkspaceSecurity,
 )
-
-# --- Registered groups (legacy) ---
-
-
-def _row_to_registered_group(row) -> dict[str, Any]:
-    """Legacy helper - converts row to RegisteredGroup dict."""
-    container_config = None
-    if row["container_config"]:
-        container_config = json.loads(row["container_config"])
-
-    requires_trigger = None if row["requires_trigger"] is None else row["requires_trigger"] == 1
-
-    return {
-        "jid": row["jid"],
-        "name": row["name"],
-        "folder": row["folder"],
-        "trigger": row["trigger_pattern"],
-        "added_at": row["added_at"],
-        "container_config": container_config,
-        "requires_trigger": requires_trigger,
-        "is_god": bool(row["is_god"]),
-    }
-
-
-async def get_registered_group(jid: str) -> dict[str, Any] | None:
-    """Get a registered group by JID. Returns dict with jid + RegisteredGroup fields."""
-    db = _get_db()
-    cursor = await db.execute("SELECT * FROM registered_groups WHERE jid = ?", (jid,))
-    row = await cursor.fetchone()
-    if row is None:
-        return None
-    return _row_to_registered_group(row)
-
-
-async def set_registered_group(jid: str, group: RegisteredGroup) -> None:
-    """Register or update a group."""
-    db = _get_db()
-    await db.execute(
-        """INSERT OR REPLACE INTO registered_groups
-            (jid, name, folder, trigger_pattern, added_at,
-             container_config, requires_trigger, is_god)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            jid,
-            group.name,
-            group.folder,
-            group.trigger,
-            group.added_at,
-            json.dumps(asdict(group.container_config)) if group.container_config else None,
-            1 if group.requires_trigger is None else (1 if group.requires_trigger else 0),
-            1 if group.is_god else 0,
-        ),
-    )
-    await db.commit()
-
-
-async def get_all_registered_groups() -> dict[str, RegisteredGroup]:
-    """Get all registered groups as dict of jid -> RegisteredGroup.
-
-    DEPRECATED: Use get_all_workspace_profiles() instead.
-    """
-    db = _get_db()
-    cursor = await db.execute("SELECT * FROM registered_groups")
-    rows = await cursor.fetchall()
-    result: dict[str, RegisteredGroup] = {}
-    for row in rows:
-        entry = _row_to_registered_group(row)
-        jid = entry.pop("jid")
-        raw_cc = entry.get("container_config")
-        result[jid] = RegisteredGroup(
-            name=entry["name"],
-            folder=entry["folder"],
-            trigger=entry["trigger"],
-            added_at=entry["added_at"],
-            container_config=ContainerConfig.from_dict(raw_cc) if raw_cc else None,
-            requires_trigger=entry.get("requires_trigger"),
-            is_god=entry.get("is_god", False),
-        )
-    return result
-
-
-# --- Workspace profiles ---
 
 
 def _row_to_workspace_profile(row) -> WorkspaceProfile:

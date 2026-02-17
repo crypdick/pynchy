@@ -15,12 +15,13 @@ from pynchy.db import (
     get_all_tasks,
     get_host_job_by_id,
     get_task_by_id,
-    set_registered_group,
+    set_workspace_profile,
 )
 from pynchy.ipc import dispatch
-from pynchy.types import RegisteredGroup
+from pynchy.types import WorkspaceProfile
 
-GOD_GROUP = RegisteredGroup(
+GOD_GROUP = WorkspaceProfile(
+    jid="god@g.us",
     name="God",
     folder="god",
     trigger="always",
@@ -28,14 +29,16 @@ GOD_GROUP = RegisteredGroup(
     is_god=True,
 )
 
-OTHER_GROUP = RegisteredGroup(
+OTHER_GROUP = WorkspaceProfile(
+    jid="other@g.us",
     name="Other",
     folder="other-group",
     trigger="@pynchy",
     added_at="2024-01-01T00:00:00.000Z",
 )
 
-THIRD_GROUP = RegisteredGroup(
+THIRD_GROUP = WorkspaceProfile(
+    jid="third@g.us",
     name="Third",
     folder="third-group",
     trigger="@pynchy",
@@ -50,7 +53,7 @@ def _test_settings(*, data_dir=None):
 class MockDeps:
     """Mock IPC dependencies."""
 
-    def __init__(self, groups: dict[str, RegisteredGroup]):
+    def __init__(self, groups: dict[str, WorkspaceProfile]):
         self._groups = groups
         self.broadcast_messages: list[tuple[str, str]] = []
         self.host_messages: list[tuple[str, str]] = []
@@ -71,15 +74,15 @@ class MockDeps:
     async def send_message(self, jid: str, text: str) -> None:
         pass
 
-    def registered_groups(self) -> dict[str, RegisteredGroup]:
+    def registered_groups(self) -> dict[str, WorkspaceProfile]:
         return self._groups
 
-    def register_group(self, jid: str, group: RegisteredGroup) -> None:
-        self._groups[jid] = group
+    def register_workspace(self, profile: WorkspaceProfile) -> None:
+        self._groups[profile.jid] = profile
         # Synchronous — in tests we won't await this
         import asyncio
 
-        asyncio.ensure_future(set_registered_group(jid, group))
+        asyncio.ensure_future(set_workspace_profile(profile))
 
     async def sync_group_metadata(self, force: bool) -> None:
         pass
@@ -122,9 +125,9 @@ async def deps():
         "third@g.us": THIRD_GROUP,
     }
 
-    await set_registered_group("god@g.us", GOD_GROUP)
-    await set_registered_group("other@g.us", OTHER_GROUP)
-    await set_registered_group("third@g.us", THIRD_GROUP)
+    await set_workspace_profile(GOD_GROUP)
+    await set_workspace_profile(OTHER_GROUP)
+    await set_workspace_profile(THIRD_GROUP)
 
     return MockDeps(groups)
 
@@ -420,7 +423,7 @@ class TestIpcMessageAuth:
         source_group: str,
         is_god: bool,
         target_chat_jid: str,
-        registered_groups: dict[str, RegisteredGroup],
+        registered_groups: dict[str, WorkspaceProfile],
     ) -> bool:
         target_group = registered_groups.get(target_chat_jid)
         return is_god or (target_group is not None and target_group.folder == source_group)

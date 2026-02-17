@@ -194,11 +194,12 @@ class TestHostNotifyWorktreeUpdates:
         _git(project, "add", "new.txt")
         _git(project, "commit", "-m", "advance main")
 
-        from pynchy.types import RegisteredGroup
+        from pynchy.types import WorkspaceProfile
 
         deps = self._make_deps(
             {
-                "jid-1@g.us": RegisteredGroup(
+                "jid-1@g.us": WorkspaceProfile(
+                    jid="jid-1@g.us",
                     name="Agent 1",
                     folder="agent-1",
                     trigger="@test",
@@ -234,11 +235,12 @@ class TestHostNotifyWorktreeUpdates:
         _git(project, "add", "file2.txt")
         _git(project, "commit", "-m", "second change")
 
-        from pynchy.types import RegisteredGroup
+        from pynchy.types import WorkspaceProfile
 
         deps = self._make_deps(
             {
-                "jid-1@g.us": RegisteredGroup(
+                "jid-1@g.us": WorkspaceProfile(
+                    jid="jid-1@g.us",
                     name="Agent 1",
                     folder="agent-1",
                     trigger="@test",
@@ -267,11 +269,12 @@ class TestHostNotifyWorktreeUpdates:
         _git(project, "add", "new.txt")
         _git(project, "commit", "-m", "advance main")
 
-        from pynchy.types import RegisteredGroup
+        from pynchy.types import WorkspaceProfile
 
         deps = self._make_deps(
             {
-                "jid-1@g.us": RegisteredGroup(
+                "jid-1@g.us": WorkspaceProfile(
+                    jid="jid-1@g.us",
                     name="Agent 1",
                     folder="agent-1",
                     trigger="@test",
@@ -299,11 +302,12 @@ class TestHostNotifyWorktreeUpdates:
         _git(project, "add", "new.txt")
         _git(project, "commit", "-m", "advance main")
 
-        from pynchy.types import RegisteredGroup
+        from pynchy.types import WorkspaceProfile
 
         deps = self._make_deps(
             {
-                "jid-1@g.us": RegisteredGroup(
+                "jid-1@g.us": WorkspaceProfile(
+                    jid="jid-1@g.us",
                     name="Agent 1",
                     folder="agent-1",
                     trigger="@test",
@@ -323,11 +327,12 @@ class TestHostNotifyWorktreeUpdates:
         """No notification when worktree is already current."""
         ensure_worktree("agent-1")
 
-        from pynchy.types import RegisteredGroup
+        from pynchy.types import WorkspaceProfile
 
         deps = self._make_deps(
             {
-                "jid-1@g.us": RegisteredGroup(
+                "jid-1@g.us": WorkspaceProfile(
+                    jid="jid-1@g.us",
                     name="Agent 1",
                     folder="agent-1",
                     trigger="@test",
@@ -352,11 +357,12 @@ class TestHostNotifyWorktreeUpdates:
         _git(project, "add", "new.txt")
         _git(project, "commit", "-m", "advance main")
 
-        from pynchy.types import RegisteredGroup
+        from pynchy.types import WorkspaceProfile
 
         deps = self._make_deps(
             {
-                "jid-1@g.us": RegisteredGroup(
+                "jid-1@g.us": WorkspaceProfile(
+                    jid="jid-1@g.us",
                     name="Agent 1",
                     folder="agent-1",
                     trigger="@test",
@@ -386,11 +392,12 @@ class TestHostNotifyWorktreeUpdates:
         _git(project, "add", "new.txt")
         _git(project, "commit", "-m", "advance main")
 
-        from pynchy.types import RegisteredGroup
+        from pynchy.types import WorkspaceProfile
 
         deps = self._make_deps(
             {
-                "jid-1@g.us": RegisteredGroup(
+                "jid-1@g.us": WorkspaceProfile(
+                    jid="jid-1@g.us",
                     name="Agent 1",
                     folder="agent-1",
                     trigger="@test",

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
 
-from pynchy.chat.bus import broadcast
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
@@ -23,22 +22,6 @@ class ChannelDeps(Protocol):
     def channels(self) -> list[Channel]: ...
 
     def get_channel_jid(self, canonical_jid: str, channel_name: str) -> str | None: ...
-
-
-async def broadcast_to_channels(
-    deps: ChannelDeps, chat_jid: str, text: str, *, suppress_errors: bool = True
-) -> None:
-    """Send a message to all connected channels.
-
-    Delegates to the unified message bus.
-
-    Args:
-        deps: Channel dependencies (must satisfy BusDeps protocol)
-        chat_jid: Target chat JID
-        text: Message text to send
-        suppress_errors: If True, silently ignore channel send failures
-    """
-    await broadcast(deps, chat_jid, text, suppress_errors=suppress_errors)
 
 
 async def send_reaction_to_channels(

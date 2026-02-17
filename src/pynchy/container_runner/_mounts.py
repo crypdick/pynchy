@@ -13,12 +13,12 @@ from pynchy.container_runner._credentials import _write_env_file
 from pynchy.container_runner._session_prep import _sync_skills, _write_settings_json
 from pynchy.logger import logger
 from pynchy.security.mount_security import validate_additional_mounts
-from pynchy.types import RegisteredGroup, VolumeMount
+from pynchy.types import VolumeMount, WorkspaceProfile
 from pynchy.workspace_config import load_workspace_config
 
 
 def _build_volume_mounts(
-    group: RegisteredGroup,
+    group: WorkspaceProfile,
     is_god: bool,
     plugin_manager: pluggy.PluginManager | None = None,
     project_access: bool = False,

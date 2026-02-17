@@ -364,7 +364,7 @@ class Settings(BaseSettings):
 
     @cached_property
     def home_dir(self) -> Path:
-        return Path(os.environ.get("HOME", "/Users/user"))
+        return Path.home()
 
     @cached_property
     def store_dir(self) -> Path:

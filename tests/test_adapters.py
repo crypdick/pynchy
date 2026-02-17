@@ -27,12 +27,14 @@ from pynchy.event_bus import (
     EventBus,
     MessageEvent,
 )
-from pynchy.types import RegisteredGroup
+from pynchy.types import WorkspaceProfile
 
 
-def _group(*, name: str = "Test", folder: str = "test", is_god: bool = False) -> RegisteredGroup:
-    return RegisteredGroup(
-        name=name, folder=folder, trigger="@pynchy", added_at="2024-01-01", is_god=is_god
+def _group(
+    *, jid: str = "test@g.us", name: str = "Test", folder: str = "test", is_god: bool = False
+) -> WorkspaceProfile:
+    return WorkspaceProfile(
+        jid=jid, name=name, folder=folder, trigger="@pynchy", added_at="2024-01-01", is_god=is_god
     )
 
 
@@ -64,16 +66,16 @@ class TestGroupRegistry:
 
     def test_finds_god_group_jid(self):
         groups = {
-            "regular@g.us": _group(name="Regular"),
-            "god@g.us": _group(name="God", is_god=True),
+            "regular@g.us": _group(jid="regular@g.us", name="Regular"),
+            "god@g.us": _group(jid="god@g.us", name="God", is_god=True),
         }
         registry = GroupRegistry(groups)
         assert registry.god_chat_jid() == "god@g.us"
 
     def test_returns_empty_string_when_no_god_group(self):
         groups = {
-            "a@g.us": _group(name="A"),
-            "b@g.us": _group(name="B"),
+            "a@g.us": _group(jid="a@g.us", name="A"),
+            "b@g.us": _group(jid="b@g.us", name="B"),
         }
         registry = GroupRegistry(groups)
         assert registry.god_chat_jid() == ""
@@ -85,15 +87,15 @@ class TestGroupRegistry:
     def test_returns_first_god_group_if_multiple(self):
         """If somehow multiple god groups exist, return the first one found."""
         groups = {
-            "god1@g.us": _group(name="God1", is_god=True),
-            "god2@g.us": _group(name="God2", is_god=True),
+            "god1@g.us": _group(jid="god1@g.us", name="God1", is_god=True),
+            "god2@g.us": _group(jid="god2@g.us", name="God2", is_god=True),
         }
         registry = GroupRegistry(groups)
         result = registry.god_chat_jid()
         assert result in ("god1@g.us", "god2@g.us")
 
     def test_registered_groups_returns_reference(self):
-        groups = {"a@g.us": _group(name="A")}
+        groups = {"a@g.us": _group(jid="a@g.us", name="A")}
         registry = GroupRegistry(groups)
         assert registry.registered_groups() is groups
 
@@ -474,8 +476,8 @@ class TestGroupMetadataManager:
 
     def test_get_groups_returns_registered_groups(self):
         groups = {
-            "a@g.us": _group(name="Alpha", folder="alpha"),
-            "b@g.us": _group(name="Beta", folder="beta"),
+            "a@g.us": _group(jid="a@g.us", name="Alpha", folder="alpha"),
+            "b@g.us": _group(jid="b@g.us", name="Beta", folder="beta"),
         }
         manager = GroupMetadataManager(groups, [], AsyncMock())
         result = manager.get_groups()

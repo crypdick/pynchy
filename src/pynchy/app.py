@@ -52,7 +52,6 @@ from pynchy.types import (
     Channel,
     ContainerOutput,
     NewMessage,
-    RegisteredGroup,
     WorkspaceProfile,
 )
 
@@ -64,8 +63,7 @@ class PynchyApp:
         self.last_timestamp: str = ""
         self.sessions: dict[str, str] = {}
         self._session_cleared: set[str] = set()  # group folders with pending clears
-        self.workspaces: dict[str, WorkspaceProfile] = {}  # New: workspace profiles
-        self.registered_groups: dict[str, RegisteredGroup] = {}  # Legacy: backward compat
+        self.workspaces: dict[str, WorkspaceProfile] = {}
         self.last_agent_timestamp: dict[str, str] = {}
         self.message_loop_running: bool = False
         self.queue: GroupQueue = GroupQueue()
@@ -82,6 +80,11 @@ class PynchyApp:
         self._broadcaster = MessageBroadcaster(lambda: self.channels, self.get_channel_jid)
         self._host_broadcaster = self._make_host_broadcaster()
 
+    @property
+    def registered_groups(self) -> dict[str, WorkspaceProfile]:
+        """Alias for workspaces — satisfies protocol contracts."""
+        return self.workspaces
+
     # ------------------------------------------------------------------
     # State persistence
     # ------------------------------------------------------------------
@@ -97,13 +100,7 @@ class PynchyApp:
             self.last_agent_timestamp = {}
         self.sessions = await get_all_sessions()
 
-        # Load workspace profiles (new security-aware format)
         self.workspaces = await get_all_workspace_profiles()
-
-        # Maintain backward compatibility with registered_groups
-        self.registered_groups = {
-            jid: profile.to_registered_group() for jid, profile in self.workspaces.items()
-        }
 
         # Load JID alias cache
         await self._load_aliases()
@@ -111,7 +108,6 @@ class PynchyApp:
         logger.info(
             "State loaded",
             workspace_count=len(self.workspaces),
-            group_count=len(self.registered_groups),
             alias_count=len(self._alias_to_canonical),
         )
 
@@ -166,12 +162,12 @@ class PynchyApp:
         await self._save_state()
 
     async def handle_context_reset(
-        self, chat_jid: str, group: RegisteredGroup, timestamp: str
+        self, chat_jid: str, group: WorkspaceProfile, timestamp: str
     ) -> None:
         await session_handler.handle_context_reset(self, chat_jid, group, timestamp)
 
     async def handle_end_session(
-        self, chat_jid: str, group: RegisteredGroup, timestamp: str
+        self, chat_jid: str, group: WorkspaceProfile, timestamp: str
     ) -> None:
         await session_handler.handle_end_session(self, chat_jid, group, timestamp)
 
@@ -185,7 +181,7 @@ class PynchyApp:
 
     async def run_agent(
         self,
-        group: RegisteredGroup,
+        group: WorkspaceProfile,
         chat_jid: str,
         messages: list[dict],
         on_output: Any | None = None,
@@ -245,7 +241,7 @@ class PynchyApp:
         )
 
     async def handle_streamed_output(
-        self, chat_jid: str, group: RegisteredGroup, result: ContainerOutput
+        self, chat_jid: str, group: WorkspaceProfile, result: ContainerOutput
     ) -> bool:
         return await output_handler.handle_streamed_output(self, chat_jid, group, result)
 
@@ -256,7 +252,6 @@ class PynchyApp:
     async def _register_workspace(self, profile: WorkspaceProfile) -> None:
         """Register a new workspace and persist it."""
         self.workspaces[profile.jid] = profile
-        self.registered_groups[profile.jid] = profile.to_registered_group()  # Backward compat
         await set_workspace_profile(profile)
 
         workspace_dir = get_settings().groups_dir / profile.folder
@@ -269,25 +264,10 @@ class PynchyApp:
             folder=profile.folder,
         )
 
-    async def _register_group(self, jid: str, group: RegisteredGroup) -> None:
-        """Register a new group and persist it.
-
-        DEPRECATED: Use _register_workspace() instead.
-        """
-        profile = WorkspaceProfile.from_registered_group(jid, group)
-        await self._register_workspace(profile)
-
-        logger.info(
-            "Group registered (legacy method)",
-            jid=jid,
-            name=group.name,
-            folder=group.folder,
-        )
-
     async def get_available_groups(self) -> list[dict[str, Any]]:
         """Get available groups list for the agent, ordered by most recent activity."""
         chats = await get_all_chats()
-        registered_jids = set(self.registered_groups.keys())
+        registered_jids = set(self.workspaces.keys())
 
         def is_channel_visible(jid: str) -> bool:
             if jid == "__group_sync__":
@@ -327,7 +307,7 @@ class PynchyApp:
     # ------------------------------------------------------------------
 
     async def _intercept_special_command(
-        self, chat_jid: str, group: RegisteredGroup, message: NewMessage
+        self, chat_jid: str, group: WorkspaceProfile, message: NewMessage
     ) -> bool:
         """Delegates special-command handling to the message handler module."""
         return await message_handler.intercept_special_command(self, chat_jid, group, message)
@@ -337,7 +317,7 @@ class PynchyApp:
         return await message_handler.process_group_messages(self, chat_jid)
 
     async def _execute_direct_command(
-        self, chat_jid: str, group: RegisteredGroup, message: NewMessage, command: str
+        self, chat_jid: str, group: WorkspaceProfile, message: NewMessage, command: str
     ) -> None:
         """Delegates direct command execution to the message handler module."""
         await message_handler.execute_direct_command(self, chat_jid, group, message, command)
@@ -430,7 +410,7 @@ class PynchyApp:
         try:
             from pynchy.adapters import find_god_jid
 
-            god_jid = find_god_jid(self.registered_groups) or None
+            god_jid = find_god_jid(self.workspaces) or None
             if god_jid and self.channels:
                 await self.broadcast_host_message(god_jid, f"Shutting down ({sig_name})")
         except Exception:
@@ -517,7 +497,7 @@ class PynchyApp:
             on_chat_metadata_callback=lambda jid, ts, name=None: asyncio.ensure_future(
                 store_chat_metadata(jid, ts, name)
             ),
-            registered_groups=lambda: self.registered_groups,
+            registered_groups=lambda: self.workspaces,
             send_message=self.broadcast_to_channels,
             on_reaction_callback=lambda jid, ts, user, emoji: asyncio.ensure_future(
                 self._on_reaction(jid, ts, user, emoji)
@@ -535,7 +515,7 @@ class PynchyApp:
             raise
 
         # First-run: create a private group and register as god channel
-        if not self.registered_groups:
+        if not self.workspaces:
             await startup_handler.setup_god_group(self, default_channel)
 
         # Reconcile worktrees: create missing ones for project_access groups,
@@ -552,9 +532,9 @@ class PynchyApp:
 
         # Reconcile workspaces (create chat groups + tasks from workspace.yaml)
         await reconcile_workspaces(
-            registered_groups=self.registered_groups,
+            registered_groups=self.workspaces,
             channels=self.channels,
-            register_fn=self._register_group,
+            register_fn=self._register_workspace,
             register_alias_fn=self.register_jid_alias,
             get_channel_jid_fn=self.get_channel_jid,
         )
