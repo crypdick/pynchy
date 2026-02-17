@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 
-from pynchy.policy.middleware import ActionTracker, PolicyDecision, PolicyMiddleware
+from pynchy.security.middleware import ActionTracker, PolicyDecision, PolicyMiddleware
 from pynchy.types import McpToolConfig, RateLimitConfig, WorkspaceSecurity
 
 # --- PolicyDecision ---

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from pynchy.messaging.channel_handler import (
+from pynchy.chat.channel_handler import (
     broadcast_to_channels,
     send_reaction_to_channels,
     set_typing_on_channels,

@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import pynchy.infra.gateway as _gw_mod
-from pynchy.infra.gateway import (
+import pynchy.runtime.gateway as _gw_mod
+from pynchy.runtime.gateway import (
     BuiltinGateway,
     LiteLLMGateway,
     _load_or_create_persistent_key,
@@ -19,7 +19,7 @@ from pynchy.infra.gateway import (
 # LiteLLMGateway — unit tests (Docker calls mocked)
 # ---------------------------------------------------------------------------
 
-_GATEWAY_MOD = "pynchy.infra.gateway"
+_GATEWAY_MOD = "pynchy.runtime.gateway"
 
 _LITELLM_KWARGS = dict(
     port=4000,

@@ -7,8 +7,8 @@ import os
 import subprocess
 
 from pynchy.config import get_settings
-from pynchy.infra.runtime import get_runtime
 from pynchy.logger import logger
+from pynchy.runtime.runtime import get_runtime
 
 
 def ensure_container_system_running() -> None:

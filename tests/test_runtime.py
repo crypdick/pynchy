@@ -9,9 +9,9 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
-import pynchy.infra.runtime as runtime_mod
+import pynchy.runtime.runtime as runtime_mod
 from pynchy.config import ContainerConfig
-from pynchy.infra.runtime import detect_runtime
+from pynchy.runtime.runtime import detect_runtime
 
 
 def _settings(*, runtime_override: str | None = None):
@@ -39,7 +39,7 @@ class TestDetectRuntime:
         apple = FakePluginRuntime(name="apple")
         with (
             patch("pynchy.config.get_settings", return_value=_settings(runtime_override="apple")),
-            patch("pynchy.infra.runtime._iter_plugin_runtimes", return_value=[apple]),
+            patch("pynchy.runtime.runtime._iter_plugin_runtimes", return_value=[apple]),
         ):
             r = detect_runtime()
         assert r is apple
@@ -54,9 +54,9 @@ class TestDetectRuntime:
         apple = FakePluginRuntime(name="apple")
         with (
             patch("pynchy.config.get_settings", return_value=_settings(runtime_override=None)),
-            patch("pynchy.infra.runtime._iter_plugin_runtimes", return_value=[apple]),
-            patch("pynchy.infra.runtime.sys") as mock_sys,
-            patch("pynchy.infra.runtime.shutil.which", return_value="/usr/bin/docker"),
+            patch("pynchy.runtime.runtime._iter_plugin_runtimes", return_value=[apple]),
+            patch("pynchy.runtime.runtime.sys") as mock_sys,
+            patch("pynchy.runtime.runtime.shutil.which", return_value="/usr/bin/docker"),
         ):
             mock_sys.platform = "darwin"
             r = detect_runtime()
@@ -65,9 +65,9 @@ class TestDetectRuntime:
     def test_darwin_without_apple_plugin_uses_docker(self):
         with (
             patch("pynchy.config.get_settings", return_value=_settings(runtime_override=None)),
-            patch("pynchy.infra.runtime._iter_plugin_runtimes", return_value=[]),
-            patch("pynchy.infra.runtime.sys") as mock_sys,
-            patch("pynchy.infra.runtime.shutil.which", return_value="/usr/bin/docker"),
+            patch("pynchy.runtime.runtime._iter_plugin_runtimes", return_value=[]),
+            patch("pynchy.runtime.runtime.sys") as mock_sys,
+            patch("pynchy.runtime.runtime.shutil.which", return_value="/usr/bin/docker"),
         ):
             mock_sys.platform = "darwin"
             r = detect_runtime()
@@ -76,9 +76,9 @@ class TestDetectRuntime:
     def test_unknown_runtime_override_falls_back_to_docker(self):
         with (
             patch("pynchy.config.get_settings", return_value=_settings(runtime_override="podman")),
-            patch("pynchy.infra.runtime._iter_plugin_runtimes", return_value=[]),
-            patch("pynchy.infra.runtime.sys") as mock_sys,
-            patch("pynchy.infra.runtime.shutil.which", return_value="/usr/bin/docker"),
+            patch("pynchy.runtime.runtime._iter_plugin_runtimes", return_value=[]),
+            patch("pynchy.runtime.runtime.sys") as mock_sys,
+            patch("pynchy.runtime.runtime.shutil.which", return_value="/usr/bin/docker"),
         ):
             mock_sys.platform = "linux"
             r = detect_runtime()
@@ -95,21 +95,21 @@ class TestDockerRuntime:
                 json.dumps({"Names": "other-container"}),
             ]
         )
-        with patch("pynchy.infra.runtime.subprocess.run") as mock_run:
+        with patch("pynchy.runtime.runtime.subprocess.run") as mock_run:
             mock_run.return_value.stdout = ndjson
             result = rt.list_running_containers("pynchy-")
         assert result == ["pynchy-group1-123", "pynchy-group2-456"]
 
     def test_handles_empty_output(self):
         rt = runtime_mod._docker_runtime()
-        with patch("pynchy.infra.runtime.subprocess.run") as mock_run:
+        with patch("pynchy.runtime.runtime.subprocess.run") as mock_run:
             mock_run.return_value.stdout = ""
             result = rt.list_running_containers("pynchy-")
         assert result == []
 
     def test_ensure_running_calls_docker_info(self):
         rt = runtime_mod._docker_runtime()
-        with patch("pynchy.infra.runtime.subprocess.run") as mock_run:
+        with patch("pynchy.runtime.runtime.subprocess.run") as mock_run:
             rt.ensure_running()
         mock_run.assert_called_once_with(["docker", "info"], capture_output=True, check=True)
 
@@ -117,10 +117,10 @@ class TestDockerRuntime:
         rt = runtime_mod._docker_runtime()
         with (
             patch(
-                "pynchy.infra.runtime.subprocess.run",
+                "pynchy.runtime.runtime.subprocess.run",
                 side_effect=subprocess.CalledProcessError(1, "docker"),
             ),
-            patch("pynchy.infra.runtime.sys") as mock_sys,
+            patch("pynchy.runtime.runtime.sys") as mock_sys,
             pytest.raises(RuntimeError, match="systemctl"),
         ):
             mock_sys.platform = "linux"
@@ -131,7 +131,7 @@ class TestGetRuntime:
     def test_caches_result(self):
         runtime_mod._runtime = None
         try:
-            with patch("pynchy.infra.runtime.detect_runtime") as mock_detect:
+            with patch("pynchy.runtime.runtime.detect_runtime") as mock_detect:
                 mock_detect.return_value = runtime_mod._docker_runtime()
                 r1 = runtime_mod.get_runtime()
                 r2 = runtime_mod.get_runtime()

@@ -25,8 +25,8 @@ from pynchy.container_runner._process import (
     read_stdout,
 )
 from pynchy.container_runner._serialization import _input_to_dict
-from pynchy.infra.runtime import get_runtime
 from pynchy.logger import logger
+from pynchy.runtime.runtime import get_runtime
 from pynchy.types import ContainerInput, ContainerOutput, RegisteredGroup
 
 # ---------------------------------------------------------------------------

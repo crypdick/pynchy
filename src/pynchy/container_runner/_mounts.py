@@ -11,8 +11,8 @@ if TYPE_CHECKING:
 from pynchy.config import get_settings
 from pynchy.container_runner._credentials import _write_env_file
 from pynchy.container_runner._session_prep import _sync_skills, _write_settings_json
-from pynchy.infra.mount_security import validate_additional_mounts
 from pynchy.logger import logger
+from pynchy.runtime.mount_security import validate_additional_mounts
 from pynchy.types import RegisteredGroup, VolumeMount
 
 
@@ -131,8 +131,8 @@ def _build_volume_mounts(
 
 def _build_container_args(mounts: list[VolumeMount], container_name: str) -> list[str]:
     """Build CLI args for `container run`."""
-    from pynchy.infra.gateway import get_gateway
-    from pynchy.infra.runtime import get_runtime
+    from pynchy.runtime.gateway import get_gateway
+    from pynchy.runtime.runtime import get_runtime
 
     args = ["run", "-i", "--rm", "--name", container_name]
 

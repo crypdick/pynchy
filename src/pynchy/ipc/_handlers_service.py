@@ -16,8 +16,8 @@ from pynchy.ipc._deps import IpcDeps
 from pynchy.ipc._registry import register_prefix
 from pynchy.logger import logger
 from pynchy.plugin import get_plugin_manager
-from pynchy.policy.audit import record_security_event
-from pynchy.policy.middleware import PolicyMiddleware
+from pynchy.security.audit import record_security_event
+from pynchy.security.middleware import PolicyMiddleware
 from pynchy.types import McpToolConfig, RateLimitConfig, WorkspaceSecurity
 
 # Cache PolicyMiddleware instances per workspace folder.

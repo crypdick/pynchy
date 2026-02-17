@@ -6,7 +6,7 @@ used for context reset, end session, and redeploy actions.
 
 from __future__ import annotations
 
-from pynchy.messaging.commands import (
+from pynchy.chat.commands import (
     _is_magic_command,
     is_context_reset,
     is_end_session,

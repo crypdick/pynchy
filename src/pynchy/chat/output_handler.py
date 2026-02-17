@@ -12,12 +12,12 @@ from datetime import UTC, datetime
 from itertools import count
 from typing import TYPE_CHECKING, Any, Protocol
 
+from pynchy.chat.bus import finalize_stream_or_broadcast
+from pynchy.chat.router import format_tool_preview, parse_host_tag
 from pynchy.config import get_settings
 from pynchy.db import store_message_direct
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.logger import logger
-from pynchy.messaging.bus import finalize_stream_or_broadcast
-from pynchy.messaging.router import format_tool_preview, parse_host_tag
 from pynchy.utils import generate_message_id
 
 if TYPE_CHECKING:
@@ -233,7 +233,7 @@ async def handle_streamed_output(
     Broadcasts trace events and results to channels/TUI.
     Returns True if a user-visible result was sent.
     """
-    from pynchy.messaging.router import strip_internal_tags
+    from pynchy.chat.router import strip_internal_tags
 
     s = get_settings()
     ts = datetime.now(UTC).isoformat()

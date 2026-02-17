@@ -262,7 +262,7 @@ class TestMessageBroadcaster:
         # format_outbound strips internal tags and may adjust text
         from unittest.mock import patch as _patch
 
-        with _patch("pynchy.messaging.router.format_outbound", return_value="formatted text"):
+        with _patch("pynchy.chat.router.format_outbound", return_value="formatted text"):
             await broadcaster._broadcast_formatted("group@g.us", "raw text")
 
         assert len(ch.sent) == 1
@@ -275,7 +275,7 @@ class TestMessageBroadcaster:
 
         from unittest.mock import patch as _patch
 
-        with _patch("pynchy.messaging.router.format_outbound", return_value=""):
+        with _patch("pynchy.chat.router.format_outbound", return_value=""):
             await broadcaster._broadcast_formatted("group@g.us", "raw text")
 
         assert len(ch.sent) == 0
@@ -293,7 +293,7 @@ class TestMessageBroadcaster:
 
         from unittest.mock import patch as _patch
 
-        with _patch("pynchy.messaging.router.format_outbound", return_value="ok"):
+        with _patch("pynchy.chat.router.format_outbound", return_value="ok"):
             await broadcaster._broadcast_formatted("group@g.us", "raw")
 
         assert len(working.sent) == 1
