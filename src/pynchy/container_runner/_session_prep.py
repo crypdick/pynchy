@@ -85,6 +85,8 @@ def _write_settings_json(session_dir: Path) -> None:
             "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
             "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD": "1",
             "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "0",
+            "BASH_MAX_OUTPUT_LENGTH": "90000",
+            "MAX_MCP_OUTPUT_TOKENS": "75000",
         },
     }
 
