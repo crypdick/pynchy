@@ -13,7 +13,8 @@ Each group gets its own IPC directory, mounted into the container at `/workspace
 ```
 data/ipc/{group}/
 ├── messages/          # Container → host: outbound chat messages
-├── tasks/             # Container → host: task/group management commands
+├── tasks/             # Container → host: task/group management + service requests
+├── responses/         # Host → container: service request responses
 ├── input/             # Host → container: follow-up user messages
 ├── merge_results/     # Host → container: git sync responses
 ├── current_tasks.json # Host → container: read-only task snapshot
@@ -104,6 +105,16 @@ All other operations — scheduling, group management, deployment, git sync — 
 ## Authorization
 
 The host enforces permissions based on the source group's identity. See [Security Model](security.md#4-ipc-authorization) for the full authorization matrix.
+
+## Service Requests
+
+Service requests use the `service:<tool_name>` type prefix for request-response IPC. The container writes a request with a unique `request_id` to `tasks/`, and the host writes the response to `responses/{request_id}.json`. The container polls for the response file.
+
+Service requests go through the [security policy middleware](security.md) before dispatch. Plugin-provided handlers process the request and return a result or error.
+
+Current service tools:
+- **Calendar** — `list_calendars`, `list_calendar`, `create_event`, `delete_event` (CalDAV plugin)
+- **Memory** — `save_memory`, `recall_memories`, `forget_memory`, `list_memories` (sqlite-memory plugin)
 
 ## Container-Side MCP Server
 

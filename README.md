@@ -23,6 +23,7 @@
   - Agents (prompt templates, instructions, and capabilities)
   - Communication channels (Slack, WhatsApp, etc.)
   - Workspaces with isolated memory and Git worktrees.
+- Persistent memory with BM25-ranked full-text search — agents save and recall facts across sessions.
 - Reoccurring tasks can be scheduled to run at a specific time or interval.
 - (work in progress) policy groups to prevent [lethal trifecta prompt injection attacks](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/).
 
