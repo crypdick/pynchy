@@ -43,6 +43,7 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
     ("pynchy.runtime.plugins.apple_runtime", "AppleRuntimePlugin", "apple-runtime"),
     ("pynchy.integrations.plugins.caldav", "CalDAVMcpServerPlugin", "caldav"),
     ("pynchy.observers.plugins.sqlite_observer", "SqliteObserverPlugin", "sqlite-observer"),
+    ("pynchy.memory.plugins.sqlite_memory", "SqliteMemoryPlugin", "sqlite-memory"),
 ]
 
 

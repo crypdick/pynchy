@@ -156,6 +156,21 @@ def _create_pre_compact_hook():
             file_path.write_text(markdown)
 
             _log(f"Archived conversation to {file_path}")
+
+            # Best-effort: also save to structured memory for search
+            try:
+                from agent_runner.agent_tools._ipc_request import ipc_service_request
+
+                await ipc_service_request(
+                    "save_memory",
+                    {
+                        "key": f"conversation-{date}-{name}",
+                        "content": markdown[:2000],
+                        "category": "conversation",
+                    },
+                )
+            except Exception:
+                pass
         except Exception as exc:
             _log(f"Failed to archive transcript: {exc}")
 

@@ -59,12 +59,16 @@ Files you create are saved in `/workspace/group/`. Use this for notes, research,
 
 ## Memory
 
-The `conversations/` folder contains searchable history of past conversations. Use this to recall context from previous sessions.
+You have persistent memory tools for storing and recalling information across sessions:
 
-When you learn something important:
-- Create files for structured data (e.g., `customers.md`, `preferences.md`)
-- Split files larger than 500 lines into folders
-- Keep an index in your memory for the files you create
+- `mcp__pynchy__save_memory` — save a fact with a key and content
+- `mcp__pynchy__recall_memories` — search memories by keyword (ranked by relevance)
+- `mcp__pynchy__forget_memory` — remove an outdated memory
+- `mcp__pynchy__list_memories` — see all saved memory keys
+
+Categories: *core* (permanent facts, default), *daily* (session context), *conversation* (auto-archived).
+
+The `conversations/` folder still contains historical archives for backward compatibility.
 
 ## Deploying Changes
 

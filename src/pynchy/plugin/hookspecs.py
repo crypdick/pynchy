@@ -142,6 +142,22 @@ class PynchySpec:
         """
 
     @hookspec
+    def pynchy_memory(self) -> Any | None:
+        """Provide a memory backend implementation.
+
+        Returns:
+            Memory provider object with:
+                - name (str): backend identifier (e.g., "sqlite", "jsonl")
+                - save(group_folder, key, content, category, metadata) -> dict
+                - recall(group_folder, query, category, limit) -> list[dict]
+                - forget(group_folder, key) -> dict
+                - list_keys(group_folder, category) -> list[dict]
+                - init() -> coroutine: async setup (create tables, etc.)
+                - close() -> coroutine: async teardown
+            Or None if this plugin doesn't provide one.
+        """
+
+    @hookspec
     def pynchy_workspace_spec(self) -> dict[str, Any]:
         """Provide a managed workspace definition.
 

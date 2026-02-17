@@ -13,6 +13,7 @@ from mcp.types import CallToolResult, TextContent, Tool
 import agent_runner.agent_tools._tools_admin  # noqa: F401
 import agent_runner.agent_tools._tools_calendar  # noqa: F401
 import agent_runner.agent_tools._tools_lifecycle  # noqa: F401
+import agent_runner.agent_tools._tools_memory  # noqa: F401
 import agent_runner.agent_tools._tools_messaging  # noqa: F401
 import agent_runner.agent_tools._tools_tasks  # noqa: F401
 import agent_runner.agent_tools._tools_todos  # noqa: F401

@@ -447,6 +447,8 @@ class PynchyApp:
         await stop_gateway()
         for obs in getattr(self, "_observers", []):
             await obs.close()
+        if memory := getattr(self, "_memory", None):
+            await memory.close()
         await self.queue.shutdown(10.0)
         for ch in self.channels:
             await ch.disconnect()
@@ -485,9 +487,14 @@ class PynchyApp:
             await init_database()
             logger.info("Database initialized")
 
+            from pynchy.memory import get_memory_provider
             from pynchy.observers import attach_observers
 
             self._observers = attach_observers(self.event_bus)
+
+            self._memory = get_memory_provider()
+            if self._memory:
+                await self._memory.init()
 
             await self._load_state()
         except Exception as exc:
