@@ -572,7 +572,7 @@ class PynchyApp:
             project_access_folders=project_access_folders,
         )
 
-        # Reconcile workspaces (create chat groups + tasks from workspace.yaml)
+        # Reconcile workspaces (create chat groups + tasks from config.toml)
         await reconcile_workspaces(
             workspaces=self.workspaces,
             channels=self.channels,

@@ -11,7 +11,7 @@ Pynchy self-manages. Two mechanisms trigger automatic restarts:
 
 **Do not manually restart containers or the service.** This includes `docker restart`, `systemctl restart`, and direct container management (`docker kill/stop/rm`). The service manages its own containers (LiteLLM proxy, PostgreSQL sidecar, agent containers) and will clean up and recreate them on restart. Manual container restarts bypass the lifecycle and can leave things in a bad state.
 
-**Only use manual service commands when the service is unhealthy and needs fixing** — e.g., the deploy endpoint is unreachable, the service is stuck, or you need to debug a crash.
+**Only use manual service commands when the service is unhealthy and needs fixing** — e.g., the deploy endpoint is unreachable, the service is stuck, or you need to debug a crash. See the [debug checklist](skills/debug-checklist/SKILL.md) for systematic diagnosis steps.
 
 ```bash
 # Trigger a deploy from HOST (not from containers — use mcp__pynchy__deploy_changes instead)

@@ -1,6 +1,6 @@
 """Tests for workspace reconciliation logic.
 
-Tests reconcile_workspaces() which scans groups/ for workspace.yaml files and
+Tests reconcile_workspaces() which reads workspace configs from config.toml and
 ensures scheduled tasks and chat groups are created. This is critical startup
 logic — bugs here mean periodic agents silently don't run or get double-scheduled.
 """
@@ -49,7 +49,7 @@ class TestReconcileWorkspaces:
         configure_plugin_workspaces(None)
 
     async def test_creates_task_for_periodic_workspace(self, db, groups_dir):
-        """Periodic workspace.yaml should create a scheduled task."""
+        """Periodic workspace config should create a scheduled task."""
         _write_workspace_yaml(
             groups_dir,
             "code-improver",
@@ -109,7 +109,7 @@ class TestReconcileWorkspaces:
         assert len(tasks) == 0
 
     async def test_updates_task_when_schedule_changes(self, db, groups_dir):
-        """Changed schedule in workspace.yaml should update existing task."""
+        """Changed schedule in config.toml should update existing task."""
         _write_workspace_yaml(
             groups_dir,
             "monitor",
@@ -153,7 +153,7 @@ class TestReconcileWorkspaces:
         assert task.schedule_value == "*/30 * * * *"  # Updated
 
     async def test_updates_task_when_prompt_changes(self, db, groups_dir):
-        """Changed prompt in workspace.yaml should update existing task."""
+        """Changed prompt in config.toml should update existing task."""
         _write_workspace_yaml(
             groups_dir,
             "monitor",
@@ -310,7 +310,7 @@ class TestReconcileWorkspaces:
         await reconcile_workspaces(registered, [], register_fn)
 
     async def test_project_access_preserved_in_task(self, db, groups_dir):
-        """project_access from workspace.yaml should be set on the created task."""
+        """project_access from config.toml should be set on the created task."""
         _write_workspace_yaml(
             groups_dir,
             "dev-agent",
@@ -339,7 +339,7 @@ class TestReconcileWorkspaces:
         assert tasks[0].project_access is True
 
     async def test_context_mode_preserved_in_task(self, db, groups_dir):
-        """context_mode from workspace.yaml should be set on the created task."""
+        """context_mode from config.toml should be set on the created task."""
         _write_workspace_yaml(
             groups_dir,
             "isolated-agent",
