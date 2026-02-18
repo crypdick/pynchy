@@ -58,8 +58,12 @@ class McpInstance:
         """URL that LiteLLM should use to reach this MCP server."""
         if self.server_config.type == "url":
             return self.server_config.url or ""
-        # Docker: internal Docker network URL
-        return f"http://{self.container_name}:{self.server_config.port}"
+        # Docker: internal Docker network URL.
+        # Streamable HTTP uses /mcp path; SSE uses bare host:port.
+        base = f"http://{self.container_name}:{self.server_config.port}"
+        if self.server_config.transport in ("http", "streamable_http"):
+            return f"{base}/mcp"
+        return base
 
 
 @dataclass
@@ -456,10 +460,15 @@ class McpManager:
                 # mcp_servers config get the gateway URL injected).  LiteLLM's
                 # key→server ACL (allowed_mcp_servers on /key/generate) is not
                 # reliably stored, so we use allow_all_keys instead.
+                # LiteLLM accepts "sse" | "http" | "stdio"; map our config values.
+                transport = instance.server_config.transport
+                if transport == "streamable_http":
+                    transport = "http"
+
                 payload: dict[str, Any] = {
                     "server_name": iid,
                     "url": desired_url,
-                    "transport": instance.server_config.transport,
+                    "transport": transport,
                     "allow_all_keys": True,
                 }
 
