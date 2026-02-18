@@ -216,6 +216,7 @@ def reconcile_worktrees_at_startup(
     # Hooks live in the main .git/hooks/ (shared by all worktrees).
     install_pre_commit_hooks()
 
+
     # Create missing worktrees for known pynchy_repo_access groups.
     # ensure_worktree's health check handles broken worktrees automatically.
     for folder in pynchy_repo_access_folders or []:
