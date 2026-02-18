@@ -180,19 +180,26 @@ class McpManager:
         cmd_args = list(instance.server_config.args)
         cmd_args.extend(_kwargs_to_args(instance.kwargs))
 
+        # Publish port so the host can health-check the container.
+        # endpoint_url uses the Docker-internal container name (for LiteLLM),
+        # but the health check runs from the host which can't resolve those.
+        port = instance.server_config.port
+        publish_args = ["-p", f"{port}:{port}"] if port else []
+
         run_docker(
             "run", "-d",
             "--name", instance.container_name,
             "--network", _NETWORK_NAME,
             "--restart", "unless-stopped",
+            *publish_args,
             instance.server_config.image or "",
             *cmd_args,
         )  # fmt: skip
 
-        # Wait for the container to be healthy (simple HTTP check)
-        endpoint = instance.endpoint_url
+        # Health-check via localhost (host-side), not the Docker-internal name
+        health_url = f"http://localhost:{port}" if port else instance.endpoint_url
         try:
-            await self._wait_mcp_healthy(instance.container_name, endpoint)
+            await self._wait_mcp_healthy(instance.container_name, health_url)
         except (TimeoutError, RuntimeError):
             logger.error(
                 "MCP container failed health check",
