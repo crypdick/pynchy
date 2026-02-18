@@ -139,6 +139,10 @@ class McpManager:
         # 6. Start idle-timeout checker
         self._idle_task = asyncio.create_task(self._idle_checker_loop())
 
+        # 7. Pre-pull Docker images in the background to warm the cache.
+        #    Doesn't block boot — first on-demand start is just faster.
+        asyncio.create_task(self._warm_image_cache())
+
         logger.info(
             "MCP sync complete",
             instances=list(self._instances.keys()),
@@ -628,6 +632,24 @@ class McpManager:
 
         msg = f"MCP container {container_name} not healthy within {timeout}s"
         raise TimeoutError(msg)
+
+    # ------------------------------------------------------------------
+    # Internal: image warm-up
+    # ------------------------------------------------------------------
+
+    async def _warm_image_cache(self) -> None:
+        """Pre-pull Docker images for all MCP instances in the background."""
+        images = {
+            inst.server_config.image
+            for inst in self._instances.values()
+            if inst.server_config.type == "docker" and inst.server_config.image
+        }
+        for image in images:
+            try:
+                await asyncio.to_thread(ensure_image, image)
+                logger.info("Pre-pulled MCP image", image=image)
+            except Exception:
+                logger.warning("Failed to pre-pull MCP image", image=image)
 
     # ------------------------------------------------------------------
     # Internal: idle checker
