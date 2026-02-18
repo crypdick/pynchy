@@ -194,18 +194,26 @@ class LiteLLMGateway:
     def _collect_yaml_env_refs(config_path: Path) -> list[tuple[str, str]]:
         """Scan litellm config for ``os.environ/`` references and resolve from host env.
 
+        Checks both ``os.environ`` and the project ``.env`` file (via
+        python-dotenv).  ``os.environ`` wins on conflicts.
+
         Returns ``(name, value)`` pairs for every referenced var that is
         set on the host.  Gateway-managed vars are excluded.  Missing vars
         produce a warning — LiteLLM will fail at runtime for that entry,
         which surfaces the problem clearly.
         """
+        from dotenv import dotenv_values
+
         text = config_path.read_text()
         var_names = set(re.findall(r"os\.environ/(\w+)", text))
         var_names -= LiteLLMGateway._GATEWAY_MANAGED_VARS
 
+        # .env values as base, os.environ overrides
+        env: dict[str, str | None] = {**dotenv_values(), **os.environ}
+
         resolved: list[tuple[str, str]] = []
         for name in sorted(var_names):
-            value = os.environ.get(name)
+            value = env.get(name)
             if value:
                 resolved.append((name, value))
             else:
