@@ -84,6 +84,7 @@ def get_plugin_manager() -> pluggy.PluginManager:
     # call asyncio.get_event_loop() at import time.  Ensure a loop exists so
     # the import succeeds even when called from a sync context or a pytest-xdist
     # worker thread that hasn't set one up yet.
+    _tmp_loop = None
     try:
         asyncio.get_running_loop()
     except RuntimeError:
@@ -94,11 +95,20 @@ def get_plugin_manager() -> pluggy.PluginManager:
             try:
                 asyncio.get_event_loop()
             except RuntimeError:
-                asyncio.set_event_loop(asyncio.new_event_loop())
+                _tmp_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(_tmp_loop)
 
     # Discover and register third-party plugins from entry points
     # Plugins register via "pynchy" group in their pyproject.toml
     discovered = pm.load_setuptools_entrypoints("pynchy")
+
+    # Close the temporary loop now that imports are done.  Leaving it open
+    # leaks a ResourceWarning and can block interpreter shutdown.
+    if _tmp_loop is not None:
+        _tmp_loop.close()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            asyncio.set_event_loop(None)
     if discovered:
         logger.info("Discovered third-party plugins", count=discovered)
 
