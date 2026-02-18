@@ -42,6 +42,8 @@ Field gotchas:
 - **`url`** not `server_url` — the field name differs from what you might expect
 - **`server_name` cannot contain hyphens** — LiteLLM rejects names like `my-server`; use underscores instead
 - LiteLLM does **not** validate the URL at registration time — the server doesn't need to be running yet
+- **No upsert** — POST always creates a new entry. Repeated calls create duplicates. List first and skip/delete.
+- **`allow_all_keys`** — set to `true` to make the server accessible to all API keys. Without this, tools/list returns empty even for master keys.
 
 ### Delete server
 
@@ -69,6 +71,8 @@ curl -s -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/js
 ```
 
 Note: team/key endpoints use `/team/new` and `/key/generate` (no `/v1/` prefix) — unlike the MCP server endpoints.
+
+**Gotcha: `allowed_mcp_servers` on `/key/generate` is silently ignored** — the field does not appear in the generated key's metadata. Per-key MCP ACLs are unreliable as of LiteLLM v1.80+. Use `allow_all_keys: true` on the server registration instead, and enforce workspace-level access at the orchestrator layer (only inject the MCP gateway URL into containers whose workspace config lists the server).
 
 ## Debugging MCP Registration
 
