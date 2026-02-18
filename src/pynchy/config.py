@@ -18,7 +18,7 @@ import os
 import re
 from functools import cached_property
 from pathlib import Path
-from typing import Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from croniter import croniter
 from pydantic import BaseModel, SecretStr, field_validator
@@ -30,6 +30,9 @@ from pydantic_settings import (
 )
 
 from pynchy.config_mcp import McpServerConfig
+
+if TYPE_CHECKING:
+    from pynchy.types import ResolvedChannelConfig
 
 # ---------------------------------------------------------------------------
 # Sub-models (each maps to a [section] in config.toml)
@@ -102,9 +105,31 @@ class GatewayConfig(BaseModel):
     ui_password: SecretStr | None = None  # LiteLLM UI login password
 
 
+class OwnerConfig(BaseModel):
+    """Owner identity per platform — used for allowed_users = ["owner"] resolution."""
+
+    slack: str | None = None
+    # WhatsApp uses is_from_me, no config needed
+
+
+class ChannelOverrideConfig(BaseModel):
+    """Per-channel config override — None fields inherit from workspace/defaults."""
+
+    access: Literal["read", "write", "readwrite"] | None = None
+    mode: Literal["agent", "chat"] | None = None
+    trust: bool | None = None
+    trigger: Literal["mention", "always"] | None = None
+    allowed_users: list[str] | None = None
+
+
 class WorkspaceDefaultsConfig(BaseModel):
     requires_trigger: bool = True
     context_mode: Literal["group", "isolated"] = "group"
+    access: Literal["read", "write", "readwrite"] = "readwrite"
+    mode: Literal["agent", "chat"] = "agent"
+    trust: bool = True
+    trigger: Literal["mention", "always"] = "mention"
+    allowed_users: list[str] | None = None
 
 
 class McpToolSecurityConfig(BaseModel):
@@ -144,7 +169,7 @@ class WorkspaceSecurityConfig(BaseModel):
 
 class WorkspaceConfig(BaseModel):
     is_admin: bool = False
-    requires_trigger: bool | None = None  # None → use workspace_defaults
+    requires_trigger: bool | None = None  # None → use workspace_defaults (deprecated)
     pynchy_repo_access: bool = False
     name: str | None = None  # display name; defaults to folder titlecased
     schedule: str | None = None  # cron expression
@@ -154,6 +179,13 @@ class WorkspaceConfig(BaseModel):
     skills: list[str] | None = None  # tier names and/or skill names; None = all
     mcp_servers: list[str] | None = None  # server names + group names, set-unioned
     mcp: dict[str, dict[str, Any]] = {}  # {server_name: {key: value}} → per-MCP kwargs
+    # Channel access modes (None → inherit from workspace_defaults)
+    access: Literal["read", "write", "readwrite"] | None = None
+    mode: Literal["agent", "chat"] | None = None
+    trust: bool | None = None
+    trigger: Literal["mention", "always"] | None = None
+    allowed_users: list[str] | None = None
+    channels: dict[str, ChannelOverrideConfig] | None = None
 
     @field_validator("schedule")
     @classmethod
@@ -307,6 +339,8 @@ class Settings(BaseSettings):
     gateway: GatewayConfig = GatewayConfig()
     workspace_defaults: WorkspaceDefaultsConfig = WorkspaceDefaultsConfig()
     workspaces: dict[str, WorkspaceConfig] = {}  # [workspaces.<folder_name>]
+    owner: OwnerConfig = OwnerConfig()
+    user_groups: dict[str, list[str]] = {}  # group_name → [user IDs or group refs]
     commands: CommandWordsConfig = CommandWordsConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
     cron_jobs: dict[str, CronJobConfig] = {}  # [cron_jobs.<job_name>]
@@ -394,6 +428,197 @@ class Settings(BaseSettings):
     @cached_property
     def worktrees_dir(self) -> Path:
         return self.home_dir / ".config" / "pynchy" / "worktrees"
+
+
+# ---------------------------------------------------------------------------
+# Channel access resolution
+# ---------------------------------------------------------------------------
+
+
+def resolve_channel_config(
+    workspace_name: str,
+    channel_jid: str | None = None,
+    channel_plugin_name: str | None = None,
+) -> ResolvedChannelConfig:
+    """Walk the resolution cascade and return a fully-resolved config.
+
+    Cascade (most specific wins):
+    1. workspaces.<name>.channels."<jid>"
+    2. workspaces.<name>.channels.<plugin_name>
+    3. workspaces.<name>.*
+    4. workspace_defaults.*
+
+    Backward compat: if workspace has requires_trigger but no new trigger
+    field, map it: True → "mention", False → "always".
+    """
+    from pynchy.types import ResolvedChannelConfig
+
+    s = get_settings()
+    defaults = s.workspace_defaults
+    ws = s.workspaces.get(workspace_name)
+
+    # Layer 0: global defaults
+    access = defaults.access
+    mode = defaults.mode
+    trust = defaults.trust
+    trigger = defaults.trigger
+    allowed_users = defaults.allowed_users or ["owner"]
+
+    # Layer 1: workspace-level overrides
+    if ws is not None:
+        if ws.access is not None:
+            access = ws.access
+        if ws.mode is not None:
+            mode = ws.mode
+        if ws.trust is not None:
+            trust = ws.trust
+        if ws.trigger is not None:
+            trigger = ws.trigger
+        if ws.allowed_users is not None:
+            allowed_users = ws.allowed_users
+
+    # Layer 2: per-channel overrides (plugin name, then specific JID)
+    if ws is not None and ws.channels:
+        # Plugin-level channel override (e.g., channels.slack)
+        if channel_plugin_name:
+            ch_override = ws.channels.get(channel_plugin_name)
+            if ch_override is not None:
+                if ch_override.access is not None:
+                    access = ch_override.access
+                if ch_override.mode is not None:
+                    mode = ch_override.mode
+                if ch_override.trust is not None:
+                    trust = ch_override.trust
+                if ch_override.trigger is not None:
+                    trigger = ch_override.trigger
+                if ch_override.allowed_users is not None:
+                    allowed_users = ch_override.allowed_users
+
+        # JID-specific override (most specific, wins over plugin-level)
+        if channel_jid:
+            ch_override = ws.channels.get(channel_jid)
+            if ch_override is not None:
+                if ch_override.access is not None:
+                    access = ch_override.access
+                if ch_override.mode is not None:
+                    mode = ch_override.mode
+                if ch_override.trust is not None:
+                    trust = ch_override.trust
+                if ch_override.trigger is not None:
+                    trigger = ch_override.trigger
+                if ch_override.allowed_users is not None:
+                    allowed_users = ch_override.allowed_users
+
+    return ResolvedChannelConfig(
+        access=access,
+        mode=mode,
+        trust=trust,
+        trigger=trigger,
+        allowed_users=allowed_users,
+    )
+
+
+def resolve_allowed_users(
+    raw_list: list[str],
+    user_groups: dict[str, list[str]],
+    owner_config: OwnerConfig,
+    channel_plugin_name: str | None = None,
+) -> set[str] | None:
+    """Expand group references and "owner" into a flat set of user IDs.
+
+    Returns None if "*" is in the list (meaning everyone is allowed).
+    Otherwise returns the union of all resolved user IDs.
+
+    Resolution rules:
+    - "*" → short-circuit, allow everyone (returns None)
+    - "owner" → resolved via OwnerConfig for the channel platform
+    - strings containing ":" → literal user IDs (e.g., "slack:U04ABC")
+    - everything else → group name lookup (recursive, with cycle detection)
+    """
+    if "*" in raw_list:
+        return None  # Wildcard — everyone allowed
+
+    result: set[str] = set()
+    _resolve_into(raw_list, user_groups, owner_config, channel_plugin_name, result, seen=set())
+    return result
+
+
+def _resolve_into(
+    entries: list[str],
+    user_groups: dict[str, list[str]],
+    owner_config: OwnerConfig,
+    channel_plugin_name: str | None,
+    result: set[str],
+    seen: set[str],
+) -> None:
+    """Recursively resolve user entries into the result set."""
+    for entry in entries:
+        if entry == "*":
+            # Shouldn't reach here (caller checks), but handle defensively
+            return
+        if entry == "owner":
+            owner_id = _resolve_owner(owner_config, channel_plugin_name)
+            if owner_id:
+                result.add(owner_id)
+            continue
+        if ":" in entry:
+            # Literal user ID (e.g., "slack:U04ABC")
+            result.add(entry)
+            continue
+        # Group name lookup
+        if entry in seen:
+            continue  # Cycle detection
+        seen.add(entry)
+        group_members = user_groups.get(entry)
+        if group_members is not None:
+            _resolve_into(
+                group_members, user_groups, owner_config, channel_plugin_name, result, seen
+            )
+
+
+def _resolve_owner(owner_config: OwnerConfig, channel_plugin_name: str | None) -> str | None:
+    """Resolve the owner identity for a given channel platform."""
+    if channel_plugin_name == "whatsapp":
+        return "whatsapp:owner"  # Sentinel — checked via is_from_me at runtime
+    if channel_plugin_name == "slack" and owner_config.slack:
+        return f"slack:{owner_config.slack}"
+    # For unknown platforms or when no owner is configured, return a generic sentinel
+    # that the caller can check against
+    if channel_plugin_name and owner_config.slack:
+        # Default: try the slack owner for any platform with a configured owner
+        return f"slack:{owner_config.slack}"
+    return None
+
+
+def is_user_allowed(
+    sender: str,
+    channel_plugin_name: str | None,
+    resolved_users: set[str] | None,
+    is_from_me: bool | None = None,
+) -> bool:
+    """Check if a sender is allowed by the resolved allowed_users set.
+
+    Args:
+        sender: The sender's platform-specific ID
+        channel_plugin_name: The channel plugin name (e.g., "whatsapp", "slack")
+        resolved_users: The resolved set from resolve_allowed_users, or None for wildcard
+        is_from_me: WhatsApp is_from_me flag for owner detection
+    """
+    if resolved_users is None:
+        return True  # Wildcard — everyone allowed
+
+    # WhatsApp owner check via is_from_me
+    if is_from_me and "whatsapp:owner" in resolved_users:
+        return True
+
+    # Check literal sender ID
+    if channel_plugin_name:
+        qualified = f"{channel_plugin_name}:{sender}"
+        if qualified in resolved_users:
+            return True
+
+    # Also check the raw sender (for pre-qualified IDs)
+    return sender in resolved_users
 
 
 # ---------------------------------------------------------------------------

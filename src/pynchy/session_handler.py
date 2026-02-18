@@ -193,4 +193,22 @@ async def on_inbound(deps: SessionDeps, _jid: str, msg: NewMessage) -> None:
         )
         msg = replace(msg, chat_jid=canonical)
 
+    # Check channel access mode — skip inbound from write-only channels
+    group = deps.workspaces.get(msg.chat_jid)
+    if group and source_channel:
+        from pynchy.config import resolve_channel_config
+
+        resolved = resolve_channel_config(
+            group.folder,
+            channel_jid=msg.chat_jid,
+            channel_plugin_name=source_channel,
+        )
+        if resolved.access == "write":
+            logger.debug(
+                "Ignoring inbound from write-only channel",
+                channel=source_channel,
+                chat_jid=msg.chat_jid,
+            )
+            return
+
     await ingest_user_message(deps, msg, source_channel=source_channel)
