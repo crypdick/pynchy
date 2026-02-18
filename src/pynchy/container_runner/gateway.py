@@ -28,20 +28,30 @@ Container env vars are set identically for both modes::
 
 Start with :func:`start_gateway`, access the singleton with :func:`get_gateway`.
 
+Env-var forwarding (LiteLLM mode)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+At startup the gateway scans ``litellm_config.yaml`` for all
+``os.environ/VARNAME`` references and forwards matching host env vars
+into the Docker container via ``-e``.  The YAML is the single source of
+truth — add model entries there, set the corresponding vars in ``.env``,
+and pynchy picks them up automatically.
+
 OAuth gotcha
 ~~~~~~~~~~~~
 
 The Anthropic Messages API does **not** accept OAuth tokens
 (``sk-ant-oat01-…``) via ``Authorization: Bearer`` unless the request
 also carries the beta header ``anthropic-beta: oauth-2025-04-20``.
-Builtin mode handles this automatically.  LiteLLM mode passes the
-discovered token as ``PYNCHY_ANTHROPIC_TOKEN`` — the litellm config
-should reference it via ``api_key: os.environ/PYNCHY_ANTHROPIC_TOKEN``.
+Builtin mode handles this automatically.  In LiteLLM mode, use
+``extra_headers`` in the litellm config to add the beta header.
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
+import re
 import secrets
 from pathlib import Path
 from typing import Protocol
@@ -170,51 +180,37 @@ class LiteLLMGateway:
         return True
 
     # ------------------------------------------------------------------
-    # Credential discovery
+    # Env-var forwarding
     # ------------------------------------------------------------------
 
+    # Vars that pynchy sets itself — never forward from host env.
+    _GATEWAY_MANAGED_VARS = frozenset({
+        "LITELLM_MASTER_KEY",
+        "LITELLM_SALT_KEY",
+        "DATABASE_URL",
+    })
+
     @staticmethod
-    def _discover_anthropic_token() -> str | None:
-        """Discover an Anthropic token for the LiteLLM container.
+    def _collect_yaml_env_refs(config_path: Path) -> list[tuple[str, str]]:
+        """Scan litellm config for ``os.environ/`` references and resolve from host env.
 
-        Checks (in order):
-        1. ``[secrets].anthropic_api_key`` in config.toml
-        2. ``[secrets].claude_code_oauth_token`` in config.toml
-        3. OAuth token from ``~/.claude/.credentials.json`` (via ``claude setup-token``)
-
-        Returns the token string, or ``None`` if nothing found.
+        Returns ``(name, value)`` pairs for every referenced var that is
+        set on the host.  Gateway-managed vars are excluded.  Missing vars
+        produce a warning — LiteLLM will fail at runtime for that entry,
+        which surfaces the problem clearly.
         """
-        from pynchy.container_runner._credentials import _read_oauth_token
+        text = config_path.read_text()
+        var_names = set(re.findall(r"os\.environ/(\w+)", text))
+        var_names -= LiteLLMGateway._GATEWAY_MANAGED_VARS
 
-        s = get_settings()
-
-        if s.secrets.anthropic_api_key:
-            logger.info(
-                "Gateway credentials discovered",
-                source="config (api_key)",
-            )
-            return s.secrets.anthropic_api_key.get_secret_value()
-
-        if s.secrets.claude_code_oauth_token:
-            logger.info(
-                "Gateway credentials discovered",
-                source="config (oauth_token)",
-            )
-            return s.secrets.claude_code_oauth_token.get_secret_value()
-
-        token = _read_oauth_token()
-        if token:
-            logger.info(
-                "Gateway credentials discovered",
-                source="~/.claude/.credentials.json",
-            )
-            return token
-
-        logger.warning(
-            "No Anthropic credentials found for LiteLLM — "
-            "run 'claude setup-token' or set [secrets].anthropic_api_key in config.toml"
-        )
-        return None
+        resolved: list[tuple[str, str]] = []
+        for name in sorted(var_names):
+            value = os.environ.get(name)
+            if value:
+                resolved.append((name, value))
+            else:
+                logger.warning("YAML references unset env var", var=name)
+        return resolved
 
     # Docker helpers are in _docker.py — imported at module level.
 
@@ -332,10 +328,9 @@ class LiteLLMGateway:
             f"DATABASE_URL={self._database_url}",
         ]
 
-        # Discover Anthropic token and pass to container
-        anthropic_token = self._discover_anthropic_token()
-        if anthropic_token:
-            env_vars.extend(["-e", f"PYNCHY_ANTHROPIC_TOKEN={anthropic_token}"])
+        # Forward env vars referenced in litellm_config.yaml
+        for var_name, value in self._collect_yaml_env_refs(self._config_path):
+            env_vars.extend(["-e", f"{var_name}={value}"])
 
         # Add UI credentials if configured
         s = get_settings()
