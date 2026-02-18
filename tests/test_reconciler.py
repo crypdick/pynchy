@@ -218,6 +218,7 @@ class TestOutboundRetry:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("_db")
 class TestCooldown:
     @pytest.mark.asyncio
     async def test_second_call_within_cooldown_is_skipped(self):
