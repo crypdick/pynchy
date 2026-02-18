@@ -48,7 +48,6 @@ class ContainerInput:
         self.is_scheduled_task: bool = data.get("is_scheduled_task", False)
         self.system_notices: list[str] | None = data.get("system_notices")
         self.pynchy_repo_access: bool = data.get("pynchy_repo_access", False)
-        self.plugin_mcp_servers: dict[str, Any] | None = data.get("plugin_mcp_servers")
         self.agent_core_module: str = data.get("agent_core_module", "agent_runner.cores.claude")
         self.agent_core_class: str = data.get("agent_core_class", "ClaudeAgentCore")
         self.agent_core_config: dict[str, Any] | None = data.get("agent_core_config")
@@ -278,18 +277,6 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
                 "x-litellm-api-key": container_input.mcp_gateway_key,
             },
         }
-
-    # Merge plugin MCP servers
-    if container_input.plugin_mcp_servers:
-        for name, spec in container_input.plugin_mcp_servers.items():
-            plugin_env = spec.get("env", {}).copy()
-            # Add PYTHONPATH for plugin source imports
-            plugin_env["PYTHONPATH"] = f"/workspace/plugins/{name}"
-            mcp_servers_dict[name] = {
-                "command": spec["command"],
-                "args": spec["args"],
-                "env": plugin_env,
-            }
 
     # Default cwd to the mounted project repo when available, so agents start
     # in the codebase they're working on rather than the group metadata dir.

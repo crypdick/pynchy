@@ -291,7 +291,6 @@ class TestContainerInput:
         )
         assert inp.session_id is None
         assert inp.is_scheduled_task is False
-        assert inp.plugin_mcp_servers is None
         assert inp.system_notices is None
         assert inp.pynchy_repo_access is False
         assert inp.agent_core_module == "agent_runner.cores.claude"

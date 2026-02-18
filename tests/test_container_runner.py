@@ -1803,7 +1803,6 @@ class TestInputToDictEdgeCases:
         # Optional fields should not be present when at defaults
         assert "session_id" not in d
         assert "is_scheduled_task" not in d
-        assert "plugin_mcp_servers" not in d
         assert "system_notices" not in d
         assert "pynchy_repo_access" not in d
 
@@ -1816,14 +1815,12 @@ class TestInputToDictEdgeCases:
             is_admin=True,
             session_id="s-1",
             is_scheduled_task=True,
-            plugin_mcp_servers={"pynchy": {"command": "uv", "args": [], "env": {}}},
             system_notices=["notice 1"],
             pynchy_repo_access=True,
         )
         d = _input_to_dict(inp)
         assert d["session_id"] == "s-1"
         assert d["is_scheduled_task"] is True
-        assert d["plugin_mcp_servers"] == {"pynchy": {"command": "uv", "args": [], "env": {}}}
         assert d["system_notices"] == ["notice 1"]
         assert d["pynchy_repo_access"] is True
 

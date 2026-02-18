@@ -71,22 +71,6 @@ class PynchySpec:
         """
 
     @hookspec
-    def pynchy_mcp_server_spec(self) -> dict[str, Any]:
-        """Provide MCP server specification.
-
-        MCP (Model Context Protocol) servers provide tools that agents can use.
-        The returned dict specifies how to start the MCP server inside the container.
-
-        Returns:
-            Dict with keys:
-                - name: Server identifier (e.g., "filesystem", "web-search")
-                - command: Command to run (e.g., "python", "node")
-                - args: Command arguments (e.g., ["-m", "my_mcp_server"])
-                - env: Environment variables (e.g., {"API_KEY": "..."})
-                - host_source: Optional path to server source on host (for mounting into container)
-        """
-
-    @hookspec
     def pynchy_skill_paths(self) -> list[str]:
         """Provide paths to skill directories.
 

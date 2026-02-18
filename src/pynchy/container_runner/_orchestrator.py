@@ -66,27 +66,6 @@ def resolve_agent_core(plugin_manager: pluggy.PluginManager | None) -> tuple[str
 # ---------------------------------------------------------------------------
 
 
-def _collect_plugin_mcp_specs(
-    plugin_manager: pluggy.PluginManager,
-) -> dict[str, dict] | None:
-    """Collect MCP server specs from plugins. Returns None if no specs."""
-    plugin_mcp_specs: dict[str, dict] = {}
-    mcp_specs_list = plugin_manager.hook.pynchy_mcp_server_spec()
-    for spec in mcp_specs_list:
-        try:
-            plugin_mcp_specs[spec["name"]] = {
-                "command": spec["command"],
-                "args": spec["args"],
-                "env": spec["env"],
-            }
-        except (KeyError, TypeError):
-            logger.exception(
-                "Failed to get MCP spec from plugin",
-                spec_keys=list(spec.keys()) if isinstance(spec, dict) else str(type(spec)),
-            )
-    return plugin_mcp_specs or None
-
-
 def _determine_result(
     state: StreamState,
     exit_code: int | None,
@@ -206,10 +185,6 @@ async def run_container_agent(
     mounts = _build_volume_mounts(
         group, input_data.is_admin, plugin_manager, input_data.pynchy_repo_access, worktree_path
     )
-
-    # --- Collect plugin MCP specs ---
-    if plugin_manager and input_data.plugin_mcp_servers is None:
-        input_data.plugin_mcp_servers = _collect_plugin_mcp_specs(plugin_manager)
 
     # --- MCP gateway: ensure containers running and pass credentials ---
     from pynchy.container_runner.mcp_manager import get_mcp_manager
