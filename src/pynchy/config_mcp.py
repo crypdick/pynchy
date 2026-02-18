@@ -8,9 +8,9 @@ Example TOML::
     [mcp_servers.playwright]
     type = "docker"
     image = "mcp/playwright:latest"
-    args = ["--headless", "--port", "8931", "--host", "0.0.0.0"]
+    args = ["--headless", "--port", "8931", "--host", "0.0.0.0", "--allowed-hosts", "*"]
     port = 8931
-    transport = "sse"
+    transport = "http"
     idle_timeout = 600
 
     [mcp_servers.some-remote-api]
@@ -42,7 +42,9 @@ class McpServerConfig(BaseModel):
     url: str | None = None
 
     # Common
-    transport: Literal["sse", "streamable_http"] = "sse"
+    # "http" = Streamable HTTP (preferred for Docker — no persistent connection).
+    # LiteLLM accepts "sse", "http", "stdio".
+    transport: Literal["sse", "http", "streamable_http"] = "sse"
     auth_value_env: str | None = None  # env var name for auth token (never inline secrets)
 
     @model_validator(mode="after")
