@@ -111,3 +111,11 @@ general_settings:
   #   ui_username = "admin"
   #   ui_password = "your-secure-password"
   # They're passed to LiteLLM as UI_USERNAME and UI_PASSWORD env vars.
+
+# ---------------------------------------------------------------------------
+# MCP gateway
+# ---------------------------------------------------------------------------
+# LiteLLM acts as the MCP gateway when mcp_servers are defined in config.toml.
+# Pynchy registers MCP endpoints and creates per-workspace teams via the
+# LiteLLM HTTP API at boot. No additional configuration needed here —
+# just ensure LiteLLM supports MCP routing (v1.55+).

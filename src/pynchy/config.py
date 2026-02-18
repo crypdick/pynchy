@@ -18,7 +18,7 @@ import os
 import re
 from functools import cached_property
 from pathlib import Path
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal
 
 from croniter import croniter
 from pydantic import BaseModel, SecretStr, field_validator
@@ -28,6 +28,8 @@ from pydantic_settings import (
     SettingsConfigDict,
     TomlConfigSettingsSource,
 )
+
+from pynchy.config_mcp import McpServerConfig
 
 # ---------------------------------------------------------------------------
 # Sub-models (each maps to a [section] in config.toml)
@@ -150,6 +152,8 @@ class WorkspaceConfig(BaseModel):
     context_mode: str | None = None  # None → use workspace_defaults
     security: WorkspaceSecurityConfig | None = None  # MCP tool access control
     skills: list[str] | None = None  # tier names and/or skill names; None = all
+    mcp_servers: list[str] | None = None  # server names + group names, set-unioned
+    mcp: dict[str, dict[str, Any]] = {}  # {server_name: {key: value}} → per-MCP kwargs
 
     @field_validator("schedule")
     @classmethod
@@ -313,6 +317,11 @@ class Settings(BaseSettings):
     security: SecurityConfig = SecurityConfig()
     slack: SlackConfig = SlackConfig()
     caldav: CalDAVConfig = CalDAVConfig()
+
+    # MCP management (imported from config_mcp)
+    mcp_servers: dict[str, McpServerConfig] = {}  # [mcp_servers.<name>]
+    mcp_groups: dict[str, list[str]] = {}  # {group_name: [server_names]}
+    mcp_presets: dict[str, dict[str, str]] = {}  # {preset_name: {key: value}}
 
     # Sentinels (class-level, not fields)
     OUTPUT_START_MARKER: ClassVar[str] = "---PYNCHY_OUTPUT_START---"

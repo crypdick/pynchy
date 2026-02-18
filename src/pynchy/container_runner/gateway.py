@@ -43,8 +43,6 @@ from __future__ import annotations
 
 import asyncio
 import secrets
-import shutil
-import subprocess
 from pathlib import Path
 from typing import Protocol
 
@@ -52,6 +50,12 @@ import aiohttp
 from aiohttp import web
 
 from pynchy.config import get_settings
+from pynchy.container_runner._docker import (
+    docker_available,
+    ensure_image,
+    ensure_network,
+    run_docker,
+)
 from pynchy.logger import logger
 
 # ---------------------------------------------------------------------------
@@ -212,53 +216,7 @@ class LiteLLMGateway:
         )
         return None
 
-    # ------------------------------------------------------------------
-    # Docker helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _docker_available() -> bool:
-        return shutil.which("docker") is not None
-
-    @staticmethod
-    def _run_docker(
-        *args: str,
-        check: bool = True,
-        timeout: int = 30,
-    ) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["docker", *args],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=check,
-        )
-
-    # ------------------------------------------------------------------
-    # Image helpers
-    # ------------------------------------------------------------------
-
-    def _ensure_image(self, image: str) -> None:
-        """Pull an image if not already present."""
-        result = self._run_docker("image", "inspect", image, check=False)
-        if result.returncode == 0:
-            return
-
-        logger.info("Pulling Docker image (first run may take a minute)", image=image)
-        self._run_docker("pull", image, timeout=300)
-        logger.info("Docker image pulled", image=image)
-
-    # ------------------------------------------------------------------
-    # Docker network
-    # ------------------------------------------------------------------
-
-    def _ensure_network(self) -> None:
-        """Create the private Docker network if it doesn't exist."""
-        result = self._run_docker("network", "inspect", _NETWORK_NAME, check=False)
-        if result.returncode == 0:
-            return
-        self._run_docker("network", "create", _NETWORK_NAME)
-        logger.info("Created Docker network", network=_NETWORK_NAME)
+    # Docker helpers are in _docker.py — imported at module level.
 
     # ------------------------------------------------------------------
     # PostgreSQL sidecar
@@ -267,9 +225,9 @@ class LiteLLMGateway:
     async def _start_postgres(self) -> None:
         """Start the PostgreSQL sidecar and wait for it to accept connections."""
         self._pg_data_dir.mkdir(parents=True, exist_ok=True)
-        self._ensure_image(self._postgres_image)
+        ensure_image(self._postgres_image)
 
-        self._run_docker("rm", "-f", _POSTGRES_CONTAINER, check=False)
+        run_docker("rm", "-f", _POSTGRES_CONTAINER, check=False)
 
         logger.info(
             "Starting PostgreSQL sidecar",
@@ -277,7 +235,7 @@ class LiteLLMGateway:
             data_dir=str(self._pg_data_dir),
         )
 
-        self._run_docker(
+        run_docker(
             "run", "-d",
             "--name", _POSTGRES_CONTAINER,
             "--network", _NETWORK_NAME,
@@ -297,7 +255,7 @@ class LiteLLMGateway:
         deadline = loop.time() + _POSTGRES_HEALTH_TIMEOUT
 
         while loop.time() < deadline:
-            result = self._run_docker(
+            result = run_docker(
                 "exec",
                 _POSTGRES_CONTAINER,
                 "pg_isready",
@@ -310,7 +268,7 @@ class LiteLLMGateway:
                 return
 
             # Ensure the container is still running
-            inspect = self._run_docker(
+            inspect = run_docker(
                 "inspect",
                 "-f",
                 "{{.State.Running}}",
@@ -318,7 +276,7 @@ class LiteLLMGateway:
                 check=False,
             )
             if inspect.stdout.strip() != "true":
-                logs = self._run_docker(
+                logs = run_docker(
                     "logs",
                     "--tail",
                     "30",
@@ -339,7 +297,7 @@ class LiteLLMGateway:
     # ------------------------------------------------------------------
 
     async def start(self) -> None:
-        if not self._docker_available():
+        if not docker_available():
             msg = "Docker is required for LiteLLM gateway mode but 'docker' was not found on PATH"
             raise RuntimeError(msg)
 
@@ -349,13 +307,13 @@ class LiteLLMGateway:
 
         self._data_dir.mkdir(parents=True, exist_ok=True)
 
-        self._ensure_network()
+        ensure_network(_NETWORK_NAME)
         await self._start_postgres()
 
-        self._ensure_image(self._image)
+        ensure_image(self._image)
 
         # Remove stale LiteLLM container from previous run
-        self._run_docker("rm", "-f", _LITELLM_CONTAINER, check=False)
+        run_docker("rm", "-f", _LITELLM_CONTAINER, check=False)
 
         logger.info(
             "Starting LiteLLM proxy container",
@@ -386,7 +344,7 @@ class LiteLLMGateway:
         if s.gateway.ui_password:
             env_vars.extend(["-e", f"UI_PASSWORD={s.gateway.ui_password.get_secret_value()}"])
 
-        self._run_docker(
+        run_docker(
             "run", "-d",
             "--name", _LITELLM_CONTAINER,
             "--network", _NETWORK_NAME,
@@ -429,7 +387,7 @@ class LiteLLMGateway:
                     pass
 
                 # Check container is still running
-                result = self._run_docker(
+                result = run_docker(
                     "inspect",
                     "-f",
                     "{{.State.Running}}",
@@ -437,7 +395,7 @@ class LiteLLMGateway:
                     check=False,
                 )
                 if result.stdout.strip() != "true":
-                    logs = self._run_docker("logs", "--tail", "50", _LITELLM_CONTAINER, check=False)
+                    logs = run_docker("logs", "--tail", "50", _LITELLM_CONTAINER, check=False)
                     logger.error("LiteLLM container exited", logs=logs.stdout[-2000:])
                     msg = "LiteLLM container failed to start — check logs above"
                     raise RuntimeError(msg)
@@ -449,11 +407,11 @@ class LiteLLMGateway:
 
     async def stop(self) -> None:
         logger.info("Stopping LiteLLM gateway containers")
-        self._run_docker("stop", "-t", "5", _LITELLM_CONTAINER, check=False)
-        self._run_docker("rm", "-f", _LITELLM_CONTAINER, check=False)
-        self._run_docker("stop", "-t", "5", _POSTGRES_CONTAINER, check=False)
-        self._run_docker("rm", "-f", _POSTGRES_CONTAINER, check=False)
-        self._run_docker("network", "rm", _NETWORK_NAME, check=False)
+        run_docker("stop", "-t", "5", _LITELLM_CONTAINER, check=False)
+        run_docker("rm", "-f", _LITELLM_CONTAINER, check=False)
+        run_docker("stop", "-t", "5", _POSTGRES_CONTAINER, check=False)
+        run_docker("rm", "-f", _POSTGRES_CONTAINER, check=False)
+        run_docker("network", "rm", _NETWORK_NAME, check=False)
         logger.info("LiteLLM gateway stopped")
 
 
@@ -708,12 +666,30 @@ async def start_gateway() -> LiteLLMGateway | BuiltinGateway:
         )
 
     await _gateway.start()
+
+    # Sync MCP state to LiteLLM after gateway is ready (LiteLLM mode only)
+    if isinstance(_gateway, LiteLLMGateway) and s.mcp_servers:
+        from pynchy.container_runner.mcp_manager import McpManager, set_mcp_manager
+
+        mcp_mgr = McpManager(s, _gateway)
+        set_mcp_manager(mcp_mgr)
+        await mcp_mgr.sync()
+
     return _gateway
 
 
 async def stop_gateway() -> None:
     """Stop the gateway if running."""
     global _gateway
+
+    # Stop MCP containers before stopping the gateway
+    from pynchy.container_runner.mcp_manager import get_mcp_manager, set_mcp_manager
+
+    mcp_mgr = get_mcp_manager()
+    if mcp_mgr is not None:
+        await mcp_mgr.stop_all()
+        set_mcp_manager(None)
+
     if _gateway is not None:
         await _gateway.stop()
         _gateway = None

@@ -63,6 +63,12 @@ ssh pynchy 'gh auth status'
 
 After authenticating, `_write_env_file()` auto-discovers `GH_TOKEN` and git identity on each god container launch. No manual env configuration needed.
 
+## MCP Server Containers
+
+MCP tool servers (e.g., Playwright) run as separate Docker containers managed by `McpManager`. They start on-demand when an agent needs them and stop after the configured `idle_timeout`. Browser access is now provided via the MCP Playwright server rather than a bundled agent-browser skill — this keeps the agent container image lean.
+
+See `src/pynchy/container_runner/mcp_manager.py` and [MCP management](../docs/architecture/mcp-management.md).
+
 ## Container Build Cache
 
 Apple Container's buildkit caches the build context aggressively. `--no-cache` alone does NOT invalidate COPY steps — the builder's volume retains stale files. To force a truly clean rebuild:

@@ -52,6 +52,8 @@ class ContainerInput:
         self.agent_core_module: str = data.get("agent_core_module", "agent_runner.cores.claude")
         self.agent_core_class: str = data.get("agent_core_class", "ClaudeAgentCore")
         self.agent_core_config: dict[str, Any] | None = data.get("agent_core_config")
+        self.mcp_gateway_url: str | None = data.get("mcp_gateway_url")
+        self.mcp_gateway_key: str | None = data.get("mcp_gateway_key")
 
 
 class ContainerOutput:
@@ -266,6 +268,16 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
             },
         },
     }
+
+    # Add remote MCP servers if configured (routed via LiteLLM)
+    if container_input.mcp_gateway_url and container_input.mcp_gateway_key:
+        mcp_servers_dict["tools"] = {
+            "type": "sse",
+            "url": container_input.mcp_gateway_url,
+            "headers": {
+                "x-litellm-api-key": container_input.mcp_gateway_key,
+            },
+        }
 
     # Merge plugin MCP servers
     if container_input.plugin_mcp_servers:

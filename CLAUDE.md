@@ -17,8 +17,11 @@ Python process that connects to messaging channels (WhatsApp, Slack, etc. via pl
 | `src/pynchy/runtime/` | Runtime detection, platform providers, system checks |
 | `src/pynchy/plugin/` | Plugin system, sync, verification, built-in plugins |
 | `src/pynchy/container_runner/` | Container orchestration — mounts, credentials, process management |
+| `src/pynchy/container_runner/mcp_manager.py` | MCP lifecycle — LiteLLM sync, Docker on-demand, team provisioning |
+| `src/pynchy/container_runner/_docker.py` | Shared Docker helpers (run, pull, network, health check) |
 | `src/pynchy/security/` | Security policy middleware and audit logging |
 | `src/pynchy/config.py` | Pydantic BaseSettings config (TOML + env overrides) |
+| `src/pynchy/config_mcp.py` | MCP server config models (`McpServerConfig`) |
 | `src/pynchy/group_queue.py` | Per-group queue with global concurrency limit |
 | `src/pynchy/task_scheduler.py` | Runs scheduled tasks |
 | `src/pynchy/types.py` | Data models (dataclasses) |

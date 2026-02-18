@@ -97,6 +97,29 @@ cp config-examples/litellm_config.yaml.EXAMPLE litellm_config.yaml
 
 Pynchy starts the LiteLLM container automatically on boot. The admin UI is available at `http://localhost:4000/ui` (login with the `ui_username`/`ui_password` you configured).
 
+#### MCP Server Access (optional)
+
+To give agents access to external MCP tool servers (e.g., Playwright for web browsing), add definitions to `config.toml`:
+
+```toml
+[mcp_servers.playwright]
+type = "docker"
+image = "mcp/playwright:latest"
+args = ["--headless", "--port", "8931", "--host", "0.0.0.0"]
+port = 8931
+transport = "sse"
+idle_timeout = 600
+
+[workspaces.my-workspace]
+mcp_servers = ["playwright"]
+
+# Optional: per-workspace restrictions (passed as Docker flags)
+[workspaces.my-workspace.mcp.playwright]
+allowed-origins = "github.com;stackoverflow.com"
+```
+
+Docker MCP containers start on-demand and stop after `idle_timeout`. See [MCP management](architecture/mcp-management.md) for the full architecture.
+
 ### 3. Build Container Image
 
 ```bash

@@ -218,35 +218,42 @@ class ClaudeAgentCore:
             claude_hooks["PreCompact"] = []
         claude_hooks["PreCompact"].append(HookMatcher(hooks=[_create_pre_compact_hook()]))
 
+        # Build allowed tools list
+        allowed_tools = [
+            "Bash",
+            "BashOutput",
+            "KillBash",
+            "Read",
+            "Write",
+            "Edit",
+            "Glob",
+            "Grep",
+            "WebSearch",
+            "WebFetch",
+            "Task",
+            "TaskOutput",
+            "TaskStop",
+            "TeamCreate",
+            "TeamDelete",
+            "SendMessage",
+            "TodoWrite",
+            "ToolSearch",
+            "Skill",
+            "NotebookEdit",
+            "mcp__pynchy__*",
+        ]
+
+        # Add remote MCP tools if configured
+        if "tools" in self.config.mcp_servers:
+            allowed_tools.append("mcp__tools__*")
+
         # Build options
         options = ClaudeAgentOptions(
             model="opus",
             cwd=self.config.cwd,
             resume=self.config.session_id,
             system_prompt=system_prompt,
-            allowed_tools=[
-                "Bash",
-                "BashOutput",
-                "KillBash",
-                "Read",
-                "Write",
-                "Edit",
-                "Glob",
-                "Grep",
-                "WebSearch",
-                "WebFetch",
-                "Task",
-                "TaskOutput",
-                "TaskStop",
-                "TeamCreate",
-                "TeamDelete",
-                "SendMessage",
-                "TodoWrite",
-                "ToolSearch",
-                "Skill",
-                "NotebookEdit",
-                "mcp__pynchy__*",
-            ],
+            allowed_tools=allowed_tools,
             # Plan mode tools require interactive approval that headless
             # containers can't provide, causing an infinite resume loop.
             disallowed_tools=["EnterPlanMode", "ExitPlanMode"],

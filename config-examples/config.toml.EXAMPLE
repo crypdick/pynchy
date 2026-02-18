@@ -178,6 +178,20 @@ requires_trigger = false
 is_god = true
 requires_trigger = false
 
+# Example workspace with MCP access and per-MCP kwargs:
+# [workspaces.research]
+# mcp_servers = ["dev-tools", "remote-api"]   # groups + individual names, set-unioned
+#
+# [workspaces.research.mcp.playwright]
+# presets = ["dev-research"]                   # expands + merges with explicit values
+# allowed-origins = "internal.example.com"     # merged with preset domains
+
+# Example god workspace with unrestricted MCP access:
+# [workspaces.god]
+# is_god = true
+# mcp_servers = ["all"]
+# # no [mcp.playwright] section → no --allowed-origins → unrestricted
+
 # Plugins can provide additional managed workspaces automatically
 # (for example, the `code-improver` periodic agent for pynchy core).
 
@@ -240,6 +254,48 @@ requires_trigger = false
 # username = "me@example.com"
 # password = "personal-app-password"
 # ignore = ["contact_birthdays"]   # hide auto-generated calendars
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MCP Server Definitions
+# ─────────────────────────────────────────────────────────────────────────────
+# Define MCP servers that agents can access. Docker-based MCPs start on-demand
+# and stop after idle_timeout. URL MCPs are always available.
+# Requires LiteLLM gateway mode (see [gateway] above).
+
+# Docker-based MCP (container managed by pynchy):
+# [mcp_servers.playwright]
+# type = "docker"
+# image = "mcp/playwright:latest"
+# args = ["--headless", "--port", "8931", "--host", "0.0.0.0"]
+# port = 8931
+# transport = "sse"
+# idle_timeout = 600          # seconds; 0 = never stop
+
+# Remote URL-based MCP:
+# [mcp_servers.remote-api]
+# type = "url"
+# url = "https://api.example.com/mcp"
+# transport = "streamable_http"
+# auth_value_env = "SOME_API_KEY"    # env var name (never inline secrets)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MCP Groups — named sets of servers for convenience
+# ─────────────────────────────────────────────────────────────────────────────
+
+# [mcp_groups]
+# dev-tools = ["playwright", "github-mcp"]
+# social = ["twitter-mcp", "linkedin-mcp"]
+# "all" is built-in — refers to every defined mcp_server
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MCP Presets — reusable kwarg bundles (resolved at config load time)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# [mcp_presets.dev-research]
+# allowed-origins = "github.com;stackoverflow.com;docs.python.org;pypi.org"
+
+# [mcp_presets.social-media]
+# allowed-origins = "twitter.com;x.com;reddit.com;linkedin.com"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Security
