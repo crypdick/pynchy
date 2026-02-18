@@ -394,13 +394,18 @@ class PynchyApp:
         """
         from pynchy.db import store_message
 
+        # Include ALL workspace JIDs — not just those with aliases.
+        # Workspaces whose canonical JID is channel-native (e.g. slack:C123)
+        # won't have an alias entry but still need catch-up.
+        jid_to_aliases: dict[str, dict[str, str]] = {jid: {} for jid in self.workspaces}
+        for jid, aliases in self._canonical_to_aliases.items():
+            jid_to_aliases[jid] = aliases
+
         total = 0
         for ch in self.channels:
             if not hasattr(ch, "catch_up"):
                 continue
-            messages = await ch.catch_up(
-                self._canonical_to_aliases, self.last_agent_timestamp
-            )
+            messages = await ch.catch_up(jid_to_aliases, self.last_agent_timestamp)
             for msg in messages:
                 await store_message(msg)
             total += len(messages)

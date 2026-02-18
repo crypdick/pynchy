@@ -149,6 +149,16 @@ class SlackChannel:
                 raise RuntimeError(
                     f"Slack channel '{slack_name}' exists but could not be found via API"
                 ) from exc
+            # Ensure the bot is a member so it receives events.
+            # conversations.join is a no-op if already a member.
+            try:
+                await self._app.client.conversations_join(channel=channel_id)
+            except Exception as join_exc:
+                logger.warning(
+                    "Failed to join existing Slack channel (events may not be received)",
+                    channel=slack_name,
+                    err=str(join_exc),
+                )
             logger.info("Reusing existing Slack channel", name=slack_name, channel_id=channel_id)
         return _jid(channel_id)
 
@@ -279,7 +289,11 @@ class SlackChannel:
         canonical_to_aliases: dict[str, dict[str, str]],
         last_agent_timestamp: dict[str, str],
     ) -> list[NewMessage]:
-        """Recover missed messages for all workspaces with a Slack alias.
+        """Recover missed messages for all workspaces with a Slack channel.
+
+        Handles two cases:
+        - The canonical JID itself is a Slack JID (``slack:CHANNEL_ID``)
+        - The canonical JID has a Slack alias in ``canonical_to_aliases``
 
         Args:
             canonical_to_aliases: ``{canonical_jid: {channel_name: alias_jid}}``
@@ -290,13 +304,19 @@ class SlackChannel:
         results: list[NewMessage] = []
         for canonical_jid, aliases in canonical_to_aliases.items():
             slack_alias = aliases.get("slack")
-            if not slack_alias:
+            # The canonical JID itself may be a Slack JID (workspace
+            # created via Slack with no alias).
+            if not slack_alias and canonical_jid.startswith(JID_PREFIX):
+                slack_jid = canonical_jid
+            elif slack_alias:
+                slack_jid = slack_alias
+            else:
                 continue
             since_iso = last_agent_timestamp.get(canonical_jid)
             if not since_iso:
                 continue
 
-            channel_id = _channel_id_from_jid(slack_alias)
+            channel_id = _channel_id_from_jid(slack_jid)
             since_epoch = str(datetime.fromisoformat(since_iso).timestamp())
             messages = await self.fetch_missed_messages(channel_id, since_epoch)
             for msg in messages:
