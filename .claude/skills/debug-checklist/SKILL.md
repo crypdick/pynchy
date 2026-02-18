@@ -1,6 +1,6 @@
 ---
 name: Debug Checklist
-description: Use when debugging Pynchy issues — service not running, agent not responding, container timeouts, WhatsApp auth problems, mount issues, or session transcript branching.
+description: Use when debugging Pynchy issues — service not running, agent not responding, container timeouts, WhatsApp auth problems, mount issues, session transcript branching, or inspecting message history and agent traces in the SQLite database.
 ---
 
 # Pynchy Debug Checklist
@@ -126,6 +126,54 @@ ls -la store/auth/
 # Re-authenticate if needed
 uv run pynchy-whatsapp-auth
 ```
+
+## Inspecting Message History & Agent Traces
+
+For debugging agent behavior, prefer querying the SQLite database over docker logs. Docker logs truncate output, but the `messages` table stores full content and the `events` table captures agent internals (thinking, tool calls, system prompts).
+
+**Host access:** These queries must run where the DB lives. If not on the host directly, prefix with `ssh pynchy` (Tailscale). See `.claude/deployment.md` for remote access patterns.
+
+Database: `store/messages.db`
+
+| Table | What it stores | Notes |
+|-------|---------------|-------|
+| `messages` | Conversation messages | Full content, not truncated |
+| `events` | Agent traces from observer | Payload is JSON; message echoes truncated to 500 chars |
+
+Quick examples:
+
+```bash
+# Last 20 messages in a channel
+sqlite3 store/messages.db "
+  SELECT timestamp, sender_name, message_type, substr(content, 1, 120)
+  FROM messages WHERE chat_jid = '<JID>'
+  ORDER BY timestamp DESC LIMIT 20;
+"
+
+# Last 20 tool calls globally
+sqlite3 store/messages.db "
+  SELECT timestamp, chat_jid, json_extract(payload, '$.tool_name') AS tool
+  FROM events
+  WHERE event_type = 'agent_trace'
+    AND json_extract(payload, '$.trace_type') = 'tool_use'
+  ORDER BY timestamp DESC LIMIT 20;
+"
+
+# System messages containing a substring
+sqlite3 store/messages.db "
+  SELECT timestamp, chat_jid, substr(content, 1, 200)
+  FROM messages
+  WHERE message_type = 'system' AND content LIKE '%<SUBSTRING>%'
+  ORDER BY timestamp DESC LIMIT 10;
+"
+
+# List known channels
+sqlite3 store/messages.db "SELECT jid, name FROM chats ORDER BY last_message_time DESC;"
+```
+
+For the full query cookbook (cross-table traces, thinking traces, activity timelines, payload search, etc.) see [references/sqlite-queries.md](references/sqlite-queries.md).
+
+Docker logs remain useful for runtime errors (container crashes, process failures) where the issue occurs before messages reach the database.
 
 ## Service Management
 
