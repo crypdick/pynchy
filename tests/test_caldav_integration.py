@@ -695,8 +695,8 @@ async def test_calendar_tool_dispatches_to_plugin_handler(tmp_path):
     from pynchy.integrations.plugins.caldav import CalDAVMcpServerPlugin
 
     fake_pm = MagicMock()
-    fake_pm.hook.pynchy_mcp_server_handler.return_value = [
-        CalDAVMcpServerPlugin().pynchy_mcp_server_handler(),
+    fake_pm.hook.pynchy_service_handler.return_value = [
+        CalDAVMcpServerPlugin().pynchy_service_handler(),
     ]
 
     with (

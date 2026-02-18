@@ -110,7 +110,7 @@ class SqliteMemoryPlugin:
         return backend
 
     @hookimpl
-    def pynchy_mcp_server_handler(self) -> dict[str, Any]:
+    def pynchy_service_handler(self) -> dict[str, Any]:
         return {
             "tools": {
                 "save_memory": _handle_save_memory,

@@ -38,7 +38,7 @@ class TestMemoryProvider:
     def test_plugin_provides_mcp_handlers(self):
         """SqliteMemoryPlugin returns all four tool handlers."""
         plugin = SqliteMemoryPlugin()
-        result = plugin.pynchy_mcp_server_handler()
+        result = plugin.pynchy_service_handler()
         tools = result["tools"]
         assert "save_memory" in tools
         assert "recall_memories" in tools

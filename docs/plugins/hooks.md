@@ -68,15 +68,15 @@ def pynchy_mcp_server_spec(self) -> dict[str, Any]:
 
 **Container behavior:** Plugin source is mounted at `/workspace/plugins/{name}/` with `PYTHONPATH` set so the module is importable.
 
-## pynchy_mcp_server_handler
+## pynchy_service_handler
 
-Provide host-side handlers for service tools. Unlike `pynchy_mcp_server_spec` (which runs MCP servers inside the container), this hook provides handler functions that run on the **host process** and are dispatched to via IPC when container agents invoke service tools.
+Provide host-side handlers for service tools. This hook provides handler functions that run on the **host process** and are dispatched to via IPC when container agents invoke service tools.
 
 **Calling strategy:** All results collected; tool mappings are merged (last-write-wins on conflict).
 
 ```python
 @hookimpl
-def pynchy_mcp_server_handler(self) -> dict[str, Any]:
+def pynchy_service_handler(self) -> dict[str, Any]:
     return {
         "tools": {
             "list_calendar": _handle_list_calendar,

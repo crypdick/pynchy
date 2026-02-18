@@ -1,8 +1,8 @@
-"""IPC handler for service requests dispatched to MCP server plugins.
+"""IPC handler for service requests dispatched to service handler plugins.
 
 Service requests arrive from container MCP tools with type="service:<tool_name>".
 This handler applies the workspace's security policy, then dispatches to
-plugin-provided handlers discovered via the ``pynchy_mcp_server_handler`` hook.
+plugin-provided handlers discovered via the ``pynchy_service_handler`` hook.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ def _get_plugin_handlers() -> dict[str, Callable[[dict], Awaitable[dict]]]:
 
     pm = get_plugin_manager()
     merged: dict[str, Callable[[dict], Awaitable[dict]]] = {}
-    for result in pm.hook.pynchy_mcp_server_handler():
+    for result in pm.hook.pynchy_service_handler():
         tools = result.get("tools", {})
         merged.update(tools)
 
