@@ -211,6 +211,27 @@ async def run_container_agent(
     if plugin_manager and input_data.plugin_mcp_servers is None:
         input_data.plugin_mcp_servers = _collect_plugin_mcp_specs(plugin_manager)
 
+    # --- MCP gateway: ensure containers running and pass credentials ---
+    from pynchy.container_runner.mcp_manager import get_mcp_manager
+
+    mcp_mgr = get_mcp_manager()
+    if mcp_mgr is not None:
+        instance_ids = mcp_mgr.get_workspace_instance_ids(group.folder)
+        for iid in instance_ids:
+            try:
+                await mcp_mgr.ensure_running(iid)
+            except (TimeoutError, RuntimeError):
+                logger.warning("Failed to start MCP instance", instance_id=iid, group=group.folder)
+
+        mcp_key = mcp_mgr.get_workspace_key(group.folder)
+        if mcp_key:
+            from pynchy.container_runner.gateway import get_gateway
+
+            gw = get_gateway()
+            if gw is not None:
+                input_data.mcp_gateway_url = f"http://{s.gateway.container_host}:{gw.port}/mcp"
+                input_data.mcp_gateway_key = mcp_key
+
     # --- Container name and args ---
     safe_name = "".join(c if c.isalnum() or c == "-" else "-" for c in group.folder)
     container_name = f"pynchy-{safe_name}-{int(time.time() * 1000)}"

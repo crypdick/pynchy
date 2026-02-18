@@ -16,6 +16,7 @@
   - Access to [100+ LLM providers](https://docs.litellm.ai/docs/providers)
   - Cost tracking and budget management.
   - Rate limiting
+  - MCP gateway — centralized management of external MCP tool servers with per-workspace access control, on-demand Docker lifecycle, and config-driven setup.
   - (see the [LiteLLM docs](https://docs.litellm.ai/docs/) for more details)
 - Customizable; [five types of plugins](docs/plugins/index.md) are supported:
   - LLM Providers
