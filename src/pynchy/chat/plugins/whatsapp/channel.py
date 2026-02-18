@@ -305,3 +305,8 @@ class WhatsAppChannel:
 
     def owns_jid(self, jid: str) -> bool:
         return jid.endswith("@g.us") or jid.endswith("@s.whatsapp.net")
+
+    async def fetch_inbound_since(
+        self, channel_jid: str, since: str  # noqa: ARG002
+    ) -> list[NewMessage]:
+        return []

@@ -12,6 +12,7 @@ COLUMN`` for anything missing.  No numbered migration files needed.
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime
 from typing import Any
 
 import aiosqlite
@@ -100,6 +101,36 @@ CREATE TABLE IF NOT EXISTS jid_aliases (
     channel_name TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_jid_aliases_canonical ON jid_aliases(canonical_jid);
+
+CREATE TABLE IF NOT EXISTS channel_cursors (
+    channel_name  TEXT NOT NULL,
+    chat_jid      TEXT NOT NULL,
+    direction     TEXT NOT NULL,
+    cursor_value  TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
+    PRIMARY KEY (channel_name, chat_jid, direction)
+);
+
+CREATE TABLE IF NOT EXISTS outbound_ledger (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_jid      TEXT NOT NULL,
+    content       TEXT NOT NULL,
+    timestamp     TEXT NOT NULL,
+    source        TEXT NOT NULL,
+    FOREIGN KEY (chat_jid) REFERENCES chats(jid)
+);
+CREATE INDEX IF NOT EXISTS idx_outbound_ledger_jid ON outbound_ledger(chat_jid);
+
+CREATE TABLE IF NOT EXISTS outbound_deliveries (
+    ledger_id     INTEGER NOT NULL,
+    channel_name  TEXT NOT NULL,
+    delivered_at  TEXT,
+    error         TEXT,
+    PRIMARY KEY (ledger_id, channel_name),
+    FOREIGN KEY (ledger_id) REFERENCES outbound_ledger(id)
+);
+CREATE INDEX IF NOT EXISTS idx_outbound_deliveries_pending
+    ON outbound_deliveries(channel_name) WHERE delivered_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS router_state (
     key TEXT PRIMARY KEY,
@@ -235,10 +266,86 @@ async def _migrate_renamed_columns(database: aiosqlite.Connection) -> None:
     await database.commit()
 
 
+async def _seed_channel_cursors(database: aiosqlite.Connection) -> None:
+    """Seed channel_cursors from existing last_agent_timestamp (one-time migration).
+
+    Reads the JSON-encoded per-group agent timestamps from router_state and
+    creates inbound cursor rows so the new reconciler starts from where the
+    old catch-up left off.  Only runs when channel_cursors is empty.
+    """
+    import json as _json
+
+    cursor = await database.execute("SELECT COUNT(*) FROM channel_cursors")
+    (count,) = await cursor.fetchone()
+    if count > 0:
+        return  # already seeded
+
+    cursor = await database.execute(
+        "SELECT value FROM router_state WHERE key = 'last_agent_timestamp'"
+    )
+    row = await cursor.fetchone()
+    if not row:
+        return
+
+    try:
+        agent_timestamps: dict[str, str] = _json.loads(row[0])
+    except (ValueError, TypeError):
+        return
+
+    now = datetime.now(UTC).isoformat()
+    # Seed an inbound cursor for every channel that has an alias for each group.
+    # We also seed from the canonical JID itself if it looks channel-native.
+    alias_cursor = await database.execute(
+        "SELECT alias_jid, canonical_jid, channel_name FROM jid_aliases"
+    )
+    alias_rows = await alias_cursor.fetchall()
+    seen: set[tuple[str, str]] = set()
+    for alias_jid, canonical_jid, channel_name in alias_rows:
+        ts = agent_timestamps.get(canonical_jid)
+        if not ts:
+            continue
+        key = (channel_name, canonical_jid)
+        if key in seen:
+            continue
+        seen.add(key)
+        await database.execute(
+            "INSERT OR IGNORE INTO channel_cursors"
+            " (channel_name, chat_jid, direction, cursor_value, updated_at)"
+            " VALUES (?, ?, 'inbound', ?, ?)",
+            (channel_name, canonical_jid, ts, now),
+        )
+
+    # Also seed for canonical JIDs that are themselves channel-native
+    # (e.g. slack:C123 workspaces with no alias).
+    groups_cursor = await database.execute("SELECT jid FROM registered_groups")
+    group_rows = await groups_cursor.fetchall()
+    for (jid,) in group_rows:
+        ts = agent_timestamps.get(jid)
+        if not ts:
+            continue
+        # Detect channel from JID prefix
+        if ":" in jid:
+            channel_name = jid.split(":")[0]
+            key = (channel_name, jid)
+            if key not in seen:
+                seen.add(key)
+                await database.execute(
+                    "INSERT OR IGNORE INTO channel_cursors"
+                    " (channel_name, chat_jid, direction, cursor_value, updated_at)"
+                    " VALUES (?, ?, 'inbound', ?, ?)",
+                    (channel_name, jid, ts, now),
+                )
+
+    await database.commit()
+    if seen:
+        logger.info("Seeded channel_cursors from last_agent_timestamp", count=len(seen))
+
+
 async def _create_schema(database: aiosqlite.Connection) -> None:
     await database.executescript(_SCHEMA)
     await _ensure_columns(database)
     await _migrate_renamed_columns(database)
+    await _seed_channel_cursors(database)
 
 
 async def init_database() -> None:

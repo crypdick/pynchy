@@ -7,6 +7,10 @@ session_handler, output_handler, and message_handler.
 The IPC stdin path (message_handler.py formatting ``sender_name: content`` for
 the container) is intentionally separate — it formats messages for the Claude
 SDK conversation, not for human-facing channels.
+
+Outbound messages are recorded in the ledger (best-effort) so the reconciler
+can retry failed deliveries.  If the ledger write itself fails, delivery
+proceeds fire-and-forget — the same behaviour as before the ledger existed.
 """
 
 from __future__ import annotations
@@ -28,6 +32,56 @@ class BusDeps(Protocol):
     def get_channel_jid(self, canonical_jid: str, channel_name: str) -> str | None: ...
 
 
+# ---------------------------------------------------------------------------
+# Ledger helpers (best-effort — failures never block delivery)
+# ---------------------------------------------------------------------------
+
+
+async def _record_to_ledger(
+    chat_jid: str, text: str, source: str, channel_names: list[str]
+) -> int | None:
+    """Record an outbound message to the ledger.
+
+    Returns the ledger_id on success, None on failure.
+    """
+    if not channel_names:
+        return None
+    try:
+        from pynchy.db import record_outbound
+
+        return await record_outbound(chat_jid, text, source, channel_names)
+    except Exception:
+        logger.debug("Outbound ledger write failed (fire-and-forget fallback)")
+        return None
+
+
+async def _mark_success(ledger_id: int | None, channel_name: str) -> None:
+    if ledger_id is None:
+        return
+    try:
+        from pynchy.db import mark_delivered
+
+        await mark_delivered(ledger_id, channel_name)
+    except Exception:
+        pass
+
+
+async def _mark_error(ledger_id: int | None, channel_name: str, error: str) -> None:
+    if ledger_id is None:
+        return
+    try:
+        from pynchy.db import mark_delivery_error
+
+        await mark_delivery_error(ledger_id, channel_name, error)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Broadcast functions
+# ---------------------------------------------------------------------------
+
+
 async def broadcast(
     deps: BusDeps,
     chat_jid: str,
@@ -35,6 +89,7 @@ async def broadcast(
     *,
     suppress_errors: bool = True,
     skip_channel: str | None = None,
+    source: str = "broadcast",
 ) -> None:
     """Send a message to all connected channels.
 
@@ -50,10 +105,14 @@ async def broadcast(
             catch all Exceptions (log but don't raise).
         skip_channel: If set, skip the channel with this name (used for
             cross-channel echo to avoid sending back to the source).
+        source: Ledger source label (e.g. ``"broadcast"``, ``"cross_post"``).
     """
     caught: tuple[type[BaseException], ...] = (
         (OSError, TimeoutError, ConnectionError) if suppress_errors else (Exception,)
     )
+
+    # Resolve delivery targets
+    targets: list[tuple[Channel, str]] = []
     for ch in deps.channels:
         if not ch.is_connected():
             continue
@@ -62,19 +121,27 @@ async def broadcast(
         alias = deps.get_channel_jid(chat_jid, ch.name)
         target_jid = alias or chat_jid
         if not alias and not ch.owns_jid(chat_jid):
-            # No alias and channel doesn't own the canonical JID — the
-            # send_message call will be a no-op.  Log so we can diagnose
-            # missing aliases in production.
             logger.warning(
                 "No JID alias for channel — message will not be delivered",
                 channel=ch.name,
                 canonical_jid=chat_jid,
             )
             continue
+        targets.append((ch, target_jid))
+
+    # Record to outbound ledger (best-effort)
+    ledger_id = await _record_to_ledger(
+        chat_jid, text, source, [ch.name for ch, _ in targets]
+    )
+
+    # Deliver to each target
+    for ch, target_jid in targets:
         try:
             await ch.send_message(target_jid, text)
+            await _mark_success(ledger_id, ch.name)
         except caught as exc:
             logger.warning("Channel send failed", channel=ch.name, err=str(exc))
+            await _mark_error(ledger_id, ch.name, str(exc))
 
 
 async def broadcast_formatted(
@@ -90,6 +157,8 @@ async def broadcast_formatted(
     """
     from pynchy.chat.router import format_outbound
 
+    # Resolve targets and format text per channel
+    targets: list[tuple[Channel, str, str]] = []
     for ch in deps.channels:
         if not ch.is_connected():
             continue
@@ -100,10 +169,23 @@ async def broadcast_formatted(
         target_jid = alias or chat_jid
         if not alias and not ch.owns_jid(chat_jid):
             continue
+        targets.append((ch, target_jid, text))
+
+    # Record raw text to ledger (reconciler retries with raw text)
+    ledger_id = await _record_to_ledger(
+        chat_jid, raw_text, "scheduled", [ch.name for ch, _, _ in targets]
+    )
+
+    # Deliver formatted text per channel
+    for ch, target_jid, text in targets:
         try:
             await ch.send_message(target_jid, text)
+            await _mark_success(ledger_id, ch.name)
         except (OSError, TimeoutError, ConnectionError) as exc:
-            logger.warning("Formatted send failed", channel=getattr(ch, "name", "?"), err=str(exc))
+            logger.warning(
+                "Formatted send failed", channel=getattr(ch, "name", "?"), err=str(exc)
+            )
+            await _mark_error(ledger_id, ch.name, str(exc))
 
 
 async def finalize_stream_or_broadcast(
@@ -129,18 +211,36 @@ async def finalize_stream_or_broadcast(
         suppress_errors: Error handling mode (same as ``broadcast``).
     """
     if not stream_message_ids:
-        await broadcast(deps, chat_jid, text, suppress_errors=suppress_errors)
+        await broadcast(
+            deps, chat_jid, text, suppress_errors=suppress_errors, source="agent"
+        )
         return
 
+    # Collect all channels that will receive this message (stream or send)
+    target_names: list[str] = []
     for ch in deps.channels:
-        ch_name = getattr(ch, "name", "?")
+        ch_name = ch.name
+        msg_id = stream_message_ids.get(ch_name)
+        if msg_id and hasattr(ch, "update_message"):
+            target_names.append(ch_name)
+        elif ch.is_connected():
+            alias = deps.get_channel_jid(chat_jid, ch.name)
+            if alias or ch.owns_jid(chat_jid):
+                target_names.append(ch_name)
+
+    ledger_id = await _record_to_ledger(chat_jid, text, "agent", target_names)
+
+    for ch in deps.channels:
+        ch_name = ch.name
         msg_id = stream_message_ids.get(ch_name)
 
         if msg_id and hasattr(ch, "update_message"):
             try:
                 await ch.update_message(chat_jid, msg_id, text)
+                await _mark_success(ledger_id, ch_name)
             except Exception as exc:
                 logger.debug("Final stream update failed", channel=ch_name, err=str(exc))
+                await _mark_error(ledger_id, ch_name, str(exc))
         elif ch.is_connected():
             alias = deps.get_channel_jid(chat_jid, ch.name)
             target_jid = alias or chat_jid
@@ -153,5 +253,7 @@ async def finalize_stream_or_broadcast(
                 continue
             try:
                 await ch.send_message(target_jid, text)
+                await _mark_success(ledger_id, ch_name)
             except Exception as exc:
                 logger.warning("Channel send failed", channel=ch_name, err=str(exc))
+                await _mark_error(ledger_id, ch_name, str(exc))
