@@ -1,3 +1,8 @@
+---
+name: Pynchy Development
+description: Use when running pynchy locally — running the app, tests, linting, formatting, pre-commit hooks, or rebuilding the agent container. Also use when determining whether you're currently on the pyncher-server host or a local machine, and for guidance on writing good tests vs. coverage theater.
+---
+
 # Development
 
 Run commands directly—don't tell the user to run them.

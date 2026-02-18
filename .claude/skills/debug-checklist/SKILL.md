@@ -131,7 +131,7 @@ uv run pynchy-whatsapp-auth
 
 For debugging agent behavior, prefer querying the SQLite database over docker logs. Docker logs truncate output, but the `messages` table stores full content and the `events` table captures agent internals (thinking, tool calls, system prompts).
 
-**Host access:** These queries must run where the DB lives. If not on the host directly, prefix with `ssh pyncher-server` (Tailscale). See `.claude/deployment.md` for remote access patterns.
+**Host access:** These queries must run where the DB lives. If not on the host directly, prefix with `ssh pyncher-server` (Tailscale). See `.claude/skills/deployment/SKILL.md` for remote access patterns.
 
 Database: `store/messages.db`
 
@@ -177,4 +177,4 @@ Docker logs remain useful for runtime errors (container crashes, process failure
 
 ## Service Management
 
-See `.claude/deployment.md` in the project root for service management commands.
+See `.claude/skills/deployment/SKILL.md` in the project root for service management commands.

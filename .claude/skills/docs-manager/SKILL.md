@@ -12,7 +12,7 @@ Helps decide where to document things and maintain consistency across Pynchy doc
 
 - Write for a **user trying to achieve a goal**. Don't chronicle the evolution of the codebase. Don't go into unnecessary technical details that are not relevant to the user's goal.
 - Follow the [Google Style Guide](https://developers.google.com/style). Write in the present tense. Don't use "we" or "they". Write in the active voice. Don't use "is" or "are".
-- Read `.claude/style-guide.md` for the full documentation philosophy and information architecture rules.
+- Read `docs/contributing/contributing-docs.md` for the full documentation philosophy and information architecture rules.
 
 ## Where to Document What
 
@@ -22,7 +22,7 @@ Quick decision tree:
 - Architecture decision → `docs/architecture/` (find the relevant topic file, or create a new one)
 - Installation requirement → `docs/install.md`
 - Security implication → `docs/architecture/security.md`
-- Development workflow change → `.claude/development.md`
+- Development workflow change → `.claude/skills/development/SKILL.md`
 
 **Bug fix?**
 - If it needs install change → `docs/install.md`
@@ -41,7 +41,7 @@ Quick decision tree:
 | `docs/architecture/security.md` | Security model, threat analysis |
 | `docs/architecture/index.md` | Architecture overview and links to topic pages |
 | `docs/architecture/*.md` | One topic per file (containers, routing, tasks, etc.) |
-| `.claude/*.md` | Development context for Claude Code agents |
+| `.claude/skills/` | Development context skills for Claude Code agents |
 
 ## Information Architecture Rules
 
