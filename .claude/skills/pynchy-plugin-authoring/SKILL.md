@@ -87,6 +87,12 @@ For `pynchy` docs link safety after docs changes:
 uv run mkdocs build --strict
 ```
 
+## Security
+
+All plugin Python code runs on the host during discovery (`__init__`, `validate()`, category methods). Installing a plugin means trusting its code. **Only install plugins from authors you trust.**
+
+For the full risk-by-category breakdown, see [Plugin Security](docs/plugins/index.md#security-model).
+
 ## References
 
 - Plugin overview: `docs/plugins/index.md`

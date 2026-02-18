@@ -9,7 +9,7 @@ This page describes how Pynchy coordinates git operations between containers and
 3. **Self-contained error messages to containers** — Containers can't read host state (logs, config, etc.). Errors sent to containers must include enough context to act on. On conflict, the host leaves the worktree in a resolvable state (conflict markers visible to agent) rather than aborting.
 4. **Host owns main** — Agents never push to main directly. The host mediates all merges into main, pushes to origin, and syncs other agents.
 
-For worktree isolation details, see `.claude/worktrees.md` in the project root.
+For worktree isolation details, see `docs/usage/worktrees.md`.
 
 ## Change Detection
 

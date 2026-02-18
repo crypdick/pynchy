@@ -36,7 +36,7 @@ The preferred runtime on macOS. Uses Apple's native container framework for lowe
 | `{additional mounts}` | `/workspace/extra/*` | Configurable | Per containerConfig |
 
 **Notes:**
-- Groups with `pynchy_repo_access` receive worktree mounts instead of `groups/global/` (see `.claude/worktrees.md`)
+- Groups with `pynchy_repo_access` receive worktree mounts instead of `groups/global/` (see `docs/usage/worktrees.md`)
 - Apple Container requires `--mount "type=bind,source=...,target=...,readonly"` syntax for readonly mounts (the `:ro` suffix does not work)
 
 ## Container Configuration

@@ -1,3 +1,8 @@
+---
+name: Pynchy Deployment
+description: Use when managing the pynchy service on the server — deploying changes, observing logs, checking service status, restarting the service, setting up GitHub auth, rebuilding the agent container, or running any commands on pyncher-server via SSH.
+---
+
 # Deployment
 
 The pynchy service runs on the `pyncher-server` host over Tailscale. SSH: `ssh pyncher-server`.

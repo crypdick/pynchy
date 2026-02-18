@@ -2,7 +2,7 @@
 
 Database path: `store/messages.db`
 
-**Host access:** If not on the pynchy host directly, prefix commands with `ssh pyncher-server` (Tailscale). See `.claude/deployment.md`.
+**Host access:** If not on the pynchy host directly, prefix commands with `ssh pyncher-server` (Tailscale). See `.claude/skills/deployment/SKILL.md`.
 
 ## Table Overview
 

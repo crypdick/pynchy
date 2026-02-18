@@ -16,4 +16,4 @@ See the [Plugin Authoring Guide](plugins/index.md) for how to create, package, a
 
 ## Development
 
-See `.claude/development.md` in the project root for running commands, writing tests, and linting.
+See the `development` skill (`.claude/skills/development/SKILL.md`) for running commands, writing tests, and linting.
