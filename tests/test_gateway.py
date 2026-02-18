@@ -147,6 +147,18 @@ class TestCollectYamlEnvRefs:
         result = LiteLLMGateway._collect_yaml_env_refs(cfg)
         assert result == []
 
+    def test_reads_from_dotenv_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        cfg = tmp_path / "litellm_config.yaml"
+        cfg.write_text("api_key: os.environ/DOTENV_ONLY_TOKEN\n")
+        monkeypatch.delenv("DOTENV_ONLY_TOKEN", raising=False)
+
+        dotenv = tmp_path / ".env"
+        dotenv.write_text("DOTENV_ONLY_TOKEN=from-dotenv\n")
+        monkeypatch.chdir(tmp_path)
+
+        result = LiteLLMGateway._collect_yaml_env_refs(cfg)
+        assert ("DOTENV_ONLY_TOKEN", "from-dotenv") in result
+
     @pytest.mark.asyncio
     async def test_start_forwards_yaml_env_vars(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
