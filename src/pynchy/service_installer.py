@@ -95,6 +95,7 @@ Type=simple
 WorkingDirectory={project_root}
 ExecStartPre={git_path} -C {project_root} pull --ff-only
 ExecStartPre={uv_path} sync --all-extras
+ExecStartPre={uv_path} tool run pre-commit install
 ExecStart={uv_path} run pynchy
 Restart=always
 RestartSec=10
