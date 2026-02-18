@@ -294,12 +294,17 @@ class McpManager:
         return merged
 
     def get_instance_id(self, server_name: str, kwargs: dict[str, str]) -> str:
-        """Compute instance ID: server_name + short hash of sorted kwargs."""
+        """Compute instance ID: server_name + short hash of sorted kwargs.
+
+        WARNING: LiteLLM rejects server names containing hyphens. The kwargs
+        branch produces "name-hash" which will fail at registration. Use
+        underscores if this path is ever exercised.
+        """
         if not kwargs:
             return server_name
         kwargs_str = json.dumps(kwargs, sort_keys=True)
         short_hash = hashlib.sha256(kwargs_str.encode()).hexdigest()[:6]
-        return f"{server_name}-{short_hash}"
+        return f"{server_name}_{short_hash}"
 
     def get_workspace_key(self, group_folder: str) -> str | None:
         """Get cached LiteLLM virtual key for a workspace."""
@@ -366,27 +371,40 @@ class McpManager:
         return f"http://localhost:{self._gateway.port}{path}"
 
     async def _sync_mcp_endpoints(self) -> None:
-        """Register/deregister MCP server endpoints in LiteLLM."""
+        """Register/deregister MCP server endpoints in LiteLLM.
+
+        GOTCHA: LiteLLM has two similar-looking /mcp/ route families:
+          - /mcp/*  — the SSE/streamable-HTTP *transport* (for MCP clients)
+          - /v1/mcp/server — the REST *management* API (CRUD for server configs)
+        Hitting /mcp/server/... returns a JSONRPC 406 "Not Acceptable" because
+        it's the transport endpoint expecting SSE Accept headers.
+        """
         async with aiohttp.ClientSession() as session:
-            # Get currently registered servers
+            # Get currently registered servers.
+            # NOTE: /v1/mcp/server returns a bare JSON array, not {"data": [...]}.
             existing: dict[str, str] = {}  # name -> server_id
             try:
                 async with session.get(
-                    self._api_url("/mcp/server/list"),
+                    self._api_url("/v1/mcp/server"),
                     headers=self._api_headers(),
                 ) as resp:
                     if resp.status == 200:
                         data = await resp.json()
-                        for srv in data.get("data", []):
+                        for srv in data:
                             existing[srv.get("server_name", "")] = srv.get("server_id", "")
             except (aiohttp.ClientError, OSError) as exc:
                 logger.warning("Failed to list MCP servers from LiteLLM", error=str(exc))
 
-            # Register new/updated instances
+            # Register new/updated instances.
+            # NOTE: LiteLLM field is "url", not "server_url".
+            # NOTE: LiteLLM rejects server_name values containing hyphens.
+            #   Our instance IDs (from get_instance_id) use hyphens when kwargs
+            #   are present (e.g. "playwright-a1b2c3"). This will need fixing if
+            #   we start using per-workspace kwargs.
             for iid, instance in self._instances.items():
                 payload: dict[str, Any] = {
                     "server_name": iid,
-                    "server_url": instance.endpoint_url,
+                    "url": instance.endpoint_url,
                     "transport": instance.server_config.transport,
                 }
 
@@ -400,7 +418,7 @@ class McpManager:
 
                 try:
                     async with session.post(
-                        self._api_url("/mcp/server/new"),
+                        self._api_url("/v1/mcp/server"),
                         json=payload,
                         headers=self._api_headers(),
                     ) as resp:
@@ -421,7 +439,12 @@ class McpManager:
                         error=str(exc),
                     )
 
-            # Deregister removed instances
+            # Deregister removed instances.
+            # NOTE: Delete requires the UUID server_id, not the server_name.
+            # TODO: The managed_prefix guard below is stale — instance IDs are
+            #   bare names like "playwright", not prefixed with "pynchy-mcp-".
+            #   This means stale servers are never cleaned up. Needs a better
+            #   ownership marker (e.g. metadata tag set at registration time).
             managed_prefix = f"{_MCP_CONTAINER_PREFIX}-"
             for name, server_id in existing.items():
                 if name in self._instances:
@@ -430,7 +453,7 @@ class McpManager:
                     continue
                 try:
                     async with session.delete(
-                        self._api_url(f"/mcp/server/{server_id}"),
+                        self._api_url(f"/v1/mcp/server/{server_id}"),
                         headers=self._api_headers(),
                     ) as resp:
                         logger.info("Deregistered stale MCP endpoint", name=name)
