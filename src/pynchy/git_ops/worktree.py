@@ -13,6 +13,7 @@ and notify the agent via system notices so it can resume gracefully.
 from __future__ import annotations
 
 import shutil
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -168,6 +169,37 @@ def _create_new_worktree(
     return WorktreeResult(path=worktree_path)
 
 
+def install_pre_commit_hooks() -> None:
+    """Ensure pre-commit hooks are installed in the repo's .git/hooks/.
+
+    Git worktrees share hooks from the main repo, so installing once covers
+    all agent workspaces. The generated hook script falls back to ``pre-commit``
+    on PATH when the original venv isn't available (e.g. inside containers).
+    """
+    project_root = get_settings().project_root
+    config = project_root / ".pre-commit-config.yaml"
+    if not config.exists():
+        return
+
+    try:
+        result = subprocess.run(
+            ["uv", "run", "pre-commit", "install"],
+            cwd=str(project_root),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode == 0:
+            logger.info("Pre-commit hooks installed")
+        else:
+            logger.warning(
+                "pre-commit install failed",
+                stderr=result.stderr.strip(),
+            )
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("pre-commit install error", err=str(exc))
+
+
 def reconcile_worktrees_at_startup(
     project_access_folders: list[str] | None = None,
 ) -> None:
@@ -179,6 +211,10 @@ def reconcile_worktrees_at_startup(
     """
     # Clean git's internal stale entries (worktree dirs that no longer exist)
     run_git("worktree", "prune")
+
+    # Ensure pre-commit hooks are installed so agent commits run the hooks.
+    # Hooks live in the main .git/hooks/ (shared by all worktrees).
+    install_pre_commit_hooks()
 
     # Create missing worktrees for known project_access groups.
     # ensure_worktree's health check handles broken worktrees automatically.
