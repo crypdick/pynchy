@@ -169,6 +169,9 @@ class PynchyApp:
     async def trigger_manual_redeploy(self, chat_jid: str) -> None:
         await session_handler.trigger_manual_redeploy(self, chat_jid)
 
+    async def catch_up_channels(self) -> None:
+        await self._catch_up_channel_history()
+
     async def broadcast_agent_input(
         self, chat_jid: str, messages: list[dict], *, source: str = "user"
     ) -> None:
@@ -387,12 +390,15 @@ class PynchyApp:
     # ------------------------------------------------------------------
 
     async def _catch_up_channel_history(self) -> None:
-        """Recover messages sent while the service was offline.
+        """Reconcile channel history with local state.
 
-        Channels that implement ``catch_up()`` can backfill messages missed
-        during downtime.  Currently only the Slack plugin uses this.
+        Queries each channel's API for messages newer than the last agent
+        cursor and ingests any that are missing from the local DB.  This
+        recovers events dropped by Socket Mode or missed during downtime.
+
+        Runs at boot AND periodically from the message polling loop.
         """
-        from pynchy.db import store_message
+        from pynchy.db import message_exists
 
         # Include ALL workspace JIDs — not just those with aliases.
         # Workspaces whose canonical JID is channel-native (e.g. slack:C123)
@@ -401,17 +407,27 @@ class PynchyApp:
         for jid, aliases in self._canonical_to_aliases.items():
             jid_to_aliases[jid] = aliases
 
-        total = 0
+        recovered = 0
         for ch in self.channels:
             if not hasattr(ch, "catch_up"):
                 continue
             messages = await ch.catch_up(jid_to_aliases, self.last_agent_timestamp)
             for msg in messages:
-                await store_message(msg)
-            total += len(messages)
+                # Skip messages already in the DB (received via real-time events).
+                if await message_exists(msg.id, msg.chat_jid):
+                    continue
+                # Route through the full ingest pipeline: store, cross-post
+                # to other channels, and enqueue for agent processing.
+                source_channel = ch.name if hasattr(ch, "name") else None
+                await self._ingest_user_message(msg, source_channel=source_channel)
+                # The polling loop's global cursor (last_timestamp) may have
+                # already advanced past this message, so explicitly enqueue
+                # a message check to ensure the agent processes it.
+                self.queue.enqueue_message_check(msg.chat_jid)
+                recovered += 1
 
-        if total:
-            logger.info("Recovered missed channel messages", count=total)
+        if recovered:
+            logger.info("Recovered missed channel messages", count=recovered)
 
     # ------------------------------------------------------------------
     # Lifecycle
