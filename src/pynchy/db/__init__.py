@@ -22,6 +22,11 @@ from pynchy.db.aliases import (
     get_canonical_jid,
     set_jid_alias,
 )
+from pynchy.db.channel_cursors import (
+    advance_cursors_atomic,
+    get_channel_cursor,
+    set_channel_cursor,
+)
 from pynchy.db.chats import (
     get_all_chats,
     get_chat_cleared_at,
@@ -54,6 +59,13 @@ from pynchy.db.messages import (
     store_message,
     store_message_direct,
 )
+from pynchy.db.outbound import (
+    gc_delivered,
+    get_pending_outbound,
+    mark_delivered,
+    mark_delivery_error,
+    record_outbound,
+)
 from pynchy.db.sessions import (
     clear_session,
     get_all_sessions,
@@ -85,6 +97,16 @@ __all__ = [
     "get_all_aliases",
     "get_canonical_jid",
     "set_jid_alias",
+    # channel_cursors
+    "advance_cursors_atomic",
+    "get_channel_cursor",
+    "set_channel_cursor",
+    # outbound
+    "gc_delivered",
+    "get_pending_outbound",
+    "mark_delivered",
+    "mark_delivery_error",
+    "record_outbound",
     # chats
     "get_all_chats",
     "get_chat_cleared_at",

@@ -168,7 +168,9 @@ async def ingest_user_message(
     # unaffected — and receiving channels won't re-ingest bot-posted
     # messages (Slack filters bot_id, WhatsApp filters IsFromMe echoes).
     channel_text = f"[{msg.sender_name}] {msg.content}"
-    await broadcast(deps, msg.chat_jid, channel_text, skip_channel=source_channel)
+    await broadcast(
+        deps, msg.chat_jid, channel_text, skip_channel=source_channel, source="cross_post"
+    )
 
 
 async def on_inbound(deps: SessionDeps, _jid: str, msg: NewMessage) -> None:

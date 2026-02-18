@@ -284,45 +284,20 @@ class SlackChannel:
             )
         return results
 
-    async def catch_up(
-        self,
-        canonical_to_aliases: dict[str, dict[str, str]],
-        last_agent_timestamp: dict[str, str],
+    async def fetch_inbound_since(
+        self, channel_jid: str, since: str
     ) -> list[NewMessage]:
-        """Recover missed messages for all workspaces with a Slack channel.
+        """Fetch Slack messages newer than ``since`` for a single channel.
 
-        Handles two cases:
-        - The canonical JID itself is a Slack JID (``slack:CHANNEL_ID``)
-        - The canonical JID has a Slack alias in ``canonical_to_aliases``
-
-        Args:
-            canonical_to_aliases: ``{canonical_jid: {channel_name: alias_jid}}``
-            last_agent_timestamp: ``{canonical_jid: iso_timestamp}``
-
-        Returns all recovered messages with ``chat_jid`` set to the canonical JID.
+        The reconciler resolves JIDs before calling — ``channel_jid`` is a
+        Slack-native JID like ``slack:C123``.  ``since`` is an ISO timestamp.
+        Returns messages with ``chat_jid`` set to the given ``channel_jid``.
         """
-        results: list[NewMessage] = []
-        for canonical_jid, aliases in canonical_to_aliases.items():
-            slack_alias = aliases.get("slack")
-            # The canonical JID itself may be a Slack JID (workspace
-            # created via Slack with no alias).
-            if not slack_alias and canonical_jid.startswith(JID_PREFIX):
-                slack_jid = canonical_jid
-            elif slack_alias:
-                slack_jid = slack_alias
-            else:
-                continue
-            since_iso = last_agent_timestamp.get(canonical_jid)
-            if not since_iso:
-                continue
-
-            channel_id = _channel_id_from_jid(slack_jid)
-            since_epoch = str(datetime.fromisoformat(since_iso).timestamp())
-            messages = await self.fetch_missed_messages(channel_id, since_epoch)
-            for msg in messages:
-                msg.chat_jid = canonical_jid
-            results.extend(messages)
-        return results
+        if not since:
+            return []
+        channel_id = _channel_id_from_jid(channel_jid)
+        since_epoch = str(datetime.fromisoformat(since).timestamp())
+        return await self.fetch_missed_messages(channel_id, since_epoch)
 
     # ------------------------------------------------------------------
     # Internal: Slack event handlers

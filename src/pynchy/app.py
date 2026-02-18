@@ -37,7 +37,6 @@ from pynchy.db import (
     get_router_state,
     init_database,
     set_jid_alias,
-    set_router_state,
     set_workspace_profile,
     store_chat_metadata,
 )
@@ -107,12 +106,28 @@ class PynchyApp:
         )
 
     async def _save_state(self) -> None:
-        """Persist router state to the database."""
-        await set_router_state("last_timestamp", self.last_timestamp)
-        await set_router_state(
-            "last_agent_timestamp",
-            json.dumps(self.last_agent_timestamp),
-        )
+        """Persist router state to the database atomically.
+
+        Both cursors are written in a single transaction so a crash
+        can never leave them inconsistent.
+        """
+        from pynchy.db import _get_db
+
+        db = _get_db()
+        await db.execute("BEGIN")
+        try:
+            await db.execute(
+                "INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)",
+                ("last_timestamp", self.last_timestamp),
+            )
+            await db.execute(
+                "INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)",
+                ("last_agent_timestamp", json.dumps(self.last_agent_timestamp)),
+            )
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
 
     # ------------------------------------------------------------------
     # JID alias cache
@@ -390,44 +405,16 @@ class PynchyApp:
     # ------------------------------------------------------------------
 
     async def _catch_up_channel_history(self) -> None:
-        """Reconcile channel history with local state.
+        """Reconcile channel history and retry pending outbound.
 
-        Queries each channel's API for messages newer than the last agent
-        cursor and ingests any that are missing from the local DB.  This
-        recovers events dropped by Socket Mode or missed during downtime.
+        Delegates to the unified reconciler which handles per-channel
+        bidirectional cursors, inbound catch-up, and outbound retry.
 
         Runs at boot AND periodically from the message polling loop.
         """
-        from pynchy.db import message_exists
+        from pynchy.chat.reconciler import reconcile_all_channels
 
-        # Include ALL workspace JIDs — not just those with aliases.
-        # Workspaces whose canonical JID is channel-native (e.g. slack:C123)
-        # won't have an alias entry but still need catch-up.
-        jid_to_aliases: dict[str, dict[str, str]] = {jid: {} for jid in self.workspaces}
-        for jid, aliases in self._canonical_to_aliases.items():
-            jid_to_aliases[jid] = aliases
-
-        recovered = 0
-        for ch in self.channels:
-            if not hasattr(ch, "catch_up"):
-                continue
-            messages = await ch.catch_up(jid_to_aliases, self.last_agent_timestamp)
-            for msg in messages:
-                # Skip messages already in the DB (received via real-time events).
-                if await message_exists(msg.id, msg.chat_jid):
-                    continue
-                # Route through the full ingest pipeline: store, cross-post
-                # to other channels, and enqueue for agent processing.
-                source_channel = ch.name if hasattr(ch, "name") else None
-                await self._ingest_user_message(msg, source_channel=source_channel)
-                # The polling loop's global cursor (last_timestamp) may have
-                # already advanced past this message, so explicitly enqueue
-                # a message check to ensure the agent processes it.
-                self.queue.enqueue_message_check(msg.chat_jid)
-                recovered += 1
-
-        if recovered:
-            logger.info("Recovered missed channel messages", count=recovered)
+        await reconcile_all_channels(self)
 
     # ------------------------------------------------------------------
     # Lifecycle
