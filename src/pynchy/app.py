@@ -408,39 +408,6 @@ class PynchyApp:
         if total:
             logger.info("Recovered missed channel messages", count=total)
 
-        await self._migrate_slack_message_ids()
-
-    async def _migrate_slack_message_ids(self) -> None:
-        """One-time migration: drop old non-deterministic Slack message IDs.
-
-        Old format: ``slack-1739812345678`` (Python ms timestamp, no dot).
-        New format: ``slack-1739812345.678901`` (Slack ts, always has a dot).
-
-        After catch-up re-stores overlap messages under new IDs, the old rows
-        are duplicates.  Runs once, then sets a router_state flag.
-        """
-        flag = await get_router_state("slack_id_migration_done")
-        if flag:
-            return
-
-        from pynchy.db._connection import _get_db
-
-        db = _get_db()
-        # Old-format IDs: "slack-" prefix + digits only (no dot).
-        # New-format IDs always contain a dot (Slack ts: "1739812345.678901").
-        # Delete old-format rows where the ID has no dot after the prefix.
-        cursor = await db.execute(
-            "DELETE FROM messages "
-            "WHERE (id LIKE 'slack-%' OR id LIKE 'slack-assistant-%') "
-            "AND id NOT LIKE '%.%'"
-        )
-        deleted = cursor.rowcount
-        await db.commit()
-
-        await set_router_state("slack_id_migration_done", "1")
-        if deleted:
-            logger.info("Migrated old Slack message IDs", deleted=deleted)
-
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
