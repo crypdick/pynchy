@@ -384,6 +384,9 @@ class McpManager:
     async def _sync_mcp_endpoints(self) -> None:
         """Register/deregister MCP server endpoints in LiteLLM.
 
+        Idempotent: deletes stale/duplicate registrations first, then creates
+        missing ones.  Each desired instance ends up with exactly one entry.
+
         GOTCHA: LiteLLM has two similar-looking /mcp/ route families:
           - /mcp/*  — the SSE/streamable-HTTP *transport* (for MCP clients)
           - /v1/mcp/server — the REST *management* API (CRUD for server configs)
@@ -393,7 +396,8 @@ class McpManager:
         async with aiohttp.ClientSession() as session:
             # Get currently registered servers.
             # NOTE: /v1/mcp/server returns a bare JSON array, not {"data": [...]}.
-            existing: dict[str, str] = {}  # name -> server_id
+            # Collect ALL entries per name — there may be duplicates from earlier bugs.
+            existing: dict[str, list[dict[str, Any]]] = {}  # name -> [{server_id, url, ...}]
             try:
                 async with session.get(
                     self._api_url("/v1/mcp/server"),
@@ -402,21 +406,61 @@ class McpManager:
                     if resp.status == 200:
                         data = await resp.json()
                         for srv in data:
-                            existing[srv.get("server_name", "")] = srv.get("server_id", "")
+                            name = srv.get("server_name", "")
+                            existing.setdefault(name, []).append(srv)
             except (aiohttp.ClientError, OSError) as exc:
                 logger.warning("Failed to list MCP servers from LiteLLM", error=str(exc))
 
-            # Register new/updated instances.
+            # ----------------------------------------------------------
+            # For each desired instance, ensure exactly one registration
+            # with the correct URL.  Delete extras and stale entries.
+            # ----------------------------------------------------------
             # NOTE: LiteLLM field is "url", not "server_url".
             # NOTE: LiteLLM rejects server_name values containing hyphens.
-            #   Our instance IDs (from get_instance_id) use hyphens when kwargs
-            #   are present (e.g. "playwright-a1b2c3"). This will need fixing if
-            #   we start using per-workspace kwargs.
             for iid, instance in self._instances.items():
+                entries = existing.pop(iid, [])
+                desired_url = instance.endpoint_url
+
+                # Find an entry that already matches the desired URL
+                keep: dict[str, Any] | None = None
+                to_delete: list[str] = []
+                for entry in entries:
+                    if keep is None and entry.get("url") == desired_url:
+                        keep = entry
+                    else:
+                        to_delete.append(entry.get("server_id", ""))
+
+                # Delete duplicates / stale-URL entries
+                for sid in to_delete:
+                    try:
+                        async with session.delete(
+                            self._api_url(f"/v1/mcp/server/{sid}"),
+                            headers=self._api_headers(),
+                        ) as resp:
+                            logger.info(
+                                "Deleted duplicate MCP registration",
+                                instance_id=iid,
+                                server_id=sid,
+                            )
+                    except (aiohttp.ClientError, OSError):
+                        pass
+
+                # Skip creation if we already have a matching entry
+                if keep is not None:
+                    logger.debug("MCP endpoint already registered", instance_id=iid)
+                    continue
+
+                # Register the instance.
+                # allow_all_keys=True: per-workspace isolation is enforced by the
+                # orchestrator (only workspaces that list this server in their
+                # mcp_servers config get the gateway URL injected).  LiteLLM's
+                # key→server ACL (allowed_mcp_servers on /key/generate) is not
+                # reliably stored, so we use allow_all_keys instead.
                 payload: dict[str, Any] = {
                     "server_name": iid,
-                    "url": instance.endpoint_url,
+                    "url": desired_url,
                     "transport": instance.server_config.transport,
+                    "allow_all_keys": True,
                 }
 
                 # Add auth if configured
@@ -450,26 +494,21 @@ class McpManager:
                         error=str(exc),
                     )
 
-            # Deregister removed instances.
-            # NOTE: Delete requires the UUID server_id, not the server_name.
-            # TODO: The managed_prefix guard below is stale — instance IDs are
-            #   bare names like "playwright", not prefixed with "pynchy-mcp-".
-            #   This means stale servers are never cleaned up. Needs a better
-            #   ownership marker (e.g. metadata tag set at registration time).
-            managed_prefix = f"{_MCP_CONTAINER_PREFIX}-"
-            for name, server_id in existing.items():
-                if name in self._instances:
-                    continue
-                if not name.startswith(managed_prefix):
-                    continue
-                try:
-                    async with session.delete(
-                        self._api_url(f"/v1/mcp/server/{server_id}"),
-                        headers=self._api_headers(),
-                    ) as resp:
-                        logger.info("Deregistered stale MCP endpoint", name=name)
-                except (aiohttp.ClientError, OSError):
-                    pass
+            # ----------------------------------------------------------
+            # Anything left in `existing` is not in self._instances —
+            # delete ALL entries for those names (stale from old config).
+            # ----------------------------------------------------------
+            for name, entries in existing.items():
+                for entry in entries:
+                    sid = entry.get("server_id", "")
+                    try:
+                        async with session.delete(
+                            self._api_url(f"/v1/mcp/server/{sid}"),
+                            headers=self._api_headers(),
+                        ) as resp:
+                            logger.info("Deregistered stale MCP endpoint", name=name)
+                    except (aiohttp.ClientError, OSError):
+                        pass
 
     async def _sync_teams(self) -> None:
         """Create/update LiteLLM teams per workspace with MCP access control."""
@@ -581,11 +620,14 @@ class McpManager:
     async def _delete_team(self, team_id: str) -> None:
         """Delete a LiteLLM team."""
         try:
-            async with aiohttp.ClientSession() as session, session.post(
-                self._api_url("/team/delete"),
-                json={"team_ids": [team_id]},
-                headers=self._api_headers(),
-            ) as resp:
+            async with (
+                aiohttp.ClientSession() as session,
+                session.post(
+                    self._api_url("/team/delete"),
+                    json={"team_ids": [team_id]},
+                    headers=self._api_headers(),
+                ) as resp,
+            ):
                 if resp.status not in (200, 201):
                     logger.warning("Failed to delete team", team_id=team_id)
         except (aiohttp.ClientError, OSError):
