@@ -102,63 +102,60 @@ class TestLiteLLMGatewayInit:
         assert gw1._pg_password == gw2._pg_password
 
 
-class TestLiteLLMCredentialDiscovery:
-    """Verify _discover_anthropic_token reads from config and credentials file."""
+class TestCollectYamlEnvRefs:
+    """Verify _collect_yaml_env_refs scans YAML and resolves from host env."""
 
-    def test_prefers_api_key_from_config(self, tmp_path: Path):
-        mock_settings = MagicMock()
-        mock_settings.secrets.anthropic_api_key.get_secret_value.return_value = "sk-ant-api03-test"
-        mock_settings.secrets.claude_code_oauth_token = None
+    def test_finds_vars(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        cfg = tmp_path / "litellm_config.yaml"
+        cfg.write_text(
+            "model_list:\n"
+            "  - litellm_params:\n"
+            "      api_key: os.environ/FOO_TOKEN\n"
+            "  - litellm_params:\n"
+            "      api_key: os.environ/BAR_TOKEN\n"
+        )
+        monkeypatch.setenv("FOO_TOKEN", "foo-val")
+        monkeypatch.setenv("BAR_TOKEN", "bar-val")
 
-        with patch(f"{_GATEWAY_MOD}.get_settings", return_value=mock_settings):
-            token = LiteLLMGateway._discover_anthropic_token()
-        assert token == "sk-ant-api03-test"
+        result = LiteLLMGateway._collect_yaml_env_refs(cfg)
+        assert ("BAR_TOKEN", "bar-val") in result
+        assert ("FOO_TOKEN", "foo-val") in result
+        assert len(result) == 2
 
-    def test_falls_back_to_oauth_config(self, tmp_path: Path):
-        mock_settings = MagicMock()
-        mock_settings.secrets.anthropic_api_key = None
-        oauth = mock_settings.secrets.claude_code_oauth_token
-        oauth.get_secret_value.return_value = "sk-ant-oat01-cfg"
+    def test_skips_gateway_managed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        cfg = tmp_path / "litellm_config.yaml"
+        cfg.write_text(
+            "general_settings:\n"
+            "  master_key: os.environ/LITELLM_MASTER_KEY\n"
+            "model_list:\n"
+            "  - litellm_params:\n"
+            "      api_key: os.environ/MY_KEY\n"
+        )
+        monkeypatch.setenv("LITELLM_MASTER_KEY", "should-not-appear")
+        monkeypatch.setenv("MY_KEY", "my-val")
 
-        with patch(f"{_GATEWAY_MOD}.get_settings", return_value=mock_settings):
-            token = LiteLLMGateway._discover_anthropic_token()
-        assert token == "sk-ant-oat01-cfg"
+        result = LiteLLMGateway._collect_yaml_env_refs(cfg)
+        names = [name for name, _ in result]
+        assert "LITELLM_MASTER_KEY" not in names
+        assert "MY_KEY" in names
 
-    def test_falls_back_to_credentials_file(self, tmp_path: Path):
-        mock_settings = MagicMock()
-        mock_settings.secrets.anthropic_api_key = None
-        mock_settings.secrets.claude_code_oauth_token = None
+    def test_warns_on_missing(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        cfg = tmp_path / "litellm_config.yaml"
+        cfg.write_text("api_key: os.environ/MISSING_VAR\n")
+        monkeypatch.delenv("MISSING_VAR", raising=False)
 
-        with (
-            patch(f"{_GATEWAY_MOD}.get_settings", return_value=mock_settings),
-            patch(
-                "pynchy.container_runner._credentials._read_oauth_token",
-                return_value="sk-ant-oat01-file",
-            ),
-        ):
-            token = LiteLLMGateway._discover_anthropic_token()
-        assert token == "sk-ant-oat01-file"
-
-    def test_returns_none_when_no_credentials(self, tmp_path: Path):
-        mock_settings = MagicMock()
-        mock_settings.secrets.anthropic_api_key = None
-        mock_settings.secrets.claude_code_oauth_token = None
-
-        with (
-            patch(f"{_GATEWAY_MOD}.get_settings", return_value=mock_settings),
-            patch(
-                "pynchy.container_runner._credentials._read_oauth_token",
-                return_value=None,
-            ),
-        ):
-            token = LiteLLMGateway._discover_anthropic_token()
-        assert token is None
+        result = LiteLLMGateway._collect_yaml_env_refs(cfg)
+        assert result == []
 
     @pytest.mark.asyncio
-    async def test_start_passes_token_as_docker_env(self, tmp_path: Path):
-        """Verify start() includes PYNCHY_ANTHROPIC_TOKEN in docker run."""
+    async def test_start_forwards_yaml_env_vars(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ):
+        """Verify start() forwards env vars from YAML into docker run."""
         cfg = tmp_path / "litellm_config.yaml"
-        cfg.write_text("model_list: []\n")
+        cfg.write_text("api_key: os.environ/PYNCHY_ANTHROPIC_TOKEN\n")
+        monkeypatch.setenv("PYNCHY_ANTHROPIC_TOKEN", "sk-ant-oat01-discovered")
+
         gw = LiteLLMGateway(config_path=str(cfg), data_dir=tmp_path, **_LITELLM_KWARGS)
 
         calls: list[list[str]] = []
@@ -178,11 +175,6 @@ class TestLiteLLMCredentialDiscovery:
             patch("pynchy.container_runner.gateway.ensure_network"),
             patch.object(gw, "_wait_postgres_healthy", new_callable=AsyncMock),
             patch.object(gw, "_wait_healthy", new_callable=AsyncMock),
-            patch.object(
-                type(gw),
-                "_discover_anthropic_token",
-                staticmethod(lambda: "sk-ant-oat01-discovered"),
-            ),
         ):
             await gw.start()
 
@@ -248,7 +240,6 @@ class TestLiteLLMGatewayStart:
             patch("pynchy.container_runner.gateway.ensure_network"),
             patch.object(gw, "_wait_postgres_healthy", new_callable=AsyncMock),
             patch.object(gw, "_wait_healthy", new_callable=AsyncMock),
-            patch.object(type(gw), "_discover_anthropic_token", staticmethod(lambda: None)),
         ):
             await gw.start()
 

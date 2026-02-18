@@ -4,11 +4,14 @@
 # This file is the single source of truth for LLM routing — pynchy reads
 # it but never modifies it.
 #
-# Pynchy auto-discovers the Anthropic OAuth token at startup from
-# ~/.claude/.credentials.json (via `claude setup-token`) and injects it
-# as the PYNCHY_ANTHROPIC_TOKEN environment variable into this container.
-# No need to paste API keys here — just run `claude setup-token` on the host.
-# For pay-as-you-go API keys, set SECRETS__ANTHROPIC_API_KEY in .env.
+# How env vars work:
+#   1. Reference API keys with os.environ/VARNAME in this file.
+#   2. Set the matching vars in .env (e.g. PYNCHY_ANTHROPIC_TOKEN=sk-ant-...).
+#   3. At startup pynchy scans this file, finds all os.environ/ references,
+#      looks them up on the host, and forwards them into the Docker container.
+#
+# To add a second key for load balancing, just add another model_list entry
+# with a different os.environ/ var and set that var in .env — no code changes.
 #
 # Docs: https://docs.litellm.ai/docs/proxy/configs
 # Wildcard routing: https://docs.litellm.ai/docs/wildcard_routing
@@ -37,17 +40,17 @@ model_list:
       tags: ["primary"]
 
   # --- Anthropic (secondary account, for load balancing) ---
-  # Uncomment to spread requests across two accounts:
-  # - model_name: "anthropic/*"
-  #   litellm_params:
-  #     model: "anthropic/*"
-  #     api_key: os.environ/PYNCHY_ANTHROPIC_TOKEN_SECONDARY
-  #     max_budget: 50.0  # USD
-  #     budget_duration: 7d
-  #     custom_llm_provider: anthropic
-  #   model_info:
-  #     id: anthropic-secondary
-  #     tags: ["secondary"]
+  # Set PYNCHY_ANTHROPIC_TOKEN_SECONDARY in .env to enable:
+  - model_name: "anthropic/*"
+    litellm_params:
+      model: "anthropic/*"
+      api_key: os.environ/PYNCHY_ANTHROPIC_TOKEN_SECONDARY
+      max_budget: 50.0  # USD
+      budget_duration: 7d
+      custom_llm_provider: anthropic
+    model_info:
+      id: anthropic-secondary
+      tags: ["secondary"]
 
   # --- OpenAI ---
   # - model_name: "openai/*"
