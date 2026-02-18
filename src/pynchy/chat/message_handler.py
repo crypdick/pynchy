@@ -338,10 +338,17 @@ async def process_group_messages(
         return True
 
     # For non-admin groups, check if trigger is required and present
-    if not is_admin_group and group.requires_trigger is not False:
+    from pynchy.config import resolve_channel_config
+
+    resolved = resolve_channel_config(group.folder)
+    if not is_admin_group and resolved.trigger == "mention":
         has_trigger = any(s.trigger_pattern.search(m.content.strip()) for m in missed_messages)
         if not has_trigger:
             return True
+
+    # Access check: if workspace-level access is "read", skip activation (still stored)
+    if resolved.access == "read":
+        return True
 
     from pynchy.chat.router import format_messages_for_sdk
 
@@ -457,7 +464,15 @@ async def start_message_loop(
                         continue
 
                     is_admin_group = group.is_admin
-                    needs_trigger = not is_admin_group and group.requires_trigger is not False
+                    from pynchy.config import resolve_channel_config
+
+                    loop_resolved = resolve_channel_config(group.folder)
+
+                    # Access check: skip write-only or read-only workspaces
+                    if loop_resolved.access in ("read", "write"):
+                        continue
+
+                    needs_trigger = not is_admin_group and loop_resolved.trigger == "mention"
 
                     if needs_trigger:
                         last_content = group_messages[-1].content.strip()

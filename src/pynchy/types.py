@@ -152,6 +152,21 @@ class WorkspaceProfile:
 
 
 @dataclass
+class ResolvedChannelConfig:
+    """Fully-resolved channel access configuration — no None fields.
+
+    Produced by resolve_channel_config() after walking the cascade:
+    workspace_defaults → workspace → per-channel override.
+    """
+
+    access: Literal["read", "write", "readwrite"]
+    mode: Literal["agent", "chat"]
+    trust: bool
+    trigger: Literal["mention", "always"]
+    allowed_users: list[str]
+
+
+@dataclass
 class NewMessage:
     id: str
     chat_jid: str

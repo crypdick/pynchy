@@ -29,6 +29,9 @@ class BusDeps(Protocol):
     @property
     def channels(self) -> list[Channel]: ...
 
+    @property
+    def workspaces(self) -> dict: ...
+
     def get_channel_jid(self, canonical_jid: str, channel_name: str) -> str | None: ...
 
 
@@ -78,6 +81,38 @@ async def _mark_error(ledger_id: int | None, channel_name: str, error: str) -> N
 
 
 # ---------------------------------------------------------------------------
+# Access check helpers
+# ---------------------------------------------------------------------------
+
+
+def _channel_allows_outbound(deps: BusDeps, chat_jid: str, channel_name: str) -> bool:
+    """Check if a channel's resolved access mode permits outbound messages.
+
+    Returns True if outbound is allowed (access is "write" or "readwrite").
+    Returns True if no workspace is found (default to allowing).
+    """
+    group = _find_workspace_by_jid(deps, chat_jid)
+    if group is None:
+        return True
+    from pynchy.config import resolve_channel_config
+
+    resolved = resolve_channel_config(
+        group.folder,
+        channel_jid=chat_jid,
+        channel_plugin_name=channel_name,
+    )
+    return resolved.access != "read"
+
+
+def _find_workspace_by_jid(deps: BusDeps, chat_jid: str) -> object | None:
+    """Find workspace profile by canonical JID."""
+    workspaces = deps.workspaces
+    if not workspaces:
+        return None
+    return workspaces.get(chat_jid)
+
+
+# ---------------------------------------------------------------------------
 # Broadcast functions
 # ---------------------------------------------------------------------------
 
@@ -117,6 +152,8 @@ async def broadcast(
         if not ch.is_connected():
             continue
         if skip_channel and ch.name == skip_channel:
+            continue
+        if not _channel_allows_outbound(deps, chat_jid, ch.name):
             continue
         alias = deps.get_channel_jid(chat_jid, ch.name)
         target_jid = alias or chat_jid
@@ -161,6 +198,8 @@ async def broadcast_formatted(
     targets: list[tuple[Channel, str, str]] = []
     for ch in deps.channels:
         if not ch.is_connected():
+            continue
+        if not _channel_allows_outbound(deps, chat_jid, ch.name):
             continue
         text = format_outbound(ch, raw_text)
         if not text:
@@ -220,6 +259,8 @@ async def finalize_stream_or_broadcast(
     target_names: list[str] = []
     for ch in deps.channels:
         ch_name = ch.name
+        if not _channel_allows_outbound(deps, chat_jid, ch_name):
+            continue
         msg_id = stream_message_ids.get(ch_name)
         if msg_id and hasattr(ch, "update_message"):
             target_names.append(ch_name)
@@ -232,6 +273,8 @@ async def finalize_stream_or_broadcast(
 
     for ch in deps.channels:
         ch_name = ch.name
+        if not _channel_allows_outbound(deps, chat_jid, ch_name):
+            continue
         msg_id = stream_message_ids.get(ch_name)
 
         if msg_id and hasattr(ch, "update_message"):

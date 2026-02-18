@@ -11,7 +11,6 @@ if TYPE_CHECKING:
 from pynchy.config import get_settings
 from pynchy.container_runner._credentials import _write_env_file
 from pynchy.container_runner._session_prep import _sync_skills, _write_settings_json
-from pynchy.logger import logger
 from pynchy.security.mount_security import validate_additional_mounts
 from pynchy.types import VolumeMount, WorkspaceProfile
 from pynchy.workspace_config import load_workspace_config

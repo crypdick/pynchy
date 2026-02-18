@@ -42,6 +42,7 @@ class MessageBroadcaster:
         self,
         channels: Callable[[], list[Channel]] | list[Channel],
         get_channel_jid_fn: Callable[[str, str], str | None] | None = None,
+        workspaces: Callable[[], dict] | dict | None = None,
     ) -> None:
         # Accept either a list or a callable returning a list.
         # Callable form ensures the broadcaster always reads the current channels
@@ -50,6 +51,9 @@ class MessageBroadcaster:
             channels if callable(channels) else lambda: channels
         )
         self._get_channel_jid_fn = get_channel_jid_fn
+        self._get_workspaces: Callable[[], dict] = (
+            workspaces if callable(workspaces) else lambda: workspaces or {}
+        )
 
     # -- BusDeps protocol implementation --
 
@@ -57,6 +61,11 @@ class MessageBroadcaster:
     def channels(self) -> list[Channel]:
         """Return current channel list (satisfies BusDeps protocol)."""
         return self._get_channels()
+
+    @property
+    def workspaces(self) -> dict:
+        """Return current workspaces dict (satisfies BusDeps protocol)."""
+        return self._get_workspaces()
 
     def get_channel_jid(self, canonical_jid: str, channel_name: str) -> str | None:
         """Resolve canonical JID to channel-specific alias (satisfies BusDeps protocol)."""
