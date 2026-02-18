@@ -344,11 +344,15 @@ def event_to_output(event: AgentEvent, session_id: str | None) -> ContainerOutpu
                 system_data=event.data.get("system_data", {}),
             )
         case "result":
+            meta = event.data.get("result_metadata") or {}
+            is_error = meta.get("is_error", False)
+            result_text = event.data.get("result")
             return ContainerOutput(
-                status="success",
-                result=event.data.get("result"),
+                status="error" if is_error else "success",
+                result=result_text,
                 new_session_id=session_id,
-                result_metadata=event.data.get("result_metadata"),
+                error=result_text if is_error else None,
+                result_metadata=meta or None,
             )
         case _:
             log(f"Unknown event type: {event.type}")

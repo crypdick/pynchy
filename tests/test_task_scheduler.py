@@ -407,10 +407,11 @@ class TestRunScheduledAgent:
             logged_runs.append(log)
 
         with patch("pynchy.task_scheduler.log_task_run", side_effect=mock_log_run):
-            with _patch_settings(groups_dir=tmp_path):
-                from pynchy.task_scheduler import _run_scheduled_agent
+            with patch("pynchy.task_scheduler.update_task", new_callable=AsyncMock):
+                with _patch_settings(groups_dir=tmp_path):
+                    from pynchy.task_scheduler import _run_scheduled_agent
 
-                await _run_scheduled_agent(sample_task, mock_deps)
+                    await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have logged an error
         assert len(logged_runs) == 1
@@ -426,10 +427,11 @@ class TestRunScheduledAgent:
 
         with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
             with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
-                with _patch_settings(groups_dir=tmp_path):
-                    from pynchy.task_scheduler import _run_scheduled_agent
+                with patch("pynchy.task_scheduler.update_task", new_callable=AsyncMock):
+                    with _patch_settings(groups_dir=tmp_path):
+                        from pynchy.task_scheduler import _run_scheduled_agent
 
-                    await _run_scheduled_agent(sample_task, mock_deps)
+                        await _run_scheduled_agent(sample_task, mock_deps)
 
         assert len(mock_deps.agent_runs) == 1
         run = mock_deps.agent_runs[0]
@@ -451,10 +453,11 @@ class TestRunScheduledAgent:
 
         with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
             with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
-                with _patch_settings(groups_dir=tmp_path):
-                    from pynchy.task_scheduler import _run_scheduled_agent
+                with patch("pynchy.task_scheduler.update_task", new_callable=AsyncMock):
+                    with _patch_settings(groups_dir=tmp_path):
+                        from pynchy.task_scheduler import _run_scheduled_agent
 
-                    await _run_scheduled_agent(sample_task, mock_deps)
+                        await _run_scheduled_agent(sample_task, mock_deps)
 
         assert len(mock_deps.agent_runs) == 1
         assert mock_deps.agent_runs[0]["pynchy_repo_access_override"] is True
@@ -466,10 +469,11 @@ class TestRunScheduledAgent:
 
         with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
             with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
-                with _patch_settings(groups_dir=tmp_path):
-                    from pynchy.task_scheduler import _run_scheduled_agent
+                with patch("pynchy.task_scheduler.update_task", new_callable=AsyncMock):
+                    with _patch_settings(groups_dir=tmp_path):
+                        from pynchy.task_scheduler import _run_scheduled_agent
 
-                    await _run_scheduled_agent(sample_task, mock_deps)
+                        await _run_scheduled_agent(sample_task, mock_deps)
 
         assert ("test@g.us", "\u23f1 Scheduled task starting.") in mock_deps.messages
 
@@ -490,10 +494,11 @@ class TestRunScheduledAgent:
 
         with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
             with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
-                with _patch_settings(groups_dir=tmp_path):
-                    from pynchy.task_scheduler import _run_scheduled_agent
+                with patch("pynchy.task_scheduler.update_task", new_callable=AsyncMock):
+                    with _patch_settings(groups_dir=tmp_path):
+                        from pynchy.task_scheduler import _run_scheduled_agent
 
-                    await _run_scheduled_agent(sample_task, mock_deps)
+                        await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have delegated to handle_streamed_output
         assert len(mock_deps.streamed_outputs) == 1
@@ -515,10 +520,11 @@ class TestRunScheduledAgent:
 
         with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
             with patch("pynchy.task_scheduler.update_task_after_run", side_effect=mock_update):
-                with _patch_settings(groups_dir=tmp_path):
-                    from pynchy.task_scheduler import _run_scheduled_agent
+                with patch("pynchy.task_scheduler.update_task", new_callable=AsyncMock):
+                    with _patch_settings(groups_dir=tmp_path):
+                        from pynchy.task_scheduler import _run_scheduled_agent
 
-                    await _run_scheduled_agent(sample_task, mock_deps)
+                        await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have calculated next run
         assert len(updates) == 1
@@ -543,10 +549,11 @@ class TestRunScheduledAgent:
 
         with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
             with patch("pynchy.task_scheduler.update_task_after_run", side_effect=mock_update):
-                with _patch_settings(groups_dir=tmp_path):
-                    from pynchy.task_scheduler import _run_scheduled_agent
+                with patch("pynchy.task_scheduler.update_task", new_callable=AsyncMock):
+                    with _patch_settings(groups_dir=tmp_path):
+                        from pynchy.task_scheduler import _run_scheduled_agent
 
-                    await _run_scheduled_agent(sample_task, mock_deps)
+                        await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have calculated next run
         assert len(updates) == 1
@@ -573,10 +580,11 @@ class TestRunScheduledAgent:
 
         with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
             with patch("pynchy.task_scheduler.update_task_after_run", side_effect=mock_update):
-                with _patch_settings(groups_dir=tmp_path):
-                    from pynchy.task_scheduler import _run_scheduled_agent
+                with patch("pynchy.task_scheduler.update_task", new_callable=AsyncMock):
+                    with _patch_settings(groups_dir=tmp_path):
+                        from pynchy.task_scheduler import _run_scheduled_agent
 
-                    await _run_scheduled_agent(sample_task, mock_deps)
+                        await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have no next run for 'once' tasks
         assert len(updates) == 1
@@ -601,10 +609,11 @@ class TestRunScheduledAgent:
 
         with patch("pynchy.task_scheduler.log_task_run", side_effect=mock_log_run):
             with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
-                with _patch_settings(groups_dir=tmp_path):
-                    from pynchy.task_scheduler import _run_scheduled_agent
+                with patch("pynchy.task_scheduler.update_task", new_callable=AsyncMock):
+                    with _patch_settings(groups_dir=tmp_path):
+                        from pynchy.task_scheduler import _run_scheduled_agent
 
-                    await _run_scheduled_agent(sample_task, mock_deps)
+                        await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have logged the error
         assert len(logged_runs) == 1
@@ -626,15 +635,81 @@ class TestRunScheduledAgent:
 
         with patch("pynchy.task_scheduler.log_task_run", side_effect=mock_log_run):
             with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
-                with _patch_settings(groups_dir=tmp_path):
-                    from pynchy.task_scheduler import _run_scheduled_agent
+                with patch("pynchy.task_scheduler.update_task", new_callable=AsyncMock):
+                    with _patch_settings(groups_dir=tmp_path):
+                        from pynchy.task_scheduler import _run_scheduled_agent
 
-                    await _run_scheduled_agent(sample_task, mock_deps)
+                        await _run_scheduled_agent(sample_task, mock_deps)
 
         # Should have logged the error
         assert len(logged_runs) == 1
         assert logged_runs[0].status == "error"
         assert "Agent returned error" in logged_runs[0].error
+
+
+    @pytest.mark.asyncio
+    async def test_advances_next_run_before_execution(
+        self, mock_deps, sample_task, sample_group, tmp_path
+    ):
+        """Should advance next_run in DB before running agent to prevent re-queuing."""
+        mock_deps.groups["test-jid"] = sample_group
+        sample_task.schedule_type = "cron"
+        sample_task.schedule_value = "0 4 * * *"
+
+        early_updates = []
+
+        async def mock_update(task_id, updates):
+            early_updates.append((task_id, updates))
+
+        with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
+            with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
+                with patch("pynchy.task_scheduler.update_task", side_effect=mock_update):
+                    with _patch_settings(groups_dir=tmp_path):
+                        from pynchy.task_scheduler import _run_scheduled_agent
+
+                        await _run_scheduled_agent(sample_task, mock_deps)
+
+        # Should have called update_task with next_run before execution
+        assert len(early_updates) == 1
+        assert early_updates[0][0] == "task-1"
+        assert "next_run" in early_updates[0][1]
+        # next_run should be a future ISO timestamp
+        next_run_dt = datetime.fromisoformat(early_updates[0][1]["next_run"])
+        assert next_run_dt > datetime.now(UTC)
+
+    @pytest.mark.asyncio
+    async def test_detects_error_status_from_container(
+        self, mock_deps, sample_task, sample_group, tmp_path
+    ):
+        """Should classify streamed status='error' outputs (e.g. SDK is_error) as task errors."""
+        mock_deps.groups["test-jid"] = sample_group
+        api_error_text = 'API Error: 429 {"error":{"type":"rate_limit_error","message":"This request would exceed your account\'s rate limit."}}'
+        # Container now emits status="error" when ResultMessage.is_error is True
+        streamed = ContainerOutput(status="error", error=api_error_text)
+
+        async def mock_run(group, chat_jid, messages, on_output, **kwargs):
+            if on_output:
+                await on_output(streamed)
+            return "success"
+
+        mock_deps._run_agent_side_effect = mock_run
+
+        logged_runs = []
+
+        async def mock_log_run(log: TaskRunLog):
+            logged_runs.append(log)
+
+        with patch("pynchy.task_scheduler.log_task_run", side_effect=mock_log_run):
+            with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
+                with patch("pynchy.task_scheduler.update_task", new_callable=AsyncMock):
+                    with _patch_settings(groups_dir=tmp_path):
+                        from pynchy.task_scheduler import _run_scheduled_agent
+
+                        await _run_scheduled_agent(sample_task, mock_deps)
+
+        assert len(logged_runs) == 1
+        assert logged_runs[0].status == "error"
+        assert "API Error: 429" in logged_runs[0].error
 
 
 class TestHostCronJobs:

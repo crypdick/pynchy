@@ -20,6 +20,7 @@ from pynchy.db import (
     get_task_by_id,
     log_task_run,
     update_host_job_after_run,
+    update_task,
     update_task_after_run,
 )
 from pynchy.group_queue import GroupQueue
@@ -295,6 +296,11 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
 
     groups = deps.workspaces()
     group = next((g for g in groups.values() if g.folder == task.group_folder), None)
+
+    # Advance next_run BEFORE execution so subsequent scheduler polls
+    # don't re-queue this task while it's still running.
+    next_run = compute_next_run(task.schedule_type, task.schedule_value, s.timezone)
+    await update_task(task.id, {"next_run": next_run})
 
     if group:
         await deps.broadcast_to_channels(

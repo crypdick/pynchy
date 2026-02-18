@@ -303,9 +303,27 @@ class TestEventToOutput:
         )
         out = event_to_output(event, "sess-42")
         assert out.type == "result"
+        assert out.status == "success"
         assert out.result == "Final answer"
         assert out.new_session_id == "sess-42"
         assert out.result_metadata == {"cost": 0.01}
+        assert out.error is None
+
+    def test_result_event_with_is_error(self):
+        """SDK is_error=True should produce status='error' with error field set."""
+        error_text = 'API Error: 429 {"error":{"type":"rate_limit_error"}}'
+        event = AgentEvent(
+            type="result",
+            data={
+                "result": error_text,
+                "result_metadata": {"is_error": True, "num_turns": 0},
+            },
+        )
+        out = event_to_output(event, "sess-99")
+        assert out.status == "error"
+        assert out.error == error_text
+        assert out.result == error_text
+        assert out.new_session_id == "sess-99"
 
     def test_unknown_event_type(self):
         event = AgentEvent(type="unknown_type", data={})
