@@ -141,23 +141,29 @@ def _reset_context_definition() -> Tool:
                     "type": "string",
                     "description": (
                         "Message for your next session. Include "
-                        "all context needed to continue the task."
+                        "all context needed to continue the task. "
+                        "Only set this if there is actually pending "
+                        "work or context to hand off. If there is "
+                        "nothing to hand off (e.g. the user just "
+                        "asked to clear context), omit this "
+                        "parameter entirely — do NOT invent a "
+                        "message."
                     ),
                 },
             },
-            "required": ["message"],
         },
     )
 
 
 async def _reset_context_handle(arguments: dict) -> list[TextContent]:
-    data = {
+    data: dict[str, str] = {
         "type": "reset_context",
-        "message": arguments["message"],
         "chatJid": _ipc.chat_jid,
         "groupFolder": _ipc.group_folder,
         "timestamp": _ipc.now_iso(),
     }
+    if arguments.get("message"):
+        data["message"] = arguments["message"]
     _ipc.write_ipc_file(_ipc.TASKS_DIR, data)
 
     close_sentinel = Path("/workspace/ipc/input/_close")
