@@ -24,6 +24,6 @@ These subsystems have dedicated architecture pages explaining their internal des
 | [Observers](observers.md) | `pynchy_observer` | Event bus, event types, persistence |
 | [Tunnels](tunnels.md) | `pynchy_tunnel` | Connectivity detection, startup checks |
 | [Workspaces](workspaces.md) | `pynchy_workspace_spec` | Managed workspace definitions, config merging |
-| [MCP service tools](mcp-service-tools.md) | `pynchy_mcp_server_handler` | Host-side tool handlers, security policy |
+| [MCP service tools](mcp-service-tools.md) | `pynchy_service_handler` | Host-side tool handlers, security policy |
 
 For user-facing documentation on pluggable subsystems (channels, memory, agent cores), see [Usage](../usage/index.md). For the full list of plugin hooks, see [Hook Reference](../plugins/hooks.md).

@@ -16,7 +16,7 @@ hookspec = pluggy.HookspecMarker("pynchy")
 class PynchySpec:
     """Hook specifications for pynchy plugins.
 
-    Plugins implement these hooks to provide agent cores, channels, MCP servers,
+    Plugins implement these hooks to provide agent cores, channels, service handlers,
     and skills. A single plugin can implement multiple hooks to provide multiple
     capabilities.
     """
@@ -114,8 +114,8 @@ class PynchySpec:
         """
 
     @hookspec
-    def pynchy_mcp_server_handler(self) -> dict[str, Any]:
-        """Provide host-side MCP server handler for service tools.
+    def pynchy_service_handler(self) -> dict[str, Any]:
+        """Provide host-side service tool handlers.
 
         Host-side handlers process IPC service requests from container MCP tools.
         Each handler receives the request data dict and returns a result or error.

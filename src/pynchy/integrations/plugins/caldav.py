@@ -285,7 +285,7 @@ async def _handle_delete_event(data: dict) -> dict:
 
 class CalDAVMcpServerPlugin:
     @hookimpl
-    def pynchy_mcp_server_handler(self) -> dict[str, Any]:
+    def pynchy_service_handler(self) -> dict[str, Any]:
         return {
             "tools": {
                 "list_calendars": _handle_list_calendars,

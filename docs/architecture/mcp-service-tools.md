@@ -28,11 +28,11 @@ Admin workspaces bypass all policy gates. Non-admin workspaces fall back to stri
 
 ## Handler Contract
 
-Plugins implement the `pynchy_mcp_server_handler` hook and return a dict mapping tool names to async handler functions:
+Plugins implement the `pynchy_service_handler` hook and return a dict mapping tool names to async handler functions:
 
 ```python
 @hookimpl
-def pynchy_mcp_server_handler(self) -> dict[str, Any]:
+def pynchy_service_handler(self) -> dict[str, Any]:
     return {
         "tools": {
             "list_calendar": _handle_list_calendar,
