@@ -935,20 +935,31 @@ class TestResetContextExecution:
         assert len(deps.cleared_sessions) == 0
         assert len(deps.cleared_chats) == 0
 
-    async def test_reset_context_rejects_missing_message(self, deps):
-        """reset_context without message should bail without clearing."""
-        await dispatch(
-            {
-                "type": "reset_context",
-                "chatJid": "god@g.us",
-                "groupFolder": "god",
-            },
-            "god",
-            True,
-            deps,
-        )
+    async def test_reset_context_without_message_still_clears(self, deps, tmp_path):
+        """reset_context without message should clear session but skip handoff file."""
+        with (
+            patch(
+                "pynchy.ipc._handlers_lifecycle.get_settings",
+                return_value=_test_settings(data_dir=tmp_path / "data"),
+            ),
+            patch("pynchy.git_ops.worktree.merge_and_push_worktree"),
+        ):
+            (tmp_path / "data" / "ipc" / "god").mkdir(parents=True)
+            await dispatch(
+                {
+                    "type": "reset_context",
+                    "chatJid": "god@g.us",
+                    "groupFolder": "god",
+                },
+                "god",
+                True,
+                deps,
+            )
 
-        assert len(deps.cleared_sessions) == 0
+            assert "god" in deps.cleared_sessions
+            assert "god@g.us" in deps.cleared_chats
+            reset_file = tmp_path / "data" / "ipc" / "god" / "reset_prompt.json"
+            assert not reset_file.exists()
 
     async def test_reset_context_survives_merge_failure(self, deps, tmp_path):
         """reset_context should continue even if worktree merge fails."""

@@ -30,9 +30,9 @@ async def _handle_reset_context(
     message = data.get("message", "")
     group_folder = data.get("groupFolder", source_group)
 
-    if not chat_jid or not message:
+    if not chat_jid:
         logger.warning(
-            "Invalid reset_context request",
+            "Invalid reset_context request: missing chatJid",
             source_group=source_group,
         )
         return
@@ -56,18 +56,19 @@ async def _handle_reset_context(
     await deps.clear_session(group_folder)
     await deps.clear_chat_history(chat_jid)
 
-    reset_dir = get_settings().data_dir / "ipc" / group_folder
-    reset_dir.mkdir(parents=True, exist_ok=True)
-    reset_file = reset_dir / "reset_prompt.json"
-    reset_file.write_text(
-        json.dumps(
-            {
-                "message": message,
-                "chatJid": chat_jid,
-                "needsDirtyRepoCheck": True,
-            }
+    if message:
+        reset_dir = get_settings().data_dir / "ipc" / group_folder
+        reset_dir.mkdir(parents=True, exist_ok=True)
+        reset_file = reset_dir / "reset_prompt.json"
+        reset_file.write_text(
+            json.dumps(
+                {
+                    "message": message,
+                    "chatJid": chat_jid,
+                    "needsDirtyRepoCheck": True,
+                }
+            )
         )
-    )
 
     deps.enqueue_message_check(chat_jid)
     logger.info(
