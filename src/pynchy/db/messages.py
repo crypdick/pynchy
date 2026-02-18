@@ -90,6 +90,16 @@ async def store_message_direct(
     await db.commit()
 
 
+async def message_exists(msg_id: str, chat_jid: str) -> bool:
+    """Check if a message with the given ID and chat JID already exists."""
+    db = _get_db()
+    cursor = await db.execute(
+        "SELECT 1 FROM messages WHERE id = ? AND chat_jid = ? LIMIT 1",
+        (msg_id, chat_jid),
+    )
+    return await cursor.fetchone() is not None
+
+
 async def get_new_messages(jids: list[str], last_timestamp: str) -> tuple[list[NewMessage], str]:
     """Get new messages across multiple groups since a timestamp."""
     if not jids:

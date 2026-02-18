@@ -70,6 +70,8 @@ class MessageHandlerDeps(Protocol):
 
     async def set_typing_on_channels(self, chat_jid: str, is_typing: bool) -> None: ...
 
+    async def catch_up_channels(self) -> None: ...
+
     def emit(self, event: Any) -> None: ...
 
     async def run_agent(
@@ -424,7 +426,11 @@ async def start_message_loop(
     shutting_down: Callable[[], bool],
 ) -> None:
     """Main polling loop — checks for new messages every message_poll interval."""
+    import time as _time
+
     s = get_settings()
+    _CATCHUP_INTERVAL = 10  # seconds between channel history reconciliation
+    _last_catchup = _time.monotonic()
 
     logger.info(f"🦞 Pynchy running (trigger: @{s.agent.name})")
 
@@ -575,5 +581,15 @@ async def start_message_loop(
 
         except Exception:
             logger.exception("Error in message loop")
+
+        # Periodically reconcile channel history to recover events
+        # dropped by Socket Mode or other transient delivery failures.
+        now = _time.monotonic()
+        if now - _last_catchup >= _CATCHUP_INTERVAL:
+            _last_catchup = now
+            try:
+                await deps.catch_up_channels()
+            except Exception:
+                logger.exception("Error in channel catch-up")
 
         await asyncio.sleep(s.intervals.message_poll)

@@ -50,6 +50,7 @@ from pynchy.db.messages import (
     get_chat_history,
     get_messages_since,
     get_new_messages,
+    message_exists,
     store_message,
     store_message_direct,
 )
@@ -96,6 +97,7 @@ __all__ = [
     "get_chat_history",
     "get_messages_since",
     "get_new_messages",
+    "message_exists",
     "store_message",
     "store_message_direct",
     # tasks
