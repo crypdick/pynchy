@@ -62,7 +62,7 @@ def _install_launchd_service() -> None:
         logger.info("Installed launchd plist", dest=str(dest))
     # Only load if we're already running under launchd (safe to reload).
     # When running manually, loading would spawn a competing instance
-    # that fights over WhatsApp websocket and port binding.
+    # that fights over channel websockets and port binding.
     if already_loaded or is_launchd_managed():
         subprocess.run(["launchctl", "load", str(dest)], capture_output=True)
         logger.info("Loaded launchd service", label=label)
@@ -82,6 +82,8 @@ def _install_systemd_service() -> None:
     home = Path.home()
     # TODO: Uninstall cleanup — need a way to systemctl --user disable + rm
     # this service when the user wants to remove pynchy.
+    project_root = get_settings().project_root
+    git_path = shutil.which("git") or "/usr/bin/git"
     unit = f"""\
 [Unit]
 Description=Pynchy personal assistant
@@ -90,7 +92,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory={get_settings().project_root}
+WorkingDirectory={project_root}
+ExecStartPre={git_path} -C {project_root} pull --ff-only
+ExecStartPre={uv_path} sync --all-extras
 ExecStart={uv_path} run pynchy
 Restart=always
 RestartSec=10
