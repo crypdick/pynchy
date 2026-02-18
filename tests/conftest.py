@@ -156,15 +156,20 @@ def reset_settings(monkeypatch):
 async def _close_test_database():
     """Close the aiosqlite connection after all tests complete.
 
-    aiosqlite spawns a non-daemon worker thread per connection. Without an
-    explicit close, Python's interpreter shutdown blocks in threading._shutdown()
-    waiting for that thread to exit — causing a hang after all tests pass.
+    Uses ``stop()`` + thread join rather than ``await close()`` because
+    the connection was created on a function-scoped event loop (during a
+    test), while this session fixture tears down on the session loop.
+    ``await close()`` hangs across loop boundaries; ``stop()`` bypasses
+    the event loop by putting the close command directly on the worker
+    thread's queue.
     """
     yield
     import pynchy.db._connection as db_conn
 
     if db_conn._db is not None:
-        await db_conn._db.close()
+        db_conn._db.stop()
+        if db_conn._db._thread is not None and db_conn._db._thread.is_alive():
+            db_conn._db._thread.join(timeout=2)
         db_conn._db = None
 
 

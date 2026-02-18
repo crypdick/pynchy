@@ -360,10 +360,20 @@ async def init_database() -> None:
 
 
 async def _init_test_database() -> None:
-    """Create an in-memory database for tests."""
+    """Create an in-memory database for tests.
+
+    Uses ``stop()`` + thread join instead of ``await close()`` because
+    pytest-asyncio creates a new event loop per test function.  The
+    previous connection's worker thread targets its original (now-dead)
+    loop via ``call_soon_threadsafe``, so ``await close()`` hangs.
+    ``stop()`` bypasses the loop entirely — it puts the close command
+    directly on the worker queue and lets the thread exit on its own.
+    """
     global _db
     if _db is not None:
-        await _db.close()
+        _db.stop()
+        if _db._thread is not None and _db._thread.is_alive():
+            _db._thread.join(timeout=2)
     _db = await aiosqlite.connect(":memory:")
     _db.row_factory = aiosqlite.Row
     await _create_schema(_db)
