@@ -1,4 +1,12 @@
-# Example systemd service file for Pynchy. Replace <PROJECT_DIR> and <USER_HOME> with the actual values.
+# Pynchy systemd user service.
+# Source of truth: config-examples/pynchy.service.EXAMPLE in the pynchy repo.
+# Keep the deployed copy at ~/.config/systemd/user/pynchy.service in sync.
+#
+# Replace <PROJECT_DIR> and <USER_HOME> with actual values, then:
+#   cp config-examples/pynchy.service.EXAMPLE ~/.config/systemd/user/pynchy.service
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now pynchy
+
 [Unit]
 Description=Pynchy personal assistant
 After=network-online.target
@@ -7,6 +15,9 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=<PROJECT_DIR>
+ExecStartPre=/usr/bin/git -C <PROJECT_DIR> pull --ff-only
+ExecStartPre=<USER_HOME>/.local/bin/uv sync --all-extras
+ExecStartPre=<USER_HOME>/.local/bin/uv tool run pre-commit install
 ExecStart=<USER_HOME>/.local/bin/uv run pynchy
 Restart=always
 RestartSec=10
