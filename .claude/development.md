@@ -4,7 +4,7 @@ Run commands directly—don't tell the user to run them.
 
 ## Am I on pynchy?
 
-Check `hostname`. If it returns `pynchy`, you're on the server and can access services at `localhost`. Otherwise, reach pynchy over Tailscale (e.g., `ssh pynchy` or `http://pynchy.asymptote-shilling.ts.net:<port>`).
+Check `hostname`. If it returns `pyncher-server`, you're on the server and can access services at `localhost`. Otherwise, reach pynchy over Tailscale (e.g., `ssh pyncher-server`).
 
 ```bash
 uv run pynchy            # Run the app

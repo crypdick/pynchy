@@ -1,6 +1,6 @@
 # Deployment
 
-The pynchy service runs on the `pynchy` host over Tailscale. SSH: `ssh pynchy`.
+The pynchy service runs on the `pyncher-server` host over Tailscale. SSH: `ssh pyncher-server`.
 
 ## Auto-deploy: never restart manually
 
@@ -15,16 +15,16 @@ Pynchy self-manages. Two mechanisms trigger automatic restarts:
 
 ```bash
 # Trigger a deploy from HOST (not from containers — use mcp__pynchy__deploy_changes instead)
-curl -s -X POST http://pynchy:8484/deploy
+curl -s -X POST http://pyncher-server:8484/deploy
 
 # Observe (read-only — always safe)
-ssh pynchy 'systemctl --user status pynchy'
-ssh pynchy 'journalctl --user -u pynchy -f'
-ssh pynchy 'journalctl --user -u pynchy -n 100'
-ssh pynchy 'docker ps --filter name=pynchy'
+ssh pyncher-server 'systemctl --user status pynchy'
+ssh pyncher-server 'journalctl --user -u pynchy -f'
+ssh pyncher-server 'journalctl --user -u pynchy -n 100'
+ssh pyncher-server 'docker ps --filter name=pynchy'
 
 # Manual restart — ONLY for unhealthy/stuck service
-ssh pynchy 'systemctl --user restart pynchy'
+ssh pyncher-server 'systemctl --user restart pynchy'
 ```
 
 ## Service Management (reference)
@@ -53,12 +53,12 @@ To set up GitHub auth on a new host:
 
 ```bash
 # Interactive login (works over SSH with -t for TTY)
-ssh -t pynchy 'gh auth login -p ssh'
+ssh -t pyncher-server 'gh auth login -p ssh'
 # Select: GitHub.com → Login with a web browser
 # Then follow the device code flow in your local browser
 
 # Verify
-ssh pynchy 'gh auth status'
+ssh pyncher-server 'gh auth status'
 ```
 
 After authenticating, `_write_env_file()` auto-discovers `GH_TOKEN` and git identity on each admin container launch. No manual env configuration needed.

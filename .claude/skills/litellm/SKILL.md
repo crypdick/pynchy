@@ -5,14 +5,14 @@ description: Use when interacting with the LiteLLM proxy — investigating faile
 
 # LiteLLM Gateway
 
-The LiteLLM proxy runs as a Docker container (`pynchy-litellm`) managed by pynchy with a PostgreSQL sidecar (`pynchy-litellm-db`). Accessible at `http://localhost:4000` on the pynchy server, or `http://pynchy.asymptote-shilling.ts.net:4000` via Tailscale.
+The LiteLLM proxy runs as a Docker container (`pynchy-litellm`) managed by pynchy with a PostgreSQL sidecar (`pynchy-litellm-db`). Accessible at `http://localhost:4000` on the pynchy server, or via Tailscale at port 4000.
 
 ## Authentication
 
 The master key is in `config.toml` on the pynchy server under `[gateway].master_key`:
 
 ```bash
-ssh pynchy 'grep master_key ~/src/PERSONAL/pynchy/config.toml'
+ssh pyncher-server 'grep master_key ~/src/PERSONAL/pynchy/config.toml'
 ```
 
 Pass as Bearer token: `-H "Authorization: Bearer <key>"`
@@ -25,7 +25,7 @@ Editing the config file triggers an automatic service restart (~30-90s). Do not 
 
 ## UI
 
-Dashboard: `http://pynchy.asymptote-shilling.ts.net:4000/ui/`
+Dashboard: `http://pyncher-server:<port>/ui/` (port 4000 via Tailscale, or localhost on the server)
 
 ## MCP Server Management
 
