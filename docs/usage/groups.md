@@ -23,4 +23,4 @@ The god channel serves as the admin/control group (typically your WhatsApp self-
 | Edit `config.toml` (mounted read-write) | Yes | No |
 | MCP service tools (calendar, etc.) | Auto-approved | Policy-gated |
 
-Non-god groups can have `project_access` (configured in `workspace.yaml`), giving them a read-write worktree mount at `/workspace/project` instead of the readonly `groups/global/` mount. The host restricts IPC commands from non-god groups (see [IPC Authorization](../architecture/security.md#4-ipc-authorization)).
+Non-god groups can have `project_access` (configured in `config.toml`), giving them a read-write worktree mount at `/workspace/project` instead of the readonly `groups/global/` mount. The host restricts IPC commands from non-god groups (see [IPC Authorization](../architecture/security.md#4-ipc-authorization)).
