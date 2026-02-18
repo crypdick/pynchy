@@ -22,7 +22,7 @@ def _schedule_task_definition() -> Tool:
             '\u2022 "agent" (default): Runs a full agent with access '
             "to all tools in a container. Use for tasks requiring "
             "reasoning, tool use, or user interaction.\n"
-            '\u2022 "host" (god group only): Runs a shell command '
+            '\u2022 "host" (admin group only): Runs a shell command '
             "directly on the host. Use for system maintenance tasks. "
             "NOTE: Future improvement will add deputy agent review "
             "for security validation.\n\n"
@@ -72,7 +72,9 @@ def _schedule_task_definition() -> Tool:
                     "type": "string",
                     "enum": ["agent", "host"],
                     "default": "agent",
-                    "description": ("agent=containerized LLM task, host=shell command (god only)"),
+                    "description": (
+                        "agent=containerized LLM task, host=shell command (admin only)"
+                    ),
                 },
                 "prompt": {
                     "type": "string",
@@ -119,12 +121,12 @@ def _schedule_task_definition() -> Tool:
                         "Agent tasks only: group=runs with chat history, isolated=fresh session"
                     ),
                 },
-                "target_group_jid": {
+                "target_group": {
                     "type": "string",
                     "description": (
-                        "(God group only) JID of the group to "
-                        "schedule the task for. Defaults to the "
-                        "current group."
+                        "(Admin group only) Folder name of the group to "
+                        "schedule the task for (e.g. 'code-improver'). "
+                        "Defaults to the current group."
                     ),
                 },
                 "cwd": {
@@ -159,12 +161,12 @@ async def _schedule_task_handle(arguments: dict) -> list[TextContent] | CallTool
             isError=True,
         )
 
-    if task_type == "host" and not _ipc.is_god:
+    if task_type == "host" and not _ipc.is_admin:
         return CallToolResult(
             content=[
                 TextContent(
                     type="text",
-                    text="Only the god group can schedule host-level jobs.",
+                    text="Only the admin group can schedule host-level jobs.",
                 )
             ],
             isError=True,
@@ -233,7 +235,7 @@ async def _schedule_task_handle(arguments: dict) -> list[TextContent] | CallTool
             )
         ]
 
-    target_jid = (arguments.get("target_group_jid") if _ipc.is_god else None) or _ipc.chat_jid
+    target_group = (arguments.get("target_group") if _ipc.is_admin else None) or _ipc.group_folder
 
     data = {
         "type": "schedule_task",
@@ -241,7 +243,7 @@ async def _schedule_task_handle(arguments: dict) -> list[TextContent] | CallTool
         "schedule_type": schedule_type,
         "schedule_value": schedule_value,
         "context_mode": arguments.get("context_mode", "group"),
-        "targetJid": target_jid,
+        "targetGroup": target_group,
         "createdBy": _ipc.group_folder,
         "timestamp": _ipc.now_iso(),
     }
@@ -328,7 +330,7 @@ def _list_tasks_definition() -> Tool:
         description=(
             "List all scheduled tasks (both agent tasks and host "
             "jobs). Each entry is labelled [agent] or [host]. "
-            "From god: shows all tasks across all groups. "
+            "From admin: shows all tasks across all groups. "
             "From other groups: shows only that group's agent tasks."
         ),
         inputSchema={"type": "object", "properties": {}},
@@ -345,7 +347,7 @@ async def _list_tasks_handle(arguments: dict) -> list[TextContent]:
         all_tasks = json.loads(tasks_file.read_text())
         tasks = (
             all_tasks
-            if _ipc.is_god
+            if _ipc.is_admin
             else [t for t in all_tasks if t.get("groupFolder") == _ipc.group_folder]
         )
 
@@ -445,7 +447,7 @@ def _task_action(action: str, task_id: str) -> list[TextContent]:
             "type": action,
             "taskId": task_id,
             "groupFolder": _ipc.group_folder,
-            "isGod": _ipc.is_god,
+            "isAdmin": _ipc.is_admin,
             "timestamp": _ipc.now_iso(),
         },
     )

@@ -123,17 +123,17 @@ class TestMountAllowlist:
         allowlist = MountAllowlist()
         assert allowlist.allowed_roots == []
         assert allowlist.blocked_patterns == []
-        assert allowlist.non_god_read_only is True
+        assert allowlist.non_admin_read_only is True
 
     def test_with_entries(self):
         allowlist = MountAllowlist(
             allowed_roots=[AllowedRoot(path="/data")],
             blocked_patterns=["*.secret"],
-            non_god_read_only=False,
+            non_admin_read_only=False,
         )
         assert len(allowlist.allowed_roots) == 1
         assert len(allowlist.blocked_patterns) == 1
-        assert allowlist.non_god_read_only is False
+        assert allowlist.non_admin_read_only is False
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +221,7 @@ class TestScheduledTask:
         assert task.last_result is None
         assert task.status == "active"
         assert task.created_at == ""
-        assert task.project_access is False
+        assert task.pynchy_repo_access is False
 
 
 # ---------------------------------------------------------------------------
@@ -287,13 +287,13 @@ class TestContainerInput:
             messages=[{"content": "hi"}],
             group_folder="test",
             chat_jid="test@g.us",
-            is_god=False,
+            is_admin=False,
         )
         assert inp.session_id is None
         assert inp.is_scheduled_task is False
         assert inp.plugin_mcp_servers is None
         assert inp.system_notices is None
-        assert inp.project_access is False
+        assert inp.pynchy_repo_access is False
         assert inp.agent_core_module == "agent_runner.cores.claude"
         assert inp.agent_core_class == "ClaudeAgentCore"
         assert inp.agent_core_config is None

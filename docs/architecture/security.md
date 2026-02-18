@@ -6,8 +6,8 @@ This page covers Pynchy's security boundaries, trust model, and credential handl
 
 | Entity | Trust Level | Rationale |
 |--------|-------------|-----------|
-| God group | Trusted | Private self-chat, admin control |
-| Non-god groups | Untrusted | Other users may be malicious |
+| Admin group | Trusted | Private self-chat, admin control |
+| Non-admin groups | Untrusted | Other users may be malicious |
 | Container agents | Sandboxed | Isolated execution environment |
 | WhatsApp messages | User input | Potential prompt injection |
 
@@ -40,7 +40,7 @@ private_key, .secret
 **Protections:**
 - Symlink resolution before validation (prevents traversal attacks)
 - Container path validation (rejects `..` and absolute paths)
-- `non_god_read_only` option enforces read-only for non-god groups
+- `non_admin_read_only` option enforces read-only for non-admin groups
 
 ### 3. Session Isolation
 
@@ -53,7 +53,7 @@ Each group has isolated Claude sessions at `data/sessions/{group}/.claude/`:
 
 The host verifies messages and task operations against group identity:
 
-| Operation | God Group | Non-God Group |
+| Operation | Admin Group | Non-Admin Group |
 |-----------|------------|----------------|
 | Send message to own chat | ✓ | ✓ |
 | Send message to other chats | ✓ | ✗ |
@@ -70,7 +70,7 @@ Host-side MCP service tools (calendar, etc.) are gated by a policy middleware. T
 - **rules-engine** — deterministic rules (auto-approved for now; future: contextual rules like "only your own calendar")
 - **human-approval** — high-risk operations, denied until a human approves via chat
 
-God workspaces bypass all policy gates — all service tools are auto-approved. Non-god workspaces fall back to strict defaults (human-approval for all tools) unless a security profile is configured.
+Admin workspaces bypass all policy gates — all service tools are auto-approved. Non-admin workspaces fall back to strict defaults (human-approval for all tools) unless a security profile is configured.
 
 ### 6. Credential Handling
 
@@ -106,15 +106,15 @@ OPENAI_API_KEY=gw-<random>
 
 **Non-LLM credentials** get written directly to per-group env files (`data/env/{group}/env`):
 
-| Credential | God | Non-God | Rationale |
+| Credential | Admin | Non-Admin | Rationale |
 |-----------|-----|---------|-----------|
-| `GH_TOKEN` | Yes | **No** | Non-god containers have git push/pull blocked by the guard script and routed through host IPC. They never need direct GitHub access. |
+| `GH_TOKEN` | Yes | **No** | Non-admin containers have git push/pull blocked by the guard script and routed through host IPC. They never need direct GitHub access. |
 | `GIT_AUTHOR_NAME` | Yes | Yes | Needed for git commits in worktrees |
 | `GIT_COMMITTER_NAME` | Yes | Yes | |
 | `GIT_AUTHOR_EMAIL` | Yes | Yes | |
 | `GIT_COMMITTER_EMAIL` | Yes | Yes | |
 
-Each group gets its own env directory, so concurrent containers don't share secrets. A compromised non-god container cannot access GitHub APIs or push to repositories directly.
+Each group gets its own env directory, so concurrent containers don't share secrets. A compromised non-admin container cannot access GitHub APIs or push to repositories directly.
 
 **NOT Mounted:**
 - WhatsApp session (`store/auth/`) — host only
@@ -142,9 +142,9 @@ Channel messages can contain malicious instructions that attempt to manipulate C
 
 ## Privilege Comparison
 
-| Capability | God Group | Non-God Group |
+| Capability | Admin Group | Non-Admin Group |
 |------------|------------|----------------|
-| Project root access | `/workspace/project` (rw) | Via `project_access` (worktree, rw) |
+| Project root access | `/workspace/project` (rw) | Via `pynchy_repo_access` (worktree, rw) |
 | Group folder | `/workspace/group` (rw) | `/workspace/group` (rw) |
 | Global memory | Implicit via project | `/workspace/global` (ro) |
 | `config.toml` | Mounted read-write | Not mounted |

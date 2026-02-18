@@ -24,7 +24,7 @@ POST /deploy
   │   └─ fail? → git reset --hard {old_sha}, respond 422, notify WhatsApp, done
   ├─ Write deploy_continuation.json (reuses existing mechanism)
   ├─ Respond 200 with {sha, previous_sha, status: "restarting"}
-  ├─ Notify WhatsApp god group: "Deploying {sha}... restarting now."
+  ├─ Notify WhatsApp admin group: "Deploying {sha}... restarting now."
   └─ SIGTERM self → service manager restarts → continuation resumes
 ```
 

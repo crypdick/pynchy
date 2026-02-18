@@ -33,7 +33,7 @@ def _move_to_error_dir(ipc_base_dir: Path, source_group: str, file_path: Path) -
 async def _process_message_file(
     file_path: Path,
     source_group: str,
-    is_god: bool,
+    is_admin: bool,
     ipc_base_dir: Path,
     deps: IpcDeps,
 ) -> None:
@@ -45,7 +45,7 @@ async def _process_message_file(
         if data.get("type") == "message" and data.get("chatJid") and data.get("text"):
             workspaces = deps.workspaces()
             target_group = workspaces.get(data["chatJid"])
-            if is_god or (target_group and target_group.folder == source_group):
+            if is_admin or (target_group and target_group.folder == source_group):
                 sender = data.get("sender")
                 prefix = f"{sender}" if sender else s.agent.name
                 await deps.broadcast_to_channels(
@@ -77,7 +77,7 @@ async def _process_message_file(
 async def _process_task_file(
     file_path: Path,
     source_group: str,
-    is_god: bool,
+    is_admin: bool,
     ipc_base_dir: Path,
     deps: IpcDeps,
 ) -> None:
@@ -91,12 +91,12 @@ async def _process_task_file(
         # Tier 1: signal-only
         signal_type = validate_signal(data)
         if signal_type is not None:
-            await _handle_signal(signal_type, source_group, is_god, deps)
+            await _handle_signal(signal_type, source_group, is_admin, deps)
             file_path.unlink()
             return
 
         # Tier 2: data-carrying request
-        await dispatch(data, source_group, is_god, deps)
+        await dispatch(data, source_group, is_admin, deps)
         file_path.unlink()
     except Exception as exc:
         logger.error(
@@ -111,7 +111,7 @@ async def _process_task_file(
 async def _handle_signal(
     signal_type: str,
     source_group: str,
-    is_god: bool,
+    is_admin: bool,
     deps: IpcDeps,
 ) -> None:
     """Handle a Tier 1 signal-only IPC request.
@@ -120,7 +120,7 @@ async def _handle_signal(
     type and its own state (which group sent it, registered groups, etc.).
     """
     if signal_type == "refresh_groups":
-        if is_god:
+        if is_admin:
             logger.info(
                 "Group metadata refresh requested via signal",
                 source_group=source_group,
@@ -165,10 +165,10 @@ async def _sweep_directory(
         return 0
 
     workspaces = deps.workspaces()
-    god_folders = {g.folder for g in workspaces.values() if g.is_god}
+    admin_folders = {g.folder for g in workspaces.values() if g.is_admin}
 
     for source_group in group_folders:
-        is_god = source_group in god_folders
+        is_admin = source_group in admin_folders
         messages_dir = ipc_base_dir / source_group / "messages"
         tasks_dir = ipc_base_dir / source_group / "tasks"
 
@@ -176,7 +176,9 @@ async def _sweep_directory(
         try:
             if messages_dir.exists():
                 for file_path in sorted(f for f in messages_dir.iterdir() if f.suffix == ".json"):
-                    await _process_message_file(file_path, source_group, is_god, ipc_base_dir, deps)
+                    await _process_message_file(
+                        file_path, source_group, is_admin, ipc_base_dir, deps
+                    )
                     processed += 1
         except OSError as exc:
             logger.error(
@@ -189,7 +191,7 @@ async def _sweep_directory(
         try:
             if tasks_dir.exists():
                 for file_path in sorted(f for f in tasks_dir.iterdir() if f.suffix == ".json"):
-                    await _process_task_file(file_path, source_group, is_god, ipc_base_dir, deps)
+                    await _process_task_file(file_path, source_group, is_admin, ipc_base_dir, deps)
                     processed += 1
         except OSError as exc:
             logger.error(
@@ -256,15 +258,15 @@ async def _process_queue(
             source_group = parts[0]
             subdir = parts[1]
 
-            # Re-check god status (groups can change at runtime)
+            # Re-check admin status (groups can change at runtime)
             current_groups = deps.workspaces()
-            current_god_folders = {g.folder for g in current_groups.values() if g.is_god}
-            is_god = source_group in current_god_folders
+            current_admin_folders = {g.folder for g in current_groups.values() if g.is_admin}
+            is_admin = source_group in current_admin_folders
 
             if subdir == "messages":
-                await _process_message_file(file_path, source_group, is_god, ipc_base_dir, deps)
+                await _process_message_file(file_path, source_group, is_admin, ipc_base_dir, deps)
             elif subdir == "tasks":
-                await _process_task_file(file_path, source_group, is_god, ipc_base_dir, deps)
+                await _process_task_file(file_path, source_group, is_admin, ipc_base_dir, deps)
         except Exception as exc:
             logger.error(
                 "Error processing queued IPC file",

@@ -24,7 +24,7 @@ All service tool requests pass through a security policy middleware before reach
 | `rules-engine` | Deterministic rules (auto-approved for now) | Scoped operations |
 | `human-approval` | Denied until a human approves via chat | Destructive operations |
 
-God workspaces bypass all policy gates. Non-god workspaces fall back to strict defaults unless a security profile is configured. See [Security Model](security.md#5-mcp-service-tool-policy) for details.
+Admin workspaces bypass all policy gates. Non-admin workspaces fall back to strict defaults unless a security profile is configured. See [Security Model](security.md#5-mcp-service-tool-policy) for details.
 
 ## Handler Contract
 

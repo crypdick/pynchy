@@ -67,7 +67,7 @@ async def _stream_text_to_channels(
     Throttled to _STREAM_THROTTLE unless ``final`` is True.
 
     Uses JID alias resolution so channels that don't own the canonical JID
-    (e.g. Slack when the primary is a WhatsApp JID) can still stream.
+    (e.g. Slack when the primary JID belongs to another channel) can still stream.
     """
     now = time.monotonic()
     if not final and (now - state.last_update) < _STREAM_THROTTLE:

@@ -27,7 +27,7 @@ class IpcDeps(Protocol):
     def write_groups_snapshot(
         self,
         group_folder: str,
-        is_god: bool,
+        is_admin: bool,
         available_groups: list[Any],
         registered_jids: set[str],
     ) -> None: ...

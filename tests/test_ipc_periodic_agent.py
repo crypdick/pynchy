@@ -56,7 +56,7 @@ class MockDeps:
     def write_groups_snapshot(
         self,
         group_folder: str,
-        is_god: bool,
+        is_admin: bool,
         available_groups: list[Any],
         registered_jids: set[str],
     ) -> None:
@@ -86,7 +86,7 @@ async def deps():
                 folder="god",
                 trigger="always",
                 added_at="2024-01-01",
-                is_god=True,
+                is_admin=True,
             ),
         }
     )

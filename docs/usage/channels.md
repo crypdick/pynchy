@@ -32,7 +32,7 @@ uv run pynchy-whatsapp-auth     # Scan QR code to link your phone
 
 **Notes:**
 - WhatsApp linked devices expire after ~30 days of inactivity — re-run auth if disconnected
-- The god channel is typically your WhatsApp self-chat (private messages to yourself)
+- The admin channel is typically your WhatsApp self-chat (private messages to yourself)
 
 ## Built-in: Slack
 
@@ -85,7 +85,7 @@ If a channel's dependencies aren't installed or its config section is missing, i
 
 ## Default Channel
 
-The default channel determines which platform creates the god channel on first run:
+The default channel determines which platform creates the admin channel on first run:
 
 ```toml
 [channels]

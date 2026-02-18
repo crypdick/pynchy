@@ -116,16 +116,16 @@ class TestTriggerGating:
     """Replicates the trigger gating logic from the orchestrator."""
 
     @staticmethod
-    def _should_require_trigger(is_god_group: bool, requires_trigger: bool | None) -> bool:
-        return not is_god_group and requires_trigger is not False
+    def _should_require_trigger(is_admin_group: bool, requires_trigger: bool | None) -> bool:
+        return not is_admin_group and requires_trigger is not False
 
     @staticmethod
     def _should_process(
-        is_god_group: bool,
+        is_admin_group: bool,
         requires_trigger: bool | None,
         messages: list[NewMessage],
     ) -> bool:
-        if not TestTriggerGating._should_require_trigger(is_god_group, requires_trigger):
+        if not TestTriggerGating._should_require_trigger(is_admin_group, requires_trigger):
             return True
         return any(TRIGGER_PATTERN.search(m.content.strip()) for m in messages)
 

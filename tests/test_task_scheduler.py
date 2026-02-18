@@ -111,7 +111,7 @@ class TestScheduledTaskSnapshotDict:
         assert d["groupFolder"] == "test-folder"
 
     def test_excludes_internal_fields(self):
-        """Fields like chat_jid, context_mode, project_access are internal
+        """Fields like chat_jid, context_mode, pynchy_repo_access are internal
         and should not leak into the snapshot dict."""
         task = ScheduledTask(
             id="t",
@@ -121,7 +121,7 @@ class TestScheduledTaskSnapshotDict:
             schedule_type="cron",
             schedule_value="* * * * *",
             context_mode="group",
-            project_access=True,
+            pynchy_repo_access=True,
             last_run="2026-01-01",
             last_result="ok",
             created_at="2026-01-01",
@@ -129,7 +129,7 @@ class TestScheduledTaskSnapshotDict:
         d = task.to_snapshot_dict()
         assert "chat_jid" not in d
         assert "context_mode" not in d
-        assert "project_access" not in d
+        assert "pynchy_repo_access" not in d
         assert "last_run" not in d
         assert "last_result" not in d
         assert "created_at" not in d
@@ -164,7 +164,7 @@ class MockSchedulerDeps:
         extra_system_notices=None,
         *,
         is_scheduled_task=False,
-        project_access_override=None,
+        pynchy_repo_access_override=None,
         input_source="user",
     ) -> str:
         self.agent_runs.append(
@@ -174,7 +174,7 @@ class MockSchedulerDeps:
                 "messages": messages,
                 "on_output": on_output,
                 "is_scheduled_task": is_scheduled_task,
-                "project_access_override": project_access_override,
+                "pynchy_repo_access_override": pynchy_repo_access_override,
                 "input_source": input_source,
             }
         )
@@ -185,7 +185,7 @@ class MockSchedulerDeps:
                 messages,
                 on_output,
                 is_scheduled_task=is_scheduled_task,
-                project_access_override=project_access_override,
+                pynchy_repo_access_override=pynchy_repo_access_override,
                 input_source=input_source,
             )
         return self._run_agent_result
@@ -442,12 +442,12 @@ class TestRunScheduledAgent:
         assert run["messages"][0]["sender"] == "scheduled_task"
 
     @pytest.mark.asyncio
-    async def test_passes_project_access_override(
+    async def test_passes_pynchy_repo_access_override(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """Should pass project_access from task as project_access_override."""
+        """Should pass pynchy_repo_access from task as pynchy_repo_access_override."""
         mock_deps.groups["test-jid"] = sample_group
-        sample_task.project_access = True
+        sample_task.pynchy_repo_access = True
 
         with patch("pynchy.task_scheduler.log_task_run", new_callable=AsyncMock):
             with patch("pynchy.task_scheduler.update_task_after_run", new_callable=AsyncMock):
@@ -457,7 +457,7 @@ class TestRunScheduledAgent:
                     await _run_scheduled_agent(sample_task, mock_deps)
 
         assert len(mock_deps.agent_runs) == 1
-        assert mock_deps.agent_runs[0]["project_access_override"] is True
+        assert mock_deps.agent_runs[0]["pynchy_repo_access_override"] is True
 
     @pytest.mark.asyncio
     async def test_sends_start_notification(self, mock_deps, sample_task, sample_group, tmp_path):

@@ -6,7 +6,7 @@ Pynchy supports two kinds: **agent tasks** (run a Claude agent in a container) a
 
 ## Agent Tasks
 
-Agent tasks spin up a containerized Claude agent on schedule. The agent receives a prompt and can use all its normal tools (Bash, MCP, etc.), just as if a user had sent a message. Any group can schedule agent tasks for itself; the god group can schedule them for any group.
+Agent tasks spin up a containerized Claude agent on schedule. The agent receives a prompt and can use all its normal tools (Bash, MCP, etc.), just as if a user had sent a message. Any group can schedule agent tasks for itself; the admin group can schedule them for any group.
 
 ### Context Modes
 
@@ -15,11 +15,11 @@ Agent tasks spin up a containerized Claude agent on schedule. The agent receives
 | `group` | Runs in the group's current session (shares conversation history) |
 | `isolated` | Runs in a fresh session each time |
 
-Agent tasks can optionally send messages to their group via `send_message`, or complete silently. Each task run gets logged to the database with duration and result. If the task has `project_access`, worktree commits merge and push after a successful run.
+Agent tasks can optionally send messages to their group via `send_message`, or complete silently. Each task run gets logged to the database with duration and result. If the task has `pynchy_repo_access`, worktree commits merge and push after a successful run.
 
 ## Host Tasks
 
-Host tasks run shell commands directly on the host — no LLM, no container. Use them for maintenance scripts, backups, git operations, or anything that doesn't need an agent. Only the god group can create and manage host tasks.
+Host tasks run shell commands directly on the host — no LLM, no container. Use them for maintenance scripts, backups, git operations, or anything that doesn't need an agent. Only the admin group can create and manage host tasks.
 
 Two definition methods exist:
 
@@ -40,7 +40,7 @@ Config cron jobs only support cron expressions. The scheduler polls them each ti
 
 ### MCP tool (`schedule_task` with `task_type: "host"`)
 
-Agents in the god group can create host jobs dynamically via `schedule_task` with `task_type` set to `"host"`. The database stores these jobs, and they support all schedule types (cron, interval, once). They appear in `list_tasks` and can be paused/resumed/cancelled like agent tasks.
+Agents in the admin group can create host jobs dynamically via `schedule_task` with `task_type` set to `"host"`. The database stores these jobs, and they support all schedule types (cron, interval, once). They appear in `list_tasks` and can be paused/resumed/cancelled like agent tasks.
 
 ## MCP Tools
 

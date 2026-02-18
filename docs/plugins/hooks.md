@@ -317,7 +317,7 @@ def pynchy_workspace_spec(self) -> dict[str, Any]:
     return {
         "folder": "code-improver",
         "config": {
-            "project_access": True,
+            "pynchy_repo_access": True,
             "schedule": "0 4 * * *",
             "prompt": "Run scheduled code improvements",
             "context_mode": "isolated",

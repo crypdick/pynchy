@@ -190,12 +190,12 @@ class TestFirstRunBootstrap:
 
         from pynchy import startup_handler
 
-        await startup_handler.setup_god_group(app, default_channel=None)
+        await startup_handler.setup_admin_group(app, default_channel=None)
 
         assert len(app.workspaces) == 1
         [(jid, group)] = list(app.workspaces.items())
         assert jid.startswith("tui://")
-        assert group.is_god is True
+        assert group.is_admin is True
 
 
 class TestProcessGroupMessages:
@@ -716,7 +716,7 @@ class TestDeployContinuationResume:
                 folder="god",
                 trigger="always",
                 added_at="2024-01-01T00:00:00.000Z",
-                is_god=True,
+                is_admin=True,
             ),
             "team@g.us": WorkspaceProfile(
                 jid="team@g.us",

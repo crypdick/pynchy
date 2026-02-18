@@ -104,7 +104,7 @@ def _shell_quote(value: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _write_env_file(*, is_god: bool, group_folder: str) -> Path | None:
+def _write_env_file(*, is_admin: bool, group_folder: str) -> Path | None:
     """Write credential env vars for a specific group's container.
 
     Returns the per-group env dir, or ``None`` if no credentials were found.
@@ -140,8 +140,8 @@ def _write_env_file(*, is_god: bool, group_folder: str) -> Path | None:
     # Non-LLM credentials (not proxied)
     # ------------------------------------------------------------------
 
-    # GH_TOKEN — god only
-    if is_god:
+    # GH_TOKEN — admin only
+    if is_admin:
         if s.secrets.gh_token:
             env_vars["GH_TOKEN"] = s.secrets.gh_token.get_secret_value()
         elif gh_token := _read_gh_token():
@@ -167,7 +167,7 @@ def _write_env_file(*, is_god: bool, group_folder: str) -> Path | None:
     logger.debug(
         "Container env prepared",
         group=group_folder,
-        is_god=is_god,
+        is_admin=is_admin,
         vars=list(env_vars.keys()),
     )
     lines = [f"{k}={_shell_quote(v)}" for k, v in env_vars.items()]

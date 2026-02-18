@@ -26,17 +26,17 @@ The preferred runtime on macOS. Uses Apple's native container framework for lowe
 | Host Path | Container Path | Access | Groups |
 |-----------|---------------|---------|--------|
 | `groups/{name}/` | `/workspace/group` | Read-write | All |
-| `groups/global/` | `/workspace/global` | Readonly | Non-god only |
+| `groups/global/` | `/workspace/global` | Readonly | Non-admin only |
 | `data/sessions/{group}/.claude/` | `/home/agent/.claude` | Read-write | All (isolated per-group) |
 | `container/scripts/` | `/workspace/scripts` | Readonly | All |
 | `container/agent_runner/src` | `/app/src` | Readonly | All (agent runner source) |
 | `data/ipc/{group}/` | `/workspace/ipc` | Read-write | All (IPC channel) |
 | `data/env/{group}/` | `/workspace/env-dir` | Readonly | All (per-group credentials) |
-| `config.toml` | `/workspace/project/config.toml` | Read-write | God only |
+| `config.toml` | `/workspace/project/config.toml` | Read-write | Admin only |
 | `{additional mounts}` | `/workspace/extra/*` | Configurable | Per containerConfig |
 
 **Notes:**
-- Groups with `project_access` receive worktree mounts instead of `groups/global/` (see `.claude/worktrees.md`)
+- Groups with `pynchy_repo_access` receive worktree mounts instead of `groups/global/` (see `.claude/worktrees.md`)
 - Apple Container requires `--mount "type=bind,source=...,target=...,readonly"` syntax for readonly mounts (the `:ro` suffix does not work)
 
 ## Container Configuration
@@ -65,14 +65,14 @@ Each group gets its own env file at `data/env/{group}/env`. Only allowlisted var
 - `OPENAI_BASE_URL` / `OPENAI_API_KEY` — points to host gateway
 
 **Non-LLM credentials** get written directly, scoped by trust level:
-- `GH_TOKEN` — **god containers only.** Auto-discovered from `gh auth token` or `config.toml [secrets]`. Non-god containers don't receive this; their git operations are routed through host IPC.
+- `GH_TOKEN` — **admin containers only.** Auto-discovered from `gh auth token` or `config.toml [secrets]`. Non-admin containers don't receive this; their git operations are routed through host IPC.
 - `GIT_AUTHOR_NAME` / `GIT_COMMITTER_NAME` — from host git config (all groups)
 - `GIT_AUTHOR_EMAIL` / `GIT_COMMITTER_EMAIL` — from host git config (all groups)
 
 **Process:**
 1. Host discovers credentials from `config.toml [secrets]` and auto-discovery (OAuth, gh CLI, git config)
 2. LLM keys are registered with the gateway; containers get the gateway URL + ephemeral key
-3. `GH_TOKEN` is included only for god containers
+3. `GH_TOKEN` is included only for admin containers
 4. Per-group env file written to `data/env/{group}/env`
 5. Mounted into the container at `/workspace/env-dir/env`
 6. Container entrypoint sources the file

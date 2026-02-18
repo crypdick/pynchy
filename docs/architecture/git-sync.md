@@ -1,6 +1,6 @@
 # Coordinated Git Sync
 
-This page describes how Pynchy coordinates git operations between containers and the host. Understanding this helps you configure `project_access` groups and troubleshoot merge conflicts in worktrees.
+This page describes how Pynchy coordinates git operations between containers and the host. Understanding this helps you configure `pynchy_repo_access` groups and troubleshoot merge conflicts in worktrees.
 
 ## Design Principles
 
@@ -18,7 +18,7 @@ A background loop polls every 5 seconds and detects three types of drift:
 | Drift type | What triggers it | Action |
 |-----------|-----------------|--------|
 | **Origin drift** | Remote main has new commits (e.g. pushed from another machine) | Pull, notify running agents via system notice, trigger deploy if source files changed |
-| **Local HEAD drift** | Local HEAD differs from the SHA at last deploy (e.g. god agent committed and pushed) | Trigger deploy if source files changed |
+| **Local HEAD drift** | Local HEAD differs from the SHA at last deploy (e.g. admin agent committed and pushed) | Trigger deploy if source files changed |
 | **Config drift** | `config.toml` or `litellm_config.yaml` hash changed | Trigger restart (no rebuild needed) |
 
 Source-file changes (anything under `src/`, `container/`, or `pyproject.toml`) trigger a full deploy with container rebuild. Config-only changes trigger a lighter restart.

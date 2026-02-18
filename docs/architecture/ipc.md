@@ -95,7 +95,7 @@ All other operations — scheduling, group management, deployment, git sync — 
 | `pause_task` | Pause a task | No (own tasks) |
 | `resume_task` | Resume a task | No (own tasks) |
 | `cancel_task` | Delete a task | No (own tasks) |
-| `register_group` | Register a new WhatsApp group | Yes |
+| `register_group` | Register a new chat group | Yes |
 | `create_periodic_agent` | Create a group + task + config for a periodic agent | Yes |
 | `deploy` | Trigger a deployment (rebuild, restart) | Yes |
 | `reset_context` | Clear session and chat history | No |

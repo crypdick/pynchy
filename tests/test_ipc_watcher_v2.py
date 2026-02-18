@@ -31,7 +31,7 @@ GOD_GROUP = WorkspaceProfile(
     folder="god",
     trigger="always",
     added_at="2024-01-01",
-    is_god=True,
+    is_admin=True,
 )
 
 OTHER_GROUP = WorkspaceProfile(
@@ -85,11 +85,11 @@ class MockDeps:
     def write_groups_snapshot(
         self,
         group_folder: str,
-        is_god: bool,
+        is_admin: bool,
         available_groups: list[Any],
         registered_jids: set[str],
     ) -> None:
-        self.snapshot_calls.append((group_folder, is_god, available_groups, registered_jids))
+        self.snapshot_calls.append((group_folder, is_admin, available_groups, registered_jids))
 
     async def clear_session(self, group_folder: str) -> None:
         self.cleared_sessions.append(group_folder)
@@ -263,8 +263,8 @@ class TestStartupSweep:
 class TestSignalHandling:
     """Tests for the _handle_signal dispatcher."""
 
-    async def test_refresh_groups_signal_from_god(self, deps):
-        """God group sending refresh_groups signal should trigger metadata sync."""
+    async def test_refresh_groups_signal_from_admin(self, deps):
+        """Admin group sending refresh_groups signal should trigger metadata sync."""
         deps.sync_group_metadata = AsyncMock()
         deps.get_available_groups = AsyncMock(return_value=[])
 
@@ -273,8 +273,8 @@ class TestSignalHandling:
         deps.sync_group_metadata.assert_called_once_with(True)
         assert len(deps.snapshot_calls) == 1
 
-    async def test_refresh_groups_signal_blocked_for_non_god(self, deps):
-        """Non-god groups should not be able to trigger refresh_groups."""
+    async def test_refresh_groups_signal_blocked_for_non_admin(self, deps):
+        """Non-admin groups should not be able to trigger refresh_groups."""
         deps.sync_group_metadata = AsyncMock()
 
         await _handle_signal("refresh_groups", "other-group", False, deps)
@@ -359,7 +359,7 @@ class TestMessageFileProcessing:
     """Tests for _process_message_file."""
 
     async def test_authorized_message_is_broadcast(self, deps, tmp_path: Path):
-        """God group message to any chat should be broadcast."""
+        """Admin group message to any chat should be broadcast."""
         ipc_dir = tmp_path / "ipc"
         file_path = _write_ipc_file(
             ipc_dir,
@@ -379,7 +379,7 @@ class TestMessageFileProcessing:
         assert not file_path.exists()
 
     async def test_unauthorized_message_is_blocked(self, deps, tmp_path: Path):
-        """Non-god group message to another group's chat should be blocked."""
+        """Non-admin group message to another group's chat should be blocked."""
         ipc_dir = tmp_path / "ipc"
         file_path = _write_ipc_file(
             ipc_dir,

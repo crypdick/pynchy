@@ -1,4 +1,4 @@
-"""Admin tools: register_group, deploy_changes (god-only)."""
+"""Admin tools: register_group, deploy_changes (admin-only)."""
 
 from __future__ import annotations
 
@@ -17,8 +17,8 @@ def _register_group_definition() -> Tool:
     return Tool(
         name="register_group",
         description=(
-            "Register a new WhatsApp group so the agent can "
-            "respond to messages there. God group only.\n\n"
+            "Register a chat group so the agent can "
+            "respond to messages there. Admin group only.\n\n"
             "Use available_groups.json to find the JID for a "
             "group. The folder name should be lowercase with "
             'hyphens (e.g., "family-chat").'
@@ -28,7 +28,7 @@ def _register_group_definition() -> Tool:
             "properties": {
                 "jid": {
                     "type": "string",
-                    "description": 'The WhatsApp JID (e.g., "120363336345536173@g.us")',
+                    "description": "The group JID from available_groups.json",
                 },
                 "name": {
                     "type": "string",
@@ -49,12 +49,12 @@ def _register_group_definition() -> Tool:
 
 
 async def _register_group_handle(arguments: dict) -> list[TextContent] | CallToolResult:
-    if not _ipc.is_god:
+    if not _ipc.is_admin:
         return CallToolResult(
             content=[
                 TextContent(
                     type="text",
-                    text="Only the god group can register new groups.",
+                    text="Only the admin group can register new groups.",
                 )
             ],
             isError=True,
@@ -84,7 +84,7 @@ async def _register_group_handle(arguments: dict) -> list[TextContent] | CallToo
 
 
 def _deploy_changes_definition() -> Tool | None:
-    if not _ipc.is_god:
+    if not _ipc.is_admin:
         return None
     return Tool(
         name="deploy_changes",
@@ -119,12 +119,12 @@ def _deploy_changes_definition() -> Tool | None:
 
 
 async def _deploy_changes_handle(arguments: dict) -> list[TextContent] | CallToolResult:
-    if not _ipc.is_god:
+    if not _ipc.is_admin:
         return CallToolResult(
             content=[
                 TextContent(
                     type="text",
-                    text="Only the god group can deploy.",
+                    text="Only the admin group can deploy.",
                 )
             ],
             isError=True,

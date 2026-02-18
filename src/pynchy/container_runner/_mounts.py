@@ -19,19 +19,19 @@ from pynchy.workspace_config import load_workspace_config
 
 def _build_volume_mounts(
     group: WorkspaceProfile,
-    is_god: bool,
+    is_admin: bool,
     plugin_manager: pluggy.PluginManager | None = None,
-    project_access: bool = False,
+    pynchy_repo_access: bool = False,
     worktree_path: Path | None = None,
 ) -> list[VolumeMount]:
     """Build the mount list for a container invocation.
 
     Args:
         group: The registered group configuration
-        is_god: Whether this is the god group
+        is_admin: Whether this is the admin group
         plugin_manager: Optional pluggy.PluginManager for plugin MCP mounts
-        project_access: Whether to mount the host project into the container
-        worktree_path: Pre-resolved worktree path for non-main project_access groups
+        pynchy_repo_access: Whether to mount the host project into the container
+        worktree_path: Pre-resolved worktree path for non-main pynchy_repo_access groups
 
     Returns:
         List of volume mounts for the container
@@ -78,8 +78,8 @@ def _build_volume_mounts(
     if scripts_dir.exists():
         mounts.append(VolumeMount(str(scripts_dir), "/workspace/scripts", readonly=True))
 
-    # Environment file directory (per-group, GH_TOKEN scoped to god only)
-    env_dir = _write_env_file(is_god=is_god, group_folder=group.folder)
+    # Environment file directory (per-group, GH_TOKEN scoped to admin only)
+    env_dir = _write_env_file(is_admin=is_admin, group_folder=group.folder)
     if env_dir is not None:
         mounts.append(VolumeMount(str(env_dir), "/workspace/env-dir", readonly=True))
 
@@ -87,10 +87,10 @@ def _build_volume_mounts(
     agent_runner_src = s.project_root / "container" / "agent_runner" / "src"
     mounts.append(VolumeMount(str(agent_runner_src), "/app/src", readonly=True))
 
-    # Host config.toml — only the god (admin) container gets access to this.
+    # Host config.toml — only the admin container gets access to this.
     # config.toml is .gitignored so it's absent from worktrees; mounting it
     # directly lets the admin agent edit settings without host-side access.
-    if is_god:
+    if is_admin:
         config_toml = s.project_root / "config.toml"
         if config_toml.exists():
             mounts.append(
@@ -100,7 +100,7 @@ def _build_volume_mounts(
     # Additional mounts validated against external allowlist
     if group.container_config and group.container_config.additional_mounts:
         validated = validate_additional_mounts(
-            group.container_config.additional_mounts, group.name, is_god
+            group.container_config.additional_mounts, group.name, is_admin
         )
         for m in validated:
             mounts.append(

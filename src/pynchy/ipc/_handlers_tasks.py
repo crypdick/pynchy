@@ -41,7 +41,7 @@ def _compute_next_run_from_ipc(
 async def _handle_schedule_task(
     data: dict[str, Any],
     source_group: str,
-    is_god: bool,
+    is_admin: bool,
     deps: IpcDeps,
 ) -> None:
     workspaces = deps.workspaces()
@@ -49,22 +49,26 @@ async def _handle_schedule_task(
     prompt = data.get("prompt")
     schedule_type = data.get("schedule_type")
     schedule_value = data.get("schedule_value")
-    target_jid = data.get("targetJid")
+    target_folder = data.get("targetGroup")
 
-    if not (prompt and schedule_type and schedule_value and target_jid):
+    if not (prompt and schedule_type and schedule_value and target_folder):
         return
 
-    target_group_entry = workspaces.get(target_jid)
-    if not target_group_entry:
+    # Resolve folder name → JID via reverse lookup
+    target_jid: str | None = None
+    for jid, profile in workspaces.items():
+        if profile.folder == target_folder:
+            target_jid = jid
+            break
+
+    if target_jid is None:
         logger.warning(
             "Cannot schedule task: target group not registered",
-            target_jid=target_jid,
+            target_group=target_folder,
         )
         return
 
-    target_folder = target_group_entry.folder
-
-    if not is_god and target_folder != source_group:
+    if not is_admin and target_folder != source_group:
         logger.warning(
             "Unauthorized schedule_task attempt blocked",
             source_group=source_group,
@@ -114,10 +118,10 @@ async def _handle_schedule_task(
 async def _handle_schedule_host_job(
     data: dict[str, Any],
     source_group: str,
-    is_god: bool,
+    is_admin: bool,
     deps: IpcDeps,
 ) -> None:
-    if not is_god:
+    if not is_admin:
         logger.warning("Unauthorized schedule_host_job attempt", source_group=source_group)
         return
 
@@ -169,7 +173,7 @@ async def _handle_schedule_host_job(
 async def _handle_pause_task(
     data: dict[str, Any],
     source_group: str,
-    is_god: bool,
+    is_admin: bool,
     deps: IpcDeps,
 ) -> None:
     task_id = data.get("taskId", "")
@@ -177,7 +181,7 @@ async def _handle_pause_task(
     await _authorized_task_action(
         data,
         source_group,
-        is_god,
+        is_admin,
         "pause",
         lambda tid: _update(tid, {"status": "paused"}),
     )
@@ -186,7 +190,7 @@ async def _handle_pause_task(
 async def _handle_resume_task(
     data: dict[str, Any],
     source_group: str,
-    is_god: bool,
+    is_admin: bool,
     deps: IpcDeps,
 ) -> None:
     task_id = data.get("taskId", "")
@@ -194,7 +198,7 @@ async def _handle_resume_task(
     await _authorized_task_action(
         data,
         source_group,
-        is_god,
+        is_admin,
         "resume",
         lambda tid: _update(tid, {"status": "active"}),
     )
@@ -203,25 +207,25 @@ async def _handle_resume_task(
 async def _handle_cancel_task(
     data: dict[str, Any],
     source_group: str,
-    is_god: bool,
+    is_admin: bool,
     deps: IpcDeps,
 ) -> None:
     task_id = data.get("taskId", "")
     action = delete_host_job if task_id.startswith("host-") else delete_task
-    await _authorized_task_action(data, source_group, is_god, "cancel", action)
+    await _authorized_task_action(data, source_group, is_admin, "cancel", action)
 
 
 async def _authorized_task_action(
     data: dict[str, Any],
     source_group: str,
-    is_god: bool,
+    is_admin: bool,
     action_name: str,
     action: Callable[[str], Awaitable[Any]],
 ) -> None:
     """Fetch a task, verify authorization, and execute an action on it.
 
     Routes to the correct table based on ID prefix: host jobs use "host-"
-    prefixed IDs and are god-only; agent tasks check group ownership.
+    prefixed IDs and are admin-only; agent tasks check group ownership.
     """
     task_id = data.get("taskId")
     if not task_id:
@@ -230,7 +234,7 @@ async def _authorized_task_action(
     is_host_job = task_id.startswith("host-")
 
     if is_host_job:
-        if not is_god:
+        if not is_admin:
             logger.warning(
                 f"Unauthorized host job {action_name} attempt",
                 task_id=task_id,
@@ -250,7 +254,7 @@ async def _authorized_task_action(
             logger.warning("Host job not found", task_id=task_id)
     else:
         task = await get_task_by_id(task_id)
-        if task and (is_god or task.group_folder == source_group):
+        if task and (is_admin or task.group_folder == source_group):
             await action(task_id)
             logger.info(
                 f"Task {action_name}d via IPC",

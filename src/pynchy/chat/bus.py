@@ -85,7 +85,7 @@ async def broadcast_formatted(
     """Send a message with per-channel formatting.
 
     Unlike ``broadcast()``, this applies ``format_outbound()`` to transform
-    the text per channel (e.g. Markdown for Slack, plain for WhatsApp).
+    the text per channel (e.g. Markdown for Slack, plain text for others).
     Used by the scheduler for periodic task output.
     """
     from pynchy.chat.router import format_outbound

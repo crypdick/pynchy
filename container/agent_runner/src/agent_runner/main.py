@@ -44,10 +44,10 @@ class ContainerInput:
         self.session_id: str | None = data.get("session_id")
         self.group_folder: str = data["group_folder"]
         self.chat_jid: str = data["chat_jid"]
-        self.is_god: bool = data["is_god"]
+        self.is_admin: bool = data["is_admin"]
         self.is_scheduled_task: bool = data.get("is_scheduled_task", False)
         self.system_notices: list[str] | None = data.get("system_notices")
-        self.project_access: bool = data.get("project_access", False)
+        self.pynchy_repo_access: bool = data.get("pynchy_repo_access", False)
         self.plugin_mcp_servers: dict[str, Any] | None = data.get("plugin_mcp_servers")
         self.agent_core_module: str = data.get("agent_core_module", "agent_runner.cores.claude")
         self.agent_core_class: str = data.get("agent_core_class", "ClaudeAgentCore")
@@ -233,11 +233,11 @@ def build_sdk_messages(messages: list[dict[str, Any]]) -> str:
 
 def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
     """Build AgentCoreConfig from ContainerInput."""
-    # Load global CLAUDE.md as additional system context (non-god groups only)
+    # Load global CLAUDE.md as additional system context (non-admin groups only)
     global_claude_md_path = Path("/workspace/global/CLAUDE.md")
     system_prompt_append: str | None = None
 
-    if not container_input.is_god and global_claude_md_path.exists():
+    if not container_input.is_admin and global_claude_md_path.exists():
         system_prompt_append = global_claude_md_path.read_text()
 
     # Append system notices to system prompt (SDK system messages FOR the LLM)
@@ -262,7 +262,7 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
             "env": {
                 "PYNCHY_CHAT_JID": container_input.chat_jid,
                 "PYNCHY_GROUP_FOLDER": container_input.group_folder,
-                "PYNCHY_IS_GOD": ("1" if container_input.is_god else "0"),
+                "PYNCHY_IS_ADMIN": ("1" if container_input.is_admin else "0"),
                 "PYNCHY_SESSION_ID": (container_input.session_id or ""),
                 "PYNCHY_IS_SCHEDULED_TASK": ("1" if container_input.is_scheduled_task else "0"),
             },
@@ -293,9 +293,9 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
 
     # Default cwd to the mounted project repo when available, so agents start
     # in the codebase they're working on rather than the group metadata dir.
-    # God always has /workspace/project; non-god gets it via project_access.
-    has_project = container_input.is_god or container_input.project_access
-    agent_cwd = "/workspace/project" if has_project else "/workspace/group"
+    # Admin always has /workspace/project; non-admin gets it via pynchy_repo_access.
+    has_pynchy_repo = container_input.is_admin or container_input.pynchy_repo_access
+    agent_cwd = "/workspace/project" if has_pynchy_repo else "/workspace/group"
 
     # Build extra config from agent_core_config
     extra = container_input.agent_core_config or {}
@@ -305,7 +305,7 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
         session_id=container_input.session_id,
         group_folder=container_input.group_folder,
         chat_jid=container_input.chat_jid,
-        is_god=container_input.is_god,
+        is_admin=container_input.is_admin,
         is_scheduled_task=container_input.is_scheduled_task,
         system_prompt_append=system_prompt_append,
         mcp_servers=mcp_servers_dict,

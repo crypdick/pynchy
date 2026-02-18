@@ -110,36 +110,36 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
     logger.debug(
         "Loaded workspace config",
         folder=group_folder,
-        is_god=config.is_god,
-        project_access=config.project_access,
+        is_admin=config.is_admin,
+        pynchy_repo_access=config.pynchy_repo_access,
         is_periodic=config.is_periodic,
     )
     return config
 
 
-def has_project_access(group: WorkspaceProfile) -> bool:
-    """Check if a group has project_access (god groups always do)."""
-    if group.is_god:
+def has_pynchy_repo_access(group: WorkspaceProfile) -> bool:
+    """Check if a group has pynchy_repo_access (admin groups always do)."""
+    if group.is_admin:
         return True
     config = load_workspace_config(group.folder)
-    has_access = bool(config and config.project_access)
+    has_access = bool(config and config.pynchy_repo_access)
     logger.debug(
-        "Checked project access",
+        "Checked pynchy repo access",
         folder=group.folder,
         has_access=has_access,
     )
     return has_access
 
 
-def get_project_access_folders(workspaces: dict[str, Any]) -> list[str]:
-    """Return folder names for all workspaces with project_access."""
+def get_pynchy_repo_access_folders(workspaces: dict[str, Any]) -> list[str]:
+    """Return folder names for all workspaces with pynchy_repo_access."""
     folders: list[str] = []
     for profile in workspaces.values():
-        if profile.is_god:
+        if profile.is_admin:
             folders.append(profile.folder)
             continue
         config = load_workspace_config(profile.folder)
-        if config and config.project_access:
+        if config and config.pynchy_repo_access:
             folders.append(profile.folder)
     return folders
 
@@ -154,7 +154,7 @@ async def create_channel_aliases(
     """Create aliases for a single JID across channels that support it.
 
     This is the single code path for all channel alias creation — used by
-    workspace reconciliation, god group setup, and batch alias backfill.
+    workspace reconciliation, admin group setup, and batch alias backfill.
 
     For each channel that supports ``create_group``, skips if the channel
     already owns the JID or an alias already exists, then creates and registers
@@ -198,8 +198,8 @@ async def _ensure_aliases_for_all_groups(
 ) -> None:
     """Create missing channel aliases for every registered group.
 
-    Groups created via channel auto-registration (e.g. a new WhatsApp group)
-    won't have aliases on other channels like Slack. This fills the gaps.
+    Groups created via channel auto-registration (e.g. a new chat group)
+    won't have aliases on other channels. This fills the gaps.
     """
     created = 0
     for jid, group in workspaces.items():
@@ -219,7 +219,7 @@ async def reconcile_workspaces(
 ) -> None:
     """Ensure tasks + chat groups exist for workspaces defined in config.toml.
 
-    Idempotent — safe to run on every startup. Creates WhatsApp groups for
+    Idempotent — safe to run on every startup. Creates chat groups for
     any workspace with no DB entry, and manages scheduled tasks for periodic agents.
     Also creates JID aliases on channels that didn't create the primary JID.
     """
@@ -271,7 +271,7 @@ async def reconcile_workspaces(
                 trigger=f"@{s.agent.name}",
                 added_at=datetime.now(UTC).isoformat(),
                 requires_trigger=requires_trigger,
-                is_god=config.is_god,
+                is_admin=config.is_admin,
             )
             await register_fn(profile)
             folder_to_jid[folder] = jid
@@ -279,7 +279,7 @@ async def reconcile_workspaces(
                 "Created chat group for workspace",
                 name=display_name,
                 folder=folder,
-                is_god=config.is_god,
+                is_admin=config.is_admin,
             )
 
         # 1b. Ensure aliases exist on channels that didn't create the primary JID
@@ -310,7 +310,7 @@ async def reconcile_workspaces(
                     "schedule_type": "cron",
                     "schedule_value": config.schedule,
                     "context_mode": context_mode,
-                    "project_access": config.project_access,
+                    "pynchy_repo_access": config.pynchy_repo_access,
                     "next_run": next_run,
                     "status": "active",
                     "created_at": datetime.now(UTC).isoformat(),
@@ -331,8 +331,8 @@ async def reconcile_workspaces(
                 updates["next_run"] = cron.get_next(datetime).astimezone(UTC).isoformat()
             if existing_task.prompt != config.prompt:
                 updates["prompt"] = config.prompt
-            if existing_task.project_access != config.project_access:
-                updates["project_access"] = config.project_access
+            if existing_task.pynchy_repo_access != config.pynchy_repo_access:
+                updates["pynchy_repo_access"] = config.pynchy_repo_access
             if updates:
                 await update_task(existing_task.id, updates)
                 logger.info(
@@ -348,7 +348,7 @@ async def reconcile_workspaces(
         logger.info("Workspaces reconciled", count=reconciled)
 
     # Ensure aliases exist for ALL registered groups, not just config-defined ones.
-    # Groups created via channel auto-registration (e.g. WhatsApp) won't appear
+    # Groups created via channel auto-registration won't appear
     # in _workspace_specs() but still need aliases on other channels.
     if register_alias_fn:
         await _ensure_aliases_for_all_groups(

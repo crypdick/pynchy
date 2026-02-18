@@ -32,7 +32,7 @@ class TestAgentCoreProtocol:
             session_id="test-session-123",
             group_folder="god",
             chat_jid="test@g.us",
-            is_god=True,
+            is_admin=True,
             is_scheduled_task=False,
             system_prompt_append="Test system prompt",
             mcp_servers={"pynchy": {"command": "python", "args": ["-m", "test"], "env": {}}},
@@ -42,7 +42,7 @@ class TestAgentCoreProtocol:
 
         assert config.cwd == "/workspace/project"
         assert config.session_id == "test-session-123"
-        assert config.is_god is True
+        assert config.is_admin is True
         assert config.extra["model"] == "claude-3-5-sonnet-20241022"
 
     def test_agent_core_config_defaults(self):
@@ -52,7 +52,7 @@ class TestAgentCoreProtocol:
             session_id=None,
             group_folder="test-group",
             chat_jid="test@g.us",
-            is_god=False,
+            is_admin=False,
             is_scheduled_task=True,
         )
 
@@ -96,7 +96,7 @@ class TestAgentCoreRegistry:
             session_id=None,
             group_folder="god",
             chat_jid="test@g.us",
-            is_god=True,
+            is_admin=True,
             is_scheduled_task=False,
         )
 
@@ -114,7 +114,7 @@ class TestAgentCoreRegistry:
             session_id=None,
             group_folder="god",
             chat_jid="test@g.us",
-            is_god=True,
+            is_admin=True,
             is_scheduled_task=False,
         )
 
@@ -128,7 +128,7 @@ class TestAgentCoreRegistry:
             session_id=None,
             group_folder="god",
             chat_jid="test@g.us",
-            is_god=True,
+            is_admin=True,
             is_scheduled_task=False,
         )
 
@@ -179,7 +179,7 @@ class TestContainerInputAgentCore:
             messages=[],
             group_folder="test",
             chat_jid="test@g.us",
-            is_god=True,
+            is_admin=True,
             agent_core_module="pynchy_core_openai.core",
             agent_core_class="OpenAIAgentCore",
             agent_core_config={"model": "gpt-4"},
@@ -197,7 +197,7 @@ class TestContainerInputAgentCore:
             messages=[],
             group_folder="test",
             chat_jid="test@g.us",
-            is_god=True,
+            is_admin=True,
         )
 
         assert input_data.agent_core_module == "agent_runner.cores.claude"

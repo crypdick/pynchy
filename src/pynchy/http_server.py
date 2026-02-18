@@ -66,7 +66,7 @@ class HttpDeps(Protocol):
 
     async def broadcast_host_message(self, jid: str, text: str) -> None: ...
 
-    def god_chat_jid(self) -> str: ...
+    def admin_chat_jid(self) -> str: ...
 
     def channels_connected(self) -> bool: ...
 
@@ -154,7 +154,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
             err = validate.stderr.strip()[-300:]
             logger.error("Deploy validation failed, rolling back", error=err)
             run_git("reset", "--hard", old_sha)
-            chat_jid = deps.god_chat_jid()
+            chat_jid = deps.admin_chat_jid()
             if chat_jid:
                 msg = f"Deploy failed — import validation error, rolled back to {old_sha[:8]}."
                 await deps.broadcast_host_message(chat_jid, msg)
@@ -169,13 +169,13 @@ async def _handle_deploy(request: web.Request) -> web.Response:
 
         build = build_container_image()
         if not build.success:
-            chat_jid = deps.god_chat_jid()
+            chat_jid = deps.admin_chat_jid()
             if chat_jid:
                 msg = "Deploy warning — container rebuild failed, continuing with old image."
                 await deps.broadcast_host_message(chat_jid, msg)
 
     # 6. Restart (write continuation only when new code was deployed)
-    chat_jid = deps.god_chat_jid()
+    chat_jid = deps.admin_chat_jid()
     if has_new_code:
         await finalize_deploy(
             broadcast_host_message=deps.broadcast_host_message,

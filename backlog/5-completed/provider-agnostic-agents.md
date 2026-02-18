@@ -39,7 +39,7 @@ class AgentCoreConfig:
     session_id: str | None                      # Resume (core-specific semantics)
     group_folder: str
     chat_jid: str
-    is_god: bool
+    is_admin: bool
     is_scheduled_task: bool
     system_prompt_append: str | None            # Global CLAUDE.md + system notices
     mcp_servers: dict[str, dict[str, Any]]      # {name: {command, args, env}}

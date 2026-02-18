@@ -57,7 +57,8 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
     status TEXT DEFAULT 'active',
     created_at TEXT NOT NULL,
     context_mode TEXT DEFAULT 'isolated',
-    project_access INTEGER DEFAULT 0
+    project_access INTEGER DEFAULT 0,
+    pynchy_repo_access INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_next_run ON scheduled_tasks(next_run);
 CREATE INDEX IF NOT EXISTS idx_status ON scheduled_tasks(status);
@@ -128,7 +129,8 @@ CREATE TABLE IF NOT EXISTS registered_groups (
     container_config TEXT,
     requires_trigger INTEGER DEFAULT 1,
     security_profile TEXT,
-    is_god INTEGER DEFAULT 0
+    is_god INTEGER DEFAULT 0,
+    is_admin INTEGER DEFAULT 0
 );
 """
 
@@ -214,9 +216,29 @@ async def _ensure_columns(database: aiosqlite.Connection) -> None:
     await database.commit()
 
 
+async def _migrate_renamed_columns(database: aiosqlite.Connection) -> None:
+    """Copy old column values to new renamed columns (idempotent).
+
+    Only copies where new column is 0 and old is 1, so re-running is safe.
+    """
+    migrations = [
+        ("registered_groups", "is_god", "is_admin"),
+        ("scheduled_tasks", "project_access", "pynchy_repo_access"),
+    ]
+    for table, old_col, new_col in migrations:
+        cursor = await database.execute(f"PRAGMA table_info({table})")
+        cols = {row[1] for row in await cursor.fetchall()}
+        if old_col in cols and new_col in cols:
+            await database.execute(
+                f"UPDATE {table} SET {new_col} = {old_col} WHERE {new_col} = 0 AND {old_col} = 1"
+            )
+    await database.commit()
+
+
 async def _create_schema(database: aiosqlite.Connection) -> None:
     await database.executescript(_SCHEMA)
     await _ensure_columns(database)
+    await _migrate_renamed_columns(database)
 
 
 async def init_database() -> None:

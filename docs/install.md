@@ -144,7 +144,7 @@ uv run pynchy                                # Start Pynchy
 ```
 
 On first run, Pynchy will:
-- Create a private WhatsApp group for your god channel (admin control)
+- Create a private WhatsApp group for your admin channel (admin control)
 - Set up local directories for group isolation
 - Connect to WhatsApp and start listening for messages
 
@@ -263,7 +263,7 @@ uv run pynchy
 ```
 
 On first run, Pynchy will:
-- Create a private WhatsApp group for your god channel
+- Create a private WhatsApp group for your admin channel
 - Install a systemd user service (`~/.config/systemd/user/pynchy.service`)
 - Enable the service for auto-start on boot
 - Enable user lingering (so the service runs without an active login session)

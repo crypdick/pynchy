@@ -60,8 +60,8 @@ def load_mount_allowlist() -> MountAllowlist | None:
             raise ValueError("allowed_roots must be an array")
         if not isinstance(data.get("blocked_patterns"), list):
             raise ValueError("blocked_patterns must be an array")
-        if not isinstance(data.get("non_god_read_only"), bool):
-            raise ValueError("non_god_read_only must be a boolean")
+        if not isinstance(data.get("non_admin_read_only"), bool):
+            raise ValueError("non_admin_read_only must be a boolean")
 
         allowed_roots = [
             AllowedRoot(
@@ -79,7 +79,7 @@ def load_mount_allowlist() -> MountAllowlist | None:
         allowlist = MountAllowlist(
             allowed_roots=allowed_roots,
             blocked_patterns=merged_blocked,
-            non_god_read_only=data["non_god_read_only"],
+            non_admin_read_only=data["non_admin_read_only"],
         )
 
         _cached_allowlist = allowlist
@@ -162,7 +162,7 @@ class MountValidationResult:
     effective_readonly: bool | None = None
 
 
-def validate_mount(mount: AdditionalMount, is_god: bool) -> MountValidationResult:
+def validate_mount(mount: AdditionalMount, is_admin: bool) -> MountValidationResult:
     """Validate a single additional mount against the allowlist."""
     s = get_settings()
     allowlist = load_mount_allowlist()
@@ -214,10 +214,10 @@ def validate_mount(mount: AdditionalMount, is_god: bool) -> MountValidationResul
     effective_readonly = True  # Default to readonly
 
     if requested_read_write:
-        if not is_god and allowlist.non_god_read_only:
+        if not is_admin and allowlist.non_admin_read_only:
             effective_readonly = True
             logger.info(
-                "Mount forced to read-only for non-god group",
+                "Mount forced to read-only for non-admin group",
                 mount=mount.host_path,
             )
         elif not allowed_root.allow_read_write:
@@ -241,7 +241,7 @@ def validate_mount(mount: AdditionalMount, is_god: bool) -> MountValidationResul
 
 
 def validate_additional_mounts(
-    mounts: list[AdditionalMount], group_name: str, is_god: bool
+    mounts: list[AdditionalMount], group_name: str, is_admin: bool
 ) -> list[dict[str, str | bool]]:
     """Validate all additional mounts for a group.
 
@@ -250,7 +250,7 @@ def validate_additional_mounts(
     validated: list[dict[str, str | bool]] = []
 
     for mount in mounts:
-        result = validate_mount(mount, is_god)
+        result = validate_mount(mount, is_admin)
 
         if result.allowed:
             validated.append(
@@ -283,7 +283,7 @@ def validate_additional_mounts(
 def generate_allowlist_template() -> str:
     """Generate a template allowlist file in TOML format for users to customize."""
     return """\
-non_god_read_only = true
+non_admin_read_only = true
 blocked_patterns = ["password", "secret", "token"]
 
 [[allowed_roots]]

@@ -82,7 +82,7 @@ class MessageBroadcaster:
         """Send message with per-channel formatting (internal use).
 
         Unlike ``_broadcast_to_channels``, this applies ``format_outbound``
-        per channel (e.g. Markdown for Slack, plain text for WhatsApp).
+        per channel (e.g. Markdown for Slack, plain text for others).
         Used by the scheduler for periodic task output.
         """
         from pynchy.chat.bus import broadcast_formatted
@@ -155,7 +155,7 @@ class HostMessageBroadcaster:
 
         Host messages are purely operational notifications (errors, status updates,
         confirmations) that are OUTSIDE the LLM's conversation. They are:
-        - Sent to the user via channels (WhatsApp, etc.)
+        - Sent to the user via channels
         - Stored in message history for user reference
         - NOT sent to the LLM as system messages or user messages
         - NOT part of the SDK conversation flow
@@ -191,15 +191,15 @@ class HostMessageBroadcaster:
         )
 
 
-def find_god_jid(groups: dict[str, WorkspaceProfile]) -> str:
-    """Find the JID of the god group from a groups dict.
+def find_admin_jid(groups: dict[str, WorkspaceProfile]) -> str:
+    """Find the JID of the admin group from a groups dict.
 
-    Returns the first god group's JID, or empty string if none found.
-    This is the single code path for all god-group lookups — used by
+    Returns the first admin group's JID, or empty string if none found.
+    This is the single code path for all admin-group lookups — used by
     GroupRegistry, startup, shutdown, and IPC deploy handlers.
     """
     for jid, group in groups.items():
-        if group.is_god:
+        if group.is_admin:
             return jid
     return ""
 
@@ -214,9 +214,9 @@ class GroupRegistry:
         """Return all registered groups."""
         return self._groups
 
-    def god_chat_jid(self) -> str:
-        """Find the JID of a god group (returns first match)."""
-        return find_god_jid(self._groups)
+    def admin_chat_jid(self) -> str:
+        """Find the JID of an admin group (returns first match)."""
+        return find_admin_jid(self._groups)
 
 
 class SessionManager:

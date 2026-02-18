@@ -186,7 +186,7 @@ class PynchyApp:
         extra_system_notices: list[str] | None = None,
         *,
         is_scheduled_task: bool = False,
-        project_access_override: bool | None = None,
+        pynchy_repo_access_override: bool | None = None,
         input_source: str = "user",
     ) -> str:
         from pynchy import agent_runner
@@ -199,7 +199,7 @@ class PynchyApp:
             on_output,
             extra_system_notices,
             is_scheduled_task=is_scheduled_task,
-            project_access_override=project_access_override,
+            pynchy_repo_access_override=pynchy_repo_access_override,
             input_source=input_source,
         )
 
@@ -447,14 +447,14 @@ class PynchyApp:
         loop = asyncio.get_running_loop()
         loop.call_later(12, lambda: os._exit(1))
 
-        # Notify the god group that the service is going down.
+        # Notify the admin group that the service is going down.
         # Best-effort: don't let notification failure block shutdown.
         try:
-            from pynchy.adapters import find_god_jid
+            from pynchy.adapters import find_admin_jid
 
-            god_jid = find_god_jid(self.workspaces) or None
-            if god_jid and self.channels:
-                await self.broadcast_host_message(god_jid, f"Shutting down ({sig_name})")
+            admin_jid = find_admin_jid(self.workspaces) or None
+            if admin_jid and self.channels:
+                await self.broadcast_host_message(admin_jid, f"Shutting down ({sig_name})")
         except Exception:
             logger.debug("Shutdown notification failed (ignored)")
 
@@ -556,20 +556,20 @@ class PynchyApp:
                 await self._auto_rollback(continuation_path, exc)
             raise
 
-        # First-run: create a private group and register as god channel
+        # First-run: create a private group and register as admin channel
         if not self.workspaces:
-            await startup_handler.setup_god_group(self, default_channel)
+            await startup_handler.setup_admin_group(self, default_channel)
 
-        # Reconcile worktrees: create missing ones for project_access groups,
+        # Reconcile worktrees: create missing ones for pynchy_repo_access groups,
         # fix broken worktrees, and rebase diverged branches before containers launch
         from pynchy.git_ops.worktree import reconcile_worktrees_at_startup
-        from pynchy.workspace_config import get_project_access_folders, reconcile_workspaces
+        from pynchy.workspace_config import get_pynchy_repo_access_folders, reconcile_workspaces
 
-        project_access_folders = get_project_access_folders(self.workspaces)
+        pynchy_repo_access_folders = get_pynchy_repo_access_folders(self.workspaces)
 
         await asyncio.to_thread(
             reconcile_worktrees_at_startup,
-            project_access_folders=project_access_folders,
+            pynchy_repo_access_folders=pynchy_repo_access_folders,
         )
 
         # Reconcile workspaces (create chat groups + tasks from config.toml)

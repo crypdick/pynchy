@@ -65,7 +65,7 @@ def _row_to_workspace_profile(row) -> WorkspaceProfile:
         requires_trigger=requires_trigger,
         container_config=container_config,
         security=security,
-        is_god=bool(row["is_god"]),
+        is_admin=bool(row["is_admin"]),
         added_at=row["added_at"],
     )
 
@@ -111,7 +111,7 @@ async def set_workspace_profile(profile: WorkspaceProfile) -> None:
     await db.execute(
         """INSERT OR REPLACE INTO registered_groups
             (jid, name, folder, trigger_pattern, added_at,
-             container_config, requires_trigger, security_profile, is_god)
+             container_config, requires_trigger, security_profile, is_admin)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             profile.jid,
@@ -122,7 +122,7 @@ async def set_workspace_profile(profile: WorkspaceProfile) -> None:
             json.dumps(asdict(profile.container_config)) if profile.container_config else None,
             1 if profile.requires_trigger else 0,
             json.dumps(security_data),
-            1 if profile.is_god else 0,
+            1 if profile.is_admin else 0,
         ),
     )
     await db.commit()

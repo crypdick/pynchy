@@ -23,7 +23,7 @@ from pynchy.types import WorkspaceProfile
 async def _handle_reset_context(
     data: dict[str, Any],
     source_group: str,
-    is_god: bool,
+    is_admin: bool,
     deps: IpcDeps,
 ) -> None:
     chat_jid = data.get("chatJid", "")
@@ -80,7 +80,7 @@ async def _handle_reset_context(
 async def _handle_finished_work(
     data: dict[str, Any],
     source_group: str,
-    is_god: bool,
+    is_admin: bool,
     deps: IpcDeps,
 ) -> None:
     chat_jid = data.get("chatJid", "")
@@ -107,7 +107,7 @@ async def _handle_finished_work(
 async def _handle_sync_worktree_to_main(
     data: dict[str, Any],
     source_group: str,
-    is_god: bool,
+    is_admin: bool,
     deps: IpcDeps,
 ) -> None:
     request_id = data.get("requestId", "")

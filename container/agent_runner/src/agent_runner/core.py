@@ -20,8 +20,8 @@ class AgentCoreConfig:
         cwd: Working directory for the agent (/workspace/group or /workspace/project)
         session_id: Optional session ID for resuming (core-specific semantics)
         group_folder: Group folder name
-        chat_jid: WhatsApp chat JID
-        is_god: Whether this is the god group
+        chat_jid: Canonical chat identifier
+        is_admin: Whether this is the admin group
         is_scheduled_task: Whether this is a scheduled task (vs interactive message)
         system_prompt_append: Additional system context (global CLAUDE.md + system notices)
         mcp_servers: MCP server configurations {name: {command, args, env}}
@@ -33,7 +33,7 @@ class AgentCoreConfig:
     session_id: str | None
     group_folder: str
     chat_jid: str
-    is_god: bool
+    is_admin: bool
     is_scheduled_task: bool
     system_prompt_append: str | None = None
     mcp_servers: dict[str, dict[str, Any]] = field(default_factory=dict)

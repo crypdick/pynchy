@@ -16,7 +16,7 @@ TASKS_DIR = IPC_DIR / "tasks"
 # Context from environment variables (set by the agent runner)
 chat_jid = os.environ.get("PYNCHY_CHAT_JID", "")
 group_folder = os.environ.get("PYNCHY_GROUP_FOLDER", "")
-is_god = os.environ.get("PYNCHY_IS_GOD") == "1"
+is_admin = os.environ.get("PYNCHY_IS_ADMIN") == "1"
 is_scheduled_task = os.environ.get("PYNCHY_IS_SCHEDULED_TASK") == "1"
 
 

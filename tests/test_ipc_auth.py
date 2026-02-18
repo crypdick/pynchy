@@ -26,7 +26,7 @@ GOD_GROUP = WorkspaceProfile(
     folder="god",
     trigger="always",
     added_at="2024-01-01T00:00:00.000Z",
-    is_god=True,
+    is_admin=True,
 )
 
 OTHER_GROUP = WorkspaceProfile(
@@ -93,7 +93,7 @@ class MockDeps:
     def write_groups_snapshot(
         self,
         group_folder: str,
-        is_god: bool,
+        is_admin: bool,
         available_groups: list[Any],
         registered_jids: set[str],
     ) -> None:
@@ -143,7 +143,7 @@ class TestScheduleTaskAuth:
                 "prompt": "do something",
                 "schedule_type": "once",
                 "schedule_value": "2025-06-01T00:00:00.000Z",
-                "targetJid": "other@g.us",
+                "targetGroup": "other-group",
             },
             "god",
             True,
@@ -161,7 +161,7 @@ class TestScheduleTaskAuth:
                 "prompt": "self task",
                 "schedule_type": "once",
                 "schedule_value": "2025-06-01T00:00:00.000Z",
-                "targetJid": "other@g.us",
+                "targetGroup": "other-group",
             },
             "other-group",
             False,
@@ -179,7 +179,7 @@ class TestScheduleTaskAuth:
                 "prompt": "unauthorized",
                 "schedule_type": "once",
                 "schedule_value": "2025-06-01T00:00:00.000Z",
-                "targetJid": "god@g.us",
+                "targetGroup": "god",
             },
             "other-group",
             False,
@@ -189,14 +189,14 @@ class TestScheduleTaskAuth:
         tasks = await get_all_tasks()
         assert len(tasks) == 0
 
-    async def test_rejects_unregistered_target_jid(self, deps):
+    async def test_rejects_unregistered_target_group(self, deps):
         await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "no target",
                 "schedule_type": "once",
                 "schedule_value": "2025-06-01T00:00:00.000Z",
-                "targetJid": "unknown@g.us",
+                "targetGroup": "unknown-group",
             },
             "god",
             True,
@@ -421,12 +421,12 @@ class TestIpcMessageAuth:
     @staticmethod
     def is_message_authorized(
         source_group: str,
-        is_god: bool,
+        is_admin: bool,
         target_chat_jid: str,
         workspaces: dict[str, WorkspaceProfile],
     ) -> bool:
         target_group = workspaces.get(target_chat_jid)
-        return is_god or (target_group is not None and target_group.folder == source_group)
+        return is_admin or (target_group is not None and target_group.folder == source_group)
 
     def test_god_can_send_to_any_group(self, deps):
         groups = deps.workspaces()
@@ -462,7 +462,7 @@ class TestScheduleTaskTypes:
                 "prompt": "cron task",
                 "schedule_type": "cron",
                 "schedule_value": "0 9 * * *",
-                "targetJid": "other@g.us",
+                "targetGroup": "other-group",
             },
             "god",
             True,
@@ -481,7 +481,7 @@ class TestScheduleTaskTypes:
                 "prompt": "bad cron",
                 "schedule_type": "cron",
                 "schedule_value": "not a cron",
-                "targetJid": "other@g.us",
+                "targetGroup": "other-group",
             },
             "god",
             True,
@@ -497,7 +497,7 @@ class TestScheduleTaskTypes:
                 "prompt": "interval task",
                 "schedule_type": "interval",
                 "schedule_value": "3600000",  # 1 hour in ms
-                "targetJid": "other@g.us",
+                "targetGroup": "other-group",
             },
             "god",
             True,
@@ -516,7 +516,7 @@ class TestScheduleTaskTypes:
                 "prompt": "bad interval",
                 "schedule_type": "interval",
                 "schedule_value": "abc",
-                "targetJid": "other@g.us",
+                "targetGroup": "other-group",
             },
             "god",
             True,
@@ -532,7 +532,7 @@ class TestScheduleTaskTypes:
                 "prompt": "zero interval",
                 "schedule_type": "interval",
                 "schedule_value": "0",
-                "targetJid": "other@g.us",
+                "targetGroup": "other-group",
             },
             "god",
             True,
@@ -548,7 +548,7 @@ class TestScheduleTaskTypes:
                 "prompt": "bad once",
                 "schedule_type": "once",
                 "schedule_value": "not-a-date",
-                "targetJid": "other@g.us",
+                "targetGroup": "other-group",
             },
             "god",
             True,
@@ -570,7 +570,7 @@ class TestContextMode:
                 "schedule_type": "once",
                 "schedule_value": "2025-06-01T00:00:00.000Z",
                 "context_mode": "group",
-                "targetJid": "other@g.us",
+                "targetGroup": "other-group",
             },
             "god",
             True,
@@ -588,7 +588,7 @@ class TestContextMode:
                 "schedule_type": "once",
                 "schedule_value": "2025-06-01T00:00:00.000Z",
                 "context_mode": "isolated",
-                "targetJid": "other@g.us",
+                "targetGroup": "other-group",
             },
             "god",
             True,
@@ -606,7 +606,7 @@ class TestContextMode:
                 "schedule_type": "once",
                 "schedule_value": "2025-06-01T00:00:00.000Z",
                 "context_mode": "bogus",
-                "targetJid": "other@g.us",
+                "targetGroup": "other-group",
             },
             "god",
             True,
@@ -623,7 +623,7 @@ class TestContextMode:
                 "prompt": "no context mode",
                 "schedule_type": "once",
                 "schedule_value": "2025-06-01T00:00:00.000Z",
-                "targetJid": "other@g.us",
+                "targetGroup": "other-group",
             },
             "god",
             True,
@@ -678,7 +678,7 @@ class TestRegisterGroupSuccess:
 
 
 class TestScheduleTaskMissingFields:
-    """schedule_task requires prompt, schedule_type, schedule_value, and targetJid.
+    """schedule_task requires prompt, schedule_type, schedule_value, and targetGroup.
     Missing any one should silently bail without creating a task."""
 
     async def test_missing_prompt_creates_no_task(self, deps):
@@ -687,7 +687,7 @@ class TestScheduleTaskMissingFields:
                 "type": "schedule_task",
                 "schedule_type": "once",
                 "schedule_value": "2025-06-01T00:00:00.000Z",
-                "targetJid": "other@g.us",
+                "targetGroup": "other-group",
             },
             "god",
             True,
@@ -701,7 +701,7 @@ class TestScheduleTaskMissingFields:
                 "type": "schedule_task",
                 "prompt": "do something",
                 "schedule_value": "2025-06-01T00:00:00.000Z",
-                "targetJid": "other@g.us",
+                "targetGroup": "other-group",
             },
             "god",
             True,
@@ -715,7 +715,7 @@ class TestScheduleTaskMissingFields:
                 "type": "schedule_task",
                 "prompt": "do something",
                 "schedule_type": "once",
-                "targetJid": "other@g.us",
+                "targetGroup": "other-group",
             },
             "god",
             True,
@@ -723,7 +723,7 @@ class TestScheduleTaskMissingFields:
         )
         assert len(await get_all_tasks()) == 0
 
-    async def test_missing_target_jid_creates_no_task(self, deps):
+    async def test_missing_target_group_creates_no_task(self, deps):
         await dispatch(
             {
                 "type": "schedule_task",
@@ -744,7 +744,7 @@ class TestScheduleTaskMissingFields:
                 "prompt": "negative interval",
                 "schedule_type": "interval",
                 "schedule_value": "-1000",
-                "targetJid": "other@g.us",
+                "targetGroup": "other-group",
             },
             "god",
             True,
@@ -817,7 +817,7 @@ class TestAuthorizedTaskActionEdges:
 
 
 class TestDeployAuth:
-    """Deploy IPC is god-only. Non-god attempts should be silently blocked."""
+    """Deploy IPC is admin-only. Non-admin attempts should be silently blocked."""
 
     async def test_non_god_cannot_deploy(self, deps):
         await dispatch(
@@ -997,7 +997,7 @@ class TestFinishedWorkExecution:
     """Tests for the finished_work IPC command."""
 
     async def test_finished_work_sends_host_message(self, deps):
-        with patch("pynchy.workspace_config.has_project_access", return_value=False):
+        with patch("pynchy.workspace_config.has_pynchy_repo_access", return_value=False):
             await dispatch(
                 {
                     "type": "finished_work",
@@ -1012,7 +1012,7 @@ class TestFinishedWorkExecution:
             assert deps.host_messages[0][0] == "other@g.us"
             assert "finished" in deps.host_messages[0][1].lower()
 
-    async def test_finished_work_merges_worktree_for_project_access(self, deps):
+    async def test_finished_work_merges_worktree_for_pynchy_repo_access(self, deps):
         with patch("pynchy.git_ops.worktree.background_merge_worktree") as mock_merge:
             await dispatch(
                 {
@@ -1028,7 +1028,7 @@ class TestFinishedWorkExecution:
             group_arg = mock_merge.call_args[0][0]
             assert group_arg.folder == "other-group"
 
-    async def test_finished_work_skips_merge_for_non_project_access(self, deps):
+    async def test_finished_work_skips_merge_for_non_pynchy_repo_access(self, deps):
         """When no matching group is found, background_merge_worktree is not called."""
         with patch("pynchy.git_ops.worktree.background_merge_worktree") as mock_merge:
             await dispatch(
@@ -1059,7 +1059,7 @@ class TestFinishedWorkExecution:
     async def test_finished_work_survives_merge_failure(self, deps):
         """finished_work should send message even if merge fails."""
         with (
-            patch("pynchy.workspace_config.has_project_access", return_value=True),
+            patch("pynchy.workspace_config.has_pynchy_repo_access", return_value=True),
             patch(
                 "pynchy.git_ops.worktree.merge_and_push_worktree",
                 side_effect=Exception("merge boom"),

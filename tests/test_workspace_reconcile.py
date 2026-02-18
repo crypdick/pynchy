@@ -87,7 +87,7 @@ class TestReconcileWorkspaces:
             groups_dir,
             "regular-group",
             {
-                "is_god": False,
+                "is_admin": False,
                 "requires_trigger": True,
             },
         )
@@ -309,15 +309,15 @@ class TestReconcileWorkspaces:
         # Should not raise
         await reconcile_workspaces(registered, [], register_fn)
 
-    async def test_project_access_preserved_in_task(self, db, groups_dir):
-        """project_access from config.toml should be set on the created task."""
+    async def test_pynchy_repo_access_preserved_in_task(self, db, groups_dir):
+        """pynchy_repo_access from config.toml should be set on the created task."""
         _write_workspace_yaml(
             groups_dir,
             "dev-agent",
             {
                 "schedule": "0 4 * * *",
                 "prompt": "Run improvements",
-                "project_access": True,
+                "pynchy_repo_access": True,
             },
         )
 
@@ -336,7 +336,7 @@ class TestReconcileWorkspaces:
 
         tasks = await get_all_tasks()
         assert len(tasks) == 1
-        assert tasks[0].project_access is True
+        assert tasks[0].pynchy_repo_access is True
 
     async def test_context_mode_preserved_in_task(self, db, groups_dir):
         """context_mode from config.toml should be set on the created task."""
@@ -376,7 +376,7 @@ class TestReconcileWorkspaces:
                     {
                         "folder": "code-improver",
                         "config": {
-                            "project_access": True,
+                            "pynchy_repo_access": True,
                             "schedule": "0 4 * * *",
                             "prompt": "Run code improvements",
                             "context_mode": "isolated",
@@ -403,7 +403,7 @@ class TestReconcileWorkspaces:
         tasks = await get_all_tasks()
         assert len(tasks) == 1
         assert tasks[0].group_folder == "code-improver"
-        assert tasks[0].project_access is True
+        assert tasks[0].pynchy_repo_access is True
         claude_path = tmp_path / "groups" / "code-improver" / "CLAUDE.md"
         assert claude_path.exists()
 
@@ -417,7 +417,7 @@ class TestReconcileWorkspaces:
                 folder="admin",
                 trigger="@Pynchy",
                 added_at=datetime.now(UTC).isoformat(),
-                is_god=True,
+                is_admin=True,
             ),
         }
 
