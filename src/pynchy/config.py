@@ -1,7 +1,11 @@
-"""Centralized configuration — Pydantic BaseSettings with TOML source.
+"""Centralized configuration — Pydantic BaseSettings with TOML + dotenv sources.
 
-All settings live in config.toml (optional) with env var overrides using
-``__`` as the nested delimiter. Secrets use SecretStr for masking in logs.
+Non-secret settings live in config.toml. Secrets (API keys, tokens, passwords)
+live in .env. Environment variables override both using ``__`` as the nested
+delimiter (e.g. ``SECRETS__ANTHROPIC_API_KEY``). Secrets use SecretStr for
+masking in logs.
+
+Priority (highest wins): init args > env vars > .env > config.toml
 
 Usage::
 
@@ -327,6 +331,7 @@ class SecurityConfig(BaseModel):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         toml_file="config.toml",
+        env_file=".env",
         env_nested_delimiter="__",
         extra="ignore",
     )
@@ -370,10 +375,11 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Use TOML + env vars only (.env intentionally unsupported)."""
+        """Priority: init > env vars > .env > config.toml > file secrets."""
         return (
             init_settings,
             env_settings,
+            dotenv_settings,
             TomlConfigSettingsSource(settings_cls),
             file_secret_settings,
         )

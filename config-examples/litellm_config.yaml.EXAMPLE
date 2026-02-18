@@ -8,7 +8,7 @@
 # ~/.claude/.credentials.json (via `claude setup-token`) and injects it
 # as the PYNCHY_ANTHROPIC_TOKEN environment variable into this container.
 # No need to paste API keys here — just run `claude setup-token` on the host.
-# For pay-as-you-go API keys, set [secrets].anthropic_api_key in config.toml.
+# For pay-as-you-go API keys, set SECRETS__ANTHROPIC_API_KEY in .env.
 #
 # Docs: https://docs.litellm.ai/docs/proxy/configs
 # Wildcard routing: https://docs.litellm.ai/docs/wildcard_routing
@@ -41,7 +41,7 @@ model_list:
   # - model_name: "anthropic/*"
   #   litellm_params:
   #     model: "anthropic/*"
-  #     api_key: "sk-ant-api03-SECONDARY-KEY-HERE"
+  #     api_key: os.environ/PYNCHY_ANTHROPIC_TOKEN_SECONDARY
   #     max_budget: 50.0  # USD
   #     budget_duration: 7d
   #     custom_llm_provider: anthropic
@@ -107,10 +107,9 @@ general_settings:
   # public_routes:
   #   - "/*"  # All routes public (only use on private networks!)
 
-  # UI credentials are set in config.toml under [gateway]:
-  #   ui_username = "admin"
-  #   ui_password = "your-secure-password"
-  # They're passed to LiteLLM as UI_USERNAME and UI_PASSWORD env vars.
+  # UI credentials are set in .env (GATEWAY__UI_PASSWORD) and config.toml
+  # (gateway.ui_username). Pynchy passes them to LiteLLM as UI_USERNAME
+  # and UI_PASSWORD env vars.
 
 # ---------------------------------------------------------------------------
 # MCP gateway

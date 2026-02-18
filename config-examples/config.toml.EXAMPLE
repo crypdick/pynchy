@@ -26,16 +26,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # API Credentials
 # ─────────────────────────────────────────────────────────────────────────────
+# Secrets (API keys, tokens, passwords) belong in .env, not here.
+# See config-examples/.env.EXAMPLE for the template.
+#
 # Claude OAuth tokens are auto-discovered from ~/.claude/.credentials.json.
 # Run `claude setup-token` to generate a long-lived token (~1 year).
 # No config needed — pynchy reads it automatically and injects it into LiteLLM.
-#
-# Only set anthropic_api_key here if you use a pay-as-you-go API key instead.
-
-[secrets]
-# anthropic_api_key = "sk-ant-api03-..."   # only if not using OAuth
-# openai_api_key = "sk-proj-..."
-# gh_token = "ghp_..."
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Container Configuration
@@ -86,14 +82,8 @@
 # Gateway port (set to 4000 when using LiteLLM mode)
 # port = 4000
 
-# LiteLLM master key for API authentication (required for LiteLLM mode).
-# Used to authenticate with the LiteLLM UI and API.
-# master_key = "your-master-key-here"
-
-# LiteLLM UI credentials (optional)
-# These are passed as UI_USERNAME and UI_PASSWORD environment variables.
-# ui_username = "admin"
-# ui_password = "your-secure-password-here"
+# LiteLLM master key and UI credentials → set in .env (see .env.EXAMPLE):
+#   GATEWAY__MASTER_KEY, GATEWAY__UI_PASSWORD
 
 # LiteLLM Docker images (usually keep defaults)
 # litellm_image = "ghcr.io/berriai/litellm:main-latest"
@@ -223,9 +213,8 @@ requires_trigger = false
 # Gotcha: Auto-created workspace channels won't appear in your Slack sidebar
 # automatically. Search for the channel name in Slack and join it manually.
 
-# [slack]
-# bot_token = "xoxb-..."
-# app_token = "xapp-..."
+# Slack tokens → set in .env (see .env.EXAMPLE):
+#   SLACK__BOT_TOKEN, SLACK__APP_TOKEN
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CalDAV (Calendar)

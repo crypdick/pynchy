@@ -646,7 +646,7 @@ async def start_gateway() -> LiteLLMGateway | BuiltinGateway:
         logger.info("Using LiteLLM gateway mode", config=s.gateway.litellm_config)
         if not s.gateway.master_key:
             raise ValueError(
-                "[gateway].master_key is required when using LiteLLM mode. Set it in config.toml."
+                "GATEWAY__MASTER_KEY is required when using LiteLLM mode. Set it in .env."
             )
         _gateway = LiteLLMGateway(
             config_path=s.gateway.litellm_config,

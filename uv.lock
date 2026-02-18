@@ -1713,7 +1713,7 @@ requires-dist = [
     { name = "neonize", marker = "extra == 'whatsapp'", specifier = ">=0.3.14.post0" },
     { name = "pluggy", specifier = ">=1.6.0" },
     { name = "pydantic", specifier = ">=2.12.5" },
-    { name = "pydantic-settings", extras = ["toml"], specifier = ">=2.9" },
+    { name = "pydantic-settings", extras = ["toml", "dotenv"], specifier = ">=2.9" },
     { name = "pynchy", extras = ["whatsapp", "slack", "caldav"], marker = "extra == 'all'" },
     { name = "qrcode", marker = "extra == 'whatsapp'", specifier = ">=8.2" },
     { name = "slack-bolt", marker = "extra == 'slack'", specifier = ">=1.27.0" },
