@@ -27,6 +27,10 @@ Editing the config file triggers an automatic service restart (~30-90s). Do not 
 
 Dashboard: `http://pynchy.asymptote-shilling.ts.net:4000/ui/`
 
+## MCP Server Management
+
+LiteLLM can proxy MCP tool servers to agents. Pynchy registers/deregisters these via `McpManager` at boot. For the MCP management REST API and known gotchas, see [references/mcp-api.md](references/mcp-api.md).
+
 ## Diagnostics
 
 For detailed API endpoints, analysis patterns, and common failure troubleshooting, see [references/diagnostics.md](references/diagnostics.md).
