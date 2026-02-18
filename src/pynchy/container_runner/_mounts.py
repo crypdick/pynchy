@@ -31,7 +31,7 @@ def _build_volume_mounts(
         is_admin: Whether this is the admin group
         plugin_manager: Optional pluggy.PluginManager for plugin MCP mounts
         pynchy_repo_access: Whether to mount the host project into the container
-        worktree_path: Pre-resolved worktree path for non-main pynchy_repo_access groups
+        worktree_path: Pre-resolved worktree path for non-admin pynchy_repo_access groups
 
     Returns:
         List of volume mounts for the container
