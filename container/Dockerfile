@@ -36,6 +36,9 @@ WORKDIR /app
 COPY agent_runner/ /app/
 RUN uv pip install --system --no-cache-dir /app/
 
+# Install pre-commit so git hooks work inside agent workspaces
+RUN uv pip install --system --no-cache-dir pre-commit
+
 # Install custom plugin dependencies (users add packages to this file)
 COPY requirements-plugins.txt /app/requirements-plugins.txt
 RUN uv pip install --system --no-cache-dir -r /app/requirements-plugins.txt
