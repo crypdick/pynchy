@@ -25,7 +25,7 @@ GOD_GROUP = WorkspaceProfile(
     folder="god",
     trigger="always",
     added_at="2024-01-01",
-    is_god=True,
+    is_admin=True,
 )
 
 OTHER_GROUP = WorkspaceProfile(
@@ -77,7 +77,7 @@ class MockDeps:
     def write_groups_snapshot(
         self,
         group_folder: str,
-        is_god: bool,
+        is_admin: bool,
         available_groups: list[Any],
         registered_jids: set[str],
     ) -> None:
@@ -167,46 +167,46 @@ class TestIpcMessageProcessing:
     broadcasts authorized messages, and cleans up processed files.
     """
 
-    async def test_god_group_can_send_to_any_chat(self, deps, tmp_path: Path):
-        """God group messages to any chat JID should be broadcast."""
+    async def test_admin_group_can_send_to_any_chat(self, deps, tmp_path: Path):
+        """Admin group messages to any chat JID should be broadcast."""
         # Here we test the message file authorization logic directly
         groups = deps.workspaces()
         target_group = groups.get("other@g.us")
         source_group = "god"
-        is_god = True
+        is_admin = True
 
         # Simulate the authorization check from the watcher
-        authorized = is_god or (target_group and target_group.folder == source_group)
+        authorized = is_admin or (target_group and target_group.folder == source_group)
         assert authorized is True
 
-    async def test_non_god_can_send_to_own_chat(self, deps):
-        """Non-god group should be authorized to send to its own chat."""
+    async def test_non_admin_can_send_to_own_chat(self, deps):
+        """Non-admin group should be authorized to send to its own chat."""
         groups = deps.workspaces()
         target_group = groups.get("other@g.us")
         source_group = "other-group"
-        is_god = False
+        is_admin = False
 
-        authorized = is_god or (target_group and target_group.folder == source_group)
+        authorized = is_admin or (target_group and target_group.folder == source_group)
         assert authorized is True
 
-    async def test_non_god_blocked_from_other_chat(self, deps):
-        """Non-god group should NOT be authorized to send to another group's chat."""
+    async def test_non_admin_blocked_from_other_chat(self, deps):
+        """Non-admin group should NOT be authorized to send to another group's chat."""
         groups = deps.workspaces()
         target_group = groups.get("god@g.us")
         source_group = "other-group"
-        is_god = False
+        is_admin = False
 
-        authorized = is_god or (target_group and target_group.folder == source_group)
+        authorized = is_admin or (target_group and target_group.folder == source_group)
         assert authorized is False
 
-    async def test_non_god_blocked_from_unregistered_chat(self, deps):
-        """Non-god sending to an unregistered JID should be blocked."""
+    async def test_non_admin_blocked_from_unregistered_chat(self, deps):
+        """Non-admin sending to an unregistered JID should be blocked."""
         groups = deps.workspaces()
         target_group = groups.get("unknown@g.us")
         source_group = "other-group"
-        is_god = False
+        is_admin = False
 
-        authorized = is_god or bool(target_group and target_group.folder == source_group)
+        authorized = is_admin or bool(target_group and target_group.folder == source_group)
         assert authorized is False
 
 
@@ -246,8 +246,8 @@ class TestIpcTaskFileEdgeCases:
 class TestIpcDeployEdgeCases:
     """Tests for deploy command edge cases in the IPC handler."""
 
-    async def test_deploy_without_chat_jid_uses_god_group(self, deps):
-        """Deploy request missing chatJid should fall back to god group's JID."""
+    async def test_deploy_without_chat_jid_uses_admin_group(self, deps):
+        """Deploy request missing chatJid should fall back to admin group's JID."""
         from pynchy.ipc._handlers_deploy import _handle_deploy
 
         with patch(
@@ -265,15 +265,15 @@ class TestIpcDeployEdgeCases:
                 deps,
             )
             mock_finalize.assert_called_once()
-            # Should have resolved the god group's JID
+            # Should have resolved the admin group's JID
             assert mock_finalize.call_args.kwargs["chat_jid"] == "god@g.us"
 
-    async def test_deploy_without_chat_jid_and_no_god_group(self, deps):
-        """Deploy request with no chatJid and no god group should not finalize."""
+    async def test_deploy_without_chat_jid_and_no_admin_group(self, deps):
+        """Deploy request with no chatJid and no admin group should not finalize."""
         from pynchy.ipc._handlers_deploy import _handle_deploy
 
-        # Remove god group from deps
-        no_god_deps = MockDeps(
+        # Remove admin group from deps
+        no_admin_deps = MockDeps(
             {
                 "other@g.us": OTHER_GROUP,
             }
@@ -290,7 +290,7 @@ class TestIpcDeployEdgeCases:
                 },
                 "god",
                 True,
-                no_god_deps,
+                no_admin_deps,
             )
             mock_finalize.assert_not_called()
 

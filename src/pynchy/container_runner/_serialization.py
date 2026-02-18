@@ -18,7 +18,7 @@ def _input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
         "messages": input_data.messages,
         "group_folder": input_data.group_folder,
         "chat_jid": input_data.chat_jid,
-        "is_god": input_data.is_god,
+        "is_admin": input_data.is_admin,
     }
     if input_data.session_id is not None:
         d["session_id"] = input_data.session_id
@@ -28,8 +28,8 @@ def _input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
         d["plugin_mcp_servers"] = input_data.plugin_mcp_servers
     if input_data.system_notices:
         d["system_notices"] = input_data.system_notices
-    if input_data.project_access:
-        d["project_access"] = True
+    if input_data.pynchy_repo_access:
+        d["pynchy_repo_access"] = True
     # Always include agent core fields (container needs them to import the core)
     d["agent_core_module"] = input_data.agent_core_module
     d["agent_core_class"] = input_data.agent_core_class

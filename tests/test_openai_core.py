@@ -87,7 +87,7 @@ class TestOpenAICoreInstantiation:
             session_id=None,
             group_folder="god",
             chat_jid="test@g.us",
-            is_god=True,
+            is_admin=True,
             is_scheduled_task=False,
             mcp_servers={
                 "pynchy": {
@@ -137,7 +137,7 @@ class TestMCPServerConversion:
             session_id=None,
             group_folder="god",
             chat_jid="test@g.us",
-            is_god=True,
+            is_admin=True,
             is_scheduled_task=False,
             mcp_servers={
                 "pynchy": {

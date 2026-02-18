@@ -8,7 +8,7 @@ Key coverage gaps addressed:
 - sync_worktree_to_main result file writing
 - sync_worktree_to_main notification on success vs failure
 - deploy fallback when chatJid is missing
-- deploy with no god group registered
+- deploy with no admin group registered
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ GOD_GROUP = WorkspaceProfile(
     folder="god",
     trigger="always",
     added_at="2024-01-01T00:00:00.000Z",
-    is_god=True,
+    is_admin=True,
 )
 
 OTHER_GROUP = WorkspaceProfile(
@@ -90,7 +90,7 @@ class MockDeps:
     def write_groups_snapshot(
         self,
         group_folder: str,
-        is_god: bool,
+        is_admin: bool,
         available_groups: list[Any],
         registered_jids: set[str],
     ) -> None:
@@ -365,8 +365,8 @@ class TestSyncWorktreeToMain:
 class TestDeployEdgeCases:
     """Tests for deploy command edge cases in the IPC handler."""
 
-    async def test_deploy_without_chat_jid_uses_god_group(self, deps: MockDeps):
-        """Deploy request missing chatJid should fall back to god group's JID."""
+    async def test_deploy_without_chat_jid_uses_admin_group(self, deps: MockDeps):
+        """Deploy request missing chatJid should fall back to admin group's JID."""
         with patch(
             "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
         ) as mock_finalize:
@@ -382,14 +382,14 @@ class TestDeployEdgeCases:
                 deps,
             )
             mock_finalize.assert_called_once()
-            # Should have resolved the god group's JID
+            # Should have resolved the admin group's JID
             assert mock_finalize.call_args.kwargs["chat_jid"] == "god@g.us"
 
-    async def test_deploy_without_chat_jid_and_no_god_group(self):
-        """Deploy request with no chatJid and no god group should not finalize."""
+    async def test_deploy_without_chat_jid_and_no_admin_group(self):
+        """Deploy request with no chatJid and no admin group should not finalize."""
         await _init_test_database()
-        # Deps with no god group
-        no_god_deps = MockDeps({"other@g.us": OTHER_GROUP})
+        # Deps with no admin group
+        no_admin_deps = MockDeps({"other@g.us": OTHER_GROUP})
 
         with patch(
             "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
@@ -401,7 +401,7 @@ class TestDeployEdgeCases:
                 },
                 "god",
                 True,
-                no_god_deps,
+                no_admin_deps,
             )
             mock_finalize.assert_not_called()
 

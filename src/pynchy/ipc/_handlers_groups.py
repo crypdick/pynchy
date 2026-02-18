@@ -20,10 +20,10 @@ from pynchy.utils import compute_next_run
 async def _handle_register_group(
     data: dict[str, Any],
     source_group: str,
-    is_god: bool,
+    is_admin: bool,
     deps: IpcDeps,
 ) -> None:
-    if not is_god:
+    if not is_admin:
         logger.warning(
             "Unauthorized register_group attempt blocked",
             source_group=source_group,
@@ -58,11 +58,11 @@ async def _handle_register_group(
 async def _handle_create_periodic_agent(
     data: dict[str, Any],
     source_group: str,
-    is_god: bool,
+    is_admin: bool,
     deps: IpcDeps,
 ) -> None:
     """Create a periodic agent: folder, config.toml workspace, CLAUDE.md, chat group, and task."""
-    if not is_god:
+    if not is_admin:
         logger.warning(
             "Unauthorized create_periodic_agent attempt blocked",
             source_group=source_group,

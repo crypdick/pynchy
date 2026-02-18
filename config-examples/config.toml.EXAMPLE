@@ -171,11 +171,11 @@
 # the directory under groups/.
 
 [workspaces.admin]
-is_god = true
+is_admin = true
 requires_trigger = false
 
 [workspaces.mr-pynchy]
-is_god = true
+is_admin = true
 requires_trigger = false
 
 # Example workspace with MCP access and per-MCP kwargs:
@@ -186,9 +186,9 @@ requires_trigger = false
 # presets = ["dev-research"]                   # expands + merges with explicit values
 # allowed-origins = "internal.example.com"     # merged with preset domains
 
-# Example god workspace with unrestricted MCP access:
-# [workspaces.god]
-# is_god = true
+# Example admin workspace with unrestricted MCP access:
+# [workspaces.admin]
+# is_admin = true
 # mcp_servers = ["all"]
 # # no [mcp.playwright] section → no --allowed-origins → unrestricted
 

@@ -132,16 +132,16 @@ class TestContainerInput:
             "messages": [{"content": "hi"}],
             "group_folder": "test",
             "chat_jid": "123@g.us",
-            "is_god": True,
+            "is_admin": True,
         }
         ci = ContainerInput(data)
         assert ci.messages == [{"content": "hi"}]
         assert ci.group_folder == "test"
         assert ci.chat_jid == "123@g.us"
-        assert ci.is_god is True
+        assert ci.is_admin is True
         assert ci.session_id is None
         assert ci.is_scheduled_task is False
-        assert ci.project_access is False
+        assert ci.pynchy_repo_access is False
 
     def test_full_input(self):
         data = {
@@ -149,10 +149,10 @@ class TestContainerInput:
             "session_id": "sess-1",
             "group_folder": "grp",
             "chat_jid": "456@g.us",
-            "is_god": False,
+            "is_admin": False,
             "is_scheduled_task": True,
             "system_notices": ["notice1"],
-            "project_access": True,
+            "pynchy_repo_access": True,
             "agent_core_module": "custom.mod",
             "agent_core_class": "CustomCore",
             "agent_core_config": {"model": "gpt-4"},
@@ -161,7 +161,7 @@ class TestContainerInput:
         assert ci.session_id == "sess-1"
         assert ci.is_scheduled_task is True
         assert ci.system_notices == ["notice1"]
-        assert ci.project_access is True
+        assert ci.pynchy_repo_access is True
         assert ci.agent_core_module == "custom.mod"
         assert ci.agent_core_class == "CustomCore"
         assert ci.agent_core_config == {"model": "gpt-4"}
@@ -171,7 +171,7 @@ class TestContainerInput:
             "messages": [],
             "group_folder": "g",
             "chat_jid": "j",
-            "is_god": False,
+            "is_admin": False,
         }
         ci = ContainerInput(data)
         assert ci.agent_core_module == "agent_runner.cores.claude"
@@ -179,7 +179,7 @@ class TestContainerInput:
 
     def test_missing_required_field_raises(self):
         with pytest.raises(KeyError):
-            ContainerInput({"messages": []})  # missing group_folder, chat_jid, is_god
+            ContainerInput({"messages": []})  # missing group_folder, chat_jid, is_admin
 
 
 # ---------------------------------------------------------------------------
@@ -405,23 +405,23 @@ class TestBuildCoreConfig:
             "messages": [],
             "group_folder": "test-group",
             "chat_jid": "123@g.us",
-            "is_god": True,
+            "is_admin": True,
             **overrides,
         }
         return ContainerInput(data)
 
     def test_god_group_cwd(self):
-        ci = self._make_input(is_god=True)
+        ci = self._make_input(is_admin=True)
         config = build_core_config(ci)
         assert config.cwd == "/workspace/project"
 
-    def test_non_god_with_project_access_cwd(self):
-        ci = self._make_input(is_god=False, project_access=True)
+    def test_non_god_with_pynchy_repo_access_cwd(self):
+        ci = self._make_input(is_admin=False, pynchy_repo_access=True)
         config = build_core_config(ci)
         assert config.cwd == "/workspace/project"
 
-    def test_non_god_without_project_access_cwd(self):
-        ci = self._make_input(is_god=False, project_access=False)
+    def test_non_god_without_pynchy_repo_access_cwd(self):
+        ci = self._make_input(is_admin=False, pynchy_repo_access=False)
         config = build_core_config(ci)
         assert config.cwd == "/workspace/group"
 
@@ -437,14 +437,14 @@ class TestBuildCoreConfig:
         env = config.mcp_servers["pynchy"]["env"]
         assert env["PYNCHY_CHAT_JID"] == "456@g.us"
 
-    def test_mcp_env_is_god_flag(self):
-        ci = self._make_input(is_god=True)
+    def test_mcp_env_is_admin_flag(self):
+        ci = self._make_input(is_admin=True)
         config = build_core_config(ci)
-        assert config.mcp_servers["pynchy"]["env"]["PYNCHY_IS_GOD"] == "1"
+        assert config.mcp_servers["pynchy"]["env"]["PYNCHY_IS_ADMIN"] == "1"
 
-        ci = self._make_input(is_god=False)
+        ci = self._make_input(is_admin=False)
         config = build_core_config(ci)
-        assert config.mcp_servers["pynchy"]["env"]["PYNCHY_IS_GOD"] == "0"
+        assert config.mcp_servers["pynchy"]["env"]["PYNCHY_IS_ADMIN"] == "0"
 
     def test_mcp_env_scheduled_task_flag(self):
         ci = self._make_input(is_scheduled_task=True)
@@ -468,7 +468,7 @@ class TestBuildCoreConfig:
 
     def test_system_notices_appended(self):
         ci = self._make_input(
-            is_god=False,
+            is_admin=False,
             system_notices=["Warning: repo dirty"],
         )
         # Without global CLAUDE.md, just the notice

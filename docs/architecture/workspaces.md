@@ -36,8 +36,8 @@ On startup, `reconcile_workspaces()`:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `is_god` | `bool` | Whether this is an admin workspace |
-| `project_access` | `bool` | Mount a project worktree instead of global memory |
+| `is_admin` | `bool` | Whether this is an admin workspace |
+| `pynchy_repo_access` | `bool` | Mount a project worktree instead of global memory |
 | `schedule` | `str` | Cron expression for periodic execution |
 | `prompt` | `str` | Prompt sent to the agent on each scheduled run |
 | `context_mode` | `str` | `"group"` (shared session) or `"isolated"` (fresh each time) |

@@ -144,7 +144,7 @@ STRICT_PROFILE: WorkspaceSecurityProfile = {
     },
 }
 
-# Permissive profile for trusted workspaces (like god group)
+# Permissive profile for trusted workspaces (like admin group)
 TRUSTED_PROFILE: WorkspaceSecurityProfile = {
     "services": {
         "calendar": ServiceTrustConfig(

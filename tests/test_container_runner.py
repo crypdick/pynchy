@@ -69,7 +69,7 @@ TEST_INPUT = ContainerInput(
     ],
     group_folder="test-group",
     chat_jid="test@g.us",
-    is_god=False,
+    is_admin=False,
 )
 
 
@@ -205,14 +205,14 @@ class TestInputSerialization:
             messages=[{"message_type": "user", "content": "hi"}],
             group_folder="my-group",
             chat_jid="chat@g.us",
-            is_god=True,
+            is_admin=True,
         )
         d = _input_to_dict(inp)
         assert d == {
             "messages": [{"message_type": "user", "content": "hi"}],
             "group_folder": "my-group",
             "chat_jid": "chat@g.us",
-            "is_god": True,
+            "is_admin": True,
             "agent_core_module": "agent_runner.cores.claude",
             "agent_core_class": "ClaudeAgentCore",
         }
@@ -222,7 +222,7 @@ class TestInputSerialization:
             messages=[{"message_type": "user", "content": "hi"}],
             group_folder="g",
             chat_jid="c",
-            is_god=False,
+            is_admin=False,
             session_id="sess-1",
             is_scheduled_task=True,
         )
@@ -235,7 +235,7 @@ class TestInputSerialization:
             messages=[{"message_type": "user", "content": "hi"}],
             group_folder="g",
             chat_jid="c",
-            is_god=False,
+            is_admin=False,
         )
         d = _input_to_dict(inp)
         assert "session_id" not in d
@@ -324,7 +324,7 @@ class TestMountBuilding:
                 jid="god@g.us", name="God", folder="god", trigger="always", added_at="2024-01-01"
             )
             mounts = _build_volume_mounts(
-                group, is_god=True, project_access=True, worktree_path=worktree_path
+                group, is_admin=True, pynchy_repo_access=True, worktree_path=worktree_path
             )
 
             paths = [m.container_path for m in mounts]
@@ -346,10 +346,10 @@ class TestMountBuilding:
                 trigger="@pynchy",
                 added_at="2024-01-01",
             )
-            mounts = _build_volume_mounts(group, is_god=False)
+            mounts = _build_volume_mounts(group, is_admin=False)
 
             paths = [m.container_path for m in mounts]
-            # Non-god should NOT have /workspace/project
+            # Non-admin should NOT have /workspace/project
             assert "/workspace/project" not in paths
             assert "/workspace/group" in paths
             assert "/workspace/global" in paths
@@ -357,8 +357,8 @@ class TestMountBuilding:
             global_mount = next(m for m in mounts if m.container_path == "/workspace/global")
             assert global_mount.readonly is True
 
-    def test_nongod_project_access_uses_worktree_path(self, tmp_path: Path):
-        """Non-god group with project_access + worktree_path mounts the worktree."""
+    def test_nongod_pynchy_repo_access_uses_worktree_path(self, tmp_path: Path):
+        """Non-admin group with pynchy_repo_access + worktree_path mounts the worktree."""
         worktree_path = tmp_path / "worktrees" / "code-improver"
         worktree_path.mkdir(parents=True)
 
@@ -374,7 +374,7 @@ class TestMountBuilding:
                 added_at="2024-01-01",
             )
             mounts = _build_volume_mounts(
-                group, is_god=False, project_access=True, worktree_path=worktree_path
+                group, is_admin=False, pynchy_repo_access=True, worktree_path=worktree_path
             )
 
             project_mount = next(m for m in mounts if m.container_path == "/workspace/project")
@@ -386,7 +386,7 @@ class TestMountBuilding:
             assert git_mount.container_path == str(tmp_path / ".git")
 
     def test_god_uses_worktree(self, tmp_path: Path):
-        """God group uses worktree just like any other project_access group."""
+        """Admin group uses worktree just like any other pynchy_repo_access group."""
         worktree_path = tmp_path / "worktrees" / "god"
         worktree_path.mkdir(parents=True)
         with (
@@ -397,7 +397,7 @@ class TestMountBuilding:
                 jid="god@g.us", name="God", folder="god", trigger="always", added_at="2024-01-01"
             )
             mounts = _build_volume_mounts(
-                group, is_god=True, project_access=True, worktree_path=worktree_path
+                group, is_admin=True, pynchy_repo_access=True, worktree_path=worktree_path
             )
 
             project_mount = next(m for m in mounts if m.container_path == "/workspace/project")
@@ -405,14 +405,14 @@ class TestMountBuilding:
             assert project_mount.readonly is False
 
     def test_god_gets_config_toml_mount(self, tmp_path: Path):
-        """God group gets config.toml mounted read-write when it exists."""
+        """Admin group gets config.toml mounted read-write when it exists."""
         with _patch_settings(tmp_path):
             (tmp_path / "groups" / "god").mkdir(parents=True)
             (tmp_path / "config.toml").write_text("[agent]\nname = 'pynchy'\n")
             group = WorkspaceProfile(
                 jid="god@g.us", name="God", folder="god", trigger="always", added_at="2024-01-01"
             )
-            mounts = _build_volume_mounts(group, is_god=True)
+            mounts = _build_volume_mounts(group, is_admin=True)
 
             config_mount = next(
                 m for m in mounts if m.container_path == "/workspace/project/config.toml"
@@ -421,7 +421,7 @@ class TestMountBuilding:
             assert config_mount.readonly is False
 
     def test_nongod_does_not_get_config_toml(self, tmp_path: Path):
-        """Non-god groups never get config.toml mounted."""
+        """Non-admin groups never get config.toml mounted."""
         with _patch_settings(tmp_path):
             (tmp_path / "groups" / "other").mkdir(parents=True)
             (tmp_path / "config.toml").write_text("[agent]\nname = 'pynchy'\n")
@@ -432,19 +432,19 @@ class TestMountBuilding:
                 trigger="@pynchy",
                 added_at="2024-01-01",
             )
-            mounts = _build_volume_mounts(group, is_god=False)
+            mounts = _build_volume_mounts(group, is_admin=False)
 
             paths = [m.container_path for m in mounts]
             assert "/workspace/project/config.toml" not in paths
 
     def test_god_no_config_toml_when_missing(self, tmp_path: Path):
-        """God group doesn't get config.toml mount if the file doesn't exist."""
+        """Admin group doesn't get config.toml mount if the file doesn't exist."""
         with _patch_settings(tmp_path):
             (tmp_path / "groups" / "god").mkdir(parents=True)
             group = WorkspaceProfile(
                 jid="god@g.us", name="God", folder="god", trigger="always", added_at="2024-01-01"
             )
-            mounts = _build_volume_mounts(group, is_god=True)
+            mounts = _build_volume_mounts(group, is_admin=True)
 
             paths = [m.container_path for m in mounts]
             assert "/workspace/project/config.toml" not in paths
@@ -672,7 +672,7 @@ class TestWriteEnvFile:
             patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            env_dir = _write_env_file(is_god=True, group_folder="test")
+            env_dir = _write_env_file(is_admin=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert f"ANTHROPIC_BASE_URL='{gw.base_url}'" in content
@@ -690,7 +690,7 @@ class TestWriteEnvFile:
             patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            env_dir = _write_env_file(is_god=True, group_folder="test")
+            env_dir = _write_env_file(is_admin=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert f"OPENAI_BASE_URL='{gw.base_url}'" in content
@@ -705,7 +705,7 @@ class TestWriteEnvFile:
             patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            assert _write_env_file(is_god=True, group_folder="test") is None
+            assert _write_env_file(is_admin=True, group_folder="test") is None
 
     def test_auto_discovers_gh_token_for_god(self, tmp_path: Path):
         """GH_TOKEN is auto-discovered from gh CLI for god containers."""
@@ -716,13 +716,13 @@ class TestWriteEnvFile:
             patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_abc123"),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            env_dir = _write_env_file(is_god=True, group_folder="test")
+            env_dir = _write_env_file(is_admin=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert "GH_TOKEN='gho_abc123'" in content
 
     def test_non_god_excludes_gh_token(self, tmp_path: Path):
-        """Non-god containers never receive GH_TOKEN, even when available."""
+        """Non-admin containers never receive GH_TOKEN, even when available."""
         gw = _MockGateway(providers={"anthropic"})
         with (
             _patch_settings(tmp_path, secret_overrides={"gh_token": "explicit-token"}),
@@ -730,7 +730,7 @@ class TestWriteEnvFile:
             patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_abc123"),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            env_dir = _write_env_file(is_god=False, group_folder="untrusted")
+            env_dir = _write_env_file(is_admin=False, group_folder="untrusted")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert "GH_TOKEN" not in content
@@ -745,7 +745,7 @@ class TestWriteEnvFile:
             patch(f"{_CR_CREDS}._read_gh_token", return_value="auto-token"),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            env_dir = _write_env_file(is_god=True, group_folder="test")
+            env_dir = _write_env_file(is_admin=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert "GH_TOKEN='explicit-token'" in content
@@ -763,7 +763,7 @@ class TestWriteEnvFile:
                 return_value=("Jane Doe", "jane@example.com"),
             ),
         ):
-            env_dir = _write_env_file(is_god=True, group_folder="test")
+            env_dir = _write_env_file(is_admin=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert "GIT_AUTHOR_NAME='Jane Doe'" in content
@@ -783,7 +783,7 @@ class TestWriteEnvFile:
                 return_value=("Bob", "bob@test.com"),
             ),
         ):
-            env_dir = _write_env_file(is_god=True, group_folder="test")
+            env_dir = _write_env_file(is_admin=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert f"ANTHROPIC_BASE_URL='{gw.base_url}'" in content
@@ -802,8 +802,8 @@ class TestWriteEnvFile:
             patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_xyz"),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            god_dir = _write_env_file(is_god=True, group_folder="god-group")
-            nongod_dir = _write_env_file(is_god=False, group_folder="other-group")
+            god_dir = _write_env_file(is_admin=True, group_folder="god-group")
+            nongod_dir = _write_env_file(is_admin=False, group_folder="other-group")
             assert god_dir != nongod_dir
             assert "GH_TOKEN" in (god_dir / "env").read_text()
             assert "GH_TOKEN" not in (nongod_dir / "env").read_text()
@@ -820,7 +820,7 @@ class TestWriteEnvFile:
                 return_value=("O'Brien Smith", None),
             ),
         ):
-            env_dir = _write_env_file(is_god=True, group_folder="test")
+            env_dir = _write_env_file(is_admin=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             # Shell quoting escapes single quotes: O'Brien → 'O'\''Brien Smith'
@@ -1793,19 +1793,19 @@ class TestInputToDictEdgeCases:
             messages=[{"content": "hi"}],
             group_folder="test",
             chat_jid="test@g.us",
-            is_god=False,
+            is_admin=False,
         )
         d = _input_to_dict(inp)
         assert d["messages"] == [{"content": "hi"}]
         assert d["group_folder"] == "test"
         assert d["chat_jid"] == "test@g.us"
-        assert d["is_god"] is False
+        assert d["is_admin"] is False
         # Optional fields should not be present when at defaults
         assert "session_id" not in d
         assert "is_scheduled_task" not in d
         assert "plugin_mcp_servers" not in d
         assert "system_notices" not in d
-        assert "project_access" not in d
+        assert "pynchy_repo_access" not in d
 
     def test_all_optional_fields_set(self):
         """All optional fields populated should appear in dict."""
@@ -1813,19 +1813,19 @@ class TestInputToDictEdgeCases:
             messages=[],
             group_folder="g",
             chat_jid="j@g.us",
-            is_god=True,
+            is_admin=True,
             session_id="s-1",
             is_scheduled_task=True,
             plugin_mcp_servers={"pynchy": {"command": "uv", "args": [], "env": {}}},
             system_notices=["notice 1"],
-            project_access=True,
+            pynchy_repo_access=True,
         )
         d = _input_to_dict(inp)
         assert d["session_id"] == "s-1"
         assert d["is_scheduled_task"] is True
         assert d["plugin_mcp_servers"] == {"pynchy": {"command": "uv", "args": [], "env": {}}}
         assert d["system_notices"] == ["notice 1"]
-        assert d["project_access"] is True
+        assert d["pynchy_repo_access"] is True
 
     def test_is_scheduled_task_false_omitted(self):
         """is_scheduled_task=False should NOT be included."""
@@ -1833,23 +1833,23 @@ class TestInputToDictEdgeCases:
             messages=[],
             group_folder="g",
             chat_jid="j@g.us",
-            is_god=False,
+            is_admin=False,
             is_scheduled_task=False,
         )
         d = _input_to_dict(inp)
         assert "is_scheduled_task" not in d
 
-    def test_project_access_false_omitted(self):
-        """project_access=False should NOT be included."""
+    def test_pynchy_repo_access_false_omitted(self):
+        """pynchy_repo_access=False should NOT be included."""
         inp = ContainerInput(
             messages=[],
             group_folder="g",
             chat_jid="j@g.us",
-            is_god=False,
-            project_access=False,
+            is_admin=False,
+            pynchy_repo_access=False,
         )
         d = _input_to_dict(inp)
-        assert "project_access" not in d
+        assert "pynchy_repo_access" not in d
 
     def test_agent_core_fields_always_present(self):
         """agent_core_module and agent_core_class should always be in output."""
@@ -1857,7 +1857,7 @@ class TestInputToDictEdgeCases:
             messages=[],
             group_folder="g",
             chat_jid="j@g.us",
-            is_god=False,
+            is_admin=False,
         )
         d = _input_to_dict(inp)
         assert "agent_core_module" in d
@@ -1869,7 +1869,7 @@ class TestInputToDictEdgeCases:
             messages=[],
             group_folder="g",
             chat_jid="j@g.us",
-            is_god=False,
+            is_admin=False,
             agent_core_config={"model": "opus"},
         )
         d = _input_to_dict(inp)
@@ -1881,7 +1881,7 @@ class TestInputToDictEdgeCases:
             messages=[],
             group_folder="g",
             chat_jid="j@g.us",
-            is_god=False,
+            is_admin=False,
             agent_core_config=None,
         )
         d = _input_to_dict(inp)

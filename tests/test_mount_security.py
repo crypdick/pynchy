@@ -65,7 +65,7 @@ class TestLoadAllowlist:
         _write_allowlist(
             allowlist,
             """
-non_god_read_only = true
+non_admin_read_only = true
 blocked_patterns = ["custom-secret"]
 
 [[allowed_roots]]
@@ -79,7 +79,7 @@ description = "Dev"
         ):
             data = load_mount_allowlist()
         assert data is not None
-        assert data.non_god_read_only is True
+        assert data.non_admin_read_only is True
         assert data.allowed_roots[0].allow_read_write is True
         assert "custom-secret" in data.blocked_patterns
 
@@ -109,7 +109,7 @@ class TestValidateMount:
         _write_allowlist(
             allowlist,
             f"""
-non_god_read_only = true
+non_admin_read_only = true
 blocked_patterns = []
 
 [[allowed_roots]]
@@ -121,7 +121,7 @@ allow_read_write = true
             "pynchy.security.mount_security.get_settings", return_value=_test_settings(allowlist)
         ):
             result = validate_mount(
-                AdditionalMount(host_path=str(target), container_path="repo"), is_god=True
+                AdditionalMount(host_path=str(target), container_path="repo"), is_admin=True
             )
         assert result.allowed is True
 
@@ -134,7 +134,7 @@ allow_read_write = true
         _write_allowlist(
             allowlist,
             f"""
-non_god_read_only = true
+non_admin_read_only = true
 blocked_patterns = []
 
 [[allowed_roots]]
@@ -147,18 +147,18 @@ allow_read_write = true
         ):
             result = validate_mount(
                 AdditionalMount(host_path=str(outside), container_path="outside"),
-                is_god=True,
+                is_admin=True,
             )
         assert result.allowed is False
 
-    def test_non_god_forced_readonly(self, tmp_path: Path):
+    def test_non_admin_forced_readonly(self, tmp_path: Path):
         data = tmp_path / "data"
         data.mkdir()
         allowlist = tmp_path / "mount-allowlist.toml"
         _write_allowlist(
             allowlist,
             f"""
-non_god_read_only = true
+non_admin_read_only = true
 blocked_patterns = []
 
 [[allowed_roots]]
@@ -171,7 +171,7 @@ allow_read_write = true
         ):
             result = validate_mount(
                 AdditionalMount(host_path=str(data), container_path="data", readonly=False),
-                is_god=False,
+                is_admin=False,
             )
         assert result.allowed is True
         assert result.effective_readonly is True
@@ -187,7 +187,7 @@ class TestBatchValidation:
         _write_allowlist(
             allowlist,
             f"""
-non_god_read_only = true
+non_admin_read_only = true
 blocked_patterns = []
 
 [[allowed_roots]]
@@ -202,7 +202,7 @@ allow_read_write = true
         with patch(
             "pynchy.security.mount_security.get_settings", return_value=_test_settings(allowlist)
         ):
-            result = validate_additional_mounts(mounts, "TestGroup", is_god=True)
+            result = validate_additional_mounts(mounts, "TestGroup", is_admin=True)
         assert len(result) == 1
         assert result[0]["containerPath"] == "/workspace/extra/good"
 
@@ -212,4 +212,4 @@ class TestTemplate:
         data = tomllib.loads(generate_allowlist_template())
         assert "allowed_roots" in data
         assert "blocked_patterns" in data
-        assert "non_god_read_only" in data
+        assert "non_admin_read_only" in data

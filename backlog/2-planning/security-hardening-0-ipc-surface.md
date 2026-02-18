@@ -26,7 +26,7 @@ The IPC channel is an intentional hole through container isolation. Currently it
 - `register_group`: container creates new groups with arbitrary config
 - `create_periodic_agent`: container creates persistent agents with arbitrary persona
 
-The authorization checks only verify source group, not content. A jailbroken agent in the god group could craft malicious IPC payloads with no content validation.
+The authorization checks only verify source group, not content. A jailbroken agent in the admin group could craft malicious IPC payloads with no content validation.
 
 ### Design principle
 
@@ -68,7 +68,7 @@ These actions inherently carry data — you can't schedule a task without specif
 Flow:
 1. Container writes request file with payload to `/workspace/ipc/tasks/`
 2. Host picks it up via inotify
-3. Host spawns Deputy agent (in god container) with the request as context
+3. Host spawns Deputy agent (in admin container) with the request as context
 4. Deputy approves, rejects, or modifies the request
 5. Host executes only if approved
 

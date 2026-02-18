@@ -24,7 +24,7 @@ def _make_config(**overrides: object) -> AgentCoreConfig:
         "session_id": None,
         "group_folder": "test",
         "chat_jid": "test@g.us",
-        "is_god": False,
+        "is_admin": False,
         "is_scheduled_task": False,
     }
     defaults.update(overrides)
@@ -218,10 +218,10 @@ class TestConfigForwarding:
 
         monkeypatch.setattr(core_mod, "InspectorCore", InspectorCore, raising=False)
 
-        config = _make_config(session_id="sess-42", is_god=True, group_folder="god")
+        config = _make_config(session_id="sess-42", is_admin=True, group_folder="god")
         create_agent_core("agent_runner.core", "InspectorCore", config)
 
         assert received_config is not None
         assert received_config.session_id == "sess-42"
-        assert received_config.is_god is True
+        assert received_config.is_admin is True
         assert received_config.group_folder == "god"

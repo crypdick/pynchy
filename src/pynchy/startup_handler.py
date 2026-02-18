@@ -45,12 +45,12 @@ class StartupDeps(Protocol):
 
 
 async def send_boot_notification(deps: StartupDeps) -> None:
-    """Send a system message to the god channel on startup."""
+    """Send a system message to the admin channel on startup."""
     s = get_settings()
-    from pynchy.adapters import find_god_jid
+    from pynchy.adapters import find_admin_jid
 
-    god_jid = find_god_jid(deps.workspaces) or None
-    if not god_jid:
+    admin_jid = find_admin_jid(deps.workspaces) or None
+    if not admin_jid:
         return
 
     sha = get_head_sha()[:8]
@@ -62,7 +62,7 @@ async def send_boot_notification(deps: StartupDeps) -> None:
     # Check for API credentials and warn if missing
     from pynchy.container_runner import _write_env_file
 
-    if _write_env_file(is_god=True, group_folder="_startup_check") is None:
+    if _write_env_file(is_admin=True, group_folder="_startup_check") is None:
         parts.append(
             "WARNING: No API credentials found -- messages will fail. "
             "Run 'claude' to authenticate or set ANTHROPIC_API_KEY in config.toml."
@@ -81,7 +81,7 @@ async def send_boot_notification(deps: StartupDeps) -> None:
             logger.warning("Failed to read boot warnings", err=str(exc))
             boot_warnings_path.unlink(missing_ok=True)
 
-    await deps.broadcast_host_message(god_jid, "\n".join(parts))
+    await deps.broadcast_host_message(admin_jid, "\n".join(parts))
     logger.info("Boot notification sent")
 
 
@@ -213,8 +213,8 @@ async def check_deploy_continuation(deps: StartupDeps) -> None:
 # ------------------------------------------------------------------
 
 
-async def setup_god_group(deps: StartupDeps, default_channel: Any | None) -> None:
-    """Create and register the first god workspace.
+async def setup_admin_group(deps: StartupDeps, default_channel: Any | None) -> None:
+    """Create and register the first admin workspace.
 
     If a default channel with ``create_group`` is available, provision a
     channel-native group. Otherwise bootstrap a local TUI workspace so core
@@ -222,7 +222,7 @@ async def setup_god_group(deps: StartupDeps, default_channel: Any | None) -> Non
     """
     s = get_settings()
     group_name = s.agent.name.title()
-    logger.info("No groups registered. Creating first god workspace...", name=group_name)
+    logger.info("No groups registered. Creating first admin workspace...", name=group_name)
 
     jid = f"tui://{s.agent.name}"
     if default_channel and hasattr(default_channel, "create_group"):
@@ -235,12 +235,12 @@ async def setup_god_group(deps: StartupDeps, default_channel: Any | None) -> Non
     else:
         logger.info("No channel group support found, creating TUI local workspace", jid=jid)
 
-    # Create god workspace with permissive security profile.
-    # God group is fully trusted — auto-approve all tools.
+    # Create admin workspace with permissive security profile.
+    # Admin group is fully trusted — auto-approve all tools.
     # TODO: Re-evaluate when human-approval gate is implemented (see
     #   backlog/2-planning/security-hardening-6-approval.md). At that point,
-    #   consider keeping god at always-approve but requiring approval for
-    #   non-god workspaces' destructive actions.
+    #   consider keeping admin at always-approve but requiring approval for
+    #   non-admin workspaces' destructive actions.
     profile = WorkspaceProfile(
         jid=jid,
         name=group_name,
@@ -248,11 +248,11 @@ async def setup_god_group(deps: StartupDeps, default_channel: Any | None) -> Non
         trigger=f"@{s.agent.name}",
         added_at=datetime.now(UTC).isoformat(),
         requires_trigger=False,
-        is_god=True,
+        is_admin=True,
         security=WorkspaceSecurity(default_risk_tier="always-approve"),
     )
     await deps._register_workspace(profile)
-    logger.info("God workspace created", group=group_name, jid=jid)
+    logger.info("Admin workspace created", group=group_name, jid=jid)
 
     # Create aliases on other channels that support create_group
     from pynchy.workspace_config import create_channel_aliases

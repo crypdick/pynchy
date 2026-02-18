@@ -71,7 +71,7 @@ def _write_run_log(
         "=== Container Run Log ===",
         f"Timestamp: {datetime.now(UTC).isoformat()}",
         f"Group: {group_name}",
-        f"IsMain: {input_data.is_god}",
+        f"IsMain: {input_data.is_admin}",
         f"Duration: {duration_ms:.0f}ms",
         f"Exit Code: {exit_code}",
         f"Stdout Truncated: {stdout_truncated}",

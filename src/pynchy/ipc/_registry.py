@@ -8,7 +8,7 @@ from typing import Any
 from pynchy.ipc._deps import IpcDeps
 from pynchy.logger import logger
 
-# type -> async handler(data, source_group, is_god, deps)
+# type -> async handler(data, source_group, is_admin, deps)
 HANDLERS: dict[str, Callable[[dict[str, Any], str, bool, IpcDeps], Awaitable[None]]] = {}
 
 # prefix -> async handler (checked when exact match fails)
@@ -41,20 +41,20 @@ def register_prefix(
 async def dispatch(
     data: dict[str, Any],
     source_group: str,
-    is_god: bool,
+    is_admin: bool,
     deps: IpcDeps,
 ) -> None:
     """Dispatch an IPC task to its registered handler."""
     task_type = data.get("type") or ""
     handler = HANDLERS.get(task_type)
     if handler:
-        await handler(data, source_group, is_god, deps)
+        await handler(data, source_group, is_admin, deps)
         return
 
     # Check prefix handlers
     for prefix, prefix_handler in PREFIX_HANDLERS.items():
         if task_type.startswith(prefix):
-            await prefix_handler(data, source_group, is_god, deps)
+            await prefix_handler(data, source_group, is_admin, deps)
             return
 
     logger.warning("Unknown IPC task type", type=task_type)

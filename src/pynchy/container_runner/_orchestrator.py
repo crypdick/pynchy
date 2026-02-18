@@ -192,7 +192,7 @@ async def run_container_agent(
 
     # --- Resolve worktree ---
     worktree_path: Path | None = None
-    if input_data.project_access:
+    if input_data.pynchy_repo_access:
         from pynchy.git_ops.worktree import ensure_worktree
 
         wt_result = ensure_worktree(group.folder)
@@ -204,7 +204,7 @@ async def run_container_agent(
 
     # --- Build mounts ---
     mounts = _build_volume_mounts(
-        group, input_data.is_god, plugin_manager, input_data.project_access, worktree_path
+        group, input_data.is_admin, plugin_manager, input_data.pynchy_repo_access, worktree_path
     )
 
     # --- Collect plugin MCP specs ---
@@ -242,7 +242,7 @@ async def run_container_agent(
         group=group.name,
         container=container_name,
         mount_count=len(mounts),
-        is_god=input_data.is_god,
+        is_admin=input_data.is_admin,
     )
 
     logs_dir = s.groups_dir / group.folder / "logs"

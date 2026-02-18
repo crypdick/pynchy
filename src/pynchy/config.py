@@ -143,9 +143,9 @@ class WorkspaceSecurityConfig(BaseModel):
 
 
 class WorkspaceConfig(BaseModel):
-    is_god: bool = False
+    is_admin: bool = False
     requires_trigger: bool | None = None  # None → use workspace_defaults
-    project_access: bool = False
+    pynchy_repo_access: bool = False
     name: str | None = None  # display name; defaults to folder titlecased
     schedule: str | None = None  # cron expression
     prompt: str | None = None  # prompt for scheduled tasks

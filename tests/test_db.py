@@ -813,19 +813,19 @@ class TestTaskAdvanced:
         await delete_task("logged-task")
         assert await get_task_by_id("logged-task") is None
 
-    async def test_create_task_with_project_access(self):
+    async def test_create_task_with_pynchy_repo_access(self):
         await create_task(
-            {**self._TASK_TEMPLATE, "id": "pa-task", "next_run": None, "project_access": True}
+            {**self._TASK_TEMPLATE, "id": "pa-task", "next_run": None, "pynchy_repo_access": True}
         )
         task = await get_task_by_id("pa-task")
         assert task is not None
-        assert task.project_access is True
+        assert task.pynchy_repo_access is True
 
-    async def test_create_task_without_project_access(self):
+    async def test_create_task_without_pynchy_repo_access(self):
         await create_task({**self._TASK_TEMPLATE, "id": "no-pa", "next_run": None})
         task = await get_task_by_id("no-pa")
         assert task is not None
-        assert task.project_access is False
+        assert task.pynchy_repo_access is False
 
 
 # --- Workspace profiles ---
@@ -913,14 +913,14 @@ class TestWorkspaceProfiles:
             name="God",
             folder="god",
             trigger="@Pynchy",
-            is_god=True,
+            is_admin=True,
             added_at="2024-01-01T00:00:00Z",
         )
         await set_workspace_profile(profile)
 
         result = await get_workspace_profile("god@g.us")
         assert result is not None
-        assert result.is_god is True
+        assert result.is_admin is True
 
     async def test_workspace_profile_defaults_security_on_missing(self):
         """If security_profile column is NULL, defaults are used."""
@@ -1015,7 +1015,7 @@ class TestGetTaskById:
                 "next_run": "2024-06-01T00:00:00Z",
                 "status": "active",
                 "created_at": "2024-01-01T00:00:00Z",
-                "project_access": True,
+                "pynchy_repo_access": True,
             }
         )
         task = await get_task_by_id("full-task")
@@ -1029,7 +1029,7 @@ class TestGetTaskById:
         assert task.context_mode == "group"
         assert task.next_run == "2024-06-01T00:00:00Z"
         assert task.status == "active"
-        assert task.project_access is True
+        assert task.pynchy_repo_access is True
 
 
 # --- get_last_group_sync / set_last_group_sync ---
@@ -1183,7 +1183,7 @@ class TestEnsureColumns:
         from pynchy.db._connection import _ensure_columns
 
         db = await aiosqlite.connect(":memory:")
-        # Create registered_groups WITHOUT is_god column (old schema)
+        # Create registered_groups WITHOUT is_admin column (old schema)
         await db.executescript("""
             CREATE TABLE registered_groups (
                 jid TEXT PRIMARY KEY,
@@ -1196,17 +1196,17 @@ class TestEnsureColumns:
             );
         """)
 
-        # Verify is_god is missing
+        # Verify is_admin is missing
         cursor = await db.execute("PRAGMA table_info(registered_groups)")
         cols = {row[1] for row in await cursor.fetchall()}
-        assert "is_god" not in cols
+        assert "is_admin" not in cols
 
-        # Run _ensure_columns — should add is_god and security_profile
+        # Run _ensure_columns — should add is_admin and security_profile
         await _ensure_columns(db)
 
         cursor = await db.execute("PRAGMA table_info(registered_groups)")
         cols = {row[1] for row in await cursor.fetchall()}
-        assert "is_god" in cols
+        assert "is_admin" in cols
         assert "security_profile" in cols
 
         await db.close()

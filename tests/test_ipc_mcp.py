@@ -78,7 +78,7 @@ class TestScheduleTaskValidation:
         with (
             patch("agent_runner.agent_tools._ipc.chat_jid", "test@g.us"),
             patch("agent_runner.agent_tools._ipc.group_folder", "test-group"),
-            patch("agent_runner.agent_tools._ipc.is_god", True),
+            patch("agent_runner.agent_tools._ipc.is_admin", True),
             patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
             patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
         ):
@@ -209,11 +209,11 @@ class TestScheduleTaskValidation:
 
     @pytest.mark.asyncio
     async def test_non_god_cannot_set_target_group(self, tmp_path):
-        """Non-god groups should have target_group_jid ignored."""
+        """Non-admin groups should have target_group ignored."""
         from agent_runner.agent_tools._server import call_tool
 
         with (
-            patch("agent_runner.agent_tools._ipc.is_god", False),
+            patch("agent_runner.agent_tools._ipc.is_admin", False),
             patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
         ):
             result = await call_tool(
@@ -222,22 +222,22 @@ class TestScheduleTaskValidation:
                     "prompt": "task",
                     "schedule_type": "cron",
                     "schedule_value": "0 9 * * *",
-                    "target_group_jid": "other@g.us",
+                    "target_group": "other-group",
                 },
             )
         assert isinstance(result, list)
-        # Verify the IPC file uses the caller's JID, not the target
+        # Verify the IPC file uses the caller's folder, not the target
         files = list((tmp_path / "tasks").glob("*.json"))
         data = json.loads(files[0].read_text())
-        assert data["targetJid"] == "test@g.us"
+        assert data["targetGroup"] == "test-group"
 
     @pytest.mark.asyncio
     async def test_god_can_set_target_group(self, tmp_path):
-        """God groups should be able to set target_group_jid."""
+        """Admin groups should be able to set target_group."""
         from agent_runner.agent_tools._server import call_tool
 
         with (
-            patch("agent_runner.agent_tools._ipc.is_god", True),
+            patch("agent_runner.agent_tools._ipc.is_admin", True),
             patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
         ):
             result = await call_tool(
@@ -246,13 +246,13 @@ class TestScheduleTaskValidation:
                     "prompt": "task",
                     "schedule_type": "cron",
                     "schedule_value": "0 9 * * *",
-                    "target_group_jid": "other@g.us",
+                    "target_group": "other-group",
                 },
             )
         assert isinstance(result, list)
         files = list((tmp_path / "tasks").glob("*.json"))
         data = json.loads(files[0].read_text())
-        assert data["targetJid"] == "other@g.us"
+        assert data["targetGroup"] == "other-group"
 
 
 # ---------------------------------------------------------------------------
@@ -261,15 +261,15 @@ class TestScheduleTaskValidation:
 
 
 class TestRegisterGroupAuth:
-    """Test register_group god-only authorization."""
+    """Test register_group admin-only authorization."""
 
     @pytest.mark.asyncio
     async def test_non_god_register_group_rejected(self):
         from agent_runner.agent_tools._server import call_tool
 
         with (
-            patch("agent_runner.agent_tools._ipc.is_god", False),
-            patch("agent_runner.agent_tools._ipc.group_folder", "non-god"),
+            patch("agent_runner.agent_tools._ipc.is_admin", False),
+            patch("agent_runner.agent_tools._ipc.group_folder", "non-admin"),
         ):
             result = await call_tool(
                 "register_group",
@@ -282,14 +282,14 @@ class TestRegisterGroupAuth:
             )
         assert hasattr(result, "isError")
         assert result.isError is True
-        assert "god" in result.content[0].text.lower()
+        assert "admin" in result.content[0].text.lower()
 
     @pytest.mark.asyncio
     async def test_god_register_group_accepted(self, tmp_path):
         from agent_runner.agent_tools._server import call_tool
 
         with (
-            patch("agent_runner.agent_tools._ipc.is_god", True),
+            patch("agent_runner.agent_tools._ipc.is_admin", True),
             patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
         ):
             result = await call_tool(
@@ -311,17 +311,17 @@ class TestRegisterGroupAuth:
 
 
 class TestDeployAuth:
-    """Test deploy_changes god-only authorization."""
+    """Test deploy_changes admin-only authorization."""
 
     @pytest.mark.asyncio
     async def test_non_god_deploy_rejected(self):
         from agent_runner.agent_tools._server import call_tool
 
-        with patch("agent_runner.agent_tools._ipc.is_god", False):
+        with patch("agent_runner.agent_tools._ipc.is_admin", False):
             result = await call_tool("deploy_changes", {})
         assert hasattr(result, "isError")
         assert result.isError is True
-        assert "god" in result.content[0].text.lower()
+        assert "admin" in result.content[0].text.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -394,7 +394,7 @@ class TestListTasks:
         tasks_file.write_text("[]")
         with (
             patch("agent_runner.agent_tools._ipc.IPC_DIR", tmp_path),
-            patch("agent_runner.agent_tools._ipc.is_god", True),
+            patch("agent_runner.agent_tools._ipc.is_admin", True),
         ):
             result = await call_tool("list_tasks", {})
         assert "no" in result[0].text.lower()
@@ -425,7 +425,7 @@ class TestListTasks:
         tasks_file.write_text(json.dumps(tasks))
         with (
             patch("agent_runner.agent_tools._ipc.IPC_DIR", tmp_path),
-            patch("agent_runner.agent_tools._ipc.is_god", True),
+            patch("agent_runner.agent_tools._ipc.is_admin", True),
         ):
             result = await call_tool("list_tasks", {})
         text = result[0].text
@@ -458,7 +458,7 @@ class TestListTasks:
         tasks_file.write_text(json.dumps(tasks))
         with (
             patch("agent_runner.agent_tools._ipc.IPC_DIR", tmp_path),
-            patch("agent_runner.agent_tools._ipc.is_god", False),
+            patch("agent_runner.agent_tools._ipc.is_admin", False),
             patch("agent_runner.agent_tools._ipc.group_folder", "my-group"),
         ):
             result = await call_tool("list_tasks", {})
@@ -481,7 +481,7 @@ class TestTaskLifecycle:
 
         with (
             patch("agent_runner.agent_tools._ipc.group_folder", "test"),
-            patch("agent_runner.agent_tools._ipc.is_god", False),
+            patch("agent_runner.agent_tools._ipc.is_admin", False),
             patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
         ):
             result = await call_tool("pause_task", {"task_id": "task-123"})
@@ -497,7 +497,7 @@ class TestTaskLifecycle:
 
         with (
             patch("agent_runner.agent_tools._ipc.group_folder", "test"),
-            patch("agent_runner.agent_tools._ipc.is_god", False),
+            patch("agent_runner.agent_tools._ipc.is_admin", False),
             patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
         ):
             result = await call_tool("resume_task", {"task_id": "task-123"})
@@ -509,7 +509,7 @@ class TestTaskLifecycle:
 
         with (
             patch("agent_runner.agent_tools._ipc.group_folder", "test"),
-            patch("agent_runner.agent_tools._ipc.is_god", False),
+            patch("agent_runner.agent_tools._ipc.is_admin", False),
             patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
         ):
             result = await call_tool("cancel_task", {"task_id": "task-123"})
@@ -678,7 +678,7 @@ class TestListToolsVisibility:
         from agent_runner.agent_tools._server import list_tools
 
         with (
-            patch("agent_runner.agent_tools._ipc.is_god", True),
+            patch("agent_runner.agent_tools._ipc.is_admin", True),
             patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
         ):
             tools = await list_tools()
@@ -690,7 +690,7 @@ class TestListToolsVisibility:
         from agent_runner.agent_tools._server import list_tools
 
         with (
-            patch("agent_runner.agent_tools._ipc.is_god", False),
+            patch("agent_runner.agent_tools._ipc.is_admin", False),
             patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
         ):
             tools = await list_tools()
@@ -702,7 +702,7 @@ class TestListToolsVisibility:
         from agent_runner.agent_tools._server import list_tools
 
         with (
-            patch("agent_runner.agent_tools._ipc.is_god", False),
+            patch("agent_runner.agent_tools._ipc.is_admin", False),
             patch("agent_runner.agent_tools._ipc.is_scheduled_task", True),
         ):
             tools = await list_tools()
@@ -714,7 +714,7 @@ class TestListToolsVisibility:
         from agent_runner.agent_tools._server import list_tools
 
         with (
-            patch("agent_runner.agent_tools._ipc.is_god", False),
+            patch("agent_runner.agent_tools._ipc.is_admin", False),
             patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
         ):
             tools = await list_tools()
@@ -726,7 +726,7 @@ class TestListToolsVisibility:
         from agent_runner.agent_tools._server import list_tools
 
         with (
-            patch("agent_runner.agent_tools._ipc.is_god", False),
+            patch("agent_runner.agent_tools._ipc.is_admin", False),
             patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
         ):
             tools = await list_tools()

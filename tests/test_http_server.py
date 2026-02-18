@@ -254,7 +254,7 @@ class MockHttpDeps:
         self._groups = [{"jid": "test@g.us", "name": "Test Group"}]
         self._messages: list[NewMessage] = []
         self._connected = True
-        self._god_jid = "god@g.us"
+        self._admin_jid = "god@g.us"
         self._event_callbacks: list = []
         self._periodic_agents: list[dict[str, Any]] = []
 
@@ -264,8 +264,8 @@ class MockHttpDeps:
     async def broadcast_host_message(self, jid: str, text: str) -> None:
         self.broadcasts.append((jid, text))
 
-    def god_chat_jid(self) -> str:
-        return self._god_jid
+    def admin_chat_jid(self) -> str:
+        return self._admin_jid
 
     def channels_connected(self) -> bool:
         return self._connected

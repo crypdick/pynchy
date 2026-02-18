@@ -24,7 +24,7 @@ class AllowedRoot:
 class MountAllowlist:
     allowed_roots: list[AllowedRoot] = field(default_factory=list)
     blocked_patterns: list[str] = field(default_factory=list)
-    non_god_read_only: bool = True
+    non_admin_read_only: bool = True
 
 
 @dataclass
@@ -81,7 +81,7 @@ class WorkspaceProfile:
     """Complete workspace configuration with security profile."""
 
     # Identity
-    jid: str  # WhatsApp JID or workspace identifier
+    jid: str  # Canonical chat identifier
     name: str  # Display name
     folder: str  # Folder under groups/
 
@@ -96,7 +96,7 @@ class WorkspaceProfile:
     security: WorkspaceSecurity = field(default_factory=WorkspaceSecurity)
 
     # Privileges
-    is_god: bool = False
+    is_admin: bool = False
 
     # Metadata
     added_at: str = ""
@@ -178,7 +178,7 @@ class ScheduledTask:
     last_result: str | None = None
     status: Literal["active", "paused", "completed"] = "active"
     created_at: str = ""
-    project_access: bool = False
+    pynchy_repo_access: bool = False
 
     def to_snapshot_dict(self) -> dict[str, str | None]:
         """Serialize to the dict format expected by write_tasks_snapshot.
@@ -249,12 +249,12 @@ class ContainerInput:
     messages: list[dict]  # SDK message list with message types
     group_folder: str
     chat_jid: str
-    is_god: bool
+    is_admin: bool
     session_id: str | None = None
     is_scheduled_task: bool = False
     plugin_mcp_servers: dict[str, dict] | None = None
     system_notices: list[str] | None = None
-    project_access: bool = False
+    pynchy_repo_access: bool = False
     agent_core_module: str = "agent_runner.cores.claude"  # Module path for agent core
     agent_core_class: str = "ClaudeAgentCore"  # Class name for agent core
     agent_core_config: dict | None = None  # Core-specific settings
@@ -321,12 +321,12 @@ class Channel(Protocol):
     # Optional: typing indicator. Channels that support it implement it.
     # set_typing is NOT part of the protocol — check with hasattr at call sites.
 
-    # Optional: group creation. Only WhatsApp supports this currently.
+    # Optional: group creation. Not all channels support this.
     # create_group is NOT part of the protocol — check with hasattr at call sites.
 
     # Whether to prefix outbound messages with the assistant name.
-    # Telegram bots already display their name, so they return false.
-    # WhatsApp returns true. Default true if not implemented.
+    # Some channels (e.g. Telegram bots) already display their name, so they return false.
+    # Default true if not implemented.
     # prefix_assistant_name is NOT part of the protocol — use getattr with default.
 
     # Optional: streaming message updates. Channels that support it implement:

@@ -77,7 +77,7 @@ async def _rebuild_and_deploy(
     """
     from pynchy.deploy import finalize_deploy
 
-    chat_jid = group_registry.god_chat_jid()
+    chat_jid = group_registry.admin_chat_jid()
     if chat_jid:
         msg = (
             "Container files changed — rebuilding and restarting..."
@@ -116,7 +116,7 @@ def make_http_deps(app: PynchyApp) -> HttpDeps:
 
     class HttpDeps:
         broadcast_host_message = host_broadcaster.broadcast_host_message
-        god_chat_jid = group_registry.god_chat_jid
+        admin_chat_jid = group_registry.admin_chat_jid
         channels_connected = metadata_manager.channels_connected
         get_groups = metadata_manager.get_groups
         get_messages = user_message_handler.get_messages

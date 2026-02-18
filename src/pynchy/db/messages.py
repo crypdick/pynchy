@@ -62,7 +62,7 @@ async def store_message_direct(
     message_type: str = "user",
     metadata: dict[str, Any] | None = None,
 ) -> None:
-    """Store a message directly (for non-WhatsApp channels).
+    """Store a message directly with explicit fields.
 
     Args:
         message_type: One of 'user', 'assistant', 'system', 'host', 'tool_result'

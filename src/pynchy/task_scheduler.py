@@ -47,7 +47,7 @@ class SchedulerDependencies(Protocol):
         extra_system_notices: list[str] | None = None,
         *,
         is_scheduled_task: bool = False,
-        project_access_override: bool | None = None,
+        pynchy_repo_access_override: bool | None = None,
         input_source: str = "user",
     ) -> str: ...
 
@@ -362,7 +362,7 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
             task_messages,
             _on_output,
             is_scheduled_task=True,
-            project_access_override=task.project_access,
+            pynchy_repo_access_override=task.pynchy_repo_access,
             input_source="scheduled_task",
         )
 
@@ -374,8 +374,8 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
         elapsed_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
         logger.info("Task completed", task_id=task.id, duration_ms=elapsed_ms)
 
-        # Merge worktree commits and push for all project_access tasks
-        if not error and task.project_access:
+        # Merge worktree commits and push for all pynchy_repo_access tasks
+        if not error and task.pynchy_repo_access:
             from pynchy.git_ops.worktree import merge_and_push_worktree
 
             await asyncio.to_thread(merge_and_push_worktree, task.group_folder)

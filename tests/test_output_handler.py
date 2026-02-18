@@ -29,10 +29,10 @@ def _make_deps() -> MagicMock:
     return deps
 
 
-def _make_group(*, name: str = "test-group", is_god: bool = False) -> MagicMock:
+def _make_group(*, name: str = "test-group", is_admin: bool = False) -> MagicMock:
     group = MagicMock()
     group.name = name
-    group.is_god = is_god
+    group.is_admin = is_admin
     return group
 
 

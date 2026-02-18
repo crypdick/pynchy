@@ -1,7 +1,7 @@
 """Tests for dependency adapters.
 
 Tests critical routing and broadcasting logic in adapters.py:
-- GroupRegistry.god_chat_jid() — finding the god group for notifications
+- GroupRegistry.admin_chat_jid() — finding the admin group for notifications
 - HostMessageBroadcaster — dual store+broadcast with correct formatting
 - EventBusAdapter — event type conversion for SSE/TUI bridge
 """
@@ -31,10 +31,11 @@ from pynchy.types import WorkspaceProfile
 
 
 def _group(
-    *, jid: str = "test@g.us", name: str = "Test", folder: str = "test", is_god: bool = False
+    *, jid: str = "test@g.us", name: str = "Test", folder: str = "test", is_admin: bool = False
 ) -> WorkspaceProfile:
     return WorkspaceProfile(
-        jid=jid, name=name, folder=folder, trigger="@pynchy", added_at="2024-01-01", is_god=is_god
+        jid=jid, name=name, folder=folder, trigger="@pynchy", added_at="2024-01-01",
+        is_admin=is_admin
     )
 
 
@@ -62,15 +63,15 @@ class FakeChannel:
 
 
 class TestGroupRegistry:
-    """Test god_chat_jid() which finds the god group for system notifications."""
+    """Test admin_chat_jid() which finds the admin group for system notifications."""
 
     def test_finds_god_group_jid(self):
         groups = {
             "regular@g.us": _group(jid="regular@g.us", name="Regular"),
-            "god@g.us": _group(jid="god@g.us", name="God", is_god=True),
+            "god@g.us": _group(jid="god@g.us", name="God", is_admin=True),
         }
         registry = GroupRegistry(groups)
-        assert registry.god_chat_jid() == "god@g.us"
+        assert registry.admin_chat_jid() == "god@g.us"
 
     def test_returns_empty_string_when_no_god_group(self):
         groups = {
@@ -78,20 +79,20 @@ class TestGroupRegistry:
             "b@g.us": _group(jid="b@g.us", name="B"),
         }
         registry = GroupRegistry(groups)
-        assert registry.god_chat_jid() == ""
+        assert registry.admin_chat_jid() == ""
 
     def test_returns_empty_string_when_no_groups(self):
         registry = GroupRegistry({})
-        assert registry.god_chat_jid() == ""
+        assert registry.admin_chat_jid() == ""
 
     def test_returns_first_god_group_if_multiple(self):
-        """If somehow multiple god groups exist, return the first one found."""
+        """If somehow multiple admin groups exist, return the first one found."""
         groups = {
-            "god1@g.us": _group(jid="god1@g.us", name="God1", is_god=True),
-            "god2@g.us": _group(jid="god2@g.us", name="God2", is_god=True),
+            "god1@g.us": _group(jid="god1@g.us", name="God1", is_admin=True),
+            "god2@g.us": _group(jid="god2@g.us", name="God2", is_admin=True),
         }
         registry = GroupRegistry(groups)
-        result = registry.god_chat_jid()
+        result = registry.admin_chat_jid()
         assert result in ("god1@g.us", "god2@g.us")
 
     def test_workspaces_returns_reference(self):

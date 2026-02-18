@@ -27,7 +27,7 @@ def mock_ipc_deps():
     """Mock IPC dependencies."""
     deps = MagicMock()
     deps.workspaces.return_value = {
-        "god-jid": MagicMock(folder="god", is_god=True),
+        "god-jid": MagicMock(folder="god", is_admin=True),
     }
     return deps
 
@@ -36,7 +36,7 @@ class TestHostJobScheduling:
     """Test host job scheduling through MCP and database."""
 
     async def test_create_host_job_via_ipc_god_group(self, mock_ipc_deps):
-        """God group can schedule host jobs via IPC."""
+        """Admin group can schedule host jobs via IPC."""
         data = {
             "type": "schedule_host_job",
             "name": "test-backup",
@@ -62,9 +62,9 @@ class TestHostJobScheduling:
         assert job.enabled is True
 
     async def test_create_host_job_rejects_non_god(self, mock_ipc_deps):
-        """Non-god groups cannot schedule host jobs."""
+        """Non-admin groups cannot schedule host jobs."""
         mock_ipc_deps.workspaces.return_value = {
-            "user-jid": MagicMock(folder="user-group", is_god=False),
+            "user-jid": MagicMock(folder="user-group", is_admin=False),
         }
 
         data = {

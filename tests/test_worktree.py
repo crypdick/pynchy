@@ -343,8 +343,8 @@ class TestReconcileWorktreesAtStartup:
         reconcile_worktrees_at_startup()
 
     def test_creates_missing_worktrees_at_startup(self, git_env: dict):
-        """Worktrees for project_access folders are created if missing."""
-        reconcile_worktrees_at_startup(project_access_folders=["god", "code-improver"])
+        """Worktrees for pynchy_repo_access folders are created if missing."""
+        reconcile_worktrees_at_startup(pynchy_repo_access_folders=["god", "code-improver"])
 
         worktrees_dir = git_env["worktrees_dir"]
         assert (worktrees_dir / "god").exists()
@@ -357,7 +357,7 @@ class TestReconcileWorktreesAtStartup:
     def test_idempotent(self, git_env: dict):
         """Calling twice with same folders doesn't break anything."""
         folders = ["god", "code-improver"]
-        reconcile_worktrees_at_startup(project_access_folders=folders)
+        reconcile_worktrees_at_startup(pynchy_repo_access_folders=folders)
 
         # Record state
         worktrees_dir = git_env["worktrees_dir"]
@@ -365,7 +365,7 @@ class TestReconcileWorktreesAtStartup:
         head_ci = _git(worktrees_dir / "code-improver", "rev-parse", "HEAD").stdout.strip()
 
         # Second call — should be a no-op
-        reconcile_worktrees_at_startup(project_access_folders=folders)
+        reconcile_worktrees_at_startup(pynchy_repo_access_folders=folders)
 
         assert _git(worktrees_dir / "god", "rev-parse", "HEAD").stdout.strip() == head_god
         assert _git(worktrees_dir / "code-improver", "rev-parse", "HEAD").stdout.strip() == head_ci

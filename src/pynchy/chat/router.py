@@ -76,7 +76,7 @@ def format_outbound(channel: Channel, raw_text: str) -> str:
 def format_tool_preview(tool_name: str, tool_input: dict) -> str:
     """Format a one-line preview of a tool invocation for channel messages.
 
-    Extracts the most relevant detail per tool type so WhatsApp/Telegram
+    Extracts the most relevant detail per tool type so messaging channel
     users see *what* the agent is doing, not just the tool name.
     """
     if tool_name == "Bash":

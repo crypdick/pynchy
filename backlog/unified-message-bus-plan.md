@@ -17,7 +17,7 @@ Each of these manually loops over `deps.channels`, resolves JIDs via `deps.get_c
 
 - **Sender-name prefix removed** from cross-channel broadcast in `session_handler.py` — now sends raw `msg.content`
 - **Slack trigger detection** — `_strip_bot_mention` renamed to `_normalize_bot_mention`, replaces `<@BOTID>` with canonical trigger `@AgentName` instead of stripping it
-- **Shutdown notification** added to `app.py._shutdown()` — broadcasts to god group before teardown
+- **Shutdown notification** added to `app.py._shutdown()` — broadcasts to admin group before teardown
 
 ## What Remains: Unify the Broadcast Paths
 

@@ -1,4 +1,4 @@
-non_god_read_only = true
+non_admin_read_only = true
 blocked_patterns = ["password", "secret", "token"]
 
 [[allowed_roots]]

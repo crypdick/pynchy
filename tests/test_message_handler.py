@@ -37,7 +37,7 @@ _P_INTERCEPT = "pynchy.chat.message_handler.intercept_special_command"
 _P_FMT_SDK = "pynchy.chat.router.format_messages_for_sdk"
 _P_STORE = "pynchy.chat.message_handler.store_message_direct"
 _P_DIRTY = "pynchy.chat.message_handler.is_repo_dirty"
-_P_HAS_PA = "pynchy.workspace_config.has_project_access"
+_P_HAS_PA = "pynchy.workspace_config.has_pynchy_repo_access"
 _P_MERGE = "pynchy.git_ops.worktree.merge_and_push_worktree"
 _P_BG_TASK = "pynchy.chat.message_handler.create_background_task"
 
@@ -87,13 +87,13 @@ def _make_group(
     *,
     name: str = "test-group",
     folder: str = "test-group",
-    is_god: bool = False,
+    is_admin: bool = False,
     requires_trigger: bool | None = True,
 ) -> MagicMock:
     group = MagicMock()
     group.name = name
     group.folder = folder
-    group.is_god = is_god
+    group.is_admin = is_admin
     group.requires_trigger = requires_trigger
     return group
 
@@ -472,9 +472,9 @@ class TestProcessGroupMessages:
         deps.run_agent.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_non_god_trigger_required_but_missing(self, tmp_path):
-        """Non-god group, required trigger missing → skip."""
-        group = _make_group(is_god=False, requires_trigger=True)
+    async def test_non_admin_trigger_required_but_missing(self, tmp_path):
+        """Non-admin group, required trigger missing → skip."""
+        group = _make_group(is_admin=False, requires_trigger=True)
         deps = _make_deps(groups={"g@g.us": group})
         msg = _make_message("hello")
 
@@ -492,7 +492,7 @@ class TestProcessGroupMessages:
     @pytest.mark.asyncio
     async def test_cursor_rollback_on_save_state_failure(self, tmp_path):
         """save_state failure → cursor rolls back."""
-        group = _make_group(is_god=True)
+        group = _make_group(is_admin=True)
         deps = _make_deps(
             groups={"g@g.us": group},
             last_agent_ts={"g@g.us": "old-ts"},
@@ -515,7 +515,7 @@ class TestProcessGroupMessages:
     @pytest.mark.asyncio
     async def test_agent_error_rolls_back_cursor(self, tmp_path):
         """Agent error → cursor rolled back, user notified."""
-        group = _make_group(is_god=True)
+        group = _make_group(is_admin=True)
         deps = _make_deps(
             groups={"g@g.us": group},
             last_agent_ts={"g@g.us": "old-ts"},
@@ -543,7 +543,7 @@ class TestProcessGroupMessages:
     @pytest.mark.asyncio
     async def test_agent_error_after_output_sent_no_rollback(self, tmp_path):
         """Agent error after output was sent → no rollback."""
-        group = _make_group(is_god=True)
+        group = _make_group(is_admin=True)
         deps = _make_deps(
             groups={"g@g.us": group},
             last_agent_ts={"g@g.us": "old-ts"},
@@ -576,8 +576,8 @@ class TestProcessGroupMessages:
 
     @pytest.mark.asyncio
     async def test_successful_run_triggers_worktree_merge(self, tmp_path):
-        """project_access group → worktree merge triggered."""
-        group = _make_group(is_god=False)
+        """pynchy_repo_access group → worktree merge triggered."""
+        group = _make_group(is_admin=False)
         deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
         deps.run_agent = AsyncMock(return_value="success")
         deps.handle_streamed_output = AsyncMock(return_value=False)
@@ -598,9 +598,9 @@ class TestProcessGroupMessages:
         mock_bg_merge.assert_called_once_with(group)
 
     @pytest.mark.asyncio
-    async def test_dirty_repo_warning_added_for_god_group(self, tmp_path):
+    async def test_dirty_repo_warning_added_for_admin_group(self, tmp_path):
         """Dirty repo after reset → system notice added."""
-        group = _make_group(is_god=True)
+        group = _make_group(is_admin=True)
         deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
 
         ipc_dir = tmp_path / "ipc" / "test-group"
@@ -632,7 +632,7 @@ class TestProcessGroupMessages:
     @pytest.mark.asyncio
     async def test_reaction_and_typing_indicator_sent(self, tmp_path):
         """Processing messages sends reaction and typing indicator."""
-        group = _make_group(is_god=True)
+        group = _make_group(is_admin=True)
         deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
         deps.handle_streamed_output = AsyncMock(return_value=False)
         msg = _make_message("hello", timestamp="new-ts", id="msg-42")
@@ -657,7 +657,7 @@ class TestProcessGroupMessages:
     @pytest.mark.asyncio
     async def test_system_notice_only_does_not_launch_agent(self, tmp_path):
         """System notices alone shouldn't launch a container."""
-        group = _make_group(is_god=True)
+        group = _make_group(is_admin=True)
         deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
 
         notice = _make_message(
@@ -680,7 +680,7 @@ class TestProcessGroupMessages:
     @pytest.mark.asyncio
     async def test_system_notice_plus_user_message_launches_agent(self, tmp_path):
         """A mix of system notices and user messages should launch the agent."""
-        group = _make_group(is_god=True)
+        group = _make_group(is_admin=True)
         deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
         deps.handle_streamed_output = AsyncMock(return_value=False)
 
@@ -715,7 +715,7 @@ class TestProcessGroupMessages:
     @pytest.mark.asyncio
     async def test_special_command_intercepts(self, tmp_path):
         """Special commands checked on the last message."""
-        group = _make_group(is_god=True)
+        group = _make_group(is_admin=True)
         deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
 
         msg1 = _make_message("hello", timestamp="ts-1")
@@ -938,7 +938,7 @@ class TestBtwNonInterruptingMessages:
         """A 'btw ...' message while a task runs should forward via IPC
         and mark pending, without killing the task."""
         jid = "group@g.us"
-        group = _make_group(is_god=True)
+        group = _make_group(is_admin=True)
         deps = _make_deps(
             groups={jid: group},
             last_agent_ts={jid: "old-ts"},
@@ -981,7 +981,7 @@ class TestBtwNonInterruptingMessages:
     async def test_btw_case_insensitive(self):
         """'BTW ...' (uppercase) should also be non-interrupting."""
         jid = "group@g.us"
-        group = _make_group(is_god=True)
+        group = _make_group(is_admin=True)
         deps = _make_deps(
             groups={jid: group},
             last_agent_ts={jid: "old-ts"},
@@ -1018,7 +1018,7 @@ class TestBtwNonInterruptingMessages:
         """'  btw ...' with leading whitespace should be non-interrupting
         (content is stripped before prefix check)."""
         jid = "group@g.us"
-        group = _make_group(is_god=True)
+        group = _make_group(is_admin=True)
         deps = _make_deps(
             groups={jid: group},
             last_agent_ts={jid: "old-ts"},
@@ -1052,7 +1052,7 @@ class TestBtwNonInterruptingMessages:
         """A regular message (no 'btw' prefix) while a task runs should
         kill the task and clear pending tasks."""
         jid = "group@g.us"
-        group = _make_group(is_god=True)
+        group = _make_group(is_admin=True)
         deps = _make_deps(
             groups={jid: group},
             last_agent_ts={jid: "old-ts"},
@@ -1088,7 +1088,7 @@ class TestBtwNonInterruptingMessages:
         since only 'btw ' (with trailing space) is the non-interrupting
         prefix."""
         jid = "group@g.us"
-        group = _make_group(is_god=True)
+        group = _make_group(is_admin=True)
         deps = _make_deps(
             groups={jid: group},
             last_agent_ts={jid: "old-ts"},
@@ -1123,7 +1123,7 @@ class TestBtwNonInterruptingMessages:
         """When multiple messages are pending, only the last one's content
         determines whether the batch is 'btw' (non-interrupting) or not."""
         jid = "group@g.us"
-        group = _make_group(is_god=True)
+        group = _make_group(is_admin=True)
         deps = _make_deps(
             groups={jid: group},
             last_agent_ts={jid: "old-ts"},
@@ -1175,7 +1175,7 @@ class TestBtwNonInterruptingMessages:
         should forward via IPC but not advance the cursor — the message
         is queued for reprocessing after the agent's turn ends."""
         jid = "group@g.us"
-        group = _make_group(is_god=True)
+        group = _make_group(is_admin=True)
         deps = _make_deps(
             groups={jid: group},
             last_agent_ts={jid: "old-ts"},
@@ -1216,7 +1216,7 @@ class TestBtwNonInterruptingMessages:
         """System notices alone shouldn't enqueue a message check when
         no container is active — the agent stays asleep."""
         jid = "group@g.us"
-        group = _make_group(is_god=True)
+        group = _make_group(is_admin=True)
         deps = _make_deps(
             groups={jid: group},
             last_agent_ts={jid: "old-ts"},
@@ -1257,7 +1257,7 @@ class TestBtwNonInterruptingMessages:
         """System notices SHOULD be forwarded when a container is already
         active — the agent is awake and should see the notice."""
         jid = "group@g.us"
-        group = _make_group(is_god=True)
+        group = _make_group(is_admin=True)
         deps = _make_deps(
             groups={jid: group},
             last_agent_ts={jid: "old-ts"},
@@ -1299,7 +1299,7 @@ class TestBtwNonInterruptingMessages:
         """A system notice mixed with a real user message should wake
         the agent normally."""
         jid = "group@g.us"
-        group = _make_group(is_god=True)
+        group = _make_group(is_admin=True)
         deps = _make_deps(
             groups={jid: group},
             last_agent_ts={jid: "old-ts"},
@@ -1346,7 +1346,7 @@ class TestBtwNonInterruptingMessages:
         """'btw ...' when no container is active at all should be routed
         normally — enqueued for a fresh container run."""
         jid = "group@g.us"
-        group = _make_group(is_god=True)
+        group = _make_group(is_admin=True)
         deps = _make_deps(
             groups={jid: group},
             last_agent_ts={jid: "old-ts"},

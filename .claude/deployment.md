@@ -47,7 +47,7 @@ Systemd unit template: `config-examples/pynchy.service.EXAMPLE`
 
 ## Container GitHub Access
 
-**God containers only.** `GH_TOKEN` is forwarded only to god containers. Non-god containers have git operations routed through host IPC and never receive the token.
+**Admin containers only.** `GH_TOKEN` is forwarded only to admin containers. Non-admin containers have git operations routed through host IPC and never receive the token.
 
 To set up GitHub auth on a new host:
 
@@ -61,7 +61,7 @@ ssh -t pynchy 'gh auth login -p ssh'
 ssh pynchy 'gh auth status'
 ```
 
-After authenticating, `_write_env_file()` auto-discovers `GH_TOKEN` and git identity on each god container launch. No manual env configuration needed.
+After authenticating, `_write_env_file()` auto-discovers `GH_TOKEN` and git identity on each admin container launch. No manual env configuration needed.
 
 ## MCP Server Containers
 

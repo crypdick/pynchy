@@ -320,7 +320,7 @@ async def process_group_messages(
     if reset_result is not None:
         return reset_result
 
-    is_god_group = group.is_god
+    is_admin_group = group.is_admin
     since_timestamp = deps.last_agent_timestamp.get(chat_jid, "")
     missed_messages = await get_messages_since(chat_jid, since_timestamp)
 
@@ -337,8 +337,8 @@ async def process_group_messages(
     if await intercept_special_command(deps, chat_jid, group, missed_messages[-1]):
         return True
 
-    # For non-god groups, check if trigger is required and present
-    if not is_god_group and group.requires_trigger is not False:
+    # For non-admin groups, check if trigger is required and present
+    if not is_admin_group and group.requires_trigger is not False:
         has_trigger = any(s.trigger_pattern.search(m.content.strip()) for m in missed_messages)
         if not has_trigger:
             return True
@@ -349,7 +349,7 @@ async def process_group_messages(
 
     # Check if we need to add dirty repo warning after context reset
     dirty_check_file = s.data_dir / "ipc" / group.folder / "needs_dirty_check.json"
-    reset_system_notices = _check_dirty_repo(group.name, dirty_check_file) if is_god_group else []
+    reset_system_notices = _check_dirty_repo(group.name, dirty_check_file) if is_admin_group else []
 
     # Advance cursor with automatic rollback on failure
     previous_cursor = await _advance_cursor(deps, chat_jid, missed_messages[-1].timestamp)
@@ -413,7 +413,7 @@ async def process_group_messages(
         )
         return False
 
-    # Merge worktree commits into main and push for all project_access groups
+    # Merge worktree commits into main and push for all pynchy_repo_access groups
     from pynchy.git_ops.worktree import background_merge_worktree
 
     background_merge_worktree(group)
@@ -456,8 +456,8 @@ async def start_message_loop(
                     if not group:
                         continue
 
-                    is_god_group = group.is_god
-                    needs_trigger = not is_god_group and group.requires_trigger is not False
+                    is_admin_group = group.is_admin
+                    needs_trigger = not is_admin_group and group.requires_trigger is not False
 
                     if needs_trigger:
                         last_content = group_messages[-1].content.strip()

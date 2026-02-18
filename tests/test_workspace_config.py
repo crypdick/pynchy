@@ -11,8 +11,8 @@ from conftest import make_settings
 from pynchy.config import WorkspaceConfig, WorkspaceDefaultsConfig
 from pynchy.workspace_config import (
     configure_plugin_workspaces,
-    get_project_access_folders,
-    has_project_access,
+    get_pynchy_repo_access_folders,
+    has_pynchy_repo_access,
     load_workspace_config,
 )
 
@@ -39,7 +39,7 @@ class TestLoadWorkspaceConfig:
 
     def test_applies_workspace_defaults(self):
         s = _settings_with_workspaces(
-            workspaces={"team": WorkspaceConfig(is_god=False)},
+            workspaces={"team": WorkspaceConfig(is_admin=False)},
             defaults=WorkspaceDefaultsConfig(requires_trigger=False, context_mode="isolated"),
         )
         with patch("pynchy.workspace_config.get_settings", return_value=s):
@@ -54,9 +54,9 @@ class TestLoadWorkspaceConfig:
         s = _settings_with_workspaces(
             workspaces={
                 "daily": WorkspaceConfig(
-                    is_god=True,
+                    is_admin=True,
                     requires_trigger=True,
-                    project_access=True,
+                    pynchy_repo_access=True,
                     name="Daily Agent",
                     schedule="0 9 * * *",
                     prompt="Run checks",
@@ -68,8 +68,8 @@ class TestLoadWorkspaceConfig:
             cfg = load_workspace_config("daily")
 
         assert cfg is not None
-        assert cfg.is_god is True
-        assert cfg.project_access is True
+        assert cfg.is_admin is True
+        assert cfg.pynchy_repo_access is True
         assert cfg.name == "Daily Agent"
         assert cfg.is_periodic is True
 
@@ -81,7 +81,7 @@ class TestLoadWorkspaceConfig:
                     {
                         "folder": "code-improver",
                         "config": {
-                            "project_access": True,
+                            "pynchy_repo_access": True,
                             "schedule": "0 4 * * *",
                             "prompt": "Improve code",
                             "context_mode": "isolated",
@@ -96,16 +96,16 @@ class TestLoadWorkspaceConfig:
             cfg = load_workspace_config("code-improver")
 
         assert cfg is not None
-        assert cfg.project_access is True
+        assert cfg.pynchy_repo_access is True
         assert cfg.is_periodic is True
 
 
 class TestWorkspaceConfigModel:
     def test_defaults(self):
         cfg = WorkspaceConfig()
-        assert cfg.is_god is False
+        assert cfg.is_admin is False
         assert cfg.requires_trigger is None
-        assert cfg.project_access is False
+        assert cfg.pynchy_repo_access is False
         assert cfg.context_mode is None
         assert cfg.is_periodic is False
 
@@ -115,44 +115,44 @@ class TestWorkspaceConfigModel:
 
 
 class TestHasProjectAccess:
-    def test_god_always_true(self):
+    def test_admin_always_true(self):
         @dataclass
         class FakeGroup:
-            is_god: bool = True
+            is_admin: bool = True
             folder: str = "god"
 
-        assert has_project_access(FakeGroup()) is True
+        assert has_pynchy_repo_access(FakeGroup()) is True
 
-    def test_non_god_uses_workspace_setting(self):
+    def test_non_admin_uses_workspace_setting(self):
         @dataclass
         class FakeGroup:
-            is_god: bool = False
+            is_admin: bool = False
             folder: str = "dev"
 
-        s = _settings_with_workspaces(workspaces={"dev": WorkspaceConfig(project_access=True)})
+        s = _settings_with_workspaces(workspaces={"dev": WorkspaceConfig(pynchy_repo_access=True)})
         with patch("pynchy.workspace_config.get_settings", return_value=s):
-            assert has_project_access(FakeGroup()) is True
+            assert has_pynchy_repo_access(FakeGroup()) is True
 
 
 class TestGetProjectAccessFolders:
-    def test_includes_god_and_project_access(self):
+    def test_includes_admin_and_pynchy_repo_access(self):
         @dataclass
         class FakeProfile:
-            is_god: bool
+            is_admin: bool
             folder: str
 
         workspaces = {
-            "jid1": FakeProfile(is_god=True, folder="admin"),
-            "jid2": FakeProfile(is_god=False, folder="code-improver"),
-            "jid3": FakeProfile(is_god=False, folder="plain"),
+            "jid1": FakeProfile(is_admin=True, folder="admin"),
+            "jid2": FakeProfile(is_admin=False, folder="code-improver"),
+            "jid3": FakeProfile(is_admin=False, folder="plain"),
         }
         s = _settings_with_workspaces(
             workspaces={
-                "code-improver": WorkspaceConfig(project_access=True),
-                "plain": WorkspaceConfig(project_access=False),
+                "code-improver": WorkspaceConfig(pynchy_repo_access=True),
+                "plain": WorkspaceConfig(pynchy_repo_access=False),
             }
         )
         with patch("pynchy.workspace_config.get_settings", return_value=s):
-            result = get_project_access_folders(workspaces)
+            result = get_pynchy_repo_access_folders(workspaces)
 
         assert set(result) == {"admin", "code-improver"}

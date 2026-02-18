@@ -36,7 +36,7 @@ Zeroclaw's `ReliableProvider` wraps any provider with retry + exponential backof
 
 Zeroclaw has a single `SecurityPolicy` struct that owns autonomy levels, command allowlists, path validation, rate limiting, and risk classification. Every tool execution runs through `policy.check_command()`.
 
-**Pynchy today:** Security is effective but scattered — `mount_security.py` handles mount validation, workspace profiles have `project_access` levels, IPC handlers check authorization, and you have planned-but-not-started security hardening in the backlog. The logic works, but there's no single place to answer "what can this group do?"
+**Pynchy today:** Security is effective but scattered — `mount_security.py` handles mount validation, workspace profiles have `pynchy_repo_access` levels, IPC handlers check authorization, and you have planned-but-not-started security hardening in the backlog. The logic works, but there's no single place to answer "what can this group do?"
 
 **What to adopt:** A `SecurityPolicy` dataclass per workspace/group that consolidates the rules. Instead of checking mounts in one place and IPC authorization in another, the policy object is the single source of truth. This would also make the planned security profiles (`backlog/2-planning/security-hardening-1-profiles.md`) much easier to implement — each profile is just a named policy preset.
 

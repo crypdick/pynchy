@@ -1,6 +1,6 @@
 """Git worktree management for container isolation.
 
-Non-god groups with project_access get their own git worktree instead of
+Non-admin groups with pynchy_repo_access get their own git worktree instead of
 mounting the shared project root. Worktrees share the git object store
 (near-zero disk overhead) but have fully independent working trees and indexes.
 
@@ -201,9 +201,9 @@ def install_pre_commit_hooks() -> None:
 
 
 def reconcile_worktrees_at_startup(
-    project_access_folders: list[str] | None = None,
+    pynchy_repo_access_folders: list[str] | None = None,
 ) -> None:
-    """Ensure worktrees exist for all project_access groups, then rebase diverged branches.
+    """Ensure worktrees exist for all pynchy_repo_access groups, then rebase diverged branches.
 
     Called at startup before any containers launch. Creates missing worktrees
     so the git sync loop can notify all groups from boot, and rebases diverged
@@ -216,9 +216,9 @@ def reconcile_worktrees_at_startup(
     # Hooks live in the main .git/hooks/ (shared by all worktrees).
     install_pre_commit_hooks()
 
-    # Create missing worktrees for known project_access groups.
+    # Create missing worktrees for known pynchy_repo_access groups.
     # ensure_worktree's health check handles broken worktrees automatically.
-    for folder in project_access_folders or []:
+    for folder in pynchy_repo_access_folders or []:
         try:
             ensure_worktree(folder)
         except WorktreeError:
@@ -357,9 +357,9 @@ def merge_and_push_worktree(group_folder: str) -> None:
 
 
 def background_merge_worktree(group: object) -> None:
-    """Fire-and-forget worktree merge for groups with project access.
+    """Fire-and-forget worktree merge for groups with pynchy repo access.
 
-    Checks has_project_access, then runs merge_and_push_worktree in a
+    Checks has_pynchy_repo_access, then runs merge_and_push_worktree in a
     background thread. This is the single code path for all post-session
     worktree merges (message handler, session handler, IPC, scheduler).
 
@@ -369,9 +369,9 @@ def background_merge_worktree(group: object) -> None:
     import asyncio
 
     from pynchy.utils import create_background_task
-    from pynchy.workspace_config import has_project_access
+    from pynchy.workspace_config import has_pynchy_repo_access
 
-    if not has_project_access(group):  # type: ignore[arg-type]
+    if not has_pynchy_repo_access(group):  # type: ignore[arg-type]
         return
 
     folder: str = group.folder  # type: ignore[union-attr]

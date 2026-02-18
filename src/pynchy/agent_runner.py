@@ -59,7 +59,7 @@ async def run_agent(
     extra_system_notices: list[str] | None = None,
     *,
     is_scheduled_task: bool = False,
-    project_access_override: bool | None = None,
+    pynchy_repo_access_override: bool | None = None,
     input_source: str = "user",
 ) -> str:
     """Run the container agent for a group. Returns 'success' or 'error'.
@@ -70,17 +70,17 @@ async def run_agent(
 
     Args:
         is_scheduled_task: Whether this is a scheduled task run.
-        project_access_override: Explicit project_access flag; None = auto-detect.
+        pynchy_repo_access_override: Explicit pynchy_repo_access flag; None = auto-detect.
         input_source: Source label for input broadcasting
             ("user", "scheduled_task", "reset_handoff").
     """
-    from pynchy.workspace_config import has_project_access
+    from pynchy.workspace_config import has_pynchy_repo_access
 
-    is_god = group.is_god
-    if project_access_override is not None:
-        project_access = project_access_override
+    is_admin = group.is_admin
+    if pynchy_repo_access_override is not None:
+        pynchy_repo_access = pynchy_repo_access_override
     else:
-        project_access = has_project_access(group)
+        pynchy_repo_access = has_pynchy_repo_access(group)
     session_id = deps.sessions.get(group.folder)
 
     # Broadcast input messages to channels so the UI faithfully represents
@@ -89,10 +89,10 @@ async def run_agent(
 
     # Update snapshots for container to read
     tasks = await get_all_tasks()
-    host_jobs = await get_all_host_jobs() if is_god else []
+    host_jobs = await get_all_host_jobs() if is_admin else []
     write_tasks_snapshot(
         group.folder,
-        is_god,
+        is_admin,
         [t.to_snapshot_dict() for t in tasks],
         host_jobs=[j.to_snapshot_dict() for j in host_jobs],
     )
@@ -100,7 +100,7 @@ async def run_agent(
     available_groups = await deps.get_available_groups()
     write_groups_snapshot(
         group.folder,
-        is_god,
+        is_admin,
         available_groups,
         set(deps.workspaces.keys()),
     )
@@ -116,7 +116,7 @@ async def run_agent(
     # Build system notices for the LLM (SDK system messages, NOT host messages)
     # These are sent TO the LLM as context, distinct from operational host messages
     system_notices: list[str] = []
-    if is_god:
+    if is_admin:
         if is_repo_dirty():
             system_notices.append(
                 "There are uncommitted local changes. Run `git status` and `git diff` "
@@ -156,10 +156,10 @@ async def run_agent(
                 session_id=session_id,
                 group_folder=group.folder,
                 chat_jid=chat_jid,
-                is_god=is_god,
+                is_admin=is_admin,
                 system_notices=system_notices or None,
                 is_scheduled_task=is_scheduled_task,
-                project_access=project_access,
+                pynchy_repo_access=pynchy_repo_access,
                 agent_core_module=agent_core_module,
                 agent_core_class=agent_core_class,
             ),
