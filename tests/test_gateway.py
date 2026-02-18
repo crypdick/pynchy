@@ -152,9 +152,8 @@ class TestCollectYamlEnvRefs:
         cfg.write_text("api_key: os.environ/DOTENV_ONLY_TOKEN\n")
         monkeypatch.delenv("DOTENV_ONLY_TOKEN", raising=False)
 
-        dotenv = tmp_path / ".env"
-        dotenv.write_text("DOTENV_ONLY_TOKEN=from-dotenv\n")
-        monkeypatch.chdir(tmp_path)
+        # .env as sibling of config file — no CWD dependency
+        (tmp_path / ".env").write_text("DOTENV_ONLY_TOKEN=from-dotenv\n")
 
         result = LiteLLMGateway._collect_yaml_env_refs(cfg)
         assert ("DOTENV_ONLY_TOKEN", "from-dotenv") in result

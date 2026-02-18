@@ -208,8 +208,10 @@ class LiteLLMGateway:
         var_names = set(re.findall(r"os\.environ/(\w+)", text))
         var_names -= LiteLLMGateway._GATEWAY_MANAGED_VARS
 
-        # .env values as base, os.environ overrides
-        env: dict[str, str | None] = {**dotenv_values(), **os.environ}
+        # .env as sibling of the config file (= project root), os.environ overrides
+        dotenv_path = config_path.parent / ".env"
+        dotenv_vars = dotenv_values(dotenv_path) if dotenv_path.exists() else {}
+        env: dict[str, str | None] = {**dotenv_vars, **os.environ}
 
         resolved: list[tuple[str, str]] = []
         for name in sorted(var_names):
