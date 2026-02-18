@@ -236,10 +236,15 @@ class SessionManager:
         ``self._sessions`` is keyed by group folder. This helper joins with the
         group registry (keyed by JID) to produce a JID-keyed mapping suitable
         for the deploy continuation file.
+
+        Sessions that have been cleared (context reset) are excluded so deploy
+        continuations don't inject resume messages for wiped sessions.
         """
         folder_to_jid: dict[str, str] = {g.folder: jid for jid, g in groups.items()}
         result: dict[str, str] = {}
         for folder, session_id in self._sessions.items():
+            if folder in self._session_cleared:
+                continue
             jid = folder_to_jid.get(folder, "")
             if jid and session_id:
                 result[jid] = session_id

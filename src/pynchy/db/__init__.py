@@ -24,6 +24,7 @@ from pynchy.db.aliases import (
 )
 from pynchy.db.chats import (
     get_all_chats,
+    get_chat_cleared_at,
     get_last_group_sync,
     set_chat_cleared_at,
     set_last_group_sync,
@@ -85,6 +86,7 @@ __all__ = [
     "set_jid_alias",
     # chats
     "get_all_chats",
+    "get_chat_cleared_at",
     "get_last_group_sync",
     "set_chat_cleared_at",
     "set_last_group_sync",

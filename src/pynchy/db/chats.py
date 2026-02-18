@@ -14,6 +14,14 @@ async def set_chat_cleared_at(chat_jid: str, timestamp: str) -> None:
     await db.commit()
 
 
+async def get_chat_cleared_at(chat_jid: str) -> str | None:
+    """Return the cleared_at timestamp for a chat, or None if never cleared."""
+    db = _get_db()
+    cursor = await db.execute("SELECT cleared_at FROM chats WHERE jid = ?", (chat_jid,))
+    row = await cursor.fetchone()
+    return row["cleared_at"] if row and row["cleared_at"] else None
+
+
 async def store_chat_metadata(chat_jid: str, timestamp: str, name: str | None = None) -> None:
     """Store chat metadata only (no message content)."""
     db = _get_db()
