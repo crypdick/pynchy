@@ -451,21 +451,6 @@ class TestBuildCoreConfig:
         config = build_core_config(ci)
         assert config.mcp_servers["pynchy"]["env"]["PYNCHY_IS_SCHEDULED_TASK"] == "1"
 
-    def test_plugin_mcp_servers_merged(self):
-        ci = self._make_input(
-            plugin_mcp_servers={
-                "my-plugin": {
-                    "command": "node",
-                    "args": ["server.js"],
-                    "env": {"FOO": "bar"},
-                }
-            }
-        )
-        config = build_core_config(ci)
-        assert "my-plugin" in config.mcp_servers
-        assert config.mcp_servers["my-plugin"]["command"] == "node"
-        assert "PYTHONPATH" in config.mcp_servers["my-plugin"]["env"]
-
     def test_system_notices_appended(self):
         ci = self._make_input(
             is_admin=False,

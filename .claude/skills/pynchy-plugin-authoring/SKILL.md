@@ -49,7 +49,7 @@ Plugin Authoring Checklist
 ## Hook Map
 
 - `pynchy_create_channel`: Host-side channel instance
-- `pynchy_mcp_server_spec`: Container MCP server spec
+- `pynchy_service_handler`: Host-side service tool handlers (IPC dispatch)
 - `pynchy_skill_paths`: Skill directories mounted into container
 - `pynchy_agent_core_info`: Agent core implementation metadata
 - `pynchy_container_runtime`: Host container runtime provider

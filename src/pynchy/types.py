@@ -252,7 +252,6 @@ class ContainerInput:
     is_admin: bool
     session_id: str | None = None
     is_scheduled_task: bool = False
-    plugin_mcp_servers: dict[str, dict] | None = None
     system_notices: list[str] | None = None
     pynchy_repo_access: bool = False
     agent_core_module: str = "agent_runner.cores.claude"  # Module path for agent core
@@ -317,6 +316,17 @@ class Channel(Protocol):
     def owns_jid(self, jid: str) -> bool: ...
 
     async def disconnect(self) -> None: ...
+
+    async def fetch_inbound_since(
+        self, channel_jid: str, since: str
+    ) -> list[NewMessage]:
+        """Fetch messages from channel API newer than ``since``.
+
+        Channels without server-side history (e.g. TUI, WhatsApp) return [].
+        The reconciler resolves JIDs before calling — ``channel_jid`` is
+        channel-native (e.g. ``slack:C123``).
+        """
+        ...
 
     # Optional: typing indicator. Channels that support it implement it.
     # set_typing is NOT part of the protocol — check with hasattr at call sites.

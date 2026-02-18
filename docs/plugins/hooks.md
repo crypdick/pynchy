@@ -38,36 +38,6 @@ def pynchy_agent_core_info(self) -> dict[str, str | list[str] | None]:
 | `packages` | `list[str]` | pip packages to install in container |
 | `host_source_path` | `str \| None` | Host path to mount into container at `/workspace/plugins/{name}/` |
 
-## pynchy_mcp_server_spec
-
-Provide tools to the agent via an MCP server that runs inside the container.
-
-**Calling strategy:** All results collected (agents can use tools from all MCP servers).
-
-```python
-@hookimpl
-def pynchy_mcp_server_spec(self) -> dict[str, Any]:
-    return {
-        "name": "weather",                             # Server identifier
-        "command": "python",                           # Command to run in container
-        "args": ["-m", "pynchy_plugin_weather.server"],# Command arguments
-        "env": {"WEATHER_API_KEY": "..."},             # Environment variables
-        "host_source": str(Path(__file__).parent),     # Source to mount, or None
-    }
-```
-
-**Return keys:**
-
-| Key | Type | Description |
-|-----|------|-------------|
-| `name` | `str` | Unique server identifier |
-| `command` | `str` | Command to execute (e.g., `"python"`, `"node"`) |
-| `args` | `list[str]` | Command arguments |
-| `env` | `dict[str, str]` | Extra environment variables |
-| `host_source` | `str \| None` | Host path to mount (sets `PYTHONPATH` automatically) |
-
-**Container behavior:** Plugin source is mounted at `/workspace/plugins/{name}/` with `PYTHONPATH` set so the module is importable.
-
 ## pynchy_service_handler
 
 Provide host-side handlers for service tools. This hook provides handler functions that run on the **host process** and are dispatched to via IPC when container agents invoke service tools.
@@ -339,22 +309,21 @@ def pynchy_workspace_spec(self) -> dict[str, Any]:
 A single plugin can implement multiple hooks:
 
 ```python
-class VoicePlugin:
-    """Provides voice tools AND voice interaction skills."""
+class CalendarPlugin:
+    """Provides calendar service handlers AND calendar skills."""
 
     @hookimpl
-    def pynchy_mcp_server_spec(self) -> dict:
+    def pynchy_service_handler(self) -> dict:
         return {
-            "name": "voice",
-            "command": "python",
-            "args": ["-m", "pynchy_plugin_voice.server"],
-            "env": {},
-            "host_source": str(Path(__file__).parent),
+            "tools": {
+                "list_calendar": _handle_list_calendar,
+                "create_event": _handle_create_event,
+            },
         }
 
     @hookimpl
     def pynchy_skill_paths(self) -> list[str]:
-        return [str(Path(__file__).parent / "skills" / "voice")]
+        return [str(Path(__file__).parent / "skills" / "calendar")]
 ```
 
 No categories attribute needed — pluggy determines capabilities from which hooks the class implements.

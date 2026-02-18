@@ -9,7 +9,6 @@ Plugins come as regular Python packages, discovered automatically at startup. In
 | Category | Hook | What it provides | Runs where |
 |----------|------|-----------------|------------|
 | **Agent Core** | `pynchy_agent_core_info()` | LLM framework (Claude SDK, OpenAI, Ollama) | Container |
-| **MCP Server** | `pynchy_mcp_server_spec()` | Tools for the agent via Model Context Protocol | Container |
 | **Service Handler** | `pynchy_service_handler()` | Host-side service tool handlers dispatched via IPC | Host |
 | **Skill** | `pynchy_skill_paths()` | Agent instructions and capabilities (markdown) | Container |
 | **Channel** | `pynchy_create_channel()` | Communication platform (Telegram, Slack, Discord) | Host |
@@ -49,7 +48,6 @@ All plugin Python code runs on the **host** during discovery. See [Security Mode
 | **Observer** | Host-side event subscriber, writes to DB or external services | High |
 | **Workspace** | Host-side config only — agent runs in container | Medium |
 | **Skill** | Partial — `skill_paths()` on host, content in container | Medium |
-| **MCP Server** | Mostly sandboxed — spec on host, server in container | Lower |
 
 ## Next Steps
 

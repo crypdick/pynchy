@@ -111,27 +111,6 @@ def _build_volume_mounts(
                 )
             )
 
-    # Plugin MCP server source mounts
-    if plugin_manager:
-        mcp_specs_list = plugin_manager.hook.pynchy_mcp_server_spec()
-        for spec in mcp_specs_list:
-            try:
-                if spec.get("host_source"):
-                    # Mount plugin source to /workspace/plugins/{name}/
-                    mounts.append(
-                        VolumeMount(
-                            host_path=str(spec["host_source"]),
-                            container_path=f"/workspace/plugins/{spec['name']}",
-                            readonly=True,
-                        )
-                    )
-            except Exception:
-                logger.exception(
-                    "Failed to mount plugin MCP source",
-                    plugin_name=spec.get("name", "unknown"),
-                    host_source=str(spec.get("host_source", "")),
-                )
-
     return mounts
 
 

@@ -42,7 +42,6 @@ class TestPluginManager:
 
         # Verify all hooks are available
         assert hasattr(pm.hook, "pynchy_agent_core_info")
-        assert hasattr(pm.hook, "pynchy_mcp_server_spec")
         assert hasattr(pm.hook, "pynchy_skill_paths")
         assert hasattr(pm.hook, "pynchy_create_channel")
         assert hasattr(pm.hook, "pynchy_workspace_spec")
@@ -108,30 +107,6 @@ class TestCustomPluginRegistration:
 
         assert custom_core is not None
         assert custom_core["module"] == "custom.core"
-
-    def test_register_mcp_plugin(self):
-        """Register a custom MCP server plugin."""
-        hookimpl = pluggy.HookimplMarker("pynchy")
-
-        class CustomMcpPlugin:
-            @hookimpl
-            def pynchy_mcp_server_spec(self):
-                return {
-                    "name": "custom-mcp",
-                    "command": "python",
-                    "args": ["-m", "custom.mcp"],
-                    "env": {},
-                    "host_source": None,
-                }
-
-        pm = get_plugin_manager()
-        pm.register(CustomMcpPlugin(), name="custom-mcp-plugin")
-
-        specs = pm.hook.pynchy_mcp_server_spec()
-        custom_spec = next((s for s in specs if s["name"] == "custom-mcp"), None)
-
-        assert custom_spec is not None
-        assert custom_spec["command"] == "python"
 
     def test_register_skill_plugin(self):
         """Register a custom skill plugin."""
@@ -233,14 +208,11 @@ class TestHookCalling:
         """Hook with no implementations returns empty list."""
         pm = get_plugin_manager()
 
-        # MCP and skill hooks have no built-in implementations
-        mcp_specs = pm.hook.pynchy_mcp_server_spec()
+        # Skill hook has no built-in implementations
         skill_paths = pm.hook.pynchy_skill_paths()
 
-        assert isinstance(mcp_specs, list)
         assert isinstance(skill_paths, list)
-        # They should be empty if no plugins provide them
-        assert len(mcp_specs) == 0
+        # Should be empty if no plugins provide them
         assert len(skill_paths) == 0
 
     def test_plugin_blocking(self):
@@ -302,12 +274,10 @@ class TestPluginErrors:
 
         # These hooks have no built-in implementations
         # but should still be callable without errors
-        mcp_specs = pm.hook.pynchy_mcp_server_spec()
         skill_paths = pm.hook.pynchy_skill_paths()
         channels = pm.hook.pynchy_create_channel(context=None)
         workspace_specs = pm.hook.pynchy_workspace_spec()
 
-        assert mcp_specs == []
         assert skill_paths == []
         assert channels == []
         assert workspace_specs == []

@@ -24,8 +24,6 @@ def _input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
         d["session_id"] = input_data.session_id
     if input_data.is_scheduled_task:
         d["is_scheduled_task"] = True
-    if input_data.plugin_mcp_servers is not None:
-        d["plugin_mcp_servers"] = input_data.plugin_mcp_servers
     if input_data.system_notices:
         d["system_notices"] = input_data.system_notices
     if input_data.pynchy_repo_access:
