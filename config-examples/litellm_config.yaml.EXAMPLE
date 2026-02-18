@@ -6,7 +6,7 @@
 #
 # How env vars work:
 #   1. Reference API keys with os.environ/VARNAME in this file.
-#   2. Set the matching vars in .env (e.g. PYNCHY_ANTHROPIC_TOKEN=sk-ant-...).
+#   2. Set the matching vars in .env (e.g. ANTHROPIC_TOKEN_EMPLOYEE1=sk-ant-...).
 #   3. At startup pynchy scans this file, finds all os.environ/ references,
 #      looks them up on the host, and forwards them into the Docker container.
 #
@@ -28,40 +28,40 @@
 # Multiple entries with the same model_name are load-balanced automatically.
 
 model_list:
-  # --- Anthropic (auto-discovered token) ---
+  # --- Anthropic (primary account) ---
   - model_name: "anthropic/*"
     litellm_params:
       model: "anthropic/*"
-      api_key: os.environ/PYNCHY_ANTHROPIC_TOKEN
+      api_key: os.environ/ANTHROPIC_TOKEN_EMPLOYEE1
       budget_duration: 7d
       custom_llm_provider: anthropic
     model_info:
-      id: anthropic-primary
-      tags: ["primary"]
+      id: anthropic-employee1
+      tags: ["mycompany"]
 
   # --- Anthropic (secondary account, for load balancing) ---
-  # Set PYNCHY_ANTHROPIC_TOKEN_SECONDARY in .env to enable:
+  # Set ANTHROPIC_TOKEN_EMPLOYEE2 in .env to enable:
   - model_name: "anthropic/*"
     litellm_params:
       model: "anthropic/*"
-      api_key: os.environ/PYNCHY_ANTHROPIC_TOKEN_SECONDARY
+      api_key: os.environ/ANTHROPIC_TOKEN_EMPLOYEE2
       max_budget: 50.0  # USD
       budget_duration: 7d
       custom_llm_provider: anthropic
     model_info:
-      id: anthropic-secondary
-      tags: ["secondary"]
+      id: anthropic-employee2
+      tags: ["mycompany"]
 
   # --- OpenAI ---
   # - model_name: "openai/*"
   #   litellm_params:
   #     model: "openai/*"
-  #     api_key: os.environ/OPENAI_API_KEY
+  #     api_key: os.environ/OPENAI_KEY_EMPLOYEE1
   #     budget_duration: 7d
   #     custom_llm_provider: openai
   #   model_info:
-  #     id: openai-primary
-  #     tags: ["primary"]
+  #     id: openai-employee1
+  #     tags: ["mycompany"]
 
 # ---------------------------------------------------------------------------
 # Router settings
