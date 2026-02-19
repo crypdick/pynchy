@@ -24,6 +24,7 @@ from pynchy.container_runner._docker import (
     ensure_network,
     is_container_running,
     run_docker,
+    wait_healthy,
 )
 from pynchy.logger import logger
 
@@ -207,7 +208,11 @@ class McpManager:
         # Health-check via localhost (host-side), not the Docker-internal name
         health_url = f"http://localhost:{port}" if port else instance.endpoint_url
         try:
-            await self._wait_mcp_healthy(instance.container_name, health_url)
+            await wait_healthy(
+                instance.container_name,
+                health_url,
+                any_non_5xx=True,
+            )
         except (TimeoutError, RuntimeError):
             logger.error(
                 "MCP container failed health check",
@@ -645,44 +650,6 @@ class McpManager:
     # ------------------------------------------------------------------
     # Internal: Docker health check
     # ------------------------------------------------------------------
-
-    @staticmethod
-    async def _wait_mcp_healthy(
-        container_name: str,
-        endpoint_url: str,
-        timeout: float = 60,
-        poll_interval: float = 1.0,
-    ) -> None:
-        """Wait for an MCP container to respond to HTTP requests."""
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + timeout
-
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=5),
-        ) as session:
-            while loop.time() < deadline:
-                try:
-                    async with session.get(endpoint_url) as resp:
-                        # MCP servers might return various success codes
-                        if resp.status < 500:
-                            return
-                except (aiohttp.ClientError, OSError):
-                    pass
-
-                if not is_container_running(container_name):
-                    logs = run_docker("logs", "--tail", "30", container_name, check=False)
-                    logger.error(
-                        "MCP container exited",
-                        container=container_name,
-                        logs=logs.stdout[-2000:],
-                    )
-                    msg = f"MCP container {container_name} failed to start"
-                    raise RuntimeError(msg)
-
-                await asyncio.sleep(poll_interval)
-
-        msg = f"MCP container {container_name} not healthy within {timeout}s"
-        raise TimeoutError(msg)
 
     # ------------------------------------------------------------------
     # Internal: image warm-up
