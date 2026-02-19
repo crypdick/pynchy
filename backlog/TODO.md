@@ -18,6 +18,7 @@ Single source of truth for all pynchy work items.
 
 - convert setup into pyinfra deployments for repeatable deployments.
 - **Deputy agent for worktree contributions** — Ephemeral agent that inspects commits from worktrees before they enter main. Reviews for malicious code, security issues, and project conventions. Spawned by `host_sync_worktree()` before the merge step.
+- **Repo-scoped tokens for non-admin workspaces** — `ensure_repo_cloned()` (`repo.py:64`) uses bare `https://github.com/{slug}` with no auth — private repos fail. Non-admin workspaces with `repo_access` should automatically get repo-scoped GitHub tokens (e.g. fine-grained PATs or deploy keys scoped to that single repo) instead of the host's broad `gh_token`.
 
 ### 1 - Approved
 *Approved ideas. No plan yet.*
@@ -71,7 +72,7 @@ Single source of truth for all pynchy work items.
 - make the code improver plugin able to update the plugin repos as well as the core pynchy repo.
 
 #### Bugs
-- [Slack shutdown race (recurrence)](3-ready/slack-shutdown-race.md) — `RuntimeError: Executor shutdown` during service restart. Commit `76065e0` cancels `_reconnect_task` in `disconnect()`, but orphaned aiohttp subtasks spawned by `connect()` still crash when the executor tears down. Needs deeper fix in `slack.py` reconnect path.
+- [Slack shutdown race (recurrence)](3-ready/slack-shutdown-race.md) — `RuntimeError: Executor shutdown` during service restart. Commit `76065e0` cancels `_reconnect_task` in `disconnect()`, but orphaned aiohttp subtasks spawned by `connect()` still crash when the executor tears down. Follow-up commit `730e2a7` (guard reconnect against shutdown race) didn't fully resolve it either. Downstream: `Failed to resolve bot user ID (mention stripping disabled)` during reconnect. Needs deeper fix in `slack.py` reconnect path.
 - messaging desync — sometimes no response appears in TUI until a follow-up message is sent. Partially fixed (cursor advance bug, input pipeline unification), but full fix likely depends on per-channel bidirectional cursors (see [reliable-channel-messaging](2-planning/reliable-channel-messaging.md)).
 
 #### Docs updates
