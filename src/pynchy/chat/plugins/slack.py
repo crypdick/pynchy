@@ -65,6 +65,7 @@ class SlackChannel:
         self._app: Any = None
         self._handler: Any = None
         self._handler_task: asyncio.Task[None] | None = None
+        self._reconnect_task: asyncio.Task[None] | None = None
         self._bot_user_id: str = ""
         # Dedup: track recent Slack ts values to avoid processing both
         # message + app_mention events for the same user message.
@@ -119,6 +120,9 @@ class SlackChannel:
 
     async def disconnect(self) -> None:
         self._connected = False
+        if self._reconnect_task and not self._reconnect_task.done():
+            self._reconnect_task.cancel()
+            self._reconnect_task = None
         if self._handler:
             with contextlib.suppress(Exception):
                 await self._handler.close_async()
@@ -153,7 +157,9 @@ class SlackChannel:
             exc=str(exc) if exc else "cancelled",
         )
         self._connected = False
-        task.get_loop().create_task(self._reconnect_with_backoff(), name="slack-reconnect")
+        self._reconnect_task = task.get_loop().create_task(
+            self._reconnect_with_backoff(), name="slack-reconnect"
+        )
 
     async def _reconnect_with_backoff(self, delay: float = 5.0) -> None:
         """Reconnect with exponential backoff, capped at 5 minutes."""
@@ -163,11 +169,12 @@ class SlackChannel:
             self._handler = None
             self._handler_task = None
             await self.connect()
+            self._reconnect_task = None
         except Exception as exc:
             logger.warning("Slack reconnect failed, will retry", delay=delay, exc=str(exc))
             self._connected = False
             next_delay = min(delay * 2, 300)
-            asyncio.create_task(
+            self._reconnect_task = asyncio.create_task(
                 self._reconnect_with_backoff(next_delay), name="slack-reconnect"
             )
 
