@@ -12,7 +12,7 @@ Everything else should be contributed as **plugins**. This keeps the base system
 
 Pynchy stays minimal by design. If you want to add Telegram support, don't create a PR that adds Telegram alongside WhatsApp. Instead, contribute a plugin.
 
-See the [Plugin Authoring Guide](plugins/index.md) for how to create, package, and distribute plugins.
+See the [Plugin Authoring Guide](../plugins/index.md) for how to create, package, and distribute plugins.
 
 ## Development
 
