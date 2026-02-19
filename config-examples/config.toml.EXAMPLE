@@ -29,9 +29,9 @@
 # Secrets (API keys, tokens, passwords) belong in .env, not here.
 # See config-examples/.env.EXAMPLE for the template.
 #
-# Claude OAuth tokens are auto-discovered from ~/.claude/.credentials.json.
-# Run `claude setup-token` to generate a long-lived token (~1 year).
-# No config needed — pynchy reads it automatically and injects it into LiteLLM.
+# For Claude Code OAuth, run `claude setup-token` to generate a long-lived
+# token (~1 year). Add it to .env as CLAUDE_OAUTH_TOKEN and reference it in
+# litellm_config.yaml via os.environ/CLAUDE_OAUTH_TOKEN.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Container Configuration
@@ -73,8 +73,8 @@
 
 [gateway]
 # Path to LiteLLM config file (enables LiteLLM mode)
-# Pynchy auto-discovers the Anthropic token and injects it as
-# PYNCHY_ANTHROPIC_TOKEN into the LiteLLM container.
+# API keys and OAuth tokens are referenced via os.environ/ in the YAML
+# and set in .env — pynchy forwards them into the LiteLLM container.
 # See config-examples/litellm_config.yaml.EXAMPLE.
 # If not set, uses builtin mode with credentials from [secrets].
 # litellm_config = "litellm_config.yaml"

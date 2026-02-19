@@ -244,7 +244,7 @@ EOF
 chmod 600 ~/.claude/.credentials.json
 ```
 
-Pynchy auto-discovers this token at startup and injects it into the LiteLLM container as `PYNCHY_ANTHROPIC_TOKEN` — no config.toml changes needed.
+To route LLM requests through the LiteLLM gateway using this token, add it to `.env` as `CLAUDE_OAUTH_TOKEN=sk-ant-oat01-YOUR_TOKEN_HERE` and reference it in `litellm_config.yaml` (see `config-examples/litellm_config.yaml.EXAMPLE` for the OAuth entry). LiteLLM auto-detects the `sk-ant-oat*` prefix and handles auth headers.
 
 **API key (pay-as-you-go):** Get a key from [console.anthropic.com](https://console.anthropic.com), then set it in `config.toml`:
 

@@ -59,6 +59,19 @@ model_list:
       id: anthropic-employee2
       tags: ["mycompany"]
 
+  # --- Anthropic (OAuth token from `claude setup-token`) ---
+  # OAuth tokens (sk-ant-oat01-...) work as api_key values — LiteLLM
+  # auto-detects the prefix and adds the required beta header.
+  # Set CLAUDE_OAUTH_TOKEN in .env to enable.
+  # - model_name: "anthropic/*"
+  #   litellm_params:
+  #     model: "anthropic/*"
+  #     api_key: os.environ/CLAUDE_OAUTH_TOKEN
+  #     custom_llm_provider: anthropic
+  #   model_info:
+  #     id: anthropic-oauth
+  #     tags: ["mycompany"]
+
   # --- OpenAI ---
   # - model_name: "openai/*"
   #   litellm_params:
