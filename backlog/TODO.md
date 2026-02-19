@@ -18,7 +18,7 @@ Single source of truth for all pynchy work items.
 
 - convert setup into pyinfra deployments for repeatable deployments.
 - **Deputy agent for worktree contributions** — Ephemeral agent that inspects commits from worktrees before they enter main. Reviews for malicious code, security issues, and project conventions. Spawned by `host_sync_worktree()` before the merge step.
-- **Repo-scoped tokens for non-admin workspaces** — `ensure_repo_cloned()` (`repo.py:64`) uses bare `https://github.com/{slug}` with no auth — private repos fail. Non-admin workspaces with `repo_access` should automatically get repo-scoped GitHub tokens (e.g. fine-grained PATs or deploy keys scoped to that single repo) instead of the host's broad `gh_token`.
+- **Automated repo token refresh via GitHub App** — Replace manually-created fine-grained PATs with a GitHub App that auto-generates short-lived, repo-scoped installation tokens. Eliminates manual rotation. Depends on [repo-scoped tokens](2-planning/repo-scoped-tokens.md) (Phase 1).
 
 ### 1 - Approved
 *Approved ideas. No plan yet.*
@@ -62,6 +62,7 @@ Single source of truth for all pynchy work items.
   - [Security Step 6: Approval](2-planning/security-hardening-6-approval.md) — Human approval gate for high-risk actions
   - [Security Step 7: Input Filter](2-planning/security-hardening-7-input-filter.md) — Deputy Agent for prompt injection detection (optional)
 - [Reliable bidirectional channel messaging](2-planning/reliable-channel-messaging.md) — Per-channel bidirectional cursors, standardized `Reconcilable` protocol on all channels, outbound ledger with retry, atomic cursor persistence
+- [Repo-scoped tokens for non-admin workspaces](2-planning/repo-scoped-tokens.md) — Per-repo fine-grained PATs injected into non-admin containers, fixing private repo cloning and limiting blast radius to one repo per workspace. Note: [workspace git policies](5-completed/workspace-git-policies.md) is already implemented using ambient credentials; repo-scoped tokens will harden the PR workflow's push/`gh` auth.
 
 ### 3 - Ready
 *Plan approved or not needed. Ready for an agent to pick up.*

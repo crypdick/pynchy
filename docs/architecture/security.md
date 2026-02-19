@@ -108,7 +108,7 @@ OPENAI_API_KEY=gw-<random>
 
 | Credential | Admin | Non-Admin | Rationale |
 |-----------|-----|---------|-----------|
-| `GH_TOKEN` | Yes | **No** | Non-admin containers have git push/pull blocked by the guard script and routed through host IPC. They never need direct GitHub access. |
+| `GH_TOKEN` | Yes | **No** (planned: repo-scoped) | Non-admin containers have git push/pull blocked by the guard script and routed through host IPC. Future: repo-scoped tokens will inject per-repo fine-grained PATs. |
 | `GIT_AUTHOR_NAME` | Yes | Yes | Needed for git commits in worktrees |
 | `GIT_COMMITTER_NAME` | Yes | Yes | |
 | `GIT_AUTHOR_EMAIL` | Yes | Yes | |
