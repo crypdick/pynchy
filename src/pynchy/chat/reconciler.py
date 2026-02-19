@@ -23,7 +23,7 @@ from pynchy.logger import logger
 if TYPE_CHECKING:
     from pynchy.types import Channel, NewMessage, WorkspaceProfile
 
-RECONCILE_COOLDOWN = timedelta(minutes=5)
+RECONCILE_COOLDOWN = timedelta(seconds=90)
 _EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
 
 # Module-level cooldown state (survives across calls within a process)
@@ -97,9 +97,7 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
 
             # --- Outbound retry ---
             pending = await get_pending_outbound(ch.name, canonical_jid)
-            new_outbound_cursor = await get_channel_cursor(
-                ch.name, canonical_jid, "outbound"
-            )
+            new_outbound_cursor = await get_channel_cursor(ch.name, canonical_jid, "outbound")
             for row in pending:
                 try:
                     await ch.send_message(target_jid, row.content)
