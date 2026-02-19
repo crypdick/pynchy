@@ -50,7 +50,6 @@ async def advance_cursors_atomic(
     """Atomically advance inbound and/or outbound cursors in one transaction."""
     db = _get_db()
     now = datetime.now(UTC).isoformat()
-    await db.execute("BEGIN")
     try:
         for direction, value in [("inbound", inbound), ("outbound", outbound)]:
             if value:

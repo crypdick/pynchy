@@ -116,7 +116,6 @@ class PynchyApp:
         from pynchy.db import _get_db
 
         db = _get_db()
-        await db.execute("BEGIN")
         try:
             await db.execute(
                 "INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)",
