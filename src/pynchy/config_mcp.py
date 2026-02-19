@@ -30,6 +30,8 @@ from pydantic import BaseModel, model_validator
 class McpServerConfig(BaseModel):
     """Global MCP server definition."""
 
+    model_config = {"extra": "forbid"}
+
     type: Literal["docker", "url"]
 
     # Docker fields

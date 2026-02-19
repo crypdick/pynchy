@@ -1,6 +1,10 @@
 # ============================================================================
-# Pynchy Configuration
+# Pynchy Configuration — EXAMPLE
 # ============================================================================
+# NOTE: This is a reference example checked into the repo. The live config
+# is on pynchy-server (reachable via Tailscale):
+#   ssh pynchy-server cat ~/src/PERSONAL/pynchy/config.toml
+#
 # Copy this file to config.toml and configure for your setup:
 #   cp config-examples/config.toml.EXAMPLE config.toml
 #
@@ -163,10 +167,12 @@
 [workspaces.admin]
 is_admin = true
 requires_trigger = false
+# repo_access = "owner/repo"  # GitHub slug from [repos.*]; grants /workspace/project mount
 
 [workspaces.mr-pynchy]
 is_admin = true
 requires_trigger = false
+# repo_access = "owner/repo"
 
 # Example workspace with MCP access and per-MCP kwargs:
 # [workspaces.research]
