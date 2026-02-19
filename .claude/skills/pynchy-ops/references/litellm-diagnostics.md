@@ -85,6 +85,7 @@ docker logs pynchy-litellm --since 30m 2>&1 | tail -100
 | `BaseLLMException` + "OAuth token has expired" | Token expired between refreshes | Transient; retries handle it. If persistent, run `claude setup-token` on server |
 | `BaseLLMException` + "x-api-key header is required" | Auth header missing during key rotation | Transient; resolves on retry |
 | `BaseLLMException` + "invalid x-api-key" | Invalid/placeholder key or stale key after rotation | Check .env; if placeholder, pynchy should filter it at startup |
+| `BaseLLMException` + "missing anthropic-beta header" | OAuth token used but LiteLLM too old for server-side OAuth | Upgrade LiteLLM to a build including PR #21039 (server-side OAuth detection) |
 
 ## Failover & cooldown
 

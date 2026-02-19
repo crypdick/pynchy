@@ -37,14 +37,15 @@ into the Docker container via ``-e``.  The YAML is the single source of
 truth — add model entries there, set the corresponding vars in ``.env``,
 and pynchy picks them up automatically.
 
-OAuth gotcha
+OAuth tokens
 ~~~~~~~~~~~~
 
-The Anthropic Messages API does **not** accept OAuth tokens
-(``sk-ant-oat01-…``) via ``Authorization: Bearer`` unless the request
-also carries the beta header ``anthropic-beta: oauth-2025-04-20``.
-Builtin mode handles this automatically.  In LiteLLM mode, use
-``extra_headers`` in the litellm config to add the beta header.
+Anthropic OAuth tokens (``sk-ant-oat01-…``) work as ``api_key`` values
+in ``litellm_config.yaml``.  LiteLLM detects the ``sk-ant-oat*`` prefix
+and automatically uses ``Authorization: Bearer`` with the required
+``anthropic-beta: oauth-2025-04-20`` header (server-side, since PR #21039).
+No ``extra_headers`` needed.  Builtin mode also handles OAuth tokens
+automatically.
 """
 
 from __future__ import annotations

@@ -164,8 +164,8 @@ class TestCollectYamlEnvRefs:
     ):
         """Verify start() forwards env vars from YAML into docker run."""
         cfg = tmp_path / "litellm_config.yaml"
-        cfg.write_text("api_key: os.environ/PYNCHY_ANTHROPIC_TOKEN\n")
-        monkeypatch.setenv("PYNCHY_ANTHROPIC_TOKEN", "sk-ant-oat01-discovered")
+        cfg.write_text("api_key: os.environ/CLAUDE_OAUTH_TOKEN\n")
+        monkeypatch.setenv("CLAUDE_OAUTH_TOKEN", "sk-ant-oat01-discovered")
 
         gw = LiteLLMGateway(config_path=str(cfg), data_dir=tmp_path, **_LITELLM_KWARGS)
 
@@ -191,7 +191,7 @@ class TestCollectYamlEnvRefs:
 
         litellm_run = " ".join(next(c for c in calls if "LITELLM_MASTER_KEY" in " ".join(c)))
         assert (
-            "PYNCHY_ANTHROPIC_TOKEN=sk-ant-oat01-discovered"  # pragma: allowlist secret
+            "CLAUDE_OAUTH_TOKEN=sk-ant-oat01-discovered"  # pragma: allowlist secret
             in litellm_run
         )
 
