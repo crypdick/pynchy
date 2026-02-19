@@ -61,7 +61,7 @@ class ContainerConfig(_StrictModel):
     timeout_ms: int = 1800000  # 30 minutes
     max_output_size: int = 10485760  # 10MB
     idle_timeout_ms: int = 1800000  # 30 minutes
-    max_concurrent: int = 5
+    max_concurrent: int = 10
     runtime: str | None = None  # "docker" | plugin runtime name (e.g. "apple") | None
 
     @field_validator("max_concurrent")
@@ -180,7 +180,9 @@ class WorkspaceSecurityConfig(_StrictModel):
 class RepoConfig(_StrictModel):
     """Config for a single tracked git repo under [repos."owner/repo"]."""
 
-    path: str | None = None  # relative to project root or absolute; None = auto-clone to data/repos/
+    path: str | None = (
+        None  # relative to project root or absolute; None = auto-clone to data/repos/
+    )
 
     @field_validator("path")
     @classmethod
