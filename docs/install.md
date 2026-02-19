@@ -304,7 +304,31 @@ uv run pynchy --tui --host your-server:8484
 
 Replace `your-server` with the Tailscale hostname of your server (visible in `tailscale status`).
 
-### 8. Deploying Updates
+### 8. Daily Maintenance (recommended, Linux only)
+
+Set up automatic security updates and a daily reboot to clear zombie processes and keep the server fresh. Pynchy auto-starts on boot.
+
+**Automatic security updates** — `unattended-upgrades` is usually pre-installed on Ubuntu. Configure it to apply updates daily and reboot when kernel updates are pending:
+
+```bash
+sudo cp config-examples/20auto-upgrades.EXAMPLE       /etc/apt/apt.conf.d/20auto-upgrades
+sudo cp config-examples/50unattended-upgrades.EXAMPLE  /etc/apt/apt.conf.d/50unattended-upgrades
+```
+
+**Daily reboot + Docker cleanup** — a systemd timer that prunes Docker resources older than 48 hours, then reboots the machine:
+
+```bash
+sudo cp config-examples/pynchy-maintenance.service /etc/systemd/system/
+sudo cp config-examples/pynchy-maintenance.timer   /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now pynchy-maintenance.timer
+```
+
+The timer fires at 4 AM daily (with up to 5 minutes of randomized jitter). Verify with `systemctl list-timers pynchy-maintenance*`.
+
+> **Note:** Reference copies of all server configs are version controlled in `config-examples/`. The live copies on the server are the source of truth.
+
+### 9. Deploying Updates
 
 After pushing changes to the repo, trigger a remote deploy:
 

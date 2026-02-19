@@ -1,0 +1,20 @@
+# Daily pynchy server maintenance (system-level oneshot triggered by timer).
+# Linux only — requires systemd and Docker.
+# Prunes stale Docker resources then reboots the machine. Pynchy auto-starts
+# on boot via its systemd user service (with lingering enabled).
+# Source of truth: config-examples/pynchy-maintenance.service in the pynchy repo.
+#
+# Install (as root):
+#   sudo cp config-examples/pynchy-maintenance.service /etc/systemd/system/
+#   sudo cp config-examples/pynchy-maintenance.timer   /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now pynchy-maintenance.timer
+
+[Unit]
+Description=Daily pynchy maintenance (Docker prune + reboot)
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker system prune -f --filter until=48h
+ExecStart=/usr/bin/systemctl reboot
