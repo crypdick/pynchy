@@ -75,7 +75,9 @@ nav:
       - Quickstart: plugins/quickstart.md
       - Hook Reference: plugins/hooks.md
       - Packaging: plugins/packaging.md
-  - Contributing: contributing.md
+  - Contributing:
+      - Code: contributing/contributing-code.md
+      - Documentation: contributing/contributing-docs.md
 
 markdown_extensions:
   - admonition

@@ -24,7 +24,7 @@ This lets plugins provide sensible defaults while users retain full control.
 
 ## Reconciliation
 
-On startup, `reconcile_workspaces()`:
+Scheduled tasks and workspace state live in the database, but the **source of truth is `config.toml`** (and plugin specs). On every startup, `reconcile_workspaces()` syncs the declared configuration into the database:
 
 1. Merges plugin specs with `config.toml` workspaces
 2. Creates chat groups for workspaces missing database entries
@@ -32,12 +32,22 @@ On startup, `reconcile_workspaces()`:
 4. Seeds `CLAUDE.md` from plugin templates if the file doesn't exist
 5. Creates channel aliases across messaging platforms
 
+### Automatic config-to-database sync
+
+For periodic agents, the reconciler compares the database row against `config.toml` on every startup. If any of the following fields differ, it patches the database to match:
+
+- **`schedule`** — also recalculates `next_run` when the cron expression changes
+- **`prompt`** — updates the prompt sent to the agent on each scheduled run
+- **`repo_access`** — updates the repo worktree mount
+
+This means editing `config.toml` and restarting the service is all that's needed to change a schedule, prompt, or repo access. No manual database edits required.
+
 ## Workspace Config Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `is_admin` | `bool` | Whether this is an admin workspace |
-| `pynchy_repo_access` | `bool` | Mount a project worktree instead of global memory |
+| `repo_access` | `str` | GitHub slug (`owner/repo`) from `[repos.*]`; mounts a project worktree |
 | `schedule` | `str` | Cron expression for periodic execution |
 | `prompt` | `str` | Prompt sent to the agent on each scheduled run |
 | `context_mode` | `str` | `"group"` (shared session) or `"isolated"` (fresh each time) |
