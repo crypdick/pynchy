@@ -27,6 +27,7 @@ from pynchy.group_queue import GroupQueue
 from pynchy.logger import logger
 from pynchy.types import ContainerOutput, ScheduledTask, TaskRunLog, WorkspaceProfile
 from pynchy.utils import IdleTimer, compute_next_run
+from pynchy.workspace_config import load_workspace_config
 
 
 class SchedulerDependencies(Protocol):
@@ -331,11 +332,14 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
 
     # Idle timer: close container stdin after IDLE_TIMEOUT of no output,
     # so the container exits instead of hanging at waitForIpcMessage.
+    ws_config = load_workspace_config(task.group_folder)
+    idle_enabled = ws_config.idle_terminate if ws_config else True
+
     def _idle_timeout_callback() -> None:
         logger.debug("Scheduled task idle timeout, closing stdin", task_id=task.id)
         deps.queue.close_stdin(task.chat_jid)
 
-    idle_timer = IdleTimer(s.idle_timeout, _idle_timeout_callback)
+    idle_timer = IdleTimer(s.idle_timeout, _idle_timeout_callback) if idle_enabled else None
 
     try:
         # Convert task prompt to SDK message format
@@ -358,7 +362,8 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
 
             if streamed.result:
                 result = streamed.result
-                idle_timer.reset()
+                if idle_timer:
+                    idle_timer.reset()
             if streamed.status == "error":
                 error = streamed.error or "Unknown error"
 
@@ -372,7 +377,8 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
             input_source="scheduled_task",
         )
 
-        idle_timer.cancel()
+        if idle_timer:
+            idle_timer.cancel()
 
         if agent_result == "error":
             error = error or "Agent returned error"
