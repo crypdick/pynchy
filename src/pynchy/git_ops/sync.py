@@ -87,9 +87,7 @@ def host_sync_worktree(group_folder: str, repo_ctx: RepoContext) -> dict[str, An
         }
 
     # 2. Check if there are commits to merge
-    count = run_git(
-        "rev-list", f"{main_branch}..{branch_name}", "--count", cwd=repo_ctx.root
-    )
+    count = run_git("rev-list", f"{main_branch}..{branch_name}", "--count", cwd=repo_ctx.root)
     if count.returncode != 0:
         return {
             "success": False,
@@ -267,9 +265,7 @@ async def host_notify_worktree_updates(
 
         # Check if behind main
         branch_name = f"worktree/{group_folder}"
-        behind = run_git(
-            "rev-list", f"{branch_name}..{main_branch}", "--count", cwd=repo_ctx.root
-        )
+        behind = run_git("rev-list", f"{branch_name}..{main_branch}", "--count", cwd=repo_ctx.root)
         try:
             behind_n = int(behind.stdout.strip())
         except (ValueError, TypeError):
@@ -363,7 +359,29 @@ def _host_get_origin_main_sha(repo_root: Path) -> str | None:
 
 
 def _host_update_main(repo_root: Path) -> bool:
-    """Fetch origin and rebase main onto origin/main. Returns True on success."""
+    """Fetch origin and rebase main onto origin/main. Returns True on success.
+
+    Includes pre-flight recovery for stale rebase state and dirty working trees
+    left by crashed operations (interrupted rebase, killed process mid-merge).
+    """
+    # --- Pre-flight: recover from stale state ---
+    git_dir = repo_root / ".git"
+    if (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists():
+        logger.warning("git_sync poll: aborting stale rebase", recovery="rebase-abort")
+        run_git("rebase", "--abort", cwd=repo_root)
+
+    stashed = False
+    status = run_git("status", "--porcelain", cwd=repo_root)
+    if status.returncode == 0 and status.stdout.strip():
+        logger.warning(
+            "git_sync poll: stashing dirty working tree",
+            recovery="stash",
+            files=status.stdout.strip().count("\n") + 1,
+        )
+        stash_result = run_git("stash", "--include-untracked", cwd=repo_root)
+        stashed = stash_result.returncode == 0
+
+    # --- Normal fetch + rebase ---
     fetch = run_git("fetch", "origin", cwd=repo_root)
     if fetch.returncode != 0:
         logger.warning("git_sync poll: fetch failed", error=fetch.stderr.strip())
@@ -375,6 +393,23 @@ def _host_update_main(repo_root: Path) -> bool:
         run_git("rebase", "--abort", cwd=repo_root)
         logger.warning("git_sync poll: rebase failed", error=rebase.stderr.strip())
         return False
+
+    # --- Post-recovery: restore stashed work ---
+    if stashed:
+        run_git(
+            "commit",
+            "--allow-empty",
+            "-m",
+            "[pynchy-sync] dirty host repo recovered via stash \u2014 needs manual reconciliation",
+            cwd=repo_root,
+        )
+        push_local_commits(skip_fetch=True, cwd=repo_root)
+        pop = run_git("stash", "pop", cwd=repo_root)
+        if pop.returncode != 0:
+            logger.warning(
+                "git_sync poll: stash pop conflict, work in stash/reflog",
+                recovery="stash-pop-conflict",
+            )
 
     return True
 
@@ -477,7 +512,6 @@ async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
             if not current_origin or current_origin == last_origin_sha:
                 continue
             old_origin = last_origin_sha
-            last_origin_sha = current_origin
 
             logger.info(
                 "Origin/main changed, syncing",
@@ -486,12 +520,14 @@ async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
             )
 
             if local_head == current_origin:
+                last_origin_sha = current_origin
                 logger.info("Origin changed but local already matches, skipping pull")
                 continue  # drift check above already handled deploy
 
             updated = await asyncio.to_thread(_host_update_main, pynchy_root)
             if not updated:
                 continue
+            last_origin_sha = current_origin
 
             new_head_after_pull = await asyncio.to_thread(_get_local_head_sha, pynchy_root)
             if pynchy_repo_ctx:
@@ -529,7 +565,6 @@ async def start_external_repo_sync_loop(repo_ctx: RepoContext, deps: GitSyncDeps
                 continue
 
             old_origin = last_origin_sha
-            last_origin_sha = current_origin
 
             logger.info(
                 "External repo origin changed, syncing",
@@ -541,6 +576,7 @@ async def start_external_repo_sync_loop(repo_ctx: RepoContext, deps: GitSyncDeps
             updated = await asyncio.to_thread(_host_update_main, repo_root)
             if not updated:
                 continue
+            last_origin_sha = current_origin
 
             new_head = await asyncio.to_thread(_get_local_head_sha, repo_root)
             notified = _last_worktree_notified_sha.get(str(repo_root), "")
