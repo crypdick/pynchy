@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import asyncio
 import re
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 
@@ -23,34 +25,41 @@ from pynchy.logger import logger
 
 _db: aiosqlite.Connection | None = None
 
-# Shared write lock for all multi-statement DB transactions.
+# Shared write lock for multi-statement DB transactions — see atomic_write().
 #
-# Background: pynchy uses a single aiosqlite connection shared across many
-# concurrent asyncio coroutines (reconciler, message queue tasks, scheduler,
-# IPC watcher, etc.).  Python's sqlite3 in legacy isolation mode manages
+# pynchy uses a single aiosqlite connection shared across many concurrent
+# asyncio coroutines.  Python's sqlite3 in legacy isolation mode manages
 # transactions implicitly: the first DML statement auto-opens a transaction
-# on the *connection*, not per-coroutine.  This means two coroutines whose
-# DML statements interleave at asyncio await points end up sharing the same
-# implicit transaction.  If one of them calls rollback() on an exception, it
-# silently undoes the other's uncommitted work.
+# on the *connection*, not per-coroutine.  Two coroutines whose DML
+# interleaves at await points share the same implicit transaction — a
+# rollback() from one silently undoes the other's uncommitted work.
 #
-# Any write path that spans multiple await points (first DML → commit) MUST
-# acquire this lock for the full duration so no other write can interleave.
-# Single-statement writes (one execute + commit) are lower risk but should
-# also acquire it if they need strict isolation.
+# Any write path that spans multiple DML statements MUST use atomic_write()
+# so no concurrent coroutine can interleave.
 _write_lock: asyncio.Lock | None = None
 
 
-def get_write_lock() -> asyncio.Lock:
-    """Return the module-level DB write lock, creating it lazily.
+@asynccontextmanager
+async def atomic_write() -> AsyncIterator[aiosqlite.Connection]:
+    """Context manager for multi-statement DB writes.
 
-    Safe to call from any asyncio coroutine; not safe to call from
-    sync code outside a running event loop.
+    Acquires the write lock, yields the connection, and commits on
+    success or rolls back on failure.  Every write path that spans
+    multiple DML statements (first execute → commit) MUST use this
+    so no concurrent coroutine can interleave.
     """
     global _write_lock
     if _write_lock is None:
         _write_lock = asyncio.Lock()
-    return _write_lock
+
+    db = _get_db()
+    async with _write_lock:
+        try:
+            yield db
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
 
 _SCHEMA = """\
 CREATE TABLE IF NOT EXISTS chats (
