@@ -326,11 +326,27 @@ class Channel(Protocol):
 
     async def send_message(self, jid: str, text: str) -> None: ...
 
-    def is_connected(self) -> bool: ...
+    def is_connected(self) -> bool:
+        """Return True iff the channel can currently receive inbound events.
+
+        Must reflect *actual* liveness — not a stale flag from connect().
+        Implementations backed by an asyncio task must check whether that
+        task is still running, not just whether connect() was called.
+        """
+        ...
 
     def owns_jid(self, jid: str) -> bool: ...
 
     async def disconnect(self) -> None: ...
+
+    async def reconnect(self) -> None:
+        """Tear down the current connection and re-establish it.
+
+        Called when is_connected() returns False or a watchdog detects the
+        channel is unhealthy.  Implementations should clean up existing state
+        before calling connect() again.
+        """
+        ...
 
     async def fetch_inbound_since(
         self, channel_jid: str, since: str
