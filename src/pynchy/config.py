@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from croniter import croniter
-from pydantic import BaseModel, SecretStr, field_validator
+from pydantic import BaseModel, SecretStr, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -196,10 +196,10 @@ class RepoConfig(_StrictModel):
 
 
 class WorkspaceConfig(_StrictModel):
+    name: str  # display name — required, no silent defaults
     is_admin: bool = False
     requires_trigger: bool | None = None  # None → use workspace_defaults (deprecated)
     repo_access: str | None = None  # GitHub slug (owner/repo) from [repos.*]; None = no worktree
-    name: str | None = None  # display name; defaults to folder titlecased
     schedule: str | None = None  # cron expression
     prompt: str | None = None  # prompt for scheduled tasks
     context_mode: str | None = None  # None → use workspace_defaults
@@ -349,6 +349,86 @@ class SecurityConfig(_StrictModel):
 
 
 # ---------------------------------------------------------------------------
+# Explicit-fields validation
+# ---------------------------------------------------------------------------
+
+
+def _is_exempt_field(model_cls: type[BaseModel], field_name: str) -> bool:
+    """Check if a field is exempt from the explicit-ness requirement.
+
+    Exempt fields:
+    - X | None: "inherit from parent" sentinel — TOML has no null type.
+    - dict/list with empty default: container types where {} / [] means "none configured."
+    """
+    import types
+    import typing
+
+    field_info = model_cls.model_fields[field_name]
+    annotation = field_info.annotation
+
+    # Optional (X | None) — TOML can't express null
+    if isinstance(annotation, types.UnionType) and type(None) in annotation.__args__:
+        return True
+    origin = getattr(annotation, "__origin__", None)
+    if origin is typing.Union and type(None) in annotation.__args__:
+        return True
+    if annotation is type(None):
+        return True
+
+    # dict/list with empty default — forgetting {} or [] doesn't cause bugs
+    return field_info.default in ([], {})
+
+
+def _collect_implicit_fields(model: BaseModel, path: str) -> list[str]:
+    """Recursively find _StrictModel fields that were not explicitly set.
+
+    Only descends into sub-models that were present in the parsed input
+    (via model_fields_set). This means:
+    - Entire sections omitted from config.toml → not checked (known defaults).
+    - Sections present in config.toml → every field must be spelled out.
+    - Dict-of-models (e.g., workspaces) → each entry is checked individually.
+    - Optional fields (X | None) are skipped — TOML has no null type, so these
+      use None as "inherit from parent" and can't be made explicit.
+    """
+    errors: list[str] = []
+    cls = type(model)
+
+    for field_name in cls.model_fields:
+        value = getattr(model, field_name)
+
+        # For dict-of-models (e.g., workspaces, cron_jobs), check each entry
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if isinstance(item, _StrictModel):
+                    child_path = f"{path}.{field_name}.{key}" if path else f"{field_name}.{key}"
+                    child_cls = type(item)
+                    child_missing = {
+                        f
+                        for f in set(child_cls.model_fields) - item.model_fields_set
+                        if not _is_exempt_field(child_cls, f)
+                    }
+                    if child_missing:
+                        errors.append(f"{child_path}: missing {sorted(child_missing)}")
+                    errors.extend(_collect_implicit_fields(item, child_path))
+            continue
+
+        # For direct sub-models, only check if the section was in the input
+        if isinstance(value, _StrictModel) and field_name in model.model_fields_set:
+            child_path = f"{path}.{field_name}" if path else field_name
+            child_cls = type(value)
+            child_missing = {
+                f
+                for f in set(child_cls.model_fields) - value.model_fields_set
+                if not _is_exempt_field(child_cls, f)
+            }
+            if child_missing:
+                errors.append(f"{child_path}: missing {sorted(child_missing)}")
+            errors.extend(_collect_implicit_fields(value, child_path))
+
+    return errors
+
+
+# ---------------------------------------------------------------------------
 # Root Settings
 # ---------------------------------------------------------------------------
 
@@ -391,6 +471,22 @@ class Settings(BaseSettings):
     # Sentinels (class-level, not fields)
     OUTPUT_START_MARKER: ClassVar[str] = "---PYNCHY_OUTPUT_START---"
     OUTPUT_END_MARKER: ClassVar[str] = "---PYNCHY_OUTPUT_END---"
+
+    @model_validator(mode="after")
+    def _require_explicit_fields(self) -> Settings:
+        """Validate that all fields in config-file sections are explicitly set.
+
+        Only checks sub-models that were actually present in the config source
+        (i.e., in self.model_fields_set). Sub-models that defaulted entirely
+        (section absent from config.toml) are not checked — they're using
+        known-good defaults. But if you include a section, spell out every field.
+        """
+        errors = _collect_implicit_fields(self, "")
+        if errors:
+            msg = "Config fields must be explicitly set (even if null):\n"
+            msg += "\n".join(f"  - {e}" for e in errors)
+            raise ValueError(msg)
+        return self
 
     @classmethod
     def settings_customise_sources(

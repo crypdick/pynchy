@@ -165,11 +165,13 @@
 # the directory under groups/.
 
 [workspaces.admin-1]
+name = "Admin"
 is_admin = true
 requires_trigger = false
 # repo_access = "owner/repo"  # GitHub slug from [repos.*]; grants /workspace/project mount
 
 [workspaces.admin-2]
+name = "Mr Pynchy"
 is_admin = true
 requires_trigger = false
 # repo_access = "owner/repo"

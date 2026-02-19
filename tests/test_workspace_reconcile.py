@@ -25,7 +25,9 @@ from pynchy.workspace_config import (
 
 def _write_workspace_yaml(workspaces, folder_name, data):
     """Compat helper: populate Settings.workspaces for tests."""
-    workspaces[folder_name] = WorkspaceConfig.model_validate(data or {})
+    d = data or {}
+    d.setdefault("name", folder_name)
+    workspaces[folder_name] = WorkspaceConfig.model_validate(d)
 
 
 class TestReconcileWorkspaces:
@@ -376,6 +378,7 @@ class TestReconcileWorkspaces:
                     {
                         "folder": "code-improver",
                         "config": {
+                            "name": "Code Improver",
                             "repo_access": "owner/pynchy",
                             "schedule": "0 4 * * *",
                             "prompt": "Run code improvements",

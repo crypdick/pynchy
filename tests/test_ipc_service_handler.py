@@ -62,7 +62,7 @@ def _make_settings(ws_security: WorkspaceSecurityConfig | None = None, **kwargs)
     class FakeSettings:
         def __init__(self):
             self.workspaces = {
-                "test-ws": WorkspaceConfig(security=ws_security, **kwargs),
+                "test-ws": WorkspaceConfig(name="test", security=ws_security, **kwargs),
             }
 
     return FakeSettings()

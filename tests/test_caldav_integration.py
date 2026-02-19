@@ -85,6 +85,7 @@ def _make_settings(caldav_cfg=CALDAV_CONFIG, ws_security=None):
             self.caldav = caldav_cfg
             self.workspaces = {
                 "test-ws": WorkspaceConfig(
+                    name="test",
                     security=ws_security
                     or WorkspaceSecurityConfig(
                         default_risk_tier="always-approve",

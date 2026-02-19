@@ -83,6 +83,7 @@ class TestResolveChannelConfig:
     def test_workspace_overrides_defaults(self):
         """Workspace-level fields override defaults."""
         ws = WorkspaceConfig(
+            name="test",
             access="read",
             trigger="always",
             allowed_users=["*"],
@@ -102,7 +103,7 @@ class TestResolveChannelConfig:
 
     def test_workspace_partial_override(self):
         """Only set fields override — None fields inherit."""
-        ws = WorkspaceConfig(mode="chat")
+        ws = WorkspaceConfig(name="test", mode="chat")
         with patch(
             "pynchy.config.get_settings",
             return_value=_settings_with(workspaces={"chat-ws": ws}),
@@ -116,6 +117,7 @@ class TestResolveChannelConfig:
     def test_channel_jid_overrides_workspace(self):
         """Per-channel JID config overrides workspace-level."""
         ws = WorkspaceConfig(
+            name="test",
             trigger="mention",
             allowed_users=["owner"],
             channels={
@@ -144,6 +146,7 @@ class TestResolveChannelConfig:
     def test_channel_plugin_overrides_workspace(self):
         """Plugin-level channel config overrides workspace."""
         ws = WorkspaceConfig(
+            name="test",
             trigger="mention",
             channels={
                 "slack": ChannelOverrideConfig(access="read"),
@@ -164,6 +167,7 @@ class TestResolveChannelConfig:
     def test_jid_overrides_plugin_level(self):
         """JID-specific config takes precedence over plugin-level."""
         ws = WorkspaceConfig(
+            name="test",
             channels={
                 "slack": ChannelOverrideConfig(access="read", mode="chat"),
                 "slack:C04SPECIAL": ChannelOverrideConfig(
@@ -189,6 +193,7 @@ class TestResolveChannelConfig:
     def test_jid_partial_override_inherits_from_plugin(self):
         """JID override only sets some fields; rest come from plugin-level."""
         ws = WorkspaceConfig(
+            name="test",
             channels={
                 "slack": ChannelOverrideConfig(access="read", mode="chat"),
                 "slack:C04SPECIAL": ChannelOverrideConfig(
@@ -213,6 +218,7 @@ class TestResolveChannelConfig:
     def test_no_channel_override_uses_workspace(self):
         """Channel JID not in channels dict → workspace values used."""
         ws = WorkspaceConfig(
+            name="test",
             access="write",
             channels={
                 "slack:C04OTHER": ChannelOverrideConfig(access="read"),
@@ -382,21 +388,27 @@ class TestIsUserAllowed:
 
     def test_whatsapp_owner_via_is_from_me(self):
         allowed = {"whatsapp:owner"}
-        assert is_user_allowed(
-            "someone",
-            "whatsapp",
-            allowed,
-            is_from_me=True,
-        ) is True
+        assert (
+            is_user_allowed(
+                "someone",
+                "whatsapp",
+                allowed,
+                is_from_me=True,
+            )
+            is True
+        )
 
     def test_whatsapp_non_owner(self):
         allowed = {"whatsapp:owner"}
-        assert is_user_allowed(
-            "someone",
-            "whatsapp",
-            allowed,
-            is_from_me=False,
-        ) is False
+        assert (
+            is_user_allowed(
+                "someone",
+                "whatsapp",
+                allowed,
+                is_from_me=False,
+            )
+            is False
+        )
 
     def test_pre_qualified_sender(self):
         """Sender already contains platform prefix."""
@@ -417,7 +429,7 @@ class TestComposedBehavior:
 
     def test_personal_assistant(self):
         """1-on-1, no trigger needed."""
-        ws = WorkspaceConfig(trigger="always")
+        ws = WorkspaceConfig(name="test", trigger="always")
         with patch(
             "pynchy.config.get_settings",
             return_value=_settings_with(workspaces={"assistant": ws}),
@@ -431,7 +443,7 @@ class TestComposedBehavior:
 
     def test_lurk_and_summarize(self):
         """Read-only channel."""
-        ws = WorkspaceConfig(access="read")
+        ws = WorkspaceConfig(name="test", access="read")
         with patch(
             "pynchy.config.get_settings",
             return_value=_settings_with(workspaces={"lurker": ws}),
@@ -442,7 +454,7 @@ class TestComposedBehavior:
 
     def test_announcement_bot(self):
         """Write-only channel."""
-        ws = WorkspaceConfig(access="write")
+        ws = WorkspaceConfig(name="test", access="write")
         with patch(
             "pynchy.config.get_settings",
             return_value=_settings_with(workspaces={"standup": ws}),
@@ -454,6 +466,7 @@ class TestComposedBehavior:
     def test_team_group_chat(self):
         """Team chat with tools disabled."""
         ws = WorkspaceConfig(
+            name="test",
             mode="chat",
             trust=False,
             trigger="mention",
@@ -473,6 +486,7 @@ class TestComposedBehavior:
     def test_hybrid_per_channel(self):
         """Different channels in the same workspace have different configs."""
         ws = WorkspaceConfig(
+            name="test",
             trigger="mention",
             allowed_users=["owner"],
             channels={
@@ -487,15 +501,9 @@ class TestComposedBehavior:
         )
         settings = _settings_with(workspaces={"hub": ws})
         with patch("pynchy.config.get_settings", return_value=settings):
-            research = resolve_channel_config(
-                "hub", channel_jid="slack:C04RESEARCH"
-            )
-            announce = resolve_channel_config(
-                "hub", channel_jid="slack:C04ANNOUNCE"
-            )
-            general = resolve_channel_config(
-                "hub", channel_jid="slack:C04GENERAL"
-            )
+            research = resolve_channel_config("hub", channel_jid="slack:C04RESEARCH")
+            announce = resolve_channel_config("hub", channel_jid="slack:C04ANNOUNCE")
+            general = resolve_channel_config("hub", channel_jid="slack:C04GENERAL")
             default = resolve_channel_config("hub")
 
         assert research.access == "read"
