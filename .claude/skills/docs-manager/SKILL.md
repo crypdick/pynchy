@@ -1,7 +1,6 @@
 ---
 name: Documentation Manager
-description: This skill should be used when the user asks to "update the documentation", "where should I document this", "add this to the docs", "document this feature", "check doc consistency", or "fix broken links in docs".
-version: 0.1.0
+description: Use when writing or reviewing pynchy documentation, deciding where to document things, updating the docs, checking doc consistency, or fixing broken links. Covers information architecture, writing philosophy, tree-shaped navigation, doc-code coupling, no hard-coded usernames, extensibility framing for pluggable subsystems, and when to add code comments.
 ---
 
 # Documentation Manager
@@ -22,7 +21,7 @@ Quick decision tree:
 - Architecture decision → `docs/architecture/` (find the relevant topic file, or create a new one)
 - Installation requirement → `docs/install.md`
 - Security implication → `docs/architecture/security.md`
-- Development workflow change → `.claude/skills/development/SKILL.md`
+- Development workflow change → `.claude/skills/pynchy-dev/SKILL.md`
 
 **Bug fix?**
 - If it needs install change → `docs/install.md`

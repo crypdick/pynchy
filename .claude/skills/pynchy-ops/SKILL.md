@@ -1,11 +1,11 @@
 ---
 name: Pynchy Ops
-description: Use when managing the pynchy service on the server — deploying changes, observing logs, checking service status, restarting the service, setting up GitHub auth, rebuilding the agent container, or running any commands on pyncher-server via SSH. Also use when interacting with the LiteLLM proxy — investigating failed requests, model routing errors, spend tracking, health checks, API gateway diagnostics, or modifying the LiteLLM configuration. Also use when the user mentions the LiteLLM UI, dashboard, proxy errors, or model availability.
+description: Use when managing the pynchy service on the server — deploying changes, observing logs, checking service status, restarting the service, setting up GitHub auth, rebuilding the agent container, or running any commands on pynchy-server via SSH. Also use when interacting with the LiteLLM proxy — investigating failed requests, model routing errors, spend tracking, health checks, API gateway diagnostics, or modifying the LiteLLM configuration. Also use when the user mentions the LiteLLM UI, dashboard, proxy errors, or model availability.
 ---
 
 # Pynchy Ops
 
-The pynchy service runs on `pyncher-server` over Tailscale. SSH: `ssh pyncher-server`.
+The pynchy service runs on `pynchy-server` over Tailscale. SSH: `ssh pynchy-server`.
 
 ## Auto-deploy: Never Restart Manually
 
@@ -44,16 +44,16 @@ journalctl --user -u pynchy --grep 'groupCount' -n 3
 
 ```bash
 # Trigger a deploy (from HOST — use mcp__pynchy__deploy_changes from containers)
-curl -s -X POST http://pyncher-server:8484/deploy
+curl -s -X POST http://pynchy-server:8484/deploy
 
 # Observe (always safe)
-ssh pyncher-server 'systemctl --user status pynchy'
-ssh pyncher-server 'journalctl --user -u pynchy -f'
-ssh pyncher-server 'journalctl --user -u pynchy -n 100'
-ssh pyncher-server 'docker ps --filter name=pynchy'
+ssh pynchy-server 'systemctl --user status pynchy'
+ssh pynchy-server 'journalctl --user -u pynchy -f'
+ssh pynchy-server 'journalctl --user -u pynchy -n 100'
+ssh pynchy-server 'docker ps --filter name=pynchy'
 
 # Manual restart — ONLY for unhealthy/stuck service
-ssh pyncher-server 'systemctl --user restart pynchy'
+ssh pynchy-server 'systemctl --user restart pynchy'
 ```
 
 ## Service Management Reference
@@ -80,10 +80,10 @@ Systemd unit template: `config-examples/pynchy.service.EXAMPLE`
 
 ```bash
 # Interactive login (works over SSH with -t for TTY)
-ssh -t pyncher-server 'gh auth login -p ssh'
+ssh -t pynchy-server 'gh auth login -p ssh'
 
 # Verify
-ssh pyncher-server 'gh auth status'
+ssh pynchy-server 'gh auth status'
 ```
 
 After authenticating, `_write_env_file()` auto-discovers `GH_TOKEN` and git identity on each admin container launch. No manual env configuration needed.
@@ -103,12 +103,12 @@ Verify: `container run -i --rm --entrypoint python pynchy-agent:latest -c "impor
 
 Runs as `pynchy-litellm` Docker container with PostgreSQL sidecar (`pynchy-litellm-db`). Access at `http://localhost:4000` on the pynchy server, or via Tailscale at port 4000.
 
-Master key: `ssh pyncher-server 'grep master_key ~/src/PERSONAL/pynchy/config.toml'`
+Master key: `ssh pynchy-server 'grep master_key ~/src/PERSONAL/pynchy/config.toml'`
 Pass as: `Authorization: Bearer <key>`
 
 Config: `~/src/PERSONAL/pynchy/litellm_config.yaml`. Editing it triggers an automatic restart (~30–90s). Do not manually restart containers.
 
-Dashboard: `http://pyncher-server:4000/ui/`
+Dashboard: `http://pynchy-server:4000/ui/`
 
 - **Diagnostics, spend tracking, failure analysis**: [references/litellm-diagnostics.md](references/litellm-diagnostics.md)
 - **MCP server management API and gotchas**: [references/litellm-mcp-api.md](references/litellm-mcp-api.md)

@@ -1,6 +1,6 @@
 # LiteLLM Diagnostics Reference
 
-All commands assume SSH to pyncher-server. Use `ssh pyncher-server '<command>'` when running remotely.
+All commands assume SSH to pynchy-server. Use `ssh pynchy-server '<command>'` when running remotely.
 
 ## Health & readiness
 
