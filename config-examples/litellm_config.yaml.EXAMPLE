@@ -10,6 +10,11 @@
 #   3. At startup pynchy scans this file, finds all os.environ/ references,
 #      looks them up on the host, and forwards them into the Docker container.
 #
+# Key safety: pynchy filters model_list entries at startup. If an api_key's
+# env var is unset or contains a placeholder value (e.g. "sk-ant-..."),
+# that deployment is silently removed from the config mounted into LiteLLM.
+# This prevents zombie deployments from poisoning the router's health state.
+#
 # To add a second key for load balancing, just add another model_list entry
 # with a different os.environ/ var and set that var in .env — no code changes.
 #
@@ -39,8 +44,10 @@ model_list:
       id: anthropic-employee1
       tags: ["mycompany"]
 
-  # --- Anthropic (secondary account, for load balancing) ---
-  # Set ANTHROPIC_TOKEN_EMPLOYEE2 in .env to enable:
+  # --- Anthropic (secondary account, for load balancing / failover) ---
+  # Set ANTHROPIC_TOKEN_EMPLOYEE2 in .env to enable.  If the env var is
+  # unset or contains a placeholder, pynchy automatically removes this
+  # entry before starting LiteLLM.
   - model_name: "anthropic/*"
     litellm_params:
       model: "anthropic/*"
@@ -64,8 +71,9 @@ model_list:
   #     tags: ["mycompany"]
 
 # ---------------------------------------------------------------------------
-# Router settings
+# Router settings  —  failover tuning
 # ---------------------------------------------------------------------------
+# See the litellm-diagnostics reference for detailed rationale.
 router_settings:
   # How to distribute requests across deployments with the same model_name.
   # Options: simple-shuffle, least-busy, usage-based-routing,
@@ -76,15 +84,23 @@ router_settings:
   num_retries: 3
   timeout: 300
 
-  # Cool down a deployment after just 1 failure.  With allowed_fails=3
-  # (the old default), the router burns all retries on a dead deployment
-  # before cooling it down.  With 1, the first 429 immediately takes it
-  # out of rotation so retries hit the healthy deployment.
+  # Cooldown: after (allowed_fails + 1) consecutive failures on a
+  # deployment, take it out of rotation for cooldown_time seconds.
+  #
+  # The check is "fails > allowed_fails", so allowed_fails=1 means the
+  # deployment is cooled down after the 2nd failure.  This tolerates one
+  # transient error (e.g. a brief rate limit) but quickly removes a dead
+  # key from rotation.
+  #
+  # WARNING: Do NOT set allowed_fails to 0.  LiteLLM runs startup health
+  # probes that can fail transiently; allowed_fails=0 causes those probe
+  # failures to immediately cool down ALL deployments, leaving zero
+  # healthy endpoints.
   allowed_fails: 1
-  cooldown_time: 300  # 5 min — avoids churn on exhausted keys
 
-  # Be explicit: retry on rate-limit errors (don't rely on defaults)
-  retry_on_status_codes: [429]
+  # 10 min — long enough to avoid per-request churn on an exhausted key,
+  # short enough to recover when the quota resets.
+  cooldown_time: 600
 
   # Provider-level budget caps (combined across all keys for that provider).
   # Requires the PostgreSQL sidecar (started automatically by pynchy).
