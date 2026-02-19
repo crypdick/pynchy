@@ -7,8 +7,11 @@ external repo configured under [repos."owner/repo"] in config.toml.
 
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
+from pynchy.logger import logger
 
 
 @dataclass(frozen=True)
@@ -40,6 +43,7 @@ def get_repo_context(slug: str) -> RepoContext | None:
     """Resolve a slug to its RepoContext from [repos.*] config.
 
     Returns None if the slug is not listed under [repos.*].
+    When path is omitted from config, the repo is auto-managed at data/repos/<owner>/<repo>/.
     """
     from pynchy.config import get_settings
 
@@ -49,9 +53,35 @@ def get_repo_context(slug: str) -> RepoContext | None:
         return None
 
     owner, repo_name = _slug_to_parts(slug)
-    root = Path(repo_cfg.path)  # already resolved by RepoConfig validator
+    if repo_cfg.path is not None:
+        root = Path(repo_cfg.path)  # already resolved by RepoConfig validator
+    else:
+        root = s.data_dir / "repos" / owner / repo_name
     worktrees_dir = s.worktrees_dir / owner / repo_name
     return RepoContext(slug=slug, root=root, worktrees_dir=worktrees_dir)
+
+
+def ensure_repo_cloned(repo_ctx: RepoContext) -> bool:
+    """Clone the repo from GitHub if it doesn't exist yet.
+
+    Only applies to auto-managed repos (those without an explicit path in config).
+    Returns True if the repo root exists and is ready for worktree operations.
+    """
+    if repo_ctx.root.exists():
+        return True
+
+    repo_ctx.root.parent.mkdir(parents=True, exist_ok=True)
+    logger.info("Cloning repo", slug=repo_ctx.slug, dest=str(repo_ctx.root))
+    result = subprocess.run(
+        ["git", "clone", f"https://github.com/{repo_ctx.slug}", str(repo_ctx.root)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        logger.error("Failed to clone repo", slug=repo_ctx.slug, stderr=result.stderr.strip())
+        return False
+    logger.info("Cloned repo", slug=repo_ctx.slug)
+    return True
 
 
 def resolve_repo_for_group(group_folder: str) -> RepoContext | None:

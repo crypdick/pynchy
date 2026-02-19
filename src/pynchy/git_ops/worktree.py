@@ -268,7 +268,7 @@ def reconcile_worktrees_at_startup(
     Args:
         repo_groups: Dict mapping slug → list of group folder names.
     """
-    from pynchy.git_ops.repo import get_repo_context
+    from pynchy.git_ops.repo import ensure_repo_cloned, get_repo_context
     from pynchy.config import get_settings
 
     repo_groups = repo_groups or {}
@@ -281,6 +281,11 @@ def reconcile_worktrees_at_startup(
         repo_ctx = get_repo_context(slug)
         if repo_ctx is None:
             logger.warning("Slug not configured in [repos], skipping", slug=slug)
+            continue
+
+        # Clone auto-managed repos if they don't exist yet
+        if not ensure_repo_cloned(repo_ctx):
+            logger.warning("Repo not available, skipping worktree reconciliation", slug=slug)
             continue
 
         # Clean git's internal stale entries

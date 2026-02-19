@@ -174,11 +174,13 @@ class WorkspaceSecurityConfig(BaseModel):
 class RepoConfig(BaseModel):
     """Config for a single tracked git repo under [repos."owner/repo"]."""
 
-    path: str  # relative to project root or absolute
+    path: str | None = None  # relative to project root or absolute; None = auto-clone to data/repos/
 
     @field_validator("path")
     @classmethod
-    def resolve_path(cls, v: str) -> str:
+    def resolve_path(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
         p = Path(v)
         if not p.is_absolute():
             p = (Path.cwd() / p).resolve()
