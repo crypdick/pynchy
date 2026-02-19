@@ -14,7 +14,7 @@ print(data.get('tool_input', {}).get('command', ''))
 
 if echo "$command" | grep -qP '\bgit\s+(push|pull|rebase)\b'; then
   cat <<'EOF'
-{"decision":"block","reason":"Direct git push/pull/rebase is blocked. Use the sync_worktree_to_main tool instead — it coordinates with the host to rebase your worktree onto main, merge, push to origin, and sync other running agents. Commit your changes first, then call sync_worktree_to_main."}
+{"decision":"block","reason":"Direct git push/pull/rebase is blocked. Use the sync_worktree_to_main tool instead — it coordinates with the host to publish your changes (either merging into main or opening a PR, depending on workspace policy). Commit your changes first, then call sync_worktree_to_main."}
 EOF
   exit 0
 fi

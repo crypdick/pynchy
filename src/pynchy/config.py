@@ -214,6 +214,7 @@ class WorkspaceConfig(_StrictModel):
     trigger: Literal["mention", "always"] | None = None
     allowed_users: list[str] | None = None
     channels: dict[str, ChannelOverrideConfig] | None = None
+    git_policy: Literal["merge-to-main", "pull-request"] | None = None  # None → merge-to-main
     idle_terminate: bool = True  # False → container stays alive until hard timeout
 
     @field_validator("schedule")

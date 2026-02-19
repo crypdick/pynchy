@@ -21,7 +21,9 @@ def _sync_worktree_definition() -> Tool:
     return Tool(
         name="sync_worktree_to_main",
         description=(
-            "Merge your worktree into main and push to origin. "
+            "Publish your committed changes. Depending on workspace "
+            "policy, this either merges into main and pushes, or "
+            "pushes to a branch and opens/updates a PR. "
             "Commit all changes first. On conflict, your worktree "
             "will have conflict markers — fix them, git add, "
             "git rebase --continue, then retry."

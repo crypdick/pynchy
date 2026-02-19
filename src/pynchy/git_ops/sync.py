@@ -32,6 +32,10 @@ from pynchy.types import WorkspaceProfile
 # git ls-remote every 5s = 720 req/hr — well within limits.
 HOST_GIT_SYNC_POLL_INTERVAL = 5.0
 
+# Valid git_policy values
+GIT_POLICY_MERGE = "merge-to-main"
+GIT_POLICY_PR = "pull-request"
+
 # Track the last HEAD SHA for which worktree notifications were sent, per repo root.
 # This prevents the poll loop from re-notifying when the IPC handler
 # (sync_worktree_to_main) already notified for the same merge.
@@ -183,6 +187,160 @@ def host_sync_worktree(group_folder: str, repo_ctx: RepoContext) -> dict[str, An
     return {
         "success": True,
         "message": f"Merged {ahead} commit(s) into main and pushed to origin.",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Policy resolution
+# ---------------------------------------------------------------------------
+
+
+def resolve_git_policy(group_folder: str) -> str:
+    """Resolve the effective git policy for a workspace.
+
+    Returns "merge-to-main" (default) or "pull-request".
+    """
+    s = get_settings()
+    ws_cfg = s.workspaces.get(group_folder)
+    if ws_cfg and ws_cfg.git_policy:
+        return ws_cfg.git_policy
+    return GIT_POLICY_MERGE
+
+
+# ---------------------------------------------------------------------------
+# host_create_pr_from_worktree — push branch and open/update a PR
+# ---------------------------------------------------------------------------
+
+
+def host_create_pr_from_worktree(
+    group_folder: str,
+    repo_ctx: RepoContext,
+) -> dict[str, Any]:
+    """Host-side: push worktree branch to origin and open/update a PR.
+
+    Idempotent: if a PR already exists for the branch, just pushes (PR
+    auto-updates). No duplicate PRs.
+
+    Returns {"success": bool, "message": str}.
+    """
+    worktree_path = repo_ctx.worktrees_dir / group_folder
+    branch_name = f"worktree/{group_folder}"
+    main_branch = detect_main_branch(cwd=repo_ctx.root)
+
+    if not worktree_path.exists():
+        return {
+            "success": False,
+            "message": f"No worktree found for {group_folder}.",
+        }
+
+    # 1. Check for uncommitted changes
+    status = run_git("status", "--porcelain", cwd=worktree_path)
+    if status.returncode == 0 and status.stdout.strip():
+        return {
+            "success": False,
+            "message": (
+                "You have uncommitted changes. Commit all changes first, "
+                "then call sync_worktree_to_main again."
+            ),
+        }
+
+    # 2. Check if there are commits ahead of main
+    count = run_git("rev-list", f"{main_branch}..{branch_name}", "--count", cwd=repo_ctx.root)
+    try:
+        ahead = int(count.stdout.strip())
+    except (ValueError, TypeError):
+        return {
+            "success": False,
+            "message": f"Failed to check commits: {count.stderr.strip()}",
+        }
+    if ahead == 0:
+        return {
+            "success": True,
+            "message": "Already up to date — no commits to push.",
+        }
+
+    # 3. Push the worktree branch to origin
+    push = run_git("push", "-u", "origin", branch_name, "--force-with-lease", cwd=repo_ctx.root)
+    if push.returncode != 0:
+        return {
+            "success": False,
+            "message": f"Push failed: {push.stderr.strip()}",
+        }
+
+    # 4. Check if a PR already exists for this branch
+    pr_check = subprocess.run(
+        ["gh", "pr", "view", branch_name, "--json", "url", "--jq", ".url"],
+        cwd=str(repo_ctx.root),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    if pr_check.returncode == 0 and pr_check.stdout.strip():
+        pr_url = pr_check.stdout.strip()
+        return {
+            "success": True,
+            "message": f"Pushed {ahead} commit(s) to {branch_name}. PR updated: {pr_url}",
+        }
+
+    # 5. Create a new PR
+    title_result = run_git("log", "-1", "--format=%s", cwd=worktree_path)
+    pr_title = (
+        title_result.stdout.strip()
+        if title_result.returncode == 0
+        else f"Changes from {group_folder}"
+    )
+
+    body_result = run_git(
+        "log",
+        f"{main_branch}..{branch_name}",
+        "--format=- %s",
+        cwd=repo_ctx.root,
+    )
+    pr_body = (
+        f"Automated PR from workspace `{group_folder}`.\n\n"
+        f"### Commits\n{body_result.stdout.strip()}"
+    )
+
+    pr_create = subprocess.run(
+        [
+            "gh",
+            "pr",
+            "create",
+            "--base",
+            main_branch,
+            "--head",
+            branch_name,
+            "--title",
+            pr_title,
+            "--body",
+            pr_body,
+        ],
+        cwd=str(repo_ctx.root),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    if pr_create.returncode != 0:
+        return {
+            "success": False,
+            "message": (
+                f"Pushed {ahead} commit(s) to {branch_name}, but PR creation failed: "
+                f"{pr_create.stderr.strip()}"
+            ),
+        }
+
+    pr_url = pr_create.stdout.strip()
+    logger.info(
+        "Worktree pushed and PR created",
+        group=group_folder,
+        commits=ahead,
+        pr_url=pr_url,
+    )
+    return {
+        "success": True,
+        "message": f"Pushed {ahead} commit(s) and opened PR: {pr_url}",
     }
 
 

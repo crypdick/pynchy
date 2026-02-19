@@ -445,9 +445,13 @@ def merge_and_push_worktree(group_folder: str, repo_ctx: RepoContext) -> None:
 def background_merge_worktree(group: object) -> None:
     """Fire-and-forget worktree merge for groups with repo access.
 
-    Resolves the group's repo_access slug, then runs merge_and_push_worktree
-    in a background thread. This is the single code path for all post-session
-    worktree merges (message handler, session handler, IPC, scheduler).
+    Resolves the group's repo_access slug and git_policy, then runs the
+    appropriate workflow in a background thread:
+    - merge-to-main: merge into main and push (existing behavior)
+    - pull-request: push branch to origin and open/update a PR
+
+    This is the single code path for all post-session worktree merges
+    (message handler, session handler, IPC, scheduler).
 
     Args:
         group: A WorkspaceProfile (or any object with a .folder attribute).
@@ -455,6 +459,11 @@ def background_merge_worktree(group: object) -> None:
     import asyncio
 
     from pynchy.git_ops.repo import resolve_repo_for_group
+    from pynchy.git_ops.sync import (
+        GIT_POLICY_PR,
+        host_create_pr_from_worktree,
+        resolve_git_policy,
+    )
     from pynchy.utils import create_background_task
 
     folder: str = group.folder  # type: ignore[union-attr]
@@ -462,7 +471,15 @@ def background_merge_worktree(group: object) -> None:
     if repo_ctx is None:
         return
 
-    create_background_task(
-        asyncio.to_thread(merge_and_push_worktree, folder, repo_ctx),
-        name=f"worktree-merge-{folder}",
-    )
+    policy = resolve_git_policy(folder)
+
+    if policy == GIT_POLICY_PR:
+        create_background_task(
+            asyncio.to_thread(host_create_pr_from_worktree, folder, repo_ctx),
+            name=f"worktree-pr-{folder}",
+        )
+    else:
+        create_background_task(
+            asyncio.to_thread(merge_and_push_worktree, folder, repo_ctx),
+            name=f"worktree-merge-{folder}",
+        )
