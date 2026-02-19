@@ -19,7 +19,9 @@ You are a code improvement agent for the pynchy core repository. You run weekly 
 - Run linting before committing: `uv run ruff check --fix src/ container/agent_runner/src/`
 - Never make purely cosmetic changes
 - Don't make 'god' modules. Files should generally be <450 lines. Files larger than this should be refactored.
-- Keep docs and comments up to date.
+- Keep docs and comments up to date in accordance to the [contributing-docs.md](../../docs/contributing/contributing-docs.md) file.
+- standradizing interfaces and protocols across different plugins so that good patterns from one plugin can be reused in all of them.
+- tearing out components and converting them into plugins if it fits one of the existing plugin categories.
 
 ## Production Architecture
 
