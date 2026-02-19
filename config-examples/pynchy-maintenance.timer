@@ -1,0 +1,29 @@
+# Daily pynchy server maintenance timer (system-level).
+# Linux only — requires systemd.
+# Reboots the machine daily to clear zombie processes and get a fresh slate.
+# Docker prune runs first to reclaim disk from stale images/containers.
+# Pynchy auto-starts on boot via its systemd user service.
+# Source of truth: config-examples/pynchy-maintenance.timer in the pynchy repo.
+#
+# System-level because systemctl reboot requires root. Separate from
+# unattended-upgrades, which handles apt security updates and conditional
+# reboot on kernel updates (see 50unattended-upgrades.EXAMPLE).
+#
+# Install (as root):
+#   sudo cp config-examples/pynchy-maintenance.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now pynchy-maintenance.timer
+#
+# Verify:
+#   systemctl list-timers pynchy-maintenance*
+
+[Unit]
+Description=Daily pynchy maintenance timer
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target

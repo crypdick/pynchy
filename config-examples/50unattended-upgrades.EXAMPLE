@@ -1,0 +1,14 @@
+// Unattended-Upgrade configuration for the pynchy server.
+// Linux only (Ubuntu/Debian) — requires the unattended-upgrades package.
+// Source of truth: /etc/apt/apt.conf.d/50unattended-upgrades on pynchy-server.
+// Reference copy: config-examples/50unattended-upgrades.EXAMPLE in the pynchy repo.
+//
+// Ubuntu defaults handle Allowed-Origins (security updates). These overrides
+// add automatic reboot when kernel updates are pending.
+//
+// Install:
+//   sudo cp config-examples/50unattended-upgrades.EXAMPLE /etc/apt/apt.conf.d/50unattended-upgrades
+
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
+Unattended-Upgrade::Automatic-Reboot-Time "05:00";
