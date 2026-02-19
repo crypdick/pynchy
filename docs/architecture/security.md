@@ -108,13 +108,19 @@ OPENAI_API_KEY=gw-<random>
 
 | Credential | Admin | Non-Admin | Rationale |
 |-----------|-----|---------|-----------|
-| `GH_TOKEN` | Yes | **No** (planned: repo-scoped) | Non-admin containers have git push/pull blocked by the guard script and routed through host IPC. Future: repo-scoped tokens will inject per-repo fine-grained PATs. |
+| `GH_TOKEN` | Yes (broad) | **Repo-scoped** (if configured) | Admin gets the host's broad token. Non-admin containers with `repo_access` get a fine-grained PAT scoped to their designated repo (configured via `repos."owner/repo".token`). Non-admin containers without `repo_access` get no token. |
 | `GIT_AUTHOR_NAME` | Yes | Yes | Needed for git commits in worktrees |
 | `GIT_COMMITTER_NAME` | Yes | Yes | |
 | `GIT_AUTHOR_EMAIL` | Yes | Yes | |
 | `GIT_COMMITTER_EMAIL` | Yes | Yes | |
 
-Each group gets its own env directory, so concurrent containers don't share secrets. A compromised non-admin container cannot access GitHub APIs or push to repositories directly.
+Each group gets its own env directory, so concurrent containers don't share secrets. A compromised non-admin container's token is scoped to a single repo and cannot access other repositories.
+
+**Token resolution order** for host-side git operations (fetch, push, ls-remote):
+
+1. `repos."owner/repo".token` — explicit per-repo fine-grained PAT (highest priority)
+2. `secrets.gh_token` — host's broad token (fallback for repos without a scoped token)
+3. `gh auth token` — auto-discovered from `gh` CLI (lowest priority)
 
 **NOT Mounted:**
 - WhatsApp session (`store/auth/`) — host only

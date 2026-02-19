@@ -140,13 +140,20 @@ def _write_env_file(*, is_admin: bool, group_folder: str) -> Path | None:
     # Non-LLM credentials (not proxied)
     # ------------------------------------------------------------------
 
-    # GH_TOKEN — admin only
+    # GH_TOKEN — admin gets broad token, non-admin gets repo-scoped token
     if is_admin:
         if s.secrets.gh_token:
             env_vars["GH_TOKEN"] = s.secrets.gh_token.get_secret_value()
         elif gh_token := _read_gh_token():
             env_vars["GH_TOKEN"] = gh_token
             logger.debug("Using GitHub token from gh CLI")
+    else:
+        # Non-admin: inject repo-scoped token if this workspace has repo_access
+        ws_cfg = s.workspaces.get(group_folder)
+        if ws_cfg and ws_cfg.repo_access:
+            repo_cfg = s.repos.get(ws_cfg.repo_access)
+            if repo_cfg and repo_cfg.token:
+                env_vars["GH_TOKEN"] = repo_cfg.token.get_secret_value()
 
     # Git identity
     git_name, git_email = _read_git_identity()

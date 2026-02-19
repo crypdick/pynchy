@@ -22,6 +22,7 @@ from pynchy.git_ops.utils import (
     detect_main_branch,
     files_changed_between,
     get_head_sha,
+    git_env_with_token,
     push_local_commits,
     run_git,
 )
@@ -71,6 +72,7 @@ def host_sync_worktree(group_folder: str, repo_ctx: RepoContext) -> dict[str, An
     worktree_path = repo_ctx.worktrees_dir / group_folder
     branch_name = f"worktree/{group_folder}"
     main_branch = detect_main_branch(cwd=repo_ctx.root)
+    env = git_env_with_token(repo_ctx.slug)
 
     if not worktree_path.exists():
         return {
@@ -117,7 +119,7 @@ def host_sync_worktree(group_folder: str, repo_ctx: RepoContext) -> dict[str, An
         }
 
     # 3. Fetch origin
-    fetch = run_git("fetch", "origin", cwd=repo_ctx.root)
+    fetch = run_git("fetch", "origin", cwd=repo_ctx.root, env=env)
     if fetch.returncode != 0:
         return {
             "success": False,
@@ -168,7 +170,7 @@ def host_sync_worktree(group_folder: str, repo_ctx: RepoContext) -> dict[str, An
         }
 
     # 7. Push to origin (skip_fetch since we just fetched)
-    pushed = push_local_commits(skip_fetch=True, cwd=repo_ctx.root)
+    pushed = push_local_commits(skip_fetch=True, cwd=repo_ctx.root, env=env)
     if not pushed:
         return {
             "success": False,
@@ -226,6 +228,7 @@ def host_create_pr_from_worktree(
     worktree_path = repo_ctx.worktrees_dir / group_folder
     branch_name = f"worktree/{group_folder}"
     main_branch = detect_main_branch(cwd=repo_ctx.root)
+    env = git_env_with_token(repo_ctx.slug)
 
     if not worktree_path.exists():
         return {
@@ -260,7 +263,9 @@ def host_create_pr_from_worktree(
         }
 
     # 3. Push the worktree branch to origin
-    push = run_git("push", "-u", "origin", branch_name, "--force-with-lease", cwd=repo_ctx.root)
+    push = run_git(
+        "push", "-u", "origin", branch_name, "--force-with-lease", cwd=repo_ctx.root, env=env
+    )
     if push.returncode != 0:
         return {
             "success": False,
@@ -268,12 +273,14 @@ def host_create_pr_from_worktree(
         }
 
     # 4. Check if a PR already exists for this branch
+    # env includes GH_TOKEN which gh CLI respects
     pr_check = subprocess.run(
         ["gh", "pr", "view", branch_name, "--json", "url", "--jq", ".url"],
         cwd=str(repo_ctx.root),
         capture_output=True,
         text=True,
         timeout=30,
+        env=env,
     )
 
     if pr_check.returncode == 0 and pr_check.stdout.strip():
@@ -320,6 +327,7 @@ def host_create_pr_from_worktree(
         capture_output=True,
         text=True,
         timeout=30,
+        env=env,
     )
 
     if pr_create.returncode != 0:
@@ -504,11 +512,11 @@ def _get_local_head_sha(repo_root: Path | None = None) -> str:
     return "" if sha == "unknown" else sha
 
 
-def _host_get_origin_main_sha(repo_root: Path) -> str | None:
+def _host_get_origin_main_sha(repo_root: Path, env: dict[str, str] | None = None) -> str | None:
     """Lightweight check: get origin/main SHA via ls-remote."""
     try:
         main = detect_main_branch(cwd=repo_root)
-        result = run_git("ls-remote", "origin", f"refs/heads/{main}", cwd=repo_root)
+        result = run_git("ls-remote", "origin", f"refs/heads/{main}", cwd=repo_root, env=env)
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip().split()[0]
     except (subprocess.TimeoutExpired, OSError) as exc:
@@ -516,11 +524,14 @@ def _host_get_origin_main_sha(repo_root: Path) -> str | None:
     return None
 
 
-def _host_update_main(repo_root: Path) -> bool:
+def _host_update_main(repo_root: Path, env: dict[str, str] | None = None) -> bool:
     """Fetch origin and rebase main onto origin/main. Returns True on success.
 
     Includes pre-flight recovery for stale rebase state and dirty working trees
     left by crashed operations (interrupted rebase, killed process mid-merge).
+
+    Args:
+        env: Optional environment for remote-facing git calls (fetch, push).
     """
     # --- Pre-flight: recover from stale state ---
     git_dir = repo_root / ".git"
@@ -540,7 +551,7 @@ def _host_update_main(repo_root: Path) -> bool:
         stashed = stash_result.returncode == 0
 
     # --- Normal fetch + rebase ---
-    fetch = run_git("fetch", "origin", cwd=repo_root)
+    fetch = run_git("fetch", "origin", cwd=repo_root, env=env)
     if fetch.returncode != 0:
         logger.warning("git_sync poll: fetch failed", error=fetch.stderr.strip())
         return False
@@ -561,7 +572,7 @@ def _host_update_main(repo_root: Path) -> bool:
             "[pynchy-sync] dirty host repo recovered via stash \u2014 needs manual reconciliation",
             cwd=repo_root,
         )
-        push_local_commits(skip_fetch=True, cwd=repo_root)
+        push_local_commits(skip_fetch=True, cwd=repo_root, env=env)
         pop = run_git("stash", "pop", cwd=repo_root)
         if pop.returncode != 0:
             logger.warning(
@@ -710,15 +721,17 @@ async def start_external_repo_sync_loop(repo_ctx: RepoContext, deps: GitSyncDeps
 
     Simplified loop: no deploy logic. Polls ls-remote, fetches + rebases main,
     then notifies all worktrees for that repo. Shares HOST_GIT_SYNC_POLL_INTERVAL.
+    Uses per-repo token for all remote git operations.
     """
     repo_root = repo_ctx.root
-    last_origin_sha = await asyncio.to_thread(_host_get_origin_main_sha, repo_root)
+    env = git_env_with_token(repo_ctx.slug)
+    last_origin_sha = await asyncio.to_thread(_host_get_origin_main_sha, repo_root, env)
 
     while True:
         await asyncio.sleep(HOST_GIT_SYNC_POLL_INTERVAL)
 
         try:
-            current_origin = await asyncio.to_thread(_host_get_origin_main_sha, repo_root)
+            current_origin = await asyncio.to_thread(_host_get_origin_main_sha, repo_root, env)
             if not current_origin or current_origin == last_origin_sha:
                 continue
 
@@ -731,7 +744,7 @@ async def start_external_repo_sync_loop(repo_ctx: RepoContext, deps: GitSyncDeps
                 new_sha=current_origin[:8],
             )
 
-            updated = await asyncio.to_thread(_host_update_main, repo_root)
+            updated = await asyncio.to_thread(_host_update_main, repo_root, env)
             if not updated:
                 continue
             last_origin_sha = current_origin
