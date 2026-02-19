@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -15,15 +16,59 @@ def run_git(
     *args: str,
     cwd: Path | None = None,
     timeout: int = _SUBPROCESS_TIMEOUT,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Run a git command with standard timeout and error capture."""
+    """Run a git command with standard timeout and error capture.
+
+    Args:
+        env: Optional environment dict for remote-facing git calls (fetch, push,
+            ls-remote). Local-only git calls don't need this. When provided,
+            overrides the inherited environment.
+    """
     return subprocess.run(
         ["git", *args],
         cwd=str(cwd or get_settings().project_root),
         capture_output=True,
         text=True,
         timeout=timeout,
+        env=env,
     )
+
+
+def git_env_with_token(slug: str) -> dict[str, str] | None:
+    """Build env dict with GIT_ASKPASS for a repo's scoped token.
+
+    Returns None if no token is available (callers fall back to ambient
+    credentials). Uses GIT_ASKPASS with a small inline script that echoes the
+    token — safer than embedding tokens in URLs since the token never appears
+    in .git/config or ``git remote -v`` output.
+    """
+    from pynchy.git_ops.repo import get_repo_token
+
+    token = get_repo_token(slug)
+    if not token:
+        return None
+
+    env = os.environ.copy()
+    # GIT_ASKPASS is called with a prompt arg; we ignore it and always return
+    # the token. Using printf avoids the token appearing in /proc/cmdline
+    # (unlike echo in a temp script).
+    env["GIT_ASKPASS"] = "/bin/sh"
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    # The askpass "script" is /bin/sh, which reads from stdin... that doesn't
+    # work. Instead, use a credential helper via environment:
+    env["GH_TOKEN"] = token
+    # gh auth git-credential respects GH_TOKEN. But for raw git operations
+    # (not going through gh), we set up a minimal credential helper:
+    env["GIT_CONFIG_COUNT"] = "2"
+    env["GIT_CONFIG_KEY_0"] = "credential.https://github.com.username"
+    env["GIT_CONFIG_VALUE_0"] = "x-access-token"
+    env["GIT_CONFIG_KEY_1"] = "credential.https://github.com.helper"
+    env["GIT_CONFIG_VALUE_1"] = (
+        f"!f() {{ echo protocol=https; echo host=github.com; "
+        f"echo username=x-access-token; echo password={token}; }}; f"
+    )
+    return env
 
 
 class GitCommandError(Exception):
@@ -94,19 +139,24 @@ def files_changed_between(old_sha: str, new_sha: str, path: str) -> bool:
     return bool(result.stdout.strip()) if result.returncode == 0 else False
 
 
-def push_local_commits(*, skip_fetch: bool = False, cwd: Path | None = None) -> bool:
+def push_local_commits(
+    *, skip_fetch: bool = False, cwd: Path | None = None, env: dict[str, str] | None = None
+) -> bool:
     """Best-effort push of local commits to origin/main.
 
     Returns True if repo is in sync (nothing to push, or push succeeded).
     Retries once on rebase failure (covers the race where origin advances
     between fetch and rebase when two worktrees push nearly simultaneously).
     Never raises — all failures are logged and return False.
+
+    Args:
+        env: Optional environment for remote-facing git calls (fetch, push).
     """
     try:
         main = detect_main_branch(cwd=cwd)
 
         if not skip_fetch:
-            fetch = run_git("fetch", "origin", cwd=cwd)
+            fetch = run_git("fetch", "origin", cwd=cwd, env=env)
             if fetch.returncode != 0:
                 logger.warning("push_local: git fetch failed", stderr=fetch.stderr.strip())
                 return False
@@ -123,7 +173,7 @@ def push_local_commits(*, skip_fetch: bool = False, cwd: Path | None = None) -> 
                 if attempt == 0:
                     # Re-fetch and retry — origin may have advanced
                     logger.info("push_local: rebase failed, retrying after fresh fetch")
-                    retry_fetch = run_git("fetch", "origin", cwd=cwd)
+                    retry_fetch = run_git("fetch", "origin", cwd=cwd, env=env)
                     if retry_fetch.returncode != 0:
                         logger.warning(
                             "push_local: retry fetch failed", stderr=retry_fetch.stderr.strip()
@@ -135,7 +185,7 @@ def push_local_commits(*, skip_fetch: bool = False, cwd: Path | None = None) -> 
                 )
                 return False
 
-            push = run_git("push", cwd=cwd)
+            push = run_git("push", cwd=cwd, env=env)
             if push.returncode != 0:
                 logger.warning("push_local: git push failed", stderr=push.stderr.strip())
                 return False

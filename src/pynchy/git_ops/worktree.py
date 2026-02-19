@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from pynchy.git_ops.repo import RepoContext
-from pynchy.git_ops.utils import detect_main_branch, push_local_commits, run_git
+from pynchy.git_ops.utils import detect_main_branch, git_env_with_token, push_local_commits, run_git
 from pynchy.logger import logger
 
 
@@ -95,6 +95,7 @@ def _sync_existing_worktree(
 ) -> WorktreeResult:
     """Sync an existing worktree — best-effort pull, preserve local state."""
     notices: list[str] = []
+    env = git_env_with_token(repo_ctx.slug)
 
     # Check for uncommitted changes
     status = run_git("status", "--porcelain", cwd=worktree_path)
@@ -107,7 +108,7 @@ def _sync_existing_worktree(
         logger.info("Worktree has uncommitted changes", group=group_folder)
 
     # Best-effort fetch + merge
-    fetch = run_git("fetch", "origin", cwd=repo_ctx.root)
+    fetch = run_git("fetch", "origin", cwd=repo_ctx.root, env=env)
     if fetch.returncode != 0:
         notices.append(
             f"Failed to pull latest changes: git fetch failed ({fetch.stderr.strip()}). "
@@ -143,8 +144,9 @@ def _create_new_worktree(
     repo_ctx: RepoContext,
 ) -> WorktreeResult:
     """Create a new worktree from origin/{main}. Raises WorktreeError on failure."""
+    env = git_env_with_token(repo_ctx.slug)
     # Fetch is required for initial creation
-    fetch = run_git("fetch", "origin", cwd=repo_ctx.root)
+    fetch = run_git("fetch", "origin", cwd=repo_ctx.root, env=env)
     if fetch.returncode != 0:
         raise WorktreeError(f"git fetch failed: {fetch.stderr.strip()}")
 
@@ -271,7 +273,7 @@ def reconcile_worktrees_at_startup(
         repo_groups: Dict mapping slug → list of group folder names.
     """
     from pynchy.config import get_settings
-    from pynchy.git_ops.repo import ensure_repo_cloned, get_repo_context
+    from pynchy.git_ops.repo import check_token_expiry, ensure_repo_cloned, get_repo_context
 
     repo_groups = repo_groups or {}
 
@@ -284,6 +286,16 @@ def reconcile_worktrees_at_startup(
         if repo_ctx is None:
             logger.warning("Slug not configured in [repos], skipping", slug=slug)
             continue
+
+        # Validate token availability and expiry
+        repo_cfg = s.repos.get(slug)
+        if repo_cfg and repo_cfg.token:
+            check_token_expiry(slug, repo_cfg.token.get_secret_value())
+        elif not s.secrets.gh_token:
+            logger.warning(
+                "No git token for repo — private repos will fail to clone",
+                slug=slug,
+            )
 
         # Clone auto-managed repos if they don't exist yet
         if not ensure_repo_cloned(repo_ctx):
@@ -439,7 +451,8 @@ def merge_and_push_worktree(group_folder: str, repo_ctx: RepoContext) -> None:
     Designed to run in a thread via asyncio.to_thread().
     """
     if merge_worktree(group_folder, repo_ctx):
-        push_local_commits(cwd=repo_ctx.root)
+        env = git_env_with_token(repo_ctx.slug)
+        push_local_commits(cwd=repo_ctx.root, env=env)
 
 
 def background_merge_worktree(group: object) -> None:

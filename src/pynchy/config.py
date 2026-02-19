@@ -183,6 +183,7 @@ class RepoConfig(_StrictModel):
     path: str | None = (
         None  # relative to project root or absolute; None = auto-clone to data/repos/
     )
+    token: SecretStr | None = None  # repo-scoped GitHub token (fine-grained PAT)
 
     @field_validator("path")
     @classmethod

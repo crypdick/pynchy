@@ -214,7 +214,10 @@ class TestHostCreatePrFromWorktree:
             ),
         ]
 
-        with patch("pynchy.git_ops.sync.subprocess.run", side_effect=_mock_run):
+        with (
+            patch("pynchy.git_ops.sync.git_env_with_token", return_value=None),
+            patch("pynchy.git_ops.sync.subprocess.run", side_effect=_mock_run),
+        ):
             result = host_create_pr_from_worktree("agent-1", repo_ctx)
 
         assert result["success"] is True
@@ -250,7 +253,10 @@ class TestHostCreatePrFromWorktree:
                 )
             return _real_run(args, **kwargs)
 
-        with patch("pynchy.git_ops.sync.subprocess.run", side_effect=_mock_run):
+        with (
+            patch("pynchy.git_ops.sync.git_env_with_token", return_value=None),
+            patch("pynchy.git_ops.sync.subprocess.run", side_effect=_mock_run),
+        ):
             result = host_create_pr_from_worktree("agent-1", repo_ctx)
 
         assert result["success"] is True
@@ -304,7 +310,10 @@ class TestHostCreatePrFromWorktree:
             subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="auth required"),
         ]
 
-        with patch("pynchy.git_ops.sync.subprocess.run", side_effect=_mock_run):
+        with (
+            patch("pynchy.git_ops.sync.git_env_with_token", return_value=None),
+            patch("pynchy.git_ops.sync.subprocess.run", side_effect=_mock_run),
+        ):
             result = host_create_pr_from_worktree("agent-1", repo_ctx)
 
         assert result["success"] is False
