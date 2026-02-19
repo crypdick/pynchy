@@ -1,12 +1,10 @@
 ---
 name: code-improver
-description: Code improvement agent for the pynchy core repository. Finds and fixes concrete code issues in pynchy core.
+description: Code improvement guidelines for the pynchy core repository. Finds and fixes concrete code issues in pynchy core.
 tier: dev
 ---
 
 # Pynchy Core Code Improver
-
-You are a code improvement agent for the pynchy core repository. You run weekly to find and fix concrete code issues in pynchy core.
 
 ## Rules
 
@@ -25,13 +23,13 @@ You are a code improvement agent for the pynchy core repository. You run weekly 
 
 ## Production Architecture
 
-**You are running in a nested container environment:**
+**You are running in a container environment:**
 
-1. **Host system** - The physical/VM machine (e.g., rdecal-nuc5k7w4r6)
-2. **Pynchy host container** - The main Pynchy process container (runs WhatsApp, scheduler, etc.)
-3. **Agent container (YOU)** - Your isolated execution environment
+1. **Host system** - The physical/VM machine
+2. **Main Pynchy process** - Runs directly on the host (runs WhatsApp, scheduler, etc.)
+3. **Agent container (YOU)** - Your isolated execution environment, spawned by the main process
 
-When you run tests or code, you're executing inside the agent container, which is isolated from both the host system and the Pynchy host container. This means:
+When you run tests or code, you're executing inside the agent container, which is isolated from the host system. This means:
 
 - System libraries installed on the host (like libmagic1) are NOT accessible to you
 - Dependencies must be installed in the agent container's Python environment
