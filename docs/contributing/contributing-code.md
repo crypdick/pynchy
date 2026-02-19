@@ -16,4 +16,4 @@ See the [Plugin Authoring Guide](plugins/index.md) for how to create, package, a
 
 ## Development
 
-See the `development` skill (`.claude/skills/development/SKILL.md`) for running commands, writing tests, and linting.
+See the `pynchy-dev` skill (`.claude/skills/pynchy-dev/SKILL.md`) for running commands, writing tests, and linting.
