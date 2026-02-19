@@ -214,6 +214,7 @@ class WorkspaceConfig(_StrictModel):
     trigger: Literal["mention", "always"] | None = None
     allowed_users: list[str] | None = None
     channels: dict[str, ChannelOverrideConfig] | None = None
+    idle_terminate: bool = True  # False → container stays alive until hard timeout
 
     @field_validator("schedule")
     @classmethod
