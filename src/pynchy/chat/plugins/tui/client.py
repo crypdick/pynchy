@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from datetime import UTC, datetime
 
 import aiohttp
@@ -282,7 +283,7 @@ class ChatLog(RichLog):
 
 def _sanitize(jid: str) -> str:
     """Convert a JID to a valid Textual widget ID."""
-    return jid.replace("@", "-at-").replace(".", "-")
+    return re.sub(r"[^a-zA-Z0-9_-]", "-", jid)
 
 
 def _render_message(log: ChatLog, sender: str, content: str, timestamp: str) -> None:
