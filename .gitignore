@@ -15,15 +15,15 @@ groups/*
 !groups/global/
 groups/global/*
 !groups/global/CLAUDE.md
-!groups/admin/
-groups/admin/*
-!groups/admin/CLAUDE.md
+!groups/admin-1/
+groups/admin-1/*
+!groups/admin-1/CLAUDE.md
 !groups/god/
 groups/god/*
 !groups/god/CLAUDE.md
-!groups/mr-pynchy/
-groups/mr-pynchy/*
-!groups/mr-pynchy/CLAUDE.md
+!groups/admin-2/
+groups/admin-2/*
+!groups/admin-2/CLAUDE.md
 
 # Secrets
 *.keys.json

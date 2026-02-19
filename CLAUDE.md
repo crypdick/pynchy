@@ -2,6 +2,10 @@
 
 Personal Claude assistant. See [README.md](README.md) for philosophy. See [docs/install.md](docs/install.md) for installation. See [docs/architecture/](docs/architecture/index.md) for architecture.
 
+## Deployment Awareness
+
+You are usually NOT running on the production host. The pynchy service runs on `pynchy-server` (reachable via Tailscale SSH). Before making changes that affect the live service (config.toml, server-side files, service restarts), read the [pynchy-ops skill](.claude/skills/pynchy-ops/SKILL.md) for deployment procedures, auto-deploy behavior, and how to observe the running service.
+
 ## Quick Context
 
 Python process that connects to messaging channels (WhatsApp, Slack, etc. via plugins), routes messages to Claude Agent SDK running in containers (Apple Container on macOS, Docker on Linux). Each group has isolated filesystem and memory.

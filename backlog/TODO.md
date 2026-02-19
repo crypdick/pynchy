@@ -71,6 +71,7 @@ Single source of truth for all pynchy work items.
 - make the code improver plugin able to update the plugin repos as well as the core pynchy repo.
 
 #### Bugs
+- [Slack shutdown race (recurrence)](3-ready/slack-shutdown-race.md) — `RuntimeError: Executor shutdown` during service restart. Commit `76065e0` cancels `_reconnect_task` in `disconnect()`, but orphaned aiohttp subtasks spawned by `connect()` still crash when the executor tears down. Needs deeper fix in `slack.py` reconnect path.
 - messaging desync — sometimes no response appears in TUI until a follow-up message is sent. Partially fixed (cursor advance bug, input pipeline unification), but full fix likely depends on per-channel bidirectional cursors (see [reliable-channel-messaging](2-planning/reliable-channel-messaging.md)).
 
 #### Docs updates
