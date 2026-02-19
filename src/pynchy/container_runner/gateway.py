@@ -184,11 +184,33 @@ class LiteLLMGateway:
     # ------------------------------------------------------------------
 
     # Vars that pynchy sets itself — never forward from host env.
-    _GATEWAY_MANAGED_VARS = frozenset({
-        "LITELLM_MASTER_KEY",
-        "LITELLM_SALT_KEY",
-        "DATABASE_URL",
-    })
+    _GATEWAY_MANAGED_VARS = frozenset(
+        {
+            "LITELLM_MASTER_KEY",
+            "LITELLM_SALT_KEY",
+            "DATABASE_URL",
+        }
+    )
+
+    # Pattern matching obvious placeholder values in env vars.  Real API
+    # keys never contain "..." or "YOUR_KEY", but placeholder .env lines
+    # commonly do.  Forwarding a placeholder to LiteLLM creates a zombie
+    # deployment that poisons the router's health state (auth errors
+    # during startup probes mark all deployments as unhealthy).
+    _PLACEHOLDER_RE = re.compile(r"\.\.\.|YOUR_|CHANGE_ME|REPLACE_|xxx{3,}", re.IGNORECASE)
+
+    @staticmethod
+    def _resolve_env(config_path: Path) -> dict[str, str]:
+        """Build a merged env dict from ``.env`` file + ``os.environ``.
+
+        ``.env`` is expected as a sibling of the config file (= project
+        root).  ``os.environ`` wins on conflicts.
+        """
+        from dotenv import dotenv_values
+
+        dotenv_path = config_path.parent / ".env"
+        dotenv_vars = dotenv_values(dotenv_path) if dotenv_path.exists() else {}
+        return {**dotenv_vars, **os.environ}
 
     @staticmethod
     def _collect_yaml_env_refs(config_path: Path) -> list[tuple[str, str]]:
@@ -198,29 +220,93 @@ class LiteLLMGateway:
         python-dotenv).  ``os.environ`` wins on conflicts.
 
         Returns ``(name, value)`` pairs for every referenced var that is
-        set on the host.  Gateway-managed vars are excluded.  Missing vars
-        produce a warning — LiteLLM will fail at runtime for that entry,
-        which surfaces the problem clearly.
+        set on the host.  Gateway-managed vars are excluded.  Missing or
+        placeholder vars produce a warning and are skipped.
         """
-        from dotenv import dotenv_values
-
         text = config_path.read_text()
         var_names = set(re.findall(r"os\.environ/(\w+)", text))
         var_names -= LiteLLMGateway._GATEWAY_MANAGED_VARS
 
-        # .env as sibling of the config file (= project root), os.environ overrides
-        dotenv_path = config_path.parent / ".env"
-        dotenv_vars = dotenv_values(dotenv_path) if dotenv_path.exists() else {}
-        env: dict[str, str | None] = {**dotenv_vars, **os.environ}
+        env = LiteLLMGateway._resolve_env(config_path)
 
         resolved: list[tuple[str, str]] = []
         for name in sorted(var_names):
             value = env.get(name)
-            if value:
-                resolved.append((name, value))
-            else:
+            if not value:
                 logger.warning("YAML references unset env var", var=name)
+            elif LiteLLMGateway._PLACEHOLDER_RE.search(value):
+                logger.warning(
+                    "Skipping env var with placeholder value",
+                    var=name,
+                )
+            else:
+                resolved.append((name, value))
         return resolved
+
+    @staticmethod
+    def _prepare_config(config_path: Path, output_dir: Path) -> Path:
+        """Create a filtered copy of the litellm config.
+
+        Removes ``model_list`` entries whose ``api_key`` references an
+        env var that is unset or contains a placeholder value.  This
+        prevents LiteLLM from loading zombie deployments that fail auth
+        during startup health probes and poison the router's health state
+        for *all* deployments.
+
+        Returns the path to the filtered config (written inside
+        *output_dir*).  If no entries are filtered, the file is still
+        written — it's always the filtered copy that gets mounted.
+        """
+        import yaml
+
+        env = LiteLLMGateway._resolve_env(config_path)
+        config = yaml.safe_load(config_path.read_text())
+
+        if not isinstance(config, dict) or "model_list" not in config:
+            # Nothing to filter — write a verbatim copy
+            out = output_dir / "litellm_config.yaml"
+            out.write_text(config_path.read_text())
+            return out
+
+        original_count = len(config["model_list"])
+        kept: list[dict] = []
+        for entry in config["model_list"]:
+            api_key = (entry.get("litellm_params") or {}).get("api_key", "")
+            m = re.match(r"os\.environ/(\w+)", str(api_key))
+            if m:
+                var_name = m.group(1)
+                value = env.get(var_name)
+                if not value:
+                    model_id = (entry.get("model_info") or {}).get("id", "?")
+                    logger.warning(
+                        "Removing model entry with unset api_key env var",
+                        model_id=model_id,
+                        var=var_name,
+                    )
+                    continue
+                if LiteLLMGateway._PLACEHOLDER_RE.search(value):
+                    model_id = (entry.get("model_info") or {}).get("id", "?")
+                    logger.warning(
+                        "Removing model entry with placeholder api_key",
+                        model_id=model_id,
+                        var=var_name,
+                    )
+                    continue
+            kept.append(entry)
+
+        config["model_list"] = kept
+
+        removed = original_count - len(kept)
+        if removed:
+            logger.info(
+                "Filtered litellm config",
+                removed=removed,
+                remaining=len(kept),
+            )
+
+        out = output_dir / "litellm_config.yaml"
+        out.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False))
+        return out
 
     # Docker helpers are in _docker.py — imported at module level.
 
@@ -321,10 +407,13 @@ class LiteLLMGateway:
         # Remove stale LiteLLM container from previous run
         run_docker("rm", "-f", _LITELLM_CONTAINER, check=False)
 
+        # Filter the config: remove model entries with missing/placeholder keys
+        filtered_config = self._prepare_config(self._config_path, self._data_dir)
+
         logger.info(
             "Starting LiteLLM proxy container",
             image=self._image,
-            config=str(self._config_path),
+            config=str(filtered_config),
             port=self.port,
         )
 
@@ -354,7 +443,7 @@ class LiteLLMGateway:
             "--name", _LITELLM_CONTAINER,
             "--network", _NETWORK_NAME,
             "-p", f"{self.port}:{_LITELLM_INTERNAL_PORT}",
-            "-v", f"{self._config_path}:/app/config.yaml:ro",
+            "-v", f"{filtered_config}:/app/config.yaml:ro",
             "-v", f"{self._data_dir}:/app/data",
             *env_vars,
             "--restart", "unless-stopped",
