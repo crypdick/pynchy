@@ -1,3 +1,8 @@
+# Mount Allowlist — EXAMPLE
+# NOTE: This is a reference example checked into the repo. The live config
+# is on pynchy-server (reachable via Tailscale):
+#   ssh pynchy-server cat ~/src/PERSONAL/pynchy/mount-allowlist.toml
+
 non_admin_read_only = true
 blocked_patterns = ["password", "secret", "token"]
 

@@ -1,5 +1,9 @@
-# LiteLLM Proxy Configuration
-# ============================
+# LiteLLM Proxy Configuration — EXAMPLE
+# =======================================
+# NOTE: This is a reference example checked into the repo. The live config
+# is on pynchy-server (reachable via Tailscale):
+#   ssh pynchy-server cat ~/src/PERSONAL/pynchy/litellm_config.yaml
+#
 # Copy to litellm_config.yaml (project root) and fill in your API keys.
 # This file is the single source of truth for LLM routing — pynchy reads
 # it but never modifies it.

@@ -43,14 +43,20 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-class AgentConfig(BaseModel):
+class _StrictModel(BaseModel):
+    """Base for all config sub-models — reject unknown keys so typos fail loudly."""
+
+    model_config = {"extra": "forbid"}
+
+
+class AgentConfig(_StrictModel):
     name: str = "pynchy"
     # NOTE: Update docs/architecture/message-routing.md § Trigger Pattern if you change this
     trigger_aliases: list[str] = ["ghost"]
     core: str = "claude"  # "claude" or "openai"
 
 
-class ContainerConfig(BaseModel):
+class ContainerConfig(_StrictModel):
     image: str = "pynchy-agent:latest"
     timeout_ms: int = 1800000  # 30 minutes
     max_output_size: int = 10485760  # 10MB
@@ -64,11 +70,11 @@ class ContainerConfig(BaseModel):
         return max(1, v)
 
 
-class ServerConfig(BaseModel):
+class ServerConfig(_StrictModel):
     port: int = 8484
 
 
-class LoggingConfig(BaseModel):
+class LoggingConfig(_StrictModel):
     level: str = "INFO"
 
     @field_validator("level")
@@ -78,14 +84,14 @@ class LoggingConfig(BaseModel):
 
 
 # NOTE: Update docs/architecture/security.md § Credential Filtering if you change these fields
-class SecretsConfig(BaseModel):
+class SecretsConfig(_StrictModel):
     anthropic_api_key: SecretStr | None = None
     openai_api_key: SecretStr | None = None
     gh_token: SecretStr | None = None
     claude_code_oauth_token: SecretStr | None = None
 
 
-class GatewayConfig(BaseModel):
+class GatewayConfig(_StrictModel):
     """LLM API gateway — credential isolation for containers.
 
     Two modes:
@@ -109,14 +115,14 @@ class GatewayConfig(BaseModel):
     ui_password: SecretStr | None = None  # LiteLLM UI login password
 
 
-class OwnerConfig(BaseModel):
+class OwnerConfig(_StrictModel):
     """Owner identity per platform — used for allowed_users = ["owner"] resolution."""
 
     slack: str | None = None
     # WhatsApp uses is_from_me, no config needed
 
 
-class ChannelOverrideConfig(BaseModel):
+class ChannelOverrideConfig(_StrictModel):
     """Per-channel config override — None fields inherit from workspace/defaults."""
 
     access: Literal["read", "write", "readwrite"] | None = None
@@ -126,7 +132,7 @@ class ChannelOverrideConfig(BaseModel):
     allowed_users: list[str] | None = None
 
 
-class WorkspaceDefaultsConfig(BaseModel):
+class WorkspaceDefaultsConfig(_StrictModel):
     requires_trigger: bool = True
     context_mode: Literal["group", "isolated"] = "group"
     access: Literal["read", "write", "readwrite"] = "readwrite"
@@ -136,14 +142,14 @@ class WorkspaceDefaultsConfig(BaseModel):
     allowed_users: list[str] | None = None
 
 
-class McpToolSecurityConfig(BaseModel):
+class McpToolSecurityConfig(_StrictModel):
     """Per-tool security config in config.toml."""
 
     risk_tier: Literal["always-approve", "rules-engine", "human-approval"] = "human-approval"
     enabled: bool = True
 
 
-class RateLimitsConfig(BaseModel):
+class RateLimitsConfig(_StrictModel):
     """Rate limiting config in config.toml."""
 
     max_calls_per_hour: int = 500
@@ -157,7 +163,7 @@ class RateLimitsConfig(BaseModel):
         return v
 
 
-class WorkspaceSecurityConfig(BaseModel):
+class WorkspaceSecurityConfig(_StrictModel):
     """Security profile in config.toml.
 
     Configures per-workspace MCP tool access control and rate limiting.
@@ -171,7 +177,7 @@ class WorkspaceSecurityConfig(BaseModel):
     rate_limits: RateLimitsConfig | None = None
 
 
-class RepoConfig(BaseModel):
+class RepoConfig(_StrictModel):
     """Config for a single tracked git repo under [repos."owner/repo"]."""
 
     path: str | None = None  # relative to project root or absolute; None = auto-clone to data/repos/
@@ -187,7 +193,7 @@ class RepoConfig(BaseModel):
         return str(p)
 
 
-class WorkspaceConfig(BaseModel):
+class WorkspaceConfig(_StrictModel):
     is_admin: bool = False
     requires_trigger: bool | None = None  # None → use workspace_defaults (deprecated)
     repo_access: str | None = None  # GitHub slug (owner/repo) from [repos.*]; None = no worktree
@@ -220,35 +226,35 @@ class WorkspaceConfig(BaseModel):
         return self.schedule is not None and self.prompt is not None
 
 
-class _ResetWords(BaseModel):
+class _ResetWords(_StrictModel):
     verbs: list[str] = ["reset", "restart", "clear", "new", "wipe"]
     nouns: list[str] = ["context", "session", "chat", "conversation"]
     aliases: list[str] = ["boom", "c"]
 
 
-class _EndSessionWords(BaseModel):
+class _EndSessionWords(_StrictModel):
     verbs: list[str] = ["end", "stop", "close", "finish"]
     nouns: list[str] = ["session"]
     aliases: list[str] = ["done", "bye", "goodbye", "cya"]
 
 
-class _RedeployWords(BaseModel):
+class _RedeployWords(_StrictModel):
     aliases: list[str] = ["r"]
     verbs: list[str] = ["redeploy", "deploy"]
 
 
-class CommandWordsConfig(BaseModel):
+class CommandWordsConfig(_StrictModel):
     reset: _ResetWords = _ResetWords()
     end_session: _EndSessionWords = _EndSessionWords()
     redeploy: _RedeployWords = _RedeployWords()
 
 
-class SchedulerConfig(BaseModel):
+class SchedulerConfig(_StrictModel):
     poll_interval: float = 60.0  # seconds
     timezone: str = ""  # empty → auto-detect
 
 
-class CronJobConfig(BaseModel):
+class CronJobConfig(_StrictModel):
     schedule: str  # cron expression
     command: str
     cwd: str | None = None  # optional working directory (relative to project root or absolute)
@@ -279,31 +285,31 @@ class CronJobConfig(BaseModel):
         return v
 
 
-class IntervalsConfig(BaseModel):
+class IntervalsConfig(_StrictModel):
     message_poll: float = 2.0  # seconds
     ipc_poll: float = 1.0  # seconds
 
 
-class QueueConfig(BaseModel):
+class QueueConfig(_StrictModel):
     max_retries: int = 5
     base_retry_seconds: float = 5.0
 
 
-class ChannelsConfig(BaseModel):
+class ChannelsConfig(_StrictModel):
     default: str | None = "tui"
 
 
-class PluginConfig(BaseModel):
+class PluginConfig(_StrictModel):
     enabled: bool = True
 
 
 # TODO: move this when we split out the slack plugin to its own repo.
-class SlackConfig(BaseModel):
+class SlackConfig(_StrictModel):
     bot_token: SecretStr | None = None  # xoxb-... Bot User OAuth Token
     app_token: SecretStr | None = None  # xapp-... App-Level Token (Socket Mode)
 
 
-class CalDAVServerConfig(BaseModel):
+class CalDAVServerConfig(_StrictModel):
     url: str
     username: str
     password: SecretStr | None = None
@@ -312,12 +318,12 @@ class CalDAVServerConfig(BaseModel):
     ignore: list[str] | None = None  # hide these (case-insensitive; ignored if allow set)
 
 
-class CalDAVConfig(BaseModel):
+class CalDAVConfig(_StrictModel):
     default_server: str = ""  # which server to use when no server prefix given
     servers: dict[str, CalDAVServerConfig] = {}
 
 
-class SecurityConfig(BaseModel):
+class SecurityConfig(_StrictModel):
     blocked_patterns: list[str] = [
         ".ssh",
         ".gnupg",
