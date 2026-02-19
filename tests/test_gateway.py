@@ -160,7 +160,9 @@ class TestCollectYamlEnvRefs:
 
     @pytest.mark.asyncio
     async def test_start_forwards_yaml_env_vars(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ):
         """Verify start() forwards env vars from YAML into docker run."""
         cfg = tmp_path / "litellm_config.yaml"
@@ -185,7 +187,7 @@ class TestCollectYamlEnvRefs:
             patch("pynchy.container_runner.gateway.ensure_image"),
             patch("pynchy.container_runner.gateway.ensure_network"),
             patch.object(gw, "_wait_postgres_healthy", new_callable=AsyncMock),
-            patch.object(gw, "_wait_healthy", new_callable=AsyncMock),
+            patch("pynchy.container_runner.gateway.wait_healthy", new_callable=AsyncMock),
         ):
             await gw.start()
 
@@ -250,7 +252,7 @@ class TestLiteLLMGatewayStart:
             patch("pynchy.container_runner.gateway.ensure_image"),
             patch("pynchy.container_runner.gateway.ensure_network"),
             patch.object(gw, "_wait_postgres_healthy", new_callable=AsyncMock),
-            patch.object(gw, "_wait_healthy", new_callable=AsyncMock),
+            patch("pynchy.container_runner.gateway.wait_healthy", new_callable=AsyncMock),
         ):
             await gw.start()
 

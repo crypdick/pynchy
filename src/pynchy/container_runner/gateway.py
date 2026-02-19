@@ -66,6 +66,7 @@ from pynchy.container_runner._docker import (
     ensure_image,
     ensure_network,
     run_docker,
+    wait_healthy,
 )
 from pynchy.logger import logger
 
@@ -453,7 +454,13 @@ class LiteLLMGateway:
             "--port", str(_LITELLM_INTERNAL_PORT),
         )  # fmt: skip
 
-        await self._wait_healthy()
+        await wait_healthy(
+            _LITELLM_CONTAINER,
+            f"http://localhost:{self.port}/health",
+            timeout=_HEALTH_TIMEOUT,
+            poll_interval=_HEALTH_POLL_INTERVAL,
+            headers={"Authorization": f"Bearer {self.key}"},
+        )
 
         logger.info(
             "LiteLLM gateway ready",
@@ -461,44 +468,6 @@ class LiteLLMGateway:
             container_url=self.base_url,
             container=_LITELLM_CONTAINER,
         )
-
-    async def _wait_healthy(self) -> None:
-        """Poll litellm's health endpoint until it responds."""
-        url = f"http://localhost:{self.port}/health"
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + _HEALTH_TIMEOUT
-
-        headers = {"Authorization": f"Bearer {self.key}"}
-
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=5),
-        ) as session:
-            while loop.time() < deadline:
-                try:
-                    async with session.get(url, headers=headers) as resp:
-                        if resp.status == 200:
-                            return
-                except (aiohttp.ClientError, OSError):
-                    pass
-
-                # Check container is still running
-                result = run_docker(
-                    "inspect",
-                    "-f",
-                    "{{.State.Running}}",
-                    _LITELLM_CONTAINER,
-                    check=False,
-                )
-                if result.stdout.strip() != "true":
-                    logs = run_docker("logs", "--tail", "50", _LITELLM_CONTAINER, check=False)
-                    logger.error("LiteLLM container exited", logs=logs.stdout[-2000:])
-                    msg = "LiteLLM container failed to start — check logs above"
-                    raise RuntimeError(msg)
-
-                await asyncio.sleep(_HEALTH_POLL_INTERVAL)
-
-        msg = f"LiteLLM proxy did not become healthy within {_HEALTH_TIMEOUT}s"
-        raise TimeoutError(msg)
 
     async def stop(self) -> None:
         logger.info("Stopping LiteLLM gateway containers")

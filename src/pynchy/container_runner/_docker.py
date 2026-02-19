@@ -57,9 +57,7 @@ def ensure_network(name: str) -> None:
 
 def is_container_running(name: str) -> bool:
     """Check if a Docker container is currently running."""
-    result = run_docker(
-        "inspect", "-f", "{{.State.Running}}", name, check=False
-    )
+    result = run_docker("inspect", "-f", "{{.State.Running}}", name, check=False)
     return result.stdout.strip() == "true"
 
 
@@ -69,8 +67,15 @@ async def wait_healthy(
     timeout: float = 90,
     poll_interval: float = 1.0,
     headers: dict[str, str] | None = None,
+    any_non_5xx: bool = False,
 ) -> None:
-    """Poll an HTTP endpoint until it responds 200, or raise on timeout."""
+    """Poll an HTTP endpoint until it responds healthy, or raise on timeout.
+
+    Args:
+        any_non_5xx: When *False* (default) only ``200`` counts as healthy.
+            When *True* any status below 500 is accepted — useful for servers
+            that don't expose a dedicated health endpoint.
+    """
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
 
@@ -80,12 +85,13 @@ async def wait_healthy(
         while loop.time() < deadline:
             try:
                 async with session.get(url, headers=headers) as resp:
+                    if any_non_5xx and resp.status < 500:
+                        return
                     if resp.status == 200:
                         return
             except (aiohttp.ClientError, OSError):
                 pass
 
-            # Check container is still running
             if not is_container_running(container_name):
                 logs = run_docker("logs", "--tail", "30", container_name, check=False)
                 logger.error("Container exited", container=container_name, logs=logs.stdout[-2000:])
