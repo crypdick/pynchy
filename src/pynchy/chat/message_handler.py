@@ -481,6 +481,11 @@ async def start_message_loop(
                         )
                         # Magic commands (c, boom, done, r, etc.) bypass trigger
                         if not has_trigger and not is_any_magic_command(last_content):
+                            logger.debug(
+                                "Skipping group, no trigger mention found",
+                                group=group.name,
+                                group_jid=group_jid,
+                            )
                             continue
 
                     all_pending = await get_messages_since(
