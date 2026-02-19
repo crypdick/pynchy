@@ -73,12 +73,18 @@ router_settings:
   routing_strategy: usage-based-routing
 
   # Retry failed requests on a different deployment
-  num_retries: 2
+  num_retries: 3
   timeout: 300
 
-  # Cool down a deployment for 60s after 3 consecutive failures
-  allowed_fails: 3
-  cooldown_time: 60
+  # Cool down a deployment after just 1 failure.  With allowed_fails=3
+  # (the old default), the router burns all retries on a dead deployment
+  # before cooling it down.  With 1, the first 429 immediately takes it
+  # out of rotation so retries hit the healthy deployment.
+  allowed_fails: 1
+  cooldown_time: 300  # 5 min — avoids churn on exhausted keys
+
+  # Be explicit: retry on rate-limit errors (don't rely on defaults)
+  retry_on_status_codes: [429]
 
   # Provider-level budget caps (combined across all keys for that provider).
   # Requires the PostgreSQL sidecar (started automatically by pynchy).

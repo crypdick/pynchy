@@ -26,8 +26,8 @@ def _input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
         d["is_scheduled_task"] = True
     if input_data.system_notices:
         d["system_notices"] = input_data.system_notices
-    if input_data.pynchy_repo_access:
-        d["pynchy_repo_access"] = True
+    if input_data.repo_access:
+        d["repo_access"] = input_data.repo_access
     # Always include agent core fields (container needs them to import the core)
     d["agent_core_module"] = input_data.agent_core_module
     d["agent_core_class"] = input_data.agent_core_class

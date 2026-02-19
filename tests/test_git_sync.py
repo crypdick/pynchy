@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from conftest import make_settings
 
+from pynchy.git_ops.repo import RepoContext
 from pynchy.git_ops.sync import (
     _hash_config_files,
     _host_container_files_changed,
@@ -76,15 +77,16 @@ def git_env(tmp_path: Path):
     worktrees_dir = tmp_path / "worktrees"
 
     s = make_settings(project_root=project, worktrees_dir=worktrees_dir)
+    repo_ctx = RepoContext(slug="owner/pynchy", root=project, worktrees_dir=worktrees_dir)
 
     with ExitStack() as stack:
         stack.enter_context(patch("pynchy.git_ops.utils.get_settings", return_value=s))
-        stack.enter_context(patch("pynchy.git_ops.worktree.get_settings", return_value=s))
         stack.enter_context(patch("pynchy.git_ops.sync.get_settings", return_value=s))
         yield {
             "origin": origin,
             "project": project,
             "worktrees_dir": worktrees_dir,
+            "repo_ctx": repo_ctx,
         }
 
 
@@ -97,8 +99,9 @@ class TestHostSyncWorktree:
     def test_sync_success(self, git_env: dict):
         """Commits merge into main and push to origin."""
         project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
 
-        result = ensure_worktree("agent-1")
+        result = ensure_worktree("agent-1", repo_ctx)
         wt_path = result.path
         (wt_path / "feature.txt").write_text("new feature")
         _git(wt_path, "add", "feature.txt")
@@ -106,7 +109,7 @@ class TestHostSyncWorktree:
         _git(wt_path, "config", "user.name", "Test")
         _git(wt_path, "commit", "-m", "add feature")
 
-        result = host_sync_worktree("agent-1")
+        result = host_sync_worktree("agent-1", repo_ctx)
         assert result["success"] is True
         assert "1 commit(s)" in result["message"]
 
@@ -119,33 +122,37 @@ class TestHostSyncWorktree:
 
     def test_sync_no_worktree(self, git_env: dict):
         """Returns error when worktree doesn't exist."""
-        result = host_sync_worktree("nonexistent")
+        repo_ctx = git_env["repo_ctx"]
+        result = host_sync_worktree("nonexistent", repo_ctx)
         assert result["success"] is False
         assert "No worktree found" in result["message"]
 
     def test_sync_uncommitted_changes(self, git_env: dict):
         """Returns error when worktree has uncommitted changes."""
-        result = ensure_worktree("agent-1")
+        repo_ctx = git_env["repo_ctx"]
+        result = ensure_worktree("agent-1", repo_ctx)
         wt_path = result.path
         (wt_path / "wip.txt").write_text("uncommitted work")
 
-        result = host_sync_worktree("agent-1")
+        result = host_sync_worktree("agent-1", repo_ctx)
         assert result["success"] is False
         assert "uncommitted changes" in result["message"]
 
     def test_sync_nothing_to_merge(self, git_env: dict):
         """Returns success when already up to date."""
-        ensure_worktree("agent-1")
+        repo_ctx = git_env["repo_ctx"]
+        ensure_worktree("agent-1", repo_ctx)
 
-        result = host_sync_worktree("agent-1")
+        result = host_sync_worktree("agent-1", repo_ctx)
         assert result["success"] is True
         assert "Already up to date" in result["message"]
 
     def test_sync_conflict_leaves_markers(self, git_env: dict):
         """On conflict, leaves conflict markers in worktree for agent to fix."""
         project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
 
-        result = ensure_worktree("agent-1")
+        result = ensure_worktree("agent-1", repo_ctx)
         wt_path = result.path
         (wt_path / "README.md").write_text("agent version")
         _git(wt_path, "add", "README.md")
@@ -158,7 +165,7 @@ class TestHostSyncWorktree:
         _git(project, "add", "README.md")
         _git(project, "commit", "-m", "main edit README")
 
-        result = host_sync_worktree("agent-1")
+        result = host_sync_worktree("agent-1", repo_ctx)
         assert result["success"] is False
         assert "conflict" in result["message"].lower()
 
@@ -185,9 +192,10 @@ class TestHostNotifyWorktreeUpdates:
     async def test_notifies_behind_worktrees(self, git_env: dict):
         """Worktrees behind main get rebased and notified."""
         project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
 
         # Create worktree
-        ensure_worktree("agent-1")
+        ensure_worktree("agent-1", repo_ctx)
 
         # Advance main
         (project / "new.txt").write_text("main update")
@@ -208,7 +216,7 @@ class TestHostNotifyWorktreeUpdates:
             }
         )
 
-        await host_notify_worktree_updates(exclude_group=None, deps=deps)
+        await host_notify_worktree_updates(exclude_group=None, deps=deps, repo_ctx=repo_ctx)
 
         # Should have sent a notification via system_notice
         deps.broadcast_system_notice.assert_called_once()
@@ -224,8 +232,9 @@ class TestHostNotifyWorktreeUpdates:
     async def test_multi_commit_shows_oneline_hint(self, git_env: dict):
         """Multiple commits show --oneline hint instead of commit message."""
         project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
 
-        ensure_worktree("agent-1")
+        ensure_worktree("agent-1", repo_ctx)
 
         # Push 2 commits to main
         (project / "file1.txt").write_text("first")
@@ -249,7 +258,7 @@ class TestHostNotifyWorktreeUpdates:
             }
         )
 
-        await host_notify_worktree_updates(exclude_group=None, deps=deps)
+        await host_notify_worktree_updates(exclude_group=None, deps=deps, repo_ctx=repo_ctx)
 
         deps.broadcast_system_notice.assert_called_once()
         msg = deps.broadcast_system_notice.call_args[0][1]
@@ -262,8 +271,9 @@ class TestHostNotifyWorktreeUpdates:
     async def test_skips_excluded_group(self, git_env: dict):
         """Excluded group (the one that just synced) is not notified."""
         project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
 
-        ensure_worktree("agent-1")
+        ensure_worktree("agent-1", repo_ctx)
 
         (project / "new.txt").write_text("main update")
         _git(project, "add", "new.txt")
@@ -283,7 +293,7 @@ class TestHostNotifyWorktreeUpdates:
             }
         )
 
-        await host_notify_worktree_updates(exclude_group="agent-1", deps=deps)
+        await host_notify_worktree_updates(exclude_group="agent-1", deps=deps, repo_ctx=repo_ctx)
 
         # Should NOT have sent any notifications
         deps.broadcast_system_notice.assert_not_called()
@@ -293,8 +303,9 @@ class TestHostNotifyWorktreeUpdates:
     async def test_dirty_worktree_skip_rebase(self, git_env: dict):
         """Dirty worktrees skip rebase and get a different notification."""
         project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
 
-        result = ensure_worktree("agent-1")
+        result = ensure_worktree("agent-1", repo_ctx)
         wt_path = result.path
         (wt_path / "wip.txt").write_text("uncommitted")
 
@@ -316,7 +327,7 @@ class TestHostNotifyWorktreeUpdates:
             }
         )
 
-        await host_notify_worktree_updates(exclude_group=None, deps=deps)
+        await host_notify_worktree_updates(exclude_group=None, deps=deps, repo_ctx=repo_ctx)
 
         deps.broadcast_system_notice.assert_called_once()
         msg = deps.broadcast_system_notice.call_args[0][1]
@@ -325,7 +336,8 @@ class TestHostNotifyWorktreeUpdates:
     @pytest.mark.asyncio
     async def test_no_notification_when_up_to_date(self, git_env: dict):
         """No notification when worktree is already current."""
-        ensure_worktree("agent-1")
+        repo_ctx = git_env["repo_ctx"]
+        ensure_worktree("agent-1", repo_ctx)
 
         from pynchy.types import WorkspaceProfile
 
@@ -341,7 +353,7 @@ class TestHostNotifyWorktreeUpdates:
             }
         )
 
-        await host_notify_worktree_updates(exclude_group=None, deps=deps)
+        await host_notify_worktree_updates(exclude_group=None, deps=deps, repo_ctx=repo_ctx)
 
         deps.broadcast_system_notice.assert_not_called()
         deps.broadcast_host_message.assert_not_called()
@@ -350,8 +362,9 @@ class TestHostNotifyWorktreeUpdates:
     async def test_always_uses_system_notice(self, git_env: dict):
         """All worktree notifications use system_notice (pseudo system messages)."""
         project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
 
-        ensure_worktree("agent-1")
+        ensure_worktree("agent-1", repo_ctx)
 
         (project / "new.txt").write_text("main update")
         _git(project, "add", "new.txt")
@@ -371,7 +384,7 @@ class TestHostNotifyWorktreeUpdates:
             }
         )
 
-        await host_notify_worktree_updates(exclude_group=None, deps=deps)
+        await host_notify_worktree_updates(exclude_group=None, deps=deps, repo_ctx=repo_ctx)
 
         # Always system_notice, never host_message
         deps.broadcast_system_notice.assert_called_once()
@@ -383,8 +396,9 @@ class TestHostNotifyWorktreeUpdates:
     async def test_dirty_worktree_always_uses_system_notice(self, git_env: dict):
         """Dirty worktree notifications always use system_notice."""
         project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
 
-        result = ensure_worktree("agent-1")
+        result = ensure_worktree("agent-1", repo_ctx)
         wt_path = result.path
         (wt_path / "wip.txt").write_text("uncommitted")
 
@@ -406,7 +420,7 @@ class TestHostNotifyWorktreeUpdates:
             }
         )
 
-        await host_notify_worktree_updates(exclude_group=None, deps=deps)
+        await host_notify_worktree_updates(exclude_group=None, deps=deps, repo_ctx=repo_ctx)
 
         deps.broadcast_system_notice.assert_called_once()
         deps.broadcast_host_message.assert_not_called()
@@ -499,18 +513,18 @@ class TestWriteIpcResponse:
 
 
 class TestPollingHelpers:
-    def test_host_get_origin_main_sha_success(self):
+    def test_host_get_origin_main_sha_success(self, tmp_path: Path):
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=0, stdout="main-sha-001\trefs/heads/main\n"
             )
-            sha = _host_get_origin_main_sha()
+            sha = _host_get_origin_main_sha(tmp_path)
             assert sha == "main-sha-001"
 
-    def test_host_get_origin_main_sha_failure(self):
+    def test_host_get_origin_main_sha_failure(self, tmp_path: Path):
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=1, stdout="")
-            sha = _host_get_origin_main_sha()
+            sha = _host_get_origin_main_sha(tmp_path)
             assert sha is None
 
     def test_host_container_files_changed_true(self):

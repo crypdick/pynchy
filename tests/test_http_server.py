@@ -115,8 +115,8 @@ def test_get_head_commit_message_exception():
 def testpush_local_commits_nothing_to_push():
     """push_local_commits returns True when no local commits exist."""
     with patch("subprocess.run") as mock_run:
-        # fetch succeeds, rev-list shows 0 commits
         mock_run.side_effect = [
+            Mock(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
             Mock(returncode=0),  # fetch
             Mock(returncode=0, stdout="0\n"),  # rev-list
         ]
@@ -127,6 +127,7 @@ def testpush_local_commits_success():
     """push_local_commits returns True when push succeeds."""
     with patch("subprocess.run") as mock_run:
         mock_run.side_effect = [
+            Mock(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
             Mock(returncode=0),  # fetch
             Mock(returncode=0, stdout="3\n"),  # rev-list (3 commits)
             Mock(returncode=0),  # rebase
@@ -138,7 +139,7 @@ def testpush_local_commits_success():
 def testpush_local_commits_fetch_failure():
     """push_local_commits returns False when fetch fails."""
     with patch("subprocess.run") as mock_run:
-        mock_run.return_value = Mock(returncode=1, stderr="network error")
+        mock_run.return_value = Mock(returncode=1, stderr="network error", stdout="")
         assert push_local_commits() is False
 
 
@@ -146,6 +147,7 @@ def testpush_local_commits_rebase_failure_retries_and_fails():
     """push_local_commits retries once after rebase failure, then gives up."""
     with patch("subprocess.run") as mock_run:
         mock_run.side_effect = [
+            Mock(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
             Mock(returncode=0),  # fetch
             Mock(returncode=0, stdout="2\n"),  # rev-list
             Mock(returncode=1, stderr="CONFLICT"),  # rebase fails (attempt 1)
@@ -161,6 +163,7 @@ def testpush_local_commits_rebase_retry_succeeds():
     """push_local_commits succeeds on retry when origin advanced mid-push."""
     with patch("subprocess.run") as mock_run:
         mock_run.side_effect = [
+            Mock(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
             Mock(returncode=0),  # fetch
             Mock(returncode=0, stdout="2\n"),  # rev-list
             Mock(returncode=1, stderr="CONFLICT"),  # rebase fails (attempt 1)
@@ -176,6 +179,7 @@ def testpush_local_commits_push_failure():
     """push_local_commits returns False when push is rejected."""
     with patch("subprocess.run") as mock_run:
         mock_run.side_effect = [
+            Mock(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
             Mock(returncode=0),  # fetch
             Mock(returncode=0, stdout="1\n"),  # rev-list
             Mock(returncode=0),  # rebase
@@ -188,6 +192,7 @@ def testpush_local_commits_skip_fetch():
     """push_local_commits skips fetch when skip_fetch=True."""
     with patch("subprocess.run") as mock_run:
         mock_run.side_effect = [
+            Mock(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
             Mock(returncode=0, stdout="0\n"),  # rev-list
         ]
         assert push_local_commits(skip_fetch=True) is True

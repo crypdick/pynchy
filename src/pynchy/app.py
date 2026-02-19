@@ -197,7 +197,7 @@ class PynchyApp:
         extra_system_notices: list[str] | None = None,
         *,
         is_scheduled_task: bool = False,
-        pynchy_repo_access_override: bool | None = None,
+        repo_access_override: str | None = None,
         input_source: str = "user",
     ) -> str:
         from pynchy import agent_runner
@@ -210,7 +210,7 @@ class PynchyApp:
             on_output,
             extra_system_notices,
             is_scheduled_task=is_scheduled_task,
-            pynchy_repo_access_override=pynchy_repo_access_override,
+            repo_access_override=repo_access_override,
             input_source=input_source,
         )
 
@@ -543,16 +543,17 @@ class PynchyApp:
         if not self.workspaces:
             await startup_handler.setup_admin_group(self, default_channel)
 
-        # Reconcile worktrees: create missing ones for pynchy_repo_access groups,
+        # Reconcile worktrees: create missing ones for repo_access groups,
         # fix broken worktrees, and rebase diverged branches before containers launch
+        from pynchy.git_ops.repo import get_repo_context
         from pynchy.git_ops.worktree import reconcile_worktrees_at_startup
-        from pynchy.workspace_config import get_pynchy_repo_access_folders, reconcile_workspaces
+        from pynchy.workspace_config import get_repo_access_groups, reconcile_workspaces
 
-        pynchy_repo_access_folders = get_pynchy_repo_access_folders(self.workspaces)
+        repo_groups = get_repo_access_groups(self.workspaces)
 
         await asyncio.to_thread(
             reconcile_worktrees_at_startup,
-            pynchy_repo_access_folders=pynchy_repo_access_folders,
+            repo_groups=repo_groups,
         )
 
         # Reconcile workspaces (create chat groups + tasks from config.toml)
@@ -568,6 +569,16 @@ class PynchyApp:
         asyncio.create_task(start_scheduler_loop(make_scheduler_deps(self)))
         asyncio.create_task(start_ipc_watcher(make_ipc_deps(self)))
         asyncio.create_task(start_host_git_sync_loop(make_git_sync_deps(self)))
+
+        # Start one external sync loop per non-pynchy repo with configured groups
+        from pynchy.git_ops.sync import start_external_repo_sync_loop
+
+        for slug, _folders in repo_groups.items():
+            repo_ctx = get_repo_context(slug)
+            if repo_ctx and repo_ctx.root.resolve() != s.project_root.resolve():
+                asyncio.create_task(
+                    start_external_repo_sync_loop(repo_ctx, make_git_sync_deps(self))
+                )
         self.queue.set_process_messages_fn(self._process_group_messages)
 
         # HTTP server for remote health checks, deploys, and TUI API

@@ -997,20 +997,19 @@ class TestFinishedWorkExecution:
     """Tests for the finished_work IPC command."""
 
     async def test_finished_work_sends_host_message(self, deps):
-        with patch("pynchy.workspace_config.has_pynchy_repo_access", return_value=False):
-            await dispatch(
-                {
-                    "type": "finished_work",
-                    "chatJid": "other@g.us",
-                },
-                "other-group",
-                False,
-                deps,
-            )
+        await dispatch(
+            {
+                "type": "finished_work",
+                "chatJid": "other@g.us",
+            },
+            "other-group",
+            False,
+            deps,
+        )
 
-            assert len(deps.host_messages) == 1
-            assert deps.host_messages[0][0] == "other@g.us"
-            assert "finished" in deps.host_messages[0][1].lower()
+        assert len(deps.host_messages) == 1
+        assert deps.host_messages[0][0] == "other@g.us"
+        assert "finished" in deps.host_messages[0][1].lower()
 
     async def test_finished_work_merges_worktree_for_pynchy_repo_access(self, deps):
         with patch("pynchy.git_ops.worktree.background_merge_worktree") as mock_merge:
@@ -1056,15 +1055,9 @@ class TestFinishedWorkExecution:
 
         assert len(deps.host_messages) == 0
 
-    async def test_finished_work_survives_merge_failure(self, deps):
-        """finished_work should send message even if merge fails."""
-        with (
-            patch("pynchy.workspace_config.has_pynchy_repo_access", return_value=True),
-            patch(
-                "pynchy.git_ops.worktree.merge_and_push_worktree",
-                side_effect=Exception("merge boom"),
-            ),
-        ):
+    async def test_finished_work_host_message_sent_regardless_of_merge(self, deps):
+        """finished_work always sends the host message; background merge is fire-and-forget."""
+        with patch("pynchy.git_ops.worktree.background_merge_worktree"):
             await dispatch(
                 {
                     "type": "finished_work",
@@ -1075,7 +1068,7 @@ class TestFinishedWorkExecution:
                 deps,
             )
 
-            # Host message should still be sent despite merge failure
+            # Host message is sent immediately regardless of merge outcome
             assert len(deps.host_messages) == 1
 
 

@@ -171,10 +171,24 @@ class WorkspaceSecurityConfig(BaseModel):
     rate_limits: RateLimitsConfig | None = None
 
 
+class RepoConfig(BaseModel):
+    """Config for a single tracked git repo under [repos."owner/repo"]."""
+
+    path: str  # relative to project root or absolute
+
+    @field_validator("path")
+    @classmethod
+    def resolve_path(cls, v: str) -> str:
+        p = Path(v)
+        if not p.is_absolute():
+            p = (Path.cwd() / p).resolve()
+        return str(p)
+
+
 class WorkspaceConfig(BaseModel):
     is_admin: bool = False
     requires_trigger: bool | None = None  # None → use workspace_defaults (deprecated)
-    pynchy_repo_access: bool = False
+    repo_access: str | None = None  # GitHub slug (owner/repo) from [repos.*]; None = no worktree
     name: str | None = None  # display name; defaults to folder titlecased
     schedule: str | None = None  # cron expression
     prompt: str | None = None  # prompt for scheduled tasks
@@ -343,6 +357,7 @@ class Settings(BaseSettings):
     secrets: SecretsConfig = SecretsConfig()
     gateway: GatewayConfig = GatewayConfig()
     workspace_defaults: WorkspaceDefaultsConfig = WorkspaceDefaultsConfig()
+    repos: dict[str, RepoConfig] = {}  # [repos."owner/repo"]
     workspaces: dict[str, WorkspaceConfig] = {}  # [workspaces.<folder_name>]
     owner: OwnerConfig = OwnerConfig()
     user_groups: dict[str, list[str]] = {}  # group_name → [user IDs or group refs]
@@ -433,7 +448,8 @@ class Settings(BaseSettings):
 
     @cached_property
     def worktrees_dir(self) -> Path:
-        return self.home_dir / ".config" / "pynchy" / "worktrees"
+        """Base directory for all worktrees: data/worktrees/<owner>/<repo>/."""
+        return self.data_dir / "worktrees"
 
 
 # ---------------------------------------------------------------------------

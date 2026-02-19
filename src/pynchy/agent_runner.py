@@ -59,7 +59,7 @@ async def run_agent(
     extra_system_notices: list[str] | None = None,
     *,
     is_scheduled_task: bool = False,
-    pynchy_repo_access_override: bool | None = None,
+    repo_access_override: str | None = None,
     input_source: str = "user",
 ) -> str:
     """Run the container agent for a group. Returns 'success' or 'error'.
@@ -70,17 +70,17 @@ async def run_agent(
 
     Args:
         is_scheduled_task: Whether this is a scheduled task run.
-        pynchy_repo_access_override: Explicit pynchy_repo_access flag; None = auto-detect.
+        repo_access_override: Explicit repo_access slug; None = auto-detect from workspace config.
         input_source: Source label for input broadcasting
             ("user", "scheduled_task", "reset_handoff").
     """
-    from pynchy.workspace_config import has_pynchy_repo_access
+    from pynchy.workspace_config import get_repo_access
 
     is_admin = group.is_admin
-    if pynchy_repo_access_override is not None:
-        pynchy_repo_access = pynchy_repo_access_override
+    if repo_access_override is not None:
+        repo_access: str | None = repo_access_override
     else:
-        pynchy_repo_access = has_pynchy_repo_access(group)
+        repo_access = get_repo_access(group)
     session_id = deps.sessions.get(group.folder)
 
     # Broadcast input messages to channels so the UI faithfully represents
@@ -159,7 +159,7 @@ async def run_agent(
                 is_admin=is_admin,
                 system_notices=system_notices or None,
                 is_scheduled_task=is_scheduled_task,
-                pynchy_repo_access=pynchy_repo_access,
+                repo_access=repo_access,
                 agent_core_module=agent_core_module,
                 agent_core_class=agent_core_class,
             ),

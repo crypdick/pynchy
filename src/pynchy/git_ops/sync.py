@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from pynchy.config import get_settings
+from pynchy.git_ops.repo import RepoContext
 from pynchy.git_ops.utils import (
     detect_main_branch,
     files_changed_between,
@@ -31,10 +32,10 @@ from pynchy.types import WorkspaceProfile
 # git ls-remote every 5s = 720 req/hr — well within limits.
 HOST_GIT_SYNC_POLL_INTERVAL = 5.0
 
-# Track the last HEAD SHA for which worktree notifications were sent.
+# Track the last HEAD SHA for which worktree notifications were sent, per repo root.
 # This prevents the poll loop from re-notifying when the IPC handler
 # (sync_worktree_to_main) already notified for the same merge.
-_last_worktree_notified_sha: str | None = None
+_last_worktree_notified_sha: dict[str, str] = {}
 
 
 class GitSyncDeps(Protocol):
@@ -54,7 +55,7 @@ class GitSyncDeps(Protocol):
 # ---------------------------------------------------------------------------
 
 
-def host_sync_worktree(group_folder: str) -> dict[str, Any]:
+def host_sync_worktree(group_folder: str, repo_ctx: RepoContext) -> dict[str, Any]:
     """Host-side: merge a worktree into main and push to origin.
 
     Container can't read host state — all feedback must be in the response.
@@ -63,9 +64,9 @@ def host_sync_worktree(group_folder: str) -> dict[str, Any]:
 
     Returns {"success": bool, "message": str}.
     """
-    worktree_path = get_settings().worktrees_dir / group_folder
+    worktree_path = repo_ctx.worktrees_dir / group_folder
     branch_name = f"worktree/{group_folder}"
-    main_branch = detect_main_branch()
+    main_branch = detect_main_branch(cwd=repo_ctx.root)
 
     if not worktree_path.exists():
         return {
@@ -86,7 +87,9 @@ def host_sync_worktree(group_folder: str) -> dict[str, Any]:
         }
 
     # 2. Check if there are commits to merge
-    count = run_git("rev-list", f"{main_branch}..{branch_name}", "--count")
+    count = run_git(
+        "rev-list", f"{main_branch}..{branch_name}", "--count", cwd=repo_ctx.root
+    )
     if count.returncode != 0:
         return {
             "success": False,
@@ -112,7 +115,7 @@ def host_sync_worktree(group_folder: str) -> dict[str, Any]:
         }
 
     # 3. Fetch origin
-    fetch = run_git("fetch", "origin")
+    fetch = run_git("fetch", "origin", cwd=repo_ctx.root)
     if fetch.returncode != 0:
         return {
             "success": False,
@@ -123,9 +126,9 @@ def host_sync_worktree(group_folder: str) -> dict[str, Any]:
         }
 
     # 4. Rebase host main onto origin/main (catch up with remote)
-    rebase_main = run_git("rebase", f"origin/{main_branch}")
+    rebase_main = run_git("rebase", f"origin/{main_branch}", cwd=repo_ctx.root)
     if rebase_main.returncode != 0:
-        run_git("rebase", "--abort")
+        run_git("rebase", "--abort", cwd=repo_ctx.root)
         return {
             "success": False,
             "message": (
@@ -151,7 +154,7 @@ def host_sync_worktree(group_folder: str) -> dict[str, Any]:
         }
 
     # 6. FF-merge worktree branch into main
-    merge = run_git("merge", "--ff-only", branch_name)
+    merge = run_git("merge", "--ff-only", branch_name, cwd=repo_ctx.root)
     if merge.returncode != 0:
         return {
             "success": False,
@@ -163,7 +166,7 @@ def host_sync_worktree(group_folder: str) -> dict[str, Any]:
         }
 
     # 7. Push to origin (skip_fetch since we just fetched)
-    pushed = push_local_commits(skip_fetch=True)
+    pushed = push_local_commits(skip_fetch=True, cwd=repo_ctx.root)
     if not pushed:
         return {
             "success": False,
@@ -225,8 +228,9 @@ def _build_rebase_notice(worktree_path: Path, old_head: str, commit_count: int) 
 async def host_notify_worktree_updates(
     exclude_group: str | None,
     deps: GitSyncDeps,
+    repo_ctx: RepoContext,
 ) -> None:
-    """Host-side: rebase all worktrees onto main, notify agents.
+    """Host-side: rebase all worktrees for a repo onto main, notify agents.
 
     For each worktree (excluding source):
     - Up to date: no notification
@@ -240,16 +244,16 @@ async def host_notify_worktree_updates(
     """
     global _last_worktree_notified_sha
 
-    if not get_settings().worktrees_dir.exists():
+    if not repo_ctx.worktrees_dir.exists():
         return
 
-    main_branch = detect_main_branch()
+    main_branch = detect_main_branch(cwd=repo_ctx.root)
     registered = deps.workspaces()
 
     # Build folder->jid lookup
     folder_to_jid: dict[str, str] = {g.folder: jid for jid, g in registered.items()}
 
-    for entry in sorted(get_settings().worktrees_dir.iterdir()):
+    for entry in sorted(repo_ctx.worktrees_dir.iterdir()):
         if not entry.is_dir():
             continue
 
@@ -263,7 +267,9 @@ async def host_notify_worktree_updates(
 
         # Check if behind main
         branch_name = f"worktree/{group_folder}"
-        behind = run_git("rev-list", f"{branch_name}..{main_branch}", "--count")
+        behind = run_git(
+            "rev-list", f"{branch_name}..{main_branch}", "--count", cwd=repo_ctx.root
+        )
         try:
             behind_n = int(behind.stdout.strip())
         except (ValueError, TypeError):
@@ -315,9 +321,9 @@ async def host_notify_worktree_updates(
     # Record current HEAD so the poll loop can skip duplicate notifications
     # for the same merge (e.g. IPC handler already notified, poll loop detects
     # the same HEAD change seconds later).
-    current_head = get_head_sha()
+    current_head = get_head_sha(cwd=repo_ctx.root)
     if current_head != "unknown":
-        _last_worktree_notified_sha = current_head
+        _last_worktree_notified_sha[str(repo_ctx.root)] = current_head
 
 
 # ---------------------------------------------------------------------------
@@ -334,38 +340,39 @@ def write_ipc_response(path: Path, data: dict[str, Any]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Polling loop — detect origin/main changes
+# Polling loop helpers — pynchy's own repo
 # ---------------------------------------------------------------------------
 
 
-def _get_local_head_sha() -> str:
+def _get_local_head_sha(repo_root: Path | None = None) -> str:
     """Get the local HEAD SHA."""
-    sha = get_head_sha()
+    sha = get_head_sha(cwd=repo_root)
     return "" if sha == "unknown" else sha
 
 
-def _host_get_origin_main_sha() -> str | None:
+def _host_get_origin_main_sha(repo_root: Path) -> str | None:
     """Lightweight check: get origin/main SHA via ls-remote."""
     try:
-        result = run_git("ls-remote", "origin", "refs/heads/main")
+        main = detect_main_branch(cwd=repo_root)
+        result = run_git("ls-remote", "origin", f"refs/heads/{main}", cwd=repo_root)
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip().split()[0]
     except (subprocess.TimeoutExpired, OSError) as exc:
-        logger.debug("Failed to get origin/main SHA", err=str(exc))
+        logger.debug("Failed to get origin main SHA", err=str(exc))
     return None
 
 
-def _host_update_main() -> bool:
+def _host_update_main(repo_root: Path) -> bool:
     """Fetch origin and rebase main onto origin/main. Returns True on success."""
-    fetch = run_git("fetch", "origin")
+    fetch = run_git("fetch", "origin", cwd=repo_root)
     if fetch.returncode != 0:
         logger.warning("git_sync poll: fetch failed", error=fetch.stderr.strip())
         return False
 
-    main_branch = detect_main_branch()
-    rebase = run_git("rebase", f"origin/{main_branch}")
+    main_branch = detect_main_branch(cwd=repo_root)
+    rebase = run_git("rebase", f"origin/{main_branch}", cwd=repo_root)
     if rebase.returncode != 0:
-        run_git("rebase", "--abort")
+        run_git("rebase", "--abort", cwd=repo_root)
         logger.warning("git_sync poll: rebase failed", error=rebase.stderr.strip())
         return False
 
@@ -414,9 +421,26 @@ def _hash_config_files() -> str:
 
 
 async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
-    """Poll for code and config changes. Detects origin drift, local drift, and config drift."""
-    last_origin_sha = await asyncio.to_thread(_host_get_origin_main_sha)
-    deployed_sha = await asyncio.to_thread(_get_local_head_sha)
+    """Poll for code and config changes on pynchy's own repo.
+
+    Detects origin drift, local drift, and config drift. Deploy logic only
+    fires for pynchy — external repos use start_external_repo_sync_loop.
+    """
+    from pynchy.git_ops.repo import get_repo_context
+
+    s = get_settings()
+    pynchy_root = s.project_root
+
+    # Resolve pynchy's RepoContext for worktree notifications
+    pynchy_repo_ctx: RepoContext | None = None
+    for slug in s.repos:
+        ctx = get_repo_context(slug)
+        if ctx and ctx.root.resolve() == pynchy_root.resolve():
+            pynchy_repo_ctx = ctx
+            break
+
+    last_origin_sha = await asyncio.to_thread(_host_get_origin_main_sha, pynchy_root)
+    deployed_sha = await asyncio.to_thread(_get_local_head_sha, pynchy_root)
     config_hash = _hash_config_files()
 
     while True:
@@ -431,7 +455,7 @@ async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
                 return
 
             # --- Local HEAD drift detection ---
-            local_head = await asyncio.to_thread(_get_local_head_sha)
+            local_head = await asyncio.to_thread(_get_local_head_sha, pynchy_root)
             if local_head and deployed_sha and local_head != deployed_sha:
                 if needs_deploy(deployed_sha, local_head):
                     logger.info(
@@ -439,15 +463,17 @@ async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
                         deployed_sha=deployed_sha[:8],
                         local_head=local_head[:8],
                     )
-                    if _last_worktree_notified_sha != local_head:
-                        await host_notify_worktree_updates(None, deps)
+                    if pynchy_repo_ctx:
+                        notified = _last_worktree_notified_sha.get(str(pynchy_root), "")
+                        if notified != local_head:
+                            await host_notify_worktree_updates(None, deps, pynchy_repo_ctx)
                     rebuild = needs_container_rebuild(deployed_sha, local_head)
                     await deps.trigger_deploy(deployed_sha, rebuild=rebuild)
                     return
                 deployed_sha = local_head  # no deploy-worthy changes, advance baseline
 
             # --- Origin change detection ---
-            current_origin = await asyncio.to_thread(_host_get_origin_main_sha)
+            current_origin = await asyncio.to_thread(_host_get_origin_main_sha, pynchy_root)
             if not current_origin or current_origin == last_origin_sha:
                 continue
             old_origin = last_origin_sha
@@ -463,16 +489,18 @@ async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
                 logger.info("Origin changed but local already matches, skipping pull")
                 continue  # drift check above already handled deploy
 
-            updated = await asyncio.to_thread(_host_update_main)
+            updated = await asyncio.to_thread(_host_update_main, pynchy_root)
             if not updated:
                 continue
 
-            new_head_after_pull = await asyncio.to_thread(_get_local_head_sha)
-            if _last_worktree_notified_sha != new_head_after_pull:
-                await host_notify_worktree_updates(None, deps)
+            new_head_after_pull = await asyncio.to_thread(_get_local_head_sha, pynchy_root)
+            if pynchy_repo_ctx:
+                notified = _last_worktree_notified_sha.get(str(pynchy_root), "")
+                if notified != new_head_after_pull:
+                    await host_notify_worktree_updates(None, deps, pynchy_repo_ctx)
 
             # Check deploy inline (avoid 5s delay for next tick)
-            new_head = await asyncio.to_thread(_get_local_head_sha)
+            new_head = await asyncio.to_thread(_get_local_head_sha, pynchy_root)
             if deployed_sha and new_head and needs_deploy(deployed_sha, new_head):
                 rebuild = needs_container_rebuild(deployed_sha, new_head)
                 await deps.trigger_deploy(deployed_sha, rebuild=rebuild)
@@ -481,3 +509,43 @@ async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
 
         except Exception:
             logger.exception("git_sync poll error")
+
+
+async def start_external_repo_sync_loop(repo_ctx: RepoContext, deps: GitSyncDeps) -> None:
+    """Poll for origin changes on an external (non-pynchy) repo.
+
+    Simplified loop: no deploy logic. Polls ls-remote, fetches + rebases main,
+    then notifies all worktrees for that repo. Shares HOST_GIT_SYNC_POLL_INTERVAL.
+    """
+    repo_root = repo_ctx.root
+    last_origin_sha = await asyncio.to_thread(_host_get_origin_main_sha, repo_root)
+
+    while True:
+        await asyncio.sleep(HOST_GIT_SYNC_POLL_INTERVAL)
+
+        try:
+            current_origin = await asyncio.to_thread(_host_get_origin_main_sha, repo_root)
+            if not current_origin or current_origin == last_origin_sha:
+                continue
+
+            old_origin = last_origin_sha
+            last_origin_sha = current_origin
+
+            logger.info(
+                "External repo origin changed, syncing",
+                slug=repo_ctx.slug,
+                old_sha=old_origin[:8] if old_origin else "none",
+                new_sha=current_origin[:8],
+            )
+
+            updated = await asyncio.to_thread(_host_update_main, repo_root)
+            if not updated:
+                continue
+
+            new_head = await asyncio.to_thread(_get_local_head_sha, repo_root)
+            notified = _last_worktree_notified_sha.get(str(repo_root), "")
+            if notified != new_head:
+                await host_notify_worktree_updates(None, deps, repo_ctx)
+
+        except Exception:
+            logger.exception("external_repo_sync poll error", slug=repo_ctx.slug)

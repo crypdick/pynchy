@@ -46,9 +46,9 @@ def require_success(result: subprocess.CompletedProcess[str], command: str) -> s
     return result.stdout.strip()
 
 
-def detect_main_branch() -> str:
+def detect_main_branch(cwd: Path | None = None) -> str:
     """Detect the main branch name via origin/HEAD, fallback to 'main'."""
-    result = run_git("symbolic-ref", "refs/remotes/origin/HEAD")
+    result = run_git("symbolic-ref", "refs/remotes/origin/HEAD", cwd=cwd)
     if result.returncode == 0:
         # Output like "refs/remotes/origin/main"
         ref = result.stdout.strip()
@@ -56,10 +56,10 @@ def detect_main_branch() -> str:
     return "main"
 
 
-def get_head_sha() -> str:
+def get_head_sha(cwd: Path | None = None) -> str:
     """Return the current git HEAD SHA, or 'unknown' on failure."""
     try:
-        result = run_git("rev-parse", "HEAD")
+        result = run_git("rev-parse", "HEAD", cwd=cwd)
         return result.stdout.strip() if result.returncode == 0 else "unknown"
     except (OSError, subprocess.SubprocessError) as exc:
         logger.debug("get_head_sha failed", error=str(exc))
@@ -76,11 +76,11 @@ def is_repo_dirty(cwd: Path | None = None) -> bool:
         return False
 
 
-def count_unpushed_commits() -> int:
+def count_unpushed_commits(cwd: Path | None = None) -> int:
     """Count commits ahead of origin/main. Returns 0 on failure."""
     try:
-        main = detect_main_branch()
-        result = run_git("rev-list", f"origin/{main}..HEAD", "--count")
+        main = detect_main_branch(cwd=cwd)
+        result = run_git("rev-list", f"origin/{main}..HEAD", "--count", cwd=cwd)
         if result.returncode == 0:
             return int(result.stdout.strip() or "0")
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
@@ -94,7 +94,7 @@ def files_changed_between(old_sha: str, new_sha: str, path: str) -> bool:
     return bool(result.stdout.strip()) if result.returncode == 0 else False
 
 
-def push_local_commits(*, skip_fetch: bool = False) -> bool:
+def push_local_commits(*, skip_fetch: bool = False, cwd: Path | None = None) -> bool:
     """Best-effort push of local commits to origin/main.
 
     Returns True if repo is in sync (nothing to push, or push succeeded).
@@ -103,25 +103,27 @@ def push_local_commits(*, skip_fetch: bool = False) -> bool:
     Never raises — all failures are logged and return False.
     """
     try:
+        main = detect_main_branch(cwd=cwd)
+
         if not skip_fetch:
-            fetch = run_git("fetch", "origin")
+            fetch = run_git("fetch", "origin", cwd=cwd)
             if fetch.returncode != 0:
                 logger.warning("push_local: git fetch failed", stderr=fetch.stderr.strip())
                 return False
 
-        count = run_git("rev-list", "origin/main..HEAD", "--count")
+        count = run_git("rev-list", f"origin/{main}..HEAD", "--count", cwd=cwd)
         if count.returncode != 0 or int(count.stdout.strip() or "0") == 0:
             return True  # nothing to push (or can't tell)
 
         # Try rebase+push, retry once if origin advanced mid-operation
         for attempt in range(2):
-            rebase = run_git("rebase", "origin/main")
+            rebase = run_git("rebase", f"origin/{main}", cwd=cwd)
             if rebase.returncode != 0:
-                run_git("rebase", "--abort")
+                run_git("rebase", "--abort", cwd=cwd)
                 if attempt == 0:
                     # Re-fetch and retry — origin may have advanced
                     logger.info("push_local: rebase failed, retrying after fresh fetch")
-                    retry_fetch = run_git("fetch", "origin")
+                    retry_fetch = run_git("fetch", "origin", cwd=cwd)
                     if retry_fetch.returncode != 0:
                         logger.warning(
                             "push_local: retry fetch failed", stderr=retry_fetch.stderr.strip()
@@ -133,7 +135,7 @@ def push_local_commits(*, skip_fetch: bool = False) -> bool:
                 )
                 return False
 
-            push = run_git("push")
+            push = run_git("push", cwd=cwd)
             if push.returncode != 0:
                 logger.warning("push_local: git push failed", stderr=push.stderr.strip())
                 return False

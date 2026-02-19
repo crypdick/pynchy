@@ -221,7 +221,7 @@ class TestScheduledTask:
         assert task.last_result is None
         assert task.status == "active"
         assert task.created_at == ""
-        assert task.pynchy_repo_access is False
+        assert task.repo_access is None
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +292,7 @@ class TestContainerInput:
         assert inp.session_id is None
         assert inp.is_scheduled_task is False
         assert inp.system_notices is None
-        assert inp.pynchy_repo_access is False
+        assert inp.repo_access is None
         assert inp.agent_core_module == "agent_runner.cores.claude"
         assert inp.agent_core_class == "ClaudeAgentCore"
         assert inp.agent_core_config is None

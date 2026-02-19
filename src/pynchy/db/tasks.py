@@ -23,7 +23,7 @@ def _row_to_task(row) -> ScheduledTask:
         last_result=row["last_result"],
         status=row["status"],
         created_at=row["created_at"],
-        pynchy_repo_access=bool(row["pynchy_repo_access"]),
+        repo_access=row["repo_access"] or None,
     )
 
 
@@ -35,7 +35,7 @@ async def create_task(task: dict[str, Any]) -> None:
         INSERT INTO scheduled_tasks
             (id, group_folder, chat_jid, prompt, schedule_type,
              schedule_value, context_mode, next_run, status, created_at,
-             pynchy_repo_access)
+             repo_access)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
@@ -49,7 +49,7 @@ async def create_task(task: dict[str, Any]) -> None:
             task.get("next_run"),
             task["status"],
             task["created_at"],
-            1 if task.get("pynchy_repo_access") else 0,
+            task.get("repo_access") or None,
         ),
     )
     await db.commit()
@@ -90,7 +90,7 @@ _TASK_UPDATE_FIELDS = {
     "schedule_value",
     "next_run",
     "status",
-    "pynchy_repo_access",
+    "repo_access",
 }
 
 

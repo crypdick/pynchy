@@ -135,16 +135,16 @@ class TestGetLocalHeadSha:
 
 
 class TestHostUpdateMain:
-    def test_returns_false_on_fetch_failure(self):
+    def test_returns_false_on_fetch_failure(self, tmp_path: Path):
         """Should return False when git fetch fails."""
         mock_result = subprocess.CompletedProcess(
             args=[], returncode=1, stdout="", stderr="network error"
         )
         with patch("subprocess.run", return_value=mock_result):
-            result = _host_update_main()
+            result = _host_update_main(tmp_path)
             assert result is False
 
-    def test_returns_false_on_rebase_failure(self):
+    def test_returns_false_on_rebase_failure(self, tmp_path: Path):
         """Should return False and abort rebase when rebase fails."""
         call_count = 0
 
@@ -164,7 +164,7 @@ class TestHostUpdateMain:
                 return ok
 
         with patch("subprocess.run", side_effect=mock_run):
-            result = _host_update_main()
+            result = _host_update_main(tmp_path)
             assert result is False
             # Should have called fetch, rebase, and rebase --abort
             assert call_count >= 3

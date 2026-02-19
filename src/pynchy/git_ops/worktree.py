@@ -1,6 +1,6 @@
 """Git worktree management for container isolation.
 
-Non-admin groups with pynchy_repo_access get their own git worktree instead of
+Non-admin groups with repo_access get their own git worktree instead of
 mounting the shared project root. Worktrees share the git object store
 (near-zero disk overhead) but have fully independent working trees and indexes.
 
@@ -17,7 +17,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from pynchy.config import get_settings
+from pynchy.git_ops.repo import RepoContext
 from pynchy.git_ops.utils import detect_main_branch, push_local_commits, run_git
 from pynchy.logger import logger
 
@@ -46,7 +46,7 @@ class WorktreeResult:
     notices: list[str] = field(default_factory=list)
 
 
-def ensure_worktree(group_folder: str) -> WorktreeResult:
+def ensure_worktree(group_folder: str, repo_ctx: RepoContext) -> WorktreeResult:
     """Ensure a git worktree exists for the given group.
 
     For new worktrees: creates from origin/{main}. Raises WorktreeError on failure.
@@ -57,6 +57,7 @@ def ensure_worktree(group_folder: str) -> WorktreeResult:
 
     Args:
         group_folder: Group folder name (e.g. "code-improver")
+        repo_ctx: Resolved repo context (root path, worktrees dir)
 
     Returns:
         WorktreeResult with path and any system notices for the agent
@@ -64,11 +65,11 @@ def ensure_worktree(group_folder: str) -> WorktreeResult:
     Raises:
         WorktreeError: If creating a new worktree fails
     """
-    worktree_path = get_settings().worktrees_dir / group_folder
+    worktree_path = repo_ctx.worktrees_dir / group_folder
     # Use worktree/ prefix to avoid ref conflicts (e.g. "main/workspace" would
     # conflict with the "main" branch since git refs are path-based).
     branch_name = f"worktree/{group_folder}"
-    main_branch = detect_main_branch()
+    main_branch = detect_main_branch(cwd=repo_ctx.root)
 
     if worktree_path.exists():
         # Health check: verify the worktree is a functional git repo.
@@ -84,13 +85,13 @@ def ensure_worktree(group_folder: str) -> WorktreeResult:
             shutil.rmtree(worktree_path)
             # Fall through to create path below
         else:
-            return _sync_existing_worktree(worktree_path, group_folder, main_branch)
+            return _sync_existing_worktree(worktree_path, group_folder, main_branch, repo_ctx)
 
-    return _create_new_worktree(worktree_path, group_folder, branch_name, main_branch)
+    return _create_new_worktree(worktree_path, group_folder, branch_name, main_branch, repo_ctx)
 
 
 def _sync_existing_worktree(
-    worktree_path: Path, group_folder: str, main_branch: str
+    worktree_path: Path, group_folder: str, main_branch: str, repo_ctx: RepoContext
 ) -> WorktreeResult:
     """Sync an existing worktree — best-effort pull, preserve local state."""
     notices: list[str] = []
@@ -106,7 +107,7 @@ def _sync_existing_worktree(
         logger.info("Worktree has uncommitted changes", group=group_folder)
 
     # Best-effort fetch + merge
-    fetch = run_git("fetch", "origin")
+    fetch = run_git("fetch", "origin", cwd=repo_ctx.root)
     if fetch.returncode != 0:
         notices.append(
             f"Failed to pull latest changes: git fetch failed ({fetch.stderr.strip()}). "
@@ -135,19 +136,23 @@ def _sync_existing_worktree(
 
 
 def _create_new_worktree(
-    worktree_path: Path, group_folder: str, branch_name: str, main_branch: str
+    worktree_path: Path,
+    group_folder: str,
+    branch_name: str,
+    main_branch: str,
+    repo_ctx: RepoContext,
 ) -> WorktreeResult:
     """Create a new worktree from origin/{main}. Raises WorktreeError on failure."""
     # Fetch is required for initial creation
-    fetch = run_git("fetch", "origin")
+    fetch = run_git("fetch", "origin", cwd=repo_ctx.root)
     if fetch.returncode != 0:
         raise WorktreeError(f"git fetch failed: {fetch.stderr.strip()}")
 
-    get_settings().worktrees_dir.mkdir(parents=True, exist_ok=True)
+    repo_ctx.worktrees_dir.mkdir(parents=True, exist_ok=True)
 
     # Clean up stale worktree entries and branches from previous runs
-    run_git("worktree", "prune")
-    run_git("branch", "-D", branch_name)
+    run_git("worktree", "prune", cwd=repo_ctx.root)
+    run_git("branch", "-D", branch_name, cwd=repo_ctx.root)
 
     add = run_git(
         "worktree",
@@ -156,6 +161,7 @@ def _create_new_worktree(
         branch_name,
         str(worktree_path),
         f"origin/{main_branch}",
+        cwd=repo_ctx.root,
     )
     if add.returncode != 0:
         raise WorktreeError(f"git worktree add failed: {add.stderr.strip()}")
@@ -169,118 +175,189 @@ def _create_new_worktree(
     return WorktreeResult(path=worktree_path)
 
 
-def install_pre_commit_hooks() -> None:
+def install_pre_commit_hooks(repo_root: Path) -> None:
     """Ensure pre-commit hooks are installed in the repo's .git/hooks/.
 
     Git worktrees share hooks from the main repo, so installing once covers
     all agent workspaces. The generated hook script falls back to ``pre-commit``
     on PATH when the original venv isn't available (e.g. inside containers).
     """
-    project_root = get_settings().project_root
-    config = project_root / ".pre-commit-config.yaml"
+    config = repo_root / ".pre-commit-config.yaml"
     if not config.exists():
         return
 
     try:
         result = subprocess.run(
             ["uv", "run", "pre-commit", "install"],
-            cwd=str(project_root),
+            cwd=str(repo_root),
             capture_output=True,
             text=True,
             timeout=60,
         )
         if result.returncode == 0:
-            logger.info("Pre-commit hooks installed")
+            logger.info("Pre-commit hooks installed", repo=str(repo_root))
         else:
             logger.warning(
                 "pre-commit install failed",
+                repo=str(repo_root),
                 stderr=result.stderr.strip(),
             )
     except (OSError, subprocess.SubprocessError) as exc:
-        logger.warning("pre-commit install error", err=str(exc))
+        logger.warning("pre-commit install error", repo=str(repo_root), err=str(exc))
+
+
+def _migrate_old_worktrees(repo_ctx: RepoContext, old_base: Path) -> None:
+    """Migrate existing worktrees from old location to new unified structure.
+
+    Old path: ~/.config/pynchy/worktrees/<folder>/
+    New path: data/worktrees/<owner>/<repo>/<folder>/
+
+    Attempts `git worktree move` first; falls back to deleting the old entry
+    so reconcile_worktrees_at_startup can recreate it from the branch.
+    """
+    if not old_base.exists():
+        return
+
+    for entry in sorted(old_base.iterdir()):
+        if not entry.is_dir():
+            continue
+        # Confirm it's actually a git worktree (has .git file)
+        if not (entry / ".git").exists():
+            continue
+
+        new_path = repo_ctx.worktrees_dir / entry.name
+        if new_path.exists():
+            continue  # already migrated
+
+        new_path.parent.mkdir(parents=True, exist_ok=True)
+        move = run_git("worktree", "move", str(entry), str(new_path), cwd=repo_ctx.root)
+        if move.returncode == 0:
+            logger.info(
+                "Migrated worktree to new location",
+                group=entry.name,
+                old=str(entry),
+                new=str(new_path),
+            )
+        else:
+            # Move failed (e.g. git version too old) — remove and let reconcile recreate
+            logger.warning(
+                "Worktree move failed, removing for recreation",
+                group=entry.name,
+                error=move.stderr.strip(),
+            )
+            remove = run_git(
+                "worktree", "remove", "--force", str(entry), cwd=repo_ctx.root
+            )
+            if remove.returncode != 0:
+                logger.warning(
+                    "git worktree remove failed, cleaning up manually",
+                    group=entry.name,
+                )
+                shutil.rmtree(entry, ignore_errors=True)
 
 
 def reconcile_worktrees_at_startup(
-    pynchy_repo_access_folders: list[str] | None = None,
+    repo_groups: dict[str, list[str]] | None = None,
 ) -> None:
-    """Ensure worktrees exist for all pynchy_repo_access groups, then rebase diverged branches.
+    """Ensure worktrees exist for all repo_access groups, then rebase diverged branches.
 
     Called at startup before any containers launch. Creates missing worktrees
     so the git sync loop can notify all groups from boot, and rebases diverged
     branches for clean ff-merges after the next container run.
+
+    Args:
+        repo_groups: Dict mapping slug → list of group folder names.
     """
-    # Clean git's internal stale entries (worktree dirs that no longer exist)
-    run_git("worktree", "prune")
+    from pynchy.git_ops.repo import get_repo_context
+    from pynchy.config import get_settings
 
-    # Ensure pre-commit hooks are installed so agent commits run the hooks.
-    # Hooks live in the main .git/hooks/ (shared by all worktrees).
-    install_pre_commit_hooks()
+    repo_groups = repo_groups or {}
 
+    # Old worktrees base (pre-migration)
+    s = get_settings()
+    old_base = s.home_dir / ".config" / "pynchy" / "worktrees"
 
-    # Create missing worktrees for known pynchy_repo_access groups.
-    # ensure_worktree's health check handles broken worktrees automatically.
-    for folder in pynchy_repo_access_folders or []:
-        try:
-            ensure_worktree(folder)
-        except WorktreeError:
-            logger.warning("Failed to create worktree at startup", group=folder)
-
-    if not get_settings().worktrees_dir.exists():
-        return
-
-    main_branch = detect_main_branch()
-
-    for entry in sorted(get_settings().worktrees_dir.iterdir()):
-        if not entry.is_dir():
+    for slug, folders in repo_groups.items():
+        repo_ctx = get_repo_context(slug)
+        if repo_ctx is None:
+            logger.warning("Slug not configured in [repos], skipping", slug=slug)
             continue
 
-        group_folder = entry.name
-        branch_name = f"worktree/{group_folder}"
+        # Clean git's internal stale entries
+        run_git("worktree", "prune", cwd=repo_ctx.root)
 
-        # Check if branch exists
-        branch_check = run_git("rev-parse", "--verify", branch_name)
-        if branch_check.returncode != 0:
-            logger.debug("Worktree branch missing, skipping", group=group_folder)
+        # Install pre-commit hooks for this repo
+        install_pre_commit_hooks(repo_ctx.root)
+
+        # Migrate pynchy's own worktrees from the old ~/.config/pynchy/worktrees/ path
+        if repo_ctx.root.resolve() == s.project_root.resolve():
+            _migrate_old_worktrees(repo_ctx, old_base)
+
+        # Create missing worktrees for known repo_access groups.
+        for folder in folders:
+            try:
+                ensure_worktree(folder, repo_ctx)
+            except WorktreeError:
+                logger.warning("Failed to create worktree at startup", group=folder, slug=slug)
+
+        if not repo_ctx.worktrees_dir.exists():
             continue
 
-        # Check divergence: commits ahead and behind main
-        ahead = run_git("rev-list", f"{main_branch}..{branch_name}", "--count")
-        behind = run_git("rev-list", f"{branch_name}..{main_branch}", "--count")
+        main_branch = detect_main_branch(cwd=repo_ctx.root)
 
-        if ahead.returncode != 0 or behind.returncode != 0:
-            logger.warning("Failed to check worktree divergence", group=group_folder)
-            continue
+        for entry in sorted(repo_ctx.worktrees_dir.iterdir()):
+            if not entry.is_dir():
+                continue
 
-        try:
-            ahead_count = int(ahead.stdout.strip())
-            behind_count = int(behind.stdout.strip())
-        except (ValueError, TypeError):
-            logger.warning("Failed to parse worktree divergence count", group=group_folder)
-            continue
+            group_folder = entry.name
+            branch_name = f"worktree/{group_folder}"
 
-        if ahead_count == 0 or behind_count == 0:
-            # Not diverged — either up to date or simply ahead (will ff-merge fine)
-            continue
+            # Check if branch exists
+            branch_check = run_git("rev-parse", "--verify", branch_name, cwd=repo_ctx.root)
+            if branch_check.returncode != 0:
+                logger.debug("Worktree branch missing, skipping", group=group_folder)
+                continue
 
-        logger.info(
-            "Worktree diverged from main, rebasing",
-            group=group_folder,
-            ahead=ahead_count,
-            behind=behind_count,
-        )
-
-        # Rebase from within the worktree (git won't check out a branch
-        # that's already checked out in another worktree)
-        if _safe_rebase(main_branch, cwd=entry):
-            logger.info("Worktree rebased onto main at startup", group=group_folder)
-        else:
-            logger.warning(
-                "Startup worktree rebase failed (needs manual resolution)",
-                group=group_folder,
+            # Check divergence: commits ahead and behind main
+            ahead = run_git(
+                "rev-list", f"{main_branch}..{branch_name}", "--count", cwd=repo_ctx.root
+            )
+            behind = run_git(
+                "rev-list", f"{branch_name}..{main_branch}", "--count", cwd=repo_ctx.root
             )
 
+            if ahead.returncode != 0 or behind.returncode != 0:
+                logger.warning("Failed to check worktree divergence", group=group_folder)
+                continue
 
-def merge_worktree(group_folder: str) -> bool:
+            try:
+                ahead_count = int(ahead.stdout.strip())
+                behind_count = int(behind.stdout.strip())
+            except (ValueError, TypeError):
+                logger.warning("Failed to parse worktree divergence count", group=group_folder)
+                continue
+
+            if ahead_count == 0 or behind_count == 0:
+                # Not diverged — either up to date or simply ahead (will ff-merge fine)
+                continue
+
+            logger.info(
+                "Worktree diverged from main, rebasing",
+                group=group_folder,
+                ahead=ahead_count,
+                behind=behind_count,
+            )
+
+            if _safe_rebase(main_branch, cwd=entry):
+                logger.info("Worktree rebased onto main at startup", group=group_folder)
+            else:
+                logger.warning(
+                    "Startup worktree rebase failed (needs manual resolution)",
+                    group=group_folder,
+                )
+
+
+def merge_worktree(group_folder: str, repo_ctx: RepoContext) -> bool:
     """Rebase worktree commits onto main, then fast-forward merge.
 
     Uses rebase-then-merge so worktree commits land on main even when main
@@ -291,16 +368,17 @@ def merge_worktree(group_folder: str) -> bool:
 
     Args:
         group_folder: Group folder name (e.g. "code-improver")
+        repo_ctx: Resolved repo context
 
     Returns:
         True if merge succeeded or nothing to merge, False on conflict
     """
     branch_name = f"worktree/{group_folder}"
-    worktree_path = get_settings().worktrees_dir / group_folder
-    main_branch = detect_main_branch()
+    worktree_path = repo_ctx.worktrees_dir / group_folder
+    main_branch = detect_main_branch(cwd=repo_ctx.root)
 
     # Check if worktree branch has commits ahead of HEAD
-    count = run_git("rev-list", f"HEAD..{branch_name}", "--count")
+    count = run_git("rev-list", f"HEAD..{branch_name}", "--count", cwd=repo_ctx.root)
     if count.returncode != 0:
         logger.warning(
             "Failed to check worktree commits",
@@ -330,7 +408,7 @@ def merge_worktree(group_folder: str) -> bool:
         return False
 
     # Now ff-only merge is guaranteed to succeed
-    merge = run_git("merge", "--ff-only", branch_name)
+    merge = run_git("merge", "--ff-only", branch_name, cwd=repo_ctx.root)
     if merge.returncode != 0:
         logger.warning(
             "Worktree merge failed after rebase",
@@ -347,21 +425,21 @@ def merge_worktree(group_folder: str) -> bool:
     return True
 
 
-def merge_and_push_worktree(group_folder: str) -> None:
+def merge_and_push_worktree(group_folder: str, repo_ctx: RepoContext) -> None:
     """Merge worktree commits into main and push to origin.
 
     Combines merge_worktree() + push_local_commits() into a single call.
     Designed to run in a thread via asyncio.to_thread().
     """
-    if merge_worktree(group_folder):
-        push_local_commits()
+    if merge_worktree(group_folder, repo_ctx):
+        push_local_commits(cwd=repo_ctx.root)
 
 
 def background_merge_worktree(group: object) -> None:
-    """Fire-and-forget worktree merge for groups with pynchy repo access.
+    """Fire-and-forget worktree merge for groups with repo access.
 
-    Checks has_pynchy_repo_access, then runs merge_and_push_worktree in a
-    background thread. This is the single code path for all post-session
+    Resolves the group's repo_access slug, then runs merge_and_push_worktree
+    in a background thread. This is the single code path for all post-session
     worktree merges (message handler, session handler, IPC, scheduler).
 
     Args:
@@ -369,14 +447,15 @@ def background_merge_worktree(group: object) -> None:
     """
     import asyncio
 
+    from pynchy.git_ops.repo import resolve_repo_for_group
     from pynchy.utils import create_background_task
-    from pynchy.workspace_config import has_pynchy_repo_access
-
-    if not has_pynchy_repo_access(group):  # type: ignore[arg-type]
-        return
 
     folder: str = group.folder  # type: ignore[union-attr]
+    repo_ctx = resolve_repo_for_group(folder)
+    if repo_ctx is None:
+        return
+
     create_background_task(
-        asyncio.to_thread(merge_and_push_worktree, folder),
+        asyncio.to_thread(merge_and_push_worktree, folder, repo_ctx),
         name=f"worktree-merge-{folder}",
     )

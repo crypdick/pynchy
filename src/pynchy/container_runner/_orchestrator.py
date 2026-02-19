@@ -171,19 +171,23 @@ async def run_container_agent(
 
     # --- Resolve worktree ---
     worktree_path: Path | None = None
-    if input_data.pynchy_repo_access:
+    repo_ctx = None
+    if input_data.repo_access:
+        from pynchy.git_ops.repo import resolve_repo_for_group
         from pynchy.git_ops.worktree import ensure_worktree
 
-        wt_result = ensure_worktree(group.folder)
-        worktree_path = wt_result.path
-        if wt_result.notices:
-            if input_data.system_notices is None:
-                input_data.system_notices = []
-            input_data.system_notices.extend(wt_result.notices)
+        repo_ctx = resolve_repo_for_group(group.folder)
+        if repo_ctx is not None:
+            wt_result = ensure_worktree(group.folder, repo_ctx)
+            worktree_path = wt_result.path
+            if wt_result.notices:
+                if input_data.system_notices is None:
+                    input_data.system_notices = []
+                input_data.system_notices.extend(wt_result.notices)
 
     # --- Build mounts ---
     mounts = _build_volume_mounts(
-        group, input_data.is_admin, plugin_manager, input_data.pynchy_repo_access, worktree_path
+        group, input_data.is_admin, plugin_manager, repo_ctx, worktree_path
     )
 
     # --- MCP gateway: ensure containers running and pass credentials ---

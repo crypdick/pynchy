@@ -48,7 +48,7 @@ class SchedulerDependencies(Protocol):
         extra_system_notices: list[str] | None = None,
         *,
         is_scheduled_task: bool = False,
-        pynchy_repo_access_override: bool | None = None,
+        repo_access_override: str | None = None,
         input_source: str = "user",
     ) -> str: ...
 
@@ -368,7 +368,7 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
             task_messages,
             _on_output,
             is_scheduled_task=True,
-            pynchy_repo_access_override=task.pynchy_repo_access,
+            repo_access_override=task.repo_access,
             input_source="scheduled_task",
         )
 
@@ -380,11 +380,14 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
         elapsed_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
         logger.info("Task completed", task_id=task.id, duration_ms=elapsed_ms)
 
-        # Merge worktree commits and push for all pynchy_repo_access tasks
-        if not error and task.pynchy_repo_access:
+        # Merge worktree commits and push for tasks with repo access
+        if not error and task.repo_access:
+            from pynchy.git_ops.repo import resolve_repo_for_group
             from pynchy.git_ops.worktree import merge_and_push_worktree
 
-            await asyncio.to_thread(merge_and_push_worktree, task.group_folder)
+            repo_ctx = resolve_repo_for_group(task.group_folder)
+            if repo_ctx is not None:
+                await asyncio.to_thread(merge_and_push_worktree, task.group_folder, repo_ctx)
     except Exception as exc:
         idle_timer.cancel()
         error = str(exc)

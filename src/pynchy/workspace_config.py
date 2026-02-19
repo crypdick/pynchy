@@ -111,37 +111,39 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
         "Loaded workspace config",
         folder=group_folder,
         is_admin=config.is_admin,
-        pynchy_repo_access=config.pynchy_repo_access,
+        repo_access=config.repo_access,
         is_periodic=config.is_periodic,
     )
     return config
 
 
-def has_pynchy_repo_access(group: WorkspaceProfile) -> bool:
-    """Check if a group has pynchy_repo_access (admin groups always do)."""
-    if group.is_admin:
-        return True
+def get_repo_access(group: WorkspaceProfile) -> str | None:
+    """Return the repo_access slug for a group, or None if not configured.
+
+    Unlike the old has_pynchy_repo_access, admin groups no longer get implicit
+    access — they must set repo_access explicitly in config.toml.
+    """
     config = load_workspace_config(group.folder)
-    has_access = bool(config and config.pynchy_repo_access)
+    slug = config.repo_access if config else None
     logger.debug(
-        "Checked pynchy repo access",
+        "Checked repo access",
         folder=group.folder,
-        has_access=has_access,
+        slug=slug,
     )
-    return has_access
+    return slug
 
 
-def get_pynchy_repo_access_folders(workspaces: dict[str, Any]) -> list[str]:
-    """Return folder names for all workspaces with pynchy_repo_access."""
-    folders: list[str] = []
+def get_repo_access_groups(workspaces: dict[str, Any]) -> dict[str, list[str]]:
+    """Return a mapping of slug → list of group folder names with repo_access.
+
+    Only groups with an explicit repo_access slug in config.toml are included.
+    """
+    result: dict[str, list[str]] = {}
     for profile in workspaces.values():
-        if profile.is_admin:
-            folders.append(profile.folder)
-            continue
         config = load_workspace_config(profile.folder)
-        if config and config.pynchy_repo_access:
-            folders.append(profile.folder)
-    return folders
+        if config and config.repo_access:
+            result.setdefault(config.repo_access, []).append(profile.folder)
+    return result
 
 
 async def create_channel_aliases(
@@ -240,7 +242,13 @@ async def reconcile_workspaces(
         )
         context_mode = config.context_mode or s.workspace_defaults.context_mode
 
-        display_name = config.name or folder.replace("-", " ").title()
+        if config.name:
+            display_name = config.name
+        elif config.repo_access:
+            # Slack channel names can't contain slashes — use double-dash convention
+            display_name = config.repo_access.replace("/", "--")
+        else:
+            display_name = folder.replace("-", " ").title()
 
         if spec.claude_md:
             claude_path = s.groups_dir / folder / "CLAUDE.md"
@@ -310,7 +318,7 @@ async def reconcile_workspaces(
                     "schedule_type": "cron",
                     "schedule_value": config.schedule,
                     "context_mode": context_mode,
-                    "pynchy_repo_access": config.pynchy_repo_access,
+                    "repo_access": config.repo_access,
                     "next_run": next_run,
                     "status": "active",
                     "created_at": datetime.now(UTC).isoformat(),
@@ -331,8 +339,8 @@ async def reconcile_workspaces(
                 updates["next_run"] = cron.get_next(datetime).astimezone(UTC).isoformat()
             if existing_task.prompt != config.prompt:
                 updates["prompt"] = config.prompt
-            if existing_task.pynchy_repo_access != config.pynchy_repo_access:
-                updates["pynchy_repo_access"] = config.pynchy_repo_access
+            if existing_task.repo_access != config.repo_access:
+                updates["repo_access"] = config.repo_access
             if updates:
                 await update_task(existing_task.id, updates)
                 logger.info(

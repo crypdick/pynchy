@@ -37,7 +37,7 @@ _P_INTERCEPT = "pynchy.chat.message_handler.intercept_special_command"
 _P_FMT_SDK = "pynchy.chat.router.format_messages_for_sdk"
 _P_STORE = "pynchy.chat.message_handler.store_message_direct"
 _P_DIRTY = "pynchy.chat.message_handler.is_repo_dirty"
-_P_HAS_PA = "pynchy.workspace_config.has_pynchy_repo_access"
+_P_GET_RA = "pynchy.workspace_config.get_repo_access"
 _P_MERGE = "pynchy.git_ops.worktree.merge_and_push_worktree"
 _P_BG_TASK = "pynchy.chat.message_handler.create_background_task"
 
@@ -615,7 +615,7 @@ class TestProcessGroupMessages:
             _patch_intercept(),
             _patch_fmt_sdk(),
             patch(_P_DIRTY, return_value=True),
-            patch(_P_HAS_PA, return_value=False),
+            patch(_P_GET_RA, return_value=None),
         ):
             ms.return_value = _settings_mock(tmp_path)
             await process_group_messages(deps, "g@g.us")
@@ -642,7 +642,7 @@ class TestProcessGroupMessages:
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_HAS_PA, return_value=False),
+            patch(_P_GET_RA, return_value=None),
         ):
             ms.return_value = _settings_mock(tmp_path)
             await process_group_messages(deps, "g@g.us")
@@ -704,7 +704,7 @@ class TestProcessGroupMessages:
             _patch_msgs_since([notice, user_msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_HAS_PA, return_value=False),
+            patch(_P_GET_RA, return_value=None),
         ):
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")

@@ -193,7 +193,7 @@ class ScheduledTask:
     last_result: str | None = None
     status: Literal["active", "paused", "completed"] = "active"
     created_at: str = ""
-    pynchy_repo_access: bool = False
+    repo_access: str | None = None  # GitHub slug (owner/repo); None = no worktree
 
     def to_snapshot_dict(self) -> dict[str, str | None]:
         """Serialize to the dict format expected by write_tasks_snapshot.
@@ -268,7 +268,7 @@ class ContainerInput:
     session_id: str | None = None
     is_scheduled_task: bool = False
     system_notices: list[str] | None = None
-    pynchy_repo_access: bool = False
+    repo_access: str | None = None  # GitHub slug (owner/repo); None = no worktree
     agent_core_module: str = "agent_runner.cores.claude"  # Module path for agent core
     agent_core_class: str = "ClaudeAgentCore"  # Class name for agent core
     agent_core_config: dict | None = None  # Core-specific settings

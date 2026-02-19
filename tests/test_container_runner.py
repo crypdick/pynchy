@@ -24,6 +24,7 @@ from pynchy.container_runner._credentials import (
 )
 from pynchy.container_runner._logging import _parse_final_output
 from pynchy.container_runner._mounts import _build_container_args, _build_volume_mounts
+from pynchy.git_ops.repo import RepoContext
 from pynchy.container_runner._orchestrator import (
     _determine_result,
     resolve_agent_core,
@@ -316,6 +317,7 @@ class TestMountBuilding:
     def test_god_group_has_project_mount(self, tmp_path: Path):
         worktree_path = tmp_path / "worktrees" / "god"
         worktree_path.mkdir(parents=True)
+        repo_ctx = RepoContext(slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "worktrees")
         with (
             _patch_settings(tmp_path),
         ):
@@ -324,7 +326,7 @@ class TestMountBuilding:
                 jid="god@g.us", name="God", folder="god", trigger="always", added_at="2024-01-01"
             )
             mounts = _build_volume_mounts(
-                group, is_admin=True, pynchy_repo_access=True, worktree_path=worktree_path
+                group, is_admin=True, repo_ctx=repo_ctx, worktree_path=worktree_path
             )
 
             paths = [m.container_path for m in mounts]
@@ -357,10 +359,11 @@ class TestMountBuilding:
             global_mount = next(m for m in mounts if m.container_path == "/workspace/global")
             assert global_mount.readonly is True
 
-    def test_nongod_pynchy_repo_access_uses_worktree_path(self, tmp_path: Path):
-        """Non-admin group with pynchy_repo_access + worktree_path mounts the worktree."""
+    def test_nongod_repo_access_uses_worktree_path(self, tmp_path: Path):
+        """Non-admin group with repo_access + worktree_path mounts the worktree."""
         worktree_path = tmp_path / "worktrees" / "code-improver"
         worktree_path.mkdir(parents=True)
+        repo_ctx = RepoContext(slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "worktrees")
 
         with (
             _patch_settings(tmp_path),
@@ -374,7 +377,7 @@ class TestMountBuilding:
                 added_at="2024-01-01",
             )
             mounts = _build_volume_mounts(
-                group, is_admin=False, pynchy_repo_access=True, worktree_path=worktree_path
+                group, is_admin=False, repo_ctx=repo_ctx, worktree_path=worktree_path
             )
 
             project_mount = next(m for m in mounts if m.container_path == "/workspace/project")
@@ -386,9 +389,10 @@ class TestMountBuilding:
             assert git_mount.container_path == str(tmp_path / ".git")
 
     def test_god_uses_worktree(self, tmp_path: Path):
-        """Admin group uses worktree just like any other pynchy_repo_access group."""
+        """Admin group uses worktree just like any other repo_access group."""
         worktree_path = tmp_path / "worktrees" / "god"
         worktree_path.mkdir(parents=True)
+        repo_ctx = RepoContext(slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "worktrees")
         with (
             _patch_settings(tmp_path),
         ):
@@ -397,7 +401,7 @@ class TestMountBuilding:
                 jid="god@g.us", name="God", folder="god", trigger="always", added_at="2024-01-01"
             )
             mounts = _build_volume_mounts(
-                group, is_admin=True, pynchy_repo_access=True, worktree_path=worktree_path
+                group, is_admin=True, repo_ctx=repo_ctx, worktree_path=worktree_path
             )
 
             project_mount = next(m for m in mounts if m.container_path == "/workspace/project")
@@ -1804,7 +1808,7 @@ class TestInputToDictEdgeCases:
         assert "session_id" not in d
         assert "is_scheduled_task" not in d
         assert "system_notices" not in d
-        assert "pynchy_repo_access" not in d
+        assert "repo_access" not in d
 
     def test_all_optional_fields_set(self):
         """All optional fields populated should appear in dict."""
@@ -1816,13 +1820,13 @@ class TestInputToDictEdgeCases:
             session_id="s-1",
             is_scheduled_task=True,
             system_notices=["notice 1"],
-            pynchy_repo_access=True,
+            repo_access="owner/pynchy",
         )
         d = _input_to_dict(inp)
         assert d["session_id"] == "s-1"
         assert d["is_scheduled_task"] is True
         assert d["system_notices"] == ["notice 1"]
-        assert d["pynchy_repo_access"] is True
+        assert d["repo_access"] == "owner/pynchy"
 
     def test_is_scheduled_task_false_omitted(self):
         """is_scheduled_task=False should NOT be included."""
@@ -1836,17 +1840,17 @@ class TestInputToDictEdgeCases:
         d = _input_to_dict(inp)
         assert "is_scheduled_task" not in d
 
-    def test_pynchy_repo_access_false_omitted(self):
-        """pynchy_repo_access=False should NOT be included."""
+    def test_repo_access_none_omitted(self):
+        """repo_access=None should NOT be included."""
         inp = ContainerInput(
             messages=[],
             group_folder="g",
             chat_jid="j@g.us",
             is_admin=False,
-            pynchy_repo_access=False,
+            repo_access=None,
         )
         d = _input_to_dict(inp)
-        assert "pynchy_repo_access" not in d
+        assert "repo_access" not in d
 
     def test_agent_core_fields_always_present(self):
         """agent_core_module and agent_core_class should always be in output."""
