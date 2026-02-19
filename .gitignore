@@ -53,3 +53,10 @@ dist/
 # Generated build artifacts
 container/requirements-plugins.txt
 .claude/ralph-loop.local.md
+
+# Playwright MCP
+.playwright-mcp/
+*.log
+
+# Misc
+japanese-emoticons.md
