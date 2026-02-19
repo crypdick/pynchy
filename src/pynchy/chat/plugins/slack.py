@@ -13,6 +13,7 @@ don't use Slack.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -93,6 +94,7 @@ class SlackChannel:
         self._handler_task = asyncio.create_task(
             self._handler.start_async(), name="slack-socket-mode"
         )
+        self._handler_task.add_done_callback(self._on_handler_done)
         self._connected = True
         logger.info("Slack channel connected (Socket Mode)", bot_user_id=self._bot_user_id)
 
@@ -106,7 +108,11 @@ class SlackChannel:
             await self._app.client.chat_postMessage(channel=channel_id, text=chunk)
 
     def is_connected(self) -> bool:
-        return self._connected
+        return (
+            self._connected
+            and self._handler_task is not None
+            and not self._handler_task.done()
+        )
 
     def owns_jid(self, jid: str) -> bool:
         return jid.startswith(JID_PREFIX)
@@ -114,13 +120,56 @@ class SlackChannel:
     async def disconnect(self) -> None:
         self._connected = False
         if self._handler:
-            try:
+            with contextlib.suppress(Exception):
                 await self._handler.close_async()
-            except Exception:
-                logger.debug("Slack handler close error (ignored)")
         if self._handler_task and not self._handler_task.done():
             self._handler_task.cancel()
         logger.info("Slack channel disconnected")
+
+    async def reconnect(self) -> None:
+        """Force an immediate reconnect regardless of current state."""
+        logger.info("Slack reconnecting (forced)")
+        self._connected = False
+        if self._handler:
+            with contextlib.suppress(Exception):
+                await self._handler.close_async()
+        if self._handler_task and not self._handler_task.done():
+            self._handler_task.cancel()
+        self._handler = None
+        self._handler_task = None
+        await self.connect()
+
+    # ------------------------------------------------------------------
+    # Internal: reconnect on unexpected task exit
+    # ------------------------------------------------------------------
+
+    def _on_handler_done(self, task: asyncio.Task[None]) -> None:
+        """Called when the Socket Mode handler task exits for any reason."""
+        if not self._connected:
+            return  # clean shutdown via disconnect() — nothing to do
+        exc = task.exception() if not task.cancelled() else None
+        logger.warning(
+            "Slack Socket Mode task exited unexpectedly — scheduling reconnect",
+            exc=str(exc) if exc else "cancelled",
+        )
+        self._connected = False
+        task.get_loop().create_task(self._reconnect_with_backoff(), name="slack-reconnect")
+
+    async def _reconnect_with_backoff(self, delay: float = 5.0) -> None:
+        """Reconnect with exponential backoff, capped at 5 minutes."""
+        await asyncio.sleep(delay)
+        logger.info("Slack attempting reconnect", delay=delay)
+        try:
+            self._handler = None
+            self._handler_task = None
+            await self.connect()
+        except Exception as exc:
+            logger.warning("Slack reconnect failed, will retry", delay=delay, exc=str(exc))
+            self._connected = False
+            next_delay = min(delay * 2, 300)
+            asyncio.create_task(
+                self._reconnect_with_backoff(next_delay), name="slack-reconnect"
+            )
 
     # ------------------------------------------------------------------
     # Optional protocol extensions

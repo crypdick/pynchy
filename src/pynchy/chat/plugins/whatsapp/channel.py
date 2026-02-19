@@ -303,6 +303,11 @@ class WhatsAppChannel:
     def is_connected(self) -> bool:
         return self._connected
 
+    async def reconnect(self) -> None:
+        logger.info("WhatsApp reconnecting")
+        await self.disconnect()
+        await self.connect()
+
     def owns_jid(self, jid: str) -> bool:
         return jid.endswith("@g.us") or jid.endswith("@s.whatsapp.net")
 
