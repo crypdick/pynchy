@@ -151,6 +151,46 @@ class TestSlackChannelDisconnect:
         assert ch.is_connected() is False
 
 
+class TestReconnectShutdownRace:
+    """Regression tests for the shutdown race in _reconnect_with_backoff.
+
+    If disconnect() is called while the reconnect backoff is sleeping,
+    _reconnect_with_backoff must bail out instead of calling connect()
+    (which spawns aiohttp tasks that disconnect() can't cancel).
+    """
+
+    @pytest.mark.asyncio
+    async def test_reconnect_aborts_when_already_connected(self) -> None:
+        """If another path reconnected while we slept, don't double-connect."""
+        ch = _make_channel()
+        # Simulate: _on_handler_done set _connected=False and scheduled us,
+        # but another path (e.g. forced reconnect()) already reconnected.
+        ch._connected = True
+
+        # Patch connect to detect if it gets called
+        ch.connect = AsyncMock()
+
+        await ch._reconnect_with_backoff(delay=0)
+
+        ch.connect.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_reconnect_proceeds_when_not_connected(self) -> None:
+        """Normal reconnect path: _connected is False, so connect() runs."""
+        ch = _make_channel()
+        ch._connected = False
+
+        # connect() will set _connected = True; mock it to avoid real Slack calls
+        async def fake_connect() -> None:
+            ch._connected = True
+
+        ch.connect = AsyncMock(side_effect=fake_connect)
+
+        await ch._reconnect_with_backoff(delay=0)
+
+        ch.connect.assert_awaited_once()
+
+
 class TestNormalizeBotMention:
     """_normalize_bot_mention replaces <@BOTID> with the canonical trigger."""
 
