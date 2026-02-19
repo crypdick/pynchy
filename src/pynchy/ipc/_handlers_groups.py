@@ -94,7 +94,11 @@ async def _handle_create_periodic_agent(
     group_dir.mkdir(parents=True, exist_ok=True)
 
     config = WorkspaceConfig(
-        schedule=schedule, prompt=prompt, context_mode=context_mode, requires_trigger=False
+        name=name,
+        schedule=schedule,
+        prompt=prompt,
+        context_mode=context_mode,
+        requires_trigger=False,
     )
     add_workspace_to_toml(name, config)
 

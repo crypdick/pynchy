@@ -39,7 +39,7 @@ class TestLoadWorkspaceConfig:
 
     def test_applies_workspace_defaults(self):
         s = _settings_with_workspaces(
-            workspaces={"team": WorkspaceConfig(is_admin=False)},
+            workspaces={"team": WorkspaceConfig(name="test", is_admin=False)},
             defaults=WorkspaceDefaultsConfig(requires_trigger=False, context_mode="isolated"),
         )
         with patch("pynchy.workspace_config.get_settings", return_value=s):
@@ -81,6 +81,7 @@ class TestLoadWorkspaceConfig:
                     {
                         "folder": "code-improver",
                         "config": {
+                            "name": "test",
                             "repo_access": "owner/repo",
                             "schedule": "0 4 * * *",
                             "prompt": "Improve code",
@@ -102,7 +103,7 @@ class TestLoadWorkspaceConfig:
 
 class TestWorkspaceConfigModel:
     def test_defaults(self):
-        cfg = WorkspaceConfig()
+        cfg = WorkspaceConfig(name="test")
         assert cfg.is_admin is False
         assert cfg.requires_trigger is None
         assert cfg.repo_access is None
@@ -110,8 +111,8 @@ class TestWorkspaceConfigModel:
         assert cfg.is_periodic is False
 
     def test_is_periodic(self):
-        assert WorkspaceConfig(schedule="0 9 * * *", prompt="x").is_periodic is True
-        assert WorkspaceConfig(schedule="0 9 * * *").is_periodic is False
+        assert WorkspaceConfig(name="test", schedule="0 9 * * *", prompt="x").is_periodic is True
+        assert WorkspaceConfig(name="test", schedule="0 9 * * *").is_periodic is False
 
 
 class TestGetRepoAccess:
@@ -132,7 +133,7 @@ class TestGetRepoAccess:
             folder: str = "dev"
 
         s = _settings_with_workspaces(
-            workspaces={"dev": WorkspaceConfig(repo_access="owner/myrepo")}
+            workspaces={"dev": WorkspaceConfig(name="test", repo_access="owner/myrepo")}
         )
         with patch("pynchy.workspace_config.get_settings", return_value=s):
             assert get_repo_access(FakeGroup()) == "owner/myrepo"
@@ -145,7 +146,9 @@ class TestGetRepoAccess:
             is_admin: bool = True
             folder: str = "god"
 
-        s = _settings_with_workspaces(workspaces={"god": WorkspaceConfig(is_admin=True)})
+        s = _settings_with_workspaces(
+            workspaces={"god": WorkspaceConfig(name="test", is_admin=True)}
+        )
         with patch("pynchy.workspace_config.get_settings", return_value=s):
             assert get_repo_access(FakeGroup()) is None
 
@@ -164,9 +167,9 @@ class TestGetRepoAccessGroups:
         }
         s = _settings_with_workspaces(
             workspaces={
-                "code-improver": WorkspaceConfig(repo_access="owner/pynchy"),
-                "plain": WorkspaceConfig(repo_access=None),
-                "other-project": WorkspaceConfig(repo_access="owner/pynchy"),
+                "code-improver": WorkspaceConfig(name="test", repo_access="owner/pynchy"),
+                "plain": WorkspaceConfig(name="test", repo_access=None),
+                "other-project": WorkspaceConfig(name="test", repo_access="owner/pynchy"),
             }
         )
         with patch("pynchy.workspace_config.get_settings", return_value=s):
