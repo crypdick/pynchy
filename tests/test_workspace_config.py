@@ -11,8 +11,8 @@ from conftest import make_settings
 from pynchy.config import WorkspaceConfig, WorkspaceDefaultsConfig
 from pynchy.workspace_config import (
     configure_plugin_workspaces,
-    get_pynchy_repo_access_folders,
-    has_pynchy_repo_access,
+    get_repo_access,
+    get_repo_access_groups,
     load_workspace_config,
 )
 
@@ -56,7 +56,7 @@ class TestLoadWorkspaceConfig:
                 "daily": WorkspaceConfig(
                     is_admin=True,
                     requires_trigger=True,
-                    pynchy_repo_access=True,
+                    repo_access="owner/pynchy",
                     name="Daily Agent",
                     schedule="0 9 * * *",
                     prompt="Run checks",
@@ -69,7 +69,7 @@ class TestLoadWorkspaceConfig:
 
         assert cfg is not None
         assert cfg.is_admin is True
-        assert cfg.pynchy_repo_access is True
+        assert cfg.repo_access == "owner/pynchy"
         assert cfg.name == "Daily Agent"
         assert cfg.is_periodic is True
 
@@ -81,7 +81,7 @@ class TestLoadWorkspaceConfig:
                     {
                         "folder": "code-improver",
                         "config": {
-                            "pynchy_repo_access": True,
+                            "repo_access": "owner/repo",
                             "schedule": "0 4 * * *",
                             "prompt": "Improve code",
                             "context_mode": "isolated",
@@ -96,7 +96,7 @@ class TestLoadWorkspaceConfig:
             cfg = load_workspace_config("code-improver")
 
         assert cfg is not None
-        assert cfg.pynchy_repo_access is True
+        assert cfg.repo_access == "owner/repo"
         assert cfg.is_periodic is True
 
 
@@ -105,7 +105,7 @@ class TestWorkspaceConfigModel:
         cfg = WorkspaceConfig()
         assert cfg.is_admin is False
         assert cfg.requires_trigger is None
-        assert cfg.pynchy_repo_access is False
+        assert cfg.repo_access is None
         assert cfg.context_mode is None
         assert cfg.is_periodic is False
 
@@ -114,45 +114,64 @@ class TestWorkspaceConfigModel:
         assert WorkspaceConfig(schedule="0 9 * * *").is_periodic is False
 
 
-class TestHasProjectAccess:
-    def test_admin_always_true(self):
-        @dataclass
-        class FakeGroup:
-            is_admin: bool = True
-            folder: str = "god"
-
-        assert has_pynchy_repo_access(FakeGroup()) is True
-
-    def test_non_admin_uses_workspace_setting(self):
+class TestGetRepoAccess:
+    def test_returns_none_when_no_config(self):
         @dataclass
         class FakeGroup:
             is_admin: bool = False
             folder: str = "dev"
 
-        s = _settings_with_workspaces(workspaces={"dev": WorkspaceConfig(pynchy_repo_access=True)})
+        s = _settings_with_workspaces(workspaces={})
         with patch("pynchy.workspace_config.get_settings", return_value=s):
-            assert has_pynchy_repo_access(FakeGroup()) is True
+            assert get_repo_access(FakeGroup()) is None
+
+    def test_returns_slug_from_config(self):
+        @dataclass
+        class FakeGroup:
+            is_admin: bool = False
+            folder: str = "dev"
+
+        s = _settings_with_workspaces(
+            workspaces={"dev": WorkspaceConfig(repo_access="owner/myrepo")}
+        )
+        with patch("pynchy.workspace_config.get_settings", return_value=s):
+            assert get_repo_access(FakeGroup()) == "owner/myrepo"
+
+    def test_admin_without_explicit_repo_access_returns_none(self):
+        """Admin groups no longer get implicit repo access."""
+
+        @dataclass
+        class FakeGroup:
+            is_admin: bool = True
+            folder: str = "god"
+
+        s = _settings_with_workspaces(workspaces={"god": WorkspaceConfig(is_admin=True)})
+        with patch("pynchy.workspace_config.get_settings", return_value=s):
+            assert get_repo_access(FakeGroup()) is None
 
 
-class TestGetProjectAccessFolders:
-    def test_includes_admin_and_pynchy_repo_access(self):
+class TestGetRepoAccessGroups:
+    def test_maps_slug_to_folders(self):
         @dataclass
         class FakeProfile:
             is_admin: bool
             folder: str
 
         workspaces = {
-            "jid1": FakeProfile(is_admin=True, folder="admin"),
-            "jid2": FakeProfile(is_admin=False, folder="code-improver"),
-            "jid3": FakeProfile(is_admin=False, folder="plain"),
+            "jid1": FakeProfile(is_admin=False, folder="code-improver"),
+            "jid2": FakeProfile(is_admin=False, folder="plain"),
+            "jid3": FakeProfile(is_admin=False, folder="other-project"),
         }
         s = _settings_with_workspaces(
             workspaces={
-                "code-improver": WorkspaceConfig(pynchy_repo_access=True),
-                "plain": WorkspaceConfig(pynchy_repo_access=False),
+                "code-improver": WorkspaceConfig(repo_access="owner/pynchy"),
+                "plain": WorkspaceConfig(repo_access=None),
+                "other-project": WorkspaceConfig(repo_access="owner/pynchy"),
             }
         )
         with patch("pynchy.workspace_config.get_settings", return_value=s):
-            result = get_pynchy_repo_access_folders(workspaces)
+            result = get_repo_access_groups(workspaces)
 
-        assert set(result) == {"admin", "code-improver"}
+        assert "owner/pynchy" in result
+        assert set(result["owner/pynchy"]) == {"code-improver", "other-project"}
+        assert "plain" not in str(result)

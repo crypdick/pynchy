@@ -97,8 +97,7 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
     status TEXT DEFAULT 'active',
     created_at TEXT NOT NULL,
     context_mode TEXT DEFAULT 'isolated',
-    project_access INTEGER DEFAULT 0,
-    pynchy_repo_access INTEGER DEFAULT 0
+    repo_access TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_next_run ON scheduled_tasks(next_run);
 CREATE INDEX IF NOT EXISTS idx_status ON scheduled_tasks(status);
@@ -293,7 +292,6 @@ async def _migrate_renamed_columns(database: aiosqlite.Connection) -> None:
     """
     migrations = [
         ("registered_groups", "is_god", "is_admin"),
-        ("scheduled_tasks", "project_access", "pynchy_repo_access"),
     ]
     for table, old_col, new_col in migrations:
         cursor = await database.execute(f"PRAGMA table_info({table})")
@@ -302,6 +300,44 @@ async def _migrate_renamed_columns(database: aiosqlite.Connection) -> None:
             await database.execute(
                 f"UPDATE {table} SET {new_col} = {old_col} WHERE {new_col} = 0 AND {old_col} = 1"
             )
+    await database.commit()
+
+
+async def _migrate_repo_access_column(database: aiosqlite.Connection) -> None:
+    """Migrate pynchy_repo_access INTEGER → repo_access TEXT (idempotent).
+
+    1. If pynchy_repo_access column exists: copy truthy rows to repo_access.
+    2. Drop pynchy_repo_access column.
+    3. If project_access column still exists: drop it too.
+    """
+    cursor = await database.execute("PRAGMA table_info(scheduled_tasks)")
+    cols = {row[1] for row in await cursor.fetchall()}
+
+    if "pynchy_repo_access" in cols:
+        # Migrate truthy rows — use 'pynchy' as a migration placeholder slug.
+        # Users must update their config.toml to set the real slug.
+        if "repo_access" in cols:
+            await database.execute(
+                "UPDATE scheduled_tasks SET repo_access = 'pynchy' "
+                "WHERE pynchy_repo_access = 1 AND repo_access IS NULL"
+            )
+        try:
+            await database.execute(
+                "ALTER TABLE scheduled_tasks DROP COLUMN pynchy_repo_access"
+            )
+            logger.info("Dropped scheduled_tasks.pynchy_repo_access column")
+        except Exception as exc:
+            logger.warning("Failed to drop pynchy_repo_access column", err=str(exc))
+
+    if "project_access" in cols:
+        try:
+            await database.execute(
+                "ALTER TABLE scheduled_tasks DROP COLUMN project_access"
+            )
+            logger.info("Dropped scheduled_tasks.project_access column")
+        except Exception as exc:
+            logger.warning("Failed to drop project_access column", err=str(exc))
+
     await database.commit()
 
 
@@ -384,6 +420,7 @@ async def _create_schema(database: aiosqlite.Connection) -> None:
     await database.executescript(_SCHEMA)
     await _ensure_columns(database)
     await _migrate_renamed_columns(database)
+    await _migrate_repo_access_column(database)
     await _seed_channel_cursors(database)
 
 

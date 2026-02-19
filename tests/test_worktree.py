@@ -13,6 +13,7 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
+from pynchy.git_ops.repo import RepoContext
 from pynchy.git_ops.worktree import (
     WorktreeError,
     ensure_worktree,
@@ -71,14 +72,16 @@ def git_env(tmp_path: Path):
     worktrees_dir = tmp_path / "worktrees"
 
     s = make_settings(project_root=project, worktrees_dir=worktrees_dir)
+    repo_ctx = RepoContext(slug="owner/pynchy", root=project, worktrees_dir=worktrees_dir)
 
     with ExitStack() as stack:
         stack.enter_context(patch("pynchy.git_ops.utils.get_settings", return_value=s))
-        stack.enter_context(patch("pynchy.git_ops.worktree.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.config.get_settings", return_value=s))
         yield {
             "origin": origin,
             "project": project,
             "worktrees_dir": worktrees_dir,
+            "repo_ctx": repo_ctx,
         }
 
 
@@ -89,7 +92,8 @@ def git_env(tmp_path: Path):
 
 class TestEnsureWorktree:
     def test_creates_new_worktree(self, git_env: dict):
-        result = ensure_worktree("code-improver")
+        repo_ctx = git_env["repo_ctx"]
+        result = ensure_worktree("code-improver", repo_ctx)
 
         assert result.path == git_env["worktrees_dir"] / "code-improver"
         assert result.path.exists()
@@ -103,9 +107,10 @@ class TestEnsureWorktree:
     def test_syncs_existing_worktree_with_notice(self, git_env: dict):
         """Pulling new commits produces a notice about auto-pulled changes."""
         project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
 
         # Create worktree first
-        result1 = ensure_worktree("code-improver")
+        result1 = ensure_worktree("code-improver", repo_ctx)
         wt_path = result1.path
 
         # Push a new commit to origin from the project
@@ -115,7 +120,7 @@ class TestEnsureWorktree:
         _git(project, "push", "origin", "main")
 
         # Second call should merge latest origin/main and notify
-        result2 = ensure_worktree("code-improver")
+        result2 = ensure_worktree("code-improver", repo_ctx)
         assert result2.path == wt_path
         assert (wt_path / "new-file.txt").read_text() == "new content"
         assert len(result2.notices) == 1
@@ -123,21 +128,23 @@ class TestEnsureWorktree:
 
     def test_no_notice_when_already_up_to_date(self, git_env: dict):
         """No notice when worktree is already current with origin."""
-        ensure_worktree("code-improver")
+        repo_ctx = git_env["repo_ctx"]
+        ensure_worktree("code-improver", repo_ctx)
 
         # Second call with no new commits
-        result = ensure_worktree("code-improver")
+        result = ensure_worktree("code-improver", repo_ctx)
         assert result.notices == []
 
     def test_preserves_uncommitted_changes(self, git_env: dict):
         """Uncommitted changes survive sync and produce a notice."""
-        result1 = ensure_worktree("code-improver")
+        repo_ctx = git_env["repo_ctx"]
+        result1 = ensure_worktree("code-improver", repo_ctx)
         wt_path = result1.path
 
         # Leave uncommitted changes in the worktree
         (wt_path / "wip.txt").write_text("work in progress")
 
-        result2 = ensure_worktree("code-improver")
+        result2 = ensure_worktree("code-improver", repo_ctx)
         assert result2.path == wt_path
         # WIP file is preserved
         assert (wt_path / "wip.txt").read_text() == "work in progress"
@@ -147,25 +154,28 @@ class TestEnsureWorktree:
 
     def test_fetch_failure_produces_notice(self, git_env: dict):
         """Failed fetch on existing worktree is a notice, not an error."""
-        ensure_worktree("code-improver")
+        repo_ctx = git_env["repo_ctx"]
+        ensure_worktree("code-improver", repo_ctx)
 
         # Break the remote so fetch fails
         _git(git_env["project"], "remote", "set-url", "origin", "/nonexistent/repo")
 
-        result = ensure_worktree("code-improver")
+        result = ensure_worktree("code-improver", repo_ctx)
         assert result.path.exists()
         assert any("fetch failed" in n for n in result.notices)
 
     def test_error_propagates_for_new_worktree(self, git_env: dict):
         """WorktreeError raised when creating a new worktree with broken remote."""
+        repo_ctx = git_env["repo_ctx"]
         _git(git_env["project"], "remote", "set-url", "origin", "/nonexistent/repo")
 
         with pytest.raises(WorktreeError, match="git fetch failed"):
-            ensure_worktree("broken-group")
+            ensure_worktree("broken-group", repo_ctx)
 
     def test_broken_worktree_gets_recreated(self, git_env: dict):
         """Corrupted .git file → worktree is deleted and recreated."""
-        result1 = ensure_worktree("code-improver")
+        repo_ctx = git_env["repo_ctx"]
+        result1 = ensure_worktree("code-improver", repo_ctx)
         wt_path = result1.path
 
         # Corrupt the .git file (simulates stale gitdir from a rename)
@@ -173,7 +183,7 @@ class TestEnsureWorktree:
         git_file.write_text("gitdir: /nonexistent/path/.git/worktrees/old-name\n")
 
         # Should detect broken state, delete, and recreate
-        result2 = ensure_worktree("code-improver")
+        result2 = ensure_worktree("code-improver", repo_ctx)
         assert result2.path == wt_path
         assert result2.path.exists()
         assert (result2.path / "README.md").read_text() == "initial"
@@ -184,7 +194,8 @@ class TestEnsureWorktree:
 
     def test_broken_worktree_with_uncommitted_files_logs_warning(self, git_env: dict, caplog):
         """Broken worktree with leftover files still gets recreated."""
-        result1 = ensure_worktree("code-improver")
+        repo_ctx = git_env["repo_ctx"]
+        result1 = ensure_worktree("code-improver", repo_ctx)
         wt_path = result1.path
 
         # Add uncommitted files, then corrupt
@@ -193,7 +204,7 @@ class TestEnsureWorktree:
         git_file.write_text("gitdir: /nonexistent/path\n")
 
         # Should recreate — broken repo means uncommitted work is unrecoverable
-        result2 = ensure_worktree("code-improver")
+        result2 = ensure_worktree("code-improver", repo_ctx)
         assert result2.path.exists()
         assert (result2.path / "README.md").read_text() == "initial"
         # WIP file is gone (worktree was recreated from scratch)
@@ -208,9 +219,10 @@ class TestEnsureWorktree:
 class TestMergeWorktree:
     def test_fast_forward_merge(self, git_env: dict):
         project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
 
         # Create worktree and make a commit in it
-        result = ensure_worktree("code-improver")
+        result = ensure_worktree("code-improver", repo_ctx)
         wt_path = result.path
         (wt_path / "feature.txt").write_text("feature code")
         _git(wt_path, "add", "feature.txt")
@@ -219,25 +231,27 @@ class TestMergeWorktree:
         _git(wt_path, "commit", "-m", "add feature")
 
         # Merge should succeed (fast-forward)
-        merged = merge_worktree("code-improver")
+        merged = merge_worktree("code-improver", repo_ctx)
         assert merged is True
 
         # Verify the commit appeared on main branch in project
         assert (project / "feature.txt").read_text() == "feature code"
 
     def test_nothing_to_merge(self, git_env: dict):
+        repo_ctx = git_env["repo_ctx"]
         # Create worktree without making any commits
-        ensure_worktree("code-improver")
+        ensure_worktree("code-improver", repo_ctx)
 
-        merged = merge_worktree("code-improver")
+        merged = merge_worktree("code-improver", repo_ctx)
         assert merged is True
 
     def test_diverged_non_conflicting_merges_via_rebase(self, git_env: dict):
         """Diverged but non-conflicting changes are rebased and merged."""
         project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
 
         # Create worktree and make a commit
-        result = ensure_worktree("code-improver")
+        result = ensure_worktree("code-improver", repo_ctx)
         wt_path = result.path
         (wt_path / "feature.txt").write_text("worktree change")
         _git(wt_path, "add", "feature.txt")
@@ -251,7 +265,7 @@ class TestMergeWorktree:
         _git(project, "commit", "-m", "divergent commit on main")
 
         # Rebase-then-merge handles diverged branches
-        merged = merge_worktree("code-improver")
+        merged = merge_worktree("code-improver", repo_ctx)
         assert merged is True
 
         # Both files should be on main now
@@ -261,9 +275,10 @@ class TestMergeWorktree:
     def test_conflicting_merge_returns_false(self, git_env: dict):
         """True conflict (same file, different content) returns False."""
         project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
 
         # Create worktree and modify README.md
-        result = ensure_worktree("code-improver")
+        result = ensure_worktree("code-improver", repo_ctx)
         wt_path = result.path
         (wt_path / "README.md").write_text("worktree version")
         _git(wt_path, "add", "README.md")
@@ -277,7 +292,7 @@ class TestMergeWorktree:
         _git(project, "commit", "-m", "main edit README")
 
         # Should fail due to real conflict
-        merged = merge_worktree("code-improver")
+        merged = merge_worktree("code-improver", repo_ctx)
         assert merged is False
 
 
@@ -290,9 +305,10 @@ class TestReconcileWorktreesAtStartup:
     def test_rebases_diverged_worktree(self, git_env: dict):
         """Diverged worktree branch is rebased onto main at startup."""
         project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
 
         # Create worktree and commit
-        result = ensure_worktree("code-improver")
+        result = ensure_worktree("code-improver", repo_ctx)
         wt_path = result.path
         (wt_path / "feature.txt").write_text("worktree work")
         _git(wt_path, "add", "feature.txt")
@@ -311,7 +327,8 @@ class TestReconcileWorktreesAtStartup:
         assert int(ahead.stdout.strip()) > 0
         assert int(behind.stdout.strip()) > 0
 
-        reconcile_worktrees_at_startup()
+        with patch("pynchy.git_ops.repo.get_repo_context", return_value=repo_ctx):
+            reconcile_worktrees_at_startup(repo_groups={"owner/pynchy": []})
 
         # After reconcile, worktree branch should be ahead of main (rebased), not diverged
         behind_after = _git(project, "rev-list", "worktree/code-improver..main", "--count")
@@ -319,7 +336,8 @@ class TestReconcileWorktreesAtStartup:
 
     def test_skips_non_diverged_worktree(self, git_env: dict):
         """Worktrees that aren't diverged are left alone."""
-        result = ensure_worktree("code-improver")
+        repo_ctx = git_env["repo_ctx"]
+        result = ensure_worktree("code-improver", repo_ctx)
         wt_path = result.path
 
         # Commit in worktree (ahead only, not diverged)
@@ -331,7 +349,8 @@ class TestReconcileWorktreesAtStartup:
 
         head_before = _git(wt_path, "rev-parse", "HEAD").stdout.strip()
 
-        reconcile_worktrees_at_startup()
+        with patch("pynchy.git_ops.repo.get_repo_context", return_value=repo_ctx):
+            reconcile_worktrees_at_startup(repo_groups={"owner/pynchy": []})
 
         # HEAD unchanged — no rebase needed
         head_after = _git(wt_path, "rev-parse", "HEAD").stdout.strip()
@@ -339,12 +358,18 @@ class TestReconcileWorktreesAtStartup:
 
     def test_handles_no_worktrees_dir(self, git_env: dict):
         """Runs cleanly when worktrees dir doesn't exist."""
+        repo_ctx = git_env["repo_ctx"]
         # worktrees_dir doesn't exist yet — should not raise
-        reconcile_worktrees_at_startup()
+        with patch("pynchy.git_ops.repo.get_repo_context", return_value=repo_ctx):
+            reconcile_worktrees_at_startup(repo_groups={"owner/pynchy": []})
 
     def test_creates_missing_worktrees_at_startup(self, git_env: dict):
-        """Worktrees for pynchy_repo_access folders are created if missing."""
-        reconcile_worktrees_at_startup(pynchy_repo_access_folders=["god", "code-improver"])
+        """Worktrees for repo_access folders are created if missing."""
+        repo_ctx = git_env["repo_ctx"]
+        with patch("pynchy.git_ops.repo.get_repo_context", return_value=repo_ctx):
+            reconcile_worktrees_at_startup(
+                repo_groups={"owner/pynchy": ["god", "code-improver"]}
+            )
 
         worktrees_dir = git_env["worktrees_dir"]
         assert (worktrees_dir / "god").exists()
@@ -356,8 +381,10 @@ class TestReconcileWorktreesAtStartup:
 
     def test_idempotent(self, git_env: dict):
         """Calling twice with same folders doesn't break anything."""
+        repo_ctx = git_env["repo_ctx"]
         folders = ["god", "code-improver"]
-        reconcile_worktrees_at_startup(pynchy_repo_access_folders=folders)
+        with patch("pynchy.git_ops.repo.get_repo_context", return_value=repo_ctx):
+            reconcile_worktrees_at_startup(repo_groups={"owner/pynchy": folders})
 
         # Record state
         worktrees_dir = git_env["worktrees_dir"]
@@ -365,7 +392,8 @@ class TestReconcileWorktreesAtStartup:
         head_ci = _git(worktrees_dir / "code-improver", "rev-parse", "HEAD").stdout.strip()
 
         # Second call — should be a no-op
-        reconcile_worktrees_at_startup(pynchy_repo_access_folders=folders)
+        with patch("pynchy.git_ops.repo.get_repo_context", return_value=repo_ctx):
+            reconcile_worktrees_at_startup(repo_groups={"owner/pynchy": folders})
 
         assert _git(worktrees_dir / "god", "rev-parse", "HEAD").stdout.strip() == head_god
         assert _git(worktrees_dir / "code-improver", "rev-parse", "HEAD").stdout.strip() == head_ci
@@ -380,8 +408,9 @@ class TestMergeAndPushWorktree:
     def test_merge_and_push_success(self, git_env: dict):
         """Commits merge into main and push to origin in one call."""
         project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
 
-        result = ensure_worktree("code-improver")
+        result = ensure_worktree("code-improver", repo_ctx)
         wt_path = result.path
         (wt_path / "feature.txt").write_text("new feature")
         _git(wt_path, "add", "feature.txt")
@@ -389,7 +418,7 @@ class TestMergeAndPushWorktree:
         _git(wt_path, "config", "user.name", "Test")
         _git(wt_path, "commit", "-m", "add feature")
 
-        merge_and_push_worktree("code-improver")
+        merge_and_push_worktree("code-improver", repo_ctx)
 
         # Verify on main
         assert (project / "feature.txt").read_text() == "new feature"
@@ -401,8 +430,9 @@ class TestMergeAndPushWorktree:
     def test_skips_push_when_merge_fails(self, git_env: dict):
         """When merge fails (conflict), push is not attempted."""
         project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
 
-        result = ensure_worktree("code-improver")
+        result = ensure_worktree("code-improver", repo_ctx)
         wt_path = result.path
         (wt_path / "README.md").write_text("worktree version")
         _git(wt_path, "add", "README.md")
@@ -416,17 +446,18 @@ class TestMergeAndPushWorktree:
         _git(project, "commit", "-m", "main edit README")
 
         # Should not raise, just skip push
-        merge_and_push_worktree("code-improver")
+        merge_and_push_worktree("code-improver", repo_ctx)
 
         # Main should still have its version (merge failed, push skipped)
         assert (project / "README.md").read_text() == "main version"
 
     def test_nothing_to_merge(self, git_env: dict):
         """No-op when worktree has no new commits."""
-        ensure_worktree("code-improver")
+        repo_ctx = git_env["repo_ctx"]
+        ensure_worktree("code-improver", repo_ctx)
 
         # Should complete without error
-        merge_and_push_worktree("code-improver")
+        merge_and_push_worktree("code-improver", repo_ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -445,10 +476,11 @@ class TestSequentialMerges:
     def test_two_worktrees_merge_sequentially(self, git_env: dict):
         """Two worktrees with non-conflicting changes can merge one after another."""
         project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
 
         # Create two worktrees
-        r1 = ensure_worktree("agent-1")
-        r2 = ensure_worktree("agent-2")
+        r1 = ensure_worktree("agent-1", repo_ctx)
+        r2 = ensure_worktree("agent-2", repo_ctx)
 
         # Each modifies a different file
         (r1.path / "agent1.txt").write_text("from agent 1")
@@ -464,11 +496,11 @@ class TestSequentialMerges:
         _git(r2.path, "commit", "-m", "agent 2 work")
 
         # First merge succeeds
-        assert merge_worktree("agent-1") is True
+        assert merge_worktree("agent-1", repo_ctx) is True
         assert (project / "agent1.txt").read_text() == "from agent 1"
 
         # Second merge succeeds (rebases onto new main first)
-        assert merge_worktree("agent-2") is True
+        assert merge_worktree("agent-2", repo_ctx) is True
         assert (project / "agent2.txt").read_text() == "from agent 2"
 
         # Both files on main
@@ -478,8 +510,9 @@ class TestSequentialMerges:
     def test_multiple_commits_per_worktree(self, git_env: dict):
         """A worktree with multiple commits merges all of them."""
         project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
 
-        result = ensure_worktree("agent-1")
+        result = ensure_worktree("agent-1", repo_ctx)
         wt_path = result.path
 
         for i in range(3):
@@ -489,7 +522,7 @@ class TestSequentialMerges:
             _git(wt_path, "config", "user.name", "Test")
             _git(wt_path, "commit", "-m", f"commit {i}")
 
-        assert merge_worktree("agent-1") is True
+        assert merge_worktree("agent-1", repo_ctx) is True
 
         for i in range(3):
             assert (project / f"file{i}.txt").read_text() == f"content {i}"

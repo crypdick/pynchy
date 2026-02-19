@@ -47,7 +47,7 @@ class ContainerInput:
         self.is_admin: bool = data["is_admin"]
         self.is_scheduled_task: bool = data.get("is_scheduled_task", False)
         self.system_notices: list[str] | None = data.get("system_notices")
-        self.pynchy_repo_access: bool = data.get("pynchy_repo_access", False)
+        self.repo_access: str | None = data.get("repo_access") or None
         self.agent_core_module: str = data.get("agent_core_module", "agent_runner.cores.claude")
         self.agent_core_class: str = data.get("agent_core_class", "ClaudeAgentCore")
         self.agent_core_config: dict[str, Any] | None = data.get("agent_core_config")
@@ -280,9 +280,9 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
 
     # Default cwd to the mounted project repo when available, so agents start
     # in the codebase they're working on rather than the group metadata dir.
-    # Admin always has /workspace/project; non-admin gets it via pynchy_repo_access.
-    has_pynchy_repo = container_input.is_admin or container_input.pynchy_repo_access
-    agent_cwd = "/workspace/project" if has_pynchy_repo else "/workspace/group"
+    # Admin always has /workspace/project; non-admin gets it via repo_access.
+    has_repo_mount = container_input.is_admin or bool(container_input.repo_access)
+    agent_cwd = "/workspace/project" if has_repo_mount else "/workspace/group"
 
     # Build extra config from agent_core_config
     extra = container_input.agent_core_config or {}

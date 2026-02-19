@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 from pynchy.config import get_settings
 from pynchy.container_runner._credentials import _write_env_file
 from pynchy.container_runner._session_prep import _sync_skills, _write_settings_json
+from pynchy.git_ops.repo import RepoContext
 from pynchy.security.mount_security import validate_additional_mounts
 from pynchy.types import VolumeMount, WorkspaceProfile
 from pynchy.workspace_config import load_workspace_config
@@ -20,7 +21,7 @@ def _build_volume_mounts(
     group: WorkspaceProfile,
     is_admin: bool,
     plugin_manager: pluggy.PluginManager | None = None,
-    pynchy_repo_access: bool = False,
+    repo_ctx: RepoContext | None = None,
     worktree_path: Path | None = None,
 ) -> list[VolumeMount]:
     """Build the mount list for a container invocation.
@@ -29,8 +30,8 @@ def _build_volume_mounts(
         group: The registered group configuration
         is_admin: Whether this is the admin group
         plugin_manager: Optional pluggy.PluginManager for plugin MCP mounts
-        pynchy_repo_access: Whether to mount the host project into the container
-        worktree_path: Pre-resolved worktree path for non-admin pynchy_repo_access groups
+        repo_ctx: Resolved repo context when group has repo_access; None otherwise
+        worktree_path: Pre-resolved worktree path for repo_access groups
 
     Returns:
         List of volume mounts for the container
@@ -41,11 +42,11 @@ def _build_volume_mounts(
     group_dir = s.groups_dir / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
 
-    if worktree_path:
+    if worktree_path and repo_ctx:
         mounts.append(VolumeMount(str(worktree_path), "/workspace/project", readonly=False))
         # Worktree .git file references the main repo's .git dir via absolute path.
         # Mount it at the same host path so git resolves the reference inside the container.
-        git_dir = s.project_root / ".git"
+        git_dir = repo_ctx.root / ".git"
         mounts.append(VolumeMount(str(git_dir), str(git_dir), readonly=False))
         mounts.append(VolumeMount(str(group_dir), "/workspace/group", readonly=False))
     else:

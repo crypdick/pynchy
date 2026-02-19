@@ -420,7 +420,7 @@ async def process_group_messages(
         )
         return False
 
-    # Merge worktree commits into main and push for all pynchy_repo_access groups
+    # Merge worktree commits into main and push for groups with repo_access
     from pynchy.git_ops.worktree import background_merge_worktree
 
     background_merge_worktree(group)

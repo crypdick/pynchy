@@ -141,7 +141,7 @@ class TestContainerInput:
         assert ci.is_admin is True
         assert ci.session_id is None
         assert ci.is_scheduled_task is False
-        assert ci.pynchy_repo_access is False
+        assert ci.repo_access is None
 
     def test_full_input(self):
         data = {
@@ -152,7 +152,7 @@ class TestContainerInput:
             "is_admin": False,
             "is_scheduled_task": True,
             "system_notices": ["notice1"],
-            "pynchy_repo_access": True,
+            "repo_access": "owner/pynchy",
             "agent_core_module": "custom.mod",
             "agent_core_class": "CustomCore",
             "agent_core_config": {"model": "gpt-4"},
@@ -161,7 +161,7 @@ class TestContainerInput:
         assert ci.session_id == "sess-1"
         assert ci.is_scheduled_task is True
         assert ci.system_notices == ["notice1"]
-        assert ci.pynchy_repo_access is True
+        assert ci.repo_access == "owner/pynchy"
         assert ci.agent_core_module == "custom.mod"
         assert ci.agent_core_class == "CustomCore"
         assert ci.agent_core_config == {"model": "gpt-4"}
@@ -433,13 +433,13 @@ class TestBuildCoreConfig:
         config = build_core_config(ci)
         assert config.cwd == "/workspace/project"
 
-    def test_non_god_with_pynchy_repo_access_cwd(self):
-        ci = self._make_input(is_admin=False, pynchy_repo_access=True)
+    def test_non_god_with_repo_access_cwd(self):
+        ci = self._make_input(is_admin=False, repo_access="owner/pynchy")
         config = build_core_config(ci)
         assert config.cwd == "/workspace/project"
 
-    def test_non_god_without_pynchy_repo_access_cwd(self):
-        ci = self._make_input(is_admin=False, pynchy_repo_access=False)
+    def test_non_god_without_repo_access_cwd(self):
+        ci = self._make_input(is_admin=False)
         config = build_core_config(ci)
         assert config.cwd == "/workspace/group"
 

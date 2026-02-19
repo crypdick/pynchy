@@ -39,19 +39,16 @@ async def _handle_reset_context(
 
     import asyncio
 
+    from pynchy.git_ops.repo import resolve_repo_for_group
     from pynchy.git_ops.worktree import merge_and_push_worktree
 
-    logger.info(
-        "Merging worktree before context reset",
-        group=group_folder,
-    )
-    try:
-        await asyncio.to_thread(merge_and_push_worktree, group_folder)
-    except Exception as exc:
-        logger.error(
-            "Worktree merge failed during context reset",
-            err=str(exc),
-        )
+    repo_ctx = resolve_repo_for_group(group_folder)
+    if repo_ctx is not None:
+        logger.info("Merging worktree before context reset", group=group_folder)
+        try:
+            await asyncio.to_thread(merge_and_push_worktree, group_folder, repo_ctx)
+        except Exception as exc:
+            logger.error("Worktree merge failed during context reset", err=str(exc))
 
     await deps.clear_session(group_folder)
     await deps.clear_chat_history(chat_jid)
@@ -110,15 +107,26 @@ async def _handle_sync_worktree_to_main(
     is_admin: bool,
     deps: IpcDeps,
 ) -> None:
-    request_id = data.get("requestId", "")
-    pre_merge_sha = get_head_sha()
-    result = host_sync_worktree(source_group)
+    from pynchy.git_ops.repo import resolve_repo_for_group
 
+    request_id = data.get("requestId", "")
     result_dir = get_settings().data_dir / "ipc" / source_group / "merge_results"
+
+    repo_ctx = resolve_repo_for_group(source_group)
+    if repo_ctx is None:
+        write_ipc_response(
+            result_dir / f"{request_id}.json",
+            {"success": False, "message": "No repo configured for this group."},
+        )
+        logger.info("sync_worktree_to_main: no repo_ctx", group=source_group)
+        return
+
+    pre_merge_sha = get_head_sha(cwd=repo_ctx.root)
+    result = host_sync_worktree(source_group, repo_ctx)
     write_ipc_response(result_dir / f"{request_id}.json", result)
 
     if result.get("success"):
-        post_merge_sha = get_head_sha()
+        post_merge_sha = get_head_sha(cwd=repo_ctx.root)
 
         class _GitSyncAdapter:
             async def broadcast_host_message(self, jid: str, text: str) -> None:
@@ -133,7 +141,7 @@ async def _handle_sync_worktree_to_main(
             async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
                 pass  # adapter only used for worktree notifications
 
-        await host_notify_worktree_updates(source_group, _GitSyncAdapter())
+        await host_notify_worktree_updates(source_group, _GitSyncAdapter(), repo_ctx)
 
         if (
             pre_merge_sha != "unknown"

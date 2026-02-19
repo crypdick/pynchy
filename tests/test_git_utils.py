@@ -185,6 +185,7 @@ class TestPushLocalCommits:
         """When rev-list shows 0 commits ahead, nothing to do."""
         with patch("pynchy.git_ops.utils.run_git") as mock:
             mock.side_effect = [
+                _ok("refs/remotes/origin/main\n"),  # detect_main_branch
                 _ok(),  # fetch
                 _ok("0\n"),  # rev-list --count
             ]
@@ -194,6 +195,7 @@ class TestPushLocalCommits:
         """When rev-list fails, assume nothing to push (can't tell)."""
         with patch("pynchy.git_ops.utils.run_git") as mock:
             mock.side_effect = [
+                _ok("refs/remotes/origin/main\n"),  # detect_main_branch
                 _ok(),  # fetch
                 _fail(),  # rev-list fails
             ]
@@ -203,6 +205,7 @@ class TestPushLocalCommits:
         """Happy path: fetch, rebase, push all succeed."""
         with patch("pynchy.git_ops.utils.run_git") as mock:
             mock.side_effect = [
+                _ok("refs/remotes/origin/main\n"),  # detect_main_branch
                 _ok(),  # fetch
                 _ok("2\n"),  # rev-list: 2 commits ahead
                 _ok(),  # rebase succeeds
@@ -212,13 +215,17 @@ class TestPushLocalCommits:
 
     def test_fetch_failure_returns_false(self):
         with patch("pynchy.git_ops.utils.run_git") as mock:
-            mock.side_effect = [_fail("fetch error")]
+            mock.side_effect = [
+                _ok("refs/remotes/origin/main\n"),  # detect_main_branch
+                _fail("fetch error"),
+            ]
             assert push_local_commits() is False
 
     def test_rebase_fails_then_succeeds_on_retry(self):
         """First rebase fails (origin advanced), retry with fresh fetch succeeds."""
         with patch("pynchy.git_ops.utils.run_git") as mock:
             mock.side_effect = [
+                _ok("refs/remotes/origin/main\n"),  # detect_main_branch
                 _ok(),  # initial fetch
                 _ok("1\n"),  # rev-list: 1 commit ahead
                 _fail("conflict"),  # rebase fails
@@ -233,6 +240,7 @@ class TestPushLocalCommits:
         """Both rebase attempts fail — exhausted retries."""
         with patch("pynchy.git_ops.utils.run_git") as mock:
             mock.side_effect = [
+                _ok("refs/remotes/origin/main\n"),  # detect_main_branch
                 _ok(),  # initial fetch
                 _ok("1\n"),  # rev-list
                 _fail("conflict"),  # first rebase fails
@@ -247,6 +255,7 @@ class TestPushLocalCommits:
         """First rebase fails, and the retry fetch also fails."""
         with patch("pynchy.git_ops.utils.run_git") as mock:
             mock.side_effect = [
+                _ok("refs/remotes/origin/main\n"),  # detect_main_branch
                 _ok(),  # initial fetch
                 _ok("1\n"),  # rev-list
                 _fail(),  # rebase fails
@@ -259,6 +268,7 @@ class TestPushLocalCommits:
         """Rebase succeeds but push fails."""
         with patch("pynchy.git_ops.utils.run_git") as mock:
             mock.side_effect = [
+                _ok("refs/remotes/origin/main\n"),  # detect_main_branch
                 _ok(),  # fetch
                 _ok("1\n"),  # rev-list
                 _ok(),  # rebase succeeds
@@ -267,14 +277,15 @@ class TestPushLocalCommits:
             assert push_local_commits() is False
 
     def test_skip_fetch_skips_initial_fetch(self):
-        """skip_fetch=True goes straight to rev-list."""
+        """skip_fetch=True goes straight to rev-list (after detect_main_branch)."""
         with patch("pynchy.git_ops.utils.run_git") as mock:
             mock.side_effect = [
+                _ok("refs/remotes/origin/main\n"),  # detect_main_branch
                 _ok("0\n"),  # rev-list (no fetch before this)
             ]
             assert push_local_commits(skip_fetch=True) is True
-            # Verify only rev-list was called (no fetch)
-            assert mock.call_count == 1
+            # Verify only detect_main_branch + rev-list were called (no fetch)
+            assert mock.call_count == 2
             assert "rev-list" in mock.call_args[0]
 
     def test_subprocess_timeout_returns_false(self):

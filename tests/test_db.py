@@ -813,19 +813,19 @@ class TestTaskAdvanced:
         await delete_task("logged-task")
         assert await get_task_by_id("logged-task") is None
 
-    async def test_create_task_with_pynchy_repo_access(self):
+    async def test_create_task_with_repo_access(self):
         await create_task(
-            {**self._TASK_TEMPLATE, "id": "pa-task", "next_run": None, "pynchy_repo_access": True}
+            {**self._TASK_TEMPLATE, "id": "pa-task", "next_run": None, "repo_access": "owner/pynchy"}
         )
         task = await get_task_by_id("pa-task")
         assert task is not None
-        assert task.pynchy_repo_access is True
+        assert task.repo_access == "owner/pynchy"
 
-    async def test_create_task_without_pynchy_repo_access(self):
+    async def test_create_task_without_repo_access(self):
         await create_task({**self._TASK_TEMPLATE, "id": "no-pa", "next_run": None})
         task = await get_task_by_id("no-pa")
         assert task is not None
-        assert task.pynchy_repo_access is False
+        assert task.repo_access is None
 
 
 # --- Workspace profiles ---
@@ -1015,7 +1015,7 @@ class TestGetTaskById:
                 "next_run": "2024-06-01T00:00:00Z",
                 "status": "active",
                 "created_at": "2024-01-01T00:00:00Z",
-                "pynchy_repo_access": True,
+                "repo_access": "owner/pynchy",
             }
         )
         task = await get_task_by_id("full-task")
@@ -1029,7 +1029,7 @@ class TestGetTaskById:
         assert task.context_mode == "group"
         assert task.next_run == "2024-06-01T00:00:00Z"
         assert task.status == "active"
-        assert task.pynchy_repo_access is True
+        assert task.repo_access == "owner/pynchy"
 
 
 # --- get_last_group_sync / set_last_group_sync ---

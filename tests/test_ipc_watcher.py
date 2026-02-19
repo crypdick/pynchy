@@ -16,6 +16,7 @@ import pytest
 from conftest import make_settings
 
 from pynchy.db import _init_test_database
+from pynchy.git_ops.repo import RepoContext
 from pynchy.ipc._watcher import _move_to_error_dir
 from pynchy.types import WorkspaceProfile
 
@@ -307,10 +308,16 @@ class TestSyncWorktreeIpc:
         """sync_worktree_to_main should write a result JSON for the blocking MCP tool."""
         from pynchy.ipc import dispatch
 
+        fake_repo_ctx = RepoContext(slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt")
+
         with (
             patch(
                 "pynchy.ipc._handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.git_ops.repo.resolve_repo_for_group",
+                return_value=fake_repo_ctx,
             ),
             patch(
                 "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
@@ -340,10 +347,16 @@ class TestSyncWorktreeIpc:
         """On successful sync, other worktrees should be notified."""
         from pynchy.ipc import dispatch
 
+        fake_repo_ctx = RepoContext(slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt")
+
         with (
             patch(
                 "pynchy.ipc._handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.git_ops.repo.resolve_repo_for_group",
+                return_value=fake_repo_ctx,
             ),
             patch(
                 "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
