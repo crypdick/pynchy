@@ -22,7 +22,7 @@ class PynchyTUI(App):
 
     CSS = """
     #group-bar {
-        height: 3;
+        height: 10;
         padding: 0 1;
     }
     #group-bar-label {
@@ -31,7 +31,7 @@ class PynchyTUI(App):
         content-align-vertical: middle;
     }
     #group-list {
-        height: 3;
+        height: 10;
     }
     #chat-header {
         height: 1;
