@@ -146,6 +146,7 @@ class TestHostUpdateMain:
 
     def test_returns_false_on_rebase_failure(self, tmp_path: Path):
         """Should return False and abort rebase when rebase fails."""
+        (tmp_path / ".git").mkdir()
         call_count = 0
 
         def mock_run(*args, **kwargs):
@@ -160,14 +161,95 @@ class TestHostUpdateMain:
                     args=cmd_args, returncode=1, stdout="", stderr="conflict"
                 )
             else:
-                # rebase --abort
+                # rebase --abort, status --porcelain, etc.
                 return ok
 
-        with patch("subprocess.run", side_effect=mock_run):
+        with (
+            patch("subprocess.run", side_effect=mock_run),
+            patch("pynchy.git_ops.sync.detect_main_branch", return_value="main"),
+        ):
             result = _host_update_main(tmp_path)
             assert result is False
-            # Should have called fetch, rebase, and rebase --abort
+            # Should have called status, fetch, rebase, and rebase --abort
             assert call_count >= 3
+
+    def test_aborts_stale_rebase_before_fetch(self, tmp_path: Path):
+        """Stale rebase-merge dir triggers rebase --abort before fetch."""
+        (tmp_path / ".git" / "rebase-merge").mkdir(parents=True)
+        commands: list[list[str]] = []
+
+        def mock_run(*args, **kwargs):
+            cmd_args = args[0] if args else kwargs.get("args", [])
+            commands.append(list(cmd_args))
+            return subprocess.CompletedProcess(args=cmd_args, returncode=0, stdout="", stderr="")
+
+        with (
+            patch("subprocess.run", side_effect=mock_run),
+            patch("pynchy.git_ops.sync.detect_main_branch", return_value="main"),
+        ):
+            result = _host_update_main(tmp_path)
+
+        assert result is True
+        flat = [" ".join(c) for c in commands]
+        abort_idx = next(i for i, f in enumerate(flat) if "rebase" in f and "--abort" in f)
+        fetch_idx = next(i for i, f in enumerate(flat) if "fetch" in f)
+        assert abort_idx < fetch_idx, "rebase --abort must come before fetch"
+
+    def test_stashes_dirty_tree_before_fetch(self, tmp_path: Path):
+        """Dirty working tree is stashed, then restored after success."""
+        (tmp_path / ".git").mkdir()
+        commands: list[list[str]] = []
+
+        def mock_run(*args, **kwargs):
+            cmd_args = args[0] if args else kwargs.get("args", [])
+            commands.append(list(cmd_args))
+            if "status" in cmd_args and "--porcelain" in cmd_args:
+                return subprocess.CompletedProcess(
+                    args=cmd_args, returncode=0, stdout="M dirty.txt\n", stderr=""
+                )
+            return subprocess.CompletedProcess(args=cmd_args, returncode=0, stdout="", stderr="")
+
+        with (
+            patch("subprocess.run", side_effect=mock_run),
+            patch("pynchy.git_ops.sync.detect_main_branch", return_value="main"),
+            patch("pynchy.git_ops.sync.push_local_commits", return_value=True),
+        ):
+            result = _host_update_main(tmp_path)
+
+        assert result is True
+        flat = [" ".join(c) for c in commands]
+        stash_idx = next(
+            i for i, f in enumerate(flat) if "stash" in f and "--include-untracked" in f
+        )
+        fetch_idx = next(i for i, f in enumerate(flat) if "fetch" in f)
+        commit_idx = next(i for i, f in enumerate(flat) if "commit" in f and "--allow-empty" in f)
+        pop_idx = next(i for i, f in enumerate(flat) if "stash" in f and "pop" in f)
+        assert stash_idx < fetch_idx, "stash must come before fetch"
+        assert fetch_idx < commit_idx, "fetch must come before distress commit"
+        assert commit_idx < pop_idx, "distress commit must come before stash pop"
+
+    def test_clean_tree_skips_recovery(self, tmp_path: Path):
+        """Clean tree with no stale state goes straight to fetch."""
+        (tmp_path / ".git").mkdir()
+        commands: list[list[str]] = []
+
+        def mock_run(*args, **kwargs):
+            cmd_args = args[0] if args else kwargs.get("args", [])
+            commands.append(list(cmd_args))
+            return subprocess.CompletedProcess(args=cmd_args, returncode=0, stdout="", stderr="")
+
+        with (
+            patch("subprocess.run", side_effect=mock_run),
+            patch("pynchy.git_ops.sync.detect_main_branch", return_value="main"),
+        ):
+            result = _host_update_main(tmp_path)
+
+        assert result is True
+        flat = [" ".join(c) for c in commands]
+        assert not any("rebase" in f and "--abort" in f for f in flat), "no abort needed"
+        assert not any("stash" in f for f in flat), "no stash needed"
+        assert any("status" in f for f in flat), "status check must happen"
+        assert any("fetch" in f for f in flat), "fetch must happen"
 
 
 # ---------------------------------------------------------------------------
