@@ -136,19 +136,15 @@ def _scrub_model(obj: BaseModel) -> None:
 
 @pytest.fixture(autouse=True)
 def reset_settings(monkeypatch):
-    """Ensure each test starts with a Settings singleton scrubbed of secrets.
+    """Ensure each test starts with a clean Settings singleton.
 
-    Settings are loaded from config.toml as usual (so non-secret config like
-    ``agent.name`` and ``container.image`` are available), then all SecretStr
-    fields and credential-bearing plain strings are replaced with safe values.
+    Uses ``make_settings()`` to build from pure defaults — no config.toml,
+    no .env, no file I/O. Tests are fully isolated from production config.
 
     Tests that mock ``get_settings()`` at the call site are unaffected — their
     mock takes precedence over the cached singleton.
     """
-    from pynchy.config import Settings
-
-    safe = Settings()
-    _scrub_model(safe)
+    safe = make_settings()
     monkeypatch.setattr("pynchy.config._settings", safe)
 
 
