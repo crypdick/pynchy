@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from pynchy.db._connection import _get_db, _update_by_id
+from pynchy.db._connection import _get_db, _update_by_id, atomic_write
 from pynchy.types import ScheduledTask, TaskRunLog
 
 
@@ -101,10 +101,9 @@ async def update_task(task_id: str, updates: dict[str, Any]) -> None:
 
 async def delete_task(task_id: str) -> None:
     """Delete a task and its run logs."""
-    db = _get_db()
-    await db.execute("DELETE FROM task_run_logs WHERE task_id = ?", (task_id,))
-    await db.execute("DELETE FROM scheduled_tasks WHERE id = ?", (task_id,))
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute("DELETE FROM task_run_logs WHERE task_id = ?", (task_id,))
+        await db.execute("DELETE FROM scheduled_tasks WHERE id = ?", (task_id,))
 
 
 async def get_active_task_for_group(group_folder: str) -> ScheduledTask | None:

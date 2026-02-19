@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from pynchy.db._connection import _get_db
+from pynchy.db._connection import _get_db, atomic_write
 
 
 @dataclass
@@ -34,22 +34,21 @@ async def record_outbound(
 
     Returns the ledger row ID.
     """
-    db = _get_db()
     now = datetime.now(UTC).isoformat()
-    cursor = await db.execute(
-        "INSERT INTO outbound_ledger (chat_jid, content, timestamp, source)"
-        " VALUES (?, ?, ?, ?)",
-        (chat_jid, content, now, source),
-    )
-    ledger_id = cursor.lastrowid
-    assert ledger_id is not None
-    for ch_name in channel_names:
-        await db.execute(
-            "INSERT INTO outbound_deliveries (ledger_id, channel_name)"
-            " VALUES (?, ?)",
-            (ledger_id, ch_name),
+    async with atomic_write() as db:
+        cursor = await db.execute(
+            "INSERT INTO outbound_ledger (chat_jid, content, timestamp, source)"
+            " VALUES (?, ?, ?, ?)",
+            (chat_jid, content, now, source),
         )
-    await db.commit()
+        ledger_id = cursor.lastrowid
+        assert ledger_id is not None
+        for ch_name in channel_names:
+            await db.execute(
+                "INSERT INTO outbound_deliveries (ledger_id, channel_name)"
+                " VALUES (?, ?)",
+                (ledger_id, ch_name),
+            )
     return ledger_id
 
 
@@ -126,7 +125,7 @@ async def gc_delivered(max_age_hours: int = 24) -> int:
         return 0
 
     placeholders = ",".join("?" * len(ids))
-    await db.execute(f"DELETE FROM outbound_deliveries WHERE ledger_id IN ({placeholders})", ids)
-    await db.execute(f"DELETE FROM outbound_ledger WHERE id IN ({placeholders})", ids)
-    await db.commit()
+    async with atomic_write() as wdb:
+        await wdb.execute(f"DELETE FROM outbound_deliveries WHERE ledger_id IN ({placeholders})", ids)
+        await wdb.execute(f"DELETE FROM outbound_ledger WHERE id IN ({placeholders})", ids)
     return len(ids)

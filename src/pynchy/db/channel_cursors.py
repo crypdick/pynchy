@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from pynchy.db._connection import _get_db, get_write_lock
+from pynchy.db._connection import _get_db, atomic_write
 
 
 async def get_channel_cursor(
@@ -47,24 +47,14 @@ async def advance_cursors_atomic(
     inbound: str | None = None,
     outbound: str | None = None,
 ) -> None:
-    """Atomically advance inbound and/or outbound cursors in one transaction.
-
-    Holds the write lock for the full duration so no concurrent coroutine can
-    interleave DML and have it swept up in — or wiped out by — our rollback.
-    """
-    db = _get_db()
+    """Atomically advance inbound and/or outbound cursors in one transaction."""
     now = datetime.now(UTC).isoformat()
-    async with get_write_lock():
-        try:
-            for direction, value in [("inbound", inbound), ("outbound", outbound)]:
-                if value:
-                    await db.execute(
-                        "INSERT OR REPLACE INTO channel_cursors"
-                        " (channel_name, chat_jid, direction, cursor_value, updated_at)"
-                        " VALUES (?, ?, ?, ?, ?)",
-                        (channel_name, chat_jid, direction, value, now),
-                    )
-            await db.commit()
-        except Exception:
-            await db.rollback()
-            raise
+    async with atomic_write() as db:
+        for direction, value in [("inbound", inbound), ("outbound", outbound)]:
+            if value:
+                await db.execute(
+                    "INSERT OR REPLACE INTO channel_cursors"
+                    " (channel_name, chat_jid, direction, cursor_value, updated_at)"
+                    " VALUES (?, ?, ?, ?, ?)",
+                    (channel_name, chat_jid, direction, value, now),
+                )
