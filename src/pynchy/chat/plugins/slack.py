@@ -109,11 +109,7 @@ class SlackChannel:
             await self._app.client.chat_postMessage(channel=channel_id, text=chunk)
 
     def is_connected(self) -> bool:
-        return (
-            self._connected
-            and self._handler_task is not None
-            and not self._handler_task.done()
-        )
+        return self._connected and self._handler_task is not None and not self._handler_task.done()
 
     def owns_jid(self, jid: str) -> bool:
         return jid.startswith(JID_PREFIX)
@@ -164,6 +160,11 @@ class SlackChannel:
     async def _reconnect_with_backoff(self, delay: float = 5.0) -> None:
         """Reconnect with exponential backoff, capped at 5 minutes."""
         await asyncio.sleep(delay)
+        # Guard: if disconnect() was called while we slept, or another path
+        # already reconnected, bail out — otherwise connect() will spawn
+        # aiohttp tasks that disconnect() can't cancel (shutdown race).
+        if self._connected:
+            return
         logger.info("Slack attempting reconnect", delay=delay)
         try:
             self._handler = None
@@ -340,9 +341,7 @@ class SlackChannel:
             )
         return results
 
-    async def fetch_inbound_since(
-        self, channel_jid: str, since: str
-    ) -> list[NewMessage]:
+    async def fetch_inbound_since(self, channel_jid: str, since: str) -> list[NewMessage]:
         """Fetch Slack messages newer than ``since`` for a single channel.
 
         The reconciler resolves JIDs before calling — ``channel_jid`` is a
