@@ -79,7 +79,7 @@ Note: team/key endpoints use `/team/new` and `/key/generate` (no `/v1/` prefix) 
 When MCP registration fails at boot, check pynchy logs for:
 
 ```bash
-ssh pyncher-server 'journalctl --user -u pynchy --since "5 min ago" --no-pager' | grep -i mcp
+ssh pynchy-server 'journalctl --user -u pynchy --since "5 min ago" --no-pager' | grep -i mcp
 ```
 
 Common log patterns:

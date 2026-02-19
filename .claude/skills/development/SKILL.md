@@ -1,6 +1,6 @@
 ---
 name: Pynchy Development
-description: Use when running pynchy locally — running the app, tests, linting, formatting, pre-commit hooks, or rebuilding the agent container. Also use when determining whether you're currently on the pyncher-server host or a local machine, and for guidance on writing good tests vs. coverage theater.
+description: Use when running pynchy locally — running the app, tests, linting, formatting, pre-commit hooks, or rebuilding the agent container. Also use when determining whether you're currently on the pynchy-server host or a local machine, and for guidance on writing good tests vs. coverage theater.
 ---
 
 # Development
@@ -9,7 +9,7 @@ Run commands directly—don't tell the user to run them.
 
 ## Am I on pynchy?
 
-Check `hostname`. If it returns `pyncher-server`, you're on the server and can access services at `localhost`. Otherwise, reach pynchy over Tailscale (e.g., `ssh pyncher-server`).
+Check `hostname`. If it returns `pynchy-server`, you're on the server and can access services at `localhost`. Otherwise, reach pynchy over Tailscale (e.g., `ssh pynchy-server`).
 
 ```bash
 uv run pynchy            # Run the app

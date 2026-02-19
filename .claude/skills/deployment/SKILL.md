@@ -1,11 +1,11 @@
 ---
 name: Pynchy Deployment
-description: Use when managing the pynchy service on the server — deploying changes, observing logs, checking service status, restarting the service, setting up GitHub auth, rebuilding the agent container, or running any commands on pyncher-server via SSH.
+description: Use when managing the pynchy service on the server — deploying changes, observing logs, checking service status, restarting the service, setting up GitHub auth, rebuilding the agent container, or running any commands on pynchy-server via SSH.
 ---
 
 # Deployment
 
-The pynchy service runs on the `pyncher-server` host over Tailscale. SSH: `ssh pyncher-server`.
+The pynchy service runs on the `pynchy-server` host over Tailscale. SSH: `ssh pynchy-server`.
 
 ## Auto-deploy: never restart manually
 
@@ -20,16 +20,16 @@ Pynchy self-manages. Two mechanisms trigger automatic restarts:
 
 ```bash
 # Trigger a deploy from HOST (not from containers — use mcp__pynchy__deploy_changes instead)
-curl -s -X POST http://pyncher-server:8484/deploy
+curl -s -X POST http://pynchy-server:8484/deploy
 
 # Observe (read-only — always safe)
-ssh pyncher-server 'systemctl --user status pynchy'
-ssh pyncher-server 'journalctl --user -u pynchy -f'
-ssh pyncher-server 'journalctl --user -u pynchy -n 100'
-ssh pyncher-server 'docker ps --filter name=pynchy'
+ssh pynchy-server 'systemctl --user status pynchy'
+ssh pynchy-server 'journalctl --user -u pynchy -f'
+ssh pynchy-server 'journalctl --user -u pynchy -n 100'
+ssh pynchy-server 'docker ps --filter name=pynchy'
 
 # Manual restart — ONLY for unhealthy/stuck service
-ssh pyncher-server 'systemctl --user restart pynchy'
+ssh pynchy-server 'systemctl --user restart pynchy'
 ```
 
 ## Service Management (reference)
@@ -58,12 +58,12 @@ To set up GitHub auth on a new host:
 
 ```bash
 # Interactive login (works over SSH with -t for TTY)
-ssh -t pyncher-server 'gh auth login -p ssh'
+ssh -t pynchy-server 'gh auth login -p ssh'
 # Select: GitHub.com → Login with a web browser
 # Then follow the device code flow in your local browser
 
 # Verify
-ssh pyncher-server 'gh auth status'
+ssh pynchy-server 'gh auth status'
 ```
 
 After authenticating, `_write_env_file()` auto-discovers `GH_TOKEN` and git identity on each admin container launch. No manual env configuration needed.
