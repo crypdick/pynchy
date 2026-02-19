@@ -454,6 +454,9 @@ class PynchyApp:
             await obs.close()
         if memory := getattr(self, "_memory", None):
             await memory.close()
+        batcher = output_handler.get_trace_batcher()
+        if batcher is not None:
+            await batcher.flush_all()
         await self.queue.shutdown(10.0)
         for ch in self.channels:
             await ch.disconnect()
@@ -530,6 +533,7 @@ class PynchyApp:
         )
         self.channels = load_channels(self.plugin_manager, context)
         default_channel = resolve_default_channel(self.channels)
+        output_handler.init_trace_batcher(self)
 
         try:
             for ch in self.channels:

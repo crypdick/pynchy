@@ -5,6 +5,7 @@ Extracted from app.py to keep the orchestrator focused on wiring.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from dataclasses import dataclass, field
@@ -52,6 +53,86 @@ class _StreamState:
 
 # Per-chat streaming state, created on first text event, cleaned up on result.
 _stream_states: dict[str, _StreamState] = {}
+
+
+# ---------------------------------------------------------------------------
+# Trace batcher — debounce-batches trace messages per chat JID
+# ---------------------------------------------------------------------------
+
+_DEFAULT_TRACE_COOLDOWN = 3.0
+
+
+class TraceBatcher:
+    """Buffers trace channel_text strings per JID and flushes after a cooldown.
+
+    Result/host messages bypass the batcher entirely; callers should
+    ``await flush(chat_jid)`` before sending a result so traces always
+    appear before the bot reply.
+    """
+
+    def __init__(self, deps: OutputDeps, cooldown: float = _DEFAULT_TRACE_COOLDOWN) -> None:
+        self._deps = deps
+        self._cooldown = cooldown
+        self._buffers: dict[str, list[str]] = {}
+        self._timers: dict[str, asyncio.TimerHandle] = {}
+
+    # -- public API ----------------------------------------------------------
+
+    def enqueue(self, chat_jid: str, channel_text: str) -> None:
+        """Append *channel_text* to the per-JID buffer and (re)start the timer."""
+        self._buffers.setdefault(chat_jid, []).append(channel_text)
+        self._reset_timer(chat_jid)
+
+    async def flush(self, chat_jid: str) -> None:
+        """Flush pending traces for *chat_jid* immediately."""
+        self._cancel_timer(chat_jid)
+        texts = self._buffers.pop(chat_jid, [])
+        if texts:
+            await self._deps.broadcast_to_channels(chat_jid, "\n".join(texts))
+
+    async def flush_all(self) -> None:
+        """Flush every JID — used during shutdown."""
+        jids = list(self._buffers)
+        for jid in jids:
+            await self.flush(jid)
+
+    # -- internals -----------------------------------------------------------
+
+    def _reset_timer(self, chat_jid: str) -> None:
+        self._cancel_timer(chat_jid)
+        loop = asyncio.get_running_loop()
+        self._timers[chat_jid] = loop.call_later(
+            self._cooldown,
+            lambda jid=chat_jid: asyncio.ensure_future(self.flush(jid)),
+        )
+
+    def _cancel_timer(self, chat_jid: str) -> None:
+        timer = self._timers.pop(chat_jid, None)
+        if timer is not None:
+            timer.cancel()
+
+
+# Module-level singleton (matches _stream_states / _last_tool_name pattern).
+_trace_batcher: TraceBatcher | None = None
+
+
+def init_trace_batcher(deps: OutputDeps, cooldown: float = _DEFAULT_TRACE_COOLDOWN) -> None:
+    """Initialise the module-level TraceBatcher. Called once at startup."""
+    global _trace_batcher
+    _trace_batcher = TraceBatcher(deps, cooldown)
+
+
+def get_trace_batcher() -> TraceBatcher | None:
+    """Return the current TraceBatcher (or None before init)."""
+    return _trace_batcher
+
+
+async def _enqueue_or_broadcast(deps: OutputDeps, chat_jid: str, channel_text: str) -> None:
+    """Enqueue via batcher if available, otherwise broadcast directly."""
+    if _trace_batcher is not None:
+        _trace_batcher.enqueue(chat_jid, channel_text)
+    else:
+        await deps.broadcast_to_channels(chat_jid, channel_text)
 
 
 async def _stream_text_to_channels(
@@ -156,7 +237,7 @@ async def broadcast_trace(
         is_from_me=True,
         message_type=message_type,
     )
-    await deps.broadcast_to_channels(chat_jid, channel_text)
+    await _enqueue_or_broadcast(deps, chat_jid, channel_text)
     deps.emit(AgentTraceEvent(chat_jid=chat_jid, trace_type=trace_type, data=data))
 
 
@@ -327,7 +408,7 @@ async def handle_streamed_output(
         # no value for the user.  The descriptive text above is still
         # persisted to DB for debugging.
         if subtype != "init":
-            await deps.broadcast_to_channels(chat_jid, channel_text)
+            await _enqueue_or_broadcast(deps, chat_jid, channel_text)
 
         return False
     if result.type == "text":
@@ -374,7 +455,7 @@ async def handle_streamed_output(
             parts.append(f"{turns} turns")
         if parts:
             trace_text = f"\U0001f4ca {' \u00b7 '.join(parts)}"
-            await deps.broadcast_to_channels(chat_jid, trace_text)
+            await _enqueue_or_broadcast(deps, chat_jid, trace_text)
         deps.emit(
             AgentTraceEvent(
                 chat_jid=chat_jid,
@@ -386,6 +467,10 @@ async def handle_streamed_output(
     # Finalize any streaming state — update streamed messages with final text
     # or clean up if the result is empty.
     stream_state = _stream_states.pop(chat_jid, None)
+
+    # Flush any buffered traces before the bot reply so ordering is preserved.
+    if _trace_batcher is not None:
+        await _trace_batcher.flush(chat_jid)
 
     if result.result:
         raw = result.result if isinstance(result.result, str) else json.dumps(result.result)
