@@ -547,9 +547,14 @@ class PynchyApp:
         # fix broken worktrees, and rebase diverged branches before containers launch
         from pynchy.git_ops.repo import get_repo_context
         from pynchy.git_ops.worktree import reconcile_worktrees_at_startup
-        from pynchy.workspace_config import get_repo_access_groups, reconcile_workspaces
+        from pynchy.workspace_config import reconcile_workspaces
 
-        repo_groups = get_repo_access_groups(self.workspaces)
+        # Compute from config (authoritative) not saved state, so new workspaces
+        # get their repos cloned and worktrees created on first boot.
+        repo_groups: dict[str, list[str]] = {}
+        for folder, ws_cfg in s.workspaces.items():
+            if ws_cfg.repo_access:
+                repo_groups.setdefault(ws_cfg.repo_access, []).append(folder)
 
         await asyncio.to_thread(
             reconcile_worktrees_at_startup,
