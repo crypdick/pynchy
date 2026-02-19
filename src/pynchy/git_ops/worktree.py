@@ -198,12 +198,16 @@ def install_pre_commit_hooks(repo_root: Path) -> None:
             logger.info("Pre-commit hooks installed", repo=str(repo_root))
         else:
             logger.warning(
-                "pre-commit install failed",
+                "pre-commit install failed (workspace unaffected)",
                 repo=str(repo_root),
                 stderr=result.stderr.strip(),
             )
     except (OSError, subprocess.SubprocessError) as exc:
-        logger.warning("pre-commit install error", repo=str(repo_root), err=str(exc))
+        logger.warning(
+            "pre-commit install error (workspace unaffected)",
+            repo=str(repo_root),
+            err=str(exc),
+        )
 
 
 def _migrate_old_worktrees(repo_ctx: RepoContext, old_base: Path) -> None:
@@ -245,9 +249,7 @@ def _migrate_old_worktrees(repo_ctx: RepoContext, old_base: Path) -> None:
                 group=entry.name,
                 error=move.stderr.strip(),
             )
-            remove = run_git(
-                "worktree", "remove", "--force", str(entry), cwd=repo_ctx.root
-            )
+            remove = run_git("worktree", "remove", "--force", str(entry), cwd=repo_ctx.root)
             if remove.returncode != 0:
                 logger.warning(
                     "git worktree remove failed, cleaning up manually",
@@ -268,8 +270,8 @@ def reconcile_worktrees_at_startup(
     Args:
         repo_groups: Dict mapping slug → list of group folder names.
     """
-    from pynchy.git_ops.repo import ensure_repo_cloned, get_repo_context
     from pynchy.config import get_settings
+    from pynchy.git_ops.repo import ensure_repo_cloned, get_repo_context
 
     repo_groups = repo_groups or {}
 
