@@ -110,25 +110,31 @@ class PynchyApp:
     async def _save_state(self) -> None:
         """Persist router state to the database atomically.
 
-        Both cursors are written in a single transaction so a crash
-        can never leave them inconsistent.
+        Both rows are written in a single transaction so a crash can never
+        leave them inconsistent.  The write lock is held for the full duration
+        to prevent a concurrent coroutine (e.g. the reconciler's
+        advance_cursors_atomic) from interleaving its own DML and having it
+        swept up in — or wiped out by — our rollback.  See _connection.py's
+        get_write_lock() for the full explanation.
         """
         from pynchy.db import _get_db
+        from pynchy.db._connection import get_write_lock
 
         db = _get_db()
-        try:
-            await db.execute(
-                "INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)",
-                ("last_timestamp", self.last_timestamp),
-            )
-            await db.execute(
-                "INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)",
-                ("last_agent_timestamp", json.dumps(self.last_agent_timestamp)),
-            )
-            await db.commit()
-        except Exception:
-            await db.rollback()
-            raise
+        async with get_write_lock():
+            try:
+                await db.execute(
+                    "INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)",
+                    ("last_timestamp", self.last_timestamp),
+                )
+                await db.execute(
+                    "INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)",
+                    ("last_agent_timestamp", json.dumps(self.last_agent_timestamp)),
+                )
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
 
     # ------------------------------------------------------------------
     # JID alias cache
