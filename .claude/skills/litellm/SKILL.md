@@ -12,7 +12,7 @@ The LiteLLM proxy runs as a Docker container (`pynchy-litellm`) managed by pynch
 The master key is in `config.toml` on the pynchy server under `[gateway].master_key`:
 
 ```bash
-ssh pyncher-server 'grep master_key ~/src/PERSONAL/pynchy/config.toml'
+ssh pynchy-server 'grep master_key ~/src/PERSONAL/pynchy/config.toml'
 ```
 
 Pass as Bearer token: `-H "Authorization: Bearer <key>"`
@@ -25,7 +25,7 @@ Editing the config file triggers an automatic service restart (~30-90s). Do not 
 
 ## UI
 
-Dashboard: `http://pyncher-server:<port>/ui/` (port 4000 via Tailscale, or localhost on the server)
+Dashboard: `http://pynchy-server:<port>/ui/` (port 4000 via Tailscale, or localhost on the server)
 
 ## MCP Server Management
 
