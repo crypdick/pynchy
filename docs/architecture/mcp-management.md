@@ -50,12 +50,12 @@ Many MCP servers configure via environment variables rather than CLI args. Two f
 
 **`env`** — static key-value pairs passed as `-e KEY=VALUE` to the Docker container. Use for non-secret configuration like bind addresses and ports.
 
-**`env_forward`** (server level) — a list of host environment variable names. Each is resolved from `os.environ` at container start time and passed as `-e KEY=VALUE`. Use for secrets that live in `.env` on the host. If a variable is not set, pynchy logs a warning and skips it (the container still starts). The server-level list is an identity mapping: host var name = container var name.
+**`env_forward`** (server level) — a list of container env var names the MCP server expects. Serves as documentation of what the image needs. Falls back to identity mapping (host var = container var) if no workspace override is present.
 
-**`env_forward`** (workspace level) — a dict mapping container var names to host var names. This overrides the server-level default, allowing different workspaces to source different host secrets for the same MCP server. Different env_forward mappings produce different container instances (separate hash → separate Docker container).
+**`env_forward`** (workspace level, recommended) — a dict mapping container var names to host var names. Each workspace explicitly declares which host secrets to inject, enabling multi-tenant MCP: same server image, different credentials per workspace. Different env_forward mappings produce different container instances (separate hash → separate Docker container). If a host var is not set, pynchy logs a warning and skips it (the container still starts).
 
 ```toml
-# Server defines what env vars the container needs (identity mapping by default)
+# Server declares what env vars the container expects
 [mcp_servers.example]
 type = "docker"
 image = "example/mcp-server:latest"
@@ -64,16 +64,21 @@ transport = "http"
 env = { MCP_HOST = "0.0.0.0", MCP_PORT = "8080" }
 env_forward = ["MCP_API_SECRET"]
 
-# Single-tenant: workspace inherits identity mapping (MCP_API_SECRET → MCP_API_SECRET)
-[workspaces.simple]
+# Each workspace maps container vars to workspace-specific host vars
+[workspaces.acme]
 mcp_servers = ["example"]
 
-# Multi-tenant: workspace remaps to a different host var
 [workspaces.acme.mcp.example]
 env_forward = { MCP_API_SECRET = "MCP_API_SECRET_ACME" }
+
+[workspaces.personal]
+mcp_servers = ["example"]
+
+[workspaces.personal.mcp.example]
+env_forward = { MCP_API_SECRET = "MCP_API_SECRET_PERSONAL" }
 ```
 
-The distinction keeps secrets out of `config.toml` (which is committed to the repo) while keeping non-secret config visible and declarative. The workspace-level mapping enables multi-tenant MCP: same server image, different credentials per workspace.
+The distinction keeps secrets out of `config.toml` (which is committed to the repo) while keeping non-secret config visible and declarative.
 
 ## Worked example: Slack MCP
 
@@ -93,30 +98,18 @@ env_forward = ["SLACK_MCP_XOXC_TOKEN", "SLACK_MCP_XOXD_TOKEN"]
 
 ### 2. Add tokens to `.env`
 
-Extract `xoxc` and `xoxd` browser tokens following the [upstream authentication guide](https://github.com/korotovsky/slack-mcp-server/blob/master/docs/01-authentication-setup.md). For multiple Slack workspaces, use distinct var names:
+Extract `xoxc` and `xoxd` browser tokens following the [upstream authentication guide](https://github.com/korotovsky/slack-mcp-server/blob/master/docs/01-authentication-setup.md). Use workspace-specific var names:
 
 ```
-# Single workspace (matches server-level env_forward identity mapping)
-SLACK_MCP_XOXC_TOKEN=xoxc-...
-SLACK_MCP_XOXD_TOKEN=xoxd-...
-
-# Multi-workspace: suffix per org
 SLACK_XOXC_ACME=xoxc-...
 SLACK_XOXD_ACME=xoxd-...
 SLACK_XOXC_PERSONAL=xoxc-...
 SLACK_XOXD_PERSONAL=xoxd-...
 ```
 
-### 3. Grant workspace access
+### 3. Grant workspace access with env_forward mapping
 
-Single workspace (uses server-level identity mapping):
-
-```toml
-[workspaces.my-workspace]
-mcp_servers = ["slack_mcp"]
-```
-
-Multiple Slack workspaces (each remaps to different host vars → separate containers):
+Each workspace maps the container's expected var names to workspace-specific host vars:
 
 ```toml
 [workspaces.acme-1]
@@ -132,7 +125,7 @@ mcp_servers = ["slack_mcp"]
 env_forward = { SLACK_MCP_XOXC_TOKEN = "SLACK_XOXC_PERSONAL", SLACK_MCP_XOXD_TOKEN = "SLACK_XOXD_PERSONAL" }
 ```
 
-The Slack MCP container starts on-demand when an agent in that workspace first needs it. Each workspace with different `env_forward` gets its own container instance. Tools like `channels_list`, `channels_history`, and `users_list` become available to the agent.
+Each workspace with different `env_forward` gets its own container instance. The Slack MCP container starts on-demand when an agent first needs it. Tools like `channels_list`, `channels_history`, and `users_list` become available to the agent.
 
 ## Files
 
