@@ -13,13 +13,13 @@ Example TOML::
     transport = "http"
     idle_timeout = 600
 
-    [mcp_servers.slack_mcp]
+    [mcp_servers.slack_mcp_acme]
     type = "docker"
     image = "ghcr.io/korotovsky/slack-mcp-server:latest"
     port = 8080
     transport = "http"
     env = { SLACK_MCP_HOST = "0.0.0.0", SLACK_MCP_PORT = "8080" }
-    env_forward = ["SLACK_MCP_XOXC_TOKEN", "SLACK_MCP_XOXD_TOKEN"]
+    env_forward = { SLACK_MCP_XOXC_TOKEN = "SLACK_XOXC_ACME", SLACK_MCP_XOXD_TOKEN = "SLACK_XOXD_ACME" }
 
     [mcp_servers.some-remote-api]
     type = "url"
@@ -32,7 +32,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 
 class McpServerConfig(BaseModel):
@@ -48,7 +48,18 @@ class McpServerConfig(BaseModel):
     port: int | None = None
     idle_timeout: int = 600  # seconds; 0 = never stop
     env: dict[str, str] = {}  # static env vars passed to container via -e
-    env_forward: list[str] = []  # host env var names forwarded into container (for secrets in .env)
+    # Env vars forwarded from host into container. Accepts:
+    #   list[str] — identity mapping (host var name = container var name)
+    #   dict[str, str] — explicit mapping {container_var: host_var}
+    env_forward: dict[str, str] = {}
+
+    @field_validator("env_forward", mode="before")
+    @classmethod
+    def _normalize_env_forward(cls, v: list[str] | dict[str, str]) -> dict[str, str]:
+        """Accept list (identity mapping) or dict (explicit mapping)."""
+        if isinstance(v, list):
+            return {name: name for name in v}
+        return v
 
     # URL fields
     url: str | None = None
