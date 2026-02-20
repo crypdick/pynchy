@@ -592,7 +592,13 @@ class PynchyApp:
 
         # HTTP server for remote health checks, deploys, and TUI API
         check_tunnels(self.plugin_manager)
-        self._http_runner = await start_http_server(make_http_deps(self))
+        from pynchy.dep_factory import make_status_deps
+        from pynchy.status import record_start_time
+
+        record_start_time()
+        self._http_runner = await start_http_server(
+            make_http_deps(self), status_deps=make_status_deps(self)
+        )
         logger.info("HTTP server ready", port=s.server.port)
 
         await self._send_boot_notification()

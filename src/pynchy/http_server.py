@@ -21,31 +21,21 @@ from pynchy.config import get_settings
 from pynchy.deploy import finalize_deploy
 from pynchy.git_ops.utils import (
     files_changed_between,
+    get_head_commit_message,
     get_head_sha,
     is_repo_dirty,
     push_local_commits,
     run_git,
 )
 from pynchy.logger import logger
+from pynchy.status import StatusDeps, collect_status
 from pynchy.types import NewMessage
 
 _start_time = time.monotonic()
 
 # Typed app key avoids aiohttp NotAppKeyWarning from plain-string lookups.
 deps_key = web.AppKey("deps", "HttpDeps")
-
-
-def _get_head_commit_message(max_length: int = 72) -> str:
-    """Return the subject line of the HEAD commit, truncated if needed."""
-    try:
-        result = run_git("log", "-1", "--format=%s")
-        msg = result.stdout.strip() if result.returncode == 0 else ""
-        if len(msg) > max_length:
-            return msg[: max_length - 1] + "…"
-        return msg
-    except Exception as exc:
-        logger.debug("Failed to read HEAD commit message", err=str(exc))
-        return ""
+status_deps_key = web.AppKey("status_deps", "StatusDeps")
 
 
 def _write_boot_warning(message: str) -> None:
@@ -101,7 +91,7 @@ async def _handle_health(request: web.Request) -> web.Response:
             "status": "ok",
             "uptime_seconds": round(time.monotonic() - _start_time),
             "head_sha": get_head_sha(),
-            "head_commit": _get_head_commit_message(),
+            "head_commit": get_head_commit_message(),
             "dirty": is_repo_dirty(),
             "channels_connected": deps.channels_connected(),
         }
@@ -195,11 +185,18 @@ async def _handle_deploy(request: web.Request) -> web.Response:
         {
             "status": "restarting",
             "sha": new_sha,
-            "commit": _get_head_commit_message(),
+            "commit": get_head_commit_message(),
             "dirty": is_repo_dirty(),
             "previous_sha": old_sha,
         }
     )
+
+
+async def _handle_status(request: web.Request) -> web.Response:
+    """Comprehensive operational status from all subsystems."""
+    status_deps: StatusDeps = request.app[status_deps_key]
+    data = await collect_status(status_deps, _start_time)
+    return web.json_response(data)
 
 
 # ------------------------------------------------------------------
@@ -298,11 +295,16 @@ async def _handle_api_periodic(request: web.Request) -> web.Response:
 # ------------------------------------------------------------------
 
 
-async def start_http_server(deps: HttpDeps) -> web.AppRunner:
+async def start_http_server(
+    deps: HttpDeps, *, status_deps: StatusDeps | None = None
+) -> web.AppRunner:
     """Create, start, and return the HTTP server runner."""
     app = web.Application()
     app[deps_key] = deps
+    if status_deps is not None:
+        app[status_deps_key] = status_deps
     app.router.add_get("/health", _handle_health)
+    app.router.add_get("/status", _handle_status)
     app.router.add_post("/deploy", _handle_deploy)
     app.router.add_get("/api/groups", _handle_api_groups)
     app.router.add_get("/api/messages", _handle_api_messages)

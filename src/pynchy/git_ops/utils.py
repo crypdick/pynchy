@@ -133,6 +133,19 @@ def count_unpushed_commits(cwd: Path | None = None) -> int:
     return 0
 
 
+def get_head_commit_message(max_length: int = 72, cwd: Path | None = None) -> str:
+    """Return the subject line of the HEAD commit, truncated if needed."""
+    try:
+        result = run_git("log", "-1", "--format=%s", cwd=cwd)
+        msg = result.stdout.strip() if result.returncode == 0 else ""
+        if len(msg) > max_length:
+            return msg[: max_length - 1] + "\u2026"
+        return msg
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.debug("Failed to read HEAD commit message", err=str(exc))
+        return ""
+
+
 def files_changed_between(old_sha: str, new_sha: str, path: str) -> bool:
     """Check if files under *path* changed between two commits."""
     result = run_git("diff", "--name-only", old_sha, new_sha, "--", path)
