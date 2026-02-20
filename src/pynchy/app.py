@@ -469,7 +469,7 @@ class PynchyApp:
             make_ipc_deps,
             make_scheduler_deps,
         )
-        from pynchy.git_ops.sync import start_host_git_sync_loop
+        from pynchy.git_ops.sync_poll import start_host_git_sync_loop
         from pynchy.ipc import start_ipc_watcher
         from pynchy.task_scheduler import start_scheduler_loop
 
@@ -580,7 +580,7 @@ class PynchyApp:
         asyncio.create_task(start_host_git_sync_loop(make_git_sync_deps(self)))
 
         # Start one external sync loop per non-pynchy repo with configured groups
-        from pynchy.git_ops.sync import start_external_repo_sync_loop
+        from pynchy.git_ops.sync_poll import start_external_repo_sync_loop
 
         for slug, _folders in repo_groups.items():
             repo_ctx = get_repo_context(slug)

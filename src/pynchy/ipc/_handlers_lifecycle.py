@@ -11,11 +11,10 @@ from pynchy.git_ops.sync import (
     host_create_pr_from_worktree,
     host_notify_worktree_updates,
     host_sync_worktree,
-    needs_container_rebuild,
-    needs_deploy,
     resolve_git_policy,
     write_ipc_response,
 )
+from pynchy.git_ops.sync_poll import needs_container_rebuild, needs_deploy
 from pynchy.git_ops.utils import get_head_sha
 from pynchy.ipc._deps import IpcDeps
 from pynchy.ipc._registry import register
