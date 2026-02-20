@@ -13,26 +13,22 @@ _HOST_TAG_RE = re.compile(r"^\s*<host>([\s\S]*?)</host>\s*$")
 
 
 def format_messages_for_sdk(messages: list[NewMessage]) -> list[dict]:
-    """Format messages as SDK message list, filtering out host messages.
+    """Format messages as SDK message list, filtering out non-conversation messages.
 
-    Host messages are operational notifications that should NOT be sent to the LLM.
     Returns a list of dicts that can be passed to the container/SDK.
 
     Message type mapping:
     - 'user' → UserMessage (from humans)
     - 'assistant' → AssistantMessage (from LLM)
-    - 'system' → SystemMessage (context for LLM, stored in DB for persistent context)
     - 'tool_result' → Part of conversation history (command outputs, etc.)
-    - 'host' → FILTERED OUT (never sent to LLM)
-
-    Note on system_notices:
-        Ephemeral system context (git warnings, etc.) is handled separately via
-        system_prompt in ContainerInput. This function only handles persisted messages.
+    - 'host' → FILTERED OUT (operational, never sent to LLM)
+    - sender='system_notice' → FILTERED OUT (point-in-time worktree notifications
+      that go stale; current worktree state is delivered via system_notices in
+      agent_runner.py instead)
     """
     sdk_messages = []
 
     for msg in messages:
-        # Skip host messages - they're operational, not part of the LLM conversation
         if msg.message_type == "host":
             continue
 

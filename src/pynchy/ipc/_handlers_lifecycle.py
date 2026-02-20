@@ -141,6 +141,9 @@ async def _handle_sync_worktree_to_main(
                 async def broadcast_system_notice(self, jid: str, text: str) -> None:
                     await deps.broadcast_system_notice(jid, text)
 
+                def has_active_session(self, group_folder: str) -> bool:
+                    return deps.has_active_session(group_folder)
+
                 def workspaces(self) -> dict[str, WorkspaceProfile]:
                     return deps.workspaces()
 

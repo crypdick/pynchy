@@ -188,6 +188,13 @@ class HostMessageBroadcaster:
         - Included in conversation context for future container launches
         - Broadcast to channels with 📢 prefix for human visibility
         - Prefixed with [System Notice] so the LLM can distinguish from humans
+
+        IMPORTANT: Only use for workspaces with an ongoing conversation (i.e.
+        has_active_session is True). These messages persist in conversation
+        history, so sending them to workspaces with no conversation (cleared
+        or never started) creates stale spam that pollutes the next session.
+        For those, use broadcast_host_message instead (human-visible only).
+        See host_notify_worktree_updates() for the canonical routing pattern.
         """
         await self._store_broadcast_and_emit(
             chat_jid=chat_jid,
@@ -258,6 +265,10 @@ class SessionManager:
             if jid and session_id:
                 result[jid] = session_id
         return result
+
+    def has_active_session(self, group_folder: str) -> bool:
+        """Check if a group has an active (non-cleared) session."""
+        return group_folder in self._sessions and group_folder not in self._session_cleared
 
     async def clear_session(self, group_folder: str) -> None:
         """Clear session state for a group."""
