@@ -339,7 +339,7 @@ async def process_group_messages(
         return True
 
     # For non-admin groups, check if trigger is required and present
-    from pynchy.config import resolve_channel_config
+    from pynchy.config_access import resolve_channel_config
 
     resolved = resolve_channel_config(group.folder)
     if not is_admin_group and resolved.trigger == "mention":
@@ -472,7 +472,7 @@ async def start_message_loop(
                         continue
 
                     is_admin_group = group.is_admin
-                    from pynchy.config import resolve_channel_config
+                    from pynchy.config_access import resolve_channel_config
 
                     loop_resolved = resolve_channel_config(group.folder)
 

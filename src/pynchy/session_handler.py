@@ -196,7 +196,7 @@ async def on_inbound(deps: SessionDeps, _jid: str, msg: NewMessage) -> None:
     # Check channel access mode — skip inbound from write-only channels
     group = deps.workspaces.get(msg.chat_jid)
     if group and source_channel:
-        from pynchy.config import resolve_channel_config
+        from pynchy.config_access import resolve_channel_config
 
         resolved = resolve_channel_config(
             group.folder,

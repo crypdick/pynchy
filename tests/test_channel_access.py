@@ -1,4 +1,4 @@
-"""Tests for channel access mode resolution — the cascade logic in config.py.
+"""Tests for channel access mode resolution — the cascade logic in config_access.py.
 
 Covers:
 - resolve_channel_config: 4-level cascade (defaults → workspace → plugin → JID)
@@ -18,6 +18,8 @@ from pynchy.config import (
     Settings,
     WorkspaceConfig,
     WorkspaceDefaultsConfig,
+)
+from pynchy.config_access import (
     is_user_allowed,
     resolve_allowed_users,
     resolve_channel_config,
@@ -50,7 +52,7 @@ class TestResolveChannelConfig:
 
     def test_defaults_when_no_workspace(self):
         """Unknown workspace → all defaults."""
-        with patch("pynchy.config.get_settings", return_value=_settings_with()):
+        with patch("pynchy.config_access.get_settings", return_value=_settings_with()):
             result = resolve_channel_config("nonexistent")
 
         assert result.access == "readwrite"
@@ -69,7 +71,7 @@ class TestResolveChannelConfig:
             allowed_users=["*"],
         )
         with patch(
-            "pynchy.config.get_settings",
+            "pynchy.config_access.get_settings",
             return_value=_settings_with(defaults=defaults),
         ):
             result = resolve_channel_config("nonexistent")
@@ -89,7 +91,7 @@ class TestResolveChannelConfig:
             allowed_users=["*"],
         )
         with patch(
-            "pynchy.config.get_settings",
+            "pynchy.config_access.get_settings",
             return_value=_settings_with(workspaces={"lurker": ws}),
         ):
             result = resolve_channel_config("lurker")
@@ -105,7 +107,7 @@ class TestResolveChannelConfig:
         """Only set fields override — None fields inherit."""
         ws = WorkspaceConfig(name="test", mode="chat")
         with patch(
-            "pynchy.config.get_settings",
+            "pynchy.config_access.get_settings",
             return_value=_settings_with(workspaces={"chat-ws": ws}),
         ):
             result = resolve_channel_config("chat-ws")
@@ -129,7 +131,7 @@ class TestResolveChannelConfig:
             },
         )
         with patch(
-            "pynchy.config.get_settings",
+            "pynchy.config_access.get_settings",
             return_value=_settings_with(workspaces={"hub": ws}),
         ):
             result = resolve_channel_config(
@@ -153,7 +155,7 @@ class TestResolveChannelConfig:
             },
         )
         with patch(
-            "pynchy.config.get_settings",
+            "pynchy.config_access.get_settings",
             return_value=_settings_with(workspaces={"ws": ws}),
         ):
             result = resolve_channel_config(
@@ -177,7 +179,7 @@ class TestResolveChannelConfig:
             },
         )
         with patch(
-            "pynchy.config.get_settings",
+            "pynchy.config_access.get_settings",
             return_value=_settings_with(workspaces={"ws": ws}),
         ):
             result = resolve_channel_config(
@@ -203,7 +205,7 @@ class TestResolveChannelConfig:
             },
         )
         with patch(
-            "pynchy.config.get_settings",
+            "pynchy.config_access.get_settings",
             return_value=_settings_with(workspaces={"ws": ws}),
         ):
             result = resolve_channel_config(
@@ -225,7 +227,7 @@ class TestResolveChannelConfig:
             },
         )
         with patch(
-            "pynchy.config.get_settings",
+            "pynchy.config_access.get_settings",
             return_value=_settings_with(workspaces={"ws": ws}),
         ):
             result = resolve_channel_config(
@@ -431,7 +433,7 @@ class TestComposedBehavior:
         """1-on-1, no trigger needed."""
         ws = WorkspaceConfig(name="test", trigger="always")
         with patch(
-            "pynchy.config.get_settings",
+            "pynchy.config_access.get_settings",
             return_value=_settings_with(workspaces={"assistant": ws}),
         ):
             result = resolve_channel_config("assistant")
@@ -445,7 +447,7 @@ class TestComposedBehavior:
         """Read-only channel."""
         ws = WorkspaceConfig(name="test", access="read")
         with patch(
-            "pynchy.config.get_settings",
+            "pynchy.config_access.get_settings",
             return_value=_settings_with(workspaces={"lurker": ws}),
         ):
             result = resolve_channel_config("lurker")
@@ -456,7 +458,7 @@ class TestComposedBehavior:
         """Write-only channel."""
         ws = WorkspaceConfig(name="test", access="write")
         with patch(
-            "pynchy.config.get_settings",
+            "pynchy.config_access.get_settings",
             return_value=_settings_with(workspaces={"standup": ws}),
         ):
             result = resolve_channel_config("standup")
@@ -473,7 +475,7 @@ class TestComposedBehavior:
             allowed_users=["*"],
         )
         with patch(
-            "pynchy.config.get_settings",
+            "pynchy.config_access.get_settings",
             return_value=_settings_with(workspaces={"team": ws}),
         ):
             result = resolve_channel_config("team")
@@ -500,7 +502,7 @@ class TestComposedBehavior:
             },
         )
         settings = _settings_with(workspaces={"hub": ws})
-        with patch("pynchy.config.get_settings", return_value=settings):
+        with patch("pynchy.config_access.get_settings", return_value=settings):
             research = resolve_channel_config("hub", channel_jid="slack:C04RESEARCH")
             announce = resolve_channel_config("hub", channel_jid="slack:C04ANNOUNCE")
             general = resolve_channel_config("hub", channel_jid="slack:C04GENERAL")

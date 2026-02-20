@@ -94,7 +94,7 @@ def _channel_allows_outbound(deps: BusDeps, chat_jid: str, channel_name: str) ->
     group = _find_workspace_by_jid(deps, chat_jid)
     if group is None:
         return True
-    from pynchy.config import resolve_channel_config
+    from pynchy.config_access import resolve_channel_config
 
     resolved = resolve_channel_config(
         group.folder,
@@ -167,9 +167,7 @@ async def broadcast(
         targets.append((ch, target_jid))
 
     # Record to outbound ledger (best-effort)
-    ledger_id = await _record_to_ledger(
-        chat_jid, text, source, [ch.name for ch, _ in targets]
-    )
+    ledger_id = await _record_to_ledger(chat_jid, text, source, [ch.name for ch, _ in targets])
 
     # Deliver to each target
     for ch, target_jid in targets:
@@ -221,9 +219,7 @@ async def broadcast_formatted(
             await ch.send_message(target_jid, text)
             await _mark_success(ledger_id, ch.name)
         except (OSError, TimeoutError, ConnectionError) as exc:
-            logger.warning(
-                "Formatted send failed", channel=getattr(ch, "name", "?"), err=str(exc)
-            )
+            logger.warning("Formatted send failed", channel=getattr(ch, "name", "?"), err=str(exc))
             await _mark_error(ledger_id, ch.name, str(exc))
 
 
@@ -250,9 +246,7 @@ async def finalize_stream_or_broadcast(
         suppress_errors: Error handling mode (same as ``broadcast``).
     """
     if not stream_message_ids:
-        await broadcast(
-            deps, chat_jid, text, suppress_errors=suppress_errors, source="agent"
-        )
+        await broadcast(deps, chat_jid, text, suppress_errors=suppress_errors, source="agent")
         return
 
     # Collect all channels that will receive this message (stream or send)
