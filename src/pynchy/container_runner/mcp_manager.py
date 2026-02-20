@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
+from pynchy.config import get_settings
 from pynchy.container_runner._docker import (
     ensure_image,
     ensure_network,
@@ -28,7 +29,6 @@ from pynchy.container_runner._docker import (
     run_docker,
     wait_healthy,
 )
-from pynchy.config import get_settings
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
