@@ -184,6 +184,13 @@ trigger = "always"
 # presets = ["dev-research"]                   # expands + merges with explicit values
 # allowed-origins = "internal.example.com"     # merged with preset domains
 
+# Example workspace with per-workspace env_forward (multi-tenant MCP):
+# [workspaces.acme-1]
+# mcp_servers = ["slack_mcp"]
+#
+# [workspaces.acme-1.mcp.slack_mcp]
+# env_forward = { SLACK_MCP_XOXC_TOKEN = "SLACK_XOXC_ACME", SLACK_MCP_XOXD_TOKEN = "SLACK_XOXD_ACME" }
+
 # Example admin workspace with unrestricted MCP access:
 # [workspaces.admin]
 # is_admin = true

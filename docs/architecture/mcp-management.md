@@ -50,9 +50,12 @@ Many MCP servers configure via environment variables rather than CLI args. Two f
 
 **`env`** — static key-value pairs passed as `-e KEY=VALUE` to the Docker container. Use for non-secret configuration like bind addresses and ports.
 
-**`env_forward`** — a list of host environment variable names. Each is resolved from `os.environ` at container start time and passed as `-e KEY=VALUE`. Use for secrets that live in `.env` on the host. If a variable is not set, pynchy logs a warning and skips it (the container still starts).
+**`env_forward`** (server level) — a list of host environment variable names. Each is resolved from `os.environ` at container start time and passed as `-e KEY=VALUE`. Use for secrets that live in `.env` on the host. If a variable is not set, pynchy logs a warning and skips it (the container still starts). The server-level list is an identity mapping: host var name = container var name.
+
+**`env_forward`** (workspace level) — a dict mapping container var names to host var names. This overrides the server-level default, allowing different workspaces to source different host secrets for the same MCP server. Different env_forward mappings produce different container instances (separate hash → separate Docker container).
 
 ```toml
+# Server defines what env vars the container needs (identity mapping by default)
 [mcp_servers.example]
 type = "docker"
 image = "example/mcp-server:latest"
@@ -60,9 +63,17 @@ port = 8080
 transport = "http"
 env = { MCP_HOST = "0.0.0.0", MCP_PORT = "8080" }
 env_forward = ["MCP_API_SECRET"]
+
+# Single-tenant: workspace inherits identity mapping (MCP_API_SECRET → MCP_API_SECRET)
+[workspaces.simple]
+mcp_servers = ["example"]
+
+# Multi-tenant: workspace remaps to a different host var
+[workspaces.acme.mcp.example]
+env_forward = { MCP_API_SECRET = "MCP_API_SECRET_ACME" }
 ```
 
-The distinction keeps secrets out of `config.toml` (which is committed to the repo) while keeping non-secret config visible and declarative.
+The distinction keeps secrets out of `config.toml` (which is committed to the repo) while keeping non-secret config visible and declarative. The workspace-level mapping enables multi-tenant MCP: same server image, different credentials per workspace.
 
 ## Worked example: Slack MCP
 
@@ -82,21 +93,46 @@ env_forward = ["SLACK_MCP_XOXC_TOKEN", "SLACK_MCP_XOXD_TOKEN"]
 
 ### 2. Add tokens to `.env`
 
-Extract `xoxc` and `xoxd` browser tokens following the [upstream authentication guide](https://github.com/korotovsky/slack-mcp-server/blob/master/docs/01-authentication-setup.md):
+Extract `xoxc` and `xoxd` browser tokens following the [upstream authentication guide](https://github.com/korotovsky/slack-mcp-server/blob/master/docs/01-authentication-setup.md). For multiple Slack workspaces, use distinct var names:
 
 ```
+# Single workspace (matches server-level env_forward identity mapping)
 SLACK_MCP_XOXC_TOKEN=xoxc-...
 SLACK_MCP_XOXD_TOKEN=xoxd-...
+
+# Multi-workspace: suffix per org
+SLACK_XOXC_ACME=xoxc-...
+SLACK_XOXD_ACME=xoxd-...
+SLACK_XOXC_PERSONAL=xoxc-...
+SLACK_XOXD_PERSONAL=xoxd-...
 ```
 
 ### 3. Grant workspace access
+
+Single workspace (uses server-level identity mapping):
 
 ```toml
 [workspaces.my-workspace]
 mcp_servers = ["slack_mcp"]
 ```
 
-The Slack MCP container starts on-demand when an agent in that workspace first needs it. Tools like `channels_list`, `channels_history`, and `users_list` become available to the agent.
+Multiple Slack workspaces (each remaps to different host vars → separate containers):
+
+```toml
+[workspaces.acme-1]
+mcp_servers = ["slack_mcp"]
+
+[workspaces.acme-1.mcp.slack_mcp]
+env_forward = { SLACK_MCP_XOXC_TOKEN = "SLACK_XOXC_ACME", SLACK_MCP_XOXD_TOKEN = "SLACK_XOXD_ACME" }
+
+[workspaces.personal-1]
+mcp_servers = ["slack_mcp"]
+
+[workspaces.personal-1.mcp.slack_mcp]
+env_forward = { SLACK_MCP_XOXC_TOKEN = "SLACK_XOXC_PERSONAL", SLACK_MCP_XOXD_TOKEN = "SLACK_XOXD_PERSONAL" }
+```
+
+The Slack MCP container starts on-demand when an agent in that workspace first needs it. Each workspace with different `env_forward` gets its own container instance. Tools like `channels_list`, `channels_history`, and `users_list` become available to the agent.
 
 ## Files
 

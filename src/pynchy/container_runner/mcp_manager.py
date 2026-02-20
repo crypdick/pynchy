@@ -45,13 +45,14 @@ _MCP_CONTAINER_PREFIX = "pynchy-mcp"
 
 @dataclass
 class McpInstance:
-    """A unique (server, kwargs) combination that maps to one Docker container
-    or one URL endpoint registration in LiteLLM."""
+    """A unique (server, kwargs, env_forward) combination that maps to one Docker
+    container or one URL endpoint registration in LiteLLM."""
 
     server_name: str
     server_config: McpServerConfig
     kwargs: dict[str, str]
-    instance_id: str  # server_name + short hash of kwargs
+    env_forward: dict[str, str]  # container_var → host_var (resolved from server + workspace)
+    instance_id: str  # server_name + short hash of kwargs+env_forward
     container_name: str  # Docker container name (for type=docker)
     last_activity: float = 0.0  # monotonic timestamp
 
@@ -196,8 +197,8 @@ class McpManager:
         port = instance.server_config.port
         publish_args = ["-p", f"{port}:{port}"] if port else []
 
-        # Build -e flags from static env and forwarded host env vars
-        env_args = _build_env_args(instance.server_config)
+        # Build -e flags from static env and resolved env_forward mapping
+        env_args = _build_env_args(instance.server_config, instance.env_forward)
 
         run_docker(
             "run", "-d",
@@ -289,6 +290,8 @@ class McpManager:
         """Resolve per-workspace kwargs for an MCP server.
 
         Expands presets and merges with explicit values.
+        Reserved keys (``presets``, ``env_forward``) are popped before kwargs
+        processing — they never become ``--key value`` CLI args.
         """
         ws_config = self._settings.workspaces.get(group_folder)
         if not ws_config:
@@ -296,8 +299,9 @@ class McpManager:
 
         raw_kwargs: dict[str, Any] = dict(ws_config.mcp.get(server_name, {}))
 
-        # Extract and expand presets
+        # Extract reserved keys before kwargs processing
         preset_names: list[str] = raw_kwargs.pop("presets", [])
+        raw_kwargs.pop("env_forward", None)  # handled by resolve_env_forward()
         merged: dict[str, str] = {}
 
         for preset_name in preset_names:
@@ -318,17 +322,57 @@ class McpManager:
 
         return merged
 
-    def get_instance_id(self, server_name: str, kwargs: dict[str, str]) -> str:
-        """Compute instance ID: server_name + short hash of sorted kwargs.
+    def resolve_env_forward(
+        self, group_folder: str, server_name: str,
+    ) -> dict[str, str]:
+        """Resolve env_forward mapping for an MCP instance.
+
+        Returns ``{container_var: host_var}``.  Workspace-level ``env_forward``
+        (a dict) overrides the server-level list (an identity mapping).
+        """
+        server_config = self._settings.mcp_servers.get(server_name)
+        # Server-level default: identity mapping (var → var)
+        default: dict[str, str] = {
+            v: v for v in (server_config.env_forward if server_config else [])
+        }
+
+        ws_config = self._settings.workspaces.get(group_folder)
+        if not ws_config:
+            return default
+
+        ws_mcp = ws_config.mcp.get(server_name, {})
+        ws_env_forward = ws_mcp.get("env_forward")
+        if ws_env_forward is None:
+            return default
+
+        if not isinstance(ws_env_forward, dict):
+            logger.warning(
+                "Workspace env_forward must be a dict mapping, ignoring",
+                workspace=group_folder,
+                server=server_name,
+            )
+            return default
+
+        return dict(ws_env_forward)
+
+    def get_instance_id(
+        self,
+        server_name: str,
+        kwargs: dict[str, str],
+        env_forward: dict[str, str],
+    ) -> str:
+        """Compute instance ID: server_name + short hash of sorted kwargs + env_forward.
 
         WARNING: LiteLLM rejects server names containing hyphens. The kwargs
         branch produces "name-hash" which will fail at registration. Use
         underscores if this path is ever exercised.
         """
-        if not kwargs:
+        if not kwargs and not env_forward:
             return server_name
-        kwargs_str = json.dumps(kwargs, sort_keys=True)
-        short_hash = hashlib.sha256(kwargs_str.encode()).hexdigest()[:6]
+        identity = json.dumps(
+            {"kwargs": kwargs, "env_forward": env_forward}, sort_keys=True,
+        )
+        short_hash = hashlib.sha256(identity.encode()).hexdigest()[:6]
         return f"{server_name}_{short_hash}"
 
     def get_workspace_key(self, group_folder: str) -> str | None:
@@ -366,7 +410,8 @@ class McpManager:
                     continue
 
                 kwargs = self.resolve_kwargs(folder, server_name)
-                iid = self.get_instance_id(server_name, kwargs)
+                env_forward = self.resolve_env_forward(folder, server_name)
+                iid = self.get_instance_id(server_name, kwargs, env_forward)
 
                 if iid not in state.instances:
                     container_name = f"{_MCP_CONTAINER_PREFIX}-{iid}"
@@ -374,6 +419,7 @@ class McpManager:
                         server_name=server_name,
                         server_config=server_config,
                         kwargs=kwargs,
+                        env_forward=env_forward,
                         instance_id=iid,
                         container_name=container_name,
                     )
@@ -712,17 +758,30 @@ def _kwargs_to_args(kwargs: dict[str, str]) -> list[str]:
     return args
 
 
-def _build_env_args(config: McpServerConfig) -> list[str]:
-    """Build ``-e KEY=VALUE`` Docker flags from ``env`` and ``env_forward``."""
+def _build_env_args(
+    config: McpServerConfig, env_forward: dict[str, str],
+) -> list[str]:
+    """Build ``-e KEY=VALUE`` Docker flags from static ``env`` and resolved ``env_forward``.
+
+    *env_forward* maps container var names to host var names.  The container
+    var is what the MCP process sees; the host var is what we resolve from
+    ``os.environ`` (i.e. from ``.env``).
+    """
     args: list[str] = []
+    # Static env from server definition
     for key, value in sorted(config.env.items()):
         args.extend(["-e", f"{key}={value}"])
-    for key in config.env_forward:
-        value = os.environ.get(key)
+    # Forwarded env: container_var ← host_var
+    for container_var, host_var in sorted(env_forward.items()):
+        value = os.environ.get(host_var)
         if value is None:
-            logger.warning("env_forward var not set on host — skipping", var=key)
+            logger.warning(
+                "env_forward var not set on host — skipping",
+                container_var=container_var,
+                host_var=host_var,
+            )
             continue
-        args.extend(["-e", f"{key}={value}"])
+        args.extend(["-e", f"{container_var}={value}"])
     return args
 
 
