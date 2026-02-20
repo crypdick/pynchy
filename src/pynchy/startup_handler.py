@@ -19,7 +19,6 @@ from pynchy.utils import generate_message_id
 
 if TYPE_CHECKING:
     from pynchy.group_queue import GroupQueue
-    from pynchy.types import WorkspaceProfile
 
 
 class StartupDeps(Protocol):
