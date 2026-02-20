@@ -108,7 +108,8 @@ async def get_new_messages(jids: list[str], last_timestamp: str) -> tuple[list[N
     db = _get_db()
     placeholders = ",".join("?" for _ in jids)
     sql = f"""
-        SELECT id, chat_jid, sender, sender_name, content, timestamp, message_type, metadata
+        SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me,
+               message_type, metadata
         FROM messages
         WHERE timestamp > ? AND chat_jid IN ({placeholders})
               AND is_from_me = 0
@@ -131,7 +132,8 @@ async def get_messages_since(chat_jid: str, since_timestamp: str) -> list[NewMes
     """Get messages for a specific chat since a timestamp, excluding bot and host messages."""
     db = _get_db()
     sql = """
-        SELECT id, chat_jid, sender, sender_name, content, timestamp, message_type, metadata
+        SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me,
+               message_type, metadata
         FROM messages
         WHERE chat_jid = ? AND timestamp > ?
               AND is_from_me = 0

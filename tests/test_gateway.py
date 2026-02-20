@@ -20,6 +20,7 @@ from pynchy.container_runner.gateway import (
 # ---------------------------------------------------------------------------
 
 _GATEWAY_MOD = "pynchy.container_runner.gateway"
+_LITELLM_MOD = "pynchy.container_runner._gateway_litellm"
 
 _LITELLM_KWARGS = dict(
     port=4000,
@@ -182,12 +183,12 @@ class TestCollectYamlEnvRefs:
 
         with (
             patch("pynchy.container_runner._docker.docker_available", return_value=True),
-            patch("pynchy.container_runner.gateway.docker_available", return_value=True),
-            patch("pynchy.container_runner.gateway.run_docker", side_effect=fake_docker),
-            patch("pynchy.container_runner.gateway.ensure_image"),
-            patch("pynchy.container_runner.gateway.ensure_network"),
+            patch(f"{_LITELLM_MOD}.docker_available", return_value=True),
+            patch(f"{_LITELLM_MOD}.run_docker", side_effect=fake_docker),
+            patch(f"{_LITELLM_MOD}.ensure_image"),
+            patch(f"{_LITELLM_MOD}.ensure_network"),
             patch.object(gw, "_wait_postgres_healthy", new_callable=AsyncMock),
-            patch("pynchy.container_runner.gateway.wait_healthy", new_callable=AsyncMock),
+            patch(f"{_LITELLM_MOD}.wait_healthy", new_callable=AsyncMock),
         ):
             await gw.start()
 
@@ -216,7 +217,7 @@ class TestLiteLLMGatewayStart:
     @pytest.mark.asyncio
     async def test_raises_if_docker_not_found(self, gw: LiteLLMGateway):
         with (
-            patch("pynchy.container_runner.gateway.docker_available", return_value=False),
+            patch(f"{_LITELLM_MOD}.docker_available", return_value=False),
             pytest.raises(RuntimeError, match="Docker is required"),
         ):
             await gw.start()
@@ -229,7 +230,7 @@ class TestLiteLLMGatewayStart:
             **_LITELLM_KWARGS,
         )
         with (
-            patch("pynchy.container_runner.gateway.docker_available", return_value=True),
+            patch(f"{_LITELLM_MOD}.docker_available", return_value=True),
             pytest.raises(FileNotFoundError, match="LiteLLM config not found"),
         ):
             await gw.start()
@@ -247,12 +248,12 @@ class TestLiteLLMGatewayStart:
             return result
 
         with (
-            patch("pynchy.container_runner.gateway.docker_available", return_value=True),
-            patch("pynchy.container_runner.gateway.run_docker", side_effect=fake_docker),
-            patch("pynchy.container_runner.gateway.ensure_image"),
-            patch("pynchy.container_runner.gateway.ensure_network"),
+            patch(f"{_LITELLM_MOD}.docker_available", return_value=True),
+            patch(f"{_LITELLM_MOD}.run_docker", side_effect=fake_docker),
+            patch(f"{_LITELLM_MOD}.ensure_image"),
+            patch(f"{_LITELLM_MOD}.ensure_network"),
             patch.object(gw, "_wait_postgres_healthy", new_callable=AsyncMock),
-            patch("pynchy.container_runner.gateway.wait_healthy", new_callable=AsyncMock),
+            patch(f"{_LITELLM_MOD}.wait_healthy", new_callable=AsyncMock),
         ):
             await gw.start()
 
@@ -278,7 +279,7 @@ class TestLiteLLMGatewayStart:
             result.returncode = 0
             return result
 
-        with patch("pynchy.container_runner.gateway.run_docker", side_effect=fake_docker):
+        with patch(f"{_LITELLM_MOD}.run_docker", side_effect=fake_docker):
             await gw.stop()
 
         assert ["stop", "-t", "5", "pynchy-litellm"] in calls
