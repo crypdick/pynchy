@@ -208,7 +208,7 @@ async def run_container_agent(
 
             gw = get_gateway()
             if gw is not None:
-                input_data.mcp_gateway_url = f"http://{s.gateway.container_host}:{gw.port}/mcp"
+                input_data.mcp_gateway_url = f"http://{s.gateway.container_host}:{gw.port}/mcp/"
                 input_data.mcp_gateway_key = mcp_key
 
     # --- Container name and args ---

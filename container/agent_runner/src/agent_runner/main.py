@@ -265,10 +265,10 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
     # Add remote MCP servers if configured (routed via LiteLLM)
     if container_input.mcp_gateway_url and container_input.mcp_gateway_key:
         mcp_servers_dict["tools"] = {
-            "type": "sse",
+            "type": "http",
             "url": container_input.mcp_gateway_url,
             "headers": {
-                "x-litellm-api-key": container_input.mcp_gateway_key,
+                "Authorization": f"Bearer {container_input.mcp_gateway_key}",
             },
         }
 
