@@ -4,7 +4,7 @@ Covers:
 - resolve_git_policy() resolution logic
 - host_create_pr_from_worktree() behavior
 - IPC handler routing based on policy
-- background_merge_worktree() policy dispatch
+- merge_worktree_with_policy() and background_merge_worktree() dispatch
 """
 
 from __future__ import annotations
@@ -543,71 +543,91 @@ class TestIpcPolicyRouting:
 # ---------------------------------------------------------------------------
 
 
-class TestBackgroundMergePolicy:
-    def test_merge_policy_calls_merge_and_push(self):
-        """merge-to-main policy dispatches to merge_and_push_worktree."""
-        group = MagicMock()
-        group.folder = "agent-1"
+class TestMergeWorktreeWithPolicy:
+    """Tests for the awaitable merge_worktree_with_policy()."""
 
+    async def test_merge_policy_calls_merge_and_push(self):
+        """merge-to-main policy dispatches to merge_and_push_worktree."""
+        mock_repo = MagicMock()
         with (
             patch(
                 "pynchy.git_ops.repo.resolve_repo_for_group",
-                return_value=MagicMock(),
+                return_value=mock_repo,
             ),
             patch(
                 "pynchy.git_ops.sync.resolve_git_policy",
                 return_value=GIT_POLICY_MERGE,
             ),
-            patch("pynchy.utils.create_background_task") as mock_task,
+            patch("pynchy.git_ops.worktree.merge_and_push_worktree") as mock_merge,
         ):
+            from pynchy.git_ops.worktree import merge_worktree_with_policy
+
+            await merge_worktree_with_policy("agent-1")
+
+        mock_merge.assert_called_once_with("agent-1", mock_repo)
+
+    async def test_pr_policy_calls_pr_workflow(self):
+        """pull-request policy dispatches to host_create_pr_from_worktree."""
+        mock_repo = MagicMock()
+        with (
+            patch(
+                "pynchy.git_ops.repo.resolve_repo_for_group",
+                return_value=mock_repo,
+            ),
+            patch(
+                "pynchy.git_ops.sync.resolve_git_policy",
+                return_value=GIT_POLICY_PR,
+            ),
+            patch("pynchy.git_ops.sync.host_create_pr_from_worktree") as mock_pr,
+        ):
+            from pynchy.git_ops.worktree import merge_worktree_with_policy
+
+            await merge_worktree_with_policy("agent-1")
+
+        mock_pr.assert_called_once_with("agent-1", mock_repo)
+
+    async def test_no_repo_access_does_nothing(self):
+        """Groups without repo_access skip entirely."""
+        with (
+            patch(
+                "pynchy.git_ops.repo.resolve_repo_for_group",
+                return_value=None,
+            ),
+            patch("pynchy.git_ops.sync.resolve_git_policy") as mock_policy,
+        ):
+            from pynchy.git_ops.worktree import merge_worktree_with_policy
+
+            await merge_worktree_with_policy("no-repo")
+
+        mock_policy.assert_not_called()
+
+
+class TestBackgroundMergePolicy:
+    def test_delegates_to_merge_worktree_with_policy(self):
+        """background_merge_worktree wraps merge_worktree_with_policy in a background task."""
+        group = MagicMock()
+        group.folder = "agent-1"
+
+        with patch("pynchy.utils.create_background_task") as mock_task:
             from pynchy.git_ops.worktree import background_merge_worktree
 
             background_merge_worktree(group)
 
         mock_task.assert_called_once()
         assert "worktree-merge-agent-1" in str(mock_task.call_args)
-        # Close the unawaited coroutine created by asyncio.to_thread()
+        # Close the unawaited coroutine
         mock_task.call_args[0][0].close()
 
-    def test_pr_policy_calls_pr_workflow(self):
-        """pull-request policy dispatches to host_create_pr_from_worktree."""
-        group = MagicMock()
-        group.folder = "agent-1"
-
-        with (
-            patch(
-                "pynchy.git_ops.repo.resolve_repo_for_group",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "pynchy.git_ops.sync.resolve_git_policy",
-                return_value=GIT_POLICY_PR,
-            ),
-            patch("pynchy.utils.create_background_task") as mock_task,
-        ):
-            from pynchy.git_ops.worktree import background_merge_worktree
-
-            background_merge_worktree(group)
-
-        mock_task.assert_called_once()
-        assert "worktree-pr-agent-1" in str(mock_task.call_args)
-        # Close the unawaited coroutine created by asyncio.to_thread()
-        mock_task.call_args[0][0].close()
-
-    def test_no_repo_access_does_nothing(self):
-        """Groups without repo_access skip entirely."""
+    def test_no_repo_folder_passes_through(self):
+        """background_merge_worktree passes the group folder through to the coroutine."""
         group = MagicMock()
         group.folder = "no-repo"
 
-        with (
-            patch(
-                "pynchy.git_ops.repo.resolve_repo_for_group",
-                return_value=None,
-            ),
-            patch("pynchy.utils.create_background_task") as mock_task,
-        ):
+        with patch("pynchy.utils.create_background_task") as mock_task:
             from pynchy.git_ops.worktree import background_merge_worktree
 
             background_merge_worktree(group)
 
-        mock_task.assert_not_called()
+        # The coroutine is always created — repo check happens inside it
+        mock_task.assert_called_once()
+        mock_task.call_args[0][0].close()

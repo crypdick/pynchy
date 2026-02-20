@@ -870,7 +870,7 @@ class TestResetContextExecution:
                 "pynchy.ipc._handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
-            patch("pynchy.git_ops.worktree.merge_and_push_worktree"),
+            patch("pynchy.git_ops.worktree.merge_worktree_with_policy", new_callable=AsyncMock),
         ):
             (tmp_path / "data" / "ipc" / "god").mkdir(parents=True)
             await dispatch(
@@ -895,7 +895,7 @@ class TestResetContextExecution:
                 "pynchy.ipc._handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
-            patch("pynchy.git_ops.worktree.merge_and_push_worktree"),
+            patch("pynchy.git_ops.worktree.merge_worktree_with_policy", new_callable=AsyncMock),
         ):
             (tmp_path / "data" / "ipc" / "god").mkdir(parents=True)
             await dispatch(
@@ -942,7 +942,7 @@ class TestResetContextExecution:
                 "pynchy.ipc._handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
-            patch("pynchy.git_ops.worktree.merge_and_push_worktree"),
+            patch("pynchy.git_ops.worktree.merge_worktree_with_policy", new_callable=AsyncMock),
         ):
             (tmp_path / "data" / "ipc" / "god").mkdir(parents=True)
             await dispatch(
@@ -969,7 +969,8 @@ class TestResetContextExecution:
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.git_ops.worktree.merge_and_push_worktree",
+                "pynchy.git_ops.worktree.merge_worktree_with_policy",
+                new_callable=AsyncMock,
                 side_effect=Exception("merge failed"),
             ),
         ):

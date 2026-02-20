@@ -386,14 +386,11 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
         elapsed_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
         logger.info("Task completed", task_id=task.id, duration_ms=elapsed_ms)
 
-        # Merge worktree commits and push for tasks with repo access
+        # Merge worktree commits respecting the workspace's git_policy
         if not error and task.repo_access:
-            from pynchy.git_ops.repo import resolve_repo_for_group
-            from pynchy.git_ops.worktree import merge_and_push_worktree
+            from pynchy.git_ops.worktree import merge_worktree_with_policy
 
-            repo_ctx = resolve_repo_for_group(task.group_folder)
-            if repo_ctx is not None:
-                await asyncio.to_thread(merge_and_push_worktree, task.group_folder, repo_ctx)
+            await merge_worktree_with_policy(task.group_folder)
     except Exception as exc:
         idle_timer.cancel()
         error = str(exc)

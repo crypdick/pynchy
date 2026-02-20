@@ -40,26 +40,12 @@ async def _handle_reset_context(
         )
         return
 
-    import asyncio
+    from pynchy.git_ops.worktree import merge_worktree_with_policy
 
-    from pynchy.git_ops.repo import resolve_repo_for_group
-    from pynchy.git_ops.worktree import merge_and_push_worktree
-
-    repo_ctx = resolve_repo_for_group(group_folder)
-    if repo_ctx is not None:
-        policy = resolve_git_policy(group_folder)
-        logger.info(
-            "Syncing worktree before context reset",
-            group=group_folder,
-            policy=policy,
-        )
-        try:
-            if policy == GIT_POLICY_PR:
-                await asyncio.to_thread(host_create_pr_from_worktree, group_folder, repo_ctx)
-            else:
-                await asyncio.to_thread(merge_and_push_worktree, group_folder, repo_ctx)
-        except Exception as exc:
-            logger.error("Worktree sync failed during context reset", err=str(exc))
+    try:
+        await merge_worktree_with_policy(group_folder)
+    except Exception as exc:
+        logger.error("Worktree sync failed during context reset", err=str(exc))
 
     await deps.clear_session(group_folder)
     await deps.clear_chat_history(chat_jid)

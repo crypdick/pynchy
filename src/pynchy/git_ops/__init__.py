@@ -28,6 +28,7 @@ from pynchy.git_ops.worktree import (
     install_pre_commit_hooks,
     merge_and_push_worktree,
     merge_worktree,
+    merge_worktree_with_policy,
     reconcile_worktrees_at_startup,
 )
 
@@ -48,6 +49,7 @@ __all__ = [
     "is_repo_dirty",
     "merge_and_push_worktree",
     "merge_worktree",
+    "merge_worktree_with_policy",
     "needs_container_rebuild",
     "needs_deploy",
     "push_local_commits",
