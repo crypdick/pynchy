@@ -61,6 +61,7 @@ async def atomic_write() -> AsyncIterator[aiosqlite.Connection]:
             await db.rollback()
             raise
 
+
 _SCHEMA = """\
 CREATE TABLE IF NOT EXISTS chats (
     jid TEXT PRIMARY KEY,
@@ -321,18 +322,14 @@ async def _migrate_repo_access_column(database: aiosqlite.Connection) -> None:
                 "WHERE pynchy_repo_access = 1 AND repo_access IS NULL"
             )
         try:
-            await database.execute(
-                "ALTER TABLE scheduled_tasks DROP COLUMN pynchy_repo_access"
-            )
+            await database.execute("ALTER TABLE scheduled_tasks DROP COLUMN pynchy_repo_access")
             logger.info("Dropped scheduled_tasks.pynchy_repo_access column")
         except Exception as exc:
             logger.warning("Failed to drop pynchy_repo_access column", err=str(exc))
 
     if "project_access" in cols:
         try:
-            await database.execute(
-                "ALTER TABLE scheduled_tasks DROP COLUMN project_access"
-            )
+            await database.execute("ALTER TABLE scheduled_tasks DROP COLUMN project_access")
             logger.info("Dropped scheduled_tasks.project_access column")
         except Exception as exc:
             logger.warning("Failed to drop project_access column", err=str(exc))
@@ -374,7 +371,7 @@ async def _seed_channel_cursors(database: aiosqlite.Connection) -> None:
     )
     alias_rows = await alias_cursor.fetchall()
     seen: set[tuple[str, str]] = set()
-    for alias_jid, canonical_jid, channel_name in alias_rows:
+    for _alias_jid, canonical_jid, channel_name in alias_rows:
         ts = agent_timestamps.get(canonical_jid)
         if not ts:
             continue

@@ -45,8 +45,7 @@ async def record_outbound(
         assert ledger_id is not None
         for ch_name in channel_names:
             await db.execute(
-                "INSERT INTO outbound_deliveries (ledger_id, channel_name)"
-                " VALUES (?, ?)",
+                "INSERT INTO outbound_deliveries (ledger_id, channel_name) VALUES (?, ?)",
                 (ledger_id, ch_name),
             )
     return ledger_id
@@ -68,8 +67,7 @@ async def mark_delivery_error(ledger_id: int, channel_name: str, error: str) -> 
     """Record a delivery failure (leaves delivered_at NULL for retry)."""
     db = _get_db()
     await db.execute(
-        "UPDATE outbound_deliveries SET error = ?"
-        " WHERE ledger_id = ? AND channel_name = ?",
+        "UPDATE outbound_deliveries SET error = ? WHERE ledger_id = ? AND channel_name = ?",
         (error, ledger_id, channel_name),
     )
     await db.commit()
@@ -126,6 +124,9 @@ async def gc_delivered(max_age_hours: int = 24) -> int:
 
     placeholders = ",".join("?" * len(ids))
     async with atomic_write() as wdb:
-        await wdb.execute(f"DELETE FROM outbound_deliveries WHERE ledger_id IN ({placeholders})", ids)
+        await wdb.execute(
+            f"DELETE FROM outbound_deliveries WHERE ledger_id IN ({placeholders})",
+            ids,
+        )
         await wdb.execute(f"DELETE FROM outbound_ledger WHERE id IN ({placeholders})", ids)
     return len(ids)

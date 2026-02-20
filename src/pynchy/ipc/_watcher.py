@@ -176,7 +176,9 @@ async def _sweep_directory(
         try:
             if messages_dir.exists():
                 for file_path in sorted(f for f in messages_dir.iterdir() if f.suffix == ".json"):
-                    await _process_message_file(file_path, source_group, is_admin, ipc_base_dir, deps)
+                    await _process_message_file(
+                        file_path, source_group, is_admin, ipc_base_dir, deps
+                    )
                     processed += 1
         except OSError as exc:
             logger.error(
