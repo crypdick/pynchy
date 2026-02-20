@@ -113,6 +113,45 @@ def _find_workspace_by_jid(deps: BusDeps, chat_jid: str) -> object | None:
 
 
 # ---------------------------------------------------------------------------
+# Target resolution — single implementation for channel filtering + JID alias
+# ---------------------------------------------------------------------------
+
+
+def _resolve_send_targets(
+    deps: BusDeps,
+    chat_jid: str,
+    *,
+    skip_channel: str | None = None,
+) -> list[tuple[Channel, str]]:
+    """Resolve which channels should receive a ``send_message`` call.
+
+    Returns ``(channel, target_jid)`` pairs for channels that are connected,
+    allowed outbound by access rules, and have a valid JID (alias or direct
+    ownership).  Logs a warning for channels that are connected and allowed
+    but have no route to the chat.
+    """
+    targets: list[tuple[Channel, str]] = []
+    for ch in deps.channels:
+        if not ch.is_connected():
+            continue
+        if skip_channel and ch.name == skip_channel:
+            continue
+        if not _channel_allows_outbound(deps, chat_jid, ch.name):
+            continue
+        alias = deps.get_channel_jid(chat_jid, ch.name)
+        target_jid = alias or chat_jid
+        if not alias and not ch.owns_jid(chat_jid):
+            logger.warning(
+                "No JID alias for channel — message will not be delivered",
+                channel=ch.name,
+                canonical_jid=chat_jid,
+            )
+            continue
+        targets.append((ch, target_jid))
+    return targets
+
+
+# ---------------------------------------------------------------------------
 # Broadcast functions
 # ---------------------------------------------------------------------------
 
@@ -146,25 +185,7 @@ async def broadcast(
         (OSError, TimeoutError, ConnectionError) if suppress_errors else (Exception,)
     )
 
-    # Resolve delivery targets
-    targets: list[tuple[Channel, str]] = []
-    for ch in deps.channels:
-        if not ch.is_connected():
-            continue
-        if skip_channel and ch.name == skip_channel:
-            continue
-        if not _channel_allows_outbound(deps, chat_jid, ch.name):
-            continue
-        alias = deps.get_channel_jid(chat_jid, ch.name)
-        target_jid = alias or chat_jid
-        if not alias and not ch.owns_jid(chat_jid):
-            logger.warning(
-                "No JID alias for channel — message will not be delivered",
-                channel=ch.name,
-                canonical_jid=chat_jid,
-            )
-            continue
-        targets.append((ch, target_jid))
+    targets = _resolve_send_targets(deps, chat_jid, skip_channel=skip_channel)
 
     # Record to outbound ledger (best-effort)
     ledger_id = await _record_to_ledger(chat_jid, text, source, [ch.name for ch, _ in targets])
@@ -192,34 +213,27 @@ async def broadcast_formatted(
     """
     from pynchy.chat.router import format_outbound
 
-    # Resolve targets and format text per channel
-    targets: list[tuple[Channel, str, str]] = []
-    for ch in deps.channels:
-        if not ch.is_connected():
-            continue
-        if not _channel_allows_outbound(deps, chat_jid, ch.name):
-            continue
+    targets = _resolve_send_targets(deps, chat_jid)
+
+    # Apply per-channel formatting, dropping channels where format returns empty
+    formatted_targets: list[tuple[Channel, str, str]] = []
+    for ch, target_jid in targets:
         text = format_outbound(ch, raw_text)
-        if not text:
-            continue
-        alias = deps.get_channel_jid(chat_jid, ch.name)
-        target_jid = alias or chat_jid
-        if not alias and not ch.owns_jid(chat_jid):
-            continue
-        targets.append((ch, target_jid, text))
+        if text:
+            formatted_targets.append((ch, target_jid, text))
 
     # Record raw text to ledger (reconciler retries with raw text)
     ledger_id = await _record_to_ledger(
-        chat_jid, raw_text, "scheduled", [ch.name for ch, _, _ in targets]
+        chat_jid, raw_text, "scheduled", [ch.name for ch, _, _ in formatted_targets]
     )
 
     # Deliver formatted text per channel
-    for ch, target_jid, text in targets:
+    for ch, target_jid, text in formatted_targets:
         try:
             await ch.send_message(target_jid, text)
             await _mark_success(ledger_id, ch.name)
         except (OSError, TimeoutError, ConnectionError) as exc:
-            logger.warning("Formatted send failed", channel=getattr(ch, "name", "?"), err=str(exc))
+            logger.warning("Formatted send failed", channel=ch.name, err=str(exc))
             await _mark_error(ledger_id, ch.name, str(exc))
 
 
@@ -249,48 +263,43 @@ async def finalize_stream_or_broadcast(
         await broadcast(deps, chat_jid, text, suppress_errors=suppress_errors, source="agent")
         return
 
-    # Collect all channels that will receive this message (stream or send)
-    target_names: list[str] = []
+    # Resolve non-streaming targets via the shared helper
+    send_targets = _resolve_send_targets(deps, chat_jid)
+    send_target_names = {ch.name for ch, _ in send_targets}
+
+    # Identify streaming targets (channels with a message_id and update_message)
+    stream_targets: list[tuple[Channel, str]] = []
     for ch in deps.channels:
         ch_name = ch.name
+        msg_id = stream_message_ids.get(ch_name)
+        if not msg_id or not hasattr(ch, "update_message"):
+            continue
         if not _channel_allows_outbound(deps, chat_jid, ch_name):
             continue
-        msg_id = stream_message_ids.get(ch_name)
-        if msg_id and hasattr(ch, "update_message"):
-            target_names.append(ch_name)
-        elif ch.is_connected():
-            alias = deps.get_channel_jid(chat_jid, ch.name)
-            if alias or ch.owns_jid(chat_jid):
-                target_names.append(ch_name)
+        stream_targets.append((ch, msg_id))
+    stream_target_names = {ch.name for ch, _ in stream_targets}
 
-    ledger_id = await _record_to_ledger(chat_jid, text, "agent", target_names)
+    # Remove streaming channels from send targets (they get update_message instead)
+    send_targets = [(ch, jid) for ch, jid in send_targets if ch.name not in stream_target_names]
 
-    for ch in deps.channels:
-        ch_name = ch.name
-        if not _channel_allows_outbound(deps, chat_jid, ch_name):
-            continue
-        msg_id = stream_message_ids.get(ch_name)
+    # Record to ledger
+    all_target_names = sorted(stream_target_names | send_target_names)
+    ledger_id = await _record_to_ledger(chat_jid, text, "agent", all_target_names)
 
-        if msg_id and hasattr(ch, "update_message"):
-            try:
-                await ch.update_message(chat_jid, msg_id, text)
-                await _mark_success(ledger_id, ch_name)
-            except Exception as exc:
-                logger.debug("Final stream update failed", channel=ch_name, err=str(exc))
-                await _mark_error(ledger_id, ch_name, str(exc))
-        elif ch.is_connected():
-            alias = deps.get_channel_jid(chat_jid, ch.name)
-            target_jid = alias or chat_jid
-            if not alias and not ch.owns_jid(chat_jid):
-                logger.warning(
-                    "No JID alias for channel — message will not be delivered",
-                    channel=ch_name,
-                    canonical_jid=chat_jid,
-                )
-                continue
-            try:
-                await ch.send_message(target_jid, text)
-                await _mark_success(ledger_id, ch_name)
-            except Exception as exc:
-                logger.warning("Channel send failed", channel=ch_name, err=str(exc))
-                await _mark_error(ledger_id, ch_name, str(exc))
+    # Deliver: update streamed messages in-place
+    for ch, msg_id in stream_targets:
+        try:
+            await ch.update_message(chat_jid, msg_id, text)
+            await _mark_success(ledger_id, ch.name)
+        except Exception as exc:
+            logger.debug("Final stream update failed", channel=ch.name, err=str(exc))
+            await _mark_error(ledger_id, ch.name, str(exc))
+
+    # Deliver: send to non-streaming channels
+    for ch, target_jid in send_targets:
+        try:
+            await ch.send_message(target_jid, text)
+            await _mark_success(ledger_id, ch.name)
+        except Exception as exc:
+            logger.warning("Channel send failed", channel=ch.name, err=str(exc))
+            await _mark_error(ledger_id, ch.name, str(exc))
