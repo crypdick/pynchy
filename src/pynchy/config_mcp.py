@@ -13,6 +13,14 @@ Example TOML::
     transport = "http"
     idle_timeout = 600
 
+    [mcp_servers.slack_mcp]
+    type = "docker"
+    image = "ghcr.io/korotovsky/slack-mcp-server:latest"
+    port = 8080
+    transport = "http"
+    env = { SLACK_MCP_HOST = "0.0.0.0", SLACK_MCP_PORT = "8080" }
+    env_forward = ["SLACK_MCP_XOXC_TOKEN", "SLACK_MCP_XOXD_TOKEN"]
+
     [mcp_servers.some-remote-api]
     type = "url"
     url = "https://api.example.com/mcp"
@@ -39,6 +47,8 @@ class McpServerConfig(BaseModel):
     args: list[str] = []
     port: int | None = None
     idle_timeout: int = 600  # seconds; 0 = never stop
+    env: dict[str, str] = {}  # static env vars passed to container via -e
+    env_forward: list[str] = []  # host env var names forwarded into container (for secrets in .env)
 
     # URL fields
     url: str | None = None

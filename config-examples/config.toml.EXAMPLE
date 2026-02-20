@@ -267,6 +267,17 @@ trigger = "always"
 # port = 8931
 # transport = "sse"
 # idle_timeout = 600          # seconds; 0 = never stop
+# env = { DISPLAY = ":99" }  # static env vars passed to the container
+# env_forward = ["MY_SECRET"] # forward host env vars (from .env) into container
+
+# Slack MCP (read-only Slack access via browser tokens):
+# [mcp_servers.slack_mcp]
+# type = "docker"
+# image = "ghcr.io/korotovsky/slack-mcp-server:latest"
+# port = 8080
+# transport = "http"
+# env = { SLACK_MCP_HOST = "0.0.0.0", SLACK_MCP_PORT = "8080" }
+# env_forward = ["SLACK_MCP_XOXC_TOKEN", "SLACK_MCP_XOXD_TOKEN"]
 
 # Remote URL-based MCP:
 # [mcp_servers.remote-api]
