@@ -59,6 +59,18 @@ env = { MCP_HOST = "0.0.0.0", MCP_PORT = "8081" }
 env_forward = { MCP_API_SECRET = "MCP_API_SECRET_PERSONAL" }
 ```
 
+## Persistent volumes
+
+Docker MCP containers are ephemeral by default — data is lost when they stop. To persist caches or other state across restarts, use `volumes`:
+
+```toml
+[mcp_servers.slack_mcp_acme]
+# ...
+volumes = ["data/mcp-cache/slack-acme:/root/.cache/slack-mcp-server"]
+```
+
+Relative host paths are resolved from the project root. The host directory is created automatically if it doesn't exist.
+
 ## Per-workspace kwargs
 
 Per-workspace MCP config (`[workspaces.X.mcp.Y]`) is arbitrary key-value pairs. For Docker MCPs, each becomes `--key value` appended to the container's args. Pynchy never interprets these — the MCP server itself enforces them (e.g., Playwright's `--allowed-origins`).

@@ -16,6 +16,7 @@ import json
 import os
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
@@ -27,6 +28,7 @@ from pynchy.container_runner._docker import (
     run_docker,
     wait_healthy,
 )
+from pynchy.config import get_settings
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
@@ -199,6 +201,16 @@ class McpManager:
         # Build -e flags from static env and env_forward on the server definition
         env_args = _build_env_args(instance.server_config)
 
+        # Build -v flags from volumes, resolving relative host paths from project root
+        volume_args: list[str] = []
+        for vol in instance.server_config.volumes:
+            host_path, sep, container_path = vol.partition(":")
+            if sep and not Path(host_path).is_absolute():
+                host_path = str(get_settings().project_root / host_path)
+            resolved = f"{host_path}:{container_path}" if sep else vol
+            Path(host_path).mkdir(parents=True, exist_ok=True)
+            volume_args.extend(["-v", resolved])
+
         run_docker(
             "run", "-d",
             "--name", instance.container_name,
@@ -206,6 +218,7 @@ class McpManager:
             "--restart", "unless-stopped",
             *publish_args,
             *env_args,
+            *volume_args,
             instance.server_config.image or "",
             *cmd_args,
         )  # fmt: skip
