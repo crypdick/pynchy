@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from pynchy.config import get_settings
-from pynchy.db import get_chat_cleared_at, get_messages_since, store_message
+from pynchy.db import get_messages_since, store_message
 from pynchy.git_ops.utils import get_head_sha, is_repo_dirty, run_git
 from pynchy.http_server import _get_head_commit_message
 from pynchy.logger import logger
@@ -179,21 +179,11 @@ async def check_deploy_continuation(deps: StartupDeps) -> None:
     )
 
     for jid, _session_id in active_sessions.items():
-        # Skip if context was cleared and no user messages are pending.
-        # A cleared_at boundary with no pending messages means the user
-        # explicitly wiped the session — injecting a deploy resume would
-        # wake a dead session for no reason.
-        cleared_at = await get_chat_cleared_at(jid)
-        if cleared_at:
-            pending = await get_messages_since(jid, cleared_at)
-            if not pending:
-                logger.info(
-                    "Skipping deploy resume — session was cleared",
-                    chat_jid=jid,
-                    cleared_at=cleared_at,
-                )
-                continue
-
+        # No cleared_at check here: if a session is in active_sessions,
+        # get_active_sessions() already excluded cleared sessions via the
+        # in-memory _session_cleared guard. A DB cleared_at value can be
+        # stale when a reset handoff revived the session (the handoff clears
+        # _session_cleared but doesn't update cleared_at in the DB).
         synthetic_msg = NewMessage(
             id=generate_message_id(f"deploy-{commit_sha[:8]}-{jid[:12]}"),
             chat_jid=jid,
