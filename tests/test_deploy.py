@@ -23,7 +23,14 @@ from pynchy.deploy import finalize_deploy
 @contextlib.contextmanager
 def _patch_settings(*, data_dir: Path):
     s = make_settings(data_dir=data_dir)
-    with patch("pynchy.deploy.get_settings", return_value=s):
+    with (
+        patch("pynchy.deploy.get_settings", return_value=s),
+        # finalize_deploy() persists deploy metadata via set_router_state(),
+        # which requires an initialized DB.  Mock it out for unit tests.
+        # Patch on pynchy.db (the re-export) so the local import inside
+        # finalize_deploy picks up the mock.
+        patch("pynchy.db.set_router_state", new_callable=AsyncMock),
+    ):
         yield
 
 

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from pynchy.config import get_settings
-from pynchy.db import get_chat_cleared_at, get_messages_since, store_message
+from pynchy.db import get_messages_since, store_message
 from pynchy.git_ops.utils import get_head_commit_message, get_head_sha, is_repo_dirty, run_git
 from pynchy.logger import logger
 from pynchy.types import NewMessage, WorkspaceProfile, WorkspaceSecurity
