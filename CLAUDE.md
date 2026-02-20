@@ -28,9 +28,11 @@ Python process that connects to messaging channels (WhatsApp, Slack, etc. via pl
 | `src/pynchy/config_mcp.py` | MCP server config models (`McpServerConfig`) |
 | `src/pynchy/group_queue.py` | Per-group queue with global concurrency limit |
 | `src/pynchy/task_scheduler.py` | Runs scheduled tasks |
+| `src/pynchy/directives.py` | Scoped system prompt directive resolution |
 | `src/pynchy/types.py` | Data models (dataclasses) |
 | `src/pynchy/logger.py` | Structured logging (structlog) |
-| `groups/{name}/CLAUDE.md` | Per-group memory (isolated) |
+| `directives/` | System prompt directive markdown files |
+| `groups/{name}/` | Per-group workspace files (isolated) |
 | `container/skills/` | Agent skills with YAML frontmatter (tier, name, description) |
 | `backlog/TODO.md` | Work item index — one-line items linking to plan files in status folders |
 

@@ -15,7 +15,6 @@ The admin channel serves as the admin/control group (typically your WhatsApp sel
 
 | Capability | Admin | Non-Admin |
 |------------|-----|---------|
-| Write to global memory (`groups/global/CLAUDE.md`) | Yes | No |
 | Schedule tasks for any group | Yes | Own group only |
 | View and manage all tasks | Yes | Own group only |
 | Configure additional directory mounts | Yes | No |
@@ -23,4 +22,4 @@ The admin channel serves as the admin/control group (typically your WhatsApp sel
 | Edit `config.toml` (mounted read-write) | Yes | No |
 | MCP service tools (calendar, etc.) | Auto-approved | Policy-gated |
 
-Non-admin groups can have `pynchy_repo_access` (configured in `config.toml`), giving them a read-write worktree mount at `/workspace/project` instead of the readonly `groups/global/` mount. The host restricts IPC commands from non-admin groups (see [IPC Authorization](../architecture/security.md#4-ipc-authorization)).
+Non-admin groups can have `repo_access` (configured in `config.toml`), giving them a read-write worktree mount at `/workspace/project`. Shared agent instructions are delivered via [directives](directives.md) rather than filesystem mounts. The host restricts IPC commands from non-admin groups (see [IPC Authorization](../architecture/security.md#4-ipc-authorization)).

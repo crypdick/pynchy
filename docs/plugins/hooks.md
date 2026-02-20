@@ -292,7 +292,6 @@ def pynchy_workspace_spec(self) -> dict[str, Any]:
             "prompt": "Run scheduled code improvements",
             "context_mode": "isolated",
         },
-        "claude_md": "# Code Improver\\n\\nAgent instructions...",
     }
 ```
 
@@ -302,7 +301,8 @@ def pynchy_workspace_spec(self) -> dict[str, Any]:
 |-----|------|-------------|
 | `folder` | `str` | Workspace folder name |
 | `config` | `dict[str, Any]` | `WorkspaceConfig`-compatible fields |
-| `claude_md` | `str \| None` | Optional `groups/{folder}/CLAUDE.md` content to seed when missing |
+
+Agent instructions are now delivered via [directives](../usage/directives.md) rather than seeded CLAUDE.md files. The `claude_md` field is ignored.
 
 ## Multi-Category Plugins
 

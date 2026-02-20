@@ -33,6 +33,8 @@ def _input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
     d["agent_core_class"] = input_data.agent_core_class
     if input_data.agent_core_config is not None:
         d["agent_core_config"] = input_data.agent_core_config
+    if input_data.system_prompt_append is not None:
+        d["system_prompt_append"] = input_data.system_prompt_append
     if input_data.mcp_gateway_url is not None:
         d["mcp_gateway_url"] = input_data.mcp_gateway_url
     if input_data.mcp_gateway_key is not None:

@@ -75,6 +75,7 @@ async def run_agent(
         input_source: Source label for input broadcasting
             ("user", "scheduled_task", "reset_handoff").
     """
+    from pynchy.directives import resolve_directives
     from pynchy.workspace_config import get_repo_access
 
     is_admin = group.is_admin
@@ -82,6 +83,7 @@ async def run_agent(
         repo_access: str | None = repo_access_override
     else:
         repo_access = get_repo_access(group)
+    system_prompt_append = resolve_directives(group.folder, repo_access)
     session_id = deps.sessions.get(group.folder)
 
     # Broadcast input messages to channels so the UI faithfully represents
@@ -166,6 +168,7 @@ async def run_agent(
                 system_notices=system_notices or None,
                 is_scheduled_task=is_scheduled_task,
                 repo_access=repo_access,
+                system_prompt_append=system_prompt_append,
                 agent_core_module=agent_core_module,
                 agent_core_class=agent_core_class,
             ),

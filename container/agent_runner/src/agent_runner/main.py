@@ -51,6 +51,7 @@ class ContainerInput:
         self.agent_core_module: str = data.get("agent_core_module", "agent_runner.cores.claude")
         self.agent_core_class: str = data.get("agent_core_class", "ClaudeAgentCore")
         self.agent_core_config: dict[str, Any] | None = data.get("agent_core_config")
+        self.system_prompt_append: str | None = data.get("system_prompt_append")
         self.mcp_gateway_url: str | None = data.get("mcp_gateway_url")
         self.mcp_gateway_key: str | None = data.get("mcp_gateway_key")
 
@@ -232,12 +233,9 @@ def build_sdk_messages(messages: list[dict[str, Any]]) -> str:
 
 def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
     """Build AgentCoreConfig from ContainerInput."""
-    # Load global CLAUDE.md as additional system context (non-admin groups only)
-    global_claude_md_path = Path("/workspace/global/CLAUDE.md")
-    system_prompt_append: str | None = None
-
-    if not container_input.is_admin and global_claude_md_path.exists():
-        system_prompt_append = global_claude_md_path.read_text()
+    # Directives are resolved host-side and passed in via system_prompt_append.
+    # This replaced the old global/CLAUDE.md file-reading approach.
+    system_prompt_append = container_input.system_prompt_append
 
     # IMPORTANT: Do NOT append ephemeral per-run content (system notices, dirty
     # worktree warnings, etc.) to the system prompt. Changing the system prompt

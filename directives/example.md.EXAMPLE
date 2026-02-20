@@ -1,0 +1,25 @@
+# Example Directive
+
+This is a template showing what a directive file looks like. Directive files
+contain system prompt extensions that are injected into the agent's context
+based on scope matching in config.toml.
+
+## What Goes Here
+
+- Persona and behavioral instructions
+- Communication guidelines
+- Tool usage instructions
+- Domain-specific knowledge
+- Workflow descriptions
+
+## What Does NOT Go Here
+
+- Ephemeral per-run context (use system_notices instead)
+- Secrets or credentials
+- Anything that changes frequently (invalidates KV cache)
+
+## Tips
+
+- Keep directives focused on a single concern
+- Use scope to limit directives to relevant workspaces
+- Files ending in .EXAMPLE are automatically ignored by resolve_directives()
