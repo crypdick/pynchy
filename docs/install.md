@@ -118,7 +118,7 @@ mcp_servers = ["playwright"]
 allowed-origins = "github.com;stackoverflow.com"
 ```
 
-Docker MCP containers start on-demand and stop after `idle_timeout`. See [MCP management](architecture/mcp-management.md) for the full architecture.
+Docker MCP containers start on-demand and stop after `idle_timeout`. See [MCP servers](usage/mcp.md) for configuration details.
 
 ### 3. Build Container Image
 
