@@ -12,7 +12,7 @@ This section explains how Pynchy works under the hood. Understanding these conce
 | [Message types](message-types.md) | Type system, storage, SDK integration |
 | [Git sync](git-sync.md) | Coordinated worktree sync, host-mediated merges |
 | [Security](security.md) | Trust model, security boundaries, credential handling |
-| [MCP management](mcp-management.md) | MCP server lifecycle, LiteLLM gateway, per-workspace access control |
+| [MCP management](mcp-management.md) | McpManager internals, instance deduplication, LiteLLM integration |
 
 ## Pluggable Subsystems
 

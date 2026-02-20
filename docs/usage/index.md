@@ -60,3 +60,5 @@ No configuration files to learn. Just tell Pynchy what you want:
 | [Scheduled tasks](scheduled-tasks.md) | Task types, MCP tools, execution model |
 | [Agent cores](agent-cores.md) | LLM framework selection, LiteLLM gateway |
 | [Directives](directives.md) | System prompt extensions, per-workspace scoping |
+| [MCP servers](mcp.md) | Adding external tool servers, environment variables, multi-tenant setup |
+| [Slack MCP](slack-mcp.md) | Slack read access via browser tokens (no admin required) |

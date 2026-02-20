@@ -149,6 +149,7 @@ def _hash_config_files() -> str:
     s = get_settings()
     for path in [
         s.project_root / "config.toml",
+        s.project_root / ".env",
         Path(s.gateway.litellm_config) if s.gateway.litellm_config else None,
     ]:
         if path and path.exists():
