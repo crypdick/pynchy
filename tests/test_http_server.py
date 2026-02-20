@@ -12,9 +12,13 @@ from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
 from conftest import make_settings
 
-from pynchy.git_ops.utils import get_head_sha, is_repo_dirty, push_local_commits
+from pynchy.git_ops.utils import (
+    get_head_commit_message,
+    get_head_sha,
+    is_repo_dirty,
+    push_local_commits,
+)
 from pynchy.http_server import (
-    _get_head_commit_message,
     _write_boot_warning,
     deps_key,
 )
@@ -75,36 +79,36 @@ def test_is_repo_dirty_failure():
 
 
 def test_get_head_commit_message_success():
-    """_get_head_commit_message returns commit subject."""
+    """get_head_commit_message returns commit subject."""
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = Mock(
             returncode=0,
             stdout="Add feature X\n",
         )
-        assert _get_head_commit_message() == "Add feature X"
+        assert get_head_commit_message() == "Add feature X"
 
 
 def test_get_head_commit_message_truncation():
-    """_get_head_commit_message truncates long subjects."""
+    """get_head_commit_message truncates long subjects."""
     long_msg = "A" * 80
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = Mock(returncode=0, stdout=f"{long_msg}\n")
-        result = _get_head_commit_message(max_length=72)
+        result = get_head_commit_message(max_length=72)
         assert len(result) == 72
         assert result.endswith("…")
 
 
 def test_get_head_commit_message_failure():
-    """_get_head_commit_message returns empty string on failure."""
+    """get_head_commit_message returns empty string on failure."""
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = Mock(returncode=1, stdout="")
-        assert _get_head_commit_message() == ""
+        assert get_head_commit_message() == ""
 
 
 def test_get_head_commit_message_exception():
-    """_get_head_commit_message returns empty string when subprocess raises."""
+    """get_head_commit_message returns empty string when subprocess raises."""
     with patch("subprocess.run", side_effect=OSError):
-        assert _get_head_commit_message() == ""
+        assert get_head_commit_message() == ""
 
 
 # ---------------------------------------------------------------------------
@@ -309,7 +313,7 @@ class TestHealthEndpoint(AioHTTPTestCase):
         with (
             patch("pynchy.http_server.get_head_sha", return_value="abc123"),
             patch(
-                "pynchy.http_server._get_head_commit_message",
+                "pynchy.http_server.get_head_commit_message",
                 return_value="Test commit",
             ),
             patch("pynchy.http_server.is_repo_dirty", return_value=False),
@@ -328,7 +332,7 @@ class TestHealthEndpoint(AioHTTPTestCase):
         """Health endpoint includes uptime_seconds."""
         with (
             patch("pynchy.http_server.get_head_sha", return_value="abc123"),
-            patch("pynchy.http_server._get_head_commit_message", return_value="Test"),
+            patch("pynchy.http_server.get_head_commit_message", return_value="Test"),
             patch("pynchy.http_server.is_repo_dirty", return_value=False),
         ):
             resp = await self.client.get("/health")

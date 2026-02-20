@@ -9,6 +9,7 @@ import signal
 import subprocess
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
@@ -76,6 +77,12 @@ async def finalize_deploy(
         active_sessions: Optional mapping of chat_jid → session_id for all
             active groups. Merged with the single session_id/chat_jid pair.
     """
+    # 0. Persist deploy metadata in router_state for /status endpoint
+    from pynchy.db import set_router_state
+
+    await set_router_state("last_deploy_at", datetime.now(UTC).isoformat())
+    await set_router_state("last_deploy_sha", commit_sha)
+
     # 1. Build merged active_sessions dict
     merged_sessions: dict[str, str] = dict(active_sessions) if active_sessions else {}
     if session_id and chat_jid:

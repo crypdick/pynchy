@@ -21,6 +21,7 @@ from pynchy.adapters import (
     SessionManager,
     UserMessageHandler,
 )
+from pynchy.config import get_settings
 from pynchy.container_runner import write_groups_snapshot as _write_groups_snapshot
 from pynchy.git_ops.utils import get_head_sha
 
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from pynchy.git_ops.sync import GitSyncDeps
     from pynchy.http_server import HttpDeps
     from pynchy.ipc import IpcDeps
+    from pynchy.status import StatusDeps
     from pynchy.task_scheduler import SchedulerDependencies
 
 
@@ -172,6 +174,58 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
             )
 
     return IpcDeps()
+
+
+def make_status_deps(app: PynchyApp) -> StatusDeps:
+    """Create the dependency object for the status collector."""
+    group_registry = GroupRegistry(app.workspaces)
+    session_manager = SessionManager(app.sessions, app._session_cleared)
+    metadata_manager = GroupMetadataManager(app.workspaces, app.channels, app.get_available_groups)
+
+    class _StatusDeps:
+        def is_shutting_down(self) -> bool:
+            return app._shutting_down
+
+        def get_channel_status(self) -> dict[str, bool]:
+            return {ch.name: ch.is_connected() for ch in metadata_manager.channels()}
+
+        def get_queue_snapshot(self) -> dict[str, Any]:
+            q = app.queue
+            per_group: dict[str, Any] = {}
+            for jid, state in q._groups.items():
+                # Resolve group folder for display
+                ws = app.workspaces.get(jid)
+                label = ws.folder if ws else jid
+                per_group[label] = {
+                    "active": state.active,
+                    "is_task": state.active_is_task,
+                    "pending_messages": state.pending_messages,
+                    "pending_tasks": len(state.pending_tasks),
+                }
+            return {
+                "active_containers": q._active_count,
+                "max_concurrent": get_settings().container.max_concurrent,
+                "groups_waiting": len(q._waiting_groups),
+                "per_group": per_group,
+            }
+
+        def get_gateway_info(self) -> dict[str, Any]:
+            from pynchy.container_runner.gateway import LiteLLMGateway, get_gateway
+
+            gw = get_gateway()
+            if gw is None:
+                return {"mode": "none"}
+            mode = "litellm" if isinstance(gw, LiteLLMGateway) else "builtin"
+            return {"mode": mode, "port": gw.port, "key": gw.key}
+
+        def get_active_sessions_count(self) -> int:
+            active = session_manager.get_active_sessions(group_registry.workspaces())
+            return len(active)
+
+        def get_workspace_count(self) -> int:
+            return len(app.workspaces)
+
+    return _StatusDeps()
 
 
 def make_git_sync_deps(app: PynchyApp) -> GitSyncDeps:
