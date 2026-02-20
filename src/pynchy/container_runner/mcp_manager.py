@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -390,6 +391,42 @@ class McpManager:
     def _api_url(self, path: str) -> str:
         return f"http://localhost:{self._gateway.port}{path}"
 
+    async def _api_request(
+        self,
+        session: aiohttp.ClientSession,
+        method: str,
+        path: str,
+        *,
+        json_data: dict[str, Any] | None = None,
+        log_event: str = "",
+        **log_kwargs: Any,
+    ) -> Any:
+        """Make a LiteLLM API request with standard error handling.
+
+        Returns parsed JSON on 2xx, ``None`` on failure.  Pass *log_event*
+        to emit a warning on non-2xx or network error; leave empty to
+        suppress failure logs (useful for best-effort deletes).
+        """
+        try:
+            async with session.request(
+                method,
+                self._api_url(path),
+                json=json_data,
+                headers=self._api_headers(),
+            ) as resp:
+                if resp.status in (200, 201):
+                    try:
+                        return await resp.json()
+                    except (aiohttp.ContentTypeError, ValueError):
+                        return True  # 2xx but no JSON body
+                if log_event:
+                    body = await resp.text()
+                    logger.warning(log_event, status=resp.status, body=body[:500], **log_kwargs)
+        except (aiohttp.ClientError, OSError) as exc:
+            if log_event:
+                logger.warning(log_event, error=str(exc), **log_kwargs)
+        return None
+
     async def _sync_mcp_endpoints(self) -> None:
         """Register/deregister MCP server endpoints in LiteLLM.
 
@@ -407,18 +444,16 @@ class McpManager:
             # NOTE: /v1/mcp/server returns a bare JSON array, not {"data": [...]}.
             # Collect ALL entries per name — there may be duplicates from earlier bugs.
             existing: dict[str, list[dict[str, Any]]] = {}  # name -> [{server_id, url, ...}]
-            try:
-                async with session.get(
-                    self._api_url("/v1/mcp/server"),
-                    headers=self._api_headers(),
-                ) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        for srv in data:
-                            name = srv.get("server_name", "")
-                            existing.setdefault(name, []).append(srv)
-            except (aiohttp.ClientError, OSError) as exc:
-                logger.warning("Failed to list MCP servers from LiteLLM", error=str(exc))
+            data = await self._api_request(
+                session,
+                "GET",
+                "/v1/mcp/server",
+                log_event="Failed to list MCP servers from LiteLLM",
+            )
+            if isinstance(data, list):
+                for srv in data:
+                    name = srv.get("server_name", "")
+                    existing.setdefault(name, []).append(srv)
 
             # ----------------------------------------------------------
             # For each desired instance, ensure exactly one registration
@@ -439,20 +474,14 @@ class McpManager:
                     else:
                         to_delete.append(entry.get("server_id", ""))
 
-                # Delete duplicates / stale-URL entries
+                # Delete duplicates / stale-URL entries (best-effort, no log on failure)
                 for sid in to_delete:
-                    try:
-                        async with session.delete(
-                            self._api_url(f"/v1/mcp/server/{sid}"),
-                            headers=self._api_headers(),
-                        ) as resp:
-                            logger.info(
-                                "Deleted duplicate MCP registration",
-                                instance_id=iid,
-                                server_id=sid,
-                            )
-                    except (aiohttp.ClientError, OSError):
-                        pass
+                    if await self._api_request(session, "DELETE", f"/v1/mcp/server/{sid}"):
+                        logger.info(
+                            "Deleted duplicate MCP registration",
+                            instance_id=iid,
+                            server_id=sid,
+                        )
 
                 # Skip creation if we already have a matching entry
                 if keep is not None:
@@ -479,34 +508,20 @@ class McpManager:
 
                 # Add auth if configured
                 if instance.server_config.auth_value_env:
-                    import os
-
                     auth_value = os.environ.get(instance.server_config.auth_value_env, "")
                     if auth_value:
                         payload["auth_value"] = auth_value
 
-                try:
-                    async with session.post(
-                        self._api_url("/v1/mcp/server"),
-                        json=payload,
-                        headers=self._api_headers(),
-                    ) as resp:
-                        if resp.status in (200, 201):
-                            logger.info("Registered MCP endpoint", instance_id=iid)
-                        else:
-                            body = await resp.text()
-                            logger.warning(
-                                "Failed to register MCP endpoint",
-                                instance_id=iid,
-                                status=resp.status,
-                                body=body[:500],
-                            )
-                except (aiohttp.ClientError, OSError) as exc:
-                    logger.warning(
-                        "Failed to register MCP endpoint",
-                        instance_id=iid,
-                        error=str(exc),
-                    )
+                result = await self._api_request(
+                    session,
+                    "POST",
+                    "/v1/mcp/server",
+                    json_data=payload,
+                    log_event="Failed to register MCP endpoint",
+                    instance_id=iid,
+                )
+                if result is not None:
+                    logger.info("Registered MCP endpoint", instance_id=iid)
 
             # ----------------------------------------------------------
             # Anything left in `existing` is not in self._instances —
@@ -515,14 +530,8 @@ class McpManager:
             for name, entries in existing.items():
                 for entry in entries:
                     sid = entry.get("server_id", "")
-                    try:
-                        async with session.delete(
-                            self._api_url(f"/v1/mcp/server/{sid}"),
-                            headers=self._api_headers(),
-                        ) as resp:
-                            logger.info("Deregistered stale MCP endpoint", name=name)
-                    except (aiohttp.ClientError, OSError):
-                        pass
+                    if await self._api_request(session, "DELETE", f"/v1/mcp/server/{sid}"):
+                        logger.info("Deregistered stale MCP endpoint", name=name)
 
     async def _sync_teams(self) -> None:
         """Create/update LiteLLM teams per workspace with MCP access control."""
@@ -563,24 +572,18 @@ class McpManager:
         instance_ids: list[str],
     ) -> str | None:
         """Create a LiteLLM team. Returns team_id or None on failure."""
-        payload = {
-            "team_alias": f"pynchy-mcp-{folder}",
-            "metadata": {"pynchy_workspace": folder},
-        }
-        try:
-            async with session.post(
-                self._api_url("/team/new"),
-                json=payload,
-                headers=self._api_headers(),
-            ) as resp:
-                if resp.status in (200, 201):
-                    data = await resp.json()
-                    return data.get("team_id")
-                body = await resp.text()
-                logger.warning("Failed to create team", workspace=folder, body=body[:500])
-        except (aiohttp.ClientError, OSError) as exc:
-            logger.warning("Failed to create team", workspace=folder, error=str(exc))
-        return None
+        data = await self._api_request(
+            session,
+            "POST",
+            "/team/new",
+            json_data={
+                "team_alias": f"pynchy-mcp-{folder}",
+                "metadata": {"pynchy_workspace": folder},
+            },
+            log_event="Failed to create team",
+            workspace=folder,
+        )
+        return data.get("team_id") if isinstance(data, dict) else None
 
     async def _create_key(
         self,
@@ -589,24 +592,18 @@ class McpManager:
         instance_ids: list[str],
     ) -> str | None:
         """Generate a LiteLLM virtual key for a team. Returns key or None."""
-        payload = {
-            "team_id": team_id,
-            "allowed_mcp_servers": instance_ids,
-        }
-        try:
-            async with session.post(
-                self._api_url("/key/generate"),
-                json=payload,
-                headers=self._api_headers(),
-            ) as resp:
-                if resp.status in (200, 201):
-                    data = await resp.json()
-                    return data.get("key")
-                body = await resp.text()
-                logger.warning("Failed to generate key", team_id=team_id, body=body[:500])
-        except (aiohttp.ClientError, OSError) as exc:
-            logger.warning("Failed to generate key", team_id=team_id, error=str(exc))
-        return None
+        data = await self._api_request(
+            session,
+            "POST",
+            "/key/generate",
+            json_data={
+                "team_id": team_id,
+                "allowed_mcp_servers": instance_ids,
+            },
+            log_event="Failed to generate key",
+            team_id=team_id,
+        )
+        return data.get("key") if isinstance(data, dict) else None
 
     async def _update_team(
         self,
@@ -615,41 +612,29 @@ class McpManager:
         instance_ids: list[str],
     ) -> None:
         """Update a team's metadata."""
-        payload = {
-            "team_id": team_id,
-            "metadata": {"allowed_mcp_servers": instance_ids},
-        }
-        try:
-            async with session.post(
-                self._api_url("/team/update"),
-                json=payload,
-                headers=self._api_headers(),
-            ) as resp:
-                if resp.status not in (200, 201):
-                    body = await resp.text()
-                    logger.warning("Failed to update team", team_id=team_id, body=body[:500])
-        except (aiohttp.ClientError, OSError) as exc:
-            logger.warning("Failed to update team", team_id=team_id, error=str(exc))
+        await self._api_request(
+            session,
+            "POST",
+            "/team/update",
+            json_data={
+                "team_id": team_id,
+                "metadata": {"allowed_mcp_servers": instance_ids},
+            },
+            log_event="Failed to update team",
+            team_id=team_id,
+        )
 
     async def _delete_team(self, team_id: str) -> None:
         """Delete a LiteLLM team."""
-        try:
-            async with (
-                aiohttp.ClientSession() as session,
-                session.post(
-                    self._api_url("/team/delete"),
-                    json={"team_ids": [team_id]},
-                    headers=self._api_headers(),
-                ) as resp,
-            ):
-                if resp.status not in (200, 201):
-                    logger.warning("Failed to delete team", team_id=team_id)
-        except (aiohttp.ClientError, OSError):
-            pass
-
-    # ------------------------------------------------------------------
-    # Internal: Docker health check
-    # ------------------------------------------------------------------
+        async with aiohttp.ClientSession() as session:
+            await self._api_request(
+                session,
+                "POST",
+                "/team/delete",
+                json_data={"team_ids": [team_id]},
+                log_event="Failed to delete team",
+                team_id=team_id,
+            )
 
     # ------------------------------------------------------------------
     # Internal: image warm-up
