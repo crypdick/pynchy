@@ -20,6 +20,20 @@ Only use manual commands when the service is unhealthy and needs fixing. See [re
 
 ## Quick Status Check
 
+**Preferred: the `/status` endpoint.** Single command that returns everything:
+
+```bash
+# On pynchy-server directly:
+curl -s http://localhost:8484/status | python3 -m json.tool
+
+# Remotely (via Tailscale):
+curl -s http://pynchy-server:8484/status | python3 -m json.tool
+```
+
+Returns JSON with: `service` (uptime), `deploy` (SHA, dirty, unpushed), `channels` (slack/whatsapp connected), `gateway` (LiteLLM health, model counts), `queue` (active containers, waiting groups), `repos` (per-repo worktree status — SHA, dirty, ahead/behind, conflicts), `messages` (inbound/outbound counts, last activity), `tasks` (scheduled tasks with status/next run), `host_jobs`, `groups` (total, active sessions).
+
+**Fallback: manual commands** (when the HTTP server is down or you need logs):
+
 ```bash
 # 1. Is the service running?
 systemctl --user status pynchy
