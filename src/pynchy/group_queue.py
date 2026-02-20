@@ -366,57 +366,48 @@ class GroupQueue:
 
         asyncio.ensure_future(_retry())
 
-    def _drain_group(self, group_jid: str) -> None:
-        """After a run finishes, start the next pending item for this group.
+    def _start_next_pending(self, group_jid: str) -> bool:
+        """Try to start the next pending item for *group_jid*.
 
         Messages are drained before tasks (human > autonomous priority).
-        If nothing is pending for this group, drains the global waiting queue.
+        Returns True if work was started, False if the group has nothing pending.
         """
-        if self._shutting_down:
-            return
-
         state = self._get_group(group_jid)
 
-        # Messages first — a human is waiting; tasks are autonomous and can wait.
         if state.pending_messages:
             state.active = True
             state.active_is_task = False
             state.pending_messages = False
             self._active_count += 1
             asyncio.ensure_future(self._run_for_group(group_jid, "drain"))
-            return
+            return True
 
-        # Then pending tasks
         if state.pending_tasks:
             task = state.pending_tasks.popleft()
             state.active = True
             state.active_is_task = True
             self._active_count += 1
             asyncio.ensure_future(self._run_task(group_jid, task))
+            return True
+
+        return False
+
+    def _drain_group(self, group_jid: str) -> None:
+        """After a run finishes, start the next pending item for this group.
+
+        If nothing is pending for this group, drains the global waiting queue.
+        """
+        if self._shutting_down:
             return
 
-        # Nothing pending for this group; check if other groups are waiting
-        self._drain_waiting()
+        if not self._start_next_pending(group_jid):
+            self._drain_waiting()
 
     def _drain_waiting(self) -> None:
         """Start runs for waiting groups until the concurrency limit is hit."""
         while self._waiting_groups and self._active_count < get_settings().container.max_concurrent:
             next_jid = self._waiting_groups.popleft()
-            state = self._get_group(next_jid)
-
-            # Messages first — same priority as _drain_group
-            if state.pending_messages:
-                state.active = True
-                state.active_is_task = False
-                state.pending_messages = False
-                self._active_count += 1
-                asyncio.ensure_future(self._run_for_group(next_jid, "drain"))
-            elif state.pending_tasks:
-                task = state.pending_tasks.popleft()
-                state.active = True
-                state.active_is_task = True
-                self._active_count += 1
-                asyncio.ensure_future(self._run_task(next_jid, task))
+            self._start_next_pending(next_jid)
 
     async def shutdown(self, grace_period_seconds: float) -> None:
         self._shutting_down = True

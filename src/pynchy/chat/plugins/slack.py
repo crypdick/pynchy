@@ -350,7 +350,8 @@ class SlackChannel:
         """
         if not since:
             logger.warning(
-                "fetch_inbound_since called without a cursor — reconciler should always provide one",
+                "fetch_inbound_since called without a cursor"
+                " — reconciler should always provide one",
                 channel_jid=channel_jid,
             )
             return []
