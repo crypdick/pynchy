@@ -19,7 +19,8 @@ Example TOML::
     port = 8080
     transport = "http"
     env = { SLACK_MCP_HOST = "0.0.0.0", SLACK_MCP_PORT = "8080" }
-    env_forward = { SLACK_MCP_XOXC_TOKEN = "SLACK_XOXC_ACME", SLACK_MCP_XOXD_TOKEN = "SLACK_XOXD_ACME" }
+    env_forward.SLACK_MCP_XOXC_TOKEN = "SLACK_XOXC_ACME"
+    env_forward.SLACK_MCP_XOXD_TOKEN = "SLACK_XOXD_ACME"
 
     [mcp_servers.some-remote-api]
     type = "url"
