@@ -26,7 +26,6 @@ The preferred runtime on macOS. Uses Apple's native container framework for lowe
 | Host Path | Container Path | Access | Groups |
 |-----------|---------------|---------|--------|
 | `groups/{name}/` | `/workspace/group` | Read-write | All |
-| `groups/global/` | `/workspace/global` | Readonly | Non-admin only |
 | `data/sessions/{group}/.claude/` | `/home/agent/.claude` | Read-write | All (isolated per-group) |
 | `container/scripts/` | `/workspace/scripts` | Readonly | All |
 | `container/agent_runner/src` | `/app/src` | Readonly | All (agent runner source) |
@@ -36,7 +35,8 @@ The preferred runtime on macOS. Uses Apple's native container framework for lowe
 | `{additional mounts}` | `/workspace/extra/*` | Configurable | Per containerConfig |
 
 **Notes:**
-- Groups with `pynchy_repo_access` receive worktree mounts instead of `groups/global/` (see `docs/usage/worktrees.md`)
+- Groups with `repo_access` receive a worktree mount at `/workspace/project` (see [Worktrees](../usage/worktrees.md))
+- Shared agent instructions are delivered via [directives](../usage/directives.md), not filesystem mounts
 - Apple Container requires `--mount "type=bind,source=...,target=...,readonly"` syntax for readonly mounts (the `:ro` suffix does not work)
 
 ## Container Configuration

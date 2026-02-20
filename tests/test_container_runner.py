@@ -335,7 +335,12 @@ class TestMountBuilding:
             # God should NOT have /workspace/global
             assert "/workspace/global" not in paths
 
-    def test_nongod_group_has_global_mount_when_exists(self, tmp_path: Path):
+    def test_nongod_group_has_no_global_mount(self, tmp_path: Path):
+        """Non-admin groups no longer get a /workspace/global mount.
+
+        Directives replaced the old global CLAUDE.md overlay — content is now
+        resolved host-side and passed via system_prompt_append.
+        """
         with (
             _patch_settings(tmp_path),
         ):
@@ -351,13 +356,9 @@ class TestMountBuilding:
             mounts = _build_volume_mounts(group, is_admin=False)
 
             paths = [m.container_path for m in mounts]
-            # Non-admin should NOT have /workspace/project
             assert "/workspace/project" not in paths
             assert "/workspace/group" in paths
-            assert "/workspace/global" in paths
-            # Global mount should be readonly
-            global_mount = next(m for m in mounts if m.container_path == "/workspace/global")
-            assert global_mount.readonly is True
+            assert "/workspace/global" not in paths
 
     def test_nongod_repo_access_uses_worktree_path(self, tmp_path: Path):
         """Non-admin group with repo_access + worktree_path mounts the worktree."""

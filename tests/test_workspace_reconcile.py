@@ -366,9 +366,7 @@ class TestReconcileWorkspaces:
         assert len(tasks) == 1
         assert tasks[0].context_mode == "isolated"
 
-    async def test_plugin_workspace_creates_task_and_seeds_claude_file(
-        self, db, groups_dir, tmp_path
-    ):
+    async def test_plugin_workspace_creates_task(self, db, groups_dir, tmp_path):
         fake_pm = SimpleNamespace(
             hook=SimpleNamespace(
                 pynchy_workspace_spec=lambda: [
@@ -381,7 +379,6 @@ class TestReconcileWorkspaces:
                             "prompt": "Run code improvements",
                             "context_mode": "isolated",
                         },
-                        "claude_md": "# Code Improver\\n\\nPlugin managed.",
                     }
                 ]
             )
@@ -404,8 +401,6 @@ class TestReconcileWorkspaces:
         assert len(tasks) == 1
         assert tasks[0].group_folder == "code-improver"
         assert tasks[0].repo_access == "owner/pynchy"
-        claude_path = tmp_path / "groups" / "code-improver" / "CLAUDE.md"
-        assert claude_path.exists()
 
     async def test_creates_aliases_for_groups_not_in_config(self, db, groups_dir):
         """Groups created via channel auto-registration should get aliases on other channels."""

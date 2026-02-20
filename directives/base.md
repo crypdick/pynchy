@@ -85,7 +85,6 @@ When working as a sub-agent or teammate, only use `send_message` if instructed t
 
 When the user mentions additional work items during a conversation, *always* add them to your todo list using the `TodoWrite` tool. This ensures nothing gets lost and provides visibility into what you're tracking.
 
-
 ## Your Workspace
 
 Files you create are saved in `/workspace/group/`. Use this for notes, research, or anything that should persist.

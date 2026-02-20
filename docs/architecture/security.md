@@ -144,15 +144,14 @@ Channel messages can contain malicious instructions that attempt to manipulate C
 - Review additional directory mounts carefully before adding
 - Review scheduled tasks periodically for unexpected behavior
 - Monitor logs for unusual activity
-- Use `groups/global/` for shared readonly resources only
 
 ## Privilege Comparison
 
 | Capability | Admin Group | Non-Admin Group |
 |------------|------------|----------------|
-| Project root access | `/workspace/project` (rw) | Via `pynchy_repo_access` (worktree, rw) |
+| Project root access | `/workspace/project` (rw) | Via `repo_access` (worktree, rw) |
 | Group folder | `/workspace/group` (rw) | `/workspace/group` (rw) |
-| Global memory | Implicit via project | `/workspace/global` (ro) |
+| System prompt directives | Scoped via config | Scoped via config |
 | `config.toml` | Mounted read-write | Not mounted |
 | Additional mounts | Configurable | Read-only unless allowed |
 | Network access | Unrestricted | Unrestricted |

@@ -323,6 +323,21 @@ class CalDAVConfig(_StrictModel):
     servers: dict[str, CalDAVServerConfig] = {}
 
 
+class DirectiveConfig(_StrictModel):
+    """A system prompt directive scoped to specific workspaces.
+
+    Scope values:
+    - "all" → matches every workspace
+    - Contains "/" → repo slug, matches workspaces whose repo_access equals it
+    - Otherwise → workspace folder name
+    - Can be a string or list (union of scopes)
+    - None (omitted) → never matches (logged as warning)
+    """
+
+    file: str
+    scope: str | list[str] | None = None
+
+
 class SecurityConfig(_StrictModel):
     blocked_patterns: list[str] = [
         ".ssh",
@@ -456,6 +471,7 @@ class Settings(BaseSettings):
     queue: QueueConfig = QueueConfig()
     channels: ChannelsConfig = ChannelsConfig()
     plugins: dict[str, PluginConfig] = {}
+    directives: dict[str, DirectiveConfig] = {}
     security: SecurityConfig = SecurityConfig()
     slack: SlackConfig = SlackConfig()
     caldav: CalDAVConfig = CalDAVConfig()

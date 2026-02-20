@@ -59,3 +59,4 @@ No configuration files to learn. Just tell Pynchy what you want:
 | [Memory](memory.md) | Structured memory tools, file-based memory, conversation archives |
 | [Scheduled tasks](scheduled-tasks.md) | Task types, MCP tools, execution model |
 | [Agent cores](agent-cores.md) | LLM framework selection, LiteLLM gateway |
+| [Directives](directives.md) | System prompt extensions, per-workspace scoping |

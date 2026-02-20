@@ -27,10 +27,9 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class WorkspaceSpec:
-    """Resolved workspace definition with optional seeded CLAUDE.md."""
+    """Resolved workspace definition."""
 
     config: WorkspaceConfig
-    claude_md: str | None = None
 
 
 _plugin_workspace_specs: dict[str, WorkspaceSpec] = {}
@@ -63,12 +62,7 @@ def configure_plugin_workspaces(plugin_manager: pluggy.PluginManager | None) -> 
             logger.exception("Invalid workspace config from plugin", folder=folder)
             continue
 
-        claude_md = spec.get("claude_md")
-        if claude_md is not None and not isinstance(claude_md, str):
-            logger.warning("Ignoring non-string claude_md in workspace spec", folder=folder)
-            claude_md = None
-
-        _plugin_workspace_specs[folder] = WorkspaceSpec(config=parsed, claude_md=claude_md)
+        _plugin_workspace_specs[folder] = WorkspaceSpec(config=parsed)
 
 
 def _workspace_specs() -> dict[str, WorkspaceSpec]:
@@ -80,10 +74,7 @@ def _workspace_specs() -> dict[str, WorkspaceSpec]:
     s = get_settings()
     merged = dict(_plugin_workspace_specs)
     for folder, cfg in s.workspaces.items():
-        plugin_spec = merged.get(folder)
-        merged[folder] = WorkspaceSpec(
-            config=cfg, claude_md=plugin_spec.claude_md if plugin_spec else None
-        )
+        merged[folder] = WorkspaceSpec(config=cfg)
     return merged
 
 
@@ -239,13 +230,6 @@ async def reconcile_workspaces(
             display_name = config.repo_access.replace("/", "--")
         else:
             display_name = folder.replace("-", " ").title()
-
-        if spec.claude_md:
-            claude_path = s.groups_dir / folder / "CLAUDE.md"
-            if not claude_path.exists():
-                claude_path.parent.mkdir(parents=True, exist_ok=True)
-                claude_path.write_text(spec.claude_md)
-                logger.info("Seeded workspace CLAUDE.md from plugin", folder=folder)
 
         # 1. Ensure the group is registered (create chat group if needed)
         jid = folder_to_jid.get(folder)

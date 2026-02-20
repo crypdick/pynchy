@@ -29,9 +29,7 @@ You don't need to manage categories yourself — the agent picks the right one b
 
 In addition to the structured memory tools above, agents have file-based storage:
 
-- **Per-group memory** — Each group has a folder under `groups/{name}/` with its own `CLAUDE.md`. The agent reads this on every run.
-- **Global memory** — `groups/global/CLAUDE.md` is shared read-only with all non-admin groups. Only the admin channel can write to it.
-- **Project-access groups** — Groups with `pynchy_repo_access` get a worktree mount instead of the global mount, and read `CLAUDE.md` from the project tree.
+- **Per-group memory** — Each group has a folder under `groups/{name}/`. The agent reads files here on every run.
 - **Files** — Groups can create and read files in their folder and reference them in conversations.
 
 ### Conversation Archives

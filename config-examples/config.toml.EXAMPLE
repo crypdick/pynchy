@@ -184,12 +184,9 @@ trigger = "always"
 # presets = ["dev-research"]                   # expands + merges with explicit values
 # allowed-origins = "internal.example.com"     # merged with preset domains
 
-# Example workspace with per-workspace env_forward (multi-tenant MCP):
+# Example workspace with Slack MCP (references a named server entry):
 # [workspaces.acme-1]
-# mcp_servers = ["slack_mcp"]
-#
-# [workspaces.acme-1.mcp.slack_mcp]
-# env_forward = { SLACK_MCP_XOXC_TOKEN = "SLACK_XOXC_ACME", SLACK_MCP_XOXD_TOKEN = "SLACK_XOXD_ACME" }
+# mcp_servers = ["slack_mcp_acme"]
 
 # Example admin workspace with unrestricted MCP access:
 # [workspaces.admin]
@@ -274,19 +271,19 @@ trigger = "always"
 # port = 8931
 # transport = "sse"
 # idle_timeout = 600          # seconds; 0 = never stop
-# env = { DISPLAY = ":99" }      # static env vars passed to the container
-# env_forward = ["MY_SECRET"]    # container env var names needed (see workspace-level mapping below)
+# env = { DISPLAY = ":99" }                            # static env vars
+# env_forward = ["MY_SECRET"]                           # forward host vars (identity mapping)
+# env_forward = { CONTAINER_VAR = "HOST_VAR" }          # or explicit mapping (container ← host)
 
 # Slack MCP (read-only Slack access via browser tokens):
-# [mcp_servers.slack_mcp]
+# One entry per Slack workspace — each gets its own container and tokens.
+# [mcp_servers.slack_mcp_acme]
 # type = "docker"
 # image = "ghcr.io/korotovsky/slack-mcp-server:latest"
 # port = 8080
 # transport = "http"
 # env = { SLACK_MCP_HOST = "0.0.0.0", SLACK_MCP_PORT = "8080" }
-# env_forward = ["SLACK_MCP_XOXC_TOKEN", "SLACK_MCP_XOXD_TOKEN"]
-# # ↑ server-level list documents what the container expects;
-# #   workspace-level env_forward (dict) maps to actual host vars
+# env_forward = { SLACK_MCP_XOXC_TOKEN = "SLACK_XOXC_ACME", SLACK_MCP_XOXD_TOKEN = "SLACK_XOXD_ACME" }
 
 # Remote URL-based MCP:
 # [mcp_servers.remote-api]
@@ -322,3 +319,35 @@ trigger = "always"
 
 # [security]
 # blocked_patterns = [".ssh", ".gnupg", ".gpg", ".aws", ...]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Directives (System Prompt Extensions)
+# ─────────────────────────────────────────────────────────────────────────────
+# Directives inject markdown content into agent system prompts. Each directive
+# has a file (relative to project root) and a scope that controls which
+# workspaces receive it.
+#
+# Scope values:
+#   "all"              → matches every workspace
+#   "folder-name"      → matches a specific workspace folder
+#   "owner/repo"       → matches workspaces whose repo_access equals this slug
+#   ["a", "b"]         → union of multiple scopes
+#
+# Directives are sorted by key name and concatenated with "---" separators.
+# Files ending in .EXAMPLE are automatically ignored.
+
+# [directives.base]
+# file = "directives/base.md"
+# scope = "all"
+
+# [directives.idle-escape]
+# file = "directives/idle-escape.md"
+# scope = "all"
+
+# [directives.admin-ops]
+# file = "directives/admin-ops.md"
+# scope = ["admin-1", "admin-2"]
+
+# [directives.pynchy-dev]
+# file = "directives/pynchy-dev.md"
+# scope = "crypdick/pynchy"

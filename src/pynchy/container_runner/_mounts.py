@@ -51,9 +51,6 @@ def _build_volume_mounts(
         mounts.append(VolumeMount(str(group_dir), "/workspace/group", readonly=False))
     else:
         mounts.append(VolumeMount(str(group_dir), "/workspace/group", readonly=False))
-        global_dir = s.groups_dir / "global"
-        if global_dir.exists():
-            mounts.append(VolumeMount(str(global_dir), "/workspace/global", readonly=True))
 
     # Per-group Claude sessions directory (isolated from other groups)
     session_dir = s.data_dir / "sessions" / group.folder / ".claude"
