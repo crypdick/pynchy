@@ -349,6 +349,10 @@ class SlackChannel:
         Returns messages with ``chat_jid`` set to the given ``channel_jid``.
         """
         if not since:
+            logger.warning(
+                "fetch_inbound_since called without a cursor — reconciler should always provide one",
+                channel_jid=channel_jid,
+            )
             return []
         channel_id = _channel_id_from_jid(channel_jid)
         since_epoch = str(datetime.fromisoformat(since).timestamp())

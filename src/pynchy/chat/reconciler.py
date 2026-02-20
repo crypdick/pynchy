@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from pynchy.types import Channel, NewMessage, WorkspaceProfile
 
 RECONCILE_COOLDOWN = timedelta(seconds=90)
+_INITIAL_LOOKBACK = timedelta(hours=24)
 _EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
 
 # Module-level cooldown state (survives across calls within a process)
@@ -74,6 +75,14 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
 
             # --- Inbound ---
             inbound_cursor = await get_channel_cursor(ch.name, canonical_jid, "inbound")
+            if not inbound_cursor:
+                # No cursor yet — channel was never reconciled (e.g. a
+                # Slack-native workspace with no cross-channel aliases).
+                # Seed with a lookback so Socket Mode drops are recoverable
+                # from the first cycle onward.  The cursor advances
+                # naturally as messages are walked.
+                inbound_cursor = (now - _INITIAL_LOOKBACK).isoformat()
+
             try:
                 remote_messages = await ch.fetch_inbound_since(target_jid, inbound_cursor)
             except Exception:
