@@ -53,6 +53,9 @@ class McpServerConfig(BaseModel):
     #   list[str] — identity mapping (host var name = container var name)
     #   dict[str, str] — explicit mapping {container_var: host_var}
     env_forward: dict[str, str] = {}
+    # Volume mounts passed as -v flags. Each entry is "host_path:container_path".
+    # Relative host paths are resolved from project_root.
+    volumes: list[str] = []
 
     @field_validator("env_forward", mode="before")
     @classmethod
