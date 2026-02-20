@@ -142,7 +142,6 @@ class TestCreatePeriodicAgent:
         assert "agent@g.us" in deps.workspaces()
         group = deps.workspaces()["agent@g.us"]
         assert group.folder == "daily-briefing"
-        assert group.requires_trigger is False
 
         # 6. Scheduled task created
         tasks = await get_all_tasks()

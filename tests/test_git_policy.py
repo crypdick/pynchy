@@ -566,6 +566,8 @@ class TestBackgroundMergePolicy:
 
         mock_task.assert_called_once()
         assert "worktree-merge-agent-1" in str(mock_task.call_args)
+        # Close the unawaited coroutine created by asyncio.to_thread()
+        mock_task.call_args[0][0].close()
 
     def test_pr_policy_calls_pr_workflow(self):
         """pull-request policy dispatches to host_create_pr_from_worktree."""
@@ -589,6 +591,8 @@ class TestBackgroundMergePolicy:
 
         mock_task.assert_called_once()
         assert "worktree-pr-agent-1" in str(mock_task.call_args)
+        # Close the unawaited coroutine created by asyncio.to_thread()
+        mock_task.call_args[0][0].close()
 
     def test_no_repo_access_does_nothing(self):
         """Groups without repo_access skip entirely."""

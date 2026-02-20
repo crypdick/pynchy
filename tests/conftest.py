@@ -149,15 +149,17 @@ def reset_settings(monkeypatch):
 
 
 @pytest.fixture(autouse=True, scope="session")
-async def _close_test_database():
+def _close_test_database():
     """Close the aiosqlite connection after all tests complete.
 
     Uses ``stop()`` + thread join rather than ``await close()`` because
     the connection was created on a function-scoped event loop (during a
-    test), while this session fixture tears down on the session loop.
-    ``await close()`` hangs across loop boundaries; ``stop()`` bypasses
-    the event loop by putting the close command directly on the worker
-    thread's queue.
+    test).  ``stop()`` bypasses the event loop by putting the close
+    command directly on the worker thread's queue.
+
+    This is a sync fixture so it runs during session teardown regardless
+    of event loop state — avoids the race where pytest-xdist workers
+    close the loop before an async session fixture can tear down.
     """
     yield
     import pynchy.db._connection as db_conn

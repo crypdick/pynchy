@@ -51,7 +51,7 @@ This means editing `config.toml` and restarting the service is all that's needed
 | `schedule` | `str` | Cron expression for periodic execution |
 | `prompt` | `str` | Prompt sent to the agent on each scheduled run |
 | `context_mode` | `str` | `"group"` (shared session) or `"isolated"` (fresh each time) |
-| `requires_trigger` | `bool` | Whether messages need the @mention prefix |
+| `trigger` | `str` | `"mention"` (default) or `"always"` — whether @mention is required |
 | `name` | `str` | Display name (defaults to folder titlecased) |
 | `security` | `dict` | MCP tool access control and rate limiting |
 
