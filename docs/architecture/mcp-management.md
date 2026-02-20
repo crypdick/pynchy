@@ -44,6 +44,60 @@ config.toml
 
 **Kwargs as Docker flags.** Per-workspace MCP config (`[workspaces.X.mcp.Y]`) is arbitrary key-value pairs. For Docker MCPs, each becomes `--key value` appended to the container's args. Pynchy never interprets these — the MCP server itself enforces them (e.g., Playwright's `--allowed-origins`).
 
+## Environment variables
+
+Many MCP servers configure via environment variables rather than CLI args. Two fields on `McpServerConfig` support this:
+
+**`env`** — static key-value pairs passed as `-e KEY=VALUE` to the Docker container. Use for non-secret configuration like bind addresses and ports.
+
+**`env_forward`** — a list of host environment variable names. Each is resolved from `os.environ` at container start time and passed as `-e KEY=VALUE`. Use for secrets that live in `.env` on the host. If a variable is not set, pynchy logs a warning and skips it (the container still starts).
+
+```toml
+[mcp_servers.example]
+type = "docker"
+image = "example/mcp-server:latest"
+port = 8080
+transport = "http"
+env = { MCP_HOST = "0.0.0.0", MCP_PORT = "8080" }
+env_forward = ["MCP_API_SECRET"]
+```
+
+The distinction keeps secrets out of `config.toml` (which is committed to the repo) while keeping non-secret config visible and declarative.
+
+## Worked example: Slack MCP
+
+[korotovsky/slack-mcp-server](https://github.com/korotovsky/slack-mcp-server) provides read-only Slack access (channels, messages, users) via browser tokens. Here's how to add it:
+
+### 1. Define the server in `config.toml`
+
+```toml
+[mcp_servers.slack_mcp]
+type = "docker"
+image = "ghcr.io/korotovsky/slack-mcp-server:latest"
+port = 8080
+transport = "http"
+env = { SLACK_MCP_HOST = "0.0.0.0", SLACK_MCP_PORT = "8080" }
+env_forward = ["SLACK_MCP_XOXC_TOKEN", "SLACK_MCP_XOXD_TOKEN"]
+```
+
+### 2. Add tokens to `.env`
+
+Extract `xoxc` and `xoxd` browser tokens following the [upstream authentication guide](https://github.com/korotovsky/slack-mcp-server/blob/master/docs/01-authentication-setup.md):
+
+```
+SLACK_MCP_XOXC_TOKEN=xoxc-...
+SLACK_MCP_XOXD_TOKEN=xoxd-...
+```
+
+### 3. Grant workspace access
+
+```toml
+[workspaces.my-workspace]
+mcp_servers = ["slack_mcp"]
+```
+
+The Slack MCP container starts on-demand when an agent in that workspace first needs it. Tools like `channels_list`, `channels_history`, and `users_list` become available to the agent.
+
 ## Files
 
 | File | Purpose |

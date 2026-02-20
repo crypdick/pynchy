@@ -196,12 +196,16 @@ class McpManager:
         port = instance.server_config.port
         publish_args = ["-p", f"{port}:{port}"] if port else []
 
+        # Build -e flags from static env and forwarded host env vars
+        env_args = _build_env_args(instance.server_config)
+
         run_docker(
             "run", "-d",
             "--name", instance.container_name,
             "--network", _NETWORK_NAME,
             "--restart", "unless-stopped",
             *publish_args,
+            *env_args,
             instance.server_config.image or "",
             *cmd_args,
         )  # fmt: skip
@@ -705,6 +709,20 @@ def _kwargs_to_args(kwargs: dict[str, str]) -> list[str]:
     args: list[str] = []
     for key, value in sorted(kwargs.items()):
         args.extend([f"--{key}", value])
+    return args
+
+
+def _build_env_args(config: McpServerConfig) -> list[str]:
+    """Build ``-e KEY=VALUE`` Docker flags from ``env`` and ``env_forward``."""
+    args: list[str] = []
+    for key, value in sorted(config.env.items()):
+        args.extend(["-e", f"{key}={value}"])
+    for key in config.env_forward:
+        value = os.environ.get(key)
+        if value is None:
+            logger.warning("env_forward var not set on host — skipping", var=key)
+            continue
+        args.extend(["-e", f"{key}={value}"])
     return args
 
 
