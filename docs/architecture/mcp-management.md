@@ -50,9 +50,9 @@ Many MCP servers configure via environment variables rather than CLI args. Two f
 
 **`env`** — static key-value pairs passed as `-e KEY=VALUE` to the Docker container. Use for non-secret configuration like bind addresses and ports.
 
-**`env_forward`** (server level) — a list of container env var names the MCP server expects. Serves as documentation of what the image needs. Falls back to identity mapping (host var = container var) if no workspace override is present.
+**`env_forward`** (server level) — a list of container env var names the MCP server expects. Documents what the image needs; has no runtime effect. Pynchy warns at boot if a workspace uses the server without providing a mapping.
 
-**`env_forward`** (workspace level, recommended) — a dict mapping container var names to host var names. Each workspace explicitly declares which host secrets to inject, enabling multi-tenant MCP: same server image, different credentials per workspace. Different env_forward mappings produce different container instances (separate hash → separate Docker container). If a host var is not set, pynchy logs a warning and skips it (the container still starts).
+**`env_forward`** (workspace level) — a dict mapping container var names to host var names. Each workspace explicitly declares which host secrets to inject. There is no fallback — if a workspace doesn't provide a mapping, no env vars are forwarded. Different env_forward mappings produce different container instances (separate hash → separate Docker container). If a host var is not set, pynchy logs a warning and skips it (the container still starts).
 
 ```toml
 # Server declares what env vars the container expects
