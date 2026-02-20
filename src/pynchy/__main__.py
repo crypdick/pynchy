@@ -18,6 +18,10 @@ _DEFAULT_HOST = f"localhost:{_DEFAULT_PORT}"
 
 
 def _run() -> None:
+    from dotenv import load_dotenv
+
+    load_dotenv()  # Make .env vars available in os.environ for env_forward, etc.
+
     from pynchy.app import PynchyApp
 
     app = PynchyApp()
