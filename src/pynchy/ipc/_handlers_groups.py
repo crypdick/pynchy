@@ -98,7 +98,7 @@ async def _handle_create_periodic_agent(
         schedule=schedule,
         prompt=prompt,
         context_mode=context_mode,
-        requires_trigger=False,
+        trigger="always",
     )
     add_workspace_to_toml(name, config)
 
@@ -121,7 +121,6 @@ async def _handle_create_periodic_agent(
         folder=name,
         trigger=f"@{s.agent.name}",
         added_at=datetime.now(UTC).isoformat(),
-        requires_trigger=False,
     )
     deps.register_workspace(profile)
 

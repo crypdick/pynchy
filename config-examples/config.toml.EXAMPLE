@@ -155,7 +155,7 @@
 # Defaults applied to workspaces that don't override these fields.
 
 [workspace_defaults]
-# requires_trigger = true
+# trigger = "mention"  # "mention" (default) or "always"
 # context_mode = "group"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -167,13 +167,13 @@
 [workspaces.admin-1]
 name = "Admin"
 is_admin = true
-requires_trigger = false
+trigger = "always"
 # repo_access = "owner/repo"  # GitHub slug from [repos.*]; grants /workspace/project mount
 
 [workspaces.admin-2]
 name = "Mr Pynchy"
 is_admin = true
-requires_trigger = false
+trigger = "always"
 # repo_access = "owner/repo"
 
 # Example workspace with MCP access and per-MCP kwargs:

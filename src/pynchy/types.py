@@ -87,7 +87,6 @@ class WorkspaceProfile:
 
     # Communication
     trigger: str  # @mention to activate (e.g., "@Pynchy")
-    requires_trigger: bool = True  # Whether trigger is required (False for 1-on-1 chats)
 
     # Container runtime
     container_config: ContainerConfig | None = None

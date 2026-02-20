@@ -100,10 +100,6 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
     config = spec.config
 
     # Apply workspace defaults for None fields
-    if config.requires_trigger is None:
-        config = config.model_copy(
-            update={"requires_trigger": s.workspace_defaults.requires_trigger}
-        )
     if config.context_mode is None:
         config = config.model_copy(update={"context_mode": s.workspace_defaults.context_mode})
 
@@ -234,12 +230,6 @@ async def reconcile_workspaces(
     reconciled = 0
     for folder, spec in specs.items():
         config = spec.config
-        # Apply defaults
-        requires_trigger = (
-            config.requires_trigger
-            if config.requires_trigger is not None
-            else s.workspace_defaults.requires_trigger
-        )
         context_mode = config.context_mode or s.workspace_defaults.context_mode
 
         if config.name:
@@ -278,7 +268,6 @@ async def reconcile_workspaces(
                 folder=folder,
                 trigger=f"@{s.agent.name}",
                 added_at=datetime.now(UTC).isoformat(),
-                requires_trigger=requires_trigger,
                 is_admin=config.is_admin,
             )
             await register_fn(profile)
