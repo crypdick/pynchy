@@ -40,7 +40,6 @@ def test_workspace_profile_minimal():
     assert profile.name == "Test Workspace"
     assert profile.folder == "test-workspace"
     assert profile.trigger == "@Pynchy"
-    assert profile.requires_trigger is True  # Default
     assert profile.container_config is None
     assert isinstance(profile.security, WorkspaceSecurity)
     assert profile.added_at == ""

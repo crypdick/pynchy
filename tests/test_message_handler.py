@@ -88,13 +88,11 @@ def _make_group(
     name: str = "test-group",
     folder: str = "test-group",
     is_admin: bool = False,
-    requires_trigger: bool | None = True,
 ) -> MagicMock:
     group = MagicMock()
     group.name = name
     group.folder = folder
     group.is_admin = is_admin
-    group.requires_trigger = requires_trigger
     return group
 
 
@@ -474,7 +472,7 @@ class TestProcessGroupMessages:
     @pytest.mark.asyncio
     async def test_non_admin_trigger_required_but_missing(self, tmp_path):
         """Non-admin group, required trigger missing → skip."""
-        group = _make_group(is_admin=False, requires_trigger=True)
+        group = _make_group(is_admin=False)
         deps = _make_deps(groups={"g@g.us": group})
         msg = _make_message("hello")
 

@@ -109,49 +109,45 @@ class TestFormatOutbound:
         assert result == "🦞 The answer is 42"
 
 
-# --- Trigger gating with requiresTrigger flag ---
+# --- Trigger gating with trigger field ---
 
 
 class TestTriggerGating:
-    """Replicates the trigger gating logic from the orchestrator."""
+    """Replicates the trigger gating logic from the orchestrator.
 
-    @staticmethod
-    def _should_require_trigger(is_admin_group: bool, requires_trigger: bool | None) -> bool:
-        return not is_admin_group and requires_trigger is not False
+    trigger="mention" + non-admin → require @mention in message.
+    trigger="always" or admin group → always process.
+    """
 
     @staticmethod
     def _should_process(
         is_admin_group: bool,
-        requires_trigger: bool | None,
+        trigger: str,
         messages: list[NewMessage],
     ) -> bool:
-        if not TestTriggerGating._should_require_trigger(is_admin_group, requires_trigger):
+        if is_admin_group or trigger == "always":
             return True
         return any(TRIGGER_PATTERN.search(m.content.strip()) for m in messages)
 
-    def test_god_group_always_processes(self, make_msg):
+    def test_admin_group_always_processes(self, make_msg):
         msgs = [make_msg(content="hello no trigger")]
-        assert self._should_process(True, None, msgs)
+        assert self._should_process(True, "mention", msgs)
 
-    def test_god_group_processes_even_with_requires_trigger_true(self, make_msg):
+    def test_admin_group_with_trigger_always(self, make_msg):
         msgs = [make_msg(content="hello no trigger")]
-        assert self._should_process(True, True, msgs)
+        assert self._should_process(True, "always", msgs)
 
-    def test_non_god_defaults_to_requiring_trigger(self, make_msg):
+    def test_non_admin_mention_requires_trigger(self, make_msg):
         msgs = [make_msg(content="hello no trigger")]
-        assert not self._should_process(False, None, msgs)
+        assert not self._should_process(False, "mention", msgs)
 
-    def test_non_god_with_requires_trigger_true(self, make_msg):
-        msgs = [make_msg(content="hello no trigger")]
-        assert not self._should_process(False, True, msgs)
-
-    def test_non_god_processes_when_trigger_present(self, make_msg):
+    def test_non_admin_mention_processes_when_trigger_present(self, make_msg):
         msgs = [make_msg(content="@pynchy do something")]
-        assert self._should_process(False, True, msgs)
+        assert self._should_process(False, "mention", msgs)
 
-    def test_non_god_with_requires_trigger_false_always_processes(self, make_msg):
+    def test_non_admin_always_processes_without_trigger(self, make_msg):
         msgs = [make_msg(content="hello no trigger")]
-        assert self._should_process(False, False, msgs)
+        assert self._should_process(False, "always", msgs)
 
 
 # --- parseHostTag ---

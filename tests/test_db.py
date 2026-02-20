@@ -1191,8 +1191,7 @@ class TestEnsureColumns:
                 folder TEXT NOT NULL UNIQUE,
                 trigger_pattern TEXT NOT NULL,
                 added_at TEXT NOT NULL,
-                container_config TEXT,
-                requires_trigger INTEGER DEFAULT 1
+                container_config TEXT
             );
         """)
 

@@ -231,5 +231,12 @@ class TestDefaultAgentCoreConfig:
         """Nested env override maps to settings.agent.core."""
         from pynchy.config import Settings
 
-        with patch.dict("os.environ", {"AGENT__CORE": "openai"}, clear=False):
+        # Provide the full agent section via env — the explicit-fields
+        # validator requires all fields when a section is partially set.
+        env = {
+            "AGENT__CORE": "openai",
+            "AGENT__NAME": "pynchy",
+            "AGENT__TRIGGER_ALIASES": '["ghost"]',
+        }
+        with patch.dict("os.environ", env, clear=False):
             assert Settings().agent.core == "openai"

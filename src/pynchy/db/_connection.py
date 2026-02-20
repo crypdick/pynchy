@@ -196,7 +196,6 @@ CREATE TABLE IF NOT EXISTS registered_groups (
     trigger_pattern TEXT NOT NULL,
     added_at TEXT NOT NULL,
     container_config TEXT,
-    requires_trigger INTEGER DEFAULT 1,
     security_profile TEXT,
     is_god INTEGER DEFAULT 0,
     is_admin INTEGER DEFAULT 0
