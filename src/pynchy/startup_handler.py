@@ -247,7 +247,6 @@ async def setup_admin_group(deps: StartupDeps, default_channel: Any | None) -> N
         folder=s.agent.name,
         trigger=f"@{s.agent.name}",
         added_at=datetime.now(UTC).isoformat(),
-        requires_trigger=False,
         is_admin=True,
         security=WorkspaceSecurity(default_risk_tier="always-approve"),
     )

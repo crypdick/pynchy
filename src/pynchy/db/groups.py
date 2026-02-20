@@ -55,14 +55,11 @@ def _row_to_workspace_profile(row) -> WorkspaceProfile:
             err=str(exc),
         )
 
-    requires_trigger = True if row["requires_trigger"] is None else row["requires_trigger"] == 1
-
     return WorkspaceProfile(
         jid=row["jid"],
         name=row["name"],
         folder=row["folder"],
         trigger=row["trigger_pattern"],
-        requires_trigger=requires_trigger,
         container_config=container_config,
         security=security,
         is_admin=bool(row["is_admin"]),
@@ -111,8 +108,8 @@ async def set_workspace_profile(profile: WorkspaceProfile) -> None:
     await db.execute(
         """INSERT OR REPLACE INTO registered_groups
             (jid, name, folder, trigger_pattern, added_at,
-             container_config, requires_trigger, security_profile, is_admin)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             container_config, security_profile, is_admin)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             profile.jid,
             profile.name,
@@ -120,7 +117,6 @@ async def set_workspace_profile(profile: WorkspaceProfile) -> None:
             profile.trigger,
             profile.added_at,
             json.dumps(asdict(profile.container_config)) if profile.container_config else None,
-            1 if profile.requires_trigger else 0,
             json.dumps(security_data),
             1 if profile.is_admin else 0,
         ),

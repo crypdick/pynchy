@@ -133,7 +133,6 @@ class ChannelOverrideConfig(_StrictModel):
 
 
 class WorkspaceDefaultsConfig(_StrictModel):
-    requires_trigger: bool = True
     context_mode: Literal["group", "isolated"] = "group"
     access: Literal["read", "write", "readwrite"] = "readwrite"
     mode: Literal["agent", "chat"] = "agent"
@@ -199,7 +198,6 @@ class RepoConfig(_StrictModel):
 class WorkspaceConfig(_StrictModel):
     name: str  # display name — required, no silent defaults
     is_admin: bool = False
-    requires_trigger: bool | None = None  # None → use workspace_defaults (deprecated)
     repo_access: str | None = None  # GitHub slug (owner/repo) from [repos.*]; None = no worktree
     schedule: str | None = None  # cron expression
     prompt: str | None = None  # prompt for scheduled tasks
@@ -578,9 +576,6 @@ def resolve_channel_config(
     2. workspaces.<name>.channels.<plugin_name>
     3. workspaces.<name>.*
     4. workspace_defaults.*
-
-    Backward compat: if workspace has requires_trigger but no new trigger
-    field, map it: True → "mention", False → "always".
     """
     from pynchy.types import ResolvedChannelConfig
 
