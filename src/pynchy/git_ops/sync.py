@@ -51,6 +51,8 @@ class GitSyncDeps(Protocol):
 
     async def broadcast_system_notice(self, jid: str, text: str) -> None: ...
 
+    def has_active_session(self, group_folder: str) -> bool: ...
+
     def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
     async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None: ...
@@ -413,9 +415,22 @@ async def host_notify_worktree_updates(
     - Clean + rebase fails: DON'T abort — notify "conflicts, run git status to fix"
     - Dirty (uncommitted): skip rebase, notify "commit or stash, then sync"
 
-    Always uses system_notice so the LLM sees the notification as a pseudo
-    system message (the Anthropic SDK doesn't support injecting system messages,
-    so we store them as user messages with a [System Notice] prefix).
+    Notification routing depends on session state:
+    - Active conversation (has message history, regardless of whether the
+      container is currently running): system_notice → LLM sees it on next
+      wake, so it can act on conflicts or review changes.
+    - No conversation (session was cleared or never started — no message
+      history): host_message → human sees it in the channel, but the LLM
+      never does.
+
+    This distinction matters because system_notices persist in the DB and
+    become part of the conversation history. If a workspace has no ongoing
+    conversation, rebase notices accumulate and pollute the start of the
+    next session with irrelevant "main was updated 5 times" spam. The agent
+    gets current worktree state from ephemeral system_notices in
+    agent_runner.py at container launch — those are always fresh. Persistent
+    system_notice messages should only be stored when the agent has an
+    active conversation that the notification is relevant to.
     """
     global _last_worktree_notified_sha
 
@@ -450,7 +465,13 @@ async def host_notify_worktree_updates(
         if behind.returncode != 0 or behind_n == 0:
             continue  # up to date or can't check
 
-        notify = deps.broadcast_system_notice
+        # Route based on whether the workspace has an ongoing conversation.
+        # Active conversation → system_notice (LLM-visible).
+        # No conversation (cleared/never started) → host_message (human-only).
+        if deps.has_active_session(group_folder):
+            notify = deps.broadcast_system_notice
+        else:
+            notify = deps.broadcast_host_message
 
         # Check for uncommitted changes
         status = run_git("status", "--porcelain", cwd=entry)

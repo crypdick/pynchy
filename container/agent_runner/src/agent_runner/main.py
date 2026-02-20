@@ -239,15 +239,11 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
     if not container_input.is_admin and global_claude_md_path.exists():
         system_prompt_append = global_claude_md_path.read_text()
 
-    # Append system notices to system prompt (SDK system messages FOR the LLM)
-    # These provide context TO the LLM, distinct from operational host messages.
-    # Examples: git health warnings, uncommitted changes, deployment state
-    if container_input.system_notices:
-        notices_text = "\n\n".join(container_input.system_notices)
-        if system_prompt_append:
-            system_prompt_append += "\n\n" + notices_text
-        else:
-            system_prompt_append = notices_text
+    # IMPORTANT: Do NOT append ephemeral per-run content (system notices, dirty
+    # worktree warnings, etc.) to the system prompt. Changing the system prompt
+    # between session resumes invalidates the entire KV cache, forcing the API
+    # to reprocess the full conversation history — expensive in both tokens and
+    # latency. System notices are prepended to the user prompt in main() instead.
 
     # MCP server path for agent tools
     mcp_server_command = "python"
@@ -402,6 +398,15 @@ async def main() -> None:
             "Calling finished_work() merges any un-synced commits (safety net) "
             "and terminates this container. Do NOT continue work after calling it.\n\n" + prompt
         )
+
+    # Prepend system notices as part of the user message rather than the system
+    # prompt. This is ephemeral per-run context (dirty worktree, unpushed commits)
+    # that must NOT go in the system prompt — see build_core_config() comment.
+    if container_input.system_notices:
+        notices_text = "\n".join(
+            f"[System Notice] {notice}" for notice in container_input.system_notices
+        )
+        prompt = notices_text + "\n\n" + prompt
 
     # Drain any pending IPC messages into initial prompt
     pending = drain_ipc_input()

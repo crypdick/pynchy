@@ -153,6 +153,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         sync_group_metadata = metadata_manager.sync_group_metadata
         get_available_groups = metadata_manager.get_available_groups
         write_groups_snapshot = staticmethod(_write_groups_snapshot)
+        has_active_session = session_manager.has_active_session
         clear_session = session_manager.clear_session
         clear_chat_history = registration_manager.clear_chat_history
         enqueue_message_check = queue_manager.enqueue_message_check
@@ -182,6 +183,9 @@ def make_git_sync_deps(app: PynchyApp) -> GitSyncDeps:
     class GitSyncDeps:
         broadcast_host_message = host_broadcaster.broadcast_host_message
         broadcast_system_notice = host_broadcaster.broadcast_system_notice
+
+        def has_active_session(self, group_folder: str) -> bool:
+            return session_manager.has_active_session(group_folder)
 
         def workspaces(self) -> dict[str, Any]:
             return group_registry.workspaces()

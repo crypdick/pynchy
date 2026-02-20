@@ -180,11 +180,19 @@ class TestHostSyncWorktree:
 
 
 class TestHostNotifyWorktreeUpdates:
-    def _make_deps(self, groups: dict) -> Mock:
-        """Create a mock deps."""
+    def _make_deps(self, groups: dict, *, active_sessions: set[str] | None = None) -> Mock:
+        """Create a mock deps.
+
+        Args:
+            active_sessions: Group folders with active sessions. Defaults to
+                all groups (preserves pre-session-aware behavior in old tests).
+        """
+        if active_sessions is None:
+            active_sessions = {g.folder for g in groups.values()}
         deps = Mock()
         deps.broadcast_host_message = AsyncMock()
         deps.broadcast_system_notice = AsyncMock()
+        deps.has_active_session = lambda folder: folder in active_sessions
         deps.workspaces.return_value = groups
         return deps
 
@@ -359,8 +367,8 @@ class TestHostNotifyWorktreeUpdates:
         deps.broadcast_host_message.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_always_uses_system_notice(self, git_env: dict):
-        """All worktree notifications use system_notice (pseudo system messages)."""
+    async def test_active_session_uses_system_notice(self, git_env: dict):
+        """Active sessions get system_notice so the LLM sees the notification."""
         project = git_env["project"]
         repo_ctx = git_env["repo_ctx"]
 
@@ -381,20 +389,54 @@ class TestHostNotifyWorktreeUpdates:
                     trigger="@test",
                     added_at="2024-01-01",
                 ),
-            }
+            },
+            active_sessions={"agent-1"},
         )
 
         await host_notify_worktree_updates(exclude_group=None, deps=deps, repo_ctx=repo_ctx)
 
-        # Always system_notice, never host_message
         deps.broadcast_system_notice.assert_called_once()
         deps.broadcast_host_message.assert_not_called()
         msg = deps.broadcast_system_notice.call_args[0][1]
         assert "Auto-rebased 1 commit(s)" in msg
 
     @pytest.mark.asyncio
-    async def test_dirty_worktree_always_uses_system_notice(self, git_env: dict):
-        """Dirty worktree notifications always use system_notice."""
+    async def test_no_conversation_uses_host_message(self, git_env: dict):
+        """Workspaces with no ongoing conversation get host_message — human sees it, LLM doesn't."""
+        project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
+
+        ensure_worktree("agent-1", repo_ctx)
+
+        (project / "new.txt").write_text("main update")
+        _git(project, "add", "new.txt")
+        _git(project, "commit", "-m", "advance main")
+
+        from pynchy.types import WorkspaceProfile
+
+        deps = self._make_deps(
+            {
+                "jid-1@g.us": WorkspaceProfile(
+                    jid="jid-1@g.us",
+                    name="Agent 1",
+                    folder="agent-1",
+                    trigger="@test",
+                    added_at="2024-01-01",
+                ),
+            },
+            active_sessions=set(),  # no active sessions
+        )
+
+        await host_notify_worktree_updates(exclude_group=None, deps=deps, repo_ctx=repo_ctx)
+
+        deps.broadcast_host_message.assert_called_once()
+        deps.broadcast_system_notice.assert_not_called()
+        msg = deps.broadcast_host_message.call_args[0][1]
+        assert "Auto-rebased 1 commit(s)" in msg
+
+    @pytest.mark.asyncio
+    async def test_dirty_worktree_active_session_uses_system_notice(self, git_env: dict):
+        """Dirty worktree with active session: system_notice."""
         project = git_env["project"]
         repo_ctx = git_env["repo_ctx"]
 
@@ -417,7 +459,8 @@ class TestHostNotifyWorktreeUpdates:
                     trigger="@test",
                     added_at="2024-01-01",
                 ),
-            }
+            },
+            active_sessions={"agent-1"},
         )
 
         await host_notify_worktree_updates(exclude_group=None, deps=deps, repo_ctx=repo_ctx)

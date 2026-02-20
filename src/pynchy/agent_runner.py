@@ -14,6 +14,7 @@ from pynchy.container_runner import (
 )
 from pynchy.container_runner._orchestrator import run_container_agent
 from pynchy.db import get_all_host_jobs, get_all_tasks, set_session
+from pynchy.git_ops.repo import get_repo_context
 from pynchy.git_ops.utils import count_unpushed_commits, is_repo_dirty
 from pynchy.logger import logger
 from pynchy.types import ContainerInput, ContainerOutput
@@ -117,12 +118,17 @@ async def run_agent(
     # These are sent TO the LLM as context, distinct from operational host messages
     system_notices: list[str] = []
     if is_admin:
-        if is_repo_dirty():
+        # Check the group's worktree (not the main repo) for uncommitted changes
+        # and unpushed commits. The agent works inside the worktree, so that's
+        # the relevant git state.
+        repo_ctx = get_repo_context(repo_access) if repo_access else None
+        check_cwd = repo_ctx.worktrees_dir / group.folder if repo_ctx else None
+        if is_repo_dirty(cwd=check_cwd):
             system_notices.append(
                 "There are uncommitted local changes. Run `git status` and `git diff` "
                 "to review them. If they are good, commit and push. If not, discard them."
             )
-        if count_unpushed_commits() > 0:
+        if count_unpushed_commits(cwd=check_cwd) > 0:
             system_notices.append(
                 "There are local commits that haven't been pushed. "
                 "Run `git push` or `git rebase origin/main && git push` to sync them."

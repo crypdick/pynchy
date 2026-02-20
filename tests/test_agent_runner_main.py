@@ -469,15 +469,16 @@ class TestBuildCoreConfig:
         config = build_core_config(ci)
         assert config.mcp_servers["pynchy"]["env"]["PYNCHY_IS_SCHEDULED_TASK"] == "1"
 
-    def test_system_notices_appended(self):
+    def test_system_notices_not_in_system_prompt(self):
+        """System notices must NOT go in system_prompt_append — that would
+        invalidate the KV cache on every session resume. They're prepended
+        to the user prompt in main() instead."""
         ci = self._make_input(
             is_admin=False,
             system_notices=["Warning: repo dirty"],
         )
-        # Without global CLAUDE.md, just the notice
         config = build_core_config(ci)
-        assert config.system_prompt_append is not None
-        assert "Warning: repo dirty" in config.system_prompt_append
+        assert config.system_prompt_append is None
 
     def test_session_id_passed_through(self):
         ci = self._make_input(session_id="sess-xyz")
