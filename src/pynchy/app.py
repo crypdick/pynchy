@@ -599,7 +599,15 @@ class PynchyApp:
         self._http_runner = await start_http_server(
             make_http_deps(self), status_deps=make_status_deps(self)
         )
-        logger.info("HTTP server ready", port=s.server.port)
+        import socket
+
+        hostname = socket.gethostname()
+        logger.info(
+            "HTTP server ready",
+            port=s.server.port,
+            local=f"http://localhost:{s.server.port}/status",
+            remote=f"http://{hostname}:{s.server.port}/status",
+        )
 
         await self._send_boot_notification()
         await self._catch_up_channel_history()
