@@ -327,31 +327,36 @@ class McpManager:
     ) -> dict[str, str]:
         """Resolve env_forward mapping for an MCP instance.
 
-        Returns ``{container_var: host_var}``.  Workspace-level ``env_forward``
-        (a dict) overrides the server-level list (an identity mapping).
+        Returns ``{container_var: host_var}``.  The workspace **must** provide
+        an ``env_forward`` dict in ``[workspaces.X.mcp.Y]`` — there is no
+        fallback to the server-level list.  The server-level ``env_forward``
+        list documents what the container expects; it has no runtime effect.
         """
         server_config = self._settings.mcp_servers.get(server_name)
-        # Server-level default: identity mapping (var → var)
-        default: dict[str, str] = {
-            v: v for v in (server_config.env_forward if server_config else [])
-        }
+        required_vars = server_config.env_forward if server_config else []
 
         ws_config = self._settings.workspaces.get(group_folder)
-        if not ws_config:
-            return default
-
-        ws_mcp = ws_config.mcp.get(server_name, {})
+        ws_mcp = ws_config.mcp.get(server_name, {}) if ws_config else {}
         ws_env_forward = ws_mcp.get("env_forward")
+
         if ws_env_forward is None:
-            return default
+            if required_vars:
+                logger.warning(
+                    "MCP server expects env_forward but workspace provides no mapping — "
+                    "no env vars will be forwarded",
+                    workspace=group_folder,
+                    server=server_name,
+                    expected_vars=required_vars,
+                )
+            return {}
 
         if not isinstance(ws_env_forward, dict):
             logger.warning(
-                "Workspace env_forward must be a dict mapping, ignoring",
+                "Workspace env_forward must be a {container_var: host_var} dict, ignoring",
                 workspace=group_folder,
                 server=server_name,
             )
-            return default
+            return {}
 
         return dict(ws_env_forward)
 
