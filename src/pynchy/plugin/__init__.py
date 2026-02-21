@@ -48,6 +48,11 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
         "slack-token-extractor",
     ),
     (
+        "pynchy.integrations.plugins.x_integration",
+        "XIntegrationPlugin",
+        "x-integration",
+    ),
+    (
         "pynchy.integrations.plugins.notebook_server",
         "NotebookServerPlugin",
         "notebook",
