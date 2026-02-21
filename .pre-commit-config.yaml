@@ -5,9 +5,9 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.11.12
     hooks:
+      - id: ruff-format
       - id: ruff-check
         args: [--fix]
-      - id: ruff-format
 
   # Standard pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
