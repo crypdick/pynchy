@@ -6,7 +6,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.chat.output_handler import _next_trace_id, broadcast_trace, handle_streamed_output
+from pynchy.chat.output_handler import (
+    _next_trace_id,
+    _stream_states,
+    broadcast_trace,
+    handle_streamed_output,
+    init_trace_batcher,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -525,3 +531,203 @@ class TestHandleStreamedOutput:
 
         channel_text = deps.broadcast_to_channels.call_args[0][1]
         assert channel_text == "📋 tool result"
+
+    # -----------------------------------------------------------------------
+    # Stream interleaving — text and tool traces in chronological order
+    # -----------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_tool_use_finalizes_active_text_stream(self):
+        """When a tool_use event arrives, any in-progress text stream should be
+        finalized (marked as done) so it becomes its own message before the
+        tool trace appears."""
+        deps = _make_deps()
+        group = _make_group()
+        jid = "interleave@g.us"
+
+        ch = MagicMock()
+        ch.name = "test"
+        ch.is_connected.return_value = True
+        ch.post_message = AsyncMock(return_value="msg-1")
+        ch.update_message = AsyncMock()
+        ch.send_message = AsyncMock()
+        ch.owns_jid = MagicMock(return_value=True)
+        deps.channels = [ch]
+        deps.get_channel_jid = MagicMock(return_value=None)
+
+        # Initialize the trace batcher so it captures tool traces
+        init_trace_batcher(deps, cooldown=30)
+
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
+            # 1. Stream some text
+            await handle_streamed_output(
+                deps, jid, group, _make_output(type="text", text="Let me check")
+            )
+            # There should be an active stream state
+            assert jid in _stream_states
+
+            # 2. tool_use arrives — should finalize text stream
+            await handle_streamed_output(
+                deps,
+                jid,
+                group,
+                _make_output(type="tool_use", tool_name="Bash", tool_input={"cmd": "ls"}),
+            )
+            # Stream state should have been cleaned up
+            assert jid not in _stream_states
+            # Text should have been finalized (update_message called with final=True
+            # means no trailing cursor block character)
+            final_text = ch.update_message.call_args[0][2]
+            assert "Let me check" in final_text
+            assert "\u258c" not in final_text  # No cursor character
+
+    @pytest.mark.asyncio
+    async def test_new_text_after_tool_flushes_batcher(self):
+        """When text starts after a tool cycle, any buffered traces should be
+        flushed first so tools appear before the new text."""
+        deps = _make_deps()
+        group = _make_group()
+        jid = "flush@g.us"
+
+        ch = MagicMock()
+        ch.name = "test"
+        ch.is_connected.return_value = True
+        ch.post_message = AsyncMock(return_value="msg-1")
+        ch.update_message = AsyncMock()
+        ch.send_message = AsyncMock()
+        ch.owns_jid = MagicMock(return_value=True)
+        deps.channels = [ch]
+        deps.get_channel_jid = MagicMock(return_value=None)
+
+        # Initialize the trace batcher with a long cooldown so it doesn't
+        # auto-flush during the test.
+        init_trace_batcher(deps, cooldown=999)
+
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
+            # 1. Send a tool_use (enqueued in batcher, not yet broadcast)
+            await handle_streamed_output(
+                deps,
+                jid,
+                group,
+                _make_output(type="tool_use", tool_name="Read", tool_input={}),
+            )
+            # Trace is in the batcher, not yet broadcast
+            assert deps.broadcast_to_channels.await_count == 0
+
+            # 2. Send a tool_result (also enqueued)
+            await handle_streamed_output(
+                deps,
+                jid,
+                group,
+                _make_output(
+                    type="tool_result",
+                    tool_result_id="t-1",
+                    tool_result_content="ok",
+                ),
+            )
+            # Still buffered in the batcher
+            assert deps.broadcast_to_channels.await_count == 0
+
+            # 3. New text arrives — should trigger batcher flush first
+            await handle_streamed_output(
+                deps, jid, group, _make_output(type="text", text="Here is the result")
+            )
+            # The batcher should have been flushed — traces broadcast
+            assert deps.broadcast_to_channels.await_count >= 1
+            flushed = deps.broadcast_to_channels.call_args_list[0][0][1]
+            assert "Read" in flushed or "tool result" in flushed
+
+        # Clean up stream state
+        _stream_states.pop(jid, None)
+
+    @pytest.mark.asyncio
+    async def test_full_interleaving_sequence(self):
+        """End-to-end test: text -> tool_use -> tool_result -> text -> result
+        produces properly ordered channel messages."""
+        deps = _make_deps()
+        group = _make_group()
+        jid = "full@g.us"
+
+        # Track all outbound actions in order
+        actions: list[tuple[str, str]] = []  # (action_type, content_snippet)
+
+        ch = MagicMock()
+        ch.name = "test"
+        ch.is_connected.return_value = True
+
+        async def _post(target_jid, text):
+            actions.append(("post", text[:60]))
+            return f"msg-{len(actions)}"
+
+        async def _update(target_jid, msg_id, text):
+            actions.append(("update", text[:60]))
+
+        async def _send(target_jid, text):
+            actions.append(("send", text[:60]))
+
+        ch.post_message = AsyncMock(side_effect=_post)
+        ch.update_message = AsyncMock(side_effect=_update)
+        ch.send_message = AsyncMock(side_effect=_send)
+        ch.owns_jid = MagicMock(return_value=True)
+        deps.channels = [ch]
+        deps.get_channel_jid = MagicMock(return_value=None)
+
+        # Use a long cooldown so the batcher only flushes when we force it
+        init_trace_batcher(deps, cooldown=999)
+
+        async def _broadcast(chat_jid, text, **kw):
+            actions.append(("broadcast", text[:60]))
+
+        deps.broadcast_to_channels = AsyncMock(side_effect=_broadcast)
+
+        with patch("pynchy.chat.output_handler.store_message_direct", new_callable=AsyncMock):
+            # Step 1: text "I'll check the file"
+            await handle_streamed_output(
+                deps, jid, group, _make_output(type="text", text="I'll check the file")
+            )
+
+            # Step 2: tool_use Read — should finalize text stream
+            await handle_streamed_output(
+                deps,
+                jid,
+                group,
+                _make_output(type="tool_use", tool_name="Read", tool_input={"path": "/tmp/x"}),
+            )
+
+            # Step 3: tool_result
+            await handle_streamed_output(
+                deps,
+                jid,
+                group,
+                _make_output(
+                    type="tool_result",
+                    tool_result_id="t-1",
+                    tool_result_content="file contents here",
+                ),
+            )
+
+            # Step 4: new text "The file contains" — should flush batcher first
+            await handle_streamed_output(
+                deps, jid, group, _make_output(type="text", text="The file contains")
+            )
+
+            # Step 5: result
+            await handle_streamed_output(
+                deps, jid, group, _make_output(type="result", result="The file contains X")
+            )
+
+        # Verify ordering: text finalized -> tool traces -> new text -> result
+        # Filter to just the semantically meaningful actions
+        post_actions = [a for a in actions if a[0] == "post"]
+        assert len(post_actions) >= 2, f"Expected at least 2 posts, got {actions}"
+
+        # The first post should be the initial text
+        assert "check the file" in post_actions[0][1]
+
+        # There should be trace broadcasts (tool_use + tool_result) between
+        # the two text posts
+        broadcast_actions = [a for a in actions if a[0] == "broadcast"]
+        assert any("Read" in b[1] or "tool result" in b[1] for b in broadcast_actions)
+
+        # Clean up
+        _stream_states.pop(jid, None)

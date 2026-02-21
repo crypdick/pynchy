@@ -184,6 +184,18 @@ async def _stream_text_to_channels(
             logger.warning("Stream post/update failed", channel=ch_name, err=str(exc))
 
 
+async def _finalize_active_stream(deps: OutputDeps, chat_jid: str) -> None:
+    """Finalize any in-progress text stream for *chat_jid*.
+
+    Called before trace events (tool_use, thinking) so that streamed text
+    becomes its own completed message, preserving chronological interleaving
+    between agent text and tool calls in the channel.
+    """
+    state = _stream_states.pop(chat_jid, None)
+    if state and state.buffer:
+        await _stream_text_to_channels(deps, chat_jid, state, final=True)
+
+
 def _next_trace_id(prefix: str) -> str:
     """Generate a unique monotonic ID for trace DB rows.
 
@@ -323,6 +335,10 @@ async def handle_streamed_output(
 
     # --- Trace events: persist to DB + broadcast ---
     if result.type == "thinking":
+        # Finalize any in-progress text stream so it becomes its own message
+        # before the thinking trace appears.
+        await _finalize_active_stream(deps, chat_jid)
+
         await broadcast_trace(
             deps,
             chat_jid,
@@ -335,6 +351,10 @@ async def handle_streamed_output(
         )
         return False
     if result.type == "tool_use":
+        # Finalize any in-progress text stream so text before this tool call
+        # becomes its own message, preserving chronological interleaving.
+        await _finalize_active_stream(deps, chat_jid)
+
         tool_name = result.tool_name or "tool"
         tool_input = result.tool_input or {}
         _last_tool_name[chat_jid] = tool_name
@@ -426,6 +446,10 @@ async def handle_streamed_output(
         if delta:
             state = _stream_states.get(chat_jid)
             if state is None:
+                # Starting a new text stream — flush any pending traces first
+                # so tool messages appear before this text in the channel.
+                if _trace_batcher is not None:
+                    await _trace_batcher.flush(chat_jid)
                 state = _StreamState()
                 _stream_states[chat_jid] = state
             state.buffer += delta
