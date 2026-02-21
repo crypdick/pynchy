@@ -40,6 +40,7 @@ exclude_docs: |
 
 plugins:
   - search
+  - awesome-pages
   - include-markdown:
       rewrite_relative_urls: true
   - git-revision-date-localized:
@@ -52,33 +53,6 @@ plugins:
   # Future: Consider adding mkdocs-mermaid2-plugin for architecture diagrams
   # Install: uv add --dev mkdocs-mermaid2-plugin
   # Config: - mermaid2
-
-nav:
-  - Home: index.md
-  - Installation: install.md
-  - Usage:
-      - Overview: usage/index.md
-      - Groups: usage/groups.md
-      - Scheduled Tasks: usage/scheduled-tasks.md
-      - Notebooks: usage/notebooks.md
-  - Architecture:
-      - Overview: architecture/index.md
-      - Container Isolation: architecture/container-isolation.md
-      - IPC: architecture/ipc.md
-      - Message Routing: architecture/message-routing.md
-      - Message Types: architecture/message-types.md
-      - Memory & Sessions: architecture/memory-and-sessions.md
-      - Git Sync: architecture/git-sync.md
-      - Security: architecture/security.md
-  - Plugins:
-      - Overview: plugins/index.md
-      - Available Plugins: plugins/available.md
-      - Quickstart: plugins/quickstart.md
-      - Hook Reference: plugins/hooks.md
-      - Packaging: plugins/packaging.md
-  - Contributing:
-      - Code: contributing/contributing-code.md
-      - Documentation: contributing/contributing-docs.md
 
 markdown_extensions:
   - admonition
