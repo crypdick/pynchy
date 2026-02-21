@@ -28,7 +28,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@v5
 
-      - run: uv run --with mkdocs-material --with mkdocs-include-markdown-plugin --with mkdocs-git-revision-date-localized-plugin --with mkdocs-minify-plugin mkdocs build --strict
+      - run: uv run --with mkdocs-material --with mkdocs-include-markdown-plugin --with mkdocs-git-revision-date-localized-plugin --with mkdocs-minify-plugin --with mkdocs-awesome-pages-plugin mkdocs build --strict
 
       - uses: actions/upload-pages-artifact@v3
         with:
