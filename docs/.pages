@@ -1,5 +1,7 @@
 nav:
   - Home: index.md
-  - Why Pynchy?: why-pynchy.md
   - Installation: install.md
-  - ...
+  - usage
+  - plugins
+  - contributing
+  - architecture
