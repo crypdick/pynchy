@@ -104,6 +104,7 @@ Per-workspace MCP config (`[workspaces.X.mcp.Y]`) is arbitrary key-value pairs. 
 
 | Server | Guide |
 |--------|-------|
+| Notebooks | [Notebook execution](notebooks.md) |
 | Slack MCP | [Slack MCP setup](slack-mcp.md) |
 
 For architecture internals (instance deduplication, LiteLLM integration, access control), see [MCP management architecture](../architecture/mcp-management.md).
