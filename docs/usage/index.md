@@ -62,4 +62,5 @@ No configuration files to learn. Just tell Pynchy what you want:
 | [Directives](directives.md) | System prompt extensions, per-workspace scoping |
 | [MCP servers](mcp.md) | Adding external tool servers, environment variables, multi-tenant setup |
 | [Notebooks](notebooks.md) | Jupyter/Quarto notebook execution via MCP tools |
+| [Google Drive](gdrive.md) | Google Drive file access via OAuth2 MCP server |
 | [Slack MCP](slack-mcp.md) | Slack read access via browser tokens (no admin required) |
