@@ -24,21 +24,29 @@ _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "notebook_server.py"
 
 @pytest.fixture(scope="module", autouse=True)
 def _patch_argv_and_import():
-    """Patch sys.argv so the script's _parse_args() succeeds at import time."""
+    """Patch sys.argv so the script's _parse_args() succeeds at import time.
+
+    notebook_server.py is a standalone PEP 723 script whose heavy dependencies
+    (fastmcp, jupyter-client, etc.) live outside pynchy's venv.  Skip the entire
+    module when those deps aren't installed.
+    """
     with (
         patch.object(sys, "argv", ["notebook_server.py", "--workspace", "test"]),
         # Also patch Path.mkdir so NOTEBOOK_DIR/WORKSPACE_DIR creation doesn't touch disk
         patch.object(Path, "mkdir"),
     ):
-            import importlib.util
+        import importlib.util
 
-            spec = importlib.util.spec_from_file_location("notebook_server", _SCRIPT)
-            mod = importlib.util.module_from_spec(spec)
-            # Suppress JupyterLab startup and FastMCP initialization side effects
-            # by only loading the module, not running __main__
+        spec = importlib.util.spec_from_file_location("notebook_server", _SCRIPT)
+        mod = importlib.util.module_from_spec(spec)
+        # Suppress JupyterLab startup and FastMCP initialization side effects
+        # by only loading the module, not running __main__
+        try:
             spec.loader.exec_module(mod)
-            # Stash the module for tests to use
-            sys.modules["notebook_server"] = mod
+        except ImportError as exc:
+            pytest.skip(f"notebook_server deps not installed: {exc}")
+        # Stash the module for tests to use
+        sys.modules["notebook_server"] = mod
 
 
 def _mod():
@@ -266,9 +274,7 @@ class TestNotebookIO:
     def test_qmd_to_ipynb_conversion(self, tmp_path):
         """Load a .qmd file, save as .ipynb, verify valid notebook."""
         qmd_path = tmp_path / "source.qmd"
-        qmd_path.write_text(
-            "# Title\n\n```{python}\nprint('converted')\n```\n"
-        )
+        qmd_path.write_text("# Title\n\n```{python}\nprint('converted')\n```\n")
 
         nb = _mod()._load_notebook(qmd_path)
         ipynb_path = tmp_path / "converted.ipynb"
@@ -325,24 +331,29 @@ class TestOutputsForAgent:
         assert result[0]["text"] == "hello\n"
 
     def test_execute_result(self):
-        outputs = [{
-            "output_type": "execute_result",
-            "data": {"text/plain": "42"},
-            "metadata": {},
-            "execution_count": 1,
-        }]
+        outputs = [
+            {
+                "output_type": "execute_result",
+                "data": {"text/plain": "42"},
+                "metadata": {},
+                "execution_count": 1,
+            }
+        ]
         result = _mod()._outputs_for_agent(outputs)
         assert result[0]["type"] == "result"
         assert result[0]["text"] == "42"
 
     def test_image_without_path_shows_has_image(self):
         import base64
+
         fake_png = base64.b64encode(b"fake image data").decode()
-        outputs = [{
-            "output_type": "display_data",
-            "data": {"image/png": fake_png, "text/plain": "<Figure>"},
-            "metadata": {},
-        }]
+        outputs = [
+            {
+                "output_type": "display_data",
+                "data": {"image/png": fake_png, "text/plain": "<Figure>"},
+                "metadata": {},
+            }
+        ]
         result = _mod()._outputs_for_agent(outputs)
         assert result[0]["has_image"] is True
         # Base64 data should NOT be in the result
@@ -350,27 +361,32 @@ class TestOutputsForAgent:
 
     def test_image_with_path_shows_path(self):
         import base64
+
         fake_png = base64.b64encode(b"fake image data").decode()
-        outputs = [{
-            "output_type": "display_data",
-            "data": {
-                "image/png": fake_png,
-                "text/plain": "<Figure>",
-                "_image_path": "analysis_files/cell_1.png",
-            },
-            "metadata": {},
-        }]
+        outputs = [
+            {
+                "output_type": "display_data",
+                "data": {
+                    "image/png": fake_png,
+                    "text/plain": "<Figure>",
+                    "_image_path": "analysis_files/cell_1.png",
+                },
+                "metadata": {},
+            }
+        ]
         result = _mod()._outputs_for_agent(outputs)
         assert result[0]["image_path"] == "analysis_files/cell_1.png"
         assert "has_image" not in result[0]
 
     def test_error_output_strips_ansi(self):
-        outputs = [{
-            "output_type": "error",
-            "ename": "ValueError",
-            "evalue": "bad value",
-            "traceback": ["\x1b[31mValueError\x1b[0m: bad value"],
-        }]
+        outputs = [
+            {
+                "output_type": "error",
+                "ename": "ValueError",
+                "evalue": "bad value",
+                "traceback": ["\x1b[31mValueError\x1b[0m: bad value"],
+            }
+        ]
         result = _mod()._outputs_for_agent(outputs)
         assert result[0]["type"] == "error"
         assert "\x1b[" not in result[0]["traceback"]
@@ -378,15 +394,17 @@ class TestOutputsForAgent:
 
     def test_html_not_included(self):
         """HTML output should be dropped — agents get text/plain only."""
-        outputs = [{
-            "output_type": "execute_result",
-            "data": {
-                "text/plain": "   a  b\n0  1  2",
-                "text/html": "<table><tr><td>1</td></tr></table>",
-            },
-            "metadata": {},
-            "execution_count": 1,
-        }]
+        outputs = [
+            {
+                "output_type": "execute_result",
+                "data": {
+                    "text/plain": "   a  b\n0  1  2",
+                    "text/html": "<table><tr><td>1</td></tr></table>",
+                },
+                "metadata": {},
+                "execution_count": 1,
+            }
+        ]
         result = _mod()._outputs_for_agent(outputs)
         assert "html" not in result[0]
         assert result[0]["text"] == "   a  b\n0  1  2"
@@ -414,11 +432,13 @@ class TestSaveCellImages:
         monkeypatch.setattr(_mod(), "NOTEBOOK_DIR", tmp_path)
 
         png_data = base64.b64encode(b"\x89PNG\r\n\x1a\nfake").decode()
-        outputs = [{
-            "output_type": "display_data",
-            "data": {"image/png": png_data, "text/plain": "<Figure>"},
-            "metadata": {},
-        }]
+        outputs = [
+            {
+                "output_type": "display_data",
+                "data": {"image/png": png_data, "text/plain": "<Figure>"},
+                "metadata": {},
+            }
+        ]
 
         _mod()._save_cell_images("test-nb", 3, outputs)
 

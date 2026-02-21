@@ -133,6 +133,21 @@ def _scrub_model(obj: BaseModel) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _clean_git_env():
+    """Strip git env vars that pre-commit leaks during its stash cycle.
+
+    Pre-commit sets GIT_INDEX_FILE (and potentially GIT_DIR, GIT_WORK_TREE)
+    before running hooks. Tests that create temporary git repos inherit these
+    variables, causing ``git worktree add`` and similar commands to fail with
+    ``fatal: .git/index: index file open failed: Not a directory``.
+    """
+    import os
+
+    for var in ("GIT_INDEX_FILE", "GIT_DIR", "GIT_WORK_TREE"):
+        os.environ.pop(var, None)
+
+
 @pytest.fixture(autouse=True)
 def reset_settings(monkeypatch):
     """Ensure each test starts with a clean Settings singleton.
