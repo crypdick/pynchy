@@ -78,11 +78,12 @@ class MockDeps:
         return self._groups
 
     def register_workspace(self, profile: WorkspaceProfile) -> None:
+        # Only update the in-memory dict — no DB write needed.
+        # The real adapter fires a background task for the DB, but in tests
+        # we check deps.workspaces() (the dict), not the DB.  Avoiding the
+        # fire-and-forget future prevents aiosqlite's worker thread from
+        # racing against pytest's per-test event-loop teardown.
         self._groups[profile.jid] = profile
-        # Synchronous — in tests we won't await this
-        import asyncio
-
-        asyncio.ensure_future(set_workspace_profile(profile))
 
     async def sync_group_metadata(self, force: bool) -> None:
         pass
