@@ -551,10 +551,6 @@ class Settings(BaseSettings):
         return Path.home()
 
     @cached_property
-    def store_dir(self) -> Path:
-        return (self.project_root / "data").resolve()
-
-    @cached_property
     def groups_dir(self) -> Path:
         return (self.project_root / "groups").resolve()
 

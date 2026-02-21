@@ -30,9 +30,9 @@ async def authenticate() -> None:
     neonize_events.event_global_loop = loop
     neonize_client.event_global_loop = loop
 
-    store_dir = get_settings().store_dir
-    auth_db = str(store_dir / "neonize.db")
-    store_dir.mkdir(parents=True, exist_ok=True)
+    data_dir = get_settings().data_dir
+    auth_db = str(data_dir / "neonize.db")
+    data_dir.mkdir(parents=True, exist_ok=True)
 
     client = NewAClient(auth_db)
 

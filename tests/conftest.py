@@ -18,7 +18,6 @@ _CACHED_PROPERTY_NAMES = frozenset(
     {
         "project_root",
         "home_dir",
-        "store_dir",
         "groups_dir",
         "data_dir",
         "mount_allowlist_path",
