@@ -264,7 +264,7 @@ class McpManager:
         except (TimeoutError, RuntimeError):
             stderr_tail = ""
             if instance.process.stderr:
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(OSError, ValueError):
                     stderr_tail = instance.process.stderr.read(2000).decode(errors="replace")
             logger.error(
                 "MCP script failed health check",

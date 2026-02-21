@@ -115,15 +115,8 @@ async def wait_healthy(
         while loop.time() < deadline:
             try:
                 async with session.get(url, headers=headers) as resp:
-                    if any_non_5xx and resp.status < 500:
-                        elapsed_ms = (time.monotonic() - start) * 1000
-                        logger.info(
-                            "Health check passed",
-                            container=container_name,
-                            elapsed_ms=round(elapsed_ms),
-                        )
-                        return
-                    if resp.status == 200:
+                    healthy = resp.status == 200 or (any_non_5xx and resp.status < 500)
+                    if healthy:
                         elapsed_ms = (time.monotonic() - start) * 1000
                         logger.info(
                             "Health check passed",
