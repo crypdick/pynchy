@@ -1,14 +1,22 @@
 ## Type of Change
 
-- [ ] **Skill** - adds a new skill in `.claude/skills/`
-- [ ] **Fix** - bug fix or security fix to source code
-- [ ] **Simplification** - reduces or simplifies source code
+- [ ] **Bug fix** — fixes incorrect behavior
+- [ ] **Security fix** — addresses a vulnerability
+- [ ] **Plugin** — new or improved plugin
+- [ ] **Skill** — new or improved skill in `container/skills/`
+- [ ] **Docs** — documentation improvements
+- [ ] **Tests** — new or improved tests
+- [ ] **Refactor** — code simplification or cleanup (no behavior change)
 
 ## Description
 
+<!-- What does this change do and why? -->
 
-## For Skills
+## How to Test
 
-- [ ] I have not made any changes to source code
-- [ ] My skill contains instructions for Claude to follow (not pre-built code)
-- [ ] I tested this skill on a fresh clone
+<!-- How can reviewers verify this works? -->
+
+## Checklist
+
+- [ ] Tests pass locally
+- [ ] I've read the [contributing guide](docs/contributing/contributing-code.md)

@@ -40,3 +40,13 @@ repos:
         language: system
         pass_filenames: false
         files: ^(docs/|mkdocs\.yml)
+
+  # Tests
+  - repo: local
+    hooks:
+      - id: pytest
+        name: Run tests
+        entry: uv run pytest
+        language: system
+        pass_filenames: false
+        files: ^(src/|tests/)
