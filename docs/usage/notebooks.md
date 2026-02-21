@@ -2,9 +2,17 @@
 
 The built-in notebook MCP server lets agents create, execute, and manage Jupyter notebooks and Quarto documents (.qmd). Agents interact through MCP tools; humans view results in JupyterLab.
 
+## Installation
+
+The notebook server requires optional dependencies. Install with:
+
+```bash
+uv add pynchy[notebook]
+```
+
 ## How it works
 
-The notebook server runs as a host-side script MCP server (not in a container) and provides:
+The notebook server is a first-party plugin that runs as a host-side MCP server subprocess (not in a container). It provides:
 
 - **MCP tools** for agents — start kernels, execute code cells, add markdown, save/load notebooks
 - **JupyterLab** for humans — a web frontend on port 8888 for viewing and interacting with notebooks
