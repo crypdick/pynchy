@@ -66,6 +66,7 @@ if (fs.existsSync(keyfilePath)) {
   const Orig = google.auth.OAuth2;
   google.auth.OAuth2 = function (...args) {
     if (args.length === 0) {
+      console.error("[gdrive-wrapper] OAuth2 patch applied — injecting client credentials");
       return new Orig(
         client.client_id,
         client.client_secret,
@@ -76,6 +77,8 @@ if (fs.existsSync(keyfilePath)) {
   };
   Object.setPrototypeOf(google.auth.OAuth2, Orig);
   google.auth.OAuth2.prototype = Orig.prototype;
+} else {
+  console.error(`[gdrive-wrapper] OAuth keyfile not found at ${keyfilePath} — token refresh will not work`);
 }
 
 // Import the original server — runs loadCredentialsAndRunServer() on load.
