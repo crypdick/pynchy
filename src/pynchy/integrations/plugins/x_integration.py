@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Any
 import pluggy
 
 from pynchy.integrations.browser import (
+    check_browser_plugin_deps,
     chrome_path,
     cleanup_lock_files,
     has_display,
@@ -44,23 +45,6 @@ if TYPE_CHECKING:
     from playwright.async_api import Page
 
 hookimpl = pluggy.HookimplMarker("pynchy")
-
-
-def _check_system_deps() -> None:
-    """Validate CHROME_PATH and warn about missing headless-server packages."""
-    try:
-        chrome_path()
-    except RuntimeError as e:
-        logger.warning("X integration system dep check failed", error=str(e))
-        return
-
-    if not os.environ.get("DISPLAY"):
-        missing = [t for t in ("Xvfb", "x11vnc", "websockify") if not shutil.which(t)]
-        if missing:
-            logger.warning(
-                "Headless server — setup_x_session needs VNC deps",
-                missing=missing,
-            )
 
 
 # ---------------------------------------------------------------------------
@@ -624,7 +608,7 @@ async def _handle_x_quote(data: dict) -> dict:
 
 
 # Run at import time (same behavior as the old standalone script)
-_check_system_deps()
+check_browser_plugin_deps("setup_x_session")
 
 
 class XIntegrationPlugin:

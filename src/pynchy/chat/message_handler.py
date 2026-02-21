@@ -30,11 +30,14 @@ from pynchy.utils import generate_message_id
 
 if TYPE_CHECKING:
     from pynchy.group_queue import GroupQueue
-    from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
+    from pynchy.types import Channel, ContainerOutput, NewMessage, WorkspaceProfile
 
 
 class MessageHandlerDeps(Protocol):
     """Dependencies for message processing."""
+
+    @property
+    def channels(self) -> list[Channel]: ...
 
     @property
     def workspaces(self) -> dict[str, WorkspaceProfile]: ...

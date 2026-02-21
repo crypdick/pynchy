@@ -45,12 +45,43 @@ async def _route_incoming_group(
     filtering, special commands).
     """
     s = get_settings()
-    from pynchy.config_access import resolve_channel_config
+    from pynchy.config_access import is_user_allowed, resolve_allowed_users, resolve_channel_config
 
-    resolved = resolve_channel_config(group.folder)
+    channel_plugin_name = next(
+        (ch.name for ch in deps.channels if ch.owns_jid(group_jid)),
+        None,
+    )
+
+    resolved = resolve_channel_config(
+        group.folder,
+        channel_jid=group_jid,
+        channel_plugin_name=channel_plugin_name,
+    )
 
     # Access check: skip write-only or read-only workspaces
     if resolved.access in ("read", "write"):
+        return
+
+    # Sender filter: only process messages from allowed users
+    allowed = resolve_allowed_users(
+        resolved.allowed_users,
+        s.user_groups,
+        s.owner,
+        channel_plugin_name=channel_plugin_name,
+    )
+    filtered = []
+    for m in group_messages:
+        if is_user_allowed(m.sender, channel_plugin_name, allowed, m.is_from_me):
+            filtered.append(m)
+        else:
+            logger.debug(
+                "Ignoring message from disallowed sender",
+                group=group.name,
+                sender=m.sender,
+                channel_plugin_name=channel_plugin_name,
+            )
+    group_messages = filtered
+    if not group_messages:
         return
 
     is_admin_group = group.is_admin

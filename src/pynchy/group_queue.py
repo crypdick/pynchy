@@ -416,7 +416,7 @@ class GroupQueue:
             next_jid = self._waiting_groups.popleft()
             self._start_next_pending(next_jid)
 
-    async def shutdown(self, grace_period_seconds: float) -> None:
+    async def shutdown(self) -> None:
         self._shutting_down = True
 
         # Destroy all persistent sessions first
