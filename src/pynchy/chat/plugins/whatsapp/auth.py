@@ -38,7 +38,7 @@ async def authenticate() -> None:
 
     if await client.is_logged_in:
         print("[OK] Already authenticated with WhatsApp")
-        print("     Delete store/neonize.db to force re-authentication.")
+        print("     Delete data/neonize.db to force re-authentication.")
         return
 
     print("Starting WhatsApp authentication...")
@@ -76,7 +76,7 @@ async def authenticate() -> None:
     async def on_logged_out(_client: NewAClient, _ev: LoggedOutEv) -> None:
         nonlocal exit_code
         print()
-        print("[ERROR] Logged out. Delete store/neonize.db and try again.")
+        print("[ERROR] Logged out. Delete data/neonize.db and try again.")
         exit_code = 1
         done.set()
 
