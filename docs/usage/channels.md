@@ -25,12 +25,14 @@ uv run pynchy-whatsapp-auth     # Scan QR code to link your phone
 ```
 
 **Features:**
+
 - Group and self-chat support
 - Typing indicators and read receipts
 - Streaming responses (updates in-place as the agent types)
 - Media messages (images, documents)
 
 **Notes:**
+
 - WhatsApp linked devices expire after ~30 days of inactivity — re-run auth if disconnected
 - The admin channel is typically your WhatsApp self-chat (private messages to yourself)
 
@@ -55,6 +57,7 @@ uv sync --extra slack
 ```
 
 **Features:**
+
 - Channel and DM support
 - Slack Assistant API panel integration
 - Streaming message updates (edits messages in-place)

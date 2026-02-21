@@ -113,6 +113,7 @@ Service requests use the `service:<tool_name>` type prefix for request-response 
 Service requests go through the [security policy middleware](security.md) before dispatch. Plugin-provided handlers process the request and return a result or error.
 
 Current service tools:
+
 - **Calendar** — `list_calendars`, `list_calendar`, `create_event`, `delete_event` (CalDAV plugin)
 - **Memory** — `save_memory`, `recall_memories`, `forget_memory`, `list_memories` (sqlite-memory plugin)
 

@@ -16,6 +16,7 @@ This page covers Pynchy's security boundaries, trust model, and credential handl
 ### 1. Container Isolation (Primary Boundary)
 
 Agents execute in Apple Container (macOS) or Docker (Linux), providing:
+
 - **Process isolation** — container processes cannot affect the host
 - **Filesystem isolation** — only explicitly mounted directories appear inside the container
 - **Non-root execution** — runs as unprivileged `agent` user
@@ -26,6 +27,7 @@ The container boundary limits the attack surface to what gets mounted, rather th
 ### 2. Mount Security
 
 **External Allowlist** — Mount permissions live at `~/.config/pynchy/mount-allowlist.toml`:
+
 - Stored outside the project root
 - Never mounted into containers
 - Agents cannot modify it
@@ -38,6 +40,7 @@ private_key, .secret
 ```
 
 **Protections:**
+
 - Symlink resolution before validation (prevents traversal attacks)
 - Container path validation (rejects `..` and absolute paths)
 - `non_admin_read_only` option enforces read-only for non-admin groups
@@ -45,6 +48,7 @@ private_key, .secret
 ### 3. Session Isolation
 
 Each group has isolated Claude sessions at `data/sessions/{group}/.claude/`:
+
 - Groups cannot see other groups' conversation history
 - Session data includes full message history and file contents read
 - This prevents cross-group information disclosure
@@ -99,6 +103,7 @@ OPENAI_API_KEY=gw-<random>
 5. Required headers (`anthropic-beta`, `anthropic-version`) are forwarded to the provider.
 
 **Security properties:**
+
 - Real API keys exist only in host process memory
 - Ephemeral keys regenerate on each restart and carry no value outside the gateway
 - A compromised container cannot use the ephemeral key to reach providers directly
@@ -123,6 +128,7 @@ Each group gets its own env directory, so concurrent containers don't share secr
 3. `gh auth token` — auto-discovered from `gh` CLI (lowest priority)
 
 **NOT Mounted:**
+
 - WhatsApp session (`data/neonize.db`) — host only
 - Mount allowlist — external, never mounted
 - Any credentials matching blocked patterns
@@ -132,6 +138,7 @@ Each group gets its own env directory, so concurrent containers don't share secr
 Channel messages can contain malicious instructions that attempt to manipulate Claude's behavior.
 
 **Mitigations:**
+
 - Container isolation limits the blast radius of successful attacks
 - Only registered groups get processed (explicit allowlist)
 - Trigger word requirement reduces accidental processing
@@ -140,6 +147,7 @@ Channel messages can contain malicious instructions that attempt to manipulate C
 - Claude's built-in safety training helps resist manipulation
 
 **Recommendations:**
+
 - Only register trusted groups
 - Review additional directory mounts carefully before adding
 - Review scheduled tasks periodically for unexpected behavior

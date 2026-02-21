@@ -35,6 +35,7 @@ The preferred runtime on macOS. Uses Apple's native container framework for lowe
 | `{additional mounts}` | `/workspace/extra/*` | Configurable | Per containerConfig |
 
 **Notes:**
+
 - Groups with `repo_access` receive a worktree mount at `/workspace/project` (see [Worktrees](../usage/worktrees.md))
 - Shared agent instructions are delivered via [directives](../usage/directives.md), not filesystem mounts
 - Apple Container requires `--mount "type=bind,source=...,target=...,readonly"` syntax for readonly mounts (the `:ro` suffix does not work)
@@ -61,10 +62,12 @@ Configure additional directory mounts via `containerConfig` in the SQLite `regis
 Each group gets its own env file at `data/env/{group}/env`. Only allowlisted variables pass through.
 
 **LLM credentials** flow through the host gateway (see [Security Model](security.md#6-credential-handling)). Containers receive gateway URLs and an ephemeral key — never real API keys:
+
 - `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` — points to host gateway
 - `OPENAI_BASE_URL` / `OPENAI_API_KEY` — points to host gateway
 
 **Non-LLM credentials** get written directly, scoped by trust level:
+
 - `GH_TOKEN` — **admin containers only.** Auto-discovered from `gh auth token` or `config.toml [secrets]`. Non-admin containers don't receive this; their git operations are routed through host IPC.
 - `GIT_AUTHOR_NAME` / `GIT_COMMITTER_NAME` — from host git config (all groups)
 - `GIT_AUTHOR_EMAIL` / `GIT_COMMITTER_EMAIL` — from host git config (all groups)
