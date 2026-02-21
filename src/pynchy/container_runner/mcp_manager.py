@@ -250,6 +250,7 @@ class McpManager:
                 instance.instance_id,
                 health_url,
                 any_non_5xx=True,
+                process=instance.process,
             )
         except (TimeoutError, RuntimeError):
             stderr_tail = ""
