@@ -33,7 +33,9 @@ from pynchy.container_runner._docker import (
     ensure_image,
     ensure_network,
     is_container_running,
+    remove_container,
     run_docker,
+    stop_container,
     wait_healthy,
 )
 from pynchy.container_runner._mcp_litellm import (
@@ -280,7 +282,7 @@ class McpManager:
         ensure_network(_NETWORK_NAME)
 
         # Remove stale container
-        run_docker("rm", "-f", instance.container_name, check=False)
+        remove_container(instance.container_name)
 
         # Build container args
         cmd_args = list(instance.server_config.args)
@@ -333,8 +335,7 @@ class McpManager:
             )
             # Clean up the failed container (matches script path which
             # calls _terminate_process before re-raising).
-            run_docker("stop", "-t", "5", instance.container_name, check=False)
-            run_docker("rm", "-f", instance.container_name, check=False)
+            stop_container(instance.container_name)
             raise
 
         logger.info("MCP container ready", instance_id=instance.instance_id)
@@ -369,8 +370,7 @@ class McpManager:
                     instance_id=instance.instance_id,
                     idle_seconds=int(elapsed),
                 )
-                run_docker("stop", "-t", "5", instance.container_name, check=False)
-                run_docker("rm", "-f", instance.container_name, check=False)
+                stop_container(instance.container_name)
 
     async def stop_all(self) -> None:
         """Shutdown: stop all managed Docker containers and script subprocesses."""
@@ -382,8 +382,7 @@ class McpManager:
             if instance.server_config.type == "script":
                 _terminate_process(instance)
             elif instance.server_config.type == "docker":
-                run_docker("stop", "-t", "5", instance.container_name, check=False)
-                run_docker("rm", "-f", instance.container_name, check=False)
+                stop_container(instance.container_name)
 
         logger.info("All MCP instances stopped")
 

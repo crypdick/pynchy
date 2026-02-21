@@ -44,7 +44,9 @@ from pynchy.container_runner._docker import (
     docker_available,
     ensure_image,
     ensure_network,
+    remove_container,
     run_docker,
+    stop_container,
     wait_healthy,
 )
 from pynchy.logger import logger
@@ -294,7 +296,7 @@ class LiteLLMGateway:
         self._pg_data_dir.mkdir(parents=True, exist_ok=True)
         ensure_image(self._postgres_image)
 
-        run_docker("rm", "-f", _POSTGRES_CONTAINER, check=False)
+        remove_container(_POSTGRES_CONTAINER)
 
         logger.info(
             "Starting PostgreSQL sidecar",
@@ -380,7 +382,7 @@ class LiteLLMGateway:
         ensure_image(self._image)
 
         # Remove stale LiteLLM container from previous run
-        run_docker("rm", "-f", _LITELLM_CONTAINER, check=False)
+        remove_container(_LITELLM_CONTAINER)
 
         # Filter the config: remove model entries with missing/placeholder keys
         filtered_config = self._prepare_config(self._config_path, self._data_dir)
@@ -444,9 +446,7 @@ class LiteLLMGateway:
 
     async def stop(self) -> None:
         logger.info("Stopping LiteLLM gateway containers")
-        run_docker("stop", "-t", "5", _LITELLM_CONTAINER, check=False)
-        run_docker("rm", "-f", _LITELLM_CONTAINER, check=False)
-        run_docker("stop", "-t", "5", _POSTGRES_CONTAINER, check=False)
-        run_docker("rm", "-f", _POSTGRES_CONTAINER, check=False)
+        stop_container(_LITELLM_CONTAINER)
+        stop_container(_POSTGRES_CONTAINER)
         run_docker("network", "rm", _NETWORK_NAME, check=False)
         logger.info("LiteLLM gateway stopped")
