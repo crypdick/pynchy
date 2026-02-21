@@ -116,7 +116,9 @@ def _build_container_args(mounts: list[VolumeMount], container_name: str) -> lis
     from pynchy.container_runner.gateway import get_gateway
     from pynchy.runtime.runtime import get_runtime
 
-    args = ["run", "-i", "--rm", "--name", container_name]
+    # No --rm: persistent sessions need explicit cleanup via docker rm -f
+    # (handled in _session.py on stop/create).
+    args = ["run", "-i", "--name", container_name]
 
     # When the gateway is active and we're using Docker, add a host mapping
     # so containers can reach the host process via ``host.docker.internal``.

@@ -223,17 +223,24 @@ class GroupQueue:
     async def stop_active_process(self, group_jid: str) -> None:
         """Force-stop the active container for a group.
 
-        Writes the cooperative _close sentinel first, then calls
-        ``docker stop`` (or equivalent) with a 15s fallback to kill.
+        Destroys any persistent session first, then writes the cooperative
+        _close sentinel and calls ``docker stop`` with a 15s fallback to kill.
         """
         state = self._get_group(group_jid)
+
+        # Destroy persistent session (handles its own graceful stop + docker rm)
+        if state.group_folder:
+            from pynchy.container_runner._session import destroy_session
+
+            await destroy_session(state.group_folder)
+
         if not state.active:
             return
 
         # Cooperative signal first
         self.close_stdin(group_jid)
 
-        # Force-stop the container process
+        # Force-stop the container process (for one-shot containers without sessions)
         proc = state.process
         container_name = state.container_name
         if proc and container_name and proc.returncode is None:
@@ -412,6 +419,12 @@ class GroupQueue:
     async def shutdown(self, grace_period_seconds: float) -> None:
         self._shutting_down = True
 
+        # Destroy all persistent sessions first
+        from pynchy.container_runner._session import destroy_all_sessions
+
+        await destroy_all_sessions()
+
+        # Stop any remaining one-shot containers
         active: list[tuple[asyncio.subprocess.Process, str]] = []
         for _jid, state in self._groups.items():
             proc_alive = getattr(state.process, "returncode", None) is None

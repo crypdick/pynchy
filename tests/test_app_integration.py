@@ -113,10 +113,22 @@ class FakeProcess:
         self._output = output
 
     async def schedule_output(self) -> None:
-        """Emit output and close after a short delay."""
+        """Emit output and close after a short delay.
+
+        Emits the content output followed by a query-done pulse (for persistent
+        session detection), then feeds EOF.
+        """
         await asyncio.sleep(0.01)
         if self._output:
             self.stdout.feed_data(_marker_wrap(self._output))
+            # Emit query-done pulse so the persistent session reader detects
+            # query completion (is_query_done_pulse requires result=None).
+            pulse = {
+                "status": "success",
+                "result": None,
+                "new_session_id": self._output.get("new_session_id", "test-session"),
+            }
+            self.stdout.feed_data(_marker_wrap(pulse))
         await asyncio.sleep(0.01)
         self._returncode = 0
         self.stdout.feed_eof()
@@ -166,7 +178,11 @@ async def app(tmp_path: Path):
             added_at="2024-01-01T00:00:00.000Z",
         ),
     }
-    return a
+    yield a
+    # Clean up any persistent sessions created during the test
+    from pynchy.container_runner._session import destroy_all_sessions
+
+    await destroy_all_sessions()
 
 
 # ---------------------------------------------------------------------------
