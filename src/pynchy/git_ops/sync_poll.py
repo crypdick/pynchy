@@ -99,16 +99,19 @@ def _host_update_main(repo_root: Path, env: dict[str, str] | None = None) -> boo
 
     # --- Post-recovery: restore stashed work ---
     if stashed:
-        run_git(
-            "commit",
-            "--allow-empty",
-            "-m",
-            "[pynchy-sync] dirty host repo recovered via stash \u2014 needs manual reconciliation",
-            cwd=repo_root,
-        )
-        push_local_commits(skip_fetch=True, cwd=repo_root, env=env)
         pop = run_git("stash", "pop", cwd=repo_root)
         if pop.returncode != 0:
+            # Stash pop failed (conflict) — create marker so the user knows
+            # to reconcile manually.  The stashed work is still in the reflog.
+            run_git(
+                "commit",
+                "--allow-empty",
+                "-m",
+                "[pynchy-sync] stash pop conflict after rebase"
+                " \u2014 work preserved in stash/reflog",
+                cwd=repo_root,
+            )
+            push_local_commits(skip_fetch=True, cwd=repo_root, env=env)
             logger.warning(
                 "git_sync poll: stash pop conflict, work in stash/reflog",
                 recovery="stash-pop-conflict",

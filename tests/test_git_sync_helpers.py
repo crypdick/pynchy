@@ -222,11 +222,13 @@ class TestHostUpdateMain:
             i for i, f in enumerate(flat) if "stash" in f and "--include-untracked" in f
         )
         fetch_idx = next(i for i, f in enumerate(flat) if "fetch" in f)
-        commit_idx = next(i for i, f in enumerate(flat) if "commit" in f and "--allow-empty" in f)
         pop_idx = next(i for i, f in enumerate(flat) if "stash" in f and "pop" in f)
         assert stash_idx < fetch_idx, "stash must come before fetch"
-        assert fetch_idx < commit_idx, "fetch must come before distress commit"
-        assert commit_idx < pop_idx, "distress commit must come before stash pop"
+        assert fetch_idx < pop_idx, "fetch must come before stash pop"
+        # When stash pop succeeds, no marker commit should be created
+        assert not any("commit" in f and "--allow-empty" in f for f in flat), (
+            "no marker commit on clean pop"
+        )
 
     def test_clean_tree_skips_recovery(self, tmp_path: Path):
         """Clean tree with no stale state goes straight to fetch."""
