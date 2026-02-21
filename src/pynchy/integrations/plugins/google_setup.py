@@ -524,7 +524,11 @@ def _save_credentials_to_volume(tokens: dict) -> None:
 
 
 def _read_project_id() -> str | None:
-    """Auto-detect project ID from existing credentials JSON."""
+    """Auto-detect project ID from existing credentials JSON.
+
+    The GCP OAuth client JSON contains a ``project_id`` field that holds
+    the human-readable project ID (e.g., ``vocal-invention-488106-k6``).
+    """
     kp = _keys_path()
     if not kp.exists():
         return None
@@ -532,11 +536,8 @@ def _read_project_id() -> str | None:
         with open(kp) as f:
             data = json.load(f)
         client = data.get("installed") or data.get("web")
-        if client:
-            # project_id is embedded in the client_id
-            # Format: <number>-<hash>.apps.googleusercontent.com
-            # The project_id itself isn't in the JSON, but we know it exists
-            return _DEFAULT_PROJECT_ID
+        if client and client.get("project_id"):
+            return client["project_id"]
     except Exception:
         pass
     return None
@@ -597,7 +598,7 @@ async def _handle_enable_gdrive_api(data: dict) -> dict:
     """
     from playwright.async_api import async_playwright
 
-    project_id = data.get("project_id", _DEFAULT_PROJECT_ID)
+    project_id = data.get("project_id") or _read_project_id() or _DEFAULT_PROJECT_ID
     profile = profile_dir("google")
     vnc_procs: list[subprocess.Popen] = []
     original_display = os.environ.get("DISPLAY")
@@ -651,7 +652,7 @@ async def _handle_setup_gdrive(data: dict) -> dict:
     """Full Google Drive setup: project + API + consent + credentials + OAuth."""
     from playwright.async_api import async_playwright
 
-    project_id = data.get("project_id", _DEFAULT_PROJECT_ID)
+    project_id = data.get("project_id") or _read_project_id() or _DEFAULT_PROJECT_ID
     profile = profile_dir("google")
     vnc_procs: list[subprocess.Popen] = []
     original_display = os.environ.get("DISPLAY")
