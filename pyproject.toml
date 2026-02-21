@@ -23,7 +23,8 @@ dependencies = [
 whatsapp = ["neonize>=0.3.14.post0", "qrcode>=8.2"]
 slack = ["slack-bolt>=1.27.0", "slack-sdk>=3.40.0"]
 caldav = ["caldav>=1.4.0"]
-all = ["pynchy[whatsapp,slack,caldav]"]
+browser = ["playwright"]
+all = ["pynchy[whatsapp,slack,caldav,browser]"]
 
 [project.scripts]
 pynchy = "pynchy.__main__:main"

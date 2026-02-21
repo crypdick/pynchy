@@ -47,6 +47,16 @@ TIER2_TYPES = frozenset(
         "service:delete_event",
         "service:search_passwords",
         "service:get_password",
+        # Slack token extraction
+        "service:refresh_slack_tokens",
+        "service:setup_slack_session",
+        # X (Twitter) integration
+        "service:setup_x_session",
+        "service:x_post",
+        "service:x_like",
+        "service:x_reply",
+        "service:x_retweet",
+        "service:x_quote",
     }
 )
 

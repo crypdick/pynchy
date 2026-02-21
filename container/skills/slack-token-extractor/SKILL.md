@@ -10,7 +10,7 @@ Refreshes expired Slack browser session tokens (`xoxc`/`xoxd`) used by the Slack
 
 ## System requirements
 
-Playwright's Chromium browser and system libraries are auto-installed at startup (system libs require root; the script falls back gracefully if unprivileged).
+Requires a system Chrome/Chromium binary — `CHROME_PATH` must be set in `.env` (e.g. `CHROME_PATH=/usr/bin/google-chrome-stable`). Playwright's bundled Chromium is never used — services fingerprint it as bot traffic.
 
 On **headless servers**, `setup_slack_session` also needs a VNC stack for interactive login:
 
@@ -18,7 +18,7 @@ On **headless servers**, `setup_slack_session` also needs a VNC stack for intera
 apt install xvfb x11vnc novnc
 ```
 
-The script checks for missing VNC deps at startup and prints warnings.
+The plugin checks for missing deps at startup and logs warnings.
 
 ## How it works
 

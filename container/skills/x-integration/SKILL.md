@@ -10,27 +10,15 @@ Automates X/Twitter actions via Playwright browser automation with a persistent 
 
 ## System requirements
 
-Playwright's Chromium browser and system libraries are auto-installed at startup (system libs require root; the script falls back gracefully if unprivileged).
+Requires a system Chrome/Chromium binary — `CHROME_PATH` must be set in `.env` (e.g. `CHROME_PATH=/usr/bin/google-chrome-stable`). Playwright's bundled Chromium is not used because X fingerprints it as a bot.
 
-All X tools run in **headed mode** (not headless) because X actively detects and blocks headless browsers. On headless servers, this requires Xvfb:
+All X tools run in **headed mode** (not headless) because X actively detects and blocks headless browsers. On headless servers, this requires Xvfb (`apt install xvfb`).
 
-```bash
-apt install xvfb
-```
-
-For interactive login via `setup_x_session`, you also need VNC:
-
-```bash
-apt install xvfb x11vnc novnc
-```
-
-The script checks for missing deps at startup and prints warnings.
+For interactive login via `setup_x_session`, you also need VNC (`apt install x11vnc novnc`).
 
 ## How it works
 
-Uses Playwright persistent browser contexts — after one manual login (human handles CAPTCHA / 2FA), subsequent actions run automatically using the saved session. All tools use headed mode with anti-detection flags to avoid X's bot fingerprinting.
-
-When `CHROME_PATH` is set in `.env`, Playwright drives the system Chrome binary instead of its bundled Chromium. This produces a genuine Chrome fingerprint that X is much less likely to flag as automation. Recommended for production use.
+Playwright drives the system Chrome binary (via `CHROME_PATH`) using persistent browser contexts. After one manual login (human handles CAPTCHA / 2FA), subsequent actions run automatically using the saved session. All tools use headed mode with anti-detection flags to avoid X's bot fingerprinting.
 
 ## First-time setup (requires human)
 
@@ -84,5 +72,6 @@ Quote tweet with a comment. Comment must be 1–280 characters.
 - **"Tweet not found"** — The tweet URL is invalid or the tweet was deleted.
 - **"Post/Submit button disabled"** — Content may be empty or exceed the character limit.
 - **"Login not completed within Xs"** — The human didn't finish the manual login in time. Try again with a longer `timeout_seconds`.
+- **"CHROME_PATH is required"** — Set `CHROME_PATH` in `.env` to the system Chrome/Chromium binary path.
 - **"No display available and Xvfb not installed"** — X tools need headed mode. Install Xvfb on the server.
-- **Selector errors** — X may have changed its UI. Check if the data-testid selectors in the script still match X's React components.
+- **Selector errors** — X may have changed its UI. Check if the data-testid selectors in the plugin still match X's React components.

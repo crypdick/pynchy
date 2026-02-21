@@ -11,21 +11,24 @@ X's official API requires a paid subscription ($100+/month) for posting. Browser
 On the host machine (pynchy-server):
 
 ```bash
-# Required for all X tools (headed mode needs a virtual display)
+# System Chrome — required (Playwright's bundled Chromium is not used because
+# X fingerprints it as a bot)
+apt install google-chrome-stable
+
+# Virtual display — required on headless servers (X tools use headed mode)
 apt install xvfb
 
-# Required for setup_x_session interactive login via VNC
-apt install xvfb x11vnc novnc
+# VNC — required for setup_x_session interactive login
+apt install x11vnc novnc
 ```
 
-**Recommended:** Install system Chrome for a genuine browser fingerprint. Playwright's bundled Chromium works but may be fingerprinted by X:
+Add `CHROME_PATH` to `.env`:
 
-```bash
-# Debian/Ubuntu
-apt install google-chrome-stable
-# Then add to .env:
+```
 CHROME_PATH=/usr/bin/google-chrome-stable
 ```
+
+The script will refuse to start without `CHROME_PATH` — Playwright only provides the automation protocol (CDP), while Chrome provides the browser with a genuine fingerprint that X won't flag.
 
 ## 1. Enable the plugin
 
@@ -100,6 +103,12 @@ rm -f data/playwright-profiles/x/SingletonCookie
 
 X tools require headed mode. On headless servers, ensure Xvfb is installed (`apt install xvfb`). The script starts it automatically.
 
-### Bot detection
+### CHROME_PATH errors
 
-If X starts blocking actions, switch to system Chrome (set `CHROME_PATH` in `.env`). Playwright's bundled Chromium has a different fingerprint that X may flag.
+The script requires `CHROME_PATH` in `.env`. If you see "CHROME_PATH is required" or "does not exist", install Chrome and set the path:
+
+```bash
+apt install google-chrome-stable
+# Add to .env:
+CHROME_PATH=/usr/bin/google-chrome-stable
+```
