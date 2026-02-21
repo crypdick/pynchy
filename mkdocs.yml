@@ -60,6 +60,7 @@ nav:
       - Overview: usage/index.md
       - Groups: usage/groups.md
       - Scheduled Tasks: usage/scheduled-tasks.md
+      - Notebooks: usage/notebooks.md
   - Architecture:
       - Overview: architecture/index.md
       - Container Isolation: architecture/container-isolation.md

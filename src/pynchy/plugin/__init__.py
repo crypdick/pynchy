@@ -47,6 +47,11 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
         "SlackTokenExtractorPlugin",
         "slack-token-extractor",
     ),
+    (
+        "pynchy.integrations.plugins.notebook_server",
+        "NotebookServerPlugin",
+        "notebook",
+    ),
     ("pynchy.observers.plugins.sqlite_observer", "SqliteObserverPlugin", "sqlite-observer"),
     ("pynchy.memory.plugins.sqlite_memory", "SqliteMemoryPlugin", "sqlite-memory"),
 ]

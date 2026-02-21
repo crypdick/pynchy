@@ -70,6 +70,11 @@ class McpServerConfig(BaseModel):
     # Relative host paths are resolved from project_root.
     volumes: list[str] = []
 
+    # When True, mcp_manager auto-injects workspace=<group_folder> into kwargs.
+    # This gives each workspace a separate server instance with workspace-scoped
+    # args, without requiring per-workspace config in config.toml.
+    inject_workspace: bool = False
+
     @field_validator("env_forward", mode="before")
     @classmethod
     def _normalize_env_forward(cls, v: list[str] | dict[str, str]) -> dict[str, str]:

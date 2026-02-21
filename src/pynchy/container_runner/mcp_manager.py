@@ -490,6 +490,8 @@ class McpManager:
                     continue
 
                 kwargs = self.resolve_kwargs(folder, server_name)
+                if server_config.inject_workspace:
+                    kwargs.setdefault("workspace", folder)
                 iid = self.get_instance_id(server_name, kwargs)
 
                 if iid not in state.instances:
