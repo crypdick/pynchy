@@ -97,7 +97,10 @@ def _host_update_main(repo_root: Path, env: dict[str, str] | None = None) -> boo
         logger.warning("git_sync poll: rebase failed", error=rebase.stderr.strip())
         return False
 
-    # --- Post-recovery: restore stashed work ---
+    # --- Push any rebased local commits ---
+    push_local_commits(skip_fetch=True, cwd=repo_root, env=env)
+
+    # --- Restore stashed work ---
     if stashed:
         pop = run_git("stash", "pop", cwd=repo_root)
         if pop.returncode != 0:
