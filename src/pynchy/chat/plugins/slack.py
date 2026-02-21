@@ -248,15 +248,16 @@ class SlackChannel:
         return resp.get("ts")
 
     async def update_message(self, jid: str, message_id: str, text: str) -> None:
-        """Update an existing Slack message in-place."""
+        """Update an existing Slack message in-place.
+
+        Raises on failure so callers (e.g. finalize_stream_or_broadcast) can
+        detect the error and fall back to send_message.
+        """
         if not self._app or not self.owns_jid(jid):
             return
         channel_id = _channel_id_from_jid(jid)
         chunks = _split_text(text, max_len=3000)
-        try:
-            await self._app.client.chat_update(channel=channel_id, ts=message_id, text=chunks[0])
-        except Exception as exc:
-            logger.debug("Slack message update failed", err=str(exc))
+        await self._app.client.chat_update(channel=channel_id, ts=message_id, text=chunks[0])
 
     async def send_reaction(
         self,

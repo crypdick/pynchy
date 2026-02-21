@@ -267,8 +267,10 @@ async def finalize_stream_or_broadcast(
     send_targets = _resolve_send_targets(deps, chat_jid)
     send_target_names = {ch.name for ch, _ in send_targets}
 
-    # Identify streaming targets (channels with a message_id and update_message)
-    stream_targets: list[tuple[Channel, str]] = []
+    # Identify streaming targets (channels with a message_id and update_message).
+    # Resolve alias JIDs so update_message uses the correct channel-owned JID,
+    # and so we have a target_jid ready for send_message fallback.
+    stream_targets: list[tuple[Channel, str, str]] = []  # (ch, msg_id, target_jid)
     for ch in deps.channels:
         ch_name = ch.name
         msg_id = stream_message_ids.get(ch_name)
@@ -276,8 +278,9 @@ async def finalize_stream_or_broadcast(
             continue
         if not _channel_allows_outbound(deps, chat_jid, ch_name):
             continue
-        stream_targets.append((ch, msg_id))
-    stream_target_names = {ch.name for ch, _ in stream_targets}
+        target_jid = deps.get_channel_jid(chat_jid, ch.name) or chat_jid
+        stream_targets.append((ch, msg_id, target_jid))
+    stream_target_names = {ch.name for ch, _, _ in stream_targets}
 
     # Remove streaming channels from send targets (they get update_message instead)
     send_targets = [(ch, jid) for ch, jid in send_targets if ch.name not in stream_target_names]
@@ -286,14 +289,19 @@ async def finalize_stream_or_broadcast(
     all_target_names = sorted(stream_target_names | send_target_names)
     ledger_id = await _record_to_ledger(chat_jid, text, "agent", all_target_names)
 
-    # Deliver: update streamed messages in-place
-    for ch, msg_id in stream_targets:
+    # Deliver: update streamed messages in-place, falling back to send_message
+    for ch, msg_id, target_jid in stream_targets:
         try:
-            await ch.update_message(chat_jid, msg_id, text)
+            await ch.update_message(target_jid, msg_id, text)
             await _mark_success(ledger_id, ch.name)
-        except Exception as exc:
-            logger.debug("Final stream update failed", channel=ch.name, err=str(exc))
-            await _mark_error(ledger_id, ch.name, str(exc))
+        except Exception:
+            logger.warning("Stream update failed, falling back to send_message", channel=ch.name)
+            try:
+                await ch.send_message(target_jid, text)
+                await _mark_success(ledger_id, ch.name)
+            except Exception as exc:
+                logger.warning("Fallback send_message also failed", channel=ch.name, err=str(exc))
+                await _mark_error(ledger_id, ch.name, str(exc))
 
     # Deliver: send to non-streaming channels
     for ch, target_jid in send_targets:
