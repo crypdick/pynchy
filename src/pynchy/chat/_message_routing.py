@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 from pynchy.chat.commands import is_any_magic_command
 from pynchy.chat.message_handler import (
     MessageHandlerDeps,
-    _advance_cursor,
+    _mark_dispatched,
     intercept_special_command,
 )
 from pynchy.config import get_settings
@@ -99,10 +99,15 @@ async def _route_incoming_group(
             )
             return
 
-    all_pending = await get_messages_since(
-        group_jid,
+    # Use the furthest of the processed cursor and the dispatched-but-not-yet-
+    # completed cursor.  When a container is active, _dispatched_through is
+    # ahead of last_agent_timestamp so follow-up pipes don't re-include the
+    # messages the container is already handling.
+    cursor = max(
         deps.last_agent_timestamp.get(group_jid, ""),
+        deps._dispatched_through.get(group_jid, ""),
     )
+    all_pending = await get_messages_since(group_jid, cursor)
     if not all_pending:
         return
 
@@ -142,7 +147,7 @@ async def _route_incoming_group(
             )
             last_msg = all_pending[-1]
             await deps.send_reaction_to_channels(group_jid, last_msg.id, last_msg.sender, "👀")
-            await _advance_cursor(deps, group_jid, all_pending[-1].timestamp)
+            _mark_dispatched(deps, group_jid, all_pending[-1].timestamp)
         return
 
     # --- No active container: enqueue a new run ---

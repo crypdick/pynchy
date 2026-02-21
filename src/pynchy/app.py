@@ -65,6 +65,10 @@ class PynchyApp:
         self._session_cleared: set[str] = set()  # group folders with pending clears
         self.workspaces: dict[str, WorkspaceProfile] = {}
         self.last_agent_timestamp: dict[str, str] = {}
+        # Transient dispatch tracker — NOT persisted.  Resets to {} on every
+        # restart so recover_pending_messages always uses last_agent_timestamp
+        # (the true "successfully processed" cursor) as its baseline.
+        self._dispatched_through: dict[str, str] = {}
         self.message_loop_running: bool = False
         self.queue: GroupQueue = GroupQueue()
         self.channels: list[Channel] = []

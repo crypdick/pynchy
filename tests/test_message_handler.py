@@ -18,9 +18,9 @@ import pytest
 
 from pynchy.chat._message_routing import start_message_loop
 from pynchy.chat.message_handler import (
-    _advance_cursor,
     _check_dirty_repo,
     _handle_reset_handoff,
+    _mark_dispatched,
     execute_direct_command,
     intercept_special_command,
     process_group_messages,
@@ -61,6 +61,7 @@ def _make_deps(
     deps = MagicMock()
     deps.workspaces = groups or {}
     deps.last_agent_timestamp = last_agent_ts if last_agent_ts is not None else {}
+    deps._dispatched_through = {}
     deps.last_timestamp = last_timestamp
     deps.channels = []  # empty by default; tests that need channel routing set this explicitly
 
@@ -498,7 +499,7 @@ class TestProcessGroupMessages:
 
     @pytest.mark.asyncio
     async def test_cursor_rollback_on_save_state_failure(self, tmp_path):
-        """save_state failure → cursor rolls back."""
+        """save_state failure at completion → cursor rolls back to pre-run value."""
         group = _make_group(is_admin=True)
         deps = _make_deps(
             groups={"g@g.us": group},
@@ -517,11 +518,13 @@ class TestProcessGroupMessages:
             with pytest.raises(RuntimeError, match="DB failure"):
                 await process_group_messages(deps, "g@g.us")
 
+        # Cursor rolls back so the DB (which still has "old-ts") stays consistent
+        # with in-memory state. Messages will be re-processed on the next trigger.
         assert deps.last_agent_timestamp["g@g.us"] == "old-ts"
 
     @pytest.mark.asyncio
     async def test_agent_error_rolls_back_cursor(self, tmp_path):
-        """Agent error → cursor rolled back, user notified."""
+        """Agent error with no output → cursor unchanged (never advanced), user notified."""
         group = _make_group(is_admin=True)
         deps = _make_deps(
             groups={"g@g.us": group},
@@ -787,40 +790,31 @@ class TestCheckDirtyRepo:
 
 
 # ---------------------------------------------------------------------------
-# _advance_cursor (extracted helper)
+# _mark_dispatched (extracted helper)
 # ---------------------------------------------------------------------------
 
 
-class TestAdvanceCursor:
-    @pytest.mark.asyncio
-    async def test_advances_and_persists(self):
-        """Normal: cursor advances and save_state is called."""
+class TestMarkDispatched:
+    def test_sets_dispatched_through(self):
+        """Records the dispatched timestamp in-memory."""
         deps = _make_deps(last_agent_ts={"g@g.us": "old-ts"})
-        previous = await _advance_cursor(deps, "g@g.us", "new-ts")
+        _mark_dispatched(deps, "g@g.us", "new-ts")
 
-        assert previous == "old-ts"
-        assert deps.last_agent_timestamp["g@g.us"] == "new-ts"
-        deps.save_state.assert_awaited_once()
+        assert deps._dispatched_through["g@g.us"] == "new-ts"
 
-    @pytest.mark.asyncio
-    async def test_rollback_on_save_failure(self):
-        """save_state failure → cursor rolls back."""
+    def test_does_not_touch_last_agent_timestamp(self):
+        """last_agent_timestamp is not changed — only advances on completion."""
         deps = _make_deps(last_agent_ts={"g@g.us": "old-ts"})
-        deps.save_state = AsyncMock(side_effect=RuntimeError("DB error"))
-
-        with pytest.raises(RuntimeError, match="DB error"):
-            await _advance_cursor(deps, "g@g.us", "new-ts")
+        _mark_dispatched(deps, "g@g.us", "new-ts")
 
         assert deps.last_agent_timestamp["g@g.us"] == "old-ts"
 
-    @pytest.mark.asyncio
-    async def test_missing_cursor_defaults_to_empty(self):
-        """No previous cursor → default to empty string."""
-        deps = _make_deps(last_agent_ts={})
-        previous = await _advance_cursor(deps, "g@g.us", "first-ts")
+    def test_does_not_save_state(self):
+        """Dispatch tracking is in-memory only — no DB write."""
+        deps = _make_deps()
+        _mark_dispatched(deps, "g@g.us", "new-ts")
 
-        assert previous == ""
-        assert deps.last_agent_timestamp["g@g.us"] == "first-ts"
+        deps.save_state.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
