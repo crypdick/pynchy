@@ -72,7 +72,7 @@ packages = ["src/pynchy"]
 testpaths = ["tests"]
 pythonpath = ["tests"]
 asyncio_mode = "auto"
-addopts = "-n auto --tb=short -q --no-header -m 'not live'"
+addopts = "-n auto --tb=short -q --no-header -m 'not live' --durations=0 --durations-min=2.0"
 timeout = 30
 markers = [
     "live: live integration tests that require real service connections (deselected by default)",
