@@ -1,4 +1,4 @@
-"""Request-response IPC for service tools (email, calendar, passwords).
+"""Request-response IPC for service tools (calendar, X, Slack, etc.).
 
 Service tools write a request to the tasks/ directory and poll the
 responses/ directory for the result. The host processes the request

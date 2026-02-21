@@ -4,11 +4,13 @@ Extracted from the Slack token extractor and X integration scripts to
 eliminate duplication.  These are plain functions — plugin-specific logic
 (anti-detection args, persistent Xvfb) stays in the respective plugin modules.
 
-Design decision: CHROME_PATH required
---------------------------------------
-All browser plugins use the system Chrome/Chromium binary (``CHROME_PATH``)
-rather than Playwright's vendored Chromium.  Playwright is used only for its
-automation protocol (CDP), never for its bundled browser.
+Design decision: system Chrome only
+------------------------------------
+All browser plugins use the system Chrome/Chromium binary rather than
+Playwright's vendored Chromium.  Chrome is auto-detected in standard
+locations; ``CHROME_PATH`` can override if the binary is elsewhere.
+Playwright is used only for its automation protocol (CDP), never for its
+bundled browser.
 
 Rationale: multiple services (X/Twitter in particular) actively fingerprint
 Playwright's Chromium build and block it as bot traffic.  Using the host's
@@ -23,6 +25,7 @@ import contextlib
 import os
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -40,31 +43,103 @@ def _project_root() -> Path:
 # System Chrome (never use Playwright's vendored browser)
 # ---------------------------------------------------------------------------
 
+# Well-known Chrome/Chromium binary locations per platform.  Checked in order;
+# the first existing file wins.  Google Chrome is preferred over Chromium
+# because its fingerprint is more common in the wild.
+_CHROME_CANDIDATES_LINUX = [
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/google-chrome",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "/snap/bin/chromium",
+]
+
+_CHROME_CANDIDATES_MACOS = [
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+]
+
+_INSTALL_INSTRUCTIONS = {
+    "linux": (
+        "Install Google Chrome:\n"
+        "  wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb\n"
+        "  sudo dpkg -i google-chrome-stable_current_amd64.deb\n"
+        "  sudo apt-get install -f\n"
+        "\n"
+        "Or install Chromium:\n"
+        "  sudo apt install chromium-browser"
+    ),
+    "darwin": (
+        "Install Google Chrome:\n"
+        "  brew install --cask google-chrome\n"
+        "\n"
+        "Or download from https://www.google.com/chrome/"
+    ),
+}
+
+
+def _detect_chrome() -> str | None:
+    """Auto-detect Chrome/Chromium in well-known locations.
+
+    Returns the path to the first found binary, or None.
+    """
+    if sys.platform == "darwin":
+        candidates = _CHROME_CANDIDATES_MACOS
+    else:
+        candidates = _CHROME_CANDIDATES_LINUX
+
+    for candidate in candidates:
+        if Path(candidate).is_file():
+            return candidate
+
+    # Fall back to PATH lookup (handles unusual installs / WSL / Nix / etc.)
+    for name in ("google-chrome-stable", "google-chrome", "chromium-browser", "chromium"):
+        found = shutil.which(name)
+        if found:
+            return found
+
+    return None
+
 
 def chrome_path() -> str:
-    """Return the system Chrome/Chromium path from the ``CHROME_PATH`` env var.
+    """Return the system Chrome/Chromium binary path.
+
+    Resolution order:
+    1. ``CHROME_PATH`` environment variable (explicit override)
+    2. Auto-detection in well-known locations per platform
+    3. ``RuntimeError`` with platform-specific install instructions
 
     All browser plugins must use the system browser.  Playwright's vendored
     Chromium has a distinct fingerprint that services (notably X) detect and
     block as bot traffic.  Playwright is used only for its CDP automation
     protocol, never for its bundled browser binary.
-
-    Raises ``RuntimeError`` if ``CHROME_PATH`` is unset or the path doesn't exist.
     """
+    # 1. Explicit override via env var
     path = os.environ.get("CHROME_PATH", "")
-    if not path:
-        raise RuntimeError(
-            "CHROME_PATH is required. Set it to the system Chrome/Chromium binary "
-            "path in .env (e.g. CHROME_PATH=/usr/bin/google-chrome-stable). "
-            "Playwright's bundled Chromium is never used — services fingerprint "
-            "it as bot traffic."
-        )
-    if not Path(path).is_file():
-        raise RuntimeError(
-            f"CHROME_PATH={path!r} does not exist. Install Chrome/Chromium and "
-            "update CHROME_PATH in .env."
-        )
-    return path
+    if path:
+        if not Path(path).is_file():
+            raise RuntimeError(
+                f"CHROME_PATH={path!r} does not exist. Install Chrome/Chromium "
+                "and update CHROME_PATH in .env."
+            )
+        return path
+
+    # 2. Auto-detect
+    detected = _detect_chrome()
+    if detected:
+        return detected
+
+    # 3. Not found — give platform-specific install instructions
+    platform_key = "darwin" if sys.platform == "darwin" else "linux"
+    instructions = _INSTALL_INSTRUCTIONS[platform_key]
+    raise RuntimeError(
+        "Chrome/Chromium is not installed (or not in a standard location).\n"
+        "\n"
+        f"{instructions}\n"
+        "\n"
+        "After installing, either ensure the binary is in a standard path or "
+        "set CHROME_PATH in .env to point to it."
+    )
 
 
 # ---------------------------------------------------------------------------
