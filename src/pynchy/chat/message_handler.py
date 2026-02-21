@@ -45,6 +45,13 @@ class MessageHandlerDeps(Protocol):
     @property
     def last_agent_timestamp(self) -> dict[str, str]: ...
 
+    # Transient (not persisted): furthest message timestamp dispatched to the
+    # active container.  Distinct from last_agent_timestamp, which only advances
+    # on successful completion.  Used by the routing loop as the get_messages_since
+    # baseline so follow-up pipes don't re-include messages already being handled.
+    @property
+    def _dispatched_through(self) -> dict[str, str]: ...
+
     # The "seen" cursor for the polling loop (distinct from per-group agent cursors)
     last_timestamp: str
 
@@ -295,20 +302,18 @@ def _check_dirty_repo(group_name: str, dirty_check_file: Path) -> list[str]:
     return notices
 
 
-async def _advance_cursor(deps: MessageHandlerDeps, chat_jid: str, new_timestamp: str) -> str:
-    """Advance the agent cursor to *new_timestamp*, persisting to DB.
+def _mark_dispatched(deps: MessageHandlerDeps, chat_jid: str, new_timestamp: str) -> None:
+    """Record the furthest message timestamp dispatched to the active container.
 
-    Returns the **previous** cursor value so the caller can roll back on
-    error.  If ``save_state`` fails the cursor is automatically restored.
+    In-memory only — never persisted.  last_agent_timestamp is the true
+    "processed" cursor and only advances on successful completion (or when
+    partial output has already been sent, to avoid duplicate responses).
+
+    The routing loop uses max(last_agent_timestamp, _dispatched_through) as the
+    get_messages_since baseline so follow-up pipes don't re-include messages
+    that are already being handled by the active container.
     """
-    previous = deps.last_agent_timestamp.get(chat_jid, "")
-    deps.last_agent_timestamp[chat_jid] = new_timestamp
-    try:
-        await deps.save_state()
-    except Exception:
-        deps.last_agent_timestamp[chat_jid] = previous
-        raise
-    return previous
+    deps._dispatched_through[chat_jid] = new_timestamp
 
 
 async def process_group_messages(
@@ -365,8 +370,13 @@ async def process_group_messages(
     dirty_check_file = s.data_dir / "ipc" / group.folder / "needs_dirty_check.json"
     reset_system_notices = _check_dirty_repo(group.name, dirty_check_file) if is_admin_group else []
 
-    # Advance cursor with automatic rollback on failure
-    previous_cursor = await _advance_cursor(deps, chat_jid, missed_messages[-1].timestamp)
+    # Remember the current cursor so we can restore it if save_state fails at completion.
+    previous_cursor = deps.last_agent_timestamp.get(chat_jid, "")
+
+    # Mark dispatched (in-memory only).  last_agent_timestamp stays at previous_cursor
+    # until the container finishes — on an unexpected kill the DB retains the pre-run
+    # value so recover_pending_messages can re-find the boundary message on restart.
+    _mark_dispatched(deps, chat_jid, missed_messages[-1].timestamp)
 
     process_start = time.monotonic()
     logger.info(
@@ -413,23 +423,42 @@ async def process_group_messages(
         output_sent=output_sent_to_user,
     )
 
+    # Pop the dispatched marker; include any follow-ups piped while this
+    # container was running (tracked by the routing loop via _mark_dispatched).
+    dispatched = deps._dispatched_through.pop(chat_jid, missed_messages[-1].timestamp)
+    final_cursor = max(missed_messages[-1].timestamp, dispatched)
+
     if agent_result == "error" or had_error:
         if output_sent_to_user:
+            # Partial output already sent — advance cursor to prevent a duplicate
+            # response if the same messages are re-processed on the next trigger.
+            deps.last_agent_timestamp[chat_jid] = final_cursor
+            try:
+                await deps.save_state()
+            except Exception:
+                deps.last_agent_timestamp[chat_jid] = previous_cursor
+                raise
             logger.warning(
-                "Agent error after output was sent, skipping cursor rollback",
+                "Agent error after output was sent, advanced cursor to prevent retry duplicate",
                 group=group.name,
             )
             return True
         await deps.broadcast_host_message(
             chat_jid, "⚠️ Agent error occurred. Will retry on next message."
         )
-        deps.last_agent_timestamp[chat_jid] = previous_cursor
-        await deps.save_state()
         logger.warning(
-            "Agent error, rolled back message cursor for retry",
+            "Agent error, cursor unchanged for retry",
             group=group.name,
         )
         return False
+
+    # Success: advance the true processed cursor now that the container finished.
+    deps.last_agent_timestamp[chat_jid] = final_cursor
+    try:
+        await deps.save_state()
+    except Exception:
+        deps.last_agent_timestamp[chat_jid] = previous_cursor
+        raise
 
     # Merge worktree commits into main and push for groups with repo_access
     from pynchy.git_ops.worktree import background_merge_worktree

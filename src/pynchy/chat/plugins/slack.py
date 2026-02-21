@@ -415,7 +415,10 @@ class SlackChannel:
             )
             return []
         channel_id = _channel_id_from_jid(channel_jid)
-        since_epoch = str(datetime.fromisoformat(since).timestamp())
+        # conversations.history `oldest` is inclusive (ts >= oldest), so add
+        # a 1µs epsilon to make it exclusive and prevent the cursor from
+        # stalling on the boundary message every reconciliation cycle.
+        since_epoch = str(datetime.fromisoformat(since).timestamp() + 1e-6)
         return await self.fetch_missed_messages(channel_id, since_epoch)
 
     # ------------------------------------------------------------------
