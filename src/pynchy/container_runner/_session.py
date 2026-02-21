@@ -338,7 +338,7 @@ def _clean_ipc_input(group_folder: str) -> None:
 
 
 async def _docker_rm_force(container_name: str) -> None:
-    """Force-remove a container by name, ignoring errors."""
+    """Force-remove a container by name, ignoring expected errors."""
     try:
         proc = await asyncio.create_subprocess_exec(
             get_runtime().cli,
@@ -349,5 +349,7 @@ async def _docker_rm_force(container_name: str) -> None:
             stderr=asyncio.subprocess.DEVNULL,
         )
         await proc.wait()
-    except Exception:
-        pass
+    except OSError as exc:
+        # OSError covers FileNotFoundError (CLI missing) and other
+        # process-spawn failures — expected in degraded environments.
+        logger.debug("docker rm -f failed", container=container_name, err=str(exc))

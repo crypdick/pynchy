@@ -8,6 +8,7 @@ asyncio.gather() for fast response times (~200ms budget).
 from __future__ import annotations
 
 import asyncio
+import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -211,8 +212,8 @@ def _worktree_status(worktree_path: Path, main_branch: str, repo_root: Path) -> 
             if not gd.is_absolute():
                 gd = worktree_path / gd
             conflict = (gd / "MERGE_HEAD").exists() or (gd / "REBASE_HEAD").exists()
-    except Exception:
-        pass
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        logger.debug("Conflict detection failed", worktree=str(worktree_path), err=str(exc))
 
     return {
         "sha": sha,
@@ -341,5 +342,7 @@ def _container_state(name: str) -> str:
         if result.returncode != 0:
             return "not_found"
         return result.stdout.strip()  # "running", "exited", "created", etc.
-    except Exception:
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        # TimeoutExpired: docker CLI hung; FileNotFoundError: docker not installed.
+        # Both are expected in degraded environments — return not_found.
         return "not_found"
