@@ -208,7 +208,7 @@ class TestScheduleTaskValidation:
         assert "Invalid timestamp" in result.content[0].text
 
     @pytest.mark.asyncio
-    async def test_non_god_cannot_set_target_group(self, tmp_path):
+    async def test_non_admin_cannot_set_target_group(self, tmp_path):
         """Non-admin groups should have target_group ignored."""
         from agent_runner.agent_tools._server import call_tool
 
@@ -232,7 +232,7 @@ class TestScheduleTaskValidation:
         assert data["targetGroup"] == "test-group"
 
     @pytest.mark.asyncio
-    async def test_god_can_set_target_group(self, tmp_path):
+    async def test_admin_can_set_target_group(self, tmp_path):
         """Admin groups should be able to set target_group."""
         from agent_runner.agent_tools._server import call_tool
 
@@ -264,7 +264,7 @@ class TestRegisterGroupAuth:
     """Test register_group admin-only authorization."""
 
     @pytest.mark.asyncio
-    async def test_non_god_register_group_rejected(self):
+    async def test_non_admin_register_group_rejected(self):
         from agent_runner.agent_tools._server import call_tool
 
         with (
@@ -285,7 +285,7 @@ class TestRegisterGroupAuth:
         assert "admin" in result.content[0].text.lower()
 
     @pytest.mark.asyncio
-    async def test_god_register_group_accepted(self, tmp_path):
+    async def test_admin_register_group_accepted(self, tmp_path):
         from agent_runner.agent_tools._server import call_tool
 
         with (
@@ -314,7 +314,7 @@ class TestDeployAuth:
     """Test deploy_changes admin-only authorization."""
 
     @pytest.mark.asyncio
-    async def test_non_god_deploy_rejected(self):
+    async def test_non_admin_deploy_rejected(self):
         from agent_runner.agent_tools._server import call_tool
 
         with patch("agent_runner.agent_tools._ipc.is_admin", False):
@@ -400,7 +400,7 @@ class TestListTasks:
         assert "no" in result[0].text.lower()
 
     @pytest.mark.asyncio
-    async def test_god_sees_all_tasks(self, tmp_path):
+    async def test_admin_sees_all_tasks(self, tmp_path):
         from agent_runner.agent_tools._server import call_tool
 
         tasks = [
@@ -433,7 +433,7 @@ class TestListTasks:
         assert "t2" in text
 
     @pytest.mark.asyncio
-    async def test_non_god_sees_own_tasks_only(self, tmp_path):
+    async def test_non_admin_sees_own_tasks_only(self, tmp_path):
         from agent_runner.agent_tools._server import call_tool
 
         tasks = [
@@ -671,10 +671,10 @@ class TestUnknownTool:
 
 
 class TestListToolsVisibility:
-    """Test tool list visibility based on god/scheduled_task flags."""
+    """Test tool list visibility based on admin/scheduled_task flags."""
 
     @pytest.mark.asyncio
-    async def test_god_sees_deploy(self):
+    async def test_admin_sees_deploy(self):
         from agent_runner.agent_tools._server import list_tools
 
         with (
@@ -686,7 +686,7 @@ class TestListToolsVisibility:
         assert "deploy_changes" in tool_names
 
     @pytest.mark.asyncio
-    async def test_non_god_no_deploy(self):
+    async def test_non_admin_no_deploy(self):
         from agent_runner.agent_tools._server import list_tools
 
         with (

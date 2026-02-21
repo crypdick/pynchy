@@ -200,8 +200,8 @@ def test_action_tracker_prune():
 # --- Mixed scenarios ---
 
 
-def test_god_workspace_permissive():
-    """Test permissive security for god workspaces."""
+def test_admin_workspace_permissive():
+    """Test permissive security for admin workspaces."""
     security = WorkspaceSecurity(
         mcp_tools={
             "send_message": McpToolConfig(risk_tier="always-approve", enabled=True),

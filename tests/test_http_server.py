@@ -263,7 +263,7 @@ class MockHttpDeps:
         self._groups = [{"jid": "test@g.us", "name": "Test Group"}]
         self._messages: list[NewMessage] = []
         self._connected = True
-        self._admin_jid = "god@g.us"
+        self._admin_jid = "admin-1@g.us"
         self._event_callbacks: list = []
         self._periodic_agents: list[dict[str, Any]] = []
 

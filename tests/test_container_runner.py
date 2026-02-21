@@ -314,8 +314,8 @@ class TestLegacyParsing:
 
 
 class TestMountBuilding:
-    def test_god_group_has_project_mount(self, tmp_path: Path):
-        worktree_path = tmp_path / "worktrees" / "god"
+    def test_admin_group_has_project_mount(self, tmp_path: Path):
+        worktree_path = tmp_path / "worktrees" / "admin-1"
         worktree_path.mkdir(parents=True)
         repo_ctx = RepoContext(
             slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "worktrees"
@@ -323,9 +323,13 @@ class TestMountBuilding:
         with (
             _patch_settings(tmp_path),
         ):
-            (tmp_path / "groups" / "god").mkdir(parents=True)
+            (tmp_path / "groups" / "admin-1").mkdir(parents=True)
             group = WorkspaceProfile(
-                jid="god@g.us", name="God", folder="god", trigger="always", added_at="2024-01-01"
+                jid="admin-1@g.us",
+                name="Admin",
+                folder="admin-1",
+                trigger="always",
+                added_at="2024-01-01",
             )
             mounts = _build_volume_mounts(
                 group, is_admin=True, repo_ctx=repo_ctx, worktree_path=worktree_path
@@ -337,7 +341,7 @@ class TestMountBuilding:
             # God should NOT have /workspace/global
             assert "/workspace/global" not in paths
 
-    def test_nongod_group_has_no_global_mount(self, tmp_path: Path):
+    def test_nonadmin_group_has_no_global_mount(self, tmp_path: Path):
         """Non-admin groups no longer get a /workspace/global mount.
 
         Directives replaced the old global CLAUDE.md overlay — content is now
@@ -362,7 +366,7 @@ class TestMountBuilding:
             assert "/workspace/group" in paths
             assert "/workspace/global" not in paths
 
-    def test_nongod_repo_access_uses_worktree_path(self, tmp_path: Path):
+    def test_nonadmin_repo_access_uses_worktree_path(self, tmp_path: Path):
         """Non-admin group with repo_access + worktree_path mounts the worktree."""
         worktree_path = tmp_path / "worktrees" / "code-improver"
         worktree_path.mkdir(parents=True)
@@ -393,9 +397,9 @@ class TestMountBuilding:
             git_mount = next(m for m in mounts if m.host_path == str(tmp_path / ".git"))
             assert git_mount.container_path == str(tmp_path / ".git")
 
-    def test_god_uses_worktree(self, tmp_path: Path):
+    def test_admin_uses_worktree(self, tmp_path: Path):
         """Admin group uses worktree just like any other repo_access group."""
-        worktree_path = tmp_path / "worktrees" / "god"
+        worktree_path = tmp_path / "worktrees" / "admin-1"
         worktree_path.mkdir(parents=True)
         repo_ctx = RepoContext(
             slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "worktrees"
@@ -403,9 +407,13 @@ class TestMountBuilding:
         with (
             _patch_settings(tmp_path),
         ):
-            (tmp_path / "groups" / "god").mkdir(parents=True)
+            (tmp_path / "groups" / "admin-1").mkdir(parents=True)
             group = WorkspaceProfile(
-                jid="god@g.us", name="God", folder="god", trigger="always", added_at="2024-01-01"
+                jid="admin-1@g.us",
+                name="Admin",
+                folder="admin-1",
+                trigger="always",
+                added_at="2024-01-01",
             )
             mounts = _build_volume_mounts(
                 group, is_admin=True, repo_ctx=repo_ctx, worktree_path=worktree_path
@@ -415,13 +423,17 @@ class TestMountBuilding:
             assert project_mount.host_path == str(worktree_path)
             assert project_mount.readonly is False
 
-    def test_god_gets_config_toml_mount(self, tmp_path: Path):
+    def test_admin_gets_config_toml_mount(self, tmp_path: Path):
         """Admin group gets config.toml mounted read-write when it exists."""
         with _patch_settings(tmp_path):
-            (tmp_path / "groups" / "god").mkdir(parents=True)
+            (tmp_path / "groups" / "admin-1").mkdir(parents=True)
             (tmp_path / "config.toml").write_text("[agent]\nname = 'pynchy'\n")
             group = WorkspaceProfile(
-                jid="god@g.us", name="God", folder="god", trigger="always", added_at="2024-01-01"
+                jid="admin-1@g.us",
+                name="Admin",
+                folder="admin-1",
+                trigger="always",
+                added_at="2024-01-01",
             )
             mounts = _build_volume_mounts(group, is_admin=True)
 
@@ -431,7 +443,7 @@ class TestMountBuilding:
             assert config_mount.host_path == str(tmp_path / "config.toml")
             assert config_mount.readonly is False
 
-    def test_nongod_does_not_get_config_toml(self, tmp_path: Path):
+    def test_nonadmin_does_not_get_config_toml(self, tmp_path: Path):
         """Non-admin groups never get config.toml mounted."""
         with _patch_settings(tmp_path):
             (tmp_path / "groups" / "other").mkdir(parents=True)
@@ -448,12 +460,16 @@ class TestMountBuilding:
             paths = [m.container_path for m in mounts]
             assert "/workspace/project/config.toml" not in paths
 
-    def test_god_no_config_toml_when_missing(self, tmp_path: Path):
+    def test_admin_no_config_toml_when_missing(self, tmp_path: Path):
         """Admin group doesn't get config.toml mount if the file doesn't exist."""
         with _patch_settings(tmp_path):
-            (tmp_path / "groups" / "god").mkdir(parents=True)
+            (tmp_path / "groups" / "admin-1").mkdir(parents=True)
             group = WorkspaceProfile(
-                jid="god@g.us", name="God", folder="god", trigger="always", added_at="2024-01-01"
+                jid="admin-1@g.us",
+                name="Admin",
+                folder="admin-1",
+                trigger="always",
+                added_at="2024-01-01",
             )
             mounts = _build_volume_mounts(group, is_admin=True)
 
@@ -718,8 +734,8 @@ class TestWriteEnvFile:
         ):
             assert _write_env_file(is_admin=True, group_folder="test") is None
 
-    def test_auto_discovers_gh_token_for_god(self, tmp_path: Path):
-        """GH_TOKEN is auto-discovered from gh CLI for god containers."""
+    def test_auto_discovers_gh_token_for_admin(self, tmp_path: Path):
+        """GH_TOKEN is auto-discovered from gh CLI for admin containers."""
         gw = _MockGateway(providers=set())
         with (
             _patch_settings(tmp_path),
@@ -732,7 +748,7 @@ class TestWriteEnvFile:
             content = (env_dir / "env").read_text()
             assert "GH_TOKEN='gho_abc123'" in content
 
-    def test_non_god_excludes_gh_token(self, tmp_path: Path):
+    def test_non_admin_excludes_gh_token(self, tmp_path: Path):
         """Non-admin containers never receive GH_TOKEN, even when available."""
         gw = _MockGateway(providers={"anthropic"})
         with (
@@ -813,11 +829,11 @@ class TestWriteEnvFile:
             patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_xyz"),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            god_dir = _write_env_file(is_admin=True, group_folder="god-group")
-            nongod_dir = _write_env_file(is_admin=False, group_folder="other-group")
-            assert god_dir != nongod_dir
-            assert "GH_TOKEN" in (god_dir / "env").read_text()
-            assert "GH_TOKEN" not in (nongod_dir / "env").read_text()
+            admin_dir = _write_env_file(is_admin=True, group_folder="admin-group")
+            nonadmin_dir = _write_env_file(is_admin=False, group_folder="other-group")
+            assert admin_dir != nonadmin_dir
+            assert "GH_TOKEN" in (admin_dir / "env").read_text()
+            assert "GH_TOKEN" not in (nonadmin_dir / "env").read_text()
 
     def test_values_are_shell_quoted(self, tmp_path: Path):
         """Names with spaces and apostrophes are safely shell-quoted."""
@@ -902,22 +918,22 @@ class TestReadGitIdentity:
 
 
 class TestTasksSnapshot:
-    def test_god_sees_all_tasks(self, tmp_path: Path):
+    def test_admin_sees_all_tasks(self, tmp_path: Path):
         with _patch_settings(tmp_path):
             tasks = [
-                {"groupFolder": "god", "id": "t1"},
+                {"groupFolder": "admin-1", "id": "t1"},
                 {"groupFolder": "other", "id": "t2"},
             ]
-            write_tasks_snapshot("god", True, tasks)
+            write_tasks_snapshot("admin-1", True, tasks)
             result = json.loads(
-                (tmp_path / "data" / "ipc" / "god" / "current_tasks.json").read_text()
+                (tmp_path / "data" / "ipc" / "admin-1" / "current_tasks.json").read_text()
             )
             assert len(result) == 2
 
-    def test_nongod_sees_only_own_tasks(self, tmp_path: Path):
+    def test_nonadmin_sees_only_own_tasks(self, tmp_path: Path):
         with _patch_settings(tmp_path):
             tasks = [
-                {"groupFolder": "god", "id": "t1"},
+                {"groupFolder": "admin-1", "id": "t1"},
                 {"groupFolder": "other", "id": "t2"},
             ]
             write_tasks_snapshot("other", False, tasks)
@@ -927,20 +943,20 @@ class TestTasksSnapshot:
             assert len(result) == 1
             assert result[0]["id"] == "t2"
 
-    def test_god_includes_host_jobs(self, tmp_path: Path):
+    def test_admin_includes_host_jobs(self, tmp_path: Path):
         with _patch_settings(tmp_path):
-            tasks = [{"groupFolder": "god", "id": "t1"}]
+            tasks = [{"groupFolder": "admin-1", "id": "t1"}]
             host_jobs = [{"type": "host", "id": "h1", "name": "daily-backup"}]
-            write_tasks_snapshot("god", True, tasks, host_jobs=host_jobs)
+            write_tasks_snapshot("admin-1", True, tasks, host_jobs=host_jobs)
             result = json.loads(
-                (tmp_path / "data" / "ipc" / "god" / "current_tasks.json").read_text()
+                (tmp_path / "data" / "ipc" / "admin-1" / "current_tasks.json").read_text()
             )
             assert len(result) == 2
             assert result[0]["id"] == "t1"
             assert result[1]["id"] == "h1"
             assert result[1]["type"] == "host"
 
-    def test_nongod_ignores_host_jobs(self, tmp_path: Path):
+    def test_nonadmin_ignores_host_jobs(self, tmp_path: Path):
         with _patch_settings(tmp_path):
             tasks = [{"groupFolder": "other", "id": "t1"}]
             host_jobs = [{"type": "host", "id": "h1", "name": "daily-backup"}]
@@ -953,16 +969,16 @@ class TestTasksSnapshot:
 
 
 class TestGroupsSnapshot:
-    def test_god_sees_all_groups(self, tmp_path: Path):
+    def test_admin_sees_all_groups(self, tmp_path: Path):
         with _patch_settings(tmp_path):
             groups = [{"jid": "a@g.us"}, {"jid": "b@g.us"}]
-            write_groups_snapshot("god", True, groups, {"a@g.us", "b@g.us"})
+            write_groups_snapshot("admin-1", True, groups, {"a@g.us", "b@g.us"})
             result = json.loads(
-                (tmp_path / "data" / "ipc" / "god" / "available_groups.json").read_text()
+                (tmp_path / "data" / "ipc" / "admin-1" / "available_groups.json").read_text()
             )
             assert len(result["groups"]) == 2
 
-    def test_nongod_sees_no_groups(self, tmp_path: Path):
+    def test_nonadmin_sees_no_groups(self, tmp_path: Path):
         with _patch_settings(tmp_path):
             groups = [{"jid": "a@g.us"}]
             write_groups_snapshot("other", False, groups, {"a@g.us"})

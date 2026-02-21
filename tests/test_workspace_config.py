@@ -141,10 +141,10 @@ class TestGetRepoAccess:
         @dataclass
         class FakeGroup:
             is_admin: bool = True
-            folder: str = "god"
+            folder: str = "admin-1"
 
         s = _settings_with_workspaces(
-            workspaces={"god": WorkspaceConfig(name="test", is_admin=True)}
+            workspaces={"admin-1": WorkspaceConfig(name="test", is_admin=True)}
         )
         with patch("pynchy.workspace_config.get_settings", return_value=s):
             assert get_repo_access(FakeGroup()) is None

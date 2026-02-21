@@ -27,10 +27,10 @@ from pynchy.ipc import dispatch
 from pynchy.ipc._handlers_deploy import _handle_deploy
 from pynchy.types import WorkspaceProfile
 
-GOD_GROUP = WorkspaceProfile(
-    jid="god@g.us",
-    name="God",
-    folder="god",
+ADMIN_GROUP = WorkspaceProfile(
+    jid="admin-1@g.us",
+    name="Admin",
+    folder="admin-1",
     trigger="always",
     added_at="2024-01-01T00:00:00.000Z",
     is_admin=True,
@@ -121,7 +121,7 @@ async def deps():
     await _init_test_database()
     return MockDeps(
         {
-            "god@g.us": GOD_GROUP,
+            "admin-1@g.us": ADMIN_GROUP,
             "other@g.us": OTHER_GROUP,
         }
     )
@@ -139,7 +139,9 @@ class TestSyncWorktreeToMain:
         """sync_worktree_to_main should write a result JSON for the blocking MCP tool."""
         merge_results_dir = tmp_path / "data" / "ipc" / "other-group" / "merge_results"
         merge_results_dir.mkdir(parents=True)
-        fake_repo_ctx = RepoContext(slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt")
+        fake_repo_ctx = RepoContext(
+            slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt"
+        )
 
         with (
             patch(
@@ -213,7 +215,9 @@ class TestSyncWorktreeToMain:
         """On successful sync, other worktrees should be notified of changes."""
         merge_results_dir = tmp_path / "data" / "ipc" / "other-group" / "merge_results"
         merge_results_dir.mkdir(parents=True)
-        fake_repo_ctx = RepoContext(slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt")
+        fake_repo_ctx = RepoContext(
+            slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt"
+        )
 
         with (
             patch(
@@ -284,7 +288,9 @@ class TestSyncWorktreeToMain:
         """Successful sync with src/ changes should trigger deploy."""
         merge_results_dir = tmp_path / "data" / "ipc" / "other-group" / "merge_results"
         merge_results_dir.mkdir(parents=True)
-        fake_repo_ctx = RepoContext(slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt")
+        fake_repo_ctx = RepoContext(
+            slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt"
+        )
 
         with (
             patch(
@@ -393,13 +399,13 @@ class TestDeployEdgeCases:
                     "headSha": "abc123",
                     # chatJid intentionally missing
                 },
-                "god",
+                "admin-1",
                 True,
                 deps,
             )
             mock_finalize.assert_called_once()
             # Should have resolved the admin group's JID
-            assert mock_finalize.call_args.kwargs["chat_jid"] == "god@g.us"
+            assert mock_finalize.call_args.kwargs["chat_jid"] == "admin-1@g.us"
 
     async def test_deploy_without_chat_jid_and_no_admin_group(self):
         """Deploy request with no chatJid and no admin group should not finalize."""
@@ -415,7 +421,7 @@ class TestDeployEdgeCases:
                     "rebuildContainer": False,
                     "headSha": "abc123",
                 },
-                "god",
+                "admin-1",
                 True,
                 no_admin_deps,
             )
@@ -439,9 +445,9 @@ class TestDeployEdgeCases:
                     "rebuildContainer": True,
                     "resumePrompt": "Done.",
                     "headSha": "abc123",
-                    "chatJid": "god@g.us",
+                    "chatJid": "admin-1@g.us",
                 },
-                "god",
+                "admin-1",
                 True,
                 deps,
             )
@@ -457,10 +463,10 @@ class TestDeployEdgeCases:
                 {
                     "rebuildContainer": False,
                     "headSha": "abc123",
-                    "chatJid": "god@g.us",
+                    "chatJid": "admin-1@g.us",
                     # resumePrompt intentionally missing
                 },
-                "god",
+                "admin-1",
                 True,
                 deps,
             )
@@ -479,16 +485,16 @@ class TestIpcTypeEdgeCases:
     async def test_empty_type_field_is_unknown(self, deps: MockDeps):
         """A task with no type field should be handled as unknown."""
         # Should not raise
-        await dispatch({"no_type_field": True}, "god", True, deps)
+        await dispatch({"no_type_field": True}, "admin-1", True, deps)
 
     async def test_none_type_field_is_unknown(self, deps: MockDeps):
         """A task with type=None should be handled gracefully."""
-        await dispatch({"type": None}, "god", True, deps)
+        await dispatch({"type": None}, "admin-1", True, deps)
 
     async def test_empty_data_dict_is_handled(self, deps: MockDeps):
         """An empty data dict should not crash the processor."""
-        await dispatch({}, "god", True, deps)
+        await dispatch({}, "admin-1", True, deps)
 
     async def test_unknown_type_does_not_raise(self, deps: MockDeps):
         """An unrecognized IPC type should be logged but not raise."""
-        await dispatch({"type": "totally_made_up_command"}, "god", True, deps)
+        await dispatch({"type": "totally_made_up_command"}, "admin-1", True, deps)

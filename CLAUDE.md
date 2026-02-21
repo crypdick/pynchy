@@ -43,7 +43,7 @@ Python process that connects to messaging channels (WhatsApp, Slack, etc. via pl
 | [Architecture](docs/architecture/index.md) | System design, container isolation, message routing, groups, tasks |
 | [Security model](docs/architecture/security.md) | Trust model, security boundaries, credential handling |
 | [Plugin authoring](docs/plugins/index.md) | Writing plugins: hooks, packaging, distribution |
-| [Worktree isolation](docs/usage/worktrees.md) | How non-god groups get isolated git worktrees |
+| [Worktree isolation](docs/usage/worktrees.md) | How non-admin groups get isolated git worktrees |
 | [Style guide](docs/contributing/contributing-docs.md) | Documentation philosophy, information architecture, code comments |
 
 ## Expert Pushback Policy

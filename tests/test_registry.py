@@ -218,10 +218,10 @@ class TestConfigForwarding:
 
         monkeypatch.setattr(core_mod, "InspectorCore", InspectorCore, raising=False)
 
-        config = _make_config(session_id="sess-42", is_admin=True, group_folder="god")
+        config = _make_config(session_id="sess-42", is_admin=True, group_folder="admin-1")
         create_agent_core("agent_runner.core", "InspectorCore", config)
 
         assert received_config is not None
         assert received_config.session_id == "sess-42"
         assert received_config.is_admin is True
-        assert received_config.group_folder == "god"
+        assert received_config.group_folder == "admin-1"

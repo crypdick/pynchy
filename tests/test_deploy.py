@@ -182,7 +182,7 @@ class TestFinalizeDeploy:
         """active_sessions dict should be written to the continuation file."""
         broadcast = AsyncMock()
         sessions = {
-            "god@g.us": "sess-god",
+            "admin-1@g.us": "sess-admin-1",
             "team@g.us": "sess-team",
             "project@g.us": "sess-project",
         }
@@ -190,7 +190,7 @@ class TestFinalizeDeploy:
         with patch("pynchy.deploy.os.kill"):
             await finalize_deploy(
                 broadcast_host_message=broadcast,
-                chat_jid="god@g.us",
+                chat_jid="admin-1@g.us",
                 commit_sha="abc123",
                 previous_sha="000",
                 active_sessions=sessions,
@@ -207,17 +207,17 @@ class TestFinalizeDeploy:
         with patch("pynchy.deploy.os.kill"):
             await finalize_deploy(
                 broadcast_host_message=broadcast,
-                chat_jid="god@g.us",
+                chat_jid="admin-1@g.us",
                 commit_sha="abc",
                 previous_sha="000",
-                session_id="sess-god",
+                session_id="sess-admin-1",
                 active_sessions=sessions,
             )
 
         continuation = json.loads((deploy_dir / "deploy_continuation.json").read_text())
         assert continuation["active_sessions"] == {
             "team@g.us": "sess-team",
-            "god@g.us": "sess-god",
+            "admin-1@g.us": "sess-admin-1",
         }
 
     async def test_active_sessions_empty_when_no_sessions(self, deploy_dir: Path):
@@ -227,7 +227,7 @@ class TestFinalizeDeploy:
         with patch("pynchy.deploy.os.kill"):
             await finalize_deploy(
                 broadcast_host_message=broadcast,
-                chat_jid="god@g.us",
+                chat_jid="admin-1@g.us",
                 commit_sha="abc",
                 previous_sha="000",
             )

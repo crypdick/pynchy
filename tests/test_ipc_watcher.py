@@ -20,10 +20,10 @@ from pynchy.git_ops.repo import RepoContext
 from pynchy.ipc._watcher import _move_to_error_dir
 from pynchy.types import WorkspaceProfile
 
-GOD_GROUP = WorkspaceProfile(
-    jid="god@g.us",
-    name="God",
-    folder="god",
+ADMIN_GROUP = WorkspaceProfile(
+    jid="admin-1@g.us",
+    name="Admin",
+    folder="admin-1",
     trigger="always",
     added_at="2024-01-01",
     is_admin=True,
@@ -105,7 +105,7 @@ async def deps():
     await _init_test_database()
     return MockDeps(
         {
-            "god@g.us": GOD_GROUP,
+            "admin-1@g.us": ADMIN_GROUP,
             "other@g.us": OTHER_GROUP,
         }
     )
@@ -173,7 +173,7 @@ class TestIpcMessageProcessing:
         # Here we test the message file authorization logic directly
         groups = deps.workspaces()
         target_group = groups.get("other@g.us")
-        source_group = "god"
+        source_group = "admin-1"
         is_admin = True
 
         # Simulate the authorization check from the watcher
@@ -193,7 +193,7 @@ class TestIpcMessageProcessing:
     async def test_non_admin_blocked_from_other_chat(self, deps):
         """Non-admin group should NOT be authorized to send to another group's chat."""
         groups = deps.workspaces()
-        target_group = groups.get("god@g.us")
+        target_group = groups.get("admin-1@g.us")
         source_group = "other-group"
         is_admin = False
 
@@ -224,19 +224,19 @@ class TestIpcTaskFileEdgeCases:
         from pynchy.ipc import dispatch
 
         # Should not raise
-        await dispatch({"no_type_field": True}, "god", True, deps)
+        await dispatch({"no_type_field": True}, "admin-1", True, deps)
 
     async def test_none_type_field_is_ignored(self, deps):
         """A task file with type=None should be handled gracefully."""
         from pynchy.ipc import dispatch
 
-        await dispatch({"type": None}, "god", True, deps)
+        await dispatch({"type": None}, "admin-1", True, deps)
 
     async def test_empty_data_dict_is_ignored(self, deps):
         """An empty data dict should not crash the processor."""
         from pynchy.ipc import dispatch
 
-        await dispatch({}, "god", True, deps)
+        await dispatch({}, "admin-1", True, deps)
 
 
 # ---------------------------------------------------------------------------
@@ -261,13 +261,13 @@ class TestIpcDeployEdgeCases:
                     "headSha": "abc123",
                     # chatJid intentionally missing
                 },
-                "god",
+                "admin-1",
                 True,
                 deps,
             )
             mock_finalize.assert_called_once()
             # Should have resolved the admin group's JID
-            assert mock_finalize.call_args.kwargs["chat_jid"] == "god@g.us"
+            assert mock_finalize.call_args.kwargs["chat_jid"] == "admin-1@g.us"
 
     async def test_deploy_without_chat_jid_and_no_admin_group(self, deps):
         """Deploy request with no chatJid and no admin group should not finalize."""
@@ -289,7 +289,7 @@ class TestIpcDeployEdgeCases:
                     "rebuildContainer": False,
                     "headSha": "abc123",
                 },
-                "god",
+                "admin-1",
                 True,
                 no_admin_deps,
             )
@@ -308,7 +308,9 @@ class TestSyncWorktreeIpc:
         """sync_worktree_to_main should write a result JSON for the blocking MCP tool."""
         from pynchy.ipc import dispatch
 
-        fake_repo_ctx = RepoContext(slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt")
+        fake_repo_ctx = RepoContext(
+            slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt"
+        )
 
         with (
             patch(
@@ -347,7 +349,9 @@ class TestSyncWorktreeIpc:
         """On successful sync, other worktrees should be notified."""
         from pynchy.ipc import dispatch
 
-        fake_repo_ctx = RepoContext(slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt")
+        fake_repo_ctx = RepoContext(
+            slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt"
+        )
 
         with (
             patch(
