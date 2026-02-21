@@ -442,6 +442,13 @@ class PynchyApp:
         except Exception:
             logger.debug("Shutdown notification failed (ignored)")
 
+        # Tell channels to suppress reconnect attempts before the long
+        # cleanup sequence — prevents RuntimeError crash-loops when the
+        # Slack websocket drops during gateway/queue shutdown.
+        for ch in self.channels:
+            if hasattr(ch, "prepare_shutdown"):
+                ch.prepare_shutdown()
+
         if self._http_runner:
             # Give SSE handlers a brief chance to observe shutdown state and
             # exit before aiohttp forcibly tears down request tasks.

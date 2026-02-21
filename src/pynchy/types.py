@@ -351,6 +351,15 @@ class Channel(Protocol):
         """
         ...
 
+    def prepare_shutdown(self) -> None:
+        """Signal imminent shutdown — suppress reconnect attempts.
+
+        Called early in the shutdown sequence.  The channel should remain
+        connected for message delivery but must not attempt reconnection
+        if the underlying transport drops.
+        """
+        ...
+
     async def fetch_inbound_since(self, channel_jid: str, since: str) -> list[NewMessage]:
         """Fetch messages from channel API newer than ``since``.
 
