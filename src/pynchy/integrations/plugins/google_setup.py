@@ -839,10 +839,70 @@ async def _handle_setup_gdrive(data: dict) -> dict:
             del os.environ["DISPLAY"]
 
 
-async def _handle_authorize_gdrive(data: dict) -> dict:
-    """OAuth token exchange only (assumes credentials JSON exists)."""
-    from playwright.async_api import async_playwright
+def _oauth_background_flow(
+    keys_path: Path,
+    profile: Path,
+    vnc_procs: list[subprocess.Popen],
+    original_display: str | None,
+) -> None:
+    """Background thread: wait for OAuth callback, exchange tokens, clean up."""
+    try:
+        client_id, client_secret = _parse_client_credentials(keys_path)
+        done_event, auth_codes, callback_server = _start_callback_server()
 
+        auth_url = _build_auth_url(client_id)
+
+        # Launch Chrome directly — the user interacts via noVNC, no automation needed
+        chrome_proc = subprocess.Popen(
+            [
+                chrome_path(),
+                f"--user-data-dir={profile}",
+                "--no-first-run",
+                "--no-default-browser-check",
+                auth_url,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        logger.info("Waiting for OAuth consent (click Allow in the browser)")
+        done_event.wait(timeout=300)
+        callback_server.shutdown()
+
+        with contextlib.suppress(Exception):
+            chrome_proc.terminate()
+            chrome_proc.wait(timeout=5)
+
+        if not auth_codes:
+            logger.warning("OAuth callback not received within 5 minutes")
+            return
+
+        logger.info("Exchanging authorization code for tokens")
+        tokens = _exchange_code_for_tokens(auth_codes[0], client_id, client_secret)
+        _save_credentials_to_volume(tokens)
+        logger.info(
+            "OAuth tokens saved to mcp-gdrive volume",
+            has_refresh_token="refresh_token" in tokens,
+        )
+
+    except Exception as exc:
+        logger.error("Background OAuth flow failed", error=str(exc))
+
+    finally:
+        stop_procs(vnc_procs)
+        if original_display is not None:
+            os.environ["DISPLAY"] = original_display
+        elif "DISPLAY" in os.environ and vnc_procs:
+            del os.environ["DISPLAY"]
+
+
+async def _handle_authorize_gdrive(data: dict) -> dict:
+    """Start OAuth flow and return noVNC URL immediately.
+
+    Launches Chrome with the Google consent screen visible via noVNC.
+    The OAuth callback + token exchange run in a background thread so
+    the agent gets the noVNC URL right away and can show it to the user.
+    """
     keys_path = Path(data.get("keys_path", str(_keys_path())))
     if not keys_path.exists():
         return {
@@ -852,49 +912,40 @@ async def _handle_authorize_gdrive(data: dict) -> dict:
             )
         }
 
-    profile = profile_dir("google")
     vnc_procs: list[subprocess.Popen] = []
     original_display = os.environ.get("DISPLAY")
+    novnc_url: str | None = None
 
     try:
-        novnc_url: str | None = None
         if not has_display():
             vnc_procs, novnc_url = start_virtual_display()
-
-        async with async_playwright() as pw:
-            context = await pw.chromium.launch_persistent_context(
-                user_data_dir=str(profile),
-                executable_path=chrome_path(),
-                headless=False,
-                viewport={"width": 1280, "height": 720},
-                timeout=60_000,
-            )
-            page = context.pages[0] if context.pages else await context.new_page()
-
-            tokens = await _run_oauth_flow(page, keys_path)
-            await context.close()
-
-        _save_credentials_to_volume(tokens)
-
-        result: dict[str, Any] = {
-            "status": "ok",
-            "message": "Credentials saved to mcp-gdrive Docker volume",
-            "has_refresh_token": "refresh_token" in tokens,
-        }
-        if novnc_url:
-            result["novnc_url"] = novnc_url
-        return {"result": result}
-
     except Exception as exc:
-        logger.error("authorize_gdrive failed", error=str(exc))
-        return {"error": str(exc)}
-
-    finally:
         stop_procs(vnc_procs)
-        if original_display is not None:
-            os.environ["DISPLAY"] = original_display
-        elif "DISPLAY" in os.environ and vnc_procs:
-            del os.environ["DISPLAY"]
+        return {"error": f"Failed to start virtual display: {exc}"}
+
+    profile = profile_dir("google")
+
+    # Start the OAuth flow in a background thread — it waits up to 5 min
+    # for the user to click Allow, then saves tokens and cleans up.
+    thread = threading.Thread(
+        target=_oauth_background_flow,
+        args=(keys_path, profile, vnc_procs, original_display),
+        daemon=True,
+    )
+    thread.start()
+
+    result: dict[str, Any] = {
+        "status": "waiting_for_consent",
+        "message": (
+            "OAuth consent screen is opening in the browser. "
+            "Click 'Allow' to authorize Google Drive access. "
+            "After approval, tokens will be saved automatically."
+        ),
+    }
+    if novnc_url:
+        result["novnc_url"] = novnc_url
+        result["message"] += f" Open {novnc_url} to interact with the browser."
+    return {"result": result}
 
 
 # ---------------------------------------------------------------------------
