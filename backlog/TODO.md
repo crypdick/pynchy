@@ -35,7 +35,7 @@ Single source of truth for all pynchy work items.
 - beginners tips. the tips print sometimes after a user sends a message. it has usage instructions and pro tips. plugin authors can optionally define tips for their plugins. there should be a global setting to disalbe tips. on by default.
 - admin container feature request workflow — agents that want to edit shared files (e.g. `.claude/` rules) should spawn an admin container with a feature request. The admin container decides whether to implement it. (read-only mount enforcement already done in `mount_security.py`)
 - port `.claude/` hookify hooks to built-in harness hooks. Claude hookify is vendor-specific (OpenAI doesn't support it). Migrate existing hook logic into our own hook system.
-- automate Slack browser token (`xoxc`/`xoxd`) extraction via headless browser so expired tokens can be refreshed without manual DevTools steps. Playwright is already available as an MCP — try that first.
+- ~~automate Slack browser token (`xoxc`/`xoxd`) extraction via headless browser~~ → done: `slack-token-extractor` plugin + `type="script"` MCP infra + `pynchy_mcp_server_spec` hook
 - hide `register_group` tool from non-admin containers — currently the tool definition is always returned (only the handler checks `is_admin`). Should return `None` from `_register_group_definition()` when `_ipc.is_admin` is false, like `deploy_changes` already does.
 - if container 1 syncs a change, the host recieves and pushes to the rest of the containers, and one of the container's worktree has a merge conflict, and that container is hibernating, that container ought to be spun up, sent a system message about the failed abortion, and a follow up message telling it to fix the broken rebase. that way, working in one container does not fuck up the work of a hibernating container.
 - rename subsystems:
@@ -73,6 +73,7 @@ Single source of truth for all pynchy work items.
 - make the code improver plugin able to update the plugin repos as well as the core pynchy repo.
 
 #### Bugs
+- [MCP gateway transport](3-ready/mcp-gateway-transport.md) — Claude SDK `type: "http"` hangs during init against LiteLLM's Streamable HTTP `/mcp/` endpoint; `type: "sse"` fails gracefully but tools unavailable
 - [Slack shutdown race (recurrence)](3-ready/slack-shutdown-race.md) — `RuntimeError: Executor shutdown` during service restart. Commit `76065e0` cancels `_reconnect_task` in `disconnect()`, but orphaned aiohttp subtasks spawned by `connect()` still crash when the executor tears down. Follow-up commit `730e2a7` (guard reconnect against shutdown race) didn't fully resolve it either. Downstream: `Failed to resolve bot user ID (mention stripping disabled)` during reconnect. Needs deeper fix in `slack.py` reconnect path.
 - messaging desync — sometimes no response appears in TUI until a follow-up message is sent. Partially fixed (cursor advance bug, input pipeline unification), but full fix likely depends on per-channel bidirectional cursors (see [reliable-channel-messaging](2-planning/reliable-channel-messaging.md)).
 
