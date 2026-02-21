@@ -133,6 +133,34 @@ MCP tool servers (e.g., Playwright) run as separate Docker containers managed by
 
 See `src/pynchy/container_runner/mcp_manager.py` and [MCP management](../docs/architecture/mcp-management.md).
 
+## Database Files
+
+All databases live in `data/`:
+
+| File | Purpose |
+|------|---------|
+| `data/messages.db` | Main DB — messages, groups, sessions, tasks, events, outbound ledger |
+| `data/neonize.db` | WhatsApp auth state (Neonize credentials) |
+| `data/memories.db` | BM25-ranked memory store (sqlite-memory plugin) |
+
+Quick inspection (run on pynchy-server or prefix with `ssh pynchy-server`):
+
+```bash
+# List registered groups
+sqlite3 data/messages.db "SELECT name, folder, is_admin FROM registered_groups;"
+
+# Recent messages across all channels
+sqlite3 data/messages.db "SELECT timestamp, chat_jid, sender_name, substr(content, 1, 80) FROM messages ORDER BY timestamp DESC LIMIT 10;"
+
+# Active sessions
+sqlite3 data/messages.db "SELECT * FROM sessions;"
+
+# Scheduled tasks
+sqlite3 data/messages.db "SELECT id, group_folder, status, next_run FROM scheduled_tasks WHERE status = 'active';"
+```
+
+For the full query cookbook (traces, tool calls, cross-table debugging), see the `pynchy-dev` skill's [sqlite-queries.md](../pynchy-dev/references/sqlite-queries.md).
+
 ## Server Debugging
 
 For specific failure scenarios — container timeouts, agent not responding, mount issues, WhatsApp auth — see [references/server-debug.md](references/server-debug.md).

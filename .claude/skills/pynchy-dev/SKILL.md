@@ -42,18 +42,18 @@ Write tests that validate **actual business logic**, not just line coverage. See
 
 Prefer querying SQLite over docker logs — docker logs truncate output, but the DB stores full content and captures agent internals (thinking, tool calls, system prompts).
 
-Database: `store/messages.db`. If not on the pynchy host, prefix with `ssh pynchy-server`.
+Database: `data/messages.db`. If not on the pynchy host, prefix with `ssh pynchy-server`.
 
 ```bash
 # Last 20 messages in a channel
-sqlite3 store/messages.db "
+sqlite3 data/messages.db "
   SELECT timestamp, sender_name, message_type, substr(content, 1, 120)
   FROM messages WHERE chat_jid = '<JID>'
   ORDER BY timestamp DESC LIMIT 20;
 "
 
 # Last 20 tool calls globally
-sqlite3 store/messages.db "
+sqlite3 data/messages.db "
   SELECT timestamp, chat_jid, json_extract(payload, '$.tool_name') AS tool
   FROM events
   WHERE event_type = 'agent_trace'

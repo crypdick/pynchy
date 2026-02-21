@@ -27,8 +27,8 @@ Admin has access to the entire project:
 | `/workspace/group` | `groups/{folder}/` | read-write |
 
 Key paths inside the container:
-- `/workspace/project/store/messages.db` - SQLite database
-- `/workspace/project/store/messages.db` (registered_groups table) - Group config
+- `/workspace/project/data/messages.db` - SQLite database
+- `/workspace/project/data/messages.db` (registered_groups table) - Group config
 - `/workspace/project/groups/` - All group folders
 
 ## Managing Groups
@@ -64,7 +64,7 @@ Then wait a moment and re-read `available_groups.json`.
 **Fallback**: Query the SQLite database directly:
 
 ```bash
-sqlite3 /workspace/project/store/messages.db "
+sqlite3 /workspace/project/data/messages.db "
   SELECT jid, name, last_message_time
   FROM chats
   WHERE jid LIKE '%@g.us' AND jid != '__group_sync__'
