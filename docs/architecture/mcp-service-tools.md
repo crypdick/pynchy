@@ -48,6 +48,7 @@ Each handler receives the full IPC request dict and returns `{"result": ...}` on
 | Plugin | Tools | Description |
 |--------|-------|-------------|
 | `caldav` | `list_calendars`, `list_calendar`, `create_event`, `delete_event` | CalDAV calendar access (Nextcloud, etc.) |
+| `google-setup` | `setup_gdrive`, `enable_gdrive_api`, `authorize_gdrive` | Google Drive OAuth setup and API enablement ([guide](../usage/gdrive.md)) |
 | `sqlite-memory` | `save_memory`, `recall_memories`, `forget_memory`, `list_memories` | Per-group persistent memory |
 
 For the full IPC protocol that carries service requests, see [IPC](ipc.md#service-requests).
