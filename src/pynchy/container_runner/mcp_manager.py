@@ -307,15 +307,23 @@ class McpManager:
         # Build -e flags from static env and env_forward on the server definition
         env_args = _build_env_args(instance.server_config)
 
-        # Build -v flags from volumes, resolving relative host paths from project root
+        # Build -v flags from volumes, resolving relative host paths from project root.
+        # Docker named volumes (no "/" or "." in the name, e.g. "mcp-gdrive:/data")
+        # are passed through as-is; only host paths get resolved and mkdir'd.
         volume_args: list[str] = []
         for vol in instance.server_config.volumes:
             host_path, sep, container_path = vol.partition(":")
-            if sep and not Path(host_path).is_absolute():
+            if sep and "/" not in host_path and not host_path.startswith("."):
+                # Docker named volume — pass through without resolution
+                volume_args.extend(["-v", vol])
+            elif sep and not Path(host_path).is_absolute():
                 host_path = str(get_settings().project_root / host_path)
-            resolved = f"{host_path}:{container_path}" if sep else vol
-            Path(host_path).mkdir(parents=True, exist_ok=True)
-            volume_args.extend(["-v", resolved])
+                Path(host_path).mkdir(parents=True, exist_ok=True)
+                volume_args.extend(["-v", f"{host_path}:{container_path}"])
+            else:
+                if sep:
+                    Path(host_path).mkdir(parents=True, exist_ok=True)
+                volume_args.extend(["-v", vol])
 
         run_docker(
             "run", "-d",
