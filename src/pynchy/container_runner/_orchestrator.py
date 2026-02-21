@@ -27,7 +27,7 @@ from pynchy.container_runner._process import (
 from pynchy.container_runner._serialization import _input_to_dict
 from pynchy.logger import logger
 from pynchy.runtime.runtime import get_runtime
-from pynchy.types import ContainerInput, ContainerOutput, WorkspaceProfile
+from pynchy.types import ContainerInput, ContainerOutput, VolumeMount, WorkspaceProfile
 
 # ---------------------------------------------------------------------------
 # Type aliases
@@ -35,6 +35,27 @@ from pynchy.types import ContainerInput, ContainerOutput, WorkspaceProfile
 
 OnProcess = Callable[[asyncio.subprocess.Process, str], Any]
 OnOutput = Callable[[ContainerOutput], Awaitable[None]]
+
+
+# ---------------------------------------------------------------------------
+# Container name helpers
+# ---------------------------------------------------------------------------
+
+
+def stable_container_name(group_folder: str) -> str:
+    """Deterministic container name for persistent sessions.
+
+    Using a stable name means we can docker rm -f the stale container
+    before spawning a new one for the same group.
+    """
+    safe_name = "".join(c if c.isalnum() or c == "-" else "-" for c in group_folder)
+    return f"pynchy-{safe_name}"
+
+
+def oneshot_container_name(group_folder: str) -> str:
+    """Timestamped container name for one-shot runs (scheduled tasks)."""
+    safe_name = "".join(c if c.isalnum() or c == "-" else "-" for c in group_folder)
+    return f"pynchy-{safe_name}-{int(time.time() * 1000)}"
 
 
 # ---------------------------------------------------------------------------
@@ -130,41 +151,24 @@ def _determine_result(
 
 
 # ---------------------------------------------------------------------------
-# Main entry point
+# Shared spawn logic
 # ---------------------------------------------------------------------------
 
 
-async def run_container_agent(
+async def _spawn_container(
     group: WorkspaceProfile,
     input_data: ContainerInput,
-    on_process: OnProcess,
-    on_output: OnOutput | None = None,
+    container_name: str,
     plugin_manager: pluggy.PluginManager | None = None,
-) -> ContainerOutput:
-    """Low-level primitive — spawn a container agent and stream output.
+) -> tuple[asyncio.subprocess.Process, str, list[VolumeMount]]:
+    """Resolve environment, build mounts, and spawn a container subprocess.
 
-    **Do not call directly.** Use ``agent_runner.run_agent()`` instead, which
-    handles input broadcasting, snapshot writes, session tracking, and output
-    routing.  Direct callers bypass the unified message pipeline and the UI
-    will not faithfully represent the agent's token stream.
+    Shared by both one-shot run_container_agent() and the persistent session
+    cold-start path.  Returns (proc, container_name, mounts).
 
-    The only legitimate direct caller is:
-    - ``agent_runner.run_agent`` (the unified public entry point)
-
-    Args:
-        group: The registered group configuration.
-        input_data: Input payload for the agent-runner.
-        on_process: Callback invoked with (proc, container_name) after spawn.
-        on_output: If provided, called for each streamed output marker pair.
-                   Enables streaming mode. Without it, uses legacy mode.
-        plugin_manager: Optional pluggy.PluginManager for plugin MCP mounts and config.
-
-    Returns:
-        ContainerOutput with the final status.
+    Raises OSError if the subprocess fails to start.
     """
     start_time = time.monotonic()
-    loop = asyncio.get_running_loop()
-
     s = get_settings()
     group_dir = s.groups_dir / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
@@ -219,9 +223,7 @@ async def run_container_agent(
                 input_data.mcp_gateway_key = mcp_key
     mcp_ms = (time.monotonic() - phase_start) * 1000
 
-    # --- Container name and args ---
-    safe_name = "".join(c if c.isalnum() or c == "-" else "-" for c in group.folder)
-    container_name = f"pynchy-{safe_name}-{int(time.time() * 1000)}"
+    # --- Build args ---
     container_args = _build_container_args(mounts, container_name)
 
     pre_spawn_ms = (time.monotonic() - start_time) * 1000
@@ -238,28 +240,69 @@ async def run_container_agent(
         pre_spawn_ms=round(pre_spawn_ms),
     )
 
+    # --- Spawn process ---
+    proc = await asyncio.create_subprocess_exec(
+        get_runtime().cli,
+        *container_args,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+    # Write input JSON and close stdin (Apple Container needs EOF to flush pipe)
+    assert proc.stdin is not None
+    proc.stdin.write(json.dumps(_input_to_dict(input_data)).encode())
+    proc.stdin.close()
+
+    return proc, container_name, mounts
+
+
+# ---------------------------------------------------------------------------
+# One-shot entry point (scheduled tasks, legacy callers)
+# ---------------------------------------------------------------------------
+
+
+async def run_container_agent(
+    group: WorkspaceProfile,
+    input_data: ContainerInput,
+    on_process: OnProcess,
+    on_output: OnOutput | None = None,
+    plugin_manager: pluggy.PluginManager | None = None,
+) -> ContainerOutput:
+    """Low-level primitive — spawn a container agent and stream output.
+
+    Used for one-shot runs (scheduled tasks).  For interactive messages,
+    use the persistent session path in agent_runner.run_agent().
+
+    Args:
+        group: The registered group configuration.
+        input_data: Input payload for the agent-runner.
+        on_process: Callback invoked with (proc, container_name) after spawn.
+        on_output: If provided, called for each streamed output marker pair.
+                   Enables streaming mode. Without it, uses legacy mode.
+        plugin_manager: Optional pluggy.PluginManager for plugin MCP mounts and config.
+
+    Returns:
+        ContainerOutput with the final status.
+    """
+    start_time = time.monotonic()
+    loop = asyncio.get_running_loop()
+    s = get_settings()
+
+    container_name = oneshot_container_name(group.folder)
+
     logs_dir = s.groups_dir / group.folder / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- Spawn process ---
     try:
-        proc = await asyncio.create_subprocess_exec(
-            get_runtime().cli,
-            *container_args,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        proc, container_name, mounts = await _spawn_container(
+            group, input_data, container_name, plugin_manager
         )
     except OSError as exc:
         logger.error("Failed to spawn container", error=str(exc), container=container_name)
         return ContainerOutput(status="error", result=None, error=f"Spawn failed: {exc}")
 
     on_process(proc, container_name)
-
-    # Write input JSON and close stdin (Apple Container needs EOF to flush pipe)
-    assert proc.stdin is not None
-    proc.stdin.write(json.dumps(_input_to_dict(input_data)).encode())
-    proc.stdin.close()
 
     # --- State and timeout ---
     state = StreamState(spawn_time=time.monotonic())
@@ -305,9 +348,15 @@ async def run_container_agent(
     if timeout_handle is not None:
         timeout_handle.cancel()
 
+    # Force-remove stopped one-shot container (no --rm any more)
+    from pynchy.container_runner._session import _docker_rm_force
+
+    asyncio.ensure_future(_docker_rm_force(container_name))
+
     duration_ms = (time.monotonic() - start_time) * 1000
 
     # --- Write log ---
+    container_args = _build_container_args(mounts, container_name)
     _write_run_log(
         logs_dir=logs_dir,
         group_name=group.name,

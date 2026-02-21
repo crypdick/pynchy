@@ -24,7 +24,6 @@ from pynchy.container_runner._credentials import (
 )
 from pynchy.container_runner._logging import _parse_final_output
 from pynchy.container_runner._mounts import _build_container_args, _build_volume_mounts
-from pynchy.git_ops.repo import RepoContext
 from pynchy.container_runner._orchestrator import (
     _determine_result,
     resolve_agent_core,
@@ -39,6 +38,7 @@ from pynchy.container_runner._session_prep import (
     _write_settings_json,
 )
 from pynchy.container_runner._snapshots import write_groups_snapshot, write_tasks_snapshot
+from pynchy.git_ops.repo import RepoContext
 from pynchy.types import (
     ContainerInput,
     VolumeMount,
@@ -281,7 +281,7 @@ class TestContainerArgs:
 
     def test_includes_name_and_image(self):
         args = _build_container_args([], "my-container")
-        assert args[:5] == ["run", "-i", "--rm", "--name", "my-container"]
+        assert args[:4] == ["run", "-i", "--name", "my-container"]
         # Last arg is the image
         assert args[-1].endswith("-agent:latest")
 
@@ -317,7 +317,9 @@ class TestMountBuilding:
     def test_god_group_has_project_mount(self, tmp_path: Path):
         worktree_path = tmp_path / "worktrees" / "god"
         worktree_path.mkdir(parents=True)
-        repo_ctx = RepoContext(slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "worktrees")
+        repo_ctx = RepoContext(
+            slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "worktrees"
+        )
         with (
             _patch_settings(tmp_path),
         ):
@@ -364,7 +366,9 @@ class TestMountBuilding:
         """Non-admin group with repo_access + worktree_path mounts the worktree."""
         worktree_path = tmp_path / "worktrees" / "code-improver"
         worktree_path.mkdir(parents=True)
-        repo_ctx = RepoContext(slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "worktrees")
+        repo_ctx = RepoContext(
+            slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "worktrees"
+        )
 
         with (
             _patch_settings(tmp_path),
@@ -393,7 +397,9 @@ class TestMountBuilding:
         """Admin group uses worktree just like any other repo_access group."""
         worktree_path = tmp_path / "worktrees" / "god"
         worktree_path.mkdir(parents=True)
-        repo_ctx = RepoContext(slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "worktrees")
+        repo_ctx = RepoContext(
+            slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "worktrees"
+        )
         with (
             _patch_settings(tmp_path),
         ):

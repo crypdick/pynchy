@@ -22,6 +22,57 @@ from pynchy.types import ContainerOutput
 OnOutput = Callable[[ContainerOutput], Awaitable[None]]
 
 
+def is_query_done_pulse(output: ContainerOutput) -> bool:
+    """Detect the session-update pulse emitted after each core.query() completes.
+
+    The container emits ContainerOutput(status="success", result=None,
+    new_session_id=<id>) when a query finishes and the container returns to
+    its IPC wait loop.  This pulse signals the host that the query is done
+    without the container exiting.
+    """
+    return (
+        output.status == "success"
+        and output.result is None
+        and output.new_session_id is not None
+        and output.error is None
+    )
+
+
+def extract_marker_outputs(parse_buffer: str, group_name: str) -> tuple[list[ContainerOutput], str]:
+    """Extract complete marker-delimited outputs from a parse buffer.
+
+    Scans for OUTPUT_START_MARKER / OUTPUT_END_MARKER pairs, parses the JSON
+    between them, and returns (parsed_outputs, remaining_buffer).
+
+    Shared by both one-shot read_stdout() and the persistent session reader.
+    """
+    outputs: list[ContainerOutput] = []
+    while True:
+        start_idx = parse_buffer.find(Settings.OUTPUT_START_MARKER)
+        if start_idx == -1:
+            break
+        end_idx = parse_buffer.find(Settings.OUTPUT_END_MARKER, start_idx)
+        if end_idx == -1:
+            break  # Incomplete pair, wait for more data
+
+        json_str = parse_buffer[start_idx + len(Settings.OUTPUT_START_MARKER) : end_idx].strip()
+        parse_buffer = parse_buffer[end_idx + len(Settings.OUTPUT_END_MARKER) :]
+
+        try:
+            parsed = _parse_container_output(json_str)
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            logger.warning(
+                "Failed to parse streamed output chunk",
+                group=group_name,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+            continue
+
+        outputs.append(parsed)
+    return outputs, parse_buffer
+
+
 @dataclass
 class StreamState:
     """Mutable state shared between stdout/stderr readers and timeout logic."""
@@ -81,30 +132,8 @@ async def read_stdout(
         # Stream-parse for output markers
         if on_output is not None:
             state.parse_buffer += text
-            while True:
-                start_idx = state.parse_buffer.find(Settings.OUTPUT_START_MARKER)
-                if start_idx == -1:
-                    break
-                end_idx = state.parse_buffer.find(Settings.OUTPUT_END_MARKER, start_idx)
-                if end_idx == -1:
-                    break  # Incomplete pair, wait for more data
-
-                json_str = state.parse_buffer[
-                    start_idx + len(Settings.OUTPUT_START_MARKER) : end_idx
-                ].strip()
-                state.parse_buffer = state.parse_buffer[end_idx + len(Settings.OUTPUT_END_MARKER) :]
-
-                try:
-                    parsed = _parse_container_output(json_str)
-                except (json.JSONDecodeError, KeyError, TypeError) as exc:
-                    logger.warning(
-                        "Failed to parse streamed output chunk",
-                        group=group_name,
-                        error_type=type(exc).__name__,
-                        error=str(exc),
-                    )
-                    continue
-
+            outputs, state.parse_buffer = extract_marker_outputs(state.parse_buffer, group_name)
+            for parsed in outputs:
                 if parsed.new_session_id:
                     state.new_session_id = parsed.new_session_id
                 state.had_streaming_output = True

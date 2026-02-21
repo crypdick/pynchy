@@ -12,6 +12,7 @@ This package is split into focused submodules:
   _process        — Process management, I/O streaming, timeout handling
   _logging        — Run log file writing and legacy output parsing
   _snapshots      — IPC snapshot file helpers
+  _session        — Persistent container sessions and registry
   _orchestrator   — Main entry point (run_container_agent) and agent core resolution
 """
 
@@ -22,15 +23,29 @@ from pynchy.container_runner._credentials import _write_env_file
 from pynchy.container_runner._logging import RunContext
 from pynchy.container_runner._orchestrator import OnOutput, OnProcess, resolve_agent_core
 from pynchy.container_runner._process import StreamState, _graceful_stop, read_stderr, read_stdout
+from pynchy.container_runner._session import (
+    ContainerSession,
+    SessionDiedError,
+    create_session,
+    destroy_all_sessions,
+    destroy_session,
+    get_session,
+)
 from pynchy.container_runner._snapshots import write_groups_snapshot, write_tasks_snapshot
 
 __all__ = [
+    "ContainerSession",
     "OnOutput",
     "OnProcess",
     "RunContext",
+    "SessionDiedError",
     "StreamState",
     "_graceful_stop",
     "_write_env_file",
+    "create_session",
+    "destroy_all_sessions",
+    "destroy_session",
+    "get_session",
     "read_stderr",
     "read_stdout",
     "resolve_agent_core",
