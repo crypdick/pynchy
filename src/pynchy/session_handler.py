@@ -225,4 +225,14 @@ async def on_inbound(deps: SessionDeps, _jid: str, msg: NewMessage) -> None:
             )
             return
 
+        # Read receipt: react with 👀 so the sender knows pynchy received
+        # the message.  Only on channels with write access (readwrite).
+        if resolved.access == "readwrite":
+            from pynchy.chat.channel_handler import send_reaction_to_channels
+
+            create_background_task(
+                send_reaction_to_channels(deps, msg.chat_jid, msg.id, msg.sender, "eyes"),
+                name=f"read-receipt-{msg.id}",
+            )
+
     await ingest_user_message(deps, msg, source_channel=source_channel)

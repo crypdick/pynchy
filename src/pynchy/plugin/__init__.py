@@ -81,6 +81,24 @@ def get_plugin_manager() -> pluggy.PluginManager:
 
     s = get_settings()
 
+    # Some plugins (e.g. neonize, used by the WhatsApp channel) call
+    # asyncio.get_event_loop() at import time.  Ensure a loop exists so the
+    # import succeeds even when called from a sync context or a pytest-xdist
+    # worker thread that hasn't set one up yet.  The temp loop wraps both
+    # built-in registration (which triggers imports) and entrypoint discovery.
+    #
+    # We always create and set our own temp loop (when no loop is running) so
+    # that any import-time get_event_loop() calls return it instead of
+    # auto-creating orphan loops that never get closed.
+    _tmp_loop = None
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        _tmp_loop = asyncio.new_event_loop()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            asyncio.set_event_loop(_tmp_loop)
+
     # Register built-in plugins from the static registry.
     for module_path, class_name, config_key in _BUILTIN_PLUGIN_SPECS:
         # Check if plugin is disabled via config.toml [plugins.<key>]
@@ -99,24 +117,6 @@ def get_plugin_manager() -> pluggy.PluginManager:
             logger.debug("Plugin skipped (optional dependency missing)", plugin=config_key)
         except Exception:
             logger.exception("Failed to load built-in plugin", plugin=config_key)
-
-    # Some third-party plugins (e.g. neonize, used by the WhatsApp channel)
-    # call asyncio.get_event_loop() at import time.  Ensure a loop exists so
-    # the import succeeds even when called from a sync context or a pytest-xdist
-    # worker thread that hasn't set one up yet.
-    _tmp_loop = None
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        # No running loop — probe whether a default loop is already set.
-        # Suppress the Python 3.12+ DeprecationWarning from the probe itself.
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            try:
-                asyncio.get_event_loop()
-            except RuntimeError:
-                _tmp_loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(_tmp_loop)
 
     # Discover and register third-party plugins from entry points
     # Plugins register via "pynchy" group in their pyproject.toml
