@@ -10,9 +10,15 @@ image — they never load in the main pynchy process.
 
 from __future__ import annotations
 
-import pluggy
+try:
+    import pluggy
 
-hookimpl = pluggy.HookimplMarker("pynchy")
+    hookimpl = pluggy.HookimplMarker("pynchy")
+except ModuleNotFoundError:
+    # Running inside the Docker container where only the MCP server is needed,
+    # not the plugin registration machinery.
+    pluggy = None  # type: ignore[assignment]
+    hookimpl = lambda f: f  # noqa: E731 — no-op decorator
 
 
 class NotebookServerPlugin:

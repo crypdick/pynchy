@@ -321,6 +321,14 @@ async def _cold_start(
     container_name = stable_container_name(group.folder)
     input_data = _build_container_input(messages, ctx, chat_jid, group)
 
+    # Remove stale container with the same name before spawning.
+    # After a service restart or container crash, a dead Docker container may
+    # still exist with this stable name, causing `docker run` to fail with
+    # exit code 125 (name conflict).
+    from pynchy.container_runner._session import _docker_rm_force
+
+    await _docker_rm_force(container_name)
+
     try:
         proc, container_name, _mounts = await _spawn_container(
             group, input_data, container_name, deps.plugin_manager
