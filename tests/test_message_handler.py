@@ -440,8 +440,8 @@ class TestProcessGroupMessages:
         assert (ipc_dir / "needs_dirty_check.json").exists()
 
     @pytest.mark.asyncio
-    async def test_reset_handoff_malformed_json_handled(self, tmp_path):
-        """Malformed reset_prompt.json handled gracefully."""
+    async def test_reset_handoff_malformed_json_falls_through(self, tmp_path):
+        """Malformed reset_prompt.json → clean up and fall through to normal processing."""
         group = _make_group()
         deps = _make_deps(groups={"g@g.us": group})
 
@@ -450,7 +450,10 @@ class TestProcessGroupMessages:
         reset_file = ipc_dir / "reset_prompt.json"
         reset_file.write_text("NOT VALID JSON")
 
-        with patch(_P_SETTINGS) as ms:
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([]),
+        ):
             ms.return_value.data_dir = tmp_path
             result = await process_group_messages(deps, "g@g.us")
 
@@ -869,8 +872,8 @@ class TestHandleResetHandoff:
         deps.run_agent.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_malformed_json_returns_true(self, tmp_path):
-        """Malformed JSON → clean up and return True."""
+    async def test_malformed_json_returns_none(self, tmp_path):
+        """Malformed JSON → clean up and return None so normal processing proceeds."""
         group = _make_group()
         deps = _make_deps()
 
@@ -879,7 +882,7 @@ class TestHandleResetHandoff:
 
         result = await _handle_reset_handoff(deps, "g@g.us", group, reset_file)
 
-        assert result is True
+        assert result is None
         deps.run_agent.assert_not_awaited()
         assert not reset_file.exists()
 

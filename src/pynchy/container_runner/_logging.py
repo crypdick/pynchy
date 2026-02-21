@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -12,22 +11,6 @@ from pynchy.config import Settings
 from pynchy.container_runner._serialization import _input_to_dict, _parse_container_output
 from pynchy.logger import logger
 from pynchy.types import ContainerInput, ContainerOutput, VolumeMount
-
-
-@dataclass
-class RunContext:
-    """Captures all context needed to write a run log (besides I/O buffers)."""
-
-    logs_dir: Path
-    group_name: str
-    container_name: str
-    input_data: ContainerInput
-    container_args: list[str]
-    mounts: list[VolumeMount]
-    duration_ms: float
-    exit_code: int | None
-    timed_out: bool
-    had_streaming_output: bool
 
 
 def _write_run_log(

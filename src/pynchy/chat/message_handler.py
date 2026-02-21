@@ -232,7 +232,9 @@ async def _handle_reset_handoff(
             err=str(exc),
         )
         reset_file.unlink(missing_ok=True)
-        return True
+        # Return None (not True) so the caller falls through to normal
+        # message processing instead of silently skipping this cycle.
+        return None
 
     reset_message = reset_data.get("message", "")
     if not reset_message:
