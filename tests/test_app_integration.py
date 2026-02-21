@@ -201,7 +201,7 @@ class TestAppImports:
 class TestFirstRunBootstrap:
     """Verify first-run workspace bootstrap without external channels."""
 
-    async def test_creates_tui_god_workspace_without_channel(self, app: PynchyApp):
+    async def test_creates_tui_admin_workspace_without_channel(self, app: PynchyApp):
         app.workspaces = {}
 
         from pynchy import startup_handler
@@ -726,10 +726,10 @@ class TestDeployContinuationResume:
 
         # Register two groups
         app.workspaces = {
-            "god@g.us": WorkspaceProfile(
-                jid="god@g.us",
-                name="God",
-                folder="god",
+            "admin-1@g.us": WorkspaceProfile(
+                jid="admin-1@g.us",
+                name="Admin",
+                folder="admin-1",
                 trigger="always",
                 added_at="2024-01-01T00:00:00.000Z",
                 is_admin=True,
@@ -747,13 +747,13 @@ class TestDeployContinuationResume:
         data_dir = tmp_path / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
         continuation = {
-            "chat_jid": "god@g.us",
-            "session_id": "sess-god",
+            "chat_jid": "admin-1@g.us",
+            "session_id": "sess-admin-1",
             "resume_prompt": "Deploy complete.",
             "commit_sha": "abc12345",
             "previous_commit_sha": "000",
             "active_sessions": {
-                "god@g.us": "sess-god",
+                "admin-1@g.us": "sess-admin-1",
                 "team@g.us": "sess-team",
             },
         }
@@ -771,13 +771,13 @@ class TestDeployContinuationResume:
             await check_deploy_continuation(app)
 
         # Both groups should have been enqueued for resume
-        assert "god@g.us" in enqueued
+        assert "admin-1@g.us" in enqueued
         assert "team@g.us" in enqueued
 
         # Both groups should have a deploy resume message in history
-        god_history = await get_chat_history("god@g.us", limit=10)
+        admin_history = await get_chat_history("admin-1@g.us", limit=10)
         team_history = await get_chat_history("team@g.us", limit=10)
-        assert any("DEPLOY COMPLETE" in m.content for m in god_history)
+        assert any("DEPLOY COMPLETE" in m.content for m in admin_history)
         assert any("DEPLOY COMPLETE" in m.content for m in team_history)
 
         # Continuation file should be deleted
@@ -790,7 +790,7 @@ class TestDeployContinuationResume:
         data_dir = tmp_path / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
         continuation = {
-            "chat_jid": "god@g.us",
+            "chat_jid": "admin-1@g.us",
             "session_id": "",
             "resume_prompt": "Deploy complete.",
             "commit_sha": "abc12345",

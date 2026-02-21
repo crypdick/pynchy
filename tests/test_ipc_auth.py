@@ -20,10 +20,10 @@ from pynchy.db import (
 from pynchy.ipc import dispatch
 from pynchy.types import WorkspaceProfile
 
-GOD_GROUP = WorkspaceProfile(
-    jid="god@g.us",
-    name="God",
-    folder="god",
+ADMIN_GROUP = WorkspaceProfile(
+    jid="admin-1@g.us",
+    name="Admin",
+    folder="admin-1",
     trigger="always",
     added_at="2024-01-01T00:00:00.000Z",
     is_admin=True,
@@ -120,12 +120,12 @@ async def deps():
     await _init_test_database()
 
     groups = {
-        "god@g.us": GOD_GROUP,
+        "admin-1@g.us": ADMIN_GROUP,
         "other@g.us": OTHER_GROUP,
         "third@g.us": THIRD_GROUP,
     }
 
-    await set_workspace_profile(GOD_GROUP)
+    await set_workspace_profile(ADMIN_GROUP)
     await set_workspace_profile(OTHER_GROUP)
     await set_workspace_profile(THIRD_GROUP)
 
@@ -136,7 +136,7 @@ async def deps():
 
 
 class TestScheduleTaskAuth:
-    async def test_god_group_can_schedule_for_another_group(self, deps):
+    async def test_admin_group_can_schedule_for_another_group(self, deps):
         await dispatch(
             {
                 "type": "schedule_task",
@@ -145,7 +145,7 @@ class TestScheduleTaskAuth:
                 "schedule_value": "2025-06-01T00:00:00.000Z",
                 "targetGroup": "other-group",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -154,7 +154,7 @@ class TestScheduleTaskAuth:
         assert len(tasks) == 1
         assert tasks[0].group_folder == "other-group"
 
-    async def test_non_god_group_can_schedule_for_itself(self, deps):
+    async def test_non_admin_group_can_schedule_for_itself(self, deps):
         await dispatch(
             {
                 "type": "schedule_task",
@@ -172,14 +172,14 @@ class TestScheduleTaskAuth:
         assert len(tasks) == 1
         assert tasks[0].group_folder == "other-group"
 
-    async def test_non_god_cannot_schedule_for_another_group(self, deps):
+    async def test_non_admin_cannot_schedule_for_another_group(self, deps):
         await dispatch(
             {
                 "type": "schedule_task",
                 "prompt": "unauthorized",
                 "schedule_type": "once",
                 "schedule_value": "2025-06-01T00:00:00.000Z",
-                "targetGroup": "god",
+                "targetGroup": "admin-1",
             },
             "other-group",
             False,
@@ -198,7 +198,7 @@ class TestScheduleTaskAuth:
                 "schedule_value": "2025-06-01T00:00:00.000Z",
                 "targetGroup": "unknown-group",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -215,10 +215,10 @@ class TestPauseTaskAuth:
     async def _create_tasks(self, deps):
         await create_task(
             {
-                "id": "task-god",
-                "group_folder": "god",
-                "chat_jid": "god@g.us",
-                "prompt": "god task",
+                "id": "task-admin",
+                "group_folder": "admin-1",
+                "chat_jid": "admin-1@g.us",
+                "prompt": "admin task",
                 "schedule_type": "once",
                 "schedule_value": "2025-06-01T00:00:00.000Z",
                 "context_mode": "isolated",
@@ -242,13 +242,13 @@ class TestPauseTaskAuth:
             }
         )
 
-    async def test_god_can_pause_any_task(self, deps):
-        await dispatch({"type": "pause_task", "taskId": "task-other"}, "god", True, deps)
+    async def test_admin_can_pause_any_task(self, deps):
+        await dispatch({"type": "pause_task", "taskId": "task-other"}, "admin-1", True, deps)
         task = await get_task_by_id("task-other")
         assert task is not None
         assert task.status == "paused"
 
-    async def test_non_god_can_pause_own_task(self, deps):
+    async def test_non_admin_can_pause_own_task(self, deps):
         await dispatch(
             {"type": "pause_task", "taskId": "task-other"},
             "other-group",
@@ -259,14 +259,14 @@ class TestPauseTaskAuth:
         assert task is not None
         assert task.status == "paused"
 
-    async def test_non_god_cannot_pause_other_groups_task(self, deps):
+    async def test_non_admin_cannot_pause_other_groups_task(self, deps):
         await dispatch(
-            {"type": "pause_task", "taskId": "task-god"},
+            {"type": "pause_task", "taskId": "task-admin"},
             "other-group",
             False,
             deps,
         )
-        task = await get_task_by_id("task-god")
+        task = await get_task_by_id("task-admin")
         assert task is not None
         assert task.status == "active"
 
@@ -292,13 +292,13 @@ class TestResumeTaskAuth:
             }
         )
 
-    async def test_god_can_resume_any_task(self, deps):
-        await dispatch({"type": "resume_task", "taskId": "task-paused"}, "god", True, deps)
+    async def test_admin_can_resume_any_task(self, deps):
+        await dispatch({"type": "resume_task", "taskId": "task-paused"}, "admin-1", True, deps)
         task = await get_task_by_id("task-paused")
         assert task is not None
         assert task.status == "active"
 
-    async def test_non_god_can_resume_own_task(self, deps):
+    async def test_non_admin_can_resume_own_task(self, deps):
         await dispatch(
             {"type": "resume_task", "taskId": "task-paused"},
             "other-group",
@@ -309,7 +309,7 @@ class TestResumeTaskAuth:
         assert task is not None
         assert task.status == "active"
 
-    async def test_non_god_cannot_resume_other_groups_task(self, deps):
+    async def test_non_admin_cannot_resume_other_groups_task(self, deps):
         await dispatch(
             {"type": "resume_task", "taskId": "task-paused"},
             "third-group",
@@ -325,7 +325,7 @@ class TestResumeTaskAuth:
 
 
 class TestCancelTaskAuth:
-    async def test_god_can_cancel_any_task(self, deps):
+    async def test_admin_can_cancel_any_task(self, deps):
         await create_task(
             {
                 "id": "task-to-cancel",
@@ -341,10 +341,10 @@ class TestCancelTaskAuth:
             }
         )
 
-        await dispatch({"type": "cancel_task", "taskId": "task-to-cancel"}, "god", True, deps)
+        await dispatch({"type": "cancel_task", "taskId": "task-to-cancel"}, "admin-1", True, deps)
         assert await get_task_by_id("task-to-cancel") is None
 
-    async def test_non_god_can_cancel_own_task(self, deps):
+    async def test_non_admin_can_cancel_own_task(self, deps):
         await create_task(
             {
                 "id": "task-own",
@@ -368,12 +368,12 @@ class TestCancelTaskAuth:
         )
         assert await get_task_by_id("task-own") is None
 
-    async def test_non_god_cannot_cancel_other_groups_task(self, deps):
+    async def test_non_admin_cannot_cancel_other_groups_task(self, deps):
         await create_task(
             {
                 "id": "task-foreign",
-                "group_folder": "god",
-                "chat_jid": "god@g.us",
+                "group_folder": "admin-1",
+                "chat_jid": "admin-1@g.us",
                 "prompt": "not yours",
                 "schedule_type": "once",
                 "schedule_value": "2025-06-01T00:00:00.000Z",
@@ -397,7 +397,7 @@ class TestCancelTaskAuth:
 
 
 class TestRegisterGroupAuth:
-    async def test_non_god_cannot_register_a_group(self, deps):
+    async def test_non_admin_cannot_register_a_group(self, deps):
         await dispatch(
             {
                 "type": "register_group",
@@ -428,27 +428,27 @@ class TestIpcMessageAuth:
         target_group = workspaces.get(target_chat_jid)
         return is_admin or (target_group is not None and target_group.folder == source_group)
 
-    def test_god_can_send_to_any_group(self, deps):
+    def test_admin_can_send_to_any_group(self, deps):
         groups = deps.workspaces()
-        assert self.is_message_authorized("god", True, "other@g.us", groups)
-        assert self.is_message_authorized("god", True, "third@g.us", groups)
+        assert self.is_message_authorized("admin-1", True, "other@g.us", groups)
+        assert self.is_message_authorized("admin-1", True, "third@g.us", groups)
 
-    def test_non_god_can_send_to_own_chat(self, deps):
+    def test_non_admin_can_send_to_own_chat(self, deps):
         groups = deps.workspaces()
         assert self.is_message_authorized("other-group", False, "other@g.us", groups)
 
-    def test_non_god_cannot_send_to_other_chat(self, deps):
+    def test_non_admin_cannot_send_to_other_chat(self, deps):
         groups = deps.workspaces()
-        assert not self.is_message_authorized("other-group", False, "god@g.us", groups)
+        assert not self.is_message_authorized("other-group", False, "admin-1@g.us", groups)
         assert not self.is_message_authorized("other-group", False, "third@g.us", groups)
 
-    def test_non_god_cannot_send_to_unregistered(self, deps):
+    def test_non_admin_cannot_send_to_unregistered(self, deps):
         groups = deps.workspaces()
         assert not self.is_message_authorized("other-group", False, "unknown@g.us", groups)
 
-    def test_god_can_send_to_unregistered(self, deps):
+    def test_admin_can_send_to_unregistered(self, deps):
         groups = deps.workspaces()
-        assert self.is_message_authorized("god", True, "unknown@g.us", groups)
+        assert self.is_message_authorized("admin-1", True, "unknown@g.us", groups)
 
 
 # --- schedule_task schedule types ---
@@ -464,7 +464,7 @@ class TestScheduleTaskTypes:
                 "schedule_value": "0 9 * * *",
                 "targetGroup": "other-group",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -483,7 +483,7 @@ class TestScheduleTaskTypes:
                 "schedule_value": "not a cron",
                 "targetGroup": "other-group",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -499,7 +499,7 @@ class TestScheduleTaskTypes:
                 "schedule_value": "3600000",  # 1 hour in ms
                 "targetGroup": "other-group",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -518,7 +518,7 @@ class TestScheduleTaskTypes:
                 "schedule_value": "abc",
                 "targetGroup": "other-group",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -534,7 +534,7 @@ class TestScheduleTaskTypes:
                 "schedule_value": "0",
                 "targetGroup": "other-group",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -550,7 +550,7 @@ class TestScheduleTaskTypes:
                 "schedule_value": "not-a-date",
                 "targetGroup": "other-group",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -572,7 +572,7 @@ class TestContextMode:
                 "context_mode": "group",
                 "targetGroup": "other-group",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -590,7 +590,7 @@ class TestContextMode:
                 "context_mode": "isolated",
                 "targetGroup": "other-group",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -608,7 +608,7 @@ class TestContextMode:
                 "context_mode": "bogus",
                 "targetGroup": "other-group",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -625,7 +625,7 @@ class TestContextMode:
                 "schedule_value": "2025-06-01T00:00:00.000Z",
                 "targetGroup": "other-group",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -638,7 +638,7 @@ class TestContextMode:
 
 
 class TestRegisterGroupSuccess:
-    async def test_god_can_register_new_group(self, deps):
+    async def test_admin_can_register_new_group(self, deps):
         await dispatch(
             {
                 "type": "register_group",
@@ -647,7 +647,7 @@ class TestRegisterGroupSuccess:
                 "folder": "new-group",
                 "trigger": "@pynchy",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -666,7 +666,7 @@ class TestRegisterGroupSuccess:
                 "name": "Partial",
                 # missing folder and trigger
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -689,7 +689,7 @@ class TestScheduleTaskMissingFields:
                 "schedule_value": "2025-06-01T00:00:00.000Z",
                 "targetGroup": "other-group",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -703,7 +703,7 @@ class TestScheduleTaskMissingFields:
                 "schedule_value": "2025-06-01T00:00:00.000Z",
                 "targetGroup": "other-group",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -717,7 +717,7 @@ class TestScheduleTaskMissingFields:
                 "schedule_type": "once",
                 "targetGroup": "other-group",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -731,7 +731,7 @@ class TestScheduleTaskMissingFields:
                 "schedule_type": "once",
                 "schedule_value": "2025-06-01T00:00:00.000Z",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -746,7 +746,7 @@ class TestScheduleTaskMissingFields:
                 "schedule_value": "-1000",
                 "targetGroup": "other-group",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -778,7 +778,7 @@ class TestAuthorizedTaskActionEdges:
         )
 
         # No taskId in data — should silently return
-        await dispatch({"type": "pause_task"}, "god", True, deps)
+        await dispatch({"type": "pause_task"}, "admin-1", True, deps)
 
         task = await get_task_by_id("untouched")
         assert task is not None
@@ -788,7 +788,7 @@ class TestAuthorizedTaskActionEdges:
         """Pausing a task that doesn't exist should not crash."""
         await dispatch(
             {"type": "pause_task", "taskId": "does-not-exist"},
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -807,7 +807,7 @@ class TestAuthorizedTaskActionEdges:
         """Unrecognized IPC types should not crash."""
         await dispatch(
             {"type": "totally_made_up"},
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -819,7 +819,7 @@ class TestAuthorizedTaskActionEdges:
 class TestDeployAuth:
     """Deploy IPC is admin-only. Non-admin attempts should be silently blocked."""
 
-    async def test_non_god_cannot_deploy(self, deps):
+    async def test_non_admin_cannot_deploy(self, deps):
         await dispatch(
             {
                 "type": "deploy",
@@ -835,7 +835,7 @@ class TestDeployAuth:
         # No host messages sent (deploy was blocked)
         assert len(deps.host_messages) == 0
 
-    async def test_god_deploy_invokes_finalize(self, deps):
+    async def test_admin_deploy_invokes_finalize(self, deps):
         """God deploy with valid data calls finalize_deploy."""
         with patch(
             "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
@@ -847,15 +847,15 @@ class TestDeployAuth:
                     "resumePrompt": "Deploy complete.",
                     "headSha": "abc123",
                     "sessionId": "sess-1",
-                    "chatJid": "god@g.us",
+                    "chatJid": "admin-1@g.us",
                 },
-                "god",
+                "admin-1",
                 True,
                 deps,
             )
             mock_finalize.assert_called_once()
             call_kwargs = mock_finalize.call_args
-            assert call_kwargs.kwargs["chat_jid"] == "god@g.us"
+            assert call_kwargs.kwargs["chat_jid"] == "admin-1@g.us"
 
 
 # --- reset_context execution ---
@@ -872,22 +872,22 @@ class TestResetContextExecution:
             ),
             patch("pynchy.git_ops.worktree.merge_worktree_with_policy", new_callable=AsyncMock),
         ):
-            (tmp_path / "data" / "ipc" / "god").mkdir(parents=True)
+            (tmp_path / "data" / "ipc" / "admin-1").mkdir(parents=True)
             await dispatch(
                 {
                     "type": "reset_context",
-                    "chatJid": "god@g.us",
+                    "chatJid": "admin-1@g.us",
                     "message": "Start fresh",
-                    "groupFolder": "god",
+                    "groupFolder": "admin-1",
                 },
-                "god",
+                "admin-1",
                 True,
                 deps,
             )
 
-            assert "god" in deps.cleared_sessions
-            assert "god@g.us" in deps.cleared_chats
-            assert "god@g.us" in deps.enqueued_checks
+            assert "admin-1" in deps.cleared_sessions
+            assert "admin-1@g.us" in deps.cleared_chats
+            assert "admin-1@g.us" in deps.enqueued_checks
 
     async def test_reset_context_writes_reset_prompt_file(self, deps, tmp_path):
         with (
@@ -897,26 +897,26 @@ class TestResetContextExecution:
             ),
             patch("pynchy.git_ops.worktree.merge_worktree_with_policy", new_callable=AsyncMock),
         ):
-            (tmp_path / "data" / "ipc" / "god").mkdir(parents=True)
+            (tmp_path / "data" / "ipc" / "admin-1").mkdir(parents=True)
             await dispatch(
                 {
                     "type": "reset_context",
-                    "chatJid": "god@g.us",
+                    "chatJid": "admin-1@g.us",
                     "message": "Start fresh",
-                    "groupFolder": "god",
+                    "groupFolder": "admin-1",
                 },
-                "god",
+                "admin-1",
                 True,
                 deps,
             )
 
             import json
 
-            reset_file = tmp_path / "data" / "ipc" / "god" / "reset_prompt.json"
+            reset_file = tmp_path / "data" / "ipc" / "admin-1" / "reset_prompt.json"
             assert reset_file.exists()
             data = json.loads(reset_file.read_text())
             assert data["message"] == "Start fresh"
-            assert data["chatJid"] == "god@g.us"
+            assert data["chatJid"] == "admin-1@g.us"
             assert data["needsDirtyRepoCheck"] is True
 
     async def test_reset_context_rejects_missing_chat_jid(self, deps):
@@ -925,9 +925,9 @@ class TestResetContextExecution:
             {
                 "type": "reset_context",
                 "message": "Start fresh",
-                "groupFolder": "god",
+                "groupFolder": "admin-1",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -944,21 +944,21 @@ class TestResetContextExecution:
             ),
             patch("pynchy.git_ops.worktree.merge_worktree_with_policy", new_callable=AsyncMock),
         ):
-            (tmp_path / "data" / "ipc" / "god").mkdir(parents=True)
+            (tmp_path / "data" / "ipc" / "admin-1").mkdir(parents=True)
             await dispatch(
                 {
                     "type": "reset_context",
-                    "chatJid": "god@g.us",
-                    "groupFolder": "god",
+                    "chatJid": "admin-1@g.us",
+                    "groupFolder": "admin-1",
                 },
-                "god",
+                "admin-1",
                 True,
                 deps,
             )
 
-            assert "god" in deps.cleared_sessions
-            assert "god@g.us" in deps.cleared_chats
-            reset_file = tmp_path / "data" / "ipc" / "god" / "reset_prompt.json"
+            assert "admin-1" in deps.cleared_sessions
+            assert "admin-1@g.us" in deps.cleared_chats
+            reset_file = tmp_path / "data" / "ipc" / "admin-1" / "reset_prompt.json"
             assert not reset_file.exists()
 
     async def test_reset_context_survives_merge_failure(self, deps, tmp_path):
@@ -974,21 +974,21 @@ class TestResetContextExecution:
                 side_effect=Exception("merge failed"),
             ),
         ):
-            (tmp_path / "data" / "ipc" / "god").mkdir(parents=True)
+            (tmp_path / "data" / "ipc" / "admin-1").mkdir(parents=True)
             await dispatch(
                 {
                     "type": "reset_context",
-                    "chatJid": "god@g.us",
+                    "chatJid": "admin-1@g.us",
                     "message": "Start fresh",
-                    "groupFolder": "god",
+                    "groupFolder": "admin-1",
                 },
-                "god",
+                "admin-1",
                 True,
                 deps,
             )
 
             # Session should still be cleared despite merge failure
-            assert "god" in deps.cleared_sessions
+            assert "admin-1" in deps.cleared_sessions
 
 
 # --- finished_work execution ---
@@ -1079,7 +1079,7 @@ class TestFinishedWorkExecution:
 class TestCreatePeriodicAgentAuth:
     """Tests for create_periodic_agent authorization and validation."""
 
-    async def test_non_god_cannot_create_periodic_agent(self, deps):
+    async def test_non_admin_cannot_create_periodic_agent(self, deps):
         await dispatch(
             {
                 "type": "create_periodic_agent",
@@ -1104,7 +1104,7 @@ class TestCreatePeriodicAgentAuth:
                 "name": "my-agent",
                 # missing schedule and prompt
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -1121,7 +1121,7 @@ class TestCreatePeriodicAgentAuth:
                 "schedule": "not valid cron",
                 "prompt": "do something",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -1148,18 +1148,18 @@ class TestHostJobPauseAuth:
                 "next_run": "2025-06-01T09:00:00Z",
                 "status": "active",
                 "created_at": "2024-01-01T00:00:00.000Z",
-                "created_by": "god",
+                "created_by": "admin-1",
                 "enabled": True,
             }
         )
 
-    async def test_god_can_pause_host_job(self, deps):
-        await dispatch({"type": "pause_task", "taskId": "host-job-1"}, "god", True, deps)
+    async def test_admin_can_pause_host_job(self, deps):
+        await dispatch({"type": "pause_task", "taskId": "host-job-1"}, "admin-1", True, deps)
         job = await get_host_job_by_id("host-job-1")
         assert job is not None
         assert job.status == "paused"
 
-    async def test_non_god_cannot_pause_host_job(self, deps):
+    async def test_non_admin_cannot_pause_host_job(self, deps):
         await dispatch(
             {"type": "pause_task", "taskId": "host-job-1"},
             "other-group",
@@ -1186,18 +1186,18 @@ class TestHostJobResumeAuth:
                 "next_run": "2025-06-01T09:00:00Z",
                 "status": "paused",
                 "created_at": "2024-01-01T00:00:00.000Z",
-                "created_by": "god",
+                "created_by": "admin-1",
                 "enabled": True,
             }
         )
 
-    async def test_god_can_resume_host_job(self, deps):
-        await dispatch({"type": "resume_task", "taskId": "host-paused-1"}, "god", True, deps)
+    async def test_admin_can_resume_host_job(self, deps):
+        await dispatch({"type": "resume_task", "taskId": "host-paused-1"}, "admin-1", True, deps)
         job = await get_host_job_by_id("host-paused-1")
         assert job is not None
         assert job.status == "active"
 
-    async def test_non_god_cannot_resume_host_job(self, deps):
+    async def test_non_admin_cannot_resume_host_job(self, deps):
         await dispatch(
             {"type": "resume_task", "taskId": "host-paused-1"},
             "other-group",
@@ -1212,7 +1212,7 @@ class TestHostJobResumeAuth:
 class TestHostJobCancelAuth:
     """Tests for cancel_task routing host job IDs to delete_host_job."""
 
-    async def test_god_can_cancel_host_job(self, deps):
+    async def test_admin_can_cancel_host_job(self, deps):
         await create_host_job(
             {
                 "id": "host-cancel-1",
@@ -1223,15 +1223,15 @@ class TestHostJobCancelAuth:
                 "next_run": "2025-06-01T09:00:00Z",
                 "status": "active",
                 "created_at": "2024-01-01T00:00:00.000Z",
-                "created_by": "god",
+                "created_by": "admin-1",
                 "enabled": True,
             }
         )
 
-        await dispatch({"type": "cancel_task", "taskId": "host-cancel-1"}, "god", True, deps)
+        await dispatch({"type": "cancel_task", "taskId": "host-cancel-1"}, "admin-1", True, deps)
         assert await get_host_job_by_id("host-cancel-1") is None
 
-    async def test_non_god_cannot_cancel_host_job(self, deps):
+    async def test_non_admin_cannot_cancel_host_job(self, deps):
         await create_host_job(
             {
                 "id": "host-cancel-2",
@@ -1242,7 +1242,7 @@ class TestHostJobCancelAuth:
                 "next_run": "2025-06-01T09:00:00Z",
                 "status": "active",
                 "created_at": "2024-01-01T00:00:00.000Z",
-                "created_by": "god",
+                "created_by": "admin-1",
                 "enabled": True,
             }
         )
@@ -1270,7 +1270,7 @@ class TestScheduleHostJobMissingFields:
                 "schedule_type": "cron",
                 "schedule_value": "0 9 * * *",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )
@@ -1286,7 +1286,7 @@ class TestScheduleHostJobMissingFields:
                 "schedule_type": "cron",
                 "schedule_value": "0 9 * * *",
             },
-            "god",
+            "admin-1",
             True,
             deps,
         )

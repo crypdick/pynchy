@@ -815,7 +815,12 @@ class TestTaskAdvanced:
 
     async def test_create_task_with_repo_access(self):
         await create_task(
-            {**self._TASK_TEMPLATE, "id": "pa-task", "next_run": None, "repo_access": "owner/pynchy"}
+            {
+                **self._TASK_TEMPLATE,
+                "id": "pa-task",
+                "next_run": None,
+                "repo_access": "owner/pynchy",
+            }
         )
         task = await get_task_by_id("pa-task")
         assert task is not None
@@ -907,18 +912,18 @@ class TestWorkspaceProfiles:
         with pytest.raises(ValueError, match="Workspace name is required"):
             await set_workspace_profile(profile)
 
-    async def test_workspace_profile_god_flag_roundtrip(self):
+    async def test_workspace_profile_admin_flag_roundtrip(self):
         profile = WorkspaceProfile(
-            jid="god@g.us",
-            name="God",
-            folder="god",
+            jid="admin-1@g.us",
+            name="Admin",
+            folder="admin-1",
             trigger="@Pynchy",
             is_admin=True,
             added_at="2024-01-01T00:00:00Z",
         )
         await set_workspace_profile(profile)
 
-        result = await get_workspace_profile("god@g.us")
+        result = await get_workspace_profile("admin-1@g.us")
         assert result is not None
         assert result.is_admin is True
 
@@ -1136,7 +1141,7 @@ class TestUpdateById:
                 "next_run": "2025-06-01T09:00:00Z",
                 "status": "active",
                 "created_at": "2024-01-01T00:00:00.000Z",
-                "created_by": "god",
+                "created_by": "admin-1",
                 "enabled": True,
             }
         )
@@ -1159,7 +1164,7 @@ class TestUpdateById:
                 "next_run": "2025-06-01T09:00:00Z",
                 "status": "active",
                 "created_at": "2024-01-01T00:00:00.000Z",
-                "created_by": "god",
+                "created_by": "admin-1",
                 "enabled": True,
             }
         )

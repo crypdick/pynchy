@@ -27,7 +27,7 @@ def mock_ipc_deps():
     """Mock IPC dependencies."""
     deps = MagicMock()
     deps.workspaces.return_value = {
-        "god-jid": MagicMock(folder="god", is_admin=True),
+        "admin-jid": MagicMock(folder="admin-1", is_admin=True),
     }
     return deps
 
@@ -35,7 +35,7 @@ def mock_ipc_deps():
 class TestHostJobScheduling:
     """Test host job scheduling through MCP and database."""
 
-    async def test_create_host_job_via_ipc_god_group(self, mock_ipc_deps):
+    async def test_create_host_job_via_ipc_admin_group(self, mock_ipc_deps):
         """Admin group can schedule host jobs via IPC."""
         data = {
             "type": "schedule_host_job",
@@ -48,7 +48,7 @@ class TestHostJobScheduling:
             "timestamp": datetime.now(UTC).isoformat(),
         }
 
-        await dispatch(data, "god", True, mock_ipc_deps)
+        await dispatch(data, "admin-1", True, mock_ipc_deps)
 
         # Verify job was created
         job = await get_host_job_by_name("test-backup")
@@ -58,10 +58,10 @@ class TestHostJobScheduling:
         assert job.schedule_value == "0 2 * * *"
         assert job.cwd == "/tmp"
         assert job.timeout_seconds == 300
-        assert job.created_by == "god"
+        assert job.created_by == "admin-1"
         assert job.enabled is True
 
-    async def test_create_host_job_rejects_non_god(self, mock_ipc_deps):
+    async def test_create_host_job_rejects_non_admin(self, mock_ipc_deps):
         """Non-admin groups cannot schedule host jobs."""
         mock_ipc_deps.workspaces.return_value = {
             "user-jid": MagicMock(folder="user-group", is_admin=False),
@@ -94,7 +94,7 @@ class TestHostJobScheduling:
             "timestamp": datetime.now(UTC).isoformat(),
         }
 
-        await dispatch(data, "god", True, mock_ipc_deps)
+        await dispatch(data, "admin-1", True, mock_ipc_deps)
 
         job = await get_host_job_by_name("year-end-report")
         assert job is not None
@@ -116,7 +116,7 @@ class TestHostJobScheduling:
                 "next_run": past_time,
                 "status": "active",
                 "created_at": datetime.now(UTC).isoformat(),
-                "created_by": "god",
+                "created_by": "admin-1",
                 "enabled": True,
             }
         )
@@ -131,7 +131,7 @@ class TestHostJobScheduling:
                 "next_run": future_time,
                 "status": "active",
                 "created_at": datetime.now(UTC).isoformat(),
-                "created_by": "god",
+                "created_by": "admin-1",
                 "enabled": True,
             }
         )
@@ -154,7 +154,7 @@ class TestHostJobScheduling:
                 "next_run": past_time,
                 "status": "active",
                 "created_at": datetime.now(UTC).isoformat(),
-                "created_by": "god",
+                "created_by": "admin-1",
                 "enabled": False,
             }
         )
@@ -181,7 +181,7 @@ class TestHostJobScheduling:
                 "next_run": past_time,
                 "status": "active",
                 "created_at": datetime.now(UTC).isoformat(),
-                "created_by": "god",
+                "created_by": "admin-1",
                 "cwd": "/tmp",
                 "timeout_seconds": 60,
                 "enabled": True,
@@ -205,7 +205,7 @@ class TestHostJobScheduling:
             "timestamp": datetime.now(UTC).isoformat(),
         }
 
-        await dispatch(data, "god", True, mock_ipc_deps)
+        await dispatch(data, "admin-1", True, mock_ipc_deps)
 
         job = await get_host_job_by_name("bad-cron")
         assert job is None
@@ -221,7 +221,7 @@ class TestHostJobScheduling:
             "timestamp": datetime.now(UTC).isoformat(),
         }
 
-        await dispatch(data, "god", True, mock_ipc_deps)
+        await dispatch(data, "admin-1", True, mock_ipc_deps)
 
         job = await get_host_job_by_name("bad-timestamp")
         assert job is None

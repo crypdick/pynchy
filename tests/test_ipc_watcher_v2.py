@@ -25,10 +25,10 @@ from pynchy.ipc._watcher import (
 )
 from pynchy.types import WorkspaceProfile
 
-GOD_GROUP = WorkspaceProfile(
-    jid="god@g.us",
-    name="God",
-    folder="god",
+ADMIN_GROUP = WorkspaceProfile(
+    jid="admin-1@g.us",
+    name="Admin",
+    folder="admin-1",
     trigger="always",
     added_at="2024-01-01",
     is_admin=True,
@@ -112,7 +112,7 @@ async def deps():
     await _init_test_database()
     return MockDeps(
         {
-            "god@g.us": GOD_GROUP,
+            "admin-1@g.us": ADMIN_GROUP,
             "other@g.us": OTHER_GROUP,
         }
     )
@@ -140,7 +140,7 @@ class TestStartupSweep:
         ipc_dir = tmp_path / "ipc"
         _write_ipc_file(
             ipc_dir,
-            "god",
+            "admin-1",
             "messages",
             {"type": "message", "chatJid": "other@g.us", "text": "hello from sweep"},
         )
@@ -160,7 +160,7 @@ class TestStartupSweep:
         ipc_dir = tmp_path / "ipc"
         _write_ipc_file(
             ipc_dir,
-            "god",
+            "admin-1",
             "tasks",
             {
                 "type": "register_group",
@@ -185,7 +185,7 @@ class TestStartupSweep:
         ipc_dir = tmp_path / "ipc"
         _write_ipc_file(
             ipc_dir,
-            "god",
+            "admin-1",
             "tasks",
             {"signal": "refresh_groups"},
         )
@@ -224,9 +224,9 @@ class TestStartupSweep:
         ipc_dir = tmp_path / "ipc"
         file_path = _write_ipc_file(
             ipc_dir,
-            "god",
+            "admin-1",
             "messages",
-            {"type": "message", "chatJid": "god@g.us", "text": "cleanup test"},
+            {"type": "message", "chatJid": "admin-1@g.us", "text": "cleanup test"},
         )
 
         with patch(
@@ -240,7 +240,7 @@ class TestStartupSweep:
     async def test_sweep_moves_bad_files_to_errors(self, deps, tmp_path: Path):
         """Malformed files should be moved to errors/ during sweep."""
         ipc_dir = tmp_path / "ipc"
-        target_dir = ipc_dir / "god" / "messages"
+        target_dir = ipc_dir / "admin-1" / "messages"
         target_dir.mkdir(parents=True)
         bad_file = target_dir / "bad.json"
         bad_file.write_text("not json {{{")
@@ -252,7 +252,7 @@ class TestStartupSweep:
             await _sweep_directory(ipc_dir, deps)
 
         assert not bad_file.exists()
-        assert (ipc_dir / "errors" / "god-bad.json").exists()
+        assert (ipc_dir / "errors" / "admin-1-bad.json").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -268,7 +268,7 @@ class TestSignalHandling:
         deps.sync_group_metadata = AsyncMock()
         deps.get_available_groups = AsyncMock(return_value=[])
 
-        await _handle_signal("refresh_groups", "god", True, deps)
+        await _handle_signal("refresh_groups", "admin-1", True, deps)
 
         deps.sync_group_metadata.assert_called_once_with(True)
         assert len(deps.snapshot_calls) == 1
@@ -284,7 +284,7 @@ class TestSignalHandling:
     async def test_unknown_signal_is_logged(self, deps):
         """Unknown signals should be handled gracefully (logged but not crash)."""
         # This shouldn't raise — the watcher should log and continue
-        await _handle_signal("unknown_future_signal", "god", True, deps)
+        await _handle_signal("unknown_future_signal", "admin-1", True, deps)
 
 
 # ---------------------------------------------------------------------------
@@ -298,7 +298,7 @@ class TestTaskFileProcessing:
     async def test_signal_file_is_handled_as_signal(self, deps, tmp_path: Path):
         """A file with signal format should be routed through _handle_signal."""
         ipc_dir = tmp_path / "ipc"
-        file_path = _write_ipc_file(ipc_dir, "god", "tasks", {"signal": "refresh_groups"})
+        file_path = _write_ipc_file(ipc_dir, "admin-1", "tasks", {"signal": "refresh_groups"})
 
         deps.sync_group_metadata = AsyncMock()
         deps.get_available_groups = AsyncMock(return_value=[])
@@ -307,7 +307,7 @@ class TestTaskFileProcessing:
             "pynchy.ipc._watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            await _process_task_file(file_path, "god", True, ipc_dir, deps)
+            await _process_task_file(file_path, "admin-1", True, ipc_dir, deps)
 
         deps.sync_group_metadata.assert_called_once()
         assert not file_path.exists()  # File should be cleaned up
@@ -317,7 +317,7 @@ class TestTaskFileProcessing:
         ipc_dir = tmp_path / "ipc"
         file_path = _write_ipc_file(
             ipc_dir,
-            "god",
+            "admin-1",
             "tasks",
             {
                 "type": "register_group",
@@ -328,7 +328,7 @@ class TestTaskFileProcessing:
             },
         )
 
-        await _process_task_file(file_path, "god", True, ipc_dir, deps)
+        await _process_task_file(file_path, "admin-1", True, ipc_dir, deps)
 
         assert "test@g.us" in deps.workspaces()
         assert not file_path.exists()
@@ -338,16 +338,16 @@ class TestTaskFileProcessing:
         ipc_dir = tmp_path / "ipc"
         file_path = _write_ipc_file(
             ipc_dir,
-            "god",
+            "admin-1",
             "tasks",
             {"signal": "refresh_groups", "extra_payload": "bad"},
         )
 
-        await _process_task_file(file_path, "god", True, ipc_dir, deps)
+        await _process_task_file(file_path, "admin-1", True, ipc_dir, deps)
 
         # Should have been moved to errors
         assert not file_path.exists()
-        assert (ipc_dir / "errors" / "god-test.json").exists()
+        assert (ipc_dir / "errors" / "admin-1-test.json").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -363,7 +363,7 @@ class TestMessageFileProcessing:
         ipc_dir = tmp_path / "ipc"
         file_path = _write_ipc_file(
             ipc_dir,
-            "god",
+            "admin-1",
             "messages",
             {"type": "message", "chatJid": "other@g.us", "text": "hello"},
         )
@@ -372,7 +372,7 @@ class TestMessageFileProcessing:
             "pynchy.ipc._watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            await _process_message_file(file_path, "god", True, ipc_dir, deps)
+            await _process_message_file(file_path, "admin-1", True, ipc_dir, deps)
 
         assert len(deps.broadcast_messages) == 1
         assert "hello" in deps.broadcast_messages[0][1]
@@ -385,7 +385,7 @@ class TestMessageFileProcessing:
             ipc_dir,
             "other-group",
             "messages",
-            {"type": "message", "chatJid": "god@g.us", "text": "sneaky"},
+            {"type": "message", "chatJid": "admin-1@g.us", "text": "sneaky"},
         )
 
         with patch(
@@ -403,23 +403,28 @@ class TestMessageFileProcessing:
         ipc_dir = tmp_path / "ipc"
         file_path = _write_ipc_file(
             ipc_dir,
-            "god",
+            "admin-1",
             "messages",
-            {"type": "message", "chatJid": "god@g.us", "text": "update", "sender": "Researcher"},
+            {
+                "type": "message",
+                "chatJid": "admin-1@g.us",
+                "text": "update",
+                "sender": "Researcher",
+            },
         )
 
         with patch(
             "pynchy.ipc._watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            await _process_message_file(file_path, "god", True, ipc_dir, deps)
+            await _process_message_file(file_path, "admin-1", True, ipc_dir, deps)
 
         assert deps.broadcast_messages[0][1] == "Researcher: update"
 
     async def test_malformed_json_goes_to_errors(self, deps, tmp_path: Path):
         """A file with invalid JSON should be moved to errors/."""
         ipc_dir = tmp_path / "ipc"
-        target_dir = ipc_dir / "god" / "messages"
+        target_dir = ipc_dir / "admin-1" / "messages"
         target_dir.mkdir(parents=True)
         file_path = target_dir / "broken.json"
         file_path.write_text("not valid json")
@@ -428,10 +433,10 @@ class TestMessageFileProcessing:
             "pynchy.ipc._watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            await _process_message_file(file_path, "god", True, ipc_dir, deps)
+            await _process_message_file(file_path, "admin-1", True, ipc_dir, deps)
 
         assert not file_path.exists()
-        assert (ipc_dir / "errors" / "god-broken.json").exists()
+        assert (ipc_dir / "errors" / "admin-1-broken.json").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -462,12 +467,12 @@ class TestIpcEventHandler:
         from watchdog.events import FileCreatedEvent
 
         # JSON file in expected path — should be queued
-        handler.on_created(FileCreatedEvent(str(ipc_dir / "god" / "messages" / "test.json")))
+        handler.on_created(FileCreatedEvent(str(ipc_dir / "admin-1" / "messages" / "test.json")))
         self._drain(loop)
         assert queue.qsize() == 1
 
         # Non-JSON file — should be ignored
-        handler.on_created(FileCreatedEvent(str(ipc_dir / "god" / "messages" / "test.txt")))
+        handler.on_created(FileCreatedEvent(str(ipc_dir / "admin-1" / "messages" / "test.txt")))
         self._drain(loop)
         assert queue.qsize() == 1  # Still 1
 
@@ -484,7 +489,7 @@ class TestIpcEventHandler:
         from watchdog.events import FileCreatedEvent
 
         # File directly in group dir (not messages/ or tasks/) — ignored
-        handler.on_created(FileCreatedEvent(str(ipc_dir / "god" / "random.json")))
+        handler.on_created(FileCreatedEvent(str(ipc_dir / "admin-1" / "random.json")))
         self._drain(loop)
         assert queue.qsize() == 0
 
@@ -494,7 +499,7 @@ class TestIpcEventHandler:
         assert queue.qsize() == 0
 
         # File in tasks/ — should be queued
-        handler.on_created(FileCreatedEvent(str(ipc_dir / "god" / "tasks" / "task.json")))
+        handler.on_created(FileCreatedEvent(str(ipc_dir / "admin-1" / "tasks" / "task.json")))
         self._drain(loop)
         assert queue.qsize() == 1
 

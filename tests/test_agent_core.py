@@ -30,7 +30,7 @@ class TestAgentCoreProtocol:
         config = AgentCoreConfig(
             cwd="/workspace/project",
             session_id="test-session-123",
-            group_folder="god",
+            group_folder="admin-1",
             chat_jid="test@g.us",
             is_admin=True,
             is_scheduled_task=False,
@@ -94,7 +94,7 @@ class TestAgentCoreRegistry:
         config = AgentCoreConfig(
             cwd="/workspace/project",
             session_id=None,
-            group_folder="god",
+            group_folder="admin-1",
             chat_jid="test@g.us",
             is_admin=True,
             is_scheduled_task=False,
@@ -112,7 +112,7 @@ class TestAgentCoreRegistry:
         config = AgentCoreConfig(
             cwd="/workspace/project",
             session_id=None,
-            group_folder="god",
+            group_folder="admin-1",
             chat_jid="test@g.us",
             is_admin=True,
             is_scheduled_task=False,
@@ -126,7 +126,7 @@ class TestAgentCoreRegistry:
         config = AgentCoreConfig(
             cwd="/workspace/project",
             session_id=None,
-            group_folder="god",
+            group_folder="admin-1",
             chat_jid="test@g.us",
             is_admin=True,
             is_scheduled_task=False,

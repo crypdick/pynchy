@@ -80,10 +80,10 @@ async def deps():
     await _init_test_database()
     return MockDeps(
         {
-            "god@g.us": WorkspaceProfile(
-                jid="god@g.us",
-                name="God",
-                folder="god",
+            "admin-1@g.us": WorkspaceProfile(
+                jid="admin-1@g.us",
+                name="Admin",
+                folder="admin-1",
                 trigger="always",
                 added_at="2024-01-01",
                 is_admin=True,
@@ -120,7 +120,7 @@ class TestCreatePeriodicAgent:
                     "schedule": "0 9 * * *",
                     "prompt": "Compile a daily briefing",
                 },
-                "god",
+                "admin-1",
                 True,
                 deps,
             )
@@ -171,7 +171,7 @@ class TestCreatePeriodicAgent:
                     "prompt": "Weekly report",
                     "claude_md": "# Custom Agent\nYou are a custom agent.",
                 },
-                "god",
+                "admin-1",
                 True,
                 deps,
             )
@@ -204,7 +204,7 @@ class TestCreatePeriodicAgent:
                     "schedule": "0 9 * * *",
                     "prompt": "Test",
                 },
-                "god",
+                "admin-1",
                 True,
                 deps,
             )
@@ -232,7 +232,7 @@ class TestCreatePeriodicAgent:
                     "prompt": "Isolated task",
                     "context_mode": "isolated",
                 },
-                "god",
+                "admin-1",
                 True,
                 deps,
             )
@@ -261,7 +261,7 @@ class TestCreatePeriodicAgent:
                     "prompt": "Test",
                     "context_mode": "invalid",
                 },
-                "god",
+                "admin-1",
                 True,
                 deps,
             )
@@ -288,7 +288,7 @@ class TestCreatePeriodicAgent:
                     "schedule": "0 9 * * *",
                     "prompt": "Test",
                 },
-                "god",
+                "admin-1",
                 True,
                 deps,
             )

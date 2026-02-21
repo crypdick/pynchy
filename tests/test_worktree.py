@@ -368,34 +368,34 @@ class TestReconcileWorktreesAtStartup:
         repo_ctx = git_env["repo_ctx"]
         with patch("pynchy.git_ops.repo.get_repo_context", return_value=repo_ctx):
             reconcile_worktrees_at_startup(
-                repo_groups={"owner/pynchy": ["god", "code-improver"]}
+                repo_groups={"owner/pynchy": ["admin-1", "code-improver"]}
             )
 
         worktrees_dir = git_env["worktrees_dir"]
-        assert (worktrees_dir / "god").exists()
+        assert (worktrees_dir / "admin-1").exists()
         assert (worktrees_dir / "code-improver").exists()
 
         # Both should be valid git repos
-        _git(worktrees_dir / "god", "status")
+        _git(worktrees_dir / "admin-1", "status")
         _git(worktrees_dir / "code-improver", "status")
 
     def test_idempotent(self, git_env: dict):
         """Calling twice with same folders doesn't break anything."""
         repo_ctx = git_env["repo_ctx"]
-        folders = ["god", "code-improver"]
+        folders = ["admin-1", "code-improver"]
         with patch("pynchy.git_ops.repo.get_repo_context", return_value=repo_ctx):
             reconcile_worktrees_at_startup(repo_groups={"owner/pynchy": folders})
 
         # Record state
         worktrees_dir = git_env["worktrees_dir"]
-        head_god = _git(worktrees_dir / "god", "rev-parse", "HEAD").stdout.strip()
+        head_admin = _git(worktrees_dir / "admin-1", "rev-parse", "HEAD").stdout.strip()
         head_ci = _git(worktrees_dir / "code-improver", "rev-parse", "HEAD").stdout.strip()
 
         # Second call — should be a no-op
         with patch("pynchy.git_ops.repo.get_repo_context", return_value=repo_ctx):
             reconcile_worktrees_at_startup(repo_groups={"owner/pynchy": folders})
 
-        assert _git(worktrees_dir / "god", "rev-parse", "HEAD").stdout.strip() == head_god
+        assert _git(worktrees_dir / "admin-1", "rev-parse", "HEAD").stdout.strip() == head_admin
         assert _git(worktrees_dir / "code-improver", "rev-parse", "HEAD").stdout.strip() == head_ci
 
 
