@@ -265,12 +265,19 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
     # Add remote MCP servers if configured (routed via LiteLLM)
     if container_input.mcp_gateway_url and container_input.mcp_gateway_key:
         mcp_servers_dict["tools"] = {
-            "type": "http",
+            "type": "sse",
             "url": container_input.mcp_gateway_url,
             "headers": {
                 "Authorization": f"Bearer {container_input.mcp_gateway_key}",
             },
         }
+        # TODO: LiteLLM's /mcp/ endpoint speaks Streamable HTTP, not SSE,
+        # so the "tools" server will show as "failed" during init. The agent
+        # still starts fine (graceful degradation) but remote MCP tools are
+        # unavailable. Switching to type="http" causes the Claude SDK to hang
+        # during initialization (tested with v2.1.45–2.1.49). Investigate
+        # whether a newer SDK version fixes this, or bypass LiteLLM and
+        # connect directly to MCP containers.
 
     # Default cwd to the mounted project repo when available, so agents start
     # in the codebase they're working on rather than the group metadata dir.
