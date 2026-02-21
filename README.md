@@ -40,7 +40,7 @@ See **[docs/install.md](docs/install.md)** for installation instructions.
 | [Usage](docs/usage/index.md) | Day-to-day operation, groups, scheduled tasks |
 | [Plugin authoring](docs/plugins/index.md) | Writing plugins: channels, skills, MCP servers |
 | [Architecture & Design](docs/architecture/index.md) | Container isolation, message routing, IPC, security |
-| [Contributing](docs/contributing/contributing-code.md) | What changes are accepted, plugin-first philosophy |
+| [Contributing](docs/contributing/contributing-code.md) | How to contribute — plugins, fixes, docs, and more |
 
 ## FAQ
 
