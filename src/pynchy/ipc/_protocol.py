@@ -40,13 +40,9 @@ TIER2_TYPES = frozenset(
         "resume_task",
         "cancel_task",
         # Service requests (policy-gated, Step 2)
-        "service:read_email",
-        "service:send_email",
         "service:list_calendar",
         "service:create_event",
         "service:delete_event",
-        "service:search_passwords",
-        "service:get_password",
         # Slack token extraction
         "service:refresh_slack_tokens",
         "service:setup_slack_session",
