@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -189,6 +190,74 @@ class TestReconnectShutdownRace:
         await ch._reconnect_with_backoff(delay=0)
 
         ch.connect.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_reconnect_aborts_when_shutting_down(self) -> None:
+        """prepare_shutdown() prevents reconnect even when _connected is False."""
+        ch = _make_channel()
+        ch._connected = False
+        ch._shutting_down = True
+
+        ch.connect = AsyncMock()
+
+        await ch._reconnect_with_backoff(delay=0)
+
+        ch.connect.assert_not_awaited()
+
+    def test_on_handler_done_skips_reconnect_when_shutting_down(self) -> None:
+        """_on_handler_done does nothing after prepare_shutdown()."""
+        ch = _make_channel()
+        ch._connected = True
+        ch._shutting_down = True
+
+        task = MagicMock(spec=asyncio.Task)
+        task.cancelled.return_value = False
+        task.exception.return_value = None
+
+        ch._on_handler_done(task)
+
+        # Should not schedule a reconnect
+        task.get_loop.assert_not_called()
+        assert ch._reconnect_task is None
+
+    def test_on_handler_done_catches_runtime_error(self) -> None:
+        """create_task RuntimeError during loop shutdown doesn't propagate."""
+        ch = _make_channel()
+        ch._connected = True
+        ch._shutting_down = False
+
+        task = MagicMock(spec=asyncio.Task)
+        task.cancelled.return_value = False
+        task.exception.return_value = RuntimeError("websocket dropped")
+        task.get_loop.return_value.create_task.side_effect = RuntimeError(
+            "Executor shutdown has been called"
+        )
+
+        # Should not raise
+        ch._on_handler_done(task)
+
+        # _connected should be False (we tried to reconnect but couldn't)
+        assert ch._connected is False
+
+
+class TestPrepareShutdown:
+    def test_sets_shutting_down_flag(self) -> None:
+        ch = _make_channel()
+        assert ch._shutting_down is False
+        ch.prepare_shutdown()
+        assert ch._shutting_down is True
+
+    def test_channel_remains_connected(self) -> None:
+        """prepare_shutdown doesn't disconnect — channel can still send messages."""
+        ch = _make_channel()
+        ch._connected = True
+        ch._handler_task = MagicMock(spec=asyncio.Task)
+        ch._handler_task.done.return_value = False
+
+        ch.prepare_shutdown()
+
+        assert ch.is_connected() is True
+        assert ch._shutting_down is True
 
 
 class TestNormalizeBotMention:

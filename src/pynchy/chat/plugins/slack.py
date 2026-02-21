@@ -97,6 +97,7 @@ class SlackChannel:
         self._on_chat_metadata = on_chat_metadata
         self._on_reaction = on_reaction
         self._connected = False
+        self._shutting_down = False
 
         # Lazy-initialised in connect()
         self._app: Any = None
@@ -181,22 +182,34 @@ class SlackChannel:
         await self.connect()
 
     # ------------------------------------------------------------------
+    # Shutdown coordination
+    # ------------------------------------------------------------------
+
+    def prepare_shutdown(self) -> None:
+        """Signal imminent shutdown — suppress reconnect attempts."""
+        self._shutting_down = True
+
+    # ------------------------------------------------------------------
     # Internal: reconnect on unexpected task exit
     # ------------------------------------------------------------------
 
     def _on_handler_done(self, task: asyncio.Task[None]) -> None:
         """Called when the Socket Mode handler task exits for any reason."""
-        if not self._connected:
-            return  # clean shutdown via disconnect() — nothing to do
+        if not self._connected or self._shutting_down:
+            return  # clean shutdown or imminent shutdown — don't reconnect
         exc = task.exception() if not task.cancelled() else None
         logger.warning(
             "Slack Socket Mode task exited unexpectedly — scheduling reconnect",
             exc=str(exc) if exc else "cancelled",
         )
         self._connected = False
-        self._reconnect_task = task.get_loop().create_task(
-            self._reconnect_with_backoff(), name="slack-reconnect"
-        )
+        coro = self._reconnect_with_backoff()
+        try:
+            self._reconnect_task = task.get_loop().create_task(coro, name="slack-reconnect")
+        except RuntimeError:
+            # Event loop is shutting down — can't schedule reconnect.
+            coro.close()
+            logger.debug("Cannot schedule Slack reconnect — event loop closing")
 
     async def _reconnect_with_backoff(self, delay: float = 5.0) -> None:
         """Reconnect with exponential backoff, capped at 5 minutes."""
@@ -204,7 +217,7 @@ class SlackChannel:
         # Guard: if disconnect() was called while we slept, or another path
         # already reconnected, bail out — otherwise connect() will spawn
         # aiohttp tasks that disconnect() can't cancel (shutdown race).
-        if self._connected:
+        if self._connected or self._shutting_down:
             return
         logger.info("Slack attempting reconnect", delay=delay)
         try:
@@ -216,9 +229,12 @@ class SlackChannel:
             logger.warning("Slack reconnect failed, will retry", delay=delay, exc=str(exc))
             self._connected = False
             next_delay = min(delay * 2, 300)
-            self._reconnect_task = asyncio.create_task(
-                self._reconnect_with_backoff(next_delay), name="slack-reconnect"
-            )
+            coro = self._reconnect_with_backoff(next_delay)
+            try:
+                self._reconnect_task = asyncio.create_task(coro, name="slack-reconnect")
+            except RuntimeError:
+                coro.close()
+                logger.debug("Cannot schedule Slack reconnect retry — event loop closing")
 
     # ------------------------------------------------------------------
     # Optional protocol extensions
