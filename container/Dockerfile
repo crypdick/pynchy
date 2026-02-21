@@ -7,7 +7,7 @@ FROM python:3.13-slim
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Install system dependencies + common tools
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     ripgrep \
@@ -15,19 +15,21 @@ RUN apt-get update && apt-get install -y \
     procps \
     gpg \
     libmagic1 \
+    ca-certificates \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
     > /etc/apt/sources.list.d/github-cli.list \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get update && apt-get install -y gh nodejs \
+    && apt-get update && apt-get install -y --no-install-recommends gh nodejs \
+    && apt-get purge -y gpg && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Disable Python stdout buffering so streaming markers reach the host immediately
 ENV PYTHONUNBUFFERED=1
 
 # Install claude-code globally
-RUN npm install -g @anthropic-ai/claude-code
+RUN npm install -g @anthropic-ai/claude-code && npm cache clean --force
 
 # Create app directory
 WORKDIR /app
