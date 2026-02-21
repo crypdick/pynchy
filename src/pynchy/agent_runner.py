@@ -122,6 +122,34 @@ def _format_messages_for_ipc(messages: list[dict], system_notices: list[str] | N
 # ---------------------------------------------------------------------------
 
 
+def _build_container_input(
+    messages: list[dict],
+    ctx: _PreContainerResult,
+    chat_jid: str,
+    group: WorkspaceProfile,
+    *,
+    is_scheduled_task: bool = False,
+) -> ContainerInput:
+    """Build a ContainerInput from the pre-container result.
+
+    Shared by cold start and scheduled task paths to avoid duplicating
+    the field mapping.
+    """
+    return ContainerInput(
+        messages=messages,
+        session_id=ctx.session_id,
+        group_folder=group.folder,
+        chat_jid=chat_jid,
+        is_admin=ctx.is_admin,
+        system_notices=ctx.system_notices or None,
+        is_scheduled_task=is_scheduled_task,
+        repo_access=ctx.repo_access,
+        system_prompt_append=ctx.system_prompt_append,
+        agent_core_module=ctx.agent_core_module,
+        agent_core_class=ctx.agent_core_class,
+    )
+
+
 async def _pre_container_setup(
     deps: AgentRunnerDeps,
     group: WorkspaceProfile,
@@ -291,18 +319,7 @@ async def _cold_start(
 ) -> str:
     """Spawn a new container, create a persistent session, and wait for the first query."""
     container_name = stable_container_name(group.folder)
-    input_data = ContainerInput(
-        messages=messages,
-        session_id=ctx.session_id,
-        group_folder=group.folder,
-        chat_jid=chat_jid,
-        is_admin=ctx.is_admin,
-        system_notices=ctx.system_notices or None,
-        repo_access=ctx.repo_access,
-        system_prompt_append=ctx.system_prompt_append,
-        agent_core_module=ctx.agent_core_module,
-        agent_core_class=ctx.agent_core_class,
-    )
+    input_data = _build_container_input(messages, ctx, chat_jid, group)
 
     try:
         proc, container_name, _mounts = await _spawn_container(
@@ -465,21 +482,10 @@ async def _run_scheduled_task(
     )
 
     try:
+        input_data = _build_container_input(messages, ctx, chat_jid, group, is_scheduled_task=True)
         output = await run_container_agent(
             group=group,
-            input_data=ContainerInput(
-                messages=messages,
-                session_id=ctx.session_id,
-                group_folder=group.folder,
-                chat_jid=chat_jid,
-                is_admin=ctx.is_admin,
-                system_notices=ctx.system_notices or None,
-                is_scheduled_task=True,
-                repo_access=ctx.repo_access,
-                system_prompt_append=ctx.system_prompt_append,
-                agent_core_module=ctx.agent_core_module,
-                agent_core_class=ctx.agent_core_class,
-            ),
+            input_data=input_data,
             on_process=lambda proc, name: deps.queue.register_process(
                 chat_jid, proc, name, group.folder
             ),
