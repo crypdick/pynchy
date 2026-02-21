@@ -87,6 +87,7 @@ async def wait_healthy(
     poll_interval: float = 1.0,
     headers: dict[str, str] | None = None,
     any_non_5xx: bool = False,
+    process: subprocess.Popen | None = None,
 ) -> None:
     """Poll an HTTP endpoint until it responds healthy, or raise on timeout.
 
@@ -111,7 +112,11 @@ async def wait_healthy(
             except (aiohttp.ClientError, OSError):
                 pass
 
-            if not is_container_running(container_name):
+            if process is not None:
+                if process.poll() is not None:
+                    msg = f"Script {container_name} exited unexpectedly"
+                    raise RuntimeError(msg)
+            elif not is_container_running(container_name):
                 logs = run_docker("logs", "--tail", "30", container_name, check=False)
                 logger.error("Container exited", container=container_name, logs=logs.stdout[-2000:])
                 msg = f"Container {container_name} failed to start — check logs above"
