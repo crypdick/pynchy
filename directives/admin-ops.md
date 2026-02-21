@@ -19,17 +19,27 @@ This is an admin channel with elevated privileges.
 
 ## Container Mounts
 
-Admin has access to the entire project:
+Admin containers have two mounts of the repository — a worktree (your normal working copy) and a raw mount of the host repo (for elevated access).
 
-| Container Path | Host Path | Access |
-|----------------|-----------|--------|
-| `/workspace/project` | Project root | read-write |
+| Container Path | What it is | Access |
+|----------------|------------|--------|
+| `/workspace/project` | Your git worktree (branch `worktree/<group>`) | read-write |
 | `/workspace/group` | `groups/{folder}/` | read-write |
+| `/danger/raw-host-repo-mount-prefer-your-worktree` | Host repo root (main branch, data/, config.toml, other worktrees) | read-write |
 
-Key paths inside the container:
-- `/workspace/project/data/messages.db` - SQLite database
-- `/workspace/project/data/messages.db` (registered_groups table) - Group config
-- `/workspace/project/groups/` - All group folders
+**Use your worktree (`/workspace/project`) for normal work.** Commit and push as usual — changes sync to main via the worktree workflow.
+
+**Use the raw mount (`/danger/...`) only when you need to:**
+- Edit `config.toml` (gitignored, not present in worktrees)
+- Access `data/` (messages.db, registered_groups.json, repos, worktrees)
+- Read or modify other group worktrees
+- Access secrets or files outside the git tree
+
+Key paths via the raw mount:
+- `/danger/raw-host-repo-mount-prefer-your-worktree/data/messages.db` - SQLite database
+- `/danger/raw-host-repo-mount-prefer-your-worktree/data/registered_groups.json` - Group config
+- `/danger/raw-host-repo-mount-prefer-your-worktree/config.toml` - Service config (gitignored)
+- `/danger/raw-host-repo-mount-prefer-your-worktree/groups/` - All group folders
 
 ## Managing Groups
 
@@ -61,10 +71,10 @@ echo '{"type": "refresh_groups"}' > /workspace/ipc/tasks/refresh_$(date +%s).jso
 
 Then wait a moment and re-read `available_groups.json`.
 
-**Fallback**: Query the SQLite database directly:
+**Fallback**: Query the SQLite database directly (via the raw host mount):
 
 ```bash
-sqlite3 /workspace/project/data/messages.db "
+sqlite3 /danger/raw-host-repo-mount-prefer-your-worktree/data/messages.db "
   SELECT jid, name, last_message_time
   FROM chats
   WHERE jid LIKE '%@g.us' AND jid != '__group_sync__'
@@ -75,7 +85,7 @@ sqlite3 /workspace/project/data/messages.db "
 
 ### Registered Groups Config
 
-Groups are registered in `/workspace/project/data/registered_groups.json`:
+Groups are registered in `/danger/raw-host-repo-mount-prefer-your-worktree/data/registered_groups.json`:
 
 ```json
 {
@@ -105,10 +115,10 @@ Fields:
 ### Adding a Group
 
 1. Query the database to find the group's JID
-2. Read `/workspace/project/data/registered_groups.json`
+2. Read `/danger/raw-host-repo-mount-prefer-your-worktree/data/registered_groups.json`
 3. Add the new group entry with `containerConfig` if needed
 4. Write the updated JSON back
-5. Create the group folder: `/workspace/project/groups/{folder-name}/`
+5. Create the group folder: `/danger/raw-host-repo-mount-prefer-your-worktree/groups/{folder-name}/`
 
 Example folder name conventions:
 - "Family Chat" → `family-chat`
@@ -143,14 +153,14 @@ The directory will appear at `/workspace/extra/webapp` in that group's container
 
 ### Removing a Group
 
-1. Read `/workspace/project/data/registered_groups.json`
+1. Read `/danger/raw-host-repo-mount-prefer-your-worktree/data/registered_groups.json`
 2. Remove the entry for that group
 3. Write the updated JSON back
 4. The group folder and its files remain (don't delete them)
 
 ### Listing Groups
 
-Read `/workspace/project/data/registered_groups.json` and format it nicely.
+Read `/danger/raw-host-repo-mount-prefer-your-worktree/data/registered_groups.json` and format it nicely.
 
 ## Scheduling for Other Groups
 
