@@ -225,16 +225,7 @@ class McpManager:
 
         # Merge env: inherit host env + static env + env_forward
         merged_env = {**os.environ, **cfg.env}
-        for container_var, host_var in cfg.env_forward.items():
-            value = os.environ.get(host_var)
-            if value is None:
-                logger.warning(
-                    "env_forward var not set on host — skipping",
-                    container_var=container_var,
-                    host_var=host_var,
-                )
-                continue
-            merged_env[container_var] = value
+        merged_env.update(_resolve_env_forward(cfg.env_forward))
 
         logger.info(
             "Starting MCP script on-demand",
@@ -340,6 +331,10 @@ class McpManager:
                 instance_id=instance.instance_id,
                 container=instance.container_name,
             )
+            # Clean up the failed container (matches script path which
+            # calls _terminate_process before re-raising).
+            run_docker("stop", "-t", "5", instance.container_name, check=False)
+            run_docker("rm", "-f", instance.container_name, check=False)
             raise
 
         logger.info("MCP container ready", instance_id=instance.instance_id)
@@ -449,11 +444,10 @@ class McpManager:
         return merged
 
     def get_instance_id(self, server_name: str, kwargs: dict[str, str]) -> str:
-        """Compute instance ID: server_name + short hash of sorted kwargs.
+        """Compute instance ID: server_name + underscore + short hash of sorted kwargs.
 
-        WARNING: LiteLLM rejects server names containing hyphens. The kwargs
-        branch produces "name-hash" which will fail at registration. Use
-        underscores if this path is ever exercised.
+        Uses underscores as separator because LiteLLM rejects server names
+        containing hyphens.
         """
         if not kwargs:
             return server_name
@@ -580,6 +574,26 @@ def _kwargs_to_args(kwargs: dict[str, str]) -> list[str]:
     return args
 
 
+def _resolve_env_forward(env_forward: dict[str, str]) -> dict[str, str]:
+    """Resolve ``env_forward`` mappings to concrete values from the host environment.
+
+    Returns ``{container_var: resolved_value}`` for each host var that exists.
+    Logs a warning for any host variable that is not set.
+    """
+    resolved: dict[str, str] = {}
+    for container_var, host_var in sorted(env_forward.items()):
+        value = os.environ.get(host_var)
+        if value is None:
+            logger.warning(
+                "env_forward var not set on host — skipping",
+                container_var=container_var,
+                host_var=host_var,
+            )
+            continue
+        resolved[container_var] = value
+    return resolved
+
+
 def _build_env_args(config: McpServerConfig) -> list[str]:
     """Build ``-e KEY=VALUE`` Docker flags from ``env`` and ``env_forward``.
 
@@ -589,15 +603,7 @@ def _build_env_args(config: McpServerConfig) -> list[str]:
     args: list[str] = []
     for key, value in sorted(config.env.items()):
         args.extend(["-e", f"{key}={value}"])
-    for container_var, host_var in sorted(config.env_forward.items()):
-        value = os.environ.get(host_var)
-        if value is None:
-            logger.warning(
-                "env_forward var not set on host — skipping",
-                container_var=container_var,
-                host_var=host_var,
-            )
-            continue
+    for container_var, value in _resolve_env_forward(config.env_forward).items():
         args.extend(["-e", f"{container_var}={value}"])
     return args
 
