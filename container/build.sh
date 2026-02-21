@@ -35,6 +35,28 @@ python3 ./scripts/generate_plugin_requirements.py --output ./requirements-plugin
 export DOCKER_BUILDKIT=1
 $RUNTIME build -t "${IMAGE_NAME}:${TAG}" .
 
+# Build MCP server images from container/mcp/*.Dockerfile in parallel.
+# Image name derived from filename: notebook.Dockerfile → pynchy-mcp-notebook:latest
+MCP_DIR="${SCRIPT_DIR}/mcp"
+MCP_PIDS=()
+if compgen -G "${MCP_DIR}/*.Dockerfile" > /dev/null 2>&1; then
+    echo ""
+    echo "Building MCP server images..."
+    cd "${SCRIPT_DIR}/.."  # project root — Dockerfiles use paths relative to it
+    for df in "${MCP_DIR}"/*.Dockerfile; do
+        base="$(basename "$df" .Dockerfile)"
+        mcp_image="pynchy-mcp-${base}:${TAG}"
+        echo "  Building ${mcp_image} from ${df}"
+        $RUNTIME build -t "${mcp_image}" -f "${df}" . &
+        MCP_PIDS+=($!)
+    done
+    # Wait for all parallel MCP builds; fail the script if any fails.
+    for pid in "${MCP_PIDS[@]}"; do
+        wait "$pid" || { echo "MCP image build failed (pid $pid)"; exit 1; }
+    done
+    echo "All MCP images built."
+fi
+
 echo ""
 echo "Build complete!"
 echo "Image: ${IMAGE_NAME}:${TAG}"

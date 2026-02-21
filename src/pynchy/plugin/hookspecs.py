@@ -151,13 +151,20 @@ class PynchySpec:
         Returns:
             Dict with keys:
                 - name: Server identifier (used as the mcp_servers key)
-                - command: Executable to run (e.g., "uv", "python")
+                - type: "docker", "script", or "url" (default "script")
+                - image: Docker image name (required for type="docker")
+                - dockerfile: Relative path to local Dockerfile — when set,
+                  the MCP manager auto-builds the image (optional)
+                - command: Executable to run (e.g., "uv", "python") — for type="script"
                 - args: Command arguments (list of strings)
                 - port: HTTP port the server listens on
+                - extra_ports: Additional ports to publish (e.g., [8888] for JupyterLab)
                 - transport: MCP transport type (default "streamable_http")
                 - idle_timeout: Seconds before auto-stop (default 600)
                 - env: Static env vars (optional)
                 - env_forward: Host-to-subprocess env var mapping (optional)
+                - volumes: Volume mounts as "host_path:container_path" strings;
+                  supports ``{key}`` placeholders expanded from instance kwargs
         """
 
     @hookspec

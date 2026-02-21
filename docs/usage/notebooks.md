@@ -4,15 +4,15 @@ The built-in notebook MCP server lets agents create, execute, and manage Jupyter
 
 ## Installation
 
-The notebook server requires optional dependencies. Install with:
+The notebook server runs as a Docker container. The image is built automatically on deploy (`container/build.sh`) or on first use by the MCP manager. To build manually:
 
 ```bash
-uv add pynchy[notebook]
+docker build -t pynchy-mcp-notebook:latest -f container/mcp/notebook.Dockerfile .
 ```
 
 ## How it works
 
-The notebook server is a first-party plugin that runs as a host-side MCP server subprocess (not in a container). It provides:
+The notebook server is a first-party plugin that runs as a Docker container, sandboxing all kernel execution. It provides:
 
 - **MCP tools** for agents — start kernels, execute code cells, add markdown, save/load notebooks
 - **JupyterLab** for humans — a web frontend on port 8888 for viewing and interacting with notebooks
@@ -137,14 +137,14 @@ If a single cell produces multiple images, they're suffixed: `cell_3_1.png`, `ce
 
 ## Installing dependencies
 
-The container ships with common data-science libraries pre-installed. When you need a package that isn't available, install it at runtime from a notebook cell using `uv`:
+The container ships with common data-science libraries pre-installed (pandas, matplotlib, numpy). When you need a package that isn't available, install it at runtime from a notebook cell using `uv`:
 
 ```python
 import subprocess
 subprocess.run(["uv", "pip", "install", "--system", "seaborn"], check=True)
 ```
 
-Use `--system` because the container runs without a virtual environment. Installed packages persist for the lifetime of the kernel but are lost when the container restarts — add frequently needed packages to the container's `requirements-plugins.txt` instead.
+Use `--system` because the container runs without a virtual environment. Installed packages persist for the lifetime of the container but are lost when it restarts (idle timeout, deploy, manual stop). Add frequently needed packages to `container/mcp/notebook.Dockerfile` instead.
 
 ## Direct file access
 
@@ -162,7 +162,7 @@ Notebooks auto-save on every `execute_cell` and `add_markdown` call, so JupyterL
 
 ## Idle timeout
 
-The server shuts down after 30 minutes of no MCP tool calls. On shutdown, all notebooks save and all kernels shut down cleanly. The next agent tool call restarts the server automatically.
+The MCP manager stops the container after 30 minutes of no MCP tool calls. Notebook files persist on the host (bind-mounted workspace), so no data is lost. The next agent tool call starts a fresh container automatically.
 
 ---
 
