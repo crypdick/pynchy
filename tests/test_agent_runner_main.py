@@ -19,14 +19,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "container" / "agent_runne
 
 from agent_runner.core import AgentEvent
 from agent_runner.main import (
-    ContainerInput,
-    ContainerOutput,
     build_core_config,
     build_sdk_messages,
     drain_ipc_input,
     event_to_output,
     should_close,
 )
+from agent_runner.models import ContainerInput, ContainerOutput
 
 # ---------------------------------------------------------------------------
 # ContainerOutput.to_dict
@@ -134,7 +133,7 @@ class TestContainerInput:
             "chat_jid": "123@g.us",
             "is_admin": True,
         }
-        ci = ContainerInput(data)
+        ci = ContainerInput.from_dict(data)
         assert ci.messages == [{"content": "hi"}]
         assert ci.group_folder == "test"
         assert ci.chat_jid == "123@g.us"
@@ -157,7 +156,7 @@ class TestContainerInput:
             "agent_core_class": "CustomCore",
             "agent_core_config": {"model": "gpt-4"},
         }
-        ci = ContainerInput(data)
+        ci = ContainerInput.from_dict(data)
         assert ci.session_id == "sess-1"
         assert ci.is_scheduled_task is True
         assert ci.system_notices == ["notice1"]
@@ -173,13 +172,13 @@ class TestContainerInput:
             "chat_jid": "j",
             "is_admin": False,
         }
-        ci = ContainerInput(data)
+        ci = ContainerInput.from_dict(data)
         assert ci.agent_core_module == "agent_runner.cores.claude"
         assert ci.agent_core_class == "ClaudeAgentCore"
 
     def test_missing_required_field_raises(self):
-        with pytest.raises(KeyError):
-            ContainerInput({"messages": []})  # missing group_folder, chat_jid, is_admin
+        with pytest.raises(TypeError):
+            ContainerInput.from_dict({"messages": []})  # missing group_folder, chat_jid, is_admin
 
 
 # ---------------------------------------------------------------------------
@@ -426,7 +425,7 @@ class TestBuildCoreConfig:
             "is_admin": True,
             **overrides,
         }
-        return ContainerInput(data)
+        return ContainerInput.from_dict(data)
 
     def test_admin_group_cwd(self):
         ci = self._make_input(is_admin=True)
