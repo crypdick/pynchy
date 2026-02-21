@@ -39,6 +39,8 @@ def _input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
         d["mcp_gateway_url"] = input_data.mcp_gateway_url
     if input_data.mcp_gateway_key is not None:
         d["mcp_gateway_key"] = input_data.mcp_gateway_key
+    if input_data.mcp_direct_servers:
+        d["mcp_direct_servers"] = input_data.mcp_direct_servers
     return d
 
 

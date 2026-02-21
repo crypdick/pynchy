@@ -213,14 +213,11 @@ async def _spawn_container(
             except (TimeoutError, RuntimeError):
                 logger.warning("Failed to start MCP instance", instance_id=iid, group=group.folder)
 
-        mcp_key = mcp_mgr.get_workspace_key(group.folder)
-        if mcp_key:
-            from pynchy.container_runner.gateway import get_gateway
-
-            gw = get_gateway()
-            if gw is not None:
-                input_data.mcp_gateway_url = f"http://{s.gateway.container_host}:{gw.port}/mcp/"
-                input_data.mcp_gateway_key = mcp_key
+        # Provide direct MCP server URLs (bypasses LiteLLM MCP proxy which
+        # doesn't work with Claude SDK — see backlog/3-ready/mcp-gateway-transport.md).
+        direct_configs = mcp_mgr.get_direct_server_configs(group.folder)
+        if direct_configs:
+            input_data.mcp_direct_servers = direct_configs
     mcp_ms = (time.monotonic() - phase_start) * 1000
 
     # --- Build args ---
