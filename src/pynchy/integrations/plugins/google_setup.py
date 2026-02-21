@@ -59,6 +59,8 @@ _OAUTH_CALLBACK_PORT = 8085
 _GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 _GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 _DRIVE_READONLY_SCOPE = "https://www.googleapis.com/auth/drive.readonly"
+_SERVICE_MANAGEMENT_SCOPE = "https://www.googleapis.com/auth/service.management"
+_OAUTH_SCOPES = f"{_DRIVE_READONLY_SCOPE} {_SERVICE_MANAGEMENT_SCOPE}"
 _DEFAULT_PROJECT_ID = "pynchy-gdrive"
 
 
@@ -81,6 +83,127 @@ def _download_dir() -> Path:
 
 def _keys_path() -> Path:
     return _project_root() / "data" / "gcp-oauth.keys.json"
+
+
+# ---------------------------------------------------------------------------
+# REST API helpers (preferred over Playwright when scopes allow)
+# ---------------------------------------------------------------------------
+
+_SERVICE_USAGE_URL = "https://serviceusage.googleapis.com/v1"
+
+
+def _get_project_number() -> str | None:
+    """Extract the GCP project number from the OAuth client_id.
+
+    The client_id format is ``{project_number}-{hash}.apps.googleusercontent.com``.
+    """
+    kp = _keys_path()
+    if not kp.exists():
+        return None
+    try:
+        with open(kp) as f:
+            data = json.load(f)
+        client = data.get("installed") or data.get("web")
+        if client and client.get("client_id"):
+            return client["client_id"].split("-", 1)[0]
+    except Exception:
+        pass
+    return None
+
+
+def _refresh_access_token() -> str | None:
+    """Refresh the OAuth access token using stored credentials.
+
+    Returns the new access token, or None if refresh fails.
+    """
+    kp = _keys_path()
+    if not kp.exists():
+        return None
+
+    try:
+        client_id, client_secret = _parse_client_credentials(kp)
+    except Exception:
+        return None
+
+    # Read refresh token from the Docker volume
+    result = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            "mcp-gdrive:/gdrive-server:ro",
+            "busybox",
+            "cat",
+            "/gdrive-server/credentials.json",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+
+    try:
+        creds = json.loads(result.stdout)
+        refresh_token = creds.get("refresh_token")
+        if not refresh_token:
+            return None
+    except Exception:
+        return None
+
+    # Refresh
+    data = urllib.parse.urlencode(
+        {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "refresh_token": refresh_token,
+            "grant_type": "refresh_token",
+        }
+    ).encode()
+    req = urllib.request.Request(
+        _GOOGLE_TOKEN_URL,
+        data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            tokens = json.loads(resp.read())
+        return tokens.get("access_token")
+    except Exception:
+        return None
+
+
+def _enable_drive_api_via_rest(project_number: str, access_token: str) -> bool:
+    """Enable Google Drive API via the Service Usage REST API.
+
+    Returns True on success, False if scopes are insufficient or another
+    error occurs (caller should fall back to Playwright).
+    """
+    url = f"{_SERVICE_USAGE_URL}/projects/{project_number}/services/drive.googleapis.com:enable"
+    req = urllib.request.Request(
+        url,
+        data=b"{}",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            result = json.loads(resp.read())
+        logger.info("Drive API enabled via REST", result_name=result.get("name", ""))
+        return True
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode()
+        if "SCOPE_INSUFFICIENT" in body or "ACCESS_TOKEN_SCOPE_INSUFFICIENT" in body:
+            logger.info("REST enable failed (insufficient scopes), will try Playwright")
+        else:
+            logger.warning("REST enable failed", status=exc.code, body=body[:200])
+        return False
+    except Exception as exc:
+        logger.warning("REST enable failed", error=str(exc))
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -419,7 +542,7 @@ def _build_auth_url(client_id: str) -> str:
         "client_id": client_id,
         "redirect_uri": f"http://localhost:{_OAUTH_CALLBACK_PORT}",
         "response_type": "code",
-        "scope": _DRIVE_READONLY_SCOPE,
+        "scope": _OAUTH_SCOPES,
         "access_type": "offline",
         "prompt": "consent",
     }
@@ -595,60 +718,47 @@ async def _run_oauth_flow(page, keys_path: Path) -> dict:
 
 
 async def _handle_enable_gdrive_api(data: dict) -> dict:
-    """Enable Google Drive API for an existing GCP project.
+    """Enable Google Drive API via the Service Usage REST API.
 
-    Returns noVNC URL for human interaction if on a headless server.
+    Requires the OAuth token to include service.management scope.
+    If the token lacks this scope, returns an error telling the caller
+    to run authorize_gdrive first (which re-authorizes with all scopes).
     """
-    from playwright.async_api import async_playwright
-
     project_id = data.get("project_id") or _read_project_id() or _DEFAULT_PROJECT_ID
-    profile = profile_dir("google")
-    vnc_procs: list[subprocess.Popen] = []
-    original_display = os.environ.get("DISPLAY")
 
-    try:
-        novnc_url: str | None = None
-        if not has_display():
-            vnc_procs, novnc_url = start_virtual_display()
-
-        async with async_playwright() as pw:
-            context = await pw.chromium.launch_persistent_context(
-                user_data_dir=str(profile),
-                executable_path=chrome_path(),
-                headless=False,
-                viewport={"width": 1280, "height": 720},
-                timeout=60_000,
+    project_number = _get_project_number()
+    if not project_number:
+        return {
+            "error": (
+                "Cannot determine GCP project number. "
+                "Run setup_gdrive first to create OAuth credentials."
             )
-            context.set_default_navigation_timeout(60_000)
-            context.set_default_timeout(15_000)
-            page = context.pages[0] if context.pages else await context.new_page()
-
-            await page.goto(_GCP_CONSOLE, wait_until="domcontentloaded")
-            await page.wait_for_timeout(5000)
-            await _wait_for_login(page)
-            await _dismiss_modals(page)
-
-            await _ensure_drive_api(page, project_id)
-            await context.close()
-
-        result: dict[str, Any] = {
-            "status": "ok",
-            "message": f"Google Drive API enabled for project {project_id}",
         }
-        if novnc_url:
-            result["novnc_url"] = novnc_url
-        return {"result": result}
 
-    except Exception as exc:
-        logger.error("enable_gdrive_api failed", error=str(exc))
-        return {"error": str(exc)}
+    access_token = _refresh_access_token()
+    if not access_token:
+        return {
+            "error": (
+                "Cannot refresh OAuth token. "
+                "Run authorize_gdrive to re-authorize with required scopes."
+            )
+        }
 
-    finally:
-        stop_procs(vnc_procs)
-        if original_display is not None:
-            os.environ["DISPLAY"] = original_display
-        elif "DISPLAY" in os.environ and vnc_procs:
-            del os.environ["DISPLAY"]
+    if _enable_drive_api_via_rest(project_number, access_token):
+        return {
+            "result": {
+                "status": "ok",
+                "message": f"Google Drive API enabled for project {project_id}",
+            }
+        }
+
+    return {
+        "error": (
+            "Failed to enable Drive API. The OAuth token likely lacks "
+            "service.management scope. Run authorize_gdrive to re-authorize "
+            "with the required scopes, then retry enable_gdrive_api."
+        )
+    }
 
 
 async def _handle_setup_gdrive(data: dict) -> dict:
