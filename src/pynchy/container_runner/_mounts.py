@@ -84,15 +84,18 @@ def _build_volume_mounts(
     agent_runner_src = s.project_root / "container" / "agent_runner" / "src"
     mounts.append(VolumeMount(str(agent_runner_src), "/app/src", readonly=True))
 
-    # Host config.toml — only the admin container gets access to this.
-    # config.toml is .gitignored so it's absent from worktrees; mounting it
-    # directly lets the admin agent edit settings without host-side access.
-    if is_admin:
-        config_toml = s.project_root / "config.toml"
-        if config_toml.exists():
-            mounts.append(
-                VolumeMount(str(config_toml), "/workspace/project/config.toml", readonly=False)
+    # Admin groups get a read-write mount of the actual host repo root.
+    # This gives them direct access to config.toml, data/, other worktrees, etc.
+    # without going through the git sync workflow.  The path is intentionally
+    # alarming so agents default to their worktree for normal work.
+    if is_admin and repo_ctx is not None:
+        mounts.append(
+            VolumeMount(
+                str(repo_ctx.root),
+                "/danger/raw-host-repo-mount-prefer-your-worktree",
+                readonly=False,
             )
+        )
 
     # Additional mounts validated against external allowlist
     if group.container_config and group.container_config.additional_mounts:

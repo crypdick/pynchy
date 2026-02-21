@@ -423,11 +423,15 @@ class TestMountBuilding:
             assert project_mount.host_path == str(worktree_path)
             assert project_mount.readonly is False
 
-    def test_admin_gets_config_toml_mount(self, tmp_path: Path):
-        """Admin group gets config.toml mounted read-write when it exists."""
+    def test_admin_gets_raw_host_repo_mount(self, tmp_path: Path):
+        """Admin group gets a raw host repo mount when repo_ctx is provided."""
+        worktree_path = tmp_path / "worktrees" / "admin-1"
+        worktree_path.mkdir(parents=True)
+        repo_ctx = RepoContext(
+            slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "worktrees"
+        )
         with _patch_settings(tmp_path):
             (tmp_path / "groups" / "admin-1").mkdir(parents=True)
-            (tmp_path / "config.toml").write_text("[agent]\nname = 'pynchy'\n")
             group = WorkspaceProfile(
                 jid="admin-1@g.us",
                 name="Admin",
@@ -435,19 +439,27 @@ class TestMountBuilding:
                 trigger="always",
                 added_at="2024-01-01",
             )
-            mounts = _build_volume_mounts(group, is_admin=True)
-
-            config_mount = next(
-                m for m in mounts if m.container_path == "/workspace/project/config.toml"
+            mounts = _build_volume_mounts(
+                group, is_admin=True, repo_ctx=repo_ctx, worktree_path=worktree_path
             )
-            assert config_mount.host_path == str(tmp_path / "config.toml")
-            assert config_mount.readonly is False
 
-    def test_nonadmin_does_not_get_config_toml(self, tmp_path: Path):
-        """Non-admin groups never get config.toml mounted."""
+            raw_mount = next(
+                m
+                for m in mounts
+                if m.container_path == "/danger/raw-host-repo-mount-prefer-your-worktree"
+            )
+            assert raw_mount.host_path == str(tmp_path)
+            assert raw_mount.readonly is False
+
+    def test_nonadmin_does_not_get_raw_host_repo_mount(self, tmp_path: Path):
+        """Non-admin groups never get the raw host repo mount."""
+        worktree_path = tmp_path / "worktrees" / "other"
+        worktree_path.mkdir(parents=True)
+        repo_ctx = RepoContext(
+            slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "worktrees"
+        )
         with _patch_settings(tmp_path):
             (tmp_path / "groups" / "other").mkdir(parents=True)
-            (tmp_path / "config.toml").write_text("[agent]\nname = 'pynchy'\n")
             group = WorkspaceProfile(
                 jid="other@g.us",
                 name="Other",
@@ -455,10 +467,12 @@ class TestMountBuilding:
                 trigger="@pynchy",
                 added_at="2024-01-01",
             )
-            mounts = _build_volume_mounts(group, is_admin=False)
+            mounts = _build_volume_mounts(
+                group, is_admin=False, repo_ctx=repo_ctx, worktree_path=worktree_path
+            )
 
             paths = [m.container_path for m in mounts]
-            assert "/workspace/project/config.toml" not in paths
+            assert "/danger/raw-host-repo-mount-prefer-your-worktree" not in paths
 
     def test_admin_no_config_toml_when_missing(self, tmp_path: Path):
         """Admin group doesn't get config.toml mount if the file doesn't exist."""
