@@ -54,6 +54,7 @@ class ContainerInput:
         self.system_prompt_append: str | None = data.get("system_prompt_append")
         self.mcp_gateway_url: str | None = data.get("mcp_gateway_url")
         self.mcp_gateway_key: str | None = data.get("mcp_gateway_key")
+        self.mcp_direct_servers: list[dict] | None = data.get("mcp_direct_servers")
 
 
 class ContainerOutput:
@@ -262,22 +263,22 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
         },
     }
 
-    # Add remote MCP servers if configured (routed via LiteLLM)
-    if container_input.mcp_gateway_url and container_input.mcp_gateway_key:
-        mcp_servers_dict["tools"] = {
-            "type": "sse",
-            "url": container_input.mcp_gateway_url,
-            "headers": {
-                "Authorization": f"Bearer {container_input.mcp_gateway_key}",
-            },
-        }
-        # TODO: LiteLLM's /mcp/ endpoint speaks Streamable HTTP, not SSE,
-        # so the "tools" server will show as "failed" during init. The agent
-        # still starts fine (graceful degradation) but remote MCP tools are
-        # unavailable. Switching to type="http" causes the Claude SDK to hang
-        # during initialization (tested with v2.1.45–2.1.49). Investigate
-        # whether a newer SDK version fixes this, or bypass LiteLLM and
-        # connect directly to MCP containers.
+    # Add remote MCP servers — connect directly to containers, bypassing
+    # LiteLLM's MCP proxy (which doesn't work with Claude SDK; see
+    # backlog/3-ready/mcp-gateway-transport.md).
+    if container_input.mcp_direct_servers:
+        for server in container_input.mcp_direct_servers:
+            transport = server.get("transport", "sse")
+            url = server["url"]
+            # SSE servers expose /sse endpoint; streamable HTTP uses /mcp
+            if transport == "sse":
+                url = f"{url}/sse"
+            elif transport in ("http", "streamable_http"):
+                url = f"{url}/mcp"
+            mcp_servers_dict[server["name"]] = {
+                "type": transport if transport != "streamable_http" else "http",
+                "url": url,
+            }
 
     # Default cwd to the mounted project repo when available, so agents start
     # in the codebase they're working on rather than the group metadata dir.

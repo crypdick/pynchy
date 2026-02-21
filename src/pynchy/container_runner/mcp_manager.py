@@ -481,6 +481,40 @@ class McpManager:
         """Get the list of MCP instance IDs for a workspace."""
         return self._workspace_instances.get(group_folder, [])
 
+    def get_direct_server_configs(self, group_folder: str) -> list[dict]:
+        """Get direct MCP connection configs for a workspace (bypasses LiteLLM).
+
+        Returns a list of dicts suitable for the agent runner's MCP config:
+        ``[{"name": "gdrive", "url": "http://host.docker.internal:3000", "transport": "sse"}, ...]``
+        """
+        instance_ids = self.get_workspace_instance_ids(group_folder)
+        configs: list[dict] = []
+        for iid in instance_ids:
+            instance = self._instances.get(iid)
+            if instance is None:
+                continue
+            cfg = instance.server_config
+            if cfg.type == "url":
+                configs.append(
+                    {
+                        "name": iid,
+                        "url": cfg.url or "",
+                        "transport": cfg.transport,
+                    }
+                )
+            elif cfg.port is not None:
+                # Docker/script containers publish ports to localhost.
+                # Agent containers reach the host via host.docker.internal.
+                host = get_settings().gateway.container_host
+                configs.append(
+                    {
+                        "name": iid,
+                        "url": f"http://{host}:{cfg.port}",
+                        "transport": cfg.transport,
+                    }
+                )
+        return configs
+
     # ------------------------------------------------------------------
     # Internal: resolution
     # ------------------------------------------------------------------

@@ -274,6 +274,9 @@ class ContainerInput:
     system_prompt_append: str | None = None  # Resolved directives for agent system prompt
     mcp_gateway_url: str | None = None  # LiteLLM MCP gateway URL (SSE transport)
     mcp_gateway_key: str | None = None  # LiteLLM virtual key for workspace's MCP team
+    # Direct MCP server connections (bypass LiteLLM gateway).
+    # Each entry: {"name": str, "url": str, "transport": "sse"|"http"}
+    mcp_direct_servers: list[dict] | None = None
 
 
 @dataclass
@@ -348,9 +351,7 @@ class Channel(Protocol):
         """
         ...
 
-    async def fetch_inbound_since(
-        self, channel_jid: str, since: str
-    ) -> list[NewMessage]:
+    async def fetch_inbound_since(self, channel_jid: str, since: str) -> list[NewMessage]:
         """Fetch messages from channel API newer than ``since``.
 
         Channels without server-side history (e.g. TUI, WhatsApp) return [].

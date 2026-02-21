@@ -18,10 +18,6 @@ Everyone is writing their own AI assistant. Why write another one? The biggest r
 - [OpenClaw](https://github.com/openclaw/openclaw) is a big inspiration, but it's a monstrosity. It's a security nightmare, and a massive pile of overcooked spaghetti code. Ain't no way I'm running that on my machine.
 - [pi mono](https://github.com/badlogic/pi-mono) is a less crazy project, which actually OpenClaw built on top of. It doesn't have the security features that I want.
 
-### Credits
-
-Huge thanks to [NanoClaw](https://github.com/qwibitai/nanoclaw). This project started as a Python port of that project.
-
 ## Features
 
 - Agents run in containers, providing process, filesystem, and network isolation.
@@ -69,6 +65,10 @@ Agents run in containers, not behind application-level permission checks. They c
 
 **How do I debug issues?**
 Ask Pynchy. "Why isn't the scheduler running?" "What's in the recent logs?" That's the AI-native approach.
+
+### Credits
+
+Huge thanks to [NanoClaw](https://github.com/qwibitai/nanoclaw). This project started as a Python port of that project.
 
 ## License
 
