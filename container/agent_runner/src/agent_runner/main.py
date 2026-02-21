@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from .core import AgentCoreConfig, AgentEvent
+from .models import ContainerInput, ContainerOutput
 from .registry import create_agent_core
 
 IPC_INPUT_DIR = Path("/workspace/ipc/input")
@@ -31,93 +32,6 @@ IPC_POLL_SECONDS = 0.5
 
 OUTPUT_START_MARKER = "---PYNCHY_OUTPUT_START---"
 OUTPUT_END_MARKER = "---PYNCHY_OUTPUT_END---"
-
-
-# ---------------------------------------------------------------------------
-# Types
-# ---------------------------------------------------------------------------
-
-
-class ContainerInput:
-    def __init__(self, data: dict[str, Any]) -> None:
-        self.messages: list[dict[str, Any]] = data["messages"]
-        self.session_id: str | None = data.get("session_id")
-        self.group_folder: str = data["group_folder"]
-        self.chat_jid: str = data["chat_jid"]
-        self.is_admin: bool = data["is_admin"]
-        self.is_scheduled_task: bool = data.get("is_scheduled_task", False)
-        self.system_notices: list[str] | None = data.get("system_notices")
-        self.repo_access: str | None = data.get("repo_access") or None
-        self.agent_core_module: str = data.get("agent_core_module", "agent_runner.cores.claude")
-        self.agent_core_class: str = data.get("agent_core_class", "ClaudeAgentCore")
-        self.agent_core_config: dict[str, Any] | None = data.get("agent_core_config")
-        self.system_prompt_append: str | None = data.get("system_prompt_append")
-        self.mcp_gateway_url: str | None = data.get("mcp_gateway_url")
-        self.mcp_gateway_key: str | None = data.get("mcp_gateway_key")
-        self.mcp_direct_servers: list[dict] | None = data.get("mcp_direct_servers")
-
-
-class ContainerOutput:
-    def __init__(
-        self,
-        status: str,
-        result: str | None = None,
-        new_session_id: str | None = None,
-        error: str | None = None,
-        *,
-        type: str = "result",
-        thinking: str | None = None,
-        tool_name: str | None = None,
-        tool_input: dict[str, Any] | None = None,
-        text: str | None = None,
-        system_subtype: str | None = None,
-        system_data: dict[str, Any] | None = None,
-        tool_result_id: str | None = None,
-        tool_result_content: str | None = None,
-        tool_result_is_error: bool | None = None,
-        result_metadata: dict[str, Any] | None = None,
-    ) -> None:
-        self.status = status
-        self.result = result
-        self.new_session_id = new_session_id
-        self.error = error
-        self.type = type
-        self.thinking = thinking
-        self.tool_name = tool_name
-        self.tool_input = tool_input
-        self.text = text
-        self.system_subtype = system_subtype
-        self.system_data = system_data
-        self.tool_result_id = tool_result_id
-        self.tool_result_content = tool_result_content
-        self.tool_result_is_error = tool_result_is_error
-        self.result_metadata = result_metadata
-
-    def to_dict(self) -> dict[str, Any]:
-        d: dict[str, Any] = {"type": self.type, "status": self.status}
-        if self.type == "result":
-            d["result"] = self.result
-            if self.new_session_id:
-                d["new_session_id"] = self.new_session_id
-            if self.error:
-                d["error"] = self.error
-            if self.result_metadata:
-                d["result_metadata"] = self.result_metadata
-        elif self.type == "thinking":
-            d["thinking"] = self.thinking
-        elif self.type == "tool_use":
-            d["tool_name"] = self.tool_name
-            d["tool_input"] = self.tool_input
-        elif self.type == "text":
-            d["text"] = self.text
-        elif self.type == "system":
-            d["system_subtype"] = self.system_subtype
-            d["system_data"] = self.system_data
-        elif self.type == "tool_result":
-            d["tool_result_id"] = self.tool_result_id
-            d["tool_result_content"] = self.tool_result_content
-            d["tool_result_is_error"] = self.tool_result_is_error
-        return d
 
 
 # ---------------------------------------------------------------------------
@@ -373,7 +287,7 @@ async def main() -> None:
     # Read input from stdin
     try:
         stdin_data = sys.stdin.read()
-        container_input = ContainerInput(json.loads(stdin_data))
+        container_input = ContainerInput.from_dict(json.loads(stdin_data))
         log(f"Received input for group: {container_input.group_folder}")
         core_ref = f"{container_input.agent_core_module}.{container_input.agent_core_class}"
         log(f"Using agent core: {core_ref}")
