@@ -178,21 +178,6 @@ class WhatsAppChannel:
         except Exception as err:
             logger.debug("Failed to send reaction", chat_jid=chat_jid, error=str(err))
 
-    async def mark_message_read(self, chat_jid: str, message_id: str, sender_jid: str) -> None:
-        try:
-            from neonize.utils.enum import ReceiptType
-
-            chat = self._parse_jid(chat_jid)
-            sender = self._parse_jid(sender_jid)
-            await self._client.mark_read(
-                message_id,
-                chat=chat,
-                sender=sender,
-                receipt=ReceiptType.READ,
-            )
-        except Exception as err:
-            logger.debug("Failed to mark message as read", chat_jid=chat_jid, error=str(err))
-
     async def create_group(self, name: str) -> str:
         group_info = await self._client.create_group(name)
         return Jid2String(group_info.JID)

@@ -62,6 +62,7 @@ def _make_deps(
     deps.workspaces = groups or {}
     deps.last_agent_timestamp = last_agent_ts if last_agent_ts is not None else {}
     deps.last_timestamp = last_timestamp
+    deps.channels = []  # empty by default; tests that need channel routing set this explicitly
 
     # Async helpers
     deps.save_state = AsyncMock()
@@ -938,6 +939,14 @@ class TestBtwNonInterruptingMessages:
     reprocessing after the task exits — but the task is NOT killed and the
     cursor is NOT advanced.
     """
+
+    @pytest.fixture(autouse=True)
+    def _allow_all_senders(self, monkeypatch):
+        """Bypass allowed_users filtering so routing tests aren't blocked by access control."""
+        mock_settings = MagicMock()
+        mock_settings.workspace_defaults.allowed_users = ["*"]
+        mock_settings.workspaces = {}
+        monkeypatch.setattr("pynchy.config_access.get_settings", lambda: mock_settings)
 
     @pytest.mark.asyncio
     async def test_btw_message_does_not_interrupt_active_task(self):

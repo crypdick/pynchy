@@ -160,7 +160,7 @@ class TestGroupQueue:
         process_messages = AsyncMock(return_value=True)
         queue.set_process_messages_fn(process_messages)
 
-        await queue.shutdown(1.0)
+        await queue.shutdown()
 
         queue.enqueue_message_check("group1@g.us")
         await asyncio.sleep(0.05)
@@ -270,7 +270,7 @@ class TestEnqueueTask:
         process_messages = AsyncMock(return_value=True)
         queue.set_process_messages_fn(process_messages)
 
-        await queue.shutdown(1.0)
+        await queue.shutdown()
 
         task_called = False
 

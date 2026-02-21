@@ -35,6 +35,8 @@ import sys
 import time
 from pathlib import Path
 
+from pynchy.logger import logger
+
 # ---------------------------------------------------------------------------
 # Project root
 # ---------------------------------------------------------------------------
@@ -371,3 +373,16 @@ def cleanup_lock_files(profile: Path) -> None:
 def check_system_deps(needed: list[str]) -> list[str]:
     """Return the subset of *needed* binaries that are missing from PATH."""
     return [name for name in needed if not shutil.which(name)]
+
+
+def check_browser_plugin_deps(service_name: str) -> None:
+    """Check Chrome + VNC deps for a browser plugin. Logs warnings only."""
+    try:
+        chrome_path()
+    except RuntimeError as e:
+        logger.warning(f"{service_name} system dep check failed", error=str(e))
+        return
+    if not os.environ.get("DISPLAY"):
+        missing = [t for t in ("Xvfb", "x11vnc", "websockify") if not shutil.which(t)]
+        if missing:
+            logger.warning(f"Headless server — {service_name} needs VNC deps", missing=missing)

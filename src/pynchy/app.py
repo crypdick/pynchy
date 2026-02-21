@@ -316,12 +316,6 @@ class PynchyApp:
     # Message processing delegation
     # ------------------------------------------------------------------
 
-    async def _intercept_special_command(
-        self, chat_jid: str, group: WorkspaceProfile, message: NewMessage
-    ) -> bool:
-        """Delegates special-command handling to the message handler module."""
-        return await message_handler.intercept_special_command(self, chat_jid, group, message)
-
     async def _process_group_messages(self, chat_jid: str) -> bool:
         """Delegates group processing to the message handler module."""
         return await message_handler.process_group_messages(self, chat_jid)
@@ -465,7 +459,7 @@ class PynchyApp:
         batcher = output_handler.get_trace_batcher()
         if batcher is not None:
             await batcher.flush_all()
-        await self.queue.shutdown(10.0)
+        await self.queue.shutdown()
         for ch in self.channels:
             await ch.disconnect()
 
@@ -540,6 +534,14 @@ class PynchyApp:
             ),
         )
         self.channels = load_channels(self.plugin_manager, context)
+        for ch in self.channels:
+            missing = startup_handler.validate_plugin_credentials(ch)
+            if missing:
+                logger.warning(
+                    "Channel missing credentials",
+                    channel=type(ch).__name__,
+                    missing=missing,
+                )
         default_channel = resolve_default_channel(self.channels)
         output_handler.init_trace_batcher(self)
 

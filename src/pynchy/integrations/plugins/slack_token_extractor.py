@@ -28,6 +28,7 @@ from typing import Any
 import pluggy
 
 from pynchy.integrations.browser import (
+    check_browser_plugin_deps,
     chrome_path,
     has_display,
     profile_dir,
@@ -58,25 +59,6 @@ def _update_dotenv_var(dotenv_path: Path, key: str, value: str) -> None:
 
     dotenv_path.touch(exist_ok=True)
     dotenv.set_key(str(dotenv_path), key, value)
-
-
-def _check_system_deps() -> None:
-    """Validate CHROME_PATH and warn about missing headless-server packages."""
-    try:
-        chrome_path()
-    except RuntimeError as e:
-        logger.warning("Slack token extractor system dep check failed", error=str(e))
-        return
-
-    if not os.environ.get("DISPLAY"):
-        import shutil
-
-        missing = [t for t in ("Xvfb", "x11vnc", "websockify") if not shutil.which(t)]
-        if missing:
-            logger.warning(
-                "Headless server — setup_slack_session needs VNC deps",
-                missing=missing,
-            )
 
 
 def _launch_kwargs(profile: Path, *, headless: bool) -> dict:
@@ -291,7 +273,7 @@ async def _handle_setup_slack_session(data: dict) -> dict:
 
 
 # Run at import time (same behavior as the old standalone script)
-_check_system_deps()
+check_browser_plugin_deps("setup_slack_session")
 
 
 class SlackTokenExtractorPlugin:
