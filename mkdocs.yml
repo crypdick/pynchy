@@ -38,6 +38,7 @@ theme:
 exclude_docs: |
   _archive/
 
+# NOTE: When adding plugins, also update .github/workflows/docs.yml (the --with flags).
 plugins:
   - search
   - awesome-pages
