@@ -142,6 +142,25 @@ class PynchySpec:
         """
 
     @hookspec
+    def pynchy_mcp_server_spec(self) -> dict[str, Any]:
+        """Provide an MCP server specification.
+
+        Plugin-provided MCP servers are merged with config.toml definitions.
+        Config.toml always wins if both define the same server name.
+
+        Returns:
+            Dict with keys:
+                - name: Server identifier (used as the mcp_servers key)
+                - command: Executable to run (e.g., "uv", "python")
+                - args: Command arguments (list of strings)
+                - port: HTTP port the server listens on
+                - transport: MCP transport type (default "streamable_http")
+                - idle_timeout: Seconds before auto-stop (default 600)
+                - env: Static env vars (optional)
+                - env_forward: Host-to-subprocess env var mapping (optional)
+        """
+
+    @hookspec
     def pynchy_workspace_spec(self) -> dict[str, Any]:
         """Provide a managed workspace definition.
 

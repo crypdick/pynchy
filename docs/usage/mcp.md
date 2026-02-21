@@ -23,6 +23,31 @@ mcp_servers = ["playwright"]
 
 Docker MCP containers start on-demand when an agent first needs them and stop after `idle_timeout` seconds of inactivity.
 
+## Script MCP servers
+
+`type = "script"` runs an MCP server as a host subprocess instead of a Docker container. Useful for tools that need host access or use `uv run` with ad-hoc dependencies.
+
+```toml
+[mcp_servers.my_tool]
+type = "script"
+command = "uv"
+args = ["run", "scripts/my-tool.py"]
+port = 8080
+transport = "streamable_http"
+idle_timeout = 600
+```
+
+Script MCP servers share the same lifecycle as Docker MCPs — they start on-demand when an agent needs them and stop after `idle_timeout` seconds of inactivity. The difference is that they run directly on the host (no container isolation) and LiteLLM reaches them via `localhost` instead of the Docker network.
+
+When to use scripts over Docker:
+- The tool needs host filesystem access (e.g., writing to `.env`)
+- You're using `uv run` with PEP 723 inline dependencies
+- The tool isn't packaged as a Docker image
+
+Script MCPs support the same `env`, `env_forward`, and per-workspace kwargs as Docker MCPs.
+
+Plugins can also provide script MCP servers via the `pynchy_mcp_server_spec()` hook — these appear automatically without config.toml entries. Config.toml definitions override plugin defaults if both use the same name.
+
 ## Environment variables
 
 Many MCP servers configure via environment variables rather than CLI args. Two fields on `McpServerConfig` support this:
