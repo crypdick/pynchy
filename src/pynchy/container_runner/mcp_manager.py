@@ -208,13 +208,22 @@ class McpManager:
         if instance.server_config.type == "url":
             return  # URL instances don't need starting
 
-        instance.last_activity = time.monotonic()
+        start = time.monotonic()
+        instance.last_activity = start
 
         if instance.server_config.type == "script":
             await self._ensure_script_running(instance)
-            return
+        else:
+            await self._ensure_docker_running(instance)
 
-        await self._ensure_docker_running(instance)
+        elapsed_ms = (time.monotonic() - start) * 1000
+        if elapsed_ms > 500:
+            logger.info(
+                "MCP ensure_running slow",
+                instance_id=instance_id,
+                type=instance.server_config.type,
+                elapsed_ms=round(elapsed_ms),
+            )
 
     async def _ensure_script_running(self, instance: McpInstance) -> None:
         """Start a script MCP subprocess if not already running."""

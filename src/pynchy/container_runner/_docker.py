@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 import subprocess
+import time
 
 import aiohttp
 
@@ -57,7 +58,15 @@ def ensure_network(name: str) -> None:
 
 def is_container_running(name: str) -> bool:
     """Check if a Docker container is currently running."""
+    start = time.monotonic()
     result = run_docker("inspect", "-f", "{{.State.Running}}", name, check=False)
+    elapsed_ms = (time.monotonic() - start) * 1000
+    if elapsed_ms > 500:
+        logger.warning(
+            "Slow docker inspect (blocks event loop)",
+            container=name,
+            elapsed_ms=round(elapsed_ms),
+        )
     return result.stdout.strip() == "true"
 
 
@@ -96,6 +105,7 @@ async def wait_healthy(
             When *True* any status below 500 is accepted — useful for servers
             that don't expose a dedicated health endpoint.
     """
+    start = time.monotonic()
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
 
@@ -106,8 +116,20 @@ async def wait_healthy(
             try:
                 async with session.get(url, headers=headers) as resp:
                     if any_non_5xx and resp.status < 500:
+                        elapsed_ms = (time.monotonic() - start) * 1000
+                        logger.info(
+                            "Health check passed",
+                            container=container_name,
+                            elapsed_ms=round(elapsed_ms),
+                        )
                         return
                     if resp.status == 200:
+                        elapsed_ms = (time.monotonic() - start) * 1000
+                        logger.info(
+                            "Health check passed",
+                            container=container_name,
+                            elapsed_ms=round(elapsed_ms),
+                        )
                         return
             except (aiohttp.ClientError, OSError):
                 pass

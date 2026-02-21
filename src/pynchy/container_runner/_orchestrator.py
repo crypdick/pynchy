@@ -170,6 +170,7 @@ async def run_container_agent(
     group_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Resolve worktree ---
+    phase_start = time.monotonic()
     worktree_path: Path | None = None
     repo_ctx = None
     if input_data.repo_access:
@@ -184,18 +185,24 @@ async def run_container_agent(
                 if input_data.system_notices is None:
                     input_data.system_notices = []
                 input_data.system_notices.extend(wt_result.notices)
+    worktree_ms = (time.monotonic() - phase_start) * 1000
 
     # --- Build mounts ---
+    phase_start = time.monotonic()
     mounts = _build_volume_mounts(
         group, input_data.is_admin, plugin_manager, repo_ctx, worktree_path
     )
+    mounts_ms = (time.monotonic() - phase_start) * 1000
 
     # --- MCP gateway: ensure containers running and pass credentials ---
+    phase_start = time.monotonic()
     from pynchy.container_runner.mcp_manager import get_mcp_manager
 
     mcp_mgr = get_mcp_manager()
+    mcp_instance_count = 0
     if mcp_mgr is not None:
         instance_ids = mcp_mgr.get_workspace_instance_ids(group.folder)
+        mcp_instance_count = len(instance_ids)
         for iid in instance_ids:
             try:
                 await mcp_mgr.ensure_running(iid)
@@ -210,18 +217,25 @@ async def run_container_agent(
             if gw is not None:
                 input_data.mcp_gateway_url = f"http://{s.gateway.container_host}:{gw.port}/mcp/"
                 input_data.mcp_gateway_key = mcp_key
+    mcp_ms = (time.monotonic() - phase_start) * 1000
 
     # --- Container name and args ---
     safe_name = "".join(c if c.isalnum() or c == "-" else "-" for c in group.folder)
     container_name = f"pynchy-{safe_name}-{int(time.time() * 1000)}"
     container_args = _build_container_args(mounts, container_name)
 
+    pre_spawn_ms = (time.monotonic() - start_time) * 1000
     logger.info(
         "Spawning container agent",
         group=group.name,
         container=container_name,
         mount_count=len(mounts),
         is_admin=input_data.is_admin,
+        worktree_ms=round(worktree_ms),
+        mounts_ms=round(mounts_ms),
+        mcp_ms=round(mcp_ms),
+        mcp_instances=mcp_instance_count,
+        pre_spawn_ms=round(pre_spawn_ms),
     )
 
     logs_dir = s.groups_dir / group.folder / "logs"
@@ -248,7 +262,7 @@ async def run_container_agent(
     proc.stdin.close()
 
     # --- State and timeout ---
-    state = StreamState()
+    state = StreamState(spawn_time=time.monotonic())
 
     config_timeout = (
         group.container_config.timeout
