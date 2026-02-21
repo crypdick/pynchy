@@ -17,9 +17,16 @@ Users can execute commands directly without LLM approval by prefixing with `!`:
 
 This is an admin channel with elevated privileges.
 
-## Container Mounts
+### How You Got Here
 
-Admin containers have two mounts of the repository — a worktree (your normal working copy) and a raw mount of the host repo (for elevated access).
+The pynchy service runs on the host (`pynchy-server`). The host maintains a clone of the pynchy repo. When an admin session starts, the service launches a container with:
+
+1. **A git worktree** of the pynchy repo at `/workspace/project` — this is your normal working copy on a dedicated branch (`worktree/<group>`). Use this for all regular development.
+2. **A raw mount** of the host-side clone at `/danger/raw-host-repo-mount-prefer-your-worktree` — this gives direct access to the host's repo root (main branch, `data/`, `config.toml`, other worktrees). Use this only when you need elevated filesystem access beyond your worktree.
+
+In short: *pynchy-server* → *host-side repo clone* → *admin container* (worktree + raw mount).
+
+## Container Mounts
 
 | Container Path | What it is | Access |
 |----------------|------------|--------|
@@ -40,6 +47,15 @@ Key paths via the raw mount:
 - `/danger/raw-host-repo-mount-prefer-your-worktree/data/registered_groups.json` - Group config
 - `/danger/raw-host-repo-mount-prefer-your-worktree/config.toml` - Service config (gitignored)
 - `/danger/raw-host-repo-mount-prefer-your-worktree/groups/` - All group folders
+
+## Diagnosing Server Issues
+
+Your worktree includes Claude Code skills (`.claude/skills/`) with procedures for diagnosing problems on the host where pynchy is running:
+
+- **pynchy-ops** — Service management, log inspection, deploy procedures, LiteLLM proxy diagnostics, database queries. Use this for checking service status, tailing logs, investigating failed requests, and anything operational.
+- **pynchy-dev** — Local development, running tests, linting, debugging agent behavior, known issues. Use this for reproducing bugs, inspecting SQLite session data, and understanding agent container behavior.
+
+When you need to diagnose an error on pynchy-server, invoke the relevant skill rather than guessing at commands. They contain tested procedures and queries.
 
 ## Managing Groups
 
