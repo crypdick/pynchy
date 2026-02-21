@@ -21,6 +21,7 @@ from pynchy.container_runner.gateway import (
 
 _GATEWAY_MOD = "pynchy.container_runner.gateway"
 _LITELLM_MOD = "pynchy.container_runner._gateway_litellm"
+_DOCKER_MOD = "pynchy.container_runner._docker"
 
 _LITELLM_KWARGS = dict(
     port=4000,
@@ -185,6 +186,7 @@ class TestCollectYamlEnvRefs:
             patch("pynchy.container_runner._docker.docker_available", return_value=True),
             patch(f"{_LITELLM_MOD}.docker_available", return_value=True),
             patch(f"{_LITELLM_MOD}.run_docker", side_effect=fake_docker),
+            patch(f"{_DOCKER_MOD}.run_docker", side_effect=fake_docker),
             patch(f"{_LITELLM_MOD}.ensure_image"),
             patch(f"{_LITELLM_MOD}.ensure_network"),
             patch.object(gw, "_wait_postgres_healthy", new_callable=AsyncMock),
@@ -250,6 +252,7 @@ class TestLiteLLMGatewayStart:
         with (
             patch(f"{_LITELLM_MOD}.docker_available", return_value=True),
             patch(f"{_LITELLM_MOD}.run_docker", side_effect=fake_docker),
+            patch(f"{_DOCKER_MOD}.run_docker", side_effect=fake_docker),
             patch(f"{_LITELLM_MOD}.ensure_image"),
             patch(f"{_LITELLM_MOD}.ensure_network"),
             patch.object(gw, "_wait_postgres_healthy", new_callable=AsyncMock),
@@ -279,7 +282,10 @@ class TestLiteLLMGatewayStart:
             result.returncode = 0
             return result
 
-        with patch(f"{_LITELLM_MOD}.run_docker", side_effect=fake_docker):
+        with (
+            patch(f"{_LITELLM_MOD}.run_docker", side_effect=fake_docker),
+            patch(f"{_DOCKER_MOD}.run_docker", side_effect=fake_docker),
+        ):
             await gw.stop()
 
         assert ["stop", "-t", "5", "pynchy-litellm"] in calls

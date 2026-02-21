@@ -61,6 +61,25 @@ def is_container_running(name: str) -> bool:
     return result.stdout.strip() == "true"
 
 
+def remove_container(name: str) -> None:
+    """Force-remove a container (idempotent, no error if absent).
+
+    Use before starting a container to clear stale state.
+    """
+    run_docker("rm", "-f", name, check=False)
+
+
+def stop_container(name: str, *, timeout: int = 5) -> None:
+    """Gracefully stop a container then force-remove it.
+
+    Sends SIGTERM (docker stop) with a grace period, then removes
+    the container so it doesn't linger as "exited".  Idempotent —
+    safe to call even if the container is already stopped or absent.
+    """
+    run_docker("stop", "-t", str(timeout), name, check=False)
+    run_docker("rm", "-f", name, check=False)
+
+
 async def wait_healthy(
     container_name: str,
     url: str,
