@@ -184,8 +184,29 @@ class ContainerSession:
                 # EOF — container exited
                 self._dead = True
                 if not self._query_done.is_set():
-                    # Container died before emitting the query-done pulse
-                    self._died_before_pulse = True
+                    # Wait for the process to fully exit so we can inspect
+                    # the return code.  A clean exit (code 0) means the
+                    # container shut down intentionally (reset_context,
+                    # finished_work) — NOT a crash.
+                    exit_code = None
+                    if self.proc:
+                        with contextlib.suppress(TimeoutError):
+                            exit_code = await asyncio.wait_for(self.proc.wait(), timeout=5.0)
+                    if exit_code == 0:
+                        logger.info(
+                            "Container exited cleanly without pulse (likely reset_context)",
+                            group=self.group_folder,
+                            container=self.container_name,
+                            exit_code=exit_code,
+                        )
+                    else:
+                        self._died_before_pulse = True
+                        logger.warning(
+                            "Container died before query-done pulse",
+                            group=self.group_folder,
+                            container=self.container_name,
+                            exit_code=exit_code,
+                        )
                 self._query_done.set()
                 logger.info(
                     "Session stdout EOF",
