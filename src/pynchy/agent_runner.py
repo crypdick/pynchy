@@ -5,6 +5,7 @@ Extracted from app.py to keep the orchestrator focused on wiring.
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Any, Protocol
 
 from pynchy.container_runner import (
@@ -78,6 +79,8 @@ async def run_agent(
     from pynchy.directives import resolve_directives
     from pynchy.workspace_config import get_repo_access
 
+    run_agent_start = time.monotonic()
+
     is_admin = group.is_admin
     if repo_access_override is not None:
         repo_access: str | None = repo_access_override
@@ -91,6 +94,7 @@ async def run_agent(
     await deps.broadcast_agent_input(chat_jid, messages, source=input_source)
 
     # Update snapshots for container to read
+    snapshot_start = time.monotonic()
     tasks = await get_all_tasks()
     host_jobs = await get_all_host_jobs() if is_admin else []
     write_tasks_snapshot(
@@ -107,6 +111,7 @@ async def run_agent(
         available_groups,
         set(deps.workspaces.keys()),
     )
+    snapshot_ms = (time.monotonic() - snapshot_start) * 1000
 
     # Wrap on_output to track session ID from streamed results
     async def wrapped_on_output(output: ContainerOutput) -> None:
@@ -155,6 +160,16 @@ async def run_agent(
     # The container appends system_notices to the SDK system_prompt parameter
 
     agent_core_module, agent_core_class = resolve_agent_core(deps.plugin_manager)
+
+    pre_container_ms = (time.monotonic() - run_agent_start) * 1000
+    logger.info(
+        "run_agent pre-container setup",
+        group=group.name,
+        snapshot_ms=round(snapshot_ms),
+        pre_container_ms=round(pre_container_ms),
+        system_notices=len(system_notices),
+        has_session=session_id is not None,
+    )
 
     try:
         output = await run_container_agent(

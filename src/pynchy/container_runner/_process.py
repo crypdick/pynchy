@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
@@ -33,6 +34,9 @@ class StreamState:
     had_streaming_output: bool = False
     new_session_id: str | None = None
     parse_buffer: str = ""
+    # Timing: set by orchestrator at spawn, used to measure time-to-first-output
+    spawn_time: float = 0.0
+    first_chunk_logged: bool = False
 
 
 async def read_stdout(
@@ -49,6 +53,16 @@ async def read_stdout(
         if not chunk:
             break
         text = chunk.decode(errors="replace")
+
+        # Log time-to-first-output (measures container boot + SDK init)
+        if not state.first_chunk_logged and state.spawn_time > 0:
+            elapsed_ms = (time.monotonic() - state.spawn_time) * 1000
+            state.first_chunk_logged = True
+            logger.info(
+                "Container first stdout",
+                group=group_name,
+                elapsed_ms=round(elapsed_ms),
+            )
 
         # Accumulate for logging (with truncation)
         if not state.stdout_truncated:

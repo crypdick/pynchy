@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
@@ -363,6 +364,7 @@ async def process_group_messages(
     # Advance cursor with automatic rollback on failure
     previous_cursor = await _advance_cursor(deps, chat_jid, missed_messages[-1].timestamp)
 
+    process_start = time.monotonic()
     logger.info(
         "Processing messages",
         group=group.name,
@@ -406,10 +408,19 @@ async def process_group_messages(
         group, chat_jid, messages, on_output, reset_system_notices or None
     )
 
+    process_ms = (time.monotonic() - process_start) * 1000
     await deps.set_typing_on_channels(chat_jid, False)
     deps.emit(AgentActivityEvent(chat_jid=chat_jid, active=False))
     if idle_timer:
         idle_timer.cancel()
+
+    logger.info(
+        "Message processing complete",
+        group=group.name,
+        process_ms=round(process_ms),
+        had_error=had_error,
+        output_sent=output_sent_to_user,
+    )
 
     if agent_result == "error" or had_error:
         if output_sent_to_user:

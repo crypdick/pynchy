@@ -83,6 +83,7 @@ Single source of truth for all pynchy work items.
 #### Docs updates
 - we've iterated on our plugin system but havent updated the docs of all the individual plugins to keep them up to date
 - we need to improve the docs on the plugins so that it says a bit about pynchy and links back to the main pynchy repo.
+- document GDrive MCP setup: install gcloud CLI on pynchy-server, `setup_gdrive_oauth.py` usage, config.toml `[mcp_servers.gdrive]` reference
 
 
 ### 4 - In Progress
