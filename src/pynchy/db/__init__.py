@@ -4,7 +4,8 @@ All functions are async using aiosqlite.
 Module-level connection, initialized by init_database().
 
 This package is split into domain-specific submodules:
-  _connection  — schema, init, migration
+  _schema      — DDL, column migrations, data migrations
+  _connection  — connection lifecycle, write utilities
   chats        — chat metadata
   messages     — message storage and retrieval
   tasks        — scheduled task CRUD and run logging

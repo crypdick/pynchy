@@ -1185,7 +1185,7 @@ class TestEnsureColumns:
         """Simulate an old DB missing a column, then run _ensure_columns."""
         import aiosqlite
 
-        from pynchy.db._connection import _ensure_columns
+        from pynchy.db._schema import _ensure_columns
 
         db = await aiosqlite.connect(":memory:")
         # Create registered_groups WITHOUT is_admin column (old schema)
@@ -1219,7 +1219,7 @@ class TestEnsureColumns:
         """_ensure_columns is a no-op when schema is already up to date."""
         import aiosqlite
 
-        from pynchy.db._connection import _SCHEMA, _ensure_columns
+        from pynchy.db._schema import _SCHEMA, _ensure_columns
 
         db = await aiosqlite.connect(":memory:")
         await db.executescript(_SCHEMA)
