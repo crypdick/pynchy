@@ -1,5 +1,4 @@
-"""Tests for pynchy.message_handler — command interception, message processing,
-and extracted helpers.
+"""Tests for message processing (message_handler) and routing (_message_routing).
 
 Covers:
 - intercept_special_command: reset, end session, redeploy, !commands
@@ -17,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from pynchy.chat._message_routing import start_message_loop
 from pynchy.chat.message_handler import (
     _advance_cursor,
     _check_dirty_repo,
@@ -24,7 +24,6 @@ from pynchy.chat.message_handler import (
     execute_direct_command,
     intercept_special_command,
     process_group_messages,
-    start_message_loop,
 )
 from pynchy.types import NewMessage
 
@@ -32,14 +31,20 @@ from pynchy.types import NewMessage
 # line lengths under 100 chars.
 _P_SETTINGS = "pynchy.chat.message_handler.get_settings"
 _P_MSGS_SINCE = "pynchy.chat.message_handler.get_messages_since"
-_P_NEW_MSGS = "pynchy.chat.message_handler.get_new_messages"
 _P_INTERCEPT = "pynchy.chat.message_handler.intercept_special_command"
 _P_FMT_SDK = "pynchy.chat.router.format_messages_for_sdk"
 _P_STORE = "pynchy.chat.message_handler.store_message_direct"
 _P_DIRTY = "pynchy.chat.message_handler.is_repo_dirty"
 _P_GET_RA = "pynchy.workspace_config.get_repo_access"
 _P_MERGE = "pynchy.git_ops.worktree.merge_and_push_worktree"
-_P_BG_TASK = "pynchy.chat.message_handler.create_background_task"
+
+# Patch paths for names imported in _message_routing (routing/loop tests).
+_PR = "pynchy.chat._message_routing"
+_PR_SETTINGS = f"{_PR}.get_settings"
+_PR_NEW_MSGS = f"{_PR}.get_new_messages"
+_PR_MSGS_SINCE = f"{_PR}.get_messages_since"
+_PR_INTERCEPT = f"{_PR}.intercept_special_command"
+_PR_BG_TASK = f"{_PR}.create_background_task"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -136,7 +141,7 @@ def _patch_bg_task():
         if hasattr(coro, "close"):
             coro.close()
 
-    return patch(_P_BG_TASK, side_effect=_cleanup)
+    return patch(_PR_BG_TASK, side_effect=_cleanup)
 
 
 # ---------------------------------------------------------------------------
@@ -948,18 +953,18 @@ class TestBtwNonInterruptingMessages:
         msg = _make_message("btw here's some extra context", timestamp="new-ts")
 
         with (
-            patch(_P_SETTINGS, return_value=_loop_settings_mock()),
+            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
-                _P_NEW_MSGS,
+                _PR_NEW_MSGS,
                 new_callable=AsyncMock,
                 return_value=([msg], "poll-ts"),
             ),
             patch(
-                _P_MSGS_SINCE,
+                _PR_MSGS_SINCE,
                 new_callable=AsyncMock,
                 return_value=[msg],
             ),
-            patch(_P_INTERCEPT, new_callable=AsyncMock, return_value=False),
+            patch(_PR_INTERCEPT, new_callable=AsyncMock, return_value=False),
         ):
             await _run_loop_once(deps)
 
@@ -990,18 +995,18 @@ class TestBtwNonInterruptingMessages:
         msg = _make_message("BTW also check the logs", timestamp="new-ts")
 
         with (
-            patch(_P_SETTINGS, return_value=_loop_settings_mock()),
+            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
-                _P_NEW_MSGS,
+                _PR_NEW_MSGS,
                 new_callable=AsyncMock,
                 return_value=([msg], "poll-ts"),
             ),
             patch(
-                _P_MSGS_SINCE,
+                _PR_MSGS_SINCE,
                 new_callable=AsyncMock,
                 return_value=[msg],
             ),
-            patch(_P_INTERCEPT, new_callable=AsyncMock, return_value=False),
+            patch(_PR_INTERCEPT, new_callable=AsyncMock, return_value=False),
         ):
             await _run_loop_once(deps)
 
@@ -1027,18 +1032,18 @@ class TestBtwNonInterruptingMessages:
         msg = _make_message("  btw one more thing", timestamp="new-ts")
 
         with (
-            patch(_P_SETTINGS, return_value=_loop_settings_mock()),
+            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
-                _P_NEW_MSGS,
+                _PR_NEW_MSGS,
                 new_callable=AsyncMock,
                 return_value=([msg], "poll-ts"),
             ),
             patch(
-                _P_MSGS_SINCE,
+                _PR_MSGS_SINCE,
                 new_callable=AsyncMock,
                 return_value=[msg],
             ),
-            patch(_P_INTERCEPT, new_callable=AsyncMock, return_value=False),
+            patch(_PR_INTERCEPT, new_callable=AsyncMock, return_value=False),
         ):
             await _run_loop_once(deps)
 
@@ -1060,18 +1065,18 @@ class TestBtwNonInterruptingMessages:
         msg = _make_message("do something else now", timestamp="new-ts")
 
         with (
-            patch(_P_SETTINGS, return_value=_loop_settings_mock()),
+            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
-                _P_NEW_MSGS,
+                _PR_NEW_MSGS,
                 new_callable=AsyncMock,
                 return_value=([msg], "poll-ts"),
             ),
             patch(
-                _P_MSGS_SINCE,
+                _PR_MSGS_SINCE,
                 new_callable=AsyncMock,
                 return_value=[msg],
             ),
-            patch(_P_INTERCEPT, new_callable=AsyncMock, return_value=False),
+            patch(_PR_INTERCEPT, new_callable=AsyncMock, return_value=False),
             _patch_bg_task(),
         ):
             await _run_loop_once(deps)
@@ -1096,18 +1101,18 @@ class TestBtwNonInterruptingMessages:
         msg = _make_message("btwsomething", timestamp="new-ts")
 
         with (
-            patch(_P_SETTINGS, return_value=_loop_settings_mock()),
+            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
-                _P_NEW_MSGS,
+                _PR_NEW_MSGS,
                 new_callable=AsyncMock,
                 return_value=([msg], "poll-ts"),
             ),
             patch(
-                _P_MSGS_SINCE,
+                _PR_MSGS_SINCE,
                 new_callable=AsyncMock,
                 return_value=[msg],
             ),
-            patch(_P_INTERCEPT, new_callable=AsyncMock, return_value=False),
+            patch(_PR_INTERCEPT, new_callable=AsyncMock, return_value=False),
             _patch_bg_task(),
         ):
             await _run_loop_once(deps)
@@ -1141,18 +1146,18 @@ class TestBtwNonInterruptingMessages:
         )
 
         with (
-            patch(_P_SETTINGS, return_value=_loop_settings_mock()),
+            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
-                _P_NEW_MSGS,
+                _PR_NEW_MSGS,
                 new_callable=AsyncMock,
                 return_value=([msg1, msg2], "poll-ts"),
             ),
             patch(
-                _P_MSGS_SINCE,
+                _PR_MSGS_SINCE,
                 new_callable=AsyncMock,
                 return_value=[msg1, msg2],
             ),
-            patch(_P_INTERCEPT, new_callable=AsyncMock, return_value=False),
+            patch(_PR_INTERCEPT, new_callable=AsyncMock, return_value=False),
         ):
             await _run_loop_once(deps)
 
@@ -1185,18 +1190,18 @@ class TestBtwNonInterruptingMessages:
         msg = _make_message("btw here's some info", timestamp="new-ts")
 
         with (
-            patch(_P_SETTINGS, return_value=_loop_settings_mock()),
+            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
-                _P_NEW_MSGS,
+                _PR_NEW_MSGS,
                 new_callable=AsyncMock,
                 return_value=([msg], "poll-ts"),
             ),
             patch(
-                _P_MSGS_SINCE,
+                _PR_MSGS_SINCE,
                 new_callable=AsyncMock,
                 return_value=[msg],
             ),
-            patch(_P_INTERCEPT, new_callable=AsyncMock, return_value=False),
+            patch(_PR_INTERCEPT, new_callable=AsyncMock, return_value=False),
         ):
             await _run_loop_once(deps)
 
@@ -1230,14 +1235,14 @@ class TestBtwNonInterruptingMessages:
         )
 
         with (
-            patch(_P_SETTINGS, return_value=_loop_settings_mock()),
+            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
-                _P_NEW_MSGS,
+                _PR_NEW_MSGS,
                 new_callable=AsyncMock,
                 return_value=([notice], "poll-ts"),
             ),
             patch(
-                _P_MSGS_SINCE,
+                _PR_MSGS_SINCE,
                 new_callable=AsyncMock,
                 return_value=[notice],
             ),
@@ -1271,18 +1276,18 @@ class TestBtwNonInterruptingMessages:
         )
 
         with (
-            patch(_P_SETTINGS, return_value=_loop_settings_mock()),
+            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
-                _P_NEW_MSGS,
+                _PR_NEW_MSGS,
                 new_callable=AsyncMock,
                 return_value=([notice], "poll-ts"),
             ),
             patch(
-                _P_MSGS_SINCE,
+                _PR_MSGS_SINCE,
                 new_callable=AsyncMock,
                 return_value=[notice],
             ),
-            patch(_P_INTERCEPT, new_callable=AsyncMock, return_value=False),
+            patch(_PR_INTERCEPT, new_callable=AsyncMock, return_value=False),
             _patch_bg_task(),
         ):
             await _run_loop_once(deps)
@@ -1321,18 +1326,18 @@ class TestBtwNonInterruptingMessages:
         )
 
         with (
-            patch(_P_SETTINGS, return_value=_loop_settings_mock()),
+            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
-                _P_NEW_MSGS,
+                _PR_NEW_MSGS,
                 new_callable=AsyncMock,
                 return_value=([notice, user_msg], "poll-ts"),
             ),
             patch(
-                _P_MSGS_SINCE,
+                _PR_MSGS_SINCE,
                 new_callable=AsyncMock,
                 return_value=[notice, user_msg],
             ),
-            patch(_P_INTERCEPT, new_callable=AsyncMock, return_value=False),
+            patch(_PR_INTERCEPT, new_callable=AsyncMock, return_value=False),
         ):
             await _run_loop_once(deps)
 
@@ -1356,18 +1361,18 @@ class TestBtwNonInterruptingMessages:
         msg = _make_message("btw here's some info", timestamp="new-ts")
 
         with (
-            patch(_P_SETTINGS, return_value=_loop_settings_mock()),
+            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
-                _P_NEW_MSGS,
+                _PR_NEW_MSGS,
                 new_callable=AsyncMock,
                 return_value=([msg], "poll-ts"),
             ),
             patch(
-                _P_MSGS_SINCE,
+                _PR_MSGS_SINCE,
                 new_callable=AsyncMock,
                 return_value=[msg],
             ),
-            patch(_P_INTERCEPT, new_callable=AsyncMock, return_value=False),
+            patch(_PR_INTERCEPT, new_callable=AsyncMock, return_value=False),
         ):
             await _run_loop_once(deps)
 
