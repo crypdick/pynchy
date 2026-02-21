@@ -20,7 +20,6 @@ This package is split into focused submodules:
 # Private helpers (_xxx) should be imported from their submodules directly.
 
 from pynchy.container_runner._credentials import _write_env_file
-from pynchy.container_runner._logging import RunContext
 from pynchy.container_runner._orchestrator import OnOutput, OnProcess, resolve_agent_core
 from pynchy.container_runner._process import StreamState, _graceful_stop, read_stderr, read_stdout
 from pynchy.container_runner._session import (
@@ -37,7 +36,6 @@ __all__ = [
     "ContainerSession",
     "OnOutput",
     "OnProcess",
-    "RunContext",
     "SessionDiedError",
     "StreamState",
     "_graceful_stop",

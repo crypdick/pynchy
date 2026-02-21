@@ -102,8 +102,8 @@ async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
                     current_task.id,
                     _make_task_runner,
                 )
-        except Exception as exc:
-            logger.error("Error in scheduler loop", err=str(exc))
+        except Exception:
+            logger.exception("Error in scheduler loop")
 
         await asyncio.sleep(get_settings().scheduler.poll_interval)
 
