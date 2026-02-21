@@ -50,12 +50,12 @@ rl.on("line", (line) => {
 rl.on("close", () => proxyStdin.end());
 
 // --- OAuth2 monkey-patch ---
+// Wrapper lives at /app/gdrive-wrapper.mjs; the volume mount puts the
+// keyfile at /app/gcp-oauth.keys.json.  The upstream default ("../../../")
+// was relative to dist/index.js inside node_modules — wrong for our layout.
 const keyfilePath =
   process.env.GDRIVE_OAUTH_PATH ||
-  path.join(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../../gcp-oauth.keys.json"
-  );
+  path.join(path.dirname(new URL(import.meta.url).pathname), "gcp-oauth.keys.json");
 
 if (fs.existsSync(keyfilePath)) {
   const keys = JSON.parse(fs.readFileSync(keyfilePath, "utf-8"));
