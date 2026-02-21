@@ -90,6 +90,16 @@ def get_plugin_manager() -> pluggy.PluginManager:
     # We always create and set our own temp loop (when no loop is running) so
     # that any import-time get_event_loop() calls return it instead of
     # auto-creating orphan loops that never get closed.
+    #
+    # Known neonize bug: neonize/aioze/events.py unconditionally creates a
+    # loop at import time via `event_global_loop = asyncio.new_event_loop()`.
+    # This loop is used internally for its Go→Python FFI bridge and is never
+    # closed.  It causes a ResourceWarning under `pytest -W all` but is
+    # harmless at runtime and cannot be fixed on our side without patching
+    # neonize.  The temp loop below does NOT address that loop — it only
+    # prevents the *second* orphan from neonize/aioze/client.py line 203
+    # (`loop = get_event_loop()`), which in Python 3.12+ would auto-create
+    # yet another loop if no default is set.
     _tmp_loop = None
     try:
         asyncio.get_running_loop()
