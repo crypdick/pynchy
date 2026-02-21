@@ -123,7 +123,7 @@ Each group gets its own env directory, so concurrent containers don't share secr
 3. `gh auth token` — auto-discovered from `gh` CLI (lowest priority)
 
 **NOT Mounted:**
-- WhatsApp session (`store/auth/`) — host only
+- WhatsApp session (`data/neonize.db`) — host only
 - Mount allowlist — external, never mounted
 - Any credentials matching blocked patterns
 

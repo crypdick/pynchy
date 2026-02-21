@@ -42,6 +42,11 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
     ("pynchy.runtime.plugins.docker_runtime", "DockerRuntimePlugin", "docker-runtime"),
     ("pynchy.runtime.plugins.apple_runtime", "AppleRuntimePlugin", "apple-runtime"),
     ("pynchy.integrations.plugins.caldav", "CalDAVMcpServerPlugin", "caldav"),
+    (
+        "pynchy.integrations.plugins.slack_token_extractor",
+        "SlackTokenExtractorPlugin",
+        "slack-token-extractor",
+    ),
     ("pynchy.observers.plugins.sqlite_observer", "SqliteObserverPlugin", "sqlite-observer"),
     ("pynchy.memory.plugins.sqlite_memory", "SqliteMemoryPlugin", "sqlite-memory"),
 ]

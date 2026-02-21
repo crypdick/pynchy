@@ -6,7 +6,6 @@ dist/
 site/
 
 # Local data & auth
-store/
 data/
 logs/
 

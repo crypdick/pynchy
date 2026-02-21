@@ -32,7 +32,7 @@ grep -E 'Piped messages|sendMessage' logs/pynchy.log | tail -10
 grep -E 'Starting container|Container active|concurrency limit' logs/pynchy.log | tail -10
 
 # Check lastAgentTimestamp vs latest message timestamp
-sqlite3 store/messages.db "SELECT chat_jid, MAX(timestamp) as latest FROM messages GROUP BY chat_jid ORDER BY latest DESC LIMIT 5;"
+sqlite3 data/messages.db "SELECT chat_jid, MAX(timestamp) as latest FROM messages GROUP BY chat_jid ORDER BY latest DESC LIMIT 5;"
 ```
 
 ## Container Mount Issues
@@ -45,7 +45,7 @@ grep -E 'Mount validated|Mount.*REJECTED|mount' logs/pynchy.log | tail -10
 cat ~/.config/pynchy/mount-allowlist.json
 
 # Check group's container_config in DB
-sqlite3 store/messages.db "SELECT name, container_config FROM registered_groups;"
+sqlite3 data/messages.db "SELECT name, container_config FROM registered_groups;"
 
 # Test-run a container to check mounts (dry run)
 # Replace <group-folder> with the group's folder name
@@ -59,7 +59,7 @@ container run -i --rm --entrypoint ls pynchy-agent:latest /workspace/extra/
 grep 'QR\|authentication required\|qr' logs/pynchy.log | tail -5
 
 # Check auth files exist
-ls -la store/auth/
+ls -la data/neonize.db
 
 # Re-authenticate if needed
 uv run pynchy-whatsapp-auth

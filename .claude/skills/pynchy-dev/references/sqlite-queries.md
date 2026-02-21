@@ -1,6 +1,6 @@
 # SQLite Query Reference for Debugging
 
-Database path: `store/messages.db`
+Database path: `data/messages.db`
 
 **Host access:** If not on the pynchy host directly, prefix commands with `ssh pynchy-server` (Tailscale). See the `pynchy-ops` skill for remote access patterns.
 
@@ -19,7 +19,7 @@ The `events` table captures agent internals (thinking, tool calls, system prompt
 ### Recent messages in a specific channel
 
 ```bash
-sqlite3 store/messages.db "
+sqlite3 data/messages.db "
   SELECT timestamp, sender_name, message_type, substr(content, 1, 120) AS preview
   FROM messages
   WHERE chat_jid = '<JID>'
@@ -31,7 +31,7 @@ sqlite3 store/messages.db "
 ### Recent messages across all channels
 
 ```bash
-sqlite3 store/messages.db "
+sqlite3 data/messages.db "
   SELECT timestamp, chat_jid, sender_name, message_type, substr(content, 1, 80) AS preview
   FROM messages
   ORDER BY timestamp DESC
@@ -42,7 +42,7 @@ sqlite3 store/messages.db "
 ### Full content of a specific message (no truncation)
 
 ```bash
-sqlite3 store/messages.db "
+sqlite3 data/messages.db "
   SELECT content
   FROM messages
   WHERE id = '<MSG_ID>' AND chat_jid = '<JID>';
@@ -53,7 +53,7 @@ sqlite3 store/messages.db "
 
 ```bash
 # All tool_result messages in a channel
-sqlite3 store/messages.db "
+sqlite3 data/messages.db "
   SELECT timestamp, substr(content, 1, 200) AS preview, metadata
   FROM messages
   WHERE chat_jid = '<JID>' AND message_type = 'tool_result'
@@ -67,7 +67,7 @@ Valid `message_type` values: `user`, `assistant`, `system`, `host`, `tool_result
 ### Search message content by substring
 
 ```bash
-sqlite3 store/messages.db "
+sqlite3 data/messages.db "
   SELECT timestamp, chat_jid, sender_name, message_type, substr(content, 1, 120) AS preview
   FROM messages
   WHERE content LIKE '%<SUBSTRING>%'
@@ -79,7 +79,7 @@ sqlite3 store/messages.db "
 ### System messages containing a substring
 
 ```bash
-sqlite3 store/messages.db "
+sqlite3 data/messages.db "
   SELECT timestamp, chat_jid, substr(content, 1, 200) AS preview
   FROM messages
   WHERE message_type = 'system' AND content LIKE '%<SUBSTRING>%'
@@ -93,7 +93,7 @@ sqlite3 store/messages.db "
 ### Recent tool calls globally
 
 ```bash
-sqlite3 store/messages.db "
+sqlite3 data/messages.db "
   SELECT e.timestamp, e.chat_jid,
     json_extract(e.payload, '$.tool_name') AS tool,
     substr(e.payload, 1, 200) AS payload_preview
@@ -108,7 +108,7 @@ sqlite3 store/messages.db "
 ### Recent tool calls in a specific channel
 
 ```bash
-sqlite3 store/messages.db "
+sqlite3 data/messages.db "
   SELECT timestamp,
     json_extract(payload, '$.tool_name') AS tool,
     substr(payload, 1, 300) AS payload_preview
@@ -124,7 +124,7 @@ sqlite3 store/messages.db "
 ### Agent thinking traces
 
 ```bash
-sqlite3 store/messages.db "
+sqlite3 data/messages.db "
   SELECT timestamp, chat_jid, substr(json_extract(payload, '$.thinking'), 1, 200) AS thinking
   FROM events
   WHERE event_type = 'agent_trace'
@@ -137,7 +137,7 @@ sqlite3 store/messages.db "
 ### System-type traces (init, prompt assembly, etc.)
 
 ```bash
-sqlite3 store/messages.db "
+sqlite3 data/messages.db "
   SELECT timestamp, chat_jid,
     json_extract(payload, '$.subtype') AS subtype,
     substr(json_extract(payload, '$.message'), 1, 200) AS message
@@ -152,7 +152,7 @@ sqlite3 store/messages.db "
 ### Search trace payloads by substring
 
 ```bash
-sqlite3 store/messages.db "
+sqlite3 data/messages.db "
   SELECT timestamp, chat_jid, event_type, substr(payload, 1, 300) AS payload_preview
   FROM events
   WHERE payload LIKE '%<SUBSTRING>%'
@@ -164,7 +164,7 @@ sqlite3 store/messages.db "
 ### Agent activity timeline (start/stop)
 
 ```bash
-sqlite3 store/messages.db "
+sqlite3 data/messages.db "
   SELECT timestamp, chat_jid, json_extract(payload, '$.active') AS active
   FROM events
   WHERE event_type = 'agent_activity'
@@ -178,7 +178,7 @@ sqlite3 store/messages.db "
 Combine messages and events for a specific channel in a time window to reconstruct what happened:
 
 ```bash
-sqlite3 -header store/messages.db "
+sqlite3 -header data/messages.db "
   SELECT 'msg' AS source, timestamp, message_type AS type, sender_name, substr(content, 1, 100) AS preview
   FROM messages
   WHERE chat_jid = '<JID>' AND timestamp >= '<START_ISO>' AND timestamp <= '<END_ISO>'
@@ -195,13 +195,13 @@ sqlite3 -header store/messages.db "
 ### List all known channels
 
 ```bash
-sqlite3 store/messages.db "SELECT jid, name, last_message_time FROM chats ORDER BY last_message_time DESC;"
+sqlite3 data/messages.db "SELECT jid, name, last_message_time FROM chats ORDER BY last_message_time DESC;"
 ```
 
 ### Message volume by channel (last 24h)
 
 ```bash
-sqlite3 store/messages.db "
+sqlite3 data/messages.db "
   SELECT chat_jid, COUNT(*) AS msg_count
   FROM messages
   WHERE timestamp >= datetime('now', '-1 day')
@@ -213,7 +213,7 @@ sqlite3 store/messages.db "
 ### Event counts by type
 
 ```bash
-sqlite3 store/messages.db "
+sqlite3 data/messages.db "
   SELECT event_type, COUNT(*) AS cnt
   FROM events
   GROUP BY event_type
