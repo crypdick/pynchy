@@ -377,9 +377,6 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
             input_source="scheduled_task",
         )
 
-        if idle_timer:
-            idle_timer.cancel()
-
         if agent_result == "error":
             error = error or "Agent returned error"
 
@@ -392,9 +389,11 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
 
             await merge_worktree_with_policy(task.group_folder)
     except Exception as exc:
-        idle_timer.cancel()
         error = str(exc)
         logger.error("Task failed", task_id=task.id, error=error)
+    finally:
+        if idle_timer:
+            idle_timer.cancel()
 
     duration_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
 
