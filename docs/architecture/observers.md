@@ -9,6 +9,7 @@ Observers are pluggable. The built-in observer stores events to SQLite, but alte
 Pynchy uses a lightweight asyncio event dispatcher. Components emit events during normal operation, and observers subscribe to the event types they care about.
 
 **Design properties:**
+
 - **Fire-and-forget** — emission is non-blocking (creates async tasks)
 - **Type-based subscription** — listeners subscribe to specific event types, not all events
 - **Error isolation** — listener exceptions are logged but don't propagate to the emitter

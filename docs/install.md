@@ -66,6 +66,7 @@ uv sync --extra whatsapp
 ```
 
 Common configurations:
+
 - **API key authentication:** Set `[secrets].anthropic_api_key` instead of Claude Code OAuth
 - **OpenAI instead of Claude:** Set `[agent] core = "openai"` and `[secrets].openai_api_key`
 
@@ -144,6 +145,7 @@ uv run pynchy                                # Start Pynchy
 ```
 
 On first run, Pynchy will:
+
 - Create a private WhatsApp group for your admin channel (admin control)
 - Set up local directories for group isolation
 - Connect to WhatsApp and start listening for messages
@@ -159,12 +161,14 @@ For macOS desktop setup, see the [Installation Steps](#installation-steps) above
 ### Prerequisites
 
 On the server:
+
 - Ubuntu/Debian Linux (tested on Ubuntu 24.04)
 - [Tailscale](https://tailscale.com/download) connected to your tailnet
 - [Node.js](https://nodejs.org/) 18+ (for installing Claude Code)
 - A phone with WhatsApp (for QR code authentication)
 
 On your local machine (for remote setup):
+
 - SSH access to the server (Tailscale SSH or standard)
 - [GitHub CLI](https://cli.github.com/) authenticated (`gh auth login`)
 
@@ -263,6 +267,7 @@ uv run pynchy
 ```
 
 On first run, Pynchy will:
+
 - Create a private WhatsApp group for your admin channel
 - Install a systemd user service (`~/.config/systemd/user/pynchy.service`)
 - Enable the service for auto-start on boot
@@ -363,10 +368,12 @@ systemctl --user restart pynchy
 ### Container build fails
 
 **macOS:**
+
 - Ensure Apple Container or Docker is running
 - Check that you have the latest version: `brew upgrade container` or update Docker Desktop
 
 **Linux:**
+
 - Ensure Docker is running: `sudo systemctl start docker`
 - Verify you're in the docker group: `groups | grep docker`
 - If not, run `sudo usermod -aG docker $USER` and log out/in

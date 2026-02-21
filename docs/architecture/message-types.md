@@ -117,6 +117,7 @@ The container receives `messages` (a list of SDK-format messages with host messa
 ### HostMessageBroadcaster
 
 Handles operational notifications:
+
 - Stores the message with `message_type='host'`
 - Broadcasts to channels with 🏠 emoji
 - Emits an event for the TUI
@@ -125,6 +126,7 @@ Handles operational notifications:
 ### UserMessageHandler
 
 Handles user message ingestion:
+
 - Stores the message with `message_type='user'`
 - Emits to the event bus
 - Broadcasts to all channels

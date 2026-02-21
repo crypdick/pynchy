@@ -40,6 +40,7 @@ idle_timeout = 600
 Script MCP servers share the same lifecycle as Docker MCPs — they start on-demand when an agent needs them and stop after `idle_timeout` seconds of inactivity. The difference is that they run directly on the host (no container isolation) and LiteLLM reaches them via `localhost` instead of the Docker network.
 
 When to use scripts over Docker:
+
 - The tool needs host filesystem access (e.g., writing to `.env`)
 - You're using `uv run` with PEP 723 inline dependencies
 - The tool isn't packaged as a Docker image
@@ -55,6 +56,7 @@ Many MCP servers configure via environment variables rather than CLI args. Two f
 **`env`** — static key-value pairs passed as `-e KEY=VALUE` to the Docker container. Use for non-secret configuration like bind addresses and ports.
 
 **`env_forward`** — maps container env var names to host env var names. Accepts two forms:
+
 - **List** (identity mapping): `env_forward = ["API_KEY"]` — host var and container var share the same name.
 - **Dict** (explicit mapping): `env_forward = { CONTAINER_VAR = "HOST_VAR" }` — the container sees `CONTAINER_VAR`, resolved from `HOST_VAR` in the host's `.env`.
 
@@ -73,7 +75,7 @@ image = "example/mcp-server:latest"
 port = 8080
 transport = "http"
 env = { MCP_HOST = "0.0.0.0", MCP_PORT = "8080" }
-env_forward = { MCP_API_SECRET = "MCP_API_SECRET_ACME" }
+env_forward = { MCP_API_SECRET = "MCP_API_SECRET_ACME" }  # pragma: allowlist secret
 
 [mcp_servers.example_personal]
 type = "docker"
@@ -81,7 +83,7 @@ image = "example/mcp-server:latest"
 port = 8081
 transport = "http"
 env = { MCP_HOST = "0.0.0.0", MCP_PORT = "8081" }
-env_forward = { MCP_API_SECRET = "MCP_API_SECRET_PERSONAL" }
+env_forward = { MCP_API_SECRET = "MCP_API_SECRET_PERSONAL" }  # pragma: allowlist secret
 ```
 
 ## Persistent volumes

@@ -30,5 +30,6 @@ git_policy = "pull-request"    # changes go to a branch + PR for review
 The container-side tool (`sync_worktree_to_main`) is the same for both policies. The host decides what "sync" means based on the workspace's `git_policy`. The response message tells the agent what happened (merged vs. PR URL).
 
 **Post-run behavior** also respects the policy. After a container run:
+
 - **merge-to-main:** Worktree commits are rebased and merged into main, then pushed.
 - **pull-request:** Worktree branch is pushed to origin and a PR is opened/updated. Main is not affected, so other worktrees are not notified.
