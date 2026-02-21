@@ -9,6 +9,7 @@ Supports two execution paths:
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
 from pynchy.config import get_settings
@@ -37,6 +38,22 @@ if TYPE_CHECKING:
 
     from pynchy.group_queue import GroupQueue
     from pynchy.types import WorkspaceProfile
+
+
+@dataclass
+class _PreContainerResult:
+    """Values produced by _pre_container_setup, consumed by warm/cold/scheduled paths."""
+
+    is_admin: bool
+    repo_access: str | None
+    system_prompt_append: str | None
+    session_id: str | None
+    system_notices: list[str]
+    agent_core_module: str
+    agent_core_class: str
+    wrapped_on_output: Any  # async (ContainerOutput) -> None
+    config_timeout: float
+    snapshot_ms: float
 
 
 class AgentRunnerDeps(Protocol):
@@ -115,13 +132,8 @@ async def _pre_container_setup(
     input_source: str,
     is_scheduled_task: bool,
     repo_access_override: str | None,
-) -> tuple:
-    """Common pre-container setup for both warm and cold paths.
-
-    Returns (is_admin, repo_access, system_prompt_append, session_id,
-             system_notices, agent_core_module, agent_core_class,
-             wrapped_on_output, config_timeout, snapshot_ms).
-    """
+) -> _PreContainerResult:
+    """Common pre-container setup for both warm and cold paths."""
     from pynchy.directives import resolve_directives
     from pynchy.workspace_config import get_repo_access
 
@@ -201,17 +213,17 @@ async def _pre_container_setup(
         else s.container_timeout
     )
 
-    return (
-        is_admin,
-        repo_access,
-        system_prompt_append,
-        session_id,
-        system_notices,
-        agent_core_module,
-        agent_core_class,
-        wrapped_on_output,
-        config_timeout,
-        snapshot_ms,
+    return _PreContainerResult(
+        is_admin=is_admin,
+        repo_access=repo_access,
+        system_prompt_append=system_prompt_append,
+        session_id=session_id,
+        system_notices=system_notices,
+        agent_core_module=agent_core_module,
+        agent_core_class=agent_core_class,
+        wrapped_on_output=wrapped_on_output,
+        config_timeout=config_timeout,
+        snapshot_ms=snapshot_ms,
     )
 
 
@@ -226,9 +238,7 @@ async def _warm_query(
     chat_jid: str,
     session: Any,  # ContainerSession
     messages: list[dict],
-    system_notices: list[str],
-    wrapped_on_output: Any,
-    config_timeout: float,
+    ctx: _PreContainerResult,
 ) -> str:
     """Send messages to an existing session via IPC and wait for completion."""
     # Ensure MCP servers are running (they may have stopped since last query)
@@ -247,15 +257,15 @@ async def _warm_query(
     deps.queue.register_process(chat_jid, session.proc, session.container_name, group.folder)
 
     # Set output handler and format messages
-    session.set_output_handler(wrapped_on_output)
-    formatted = _format_messages_for_ipc(messages, system_notices or None)
+    session.set_output_handler(ctx.wrapped_on_output)
+    formatted = _format_messages_for_ipc(messages, ctx.system_notices or None)
 
     # Send via IPC
     await session.send_ipc_message(formatted)
 
     # Wait for query completion
     try:
-        await session.wait_for_query_done(timeout=config_timeout)
+        await session.wait_for_query_done(timeout=ctx.config_timeout)
     except TimeoutError:
         logger.error("Warm query timed out, destroying session", group=group.name)
         await destroy_session(group.folder)
@@ -277,29 +287,21 @@ async def _cold_start(
     group: WorkspaceProfile,
     chat_jid: str,
     messages: list[dict],
-    is_admin: bool,
-    repo_access: str | None,
-    system_prompt_append: str | None,
-    session_id: str | None,
-    system_notices: list[str],
-    agent_core_module: str,
-    agent_core_class: str,
-    wrapped_on_output: Any,
-    config_timeout: float,
+    ctx: _PreContainerResult,
 ) -> str:
     """Spawn a new container, create a persistent session, and wait for the first query."""
     container_name = stable_container_name(group.folder)
     input_data = ContainerInput(
         messages=messages,
-        session_id=session_id,
+        session_id=ctx.session_id,
         group_folder=group.folder,
         chat_jid=chat_jid,
-        is_admin=is_admin,
-        system_notices=system_notices or None,
-        repo_access=repo_access,
-        system_prompt_append=system_prompt_append,
-        agent_core_module=agent_core_module,
-        agent_core_class=agent_core_class,
+        is_admin=ctx.is_admin,
+        system_notices=ctx.system_notices or None,
+        repo_access=ctx.repo_access,
+        system_prompt_append=ctx.system_prompt_append,
+        agent_core_module=ctx.agent_core_module,
+        agent_core_class=ctx.agent_core_class,
     )
 
     try:
@@ -328,10 +330,10 @@ async def _cold_start(
     deps.queue.register_process(chat_jid, proc, container_name, group.folder)
 
     # Set output handler and wait
-    session.set_output_handler(wrapped_on_output)
+    session.set_output_handler(ctx.wrapped_on_output)
 
     try:
-        await session.wait_for_query_done(timeout=config_timeout)
+        await session.wait_for_query_done(timeout=ctx.config_timeout)
     except TimeoutError:
         logger.error("Cold start query timed out, destroying session", group=group.name)
         await destroy_session(group.folder)
@@ -389,18 +391,7 @@ async def run_agent(
         )
 
     # --- Interactive messages: warm/cold session path ---
-    (
-        is_admin,
-        repo_access,
-        system_prompt_append,
-        session_id,
-        system_notices,
-        agent_core_module,
-        agent_core_class,
-        wrapped_on_output,
-        config_timeout,
-        snapshot_ms,
-    ) = await _pre_container_setup(
+    ctx = await _pre_container_setup(
         deps,
         group,
         chat_jid,
@@ -419,41 +410,18 @@ async def run_agent(
     logger.info(
         "run_agent pre-container setup",
         group=group.name,
-        snapshot_ms=round(snapshot_ms),
+        snapshot_ms=round(ctx.snapshot_ms),
         pre_container_ms=round(pre_container_ms),
-        system_notices=len(system_notices),
-        has_session=session_id is not None,
+        system_notices=len(ctx.system_notices),
+        has_session=ctx.session_id is not None,
         path="warm" if is_warm else "cold",
     )
 
     try:
         if is_warm:
-            return await _warm_query(
-                deps,
-                group,
-                chat_jid,
-                session,
-                messages,
-                system_notices,
-                wrapped_on_output,
-                config_timeout,
-            )
+            return await _warm_query(deps, group, chat_jid, session, messages, ctx)
         else:
-            return await _cold_start(
-                deps,
-                group,
-                chat_jid,
-                messages,
-                is_admin,
-                repo_access,
-                system_prompt_append,
-                session_id,
-                system_notices,
-                agent_core_module,
-                agent_core_class,
-                wrapped_on_output,
-                config_timeout,
-            )
+            return await _cold_start(deps, group, chat_jid, messages, ctx)
     except Exception as exc:
         logger.error("Agent error", group=group.name, err=str(exc))
         return "error"
@@ -478,18 +446,7 @@ async def _run_scheduled_task(
     # Destroy any persistent session for this group — tasks need a clean slate
     await destroy_session(group.folder)
 
-    (
-        is_admin,
-        repo_access,
-        system_prompt_append,
-        session_id,
-        system_notices,
-        agent_core_module,
-        agent_core_class,
-        wrapped_on_output,
-        config_timeout,
-        snapshot_ms,
-    ) = await _pre_container_setup(
+    ctx = await _pre_container_setup(
         deps,
         group,
         chat_jid,
@@ -504,7 +461,7 @@ async def _run_scheduled_task(
     logger.info(
         "run_agent scheduled task (one-shot)",
         group=group.name,
-        snapshot_ms=round(snapshot_ms),
+        snapshot_ms=round(ctx.snapshot_ms),
     )
 
     try:
@@ -512,21 +469,21 @@ async def _run_scheduled_task(
             group=group,
             input_data=ContainerInput(
                 messages=messages,
-                session_id=session_id,
+                session_id=ctx.session_id,
                 group_folder=group.folder,
                 chat_jid=chat_jid,
-                is_admin=is_admin,
-                system_notices=system_notices or None,
+                is_admin=ctx.is_admin,
+                system_notices=ctx.system_notices or None,
                 is_scheduled_task=True,
-                repo_access=repo_access,
-                system_prompt_append=system_prompt_append,
-                agent_core_module=agent_core_module,
-                agent_core_class=agent_core_class,
+                repo_access=ctx.repo_access,
+                system_prompt_append=ctx.system_prompt_append,
+                agent_core_module=ctx.agent_core_module,
+                agent_core_class=ctx.agent_core_class,
             ),
             on_process=lambda proc, name: deps.queue.register_process(
                 chat_jid, proc, name, group.folder
             ),
-            on_output=wrapped_on_output if on_output else None,
+            on_output=ctx.wrapped_on_output if on_output else None,
             plugin_manager=deps.plugin_manager,
         )
 
