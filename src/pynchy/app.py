@@ -490,7 +490,7 @@ class PynchyApp:
             # reach it for credential-isolated API calls.
             from pynchy.container_runner.gateway import start_gateway
 
-            await start_gateway()
+            await start_gateway(plugin_manager=self.plugin_manager)
 
             await init_database()
             logger.info("Database initialized")

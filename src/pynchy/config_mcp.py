@@ -27,6 +27,14 @@ Example TOML::
     url = "https://api.example.com/mcp"
     transport = "streamable_http"
     auth_value_env = "SOME_API_KEY"
+
+    # Host script MCP (subprocess managed by pynchy):
+    [mcp_servers.my_custom_tool]
+    type = "script"
+    command = "uv"
+    args = ["run", "scripts/my-tool.py"]
+    port = 8080
+    transport = "streamable_http"
 """
 
 from __future__ import annotations
@@ -41,10 +49,15 @@ class McpServerConfig(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    type: Literal["docker", "url"]
+    type: Literal["docker", "url", "script"]
 
     # Docker fields
     image: str | None = None
+
+    # Script fields
+    command: str | None = None  # executable to run (e.g., "uv") — required for type="script"
+
+    # Shared: docker + script
     args: list[str] = []
     port: int | None = None
     idle_timeout: int = 600  # seconds; 0 = never stop
@@ -84,4 +97,9 @@ class McpServerConfig(BaseModel):
         elif self.type == "url":
             if not self.url:
                 raise ValueError("URL MCP servers require 'url'")
+        elif self.type == "script":
+            if not self.command:
+                raise ValueError("Script MCP servers require 'command'")
+            if self.port is None:
+                raise ValueError("Script MCP servers require 'port'")
         return self

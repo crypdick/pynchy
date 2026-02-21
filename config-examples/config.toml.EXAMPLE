@@ -292,6 +292,15 @@ trigger = "always"
 # transport = "streamable_http"
 # auth_value_env = "SOME_API_KEY"    # env var name (never inline secrets)
 
+# Host script MCP (subprocess managed by pynchy):
+# [mcp_servers.my_custom_tool]
+# type = "script"
+# command = "uv"
+# args = ["run", "scripts/my-tool.py"]
+# port = 8080
+# transport = "streamable_http"
+# idle_timeout = 600
+
 # ─────────────────────────────────────────────────────────────────────────────
 # MCP Groups — named sets of servers for convenience
 # ─────────────────────────────────────────────────────────────────────────────

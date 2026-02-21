@@ -1,23 +1,28 @@
-"""MCP server lifecycle manager — instance resolution, Docker on-demand, idle timeout.
+"""MCP server lifecycle manager — instance resolution, Docker/script on-demand, idle timeout.
 
 ``config.toml`` is the single source of truth.  At boot, :meth:`McpManager.sync`
-pushes MCP state to LiteLLM via its HTTP API.  Docker-based MCP containers start
-on-demand when an agent first needs them and stop after an idle timeout.
+pushes MCP state to LiteLLM via its HTTP API.  Docker-based MCP containers and
+script-based MCP subprocesses start on-demand when an agent first needs them
+and stop after an idle timeout.
 
 Adding a new MCP is as simple as adding a ``[mcp_servers.<name>]`` section to
-``config.toml`` — no policy files, no editing ``litellm_config.yaml``.
+``config.toml`` — no policy files, no editing ``litellm_config.yaml``.  Plugins
+can also provide MCP servers via the ``pynchy_mcp_server_spec()`` hook.
 
 LiteLLM endpoint registration and team management are in
-:mod:`_mcp_litellm` — this module handles instance resolution, Docker
+:mod:`_mcp_litellm` — this module handles instance resolution, Docker/script
 lifecycle, and idle timeout only.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import os
+import signal
+import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -55,8 +60,8 @@ _MCP_CONTAINER_PREFIX = "pynchy-mcp"
 
 @dataclass
 class McpInstance:
-    """A unique (server, kwargs) combination that maps to one Docker container
-    or one URL endpoint registration in LiteLLM."""
+    """A unique (server, kwargs) combination that maps to one Docker container,
+    one host subprocess, or one URL endpoint registration in LiteLLM."""
 
     server_name: str
     server_config: McpServerConfig
@@ -64,12 +69,19 @@ class McpInstance:
     instance_id: str  # server_name + short hash of kwargs
     container_name: str  # Docker container name (for type=docker)
     last_activity: float = 0.0  # monotonic timestamp
+    process: subprocess.Popen | None = None  # tracked subprocess (for type=script)
 
     @property
     def endpoint_url(self) -> str:
         """URL that LiteLLM should use to reach this MCP server."""
         if self.server_config.type == "url":
             return self.server_config.url or ""
+        if self.server_config.type == "script":
+            # Script runs on host — LiteLLM reaches it via localhost.
+            base = f"http://localhost:{self.server_config.port}"
+            if self.server_config.transport in ("http", "streamable_http"):
+                return f"{base}/mcp"
+            return base
         # Docker: internal Docker network URL.
         # Streamable HTTP uses /mcp path; SSE uses bare host:port.
         base = f"http://{self.container_name}:{self.server_config.port}"
@@ -106,14 +118,30 @@ class McpManager:
     LiteLLM via HTTP API. Docker containers start on-demand and stop on idle.
     """
 
-    def __init__(self, settings: Settings, gateway: LiteLLMGateway) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        gateway: LiteLLMGateway,
+        *,
+        plugin_mcp_servers: dict[str, McpServerConfig] | None = None,
+    ) -> None:
         self._settings = settings
         self._gateway = gateway
+        # Plugin-provided MCP servers — merged with config.toml in _merged_mcp_servers.
+        # Config.toml always wins on name collision (same semantics as workspace specs).
+        self._plugin_mcp_servers: dict[str, McpServerConfig] = plugin_mcp_servers or {}
         self._instances: dict[str, McpInstance] = {}
         self._workspace_instances: dict[str, list[str]] = {}
         self._workspace_teams: dict[str, WorkspaceTeam] = {}
         self._teams_cache_path = settings.data_dir / "litellm" / "mcp_teams.json"
         self._idle_task: asyncio.Task[None] | None = None
+
+    @property
+    def _merged_mcp_servers(self) -> dict[str, McpServerConfig]:
+        """Config.toml servers + plugin-provided servers (config wins on collision)."""
+        merged = dict(self._plugin_mcp_servers)
+        merged.update(self._settings.mcp_servers)  # config.toml wins
+        return merged
 
     # ------------------------------------------------------------------
     # Public API
@@ -121,7 +149,7 @@ class McpManager:
 
     async def sync(self) -> None:
         """Sync config.toml MCP state to LiteLLM. Called once at boot."""
-        if not self._settings.mcp_servers:
+        if not self._merged_mcp_servers:
             logger.info("No MCP servers configured — skipping MCP sync")
             return
 
@@ -166,7 +194,7 @@ class McpManager:
         )
 
     async def ensure_running(self, instance_id: str) -> None:
-        """Start a Docker MCP instance if not already running.
+        """Start an MCP instance (Docker container or host subprocess) if not running.
 
         Called by the orchestrator before spawning an agent container.
         """
@@ -175,17 +203,84 @@ class McpManager:
             logger.warning("Unknown MCP instance", instance_id=instance_id)
             return
 
-        if instance.server_config.type != "docker":
+        if instance.server_config.type == "url":
             return  # URL instances don't need starting
 
         instance.last_activity = time.monotonic()
 
+        if instance.server_config.type == "script":
+            await self._ensure_script_running(instance)
+            return
+
+        await self._ensure_docker_running(instance)
+
+    async def _ensure_script_running(self, instance: McpInstance) -> None:
+        """Start a script MCP subprocess if not already running."""
+        if instance.process is not None and instance.process.poll() is None:
+            return  # still alive
+
+        cfg = instance.server_config
+        cmd = [cfg.command or "", *cfg.args]
+        cmd.extend(_kwargs_to_args(instance.kwargs))
+
+        # Merge env: inherit host env + static env + env_forward
+        merged_env = {**os.environ, **cfg.env}
+        for container_var, host_var in cfg.env_forward.items():
+            value = os.environ.get(host_var)
+            if value is None:
+                logger.warning(
+                    "env_forward var not set on host — skipping",
+                    container_var=container_var,
+                    host_var=host_var,
+                )
+                continue
+            merged_env[container_var] = value
+
+        logger.info(
+            "Starting MCP script on-demand",
+            instance_id=instance.instance_id,
+            command=cmd,
+        )
+
+        instance.process = subprocess.Popen(
+            cmd,
+            env=merged_env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            start_new_session=True,  # own process group for clean shutdown
+        )
+
+        # Health-check via localhost
+        health_url = f"http://localhost:{cfg.port}"
+        try:
+            await wait_healthy(
+                instance.instance_id,
+                health_url,
+                any_non_5xx=True,
+            )
+        except (TimeoutError, RuntimeError):
+            stderr_tail = ""
+            if instance.process.stderr:
+                with contextlib.suppress(Exception):
+                    stderr_tail = instance.process.stderr.read(2000).decode(errors="replace")
+            logger.error(
+                "MCP script failed health check",
+                instance_id=instance.instance_id,
+                stderr=stderr_tail,
+            )
+            _terminate_process(instance)
+            raise
+
+        logger.info("MCP script ready", instance_id=instance.instance_id)
+
+    async def _ensure_docker_running(self, instance: McpInstance) -> None:
+        """Start a Docker MCP container if not already running."""
         if is_container_running(instance.container_name):
             return
 
         logger.info(
             "Starting MCP container on-demand",
-            instance_id=instance_id,
+            instance_id=instance.instance_id,
             container=instance.container_name,
             image=instance.server_config.image,
         )
@@ -242,26 +337,38 @@ class McpManager:
         except (TimeoutError, RuntimeError):
             logger.error(
                 "MCP container failed health check",
-                instance_id=instance_id,
+                instance_id=instance.instance_id,
                 container=instance.container_name,
             )
             raise
 
-        logger.info("MCP container ready", instance_id=instance_id)
+        logger.info("MCP container ready", instance_id=instance.instance_id)
 
     async def stop_idle(self) -> None:
-        """Stop Docker instances that exceeded their idle_timeout."""
+        """Stop Docker/script instances that exceeded their idle_timeout."""
         now = time.monotonic()
         for instance in list(self._instances.values()):
-            if instance.server_config.type != "docker":
+            if instance.server_config.type not in ("docker", "script"):
                 continue
             if instance.server_config.idle_timeout == 0:
                 continue  # Never auto-stop
-            if not is_container_running(instance.container_name):
-                continue
 
             elapsed = now - instance.last_activity
-            if elapsed > instance.server_config.idle_timeout:
+            if elapsed <= instance.server_config.idle_timeout:
+                continue
+
+            if instance.server_config.type == "script":
+                if instance.process is None or instance.process.poll() is not None:
+                    continue  # not running
+                logger.info(
+                    "Stopping idle MCP script",
+                    instance_id=instance.instance_id,
+                    idle_seconds=int(elapsed),
+                )
+                _terminate_process(instance)
+            else:
+                if not is_container_running(instance.container_name):
+                    continue
                 logger.info(
                     "Stopping idle MCP container",
                     instance_id=instance.instance_id,
@@ -271,18 +378,19 @@ class McpManager:
                 run_docker("rm", "-f", instance.container_name, check=False)
 
     async def stop_all(self) -> None:
-        """Shutdown: stop all managed Docker containers."""
+        """Shutdown: stop all managed Docker containers and script subprocesses."""
         if self._idle_task is not None:
             self._idle_task.cancel()
             self._idle_task = None
 
         for instance in self._instances.values():
-            if instance.server_config.type != "docker":
-                continue
-            run_docker("stop", "-t", "5", instance.container_name, check=False)
-            run_docker("rm", "-f", instance.container_name, check=False)
+            if instance.server_config.type == "script":
+                _terminate_process(instance)
+            elif instance.server_config.type == "docker":
+                run_docker("stop", "-t", "5", instance.container_name, check=False)
+                run_docker("rm", "-f", instance.container_name, check=False)
 
-        logger.info("All MCP containers stopped")
+        logger.info("All MCP instances stopped")
 
     def resolve_workspace_servers(self, group_folder: str) -> list[str]:
         """Expand workspace's mcp_servers list (groups + names) into concrete server names."""
@@ -290,13 +398,14 @@ class McpManager:
         if not ws_config or not ws_config.mcp_servers:
             return []
 
+        merged_servers = self._merged_mcp_servers
         servers: set[str] = set()
         for entry in ws_config.mcp_servers:
             if entry == "all":
-                servers.update(self._settings.mcp_servers.keys())
+                servers.update(merged_servers.keys())
             elif entry in self._settings.mcp_groups:
                 servers.update(self._settings.mcp_groups[entry])
-            elif entry in self._settings.mcp_servers:
+            elif entry in merged_servers:
                 servers.add(entry)
             else:
                 logger.warning(
@@ -368,6 +477,7 @@ class McpManager:
     def _resolve_all_instances(self) -> _SyncState:
         """Resolve all (server, kwargs) instances needed across all workspaces."""
         state = _SyncState()
+        merged_servers = self._merged_mcp_servers
 
         for folder, ws_config in self._settings.workspaces.items():
             if not ws_config.mcp_servers:
@@ -377,7 +487,7 @@ class McpManager:
             instance_ids: list[str] = []
 
             for server_name in servers:
-                server_config = self._settings.mcp_servers.get(server_name)
+                server_config = merged_servers.get(server_name)
                 if server_config is None:
                     logger.warning(
                         "MCP server not found in config",
@@ -441,6 +551,25 @@ class McpManager:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _terminate_process(instance: McpInstance) -> None:
+    """SIGTERM a script MCP subprocess, escalating to SIGKILL after 5s."""
+    proc = instance.process
+    if proc is None or proc.poll() is not None:
+        instance.process = None
+        return
+    try:
+        # Send SIGTERM to the process group (start_new_session=True)
+        os.killpg(proc.pid, signal.SIGTERM)
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait(timeout=2)
+    except (ProcessLookupError, OSError):
+        pass  # already dead
+    instance.process = None
 
 
 def _kwargs_to_args(kwargs: dict[str, str]) -> list[str]:
