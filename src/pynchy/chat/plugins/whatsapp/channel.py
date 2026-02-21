@@ -65,9 +65,9 @@ class WhatsAppChannel:
         neonize_events.event_global_loop = loop
         neonize_client.event_global_loop = loop
 
-        store_dir = get_settings().store_dir
-        auth_db = str(store_dir / "neonize.db")
-        store_dir.mkdir(parents=True, exist_ok=True)
+        data_dir = get_settings().data_dir
+        auth_db = str(data_dir / "neonize.db")
+        data_dir.mkdir(parents=True, exist_ok=True)
         self._client = NewAClient(auth_db)
         self._register_events()
 
@@ -312,7 +312,9 @@ class WhatsAppChannel:
         return jid.endswith("@g.us") or jid.endswith("@s.whatsapp.net")
 
     async def fetch_inbound_since(
-        self, channel_jid: str, since: str  # noqa: ARG002
+        self,
+        channel_jid: str,
+        since: str,  # noqa: ARG002
     ) -> list[NewMessage]:
         # WhatsApp has no "fetch history since timestamp" API.  Neonize
         # exposes HistorySyncEv (bootstrap + on-demand via

@@ -423,7 +423,7 @@ async def _create_schema(database: aiosqlite.Connection) -> None:
 async def init_database() -> None:
     """Initialize the database connection and schema."""
     global _db
-    db_path = get_settings().store_dir / "messages.db"
+    db_path = get_settings().data_dir / "messages.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
     _db = await aiosqlite.connect(str(db_path))
