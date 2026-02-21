@@ -1,13 +1,18 @@
 """Notebook execution MCP server — FastMCP + jupyter_client + JupyterLab.
 
-Entry point for ``python -m pynchy.integrations.plugins.notebook_server``.
+Entry point for ``python -m notebook_server`` (Docker) or
+``python -m pynchy.integrations.plugins.notebook_server`` (host).
 Heavy dependencies (JupyterLab, IPython kernel, FastMCP) are resolved here
 and never imported by the plugin class or the main pynchy process.
 
 Provides MCP tools for agents to create, execute, and manage Jupyter notebooks.
 JupyterLab runs as a separate subprocess for human viewing via Tailscale.
 
-Usage::
+Usage (Docker)::
+
+    python -m notebook_server --workspace research --workspace-dir /workspace --port 8460
+
+Usage (host)::
 
     python -m pynchy.integrations.plugins.notebook_server --workspace research --port 8460
 """
@@ -19,8 +24,6 @@ import datetime
 import os
 import subprocess
 import sys
-import threading
-import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -29,18 +32,18 @@ from fastmcp import FastMCP
 from jupyter_client import KernelManager
 from nbformat.v4 import new_code_cell, new_markdown_cell
 
-from pynchy.integrations.plugins.notebook_server._execution import (
+from ._execution import (
     KERNEL_STARTUP_CODE,
     KernelSession,
     execute_code,
 )
-from pynchy.integrations.plugins.notebook_server._formats import (
+from ._formats import (
     generate_name,
     load_notebook,
     notebook_path,
     save_notebook,
 )
-from pynchy.integrations.plugins.notebook_server._output import (
+from ._output import (
     outputs_for_agent,
     save_cell_images,
 )
@@ -61,7 +64,14 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--workspace",
         default="default",
-        help="Workspace name — notebooks scoped to data/notebooks/<workspace>/",
+        help="Workspace name (used for logging and kernel cwd)",
+    )
+    parser.add_argument(
+        "--workspace-dir",
+        default=None,
+        help="Explicit workspace directory path. When provided (e.g., in Docker "
+        "via --workspace-dir /workspace), used directly instead of constructing "
+        "from project root + workspace name.",
     )
     parser.add_argument(
         "--port",
@@ -79,10 +89,13 @@ def _parse_args() -> argparse.Namespace:
 
 
 ARGS = _parse_args()
-_ROOT = _project_root()
-# Notebooks live inside the workspace folder so the agent container can
-# read/edit .qmd files directly (groups/<ws>/ mounts at /workspace/group/).
-WORKSPACE_DIR = (_ROOT / "groups" / ARGS.workspace).resolve()
+# In Docker: --workspace-dir /workspace (the bind mount).
+# On host: derive from project root + workspace name.
+if ARGS.workspace_dir:
+    WORKSPACE_DIR = Path(ARGS.workspace_dir).resolve()
+else:
+    _ROOT = _project_root()
+    WORKSPACE_DIR = (_ROOT / "groups" / ARGS.workspace).resolve()
 NOTEBOOK_DIR = (WORKSPACE_DIR / "notebooks").resolve()
 NOTEBOOK_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -95,15 +108,6 @@ mcp = FastMCP("Notebook Server")
 
 # kernel_id -> KernelSession
 _sessions: dict[str, KernelSession] = {}
-
-# Idle timeout tracking
-_last_activity: float = time.monotonic()
-_IDLE_TIMEOUT_SECS = 30 * 60  # 30 minutes
-
-
-def _touch_activity() -> None:
-    global _last_activity
-    _last_activity = time.monotonic()
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +131,6 @@ async def start_kernel(name: str | None = None) -> dict[str, Any]:
     Returns:
         Session info: kernel_id, notebook name, cell summary (if rehydrating).
     """
-    _touch_activity()
 
     if name is None:
         name = generate_name()
@@ -202,7 +205,6 @@ async def execute_cell(kernel_id: str, code: str) -> dict[str, Any]:
     Returns:
         Cell outputs (text, images, errors) in a simplified format.
     """
-    _touch_activity()
 
     session = _sessions.get(kernel_id)
     if not session:
@@ -239,7 +241,6 @@ async def add_markdown(kernel_id: str, content: str) -> dict[str, Any]:
     Returns:
         Confirmation with cell number.
     """
-    _touch_activity()
 
     session = _sessions.get(kernel_id)
     if not session:
@@ -266,7 +267,6 @@ async def save_as(kernel_id: str, name: str) -> dict[str, Any]:
     Returns:
         Confirmation with new filename and cell count.
     """
-    _touch_activity()
 
     session = _sessions.get(kernel_id)
     if not session:
@@ -295,7 +295,6 @@ async def read_notebook(name: str) -> dict[str, Any]:
     Returns:
         Structured cell contents (type, source, truncated outputs).
     """
-    _touch_activity()
 
     path = notebook_path(name, NOTEBOOK_DIR)
     if not path.exists():
@@ -332,7 +331,6 @@ async def list_notebooks() -> dict[str, Any]:
     Returns:
         List of notebook filenames with sizes and modification times.
     """
-    _touch_activity()
 
     notebooks: list[dict[str, Any]] = []
     for ext in ("*.ipynb", "*.qmd"):
@@ -356,7 +354,6 @@ async def list_kernels() -> dict[str, Any]:
     Returns:
         List of kernel sessions with IDs, notebook names, and cell counts.
     """
-    _touch_activity()
 
     kernels: list[dict[str, Any]] = []
     for kid, session in _sessions.items():
@@ -381,7 +378,6 @@ async def shutdown_kernel(kernel_id: str) -> dict[str, Any]:
     Returns:
         Confirmation with final notebook name and cell count.
     """
-    _touch_activity()
 
     session = _sessions.pop(kernel_id, None)
     if not session:
@@ -430,57 +426,12 @@ def _start_jupyterlab() -> None:
     print(f"JupyterLab started on port {ARGS.lab_port}", flush=True)
 
 
-def _stop_jupyterlab() -> None:
-    global _lab_process
-    if _lab_process and _lab_process.poll() is None:
-        _lab_process.terminate()
-        try:
-            _lab_process.wait(timeout=10)
-        except Exception:
-            _lab_process.kill()
-    _lab_process = None
-
-
-# ---------------------------------------------------------------------------
-# Idle timeout
-# ---------------------------------------------------------------------------
-
-
-def _idle_watchdog() -> None:
-    """Daemon thread: check for idle timeout, save state, and exit."""
-    while True:
-        time.sleep(60)
-        elapsed = time.monotonic() - _last_activity
-        if elapsed > _IDLE_TIMEOUT_SECS:
-            print(f"Idle timeout ({_IDLE_TIMEOUT_SECS}s) reached. Shutting down.", flush=True)
-            _graceful_shutdown()
-            return
-
-
-def _graceful_shutdown() -> None:
-    """Save all notebooks, shutdown all kernels, stop JupyterLab, exit."""
-    for kid in list(_sessions):
-        session = _sessions.pop(kid)
-        save_notebook(session.nb, notebook_path(session.name, NOTEBOOK_DIR))
-        try:
-            session.client.stop_channels()
-            session.km.shutdown_kernel(now=True)
-        except Exception:
-            pass  # best-effort cleanup
-    _stop_jupyterlab()
-    os._exit(0)  # hard exit from daemon thread
-
-
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     _start_jupyterlab()
-
-    # Idle watchdog runs in a daemon thread — dies with the main process
-    watchdog = threading.Thread(target=_idle_watchdog, daemon=True)
-    watchdog.start()
 
     print(f"Notebook server starting on port {ARGS.port}", flush=True)
     print(f"Notebook directory: {NOTEBOOK_DIR}", flush=True)

@@ -51,7 +51,7 @@ async def ensure_docker_running(instance: McpInstance) -> None:
         image=instance.server_config.image,
     )
 
-    ensure_image(instance.server_config.image or "")
+    _ensure_mcp_image(instance.server_config)
     ensure_network(_NETWORK_NAME)
 
     # Remove stale container
@@ -66,6 +66,8 @@ async def ensure_docker_running(instance: McpInstance) -> None:
     # but the health check runs from the host which can't resolve those.
     port = instance.server_config.port
     publish_args = ["-p", f"{port}:{port}"] if port else []
+    for extra_port in instance.server_config.extra_ports:
+        publish_args.extend(["-p", f"{extra_port}:{extra_port}"])
 
     # Build -e flags from static env and env_forward on the server definition
     env_args = build_env_args(instance.server_config)
@@ -73,8 +75,12 @@ async def ensure_docker_running(instance: McpInstance) -> None:
     # Build -v flags from volumes, resolving relative host paths from project root.
     # Docker named volumes (no "/" or "." in the name, e.g. "mcp-gdrive:/data")
     # are passed through as-is; only host paths get resolved and mkdir'd.
+    # Expand {key} placeholders using instance kwargs (e.g.,
+    # "groups/{workspace}:/workspace" → "groups/research:/workspace").
     volume_args: list[str] = []
     for vol in instance.server_config.volumes:
+        for key, value in instance.kwargs.items():
+            vol = vol.replace(f"{{{key}}}", value)
         host_path, sep, container_path = vol.partition(":")
         if sep and "/" not in host_path and not host_path.startswith("."):
             # Docker named volume — pass through without resolution
@@ -187,18 +193,18 @@ async def ensure_script_running(instance: McpInstance) -> None:
 
 
 async def warm_image_cache(instances: dict[str, McpInstance]) -> None:
-    """Pre-pull Docker images for all MCP instances in the background."""
-    images = {
-        inst.server_config.image
-        for inst in instances.values()
-        if inst.server_config.type == "docker" and inst.server_config.image
-    }
-    for image in images:
+    """Pre-pull/build Docker images for all MCP instances in the background."""
+    seen: set[str] = set()
+    for inst in instances.values():
+        cfg = inst.server_config
+        if cfg.type != "docker" or not cfg.image or cfg.image in seen:
+            continue
+        seen.add(cfg.image)
         try:
-            await asyncio.to_thread(ensure_image, image)
-            logger.info("Pre-pulled MCP image", image=image)
+            await asyncio.to_thread(_ensure_mcp_image, cfg)
+            logger.info("Warmed MCP image cache", image=cfg.image)
         except Exception:
-            logger.warning("Failed to pre-pull MCP image", image=image)
+            logger.warning("Failed to warm MCP image", image=cfg.image)
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +276,40 @@ def build_env_args(config: McpServerConfig) -> list[str]:
     for container_var, value in resolve_env_forward(config.env_forward).items():
         args.extend(["-e", f"{container_var}={value}"])
     return args
+
+
+def _ensure_mcp_image(config: McpServerConfig) -> None:
+    """Ensure the MCP Docker image exists — build from local Dockerfile or pull.
+
+    When ``config.dockerfile`` is set and the image isn't already local,
+    builds it from the specified Dockerfile. Otherwise falls back to pulling
+    from a registry via :func:`ensure_image`.
+    """
+    from pynchy.config import get_settings
+
+    image = config.image or ""
+    if config.dockerfile:
+        # Check if image already exists locally
+        result = run_docker("image", "inspect", image, check=False)
+        if result.returncode == 0:
+            return
+        # Build from local Dockerfile
+        project_root = str(get_settings().project_root)
+        dockerfile_path = str(get_settings().project_root / config.dockerfile)
+        logger.info(
+            "Building MCP image from local Dockerfile",
+            image=image,
+            dockerfile=config.dockerfile,
+        )
+        run_docker(
+            "build", "-t", image,
+            "-f", dockerfile_path,
+            project_root,
+            timeout=300,
+        )  # fmt: skip
+        logger.info("MCP image built", image=image)
+    else:
+        ensure_image(image)
 
 
 def _ensure_mount_parent(host_path: str) -> None:

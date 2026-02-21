@@ -1,17 +1,14 @@
 """Built-in notebook execution MCP server plugin.
 
-Registers a script-type MCP server that provides Jupyter notebook creation,
-execution, and management. The server runs as a subprocess via
-``python -m pynchy.integrations.plugins.notebook_server``.
+Registers a Docker-based MCP server that provides Jupyter notebook creation,
+execution, and management. Kernel execution runs inside a sandboxed container
+built from ``container/mcp/notebook.Dockerfile``.
 
-Heavy dependencies (JupyterLab, ipykernel, FastMCP) are declared as the
-``pynchy[notebook]`` optional extra — they only load in the subprocess,
-never in the main pynchy process.
+Heavy dependencies (JupyterLab, ipykernel, FastMCP) are baked into the Docker
+image — they never load in the main pynchy process.
 """
 
 from __future__ import annotations
-
-import sys
 
 import pluggy
 
@@ -23,10 +20,14 @@ class NotebookServerPlugin:
     def pynchy_mcp_server_spec(self) -> dict:
         return {
             "name": "notebook",
-            "command": sys.executable,
-            "args": ["-m", "pynchy.integrations.plugins.notebook_server"],
+            "type": "docker",
+            "image": "pynchy-mcp-notebook:latest",
+            "dockerfile": "container/mcp/notebook.Dockerfile",
+            "args": ["--workspace-dir", "/workspace"],
             "port": 8460,
+            "extra_ports": [8888],
             "transport": "streamable_http",
-            "idle_timeout": 1800,  # 30 min — matches internal idle logic
+            "idle_timeout": 1800,  # 30 min — MCP manager stops idle containers
             "inject_workspace": True,  # auto-scope notebooks per workspace
+            "volumes": ["groups/{workspace}:/workspace"],
         }
