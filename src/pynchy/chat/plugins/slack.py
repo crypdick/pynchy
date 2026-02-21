@@ -254,6 +254,7 @@ class SlackChannel:
         detect the error and fall back to send_message.
         """
         if not self._app or not self.owns_jid(jid):
+            logger.warning("update_message skipped — JID not owned", jid=jid)
             return
         channel_id = _channel_id_from_jid(jid)
         chunks = _split_text(text, max_len=3000)

@@ -176,10 +176,12 @@ async def _stream_text_to_channels(
                 msg_id = await ch.post_message(target_jid, display)
                 if msg_id:
                     state.message_ids[ch_name] = msg_id
+                else:
+                    logger.warning("Stream post_message returned no message_id", channel=ch_name)
             else:
                 await ch.update_message(target_jid, msg_id, display)
         except Exception as exc:
-            logger.debug("Stream update failed", channel=ch_name, err=str(exc))
+            logger.warning("Stream post/update failed", channel=ch_name, err=str(exc))
 
 
 def _next_trace_id(prefix: str) -> str:
