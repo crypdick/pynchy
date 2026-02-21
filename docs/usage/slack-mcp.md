@@ -107,6 +107,12 @@ setup_slack_session(workspace_name="acme")
 
 This opens a visible Chromium window at the Slack login page. Complete the login flow (CAPTCHA, magic link, SSO — whatever Slack requires). Once you reach the Slack client, the session is saved automatically.
 
+On headless servers, the tool auto-starts a noVNC virtual display on port 6080 — open `http://<server>:6080/vnc.html?autoconnect=true` to interact with the browser. If Slack login requires a **hardware security key** (YubiKey/FIDO2), run `setup_slack_session` locally instead and rsync the profile:
+
+```bash
+rsync -az data/playwright-profiles/acme/ server:path/to/pynchy/data/playwright-profiles/acme/
+```
+
 ### Refreshing tokens
 
 Once the session is established, tokens can be refreshed headlessly:

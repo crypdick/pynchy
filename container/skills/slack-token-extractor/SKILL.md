@@ -34,7 +34,13 @@ setup_slack_session(workspace_name="acme")
 
 This opens a **visible** Chromium window. The human completes the Slack login flow (CAPTCHA, magic link, SSO — whatever Slack requires). The session is saved for future headless use.
 
-On a **headless server** (no X display), the tool automatically starts a virtual display with noVNC web access on port 6080. **Before calling** `setup_slack_session`, tell the human to open `http://<server>:6080/vnc.html?autoconnect=true` in their browser so they can interact with the login page. Requires system packages on the server: `apt install xvfb x11vnc novnc`.
+On a **headless server** (no X display), the tool automatically starts a virtual display with noVNC web access on port 6080. **Before calling** `setup_slack_session`, tell the human to open `http://<server>:6080/vnc.html?autoconnect=true` in their browser so they can interact with the login page.
+
+**Hardware security keys (YubiKey, FIDO2):** noVNC cannot forward WebAuthn challenges — the key must be physically connected to the machine running the browser. If Slack login requires a hardware key, run `setup_slack_session` on a local machine with the key attached, then rsync the profile to the server:
+
+```bash
+rsync -az data/playwright-profiles/acme/ server:~/src/PERSONAL/pynchy/data/playwright-profiles/acme/
+```
 
 ## Refreshing tokens
 
