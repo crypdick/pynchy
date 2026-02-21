@@ -29,15 +29,23 @@ Everyone is writing their own AI assistant. Why write another one? The biggest r
   - Rate limiting
   - MCP gateway — centralized management of external MCP tool servers with per-workspace access control, on-demand Docker lifecycle, and config-driven setup.
   - (see the [LiteLLM docs](https://docs.litellm.ai/docs/) for more details)
-- Customizable; [five types of plugins](docs/plugins/index.md) are supported:
-  - LLM Providers
-  - MCP Clients/Servers
-  - Agents (prompt templates, instructions, and capabilities)
-  - Communication channels (Slack, WhatsApp, etc.)
-  - Workspaces with isolated memory and Git worktrees.
+- Customizable; [eight types of plugins](docs/plugins/index.md) are supported — agent cores, skills, channels, service handlers, container runtimes, workspaces, observers, and tunnels.
 - Persistent memory with BM25-ranked full-text search — agents save and recall facts across sessions.
 - Reoccurring tasks can be scheduled to run at a specific time or interval.
 - (work in progress) policy groups to prevent [lethal trifecta prompt injection attacks](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/).
+
+## Integrations
+
+Built-in plugins provide integrations with external services. All integrations are pluggable — see [plugin authoring](docs/plugins/index.md) to add your own.
+
+| Integration | What it does |
+|-------------|-------------|
+| **WhatsApp** | Messaging channel via linked device |
+| **Slack** | Messaging channel with browser-based token extraction |
+| **X (Twitter)** | Post, like, reply, retweet, and quote via browser automation |
+| **CalDAV** | Calendar access (Nextcloud, etc.) — list, create, delete events |
+| **Jupyter Notebooks** | Per-workspace notebook server with MCP tools |
+| **Google Drive** | File access via OAuth2 MCP server |
 
 ## Getting Started
 

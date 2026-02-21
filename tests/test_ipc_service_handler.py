@@ -119,11 +119,11 @@ async def test_plugin_dispatch_calls_handler(tmp_path):
 @pytest.mark.asyncio
 async def test_denied_disabled_tool(tmp_path):
     """Test that a disabled tool is denied."""
-    fake_pm = _make_fake_plugin_manager("send_email")
+    fake_pm = _make_fake_plugin_manager("disabled_tool")
     settings = _make_settings(
         ws_security=WorkspaceSecurityConfig(
             mcp_tools={
-                "send_email": McpToolSecurityConfig(risk_tier="human-approval", enabled=False)
+                "disabled_tool": McpToolSecurityConfig(risk_tier="human-approval", enabled=False)
             },
             default_risk_tier="human-approval",
         ),
@@ -136,7 +136,7 @@ async def test_denied_disabled_tool(tmp_path):
         patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
         patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
     ):
-        data = _make_request("send_email", to="a@b.com", subject="hi", body="test")
+        data = _make_request("disabled_tool", param="value")
         await _handle_service_request(data, "test-ws", False, deps)
 
     response_file = tmp_path / "ipc" / "test-ws" / "responses" / "test-req-1.json"
@@ -149,11 +149,11 @@ async def test_denied_disabled_tool(tmp_path):
 @pytest.mark.asyncio
 async def test_human_approval_required(tmp_path):
     """Test that human-approval tier returns approval-required error."""
-    fake_pm = _make_fake_plugin_manager("get_password")
+    fake_pm = _make_fake_plugin_manager("sensitive_tool")
     settings = _make_settings(
         ws_security=WorkspaceSecurityConfig(
             mcp_tools={
-                "get_password": McpToolSecurityConfig(risk_tier="human-approval", enabled=True)
+                "sensitive_tool": McpToolSecurityConfig(risk_tier="human-approval", enabled=True)
             },
             default_risk_tier="human-approval",
         ),
@@ -166,7 +166,7 @@ async def test_human_approval_required(tmp_path):
         patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
         patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
     ):
-        data = _make_request("get_password", item_id="123")
+        data = _make_request("sensitive_tool", item_id="123")
         await _handle_service_request(data, "test-ws", False, deps)
 
     response_file = tmp_path / "ipc" / "test-ws" / "responses" / "test-req-1.json"
@@ -179,10 +179,10 @@ async def test_human_approval_required(tmp_path):
 async def test_rate_limited(tmp_path):
     """Test that rate-limited calls are denied."""
     mock_handler = AsyncMock(return_value={"result": "ok"})
-    fake_pm = _make_fake_plugin_manager("read_email", handler_fn=mock_handler)
+    fake_pm = _make_fake_plugin_manager("fast_tool", handler_fn=mock_handler)
     settings = _make_settings(
         ws_security=WorkspaceSecurityConfig(
-            mcp_tools={"read_email": McpToolSecurityConfig(risk_tier="always-approve")},
+            mcp_tools={"fast_tool": McpToolSecurityConfig(risk_tier="always-approve")},
             default_risk_tier="human-approval",
             rate_limits=RateLimitsConfig(max_calls_per_hour=1),
         ),
@@ -196,7 +196,7 @@ async def test_rate_limited(tmp_path):
         patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
     ):
         # First call succeeds (handler is called)
-        data = _make_request("read_email", request_id="req-1")
+        data = _make_request("fast_tool", request_id="req-1")
         await _handle_service_request(data, "test-ws", False, deps)
 
         response_file = tmp_path / "ipc" / "test-ws" / "responses" / "req-1.json"
@@ -204,7 +204,7 @@ async def test_rate_limited(tmp_path):
         assert "result" in response  # handler was called
 
         # Second call is rate-limited
-        data = _make_request("read_email", request_id="req-2")
+        data = _make_request("fast_tool", request_id="req-2")
         await _handle_service_request(data, "test-ws", False, deps)
 
         response_file = tmp_path / "ipc" / "test-ws" / "responses" / "req-2.json"
@@ -245,14 +245,14 @@ async def test_missing_request_id():
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
     # Should return without writing any response (just logs warning)
-    data = {"type": "service:read_email"}
+    data = {"type": "service:some_tool"}
     await _handle_service_request(data, "test-ws", False, deps)
 
 
 @pytest.mark.asyncio
 async def test_fallback_security_for_unconfigured_workspace(tmp_path):
     """Test that workspaces with no security config get strict defaults."""
-    fake_pm = _make_fake_plugin_manager("read_email")
+    fake_pm = _make_fake_plugin_manager("some_tool")
 
     class FakeSettings:
         def __init__(self):
@@ -267,7 +267,7 @@ async def test_fallback_security_for_unconfigured_workspace(tmp_path):
         patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
         patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
     ):
-        data = _make_request("read_email")
+        data = _make_request("some_tool")
         await _handle_service_request(data, "unknown-ws", False, deps)
 
     # Default WorkspaceSecurity has default_risk_tier="human-approval"
@@ -281,7 +281,7 @@ async def test_fallback_security_for_unconfigured_workspace(tmp_path):
 async def test_unconfigured_tool_uses_default_tier(tmp_path):
     """Test that tools not listed in mcp_tools use default_risk_tier."""
     mock_handler = AsyncMock(return_value={"result": "ok"})
-    fake_pm = _make_fake_plugin_manager("read_email", handler_fn=mock_handler)
+    fake_pm = _make_fake_plugin_manager("some_tool", handler_fn=mock_handler)
     settings = _make_settings(
         ws_security=WorkspaceSecurityConfig(
             mcp_tools={},  # No tools configured
@@ -296,7 +296,7 @@ async def test_unconfigured_tool_uses_default_tier(tmp_path):
         patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
         patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
     ):
-        data = _make_request("read_email")
+        data = _make_request("some_tool")
         await _handle_service_request(data, "test-ws", False, deps)
 
     response_file = tmp_path / "ipc" / "test-ws" / "responses" / "test-req-1.json"
