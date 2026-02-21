@@ -22,6 +22,7 @@ from pynchy.chat import (
     message_handler,
     output_handler,
 )
+from pynchy.chat._message_routing import start_message_loop
 from pynchy.chat.channel_runtime import (
     ChannelPluginContext,
     load_channels,
@@ -359,12 +360,12 @@ class PynchyApp:
     # ------------------------------------------------------------------
 
     async def _start_message_loop(self) -> None:
-        """Main polling loop — delegated to message_handler."""
+        """Main polling loop — delegated to _message_routing."""
         if self.message_loop_running:
             logger.debug("Message loop already running, skipping duplicate start")
             return
         self.message_loop_running = True
-        await message_handler.start_message_loop(self, lambda: self._shutting_down)
+        await start_message_loop(self, lambda: self._shutting_down)
 
     async def _send_boot_notification(self) -> None:
         await startup_handler.send_boot_notification(self)
