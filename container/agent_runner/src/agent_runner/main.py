@@ -267,6 +267,7 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
     # LiteLLM's MCP proxy (which doesn't work with Claude SDK; see
     # backlog/3-ready/mcp-gateway-transport.md).
     if container_input.mcp_direct_servers:
+        log(f"Direct MCP servers received: {container_input.mcp_direct_servers}")
         for server in container_input.mcp_direct_servers:
             transport = server.get("transport", "sse")
             url = server["url"]
@@ -275,10 +276,12 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
                 url = f"{url}/sse"
             elif transport in ("http", "streamable_http"):
                 url = f"{url}/mcp"
-            mcp_servers_dict[server["name"]] = {
+            entry = {
                 "type": transport if transport != "streamable_http" else "http",
                 "url": url,
             }
+            log(f"Configuring MCP server '{server['name']}': {entry}")
+            mcp_servers_dict[server["name"]] = entry
 
     # Default cwd to the mounted project repo when available, so agents start
     # in the codebase they're working on rather than the group metadata dir.

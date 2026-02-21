@@ -247,6 +247,20 @@ class ClaudeAgentCore:
         if "tools" in self.config.mcp_servers:
             allowed_tools.append("mcp__tools__*")
 
+        # Allow tools from all configured MCP servers
+        for server_name in self.config.mcp_servers:
+            pattern = f"mcp__{server_name}__*"
+            if pattern not in allowed_tools:
+                allowed_tools.append(pattern)
+
+        _log(f"MCP servers config: {list(self.config.mcp_servers.keys())}")
+        mcp_details = {
+            k: {kk: vv for kk, vv in v.items() if kk != "env"}
+            for k, v in self.config.mcp_servers.items()
+        }
+        _log(f"MCP servers details: {json.dumps(mcp_details)}")
+        _log(f"Allowed tools: {allowed_tools}")
+
         # Build options
         options = ClaudeAgentOptions(
             model="opus",
