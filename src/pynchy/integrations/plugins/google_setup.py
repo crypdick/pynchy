@@ -55,7 +55,7 @@ hookimpl = pluggy.HookimplMarker("pynchy")
 # ---------------------------------------------------------------------------
 
 _GCP_CONSOLE = "https://console.cloud.google.com"
-_OAUTH_CALLBACK_PORT = 3000
+_OAUTH_CALLBACK_PORT = 8085
 _GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 _GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 _DRIVE_READONLY_SCOPE = "https://www.googleapis.com/auth/drive.readonly"
@@ -235,21 +235,24 @@ async def _ensure_drive_api(page, project_id: str) -> None:
     await page.wait_for_timeout(5000)
     await _dismiss_modals(page)
 
-    body = await page.text_content("body") or ""
-    if "manage" in body.lower() or "api enabled" in body.lower():
-        logger.info("Drive API already enabled")
+    # Check for the Enable button — its presence means the API is NOT enabled.
+    # Don't rely on body text like "manage" — that word appears in GCP navigation
+    # on every page and produces false positives.
+    enable_btn = page.get_by_role("button", name=re.compile(r"^enable$", re.I))
+    if await enable_btn.count() == 0:
+        logger.info("Drive API already enabled (no Enable button found)")
         return
 
     async def _automate(p):
-        enable_btn = p.get_by_role("button", name=re.compile(r"enable", re.I))
-        await enable_btn.click()
+        btn = p.get_by_role("button", name=re.compile(r"^enable$", re.I))
+        await btn.click()
         await p.wait_for_timeout(5000)
 
     async def _api_enabled(p) -> bool:
-        body = await p.text_content("body") or ""
-        return (
-            "manage" in body.lower() or "api enabled" in body.lower() or "disable" in body.lower()
-        )
+        # After enabling, the Enable button disappears and is replaced by
+        # Manage / Disable buttons.
+        btn = p.get_by_role("button", name=re.compile(r"^enable$", re.I))
+        return await btn.count() == 0
 
     await _try_step(
         page,
