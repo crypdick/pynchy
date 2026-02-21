@@ -718,46 +718,42 @@ async def _run_oauth_flow(page, keys_path: Path) -> dict:
 
 
 async def _handle_enable_gdrive_api(data: dict) -> dict:
-    """Enable Google Drive API via the Service Usage REST API.
+    """Enable the Google Drive API.
 
-    Requires the OAuth token to include service.management scope.
-    If the token lacks this scope, returns an error telling the caller
-    to run authorize_gdrive first (which re-authorizes with all scopes).
+    Tries the Service Usage REST API first (instant, requires
+    service.management scope).  If that fails, returns the GCP Console
+    enable URL so the user can click it in any browser.
     """
     project_id = data.get("project_id") or _read_project_id() or _DEFAULT_PROJECT_ID
+    project_number = data.get("project_id") or _get_project_number()
 
-    project_number = _get_project_number()
-    if not project_number:
-        return {
-            "error": (
-                "Cannot determine GCP project number. "
-                "Run setup_gdrive first to create OAuth credentials."
-            )
-        }
-
-    access_token = _refresh_access_token()
-    if not access_token:
-        return {
-            "error": (
-                "Cannot refresh OAuth token. "
-                "Run authorize_gdrive to re-authorize with required scopes."
-            )
-        }
-
-    if _enable_drive_api_via_rest(project_number, access_token):
-        return {
-            "result": {
-                "status": "ok",
-                "message": f"Google Drive API enabled for project {project_id}",
+    # --- Try REST first ---
+    if project_number:
+        access_token = _refresh_access_token()
+        if access_token and _enable_drive_api_via_rest(project_number, access_token):
+            return {
+                "result": {
+                    "status": "ok",
+                    "message": f"Google Drive API enabled for project {project_id}",
+                }
             }
-        }
 
+    # --- Fallback: give the user a clickable URL ---
+    # The GCP Console enable URL works with either project ID or number.
+    enable_url = (
+        "https://console.developers.google.com/apis/api/"
+        f"drive.googleapis.com/overview?project={project_number or project_id}"
+    )
     return {
-        "error": (
-            "Failed to enable Drive API. The OAuth token likely lacks "
-            "service.management scope. Run authorize_gdrive to re-authorize "
-            "with the required scopes, then retry enable_gdrive_api."
-        )
+        "result": {
+            "status": "manual_action_required",
+            "message": (
+                "Could not enable the Drive API automatically (the OAuth "
+                "token may lack service.management scope). Open this link "
+                "in any browser and click 'Enable':"
+            ),
+            "enable_url": enable_url,
+        }
     }
 
 
