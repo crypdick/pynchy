@@ -18,7 +18,7 @@ tier: dev
 - Never make purely cosmetic changes
 - Don't make 'god' modules. Files should generally be <450 lines. Files much larger than this should be refactored.
 - Keep docs and comments up to date in accordance to the [contributing-docs.md](../../docs/contributing/contributing-docs.md) file.
-- standradizing interfaces and protocols across different plugins so that good patterns from one plugin can be reused in all of them.
+- making sure plugin-specific code doesn't leak into the core codebase; it should stay with the plugin.
 - remove overly defensive try/except blocks that swallow errors. we should only swallow try/except errors for expected errors during normal operation, not to sweep potential bugs under the rug.
 
 ## Production Architecture
