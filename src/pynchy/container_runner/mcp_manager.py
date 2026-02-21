@@ -318,11 +318,11 @@ class McpManager:
                 volume_args.extend(["-v", vol])
             elif sep and not Path(host_path).is_absolute():
                 host_path = str(get_settings().project_root / host_path)
-                Path(host_path).mkdir(parents=True, exist_ok=True)
+                _ensure_mount_parent(host_path)
                 volume_args.extend(["-v", f"{host_path}:{container_path}"])
             else:
                 if sep:
-                    Path(host_path).mkdir(parents=True, exist_ok=True)
+                    _ensure_mount_parent(host_path)
                 volume_args.extend(["-v", vol])
 
         run_docker(
@@ -598,6 +598,18 @@ class McpManager:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _ensure_mount_parent(host_path: str) -> None:
+    """Ensure mount source exists — mkdir for directories, parent-mkdir for files."""
+    p = Path(host_path)
+    if p.exists():
+        return  # already exists (file or directory)
+    # Heuristic: paths with file extensions are files, others are directories.
+    if p.suffix:
+        p.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        p.mkdir(parents=True, exist_ok=True)
 
 
 def _terminate_process(instance: McpInstance) -> None:
