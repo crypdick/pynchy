@@ -53,6 +53,11 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
         "x-integration",
     ),
     (
+        "pynchy.integrations.plugins.google_setup",
+        "GoogleSetupPlugin",
+        "google-setup",
+    ),
+    (
         "pynchy.integrations.plugins.notebook_server",
         "NotebookServerPlugin",
         "notebook",
