@@ -52,6 +52,29 @@ sqlite3 data/messages.db "SELECT name, container_config FROM registered_groups;"
 container run -i --rm --entrypoint ls pynchy-agent:latest /workspace/extra/
 ```
 
+## Sending Messages via the TUI API
+
+The TUI HTTP API can be used to send messages to any group without a TUI client. Messages sent this way go through the full pipeline (stored, broadcast to channels, trigger agent) — identical to a real user message.
+
+```bash
+# 1. Look up the group's JID
+curl -s http://pynchy-server:8484/api/groups | python3 -m json.tool
+# Returns: [{"name": "my-group", "jid": "...", ...}, ...]
+
+# 2. Send a message to the agent in that group
+curl -s -X POST http://pynchy-server:8484/api/send \
+  -H 'Content-Type: application/json' \
+  -d '{"jid": "<jid-from-step-1>", "content": "your message here"}'
+
+# 3. Watch the response via SSE (or just check /api/messages after a moment)
+curl -s "http://pynchy-server:8484/api/messages?jid=<jid>&limit=5" | python3 -m json.tool
+```
+
+This is useful for:
+- **Debugging the agent** from an SSH session without needing WhatsApp or the TUI app running.
+- **Exercising MCP tools** — send a message like "use the playwright MCP to check ..." to prompt the agent to invoke an MCP tool it wouldn't use unprompted. Handy for verifying MCP server connectivity, tool schemas, or end-to-end behavior.
+- **Scripting interactions** from another agent's container (via `mcp__pynchy__*` tools) or CI.
+
 ## WhatsApp Auth Issues
 
 ```bash

@@ -120,6 +120,32 @@ The kernel auto-configures libraries for text-friendly output at startup:
 - **Matplotlib** — non-interactive `Agg` backend (avoids GUI window attempts)
 - **Images** — all `image/png` outputs (matplotlib plots, PIL images, etc.) save automatically to `<notebook>_files/cell_N.png`. The agent receives the file path instead of raw base64.
 
+### Finding saved images
+
+`execute_cell` returns image paths relative to the notebook directory. From the container filesystem, images are at:
+
+```
+/workspace/group/notebooks/<notebook>_files/cell_N.png
+```
+
+For example, a notebook named `q4-sales-analysis` that produces a plot in cell 3:
+
+- **Relative path** (returned by tool): `q4-sales-analysis_files/cell_3.png`
+- **Container path**: `/workspace/group/notebooks/q4-sales-analysis_files/cell_3.png`
+
+If a single cell produces multiple images, they're suffixed: `cell_3_1.png`, `cell_3_2.png`, etc.
+
+## Installing dependencies
+
+The container ships with common data-science libraries pre-installed. When you need a package that isn't available, install it at runtime from a notebook cell using `uv`:
+
+```python
+import subprocess
+subprocess.run(["uv", "pip", "install", "--system", "seaborn"], check=True)
+```
+
+Use `--system` because the container runs without a virtual environment. Installed packages persist for the lifetime of the kernel but are lost when the container restarts — add frequently needed packages to the container's `requirements-plugins.txt` instead.
+
 ## Direct file access
 
 Since notebooks live inside the workspace folder (`/workspace/group/notebooks/`), agents can also:
