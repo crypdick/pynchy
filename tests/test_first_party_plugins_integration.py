@@ -90,14 +90,15 @@ class TestSlackPluginFunctionality:
             pytest.skip("Slack plugin not available (optional dependency)")
 
         mock_settings = MagicMock()
-        mock_settings.slack.bot_token = None
-        mock_settings.slack.app_token = None
+        mock_settings.connection.slack = {}
 
         with patch("pynchy.chat.plugins.slack.get_settings", return_value=mock_settings):
             channels = pm.hook.pynchy_create_channel(context=MagicMock())
 
-        # Slack should return None when no tokens
+        # Slack should return None when no connections configured
         slack_channels = [
-            ch for ch in channels if ch is not None and getattr(ch, "name", None) == "slack"
+            ch
+            for ch in channels
+            if ch is not None and str(getattr(ch, "name", "")).startswith("connection.slack.")
         ]
         assert len(slack_channels) == 0

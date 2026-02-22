@@ -30,7 +30,7 @@ class ChannelPluginContext:
 
 def default_channel_name() -> str:
     """Return configured command-center channel, falling back to tui."""
-    configured = get_settings().channels.command_center
+    configured = get_settings().command_center.connection
     if configured:
         return configured.strip()
     return "tui"
@@ -39,7 +39,14 @@ def default_channel_name() -> str:
 def load_channels(pm: pluggy.PluginManager, context: ChannelPluginContext) -> list[Channel]:
     """Create channel instances from plugin hooks."""
     candidates = pm.hook.pynchy_create_channel(context=context)
-    channels = [c for c in candidates if c is not None]
+    channels: list[Channel] = []
+    for c in candidates:
+        if c is None:
+            continue
+        if isinstance(c, (list, tuple)):
+            channels.extend([item for item in c if item is not None])
+        else:
+            channels.append(c)
     channels.sort(key=lambda ch: getattr(ch, "name", ""))
 
     if channels:

@@ -71,6 +71,17 @@ async def get_all_chats() -> list[dict[str, str]]:
     return [dict(row) for row in rows]
 
 
+async def get_chat_jids_by_name(name: str) -> list[str]:
+    """Return chat JIDs matching the given human-friendly name (case-insensitive)."""
+    db = _get_db()
+    cursor = await db.execute(
+        "SELECT jid FROM chats WHERE lower(name) = lower(?)",
+        (name,),
+    )
+    rows = await cursor.fetchall()
+    return [row["jid"] for row in rows]
+
+
 async def get_last_group_sync() -> str | None:
     """Get timestamp of last group metadata sync."""
     db = _get_db()

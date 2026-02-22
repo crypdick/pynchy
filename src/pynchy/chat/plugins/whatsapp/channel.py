@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import sys
+from pathlib import Path
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -25,7 +26,7 @@ from neonize.proto.Neonize_pb2 import JID
 from neonize.utils.jid import Jid2String
 
 from pynchy.config import get_settings
-from pynchy.db import get_last_group_sync, set_last_group_sync, update_chat_name
+from pynchy.db import get_chat_jids_by_name, get_last_group_sync, set_last_group_sync, update_chat_name
 from pynchy.logger import logger
 from pynchy.types import NewMessage, WorkspaceProfile
 
@@ -41,15 +42,20 @@ class _OutgoingMessage:
 class WhatsAppChannel:
     """WhatsApp channel implemented via neonize (whatsmeow Go bindings)."""
 
-    name = "whatsapp"
+    name: str
     prefix_assistant_name = True
 
     def __init__(
         self,
+        connection_name: str,
+        auth_db_path: str,
         on_message: Callable[[str, NewMessage], None],
         on_chat_metadata: Callable[[str, str, str | None], None],
         workspaces: Callable[[], dict[str, WorkspaceProfile]],
     ) -> None:
+        self.name = connection_name
+        self._connection_name = connection_name
+        self._auth_db_path = auth_db_path
         self._on_message = on_message
         self._on_chat_metadata = on_chat_metadata
         self._workspaces = workspaces
@@ -65,9 +71,8 @@ class WhatsAppChannel:
         neonize_events.event_global_loop = loop
         neonize_client.event_global_loop = loop
 
-        data_dir = get_settings().data_dir
-        auth_db = str(data_dir / "neonize.db")
-        data_dir.mkdir(parents=True, exist_ok=True)
+        auth_db = self._auth_db_path
+        Path(auth_db).expanduser().parent.mkdir(parents=True, exist_ok=True)
         self._client = NewAClient(auth_db)
         self._register_events()
 
@@ -181,6 +186,23 @@ class WhatsAppChannel:
     async def create_group(self, name: str) -> str:
         group_info = await self._client.create_group(name)
         return Jid2String(group_info.JID)
+
+    async def resolve_chat_jid(self, chat_name: str) -> str | None:
+        """Resolve a WhatsApp chat name to a JID using stored metadata."""
+        if "@" in chat_name:
+            return chat_name
+        await self._sync_group_metadata(force=True)
+        matches = await get_chat_jids_by_name(chat_name)
+        if not matches:
+            return None
+        if len(matches) > 1:
+            logger.warning(
+                "Multiple WhatsApp chats match name; disambiguate",
+                chat=chat_name,
+                matches=matches,
+            )
+            return None
+        return matches[0]
 
     async def sync_group_metadata(self, force: bool = False) -> None:
         await self._sync_group_metadata(force=force)

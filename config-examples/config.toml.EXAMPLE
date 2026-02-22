@@ -128,17 +128,28 @@
 # base_retry_seconds = 5.0
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Channel Selection
+# Command Center
 # ─────────────────────────────────────────────────────────────────────────────
-# Channels and optional host runtimes are now provided by plugins managed via
-# [plugins.*] entries below.
+# The command center is the dedicated, pynchy-managed connection used for
+# auto-creating chats (when needed). Set to "tui" for local-only mode.
 
-[channels]
-# Default channel plugin name used for first-run group creation.
-# Set to "tui" to keep core UI-only mode (default behavior).
-# Use a plugin channel name (e.g. "whatsapp") to auto-create external first-run groups.
-# With "tui", pynchy still bootstraps a local first-run workspace automatically.
-# default = "tui"
+[command_center]
+# connection = "connection.slack.synapse"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Connections
+# ─────────────────────────────────────────────────────────────────────────────
+# Define which external connections pynchy is allowed to use.
+
+# [connection.slack.synapse]
+# bot_token_env = "SLACK__BOT_TOKEN"
+# app_token_env = "SLACK__APP_TOKEN"
+#
+# [connection.slack.synapse.chat.admin-1]
+# # Optional per-chat security overrides:
+# # [connection.slack.synapse.chat.admin-1.security]
+# # access = "readwrite"
+# # trigger = "mention"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Plugin Overrides
@@ -152,54 +163,61 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Workspace Defaults
 # ─────────────────────────────────────────────────────────────────────────────
-# Defaults applied to workspaces that don't override these fields.
+# Defaults applied to sandboxes that don't override these fields.
 
 [workspace_defaults]
-# trigger = "mention"  # "mention" (default) or "always"
 # context_mode = "group"
+# access = "readwrite"   # "read", "write", "readwrite"
+# mode = "agent"         # "agent" or "chat"
+# trust = true
+# trigger = "mention"    # "mention" or "always"
+# allowed_users = ["owner"]  # user IDs, group refs, or "*"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Workspaces
+# Sandboxes
 # ─────────────────────────────────────────────────────────────────────────────
-# Each [workspaces.<folder_name>] defines a workspace. The folder name matches
+# Each [sandbox.<folder_name>] defines a sandbox. The folder name matches
 # the directory under groups/.
 
-[workspaces.admin-1]
-name = "Admin"
-is_admin = true
-trigger = "always"
+# [sandbox.admin-1]
+# chat = "connection.slack.synapse.chat.admin-1"
+# is_admin = true
+# trigger = "always"
 # repo_access = "owner/repo"  # GitHub slug from [repos.*]; grants /workspace/project mount
 
-[workspaces.admin-2]
-name = "Mr Pynchy"
-is_admin = true
-trigger = "always"
+# [sandbox.admin-2]
+# chat = "connection.slack.synapse.chat.admin-2"
+# is_admin = true
+# trigger = "always"
 # repo_access = "owner/repo"
 
 # Example workspace with Google MCP (dot-syntax instance names):
-# [workspaces.anyscale-1]
-# name = "Anyscale"
+# [sandbox.anyscale-1]
+# chat = "connection.slack.synapse.chat.anyscale-1"
 # mcp_servers = ["gdrive.anyscale", "gcal.anyscale"]
 
 # Example workspace with MCP access and per-MCP kwargs:
-# [workspaces.research]
+# [sandbox.research]
+# chat = "connection.slack.synapse.chat.research"
 # mcp_servers = ["dev-tools", "remote-api"]   # groups + individual names, set-unioned
 #
-# [workspaces.research.mcp.playwright]
+# [sandbox.research.mcp.playwright]
 # presets = ["dev-research"]                   # expands + merges with explicit values
 # allowed-origins = "internal.example.com"     # merged with preset domains
 
 # Example workspace with Slack MCP (references a named server entry):
-# [workspaces.acme-1]
+# [sandbox.acme-1]
+# chat = "connection.slack.synapse.chat.acme-1"
 # mcp_servers = ["slack_mcp_acme"]
 
 # Example admin workspace with unrestricted MCP access:
-# [workspaces.admin]
+# [sandbox.admin]
+# chat = "connection.slack.synapse.chat.admin"
 # is_admin = true
 # mcp_servers = ["all"]
 # # no [mcp.playwright] section → no --allowed-origins → unrestricted
 
-# Plugins can provide additional managed workspaces automatically
+# Plugins can provide additional managed sandboxes automatically
 # (for example, the `code-improver` periodic agent for pynchy core).
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -368,12 +386,12 @@ trigger = "always"
 # ─────────────────────────────────────────────────────────────────────────────
 # Directives inject markdown content into agent system prompts. Each directive
 # has a file (relative to project root) and a scope that controls which
-# workspaces receive it.
+# sandboxes receive it.
 #
 # Scope values:
-#   "all"              → matches every workspace
-#   "folder-name"      → matches a specific workspace folder
-#   "owner/repo"       → matches workspaces whose repo_access equals this slug
+#   "all"              → matches every sandbox
+#   "folder-name"      → matches a specific sandbox folder
+#   "owner/repo"       → matches sandboxes whose repo_access equals this slug
 #   ["a", "b"]         → union of multiple scopes
 #
 # Directives are sorted by key name and concatenated with "---" separators.

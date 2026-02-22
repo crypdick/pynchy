@@ -24,7 +24,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any, ClassVar
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -36,8 +36,9 @@ from pynchy.config_mcp import McpServerConfig
 from pynchy.config_models import (
     AgentConfig,
     CalDAVConfig,
-    ChannelsConfig,
+    CommandCenterConfig,
     CommandWordsConfig,
+    ConnectionsConfig,
     ContainerConfig,
     CronJobConfig,
     DirectiveConfig,
@@ -52,11 +53,11 @@ from pynchy.config_models import (
     SecretsConfig,
     SecurityConfig,
     ServerConfig,
-    SlackConfig,
     WorkspaceConfig,
     WorkspaceDefaultsConfig,
     _StrictModel,
 )
+from pynchy.config_refs import connection_ref_from_parts, parse_chat_ref, parse_connection_ref
 
 # ---------------------------------------------------------------------------
 # Explicit-fields validation
@@ -159,7 +160,10 @@ class Settings(BaseSettings):
     gateway: GatewayConfig = GatewayConfig()
     workspace_defaults: WorkspaceDefaultsConfig = WorkspaceDefaultsConfig()
     repos: dict[str, RepoConfig] = {}  # [repos."owner/repo"]
-    workspaces: dict[str, WorkspaceConfig] = {}  # [workspaces.<folder_name>]
+    # FIXME: Rename "workspace" -> "sandbox" across config + codebase.
+    workspaces: dict[str, WorkspaceConfig] = Field(
+        default_factory=dict, validation_alias="sandbox"
+    )  # [sandbox.<folder_name>]
     owner: OwnerConfig = OwnerConfig()
     user_groups: dict[str, list[str]] = {}  # group_name → [user IDs or group refs]
     commands: CommandWordsConfig = CommandWordsConfig()
@@ -167,11 +171,11 @@ class Settings(BaseSettings):
     cron_jobs: dict[str, CronJobConfig] = {}  # [cron_jobs.<job_name>]
     intervals: IntervalsConfig = IntervalsConfig()
     queue: QueueConfig = QueueConfig()
-    channels: ChannelsConfig = ChannelsConfig()
+    command_center: CommandCenterConfig = CommandCenterConfig()
+    connection: ConnectionsConfig = ConnectionsConfig()
     plugins: dict[str, PluginConfig] = {}
     directives: dict[str, DirectiveConfig] = {}
     security: SecurityConfig = SecurityConfig()
-    slack: SlackConfig = SlackConfig()
     caldav: CalDAVConfig = CalDAVConfig()
 
     # Chrome profiles — generic list of names; any MCP server can attach to one.
@@ -190,6 +194,18 @@ class Settings(BaseSettings):
     # Sentinels (class-level, not fields)
     OUTPUT_START_MARKER: ClassVar[str] = "---PYNCHY_OUTPUT_START---"
     OUTPUT_END_MARKER: ClassVar[str] = "---PYNCHY_OUTPUT_END---"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_legacy_sections(cls, data: dict[str, Any]) -> dict[str, Any]:
+        if isinstance(data, dict):
+            legacy = [k for k in ("workspaces", "channels", "slack") if k in data]
+            if legacy:
+                raise ValueError(
+                    "Legacy config sections are no longer supported: "
+                    f"{legacy}. Use [sandbox], [connection.*], and [command_center] instead."
+                )
+        return data
 
     @model_validator(mode="before")
     @classmethod
@@ -251,6 +267,72 @@ class Settings(BaseSettings):
             msg = "Config fields must be explicitly set (even if null):\n"
             msg += "\n".join(f"  - {e}" for e in errors)
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_connections(self) -> Settings:
+        """Validate connection refs and WhatsApp auth DB uniqueness."""
+        # Validate command_center.connection exists (if set)
+        if self.command_center.connection:
+            ref = parse_connection_ref(self.command_center.connection)
+            if ref is None:
+                raise ValueError(
+                    "command_center.connection must be connection.<platform>.<name>"
+                )
+            if ref.platform == "slack":
+                if ref.name not in self.connection.slack:
+                    raise ValueError(
+                        f"command_center.connection references unknown slack connection: {ref.name}"
+                    )
+            elif ref.platform == "whatsapp":
+                if ref.name not in self.connection.whatsapp:
+                    raise ValueError(
+                        f"command_center.connection references unknown whatsapp connection: {ref.name}"
+                    )
+            else:
+                raise ValueError(
+                    f"command_center.connection uses unsupported platform: {ref.platform}"
+                )
+
+        # Validate workspace chat refs point to configured connections/chats
+        for folder, ws in self.workspaces.items():
+            chat_ref = parse_chat_ref(ws.chat)
+            if chat_ref is None:
+                raise ValueError(
+                    f"sandbox.{folder}.chat must be connection.<platform>.<name>.chat.<chat>"
+                )
+            if chat_ref.platform == "slack":
+                conn = self.connection.slack.get(chat_ref.name)
+            elif chat_ref.platform == "whatsapp":
+                conn = self.connection.whatsapp.get(chat_ref.name)
+            else:
+                conn = None
+            if conn is None:
+                raise ValueError(
+                    f"sandbox.{folder}.chat references unknown connection: "
+                    f"{connection_ref_from_parts(chat_ref.platform, chat_ref.name)}"
+                )
+            if chat_ref.chat not in conn.chat:
+                raise ValueError(
+                    f"sandbox.{folder}.chat references unknown chat: {ws.chat}"
+                )
+
+        # Ensure WhatsApp auth DB paths are unique across connections
+        seen_paths: dict[str, str] = {}
+        for name, cfg in self.connection.whatsapp.items():
+            if cfg.auth_db_path:
+                path = Path(cfg.auth_db_path)
+                if not path.is_absolute():
+                    path = (self.project_root / path).resolve()
+            else:
+                path = (self.data_dir / "neonize.db").resolve()
+            key = str(path)
+            if key in seen_paths:
+                raise ValueError(
+                    "WhatsApp auth_db_path must be unique per connection: "
+                    f"{seen_paths[key]} and {name} both use {key}"
+                )
+            seen_paths[key] = name
         return self
 
     @classmethod
@@ -360,25 +442,53 @@ def reset_settings() -> None:
 
 
 def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
-    """Programmatically add a workspace to config.toml using tomlkit.
+    """Programmatically add a sandbox to config.toml using tomlkit.
 
-    Preserves existing comments and formatting. Creates [workspaces.<folder>]
+    Preserves existing comments and formatting. Creates [sandbox.<folder>]
     section. Resets the settings cache so next get_settings() picks it up.
     """
     import tomlkit
+    from pynchy.logger import logger
 
     toml_path = Path("config.toml")
     doc = tomlkit.parse(toml_path.read_text()) if toml_path.exists() else tomlkit.document()
 
-    if "workspaces" not in doc:
-        doc.add("workspaces", tomlkit.table(is_super_table=True))
+    if "sandbox" not in doc:
+        doc.add("sandbox", tomlkit.table(is_super_table=True))
 
     ws_table = tomlkit.table()
     data = config.model_dump(exclude_none=True, exclude_defaults=True)
     for key, value in data.items():
         ws_table.add(key, value)
 
-    doc["workspaces"][folder] = ws_table  # type: ignore[index]
+    doc["sandbox"][folder] = ws_table  # type: ignore[index]
+
+    # Ensure the referenced chat exists under [connection.*] if possible.
+    chat_ref = parse_chat_ref(config.chat)
+    if chat_ref is not None:
+        if "connection" not in doc:
+            logger.warning("Config missing [connection] section; chat not added", chat=config.chat)
+        else:
+            connection_tbl = doc["connection"]
+            if chat_ref.platform not in connection_tbl:
+                logger.warning(
+                    "Config missing connection platform; chat not added",
+                    platform=chat_ref.platform,
+                )
+            else:
+                platform_tbl = connection_tbl[chat_ref.platform]
+                if chat_ref.name not in platform_tbl:
+                    logger.warning(
+                        "Config missing connection; chat not added",
+                        connection=connection_ref_from_parts(chat_ref.platform, chat_ref.name),
+                    )
+                else:
+                    conn_tbl = platform_tbl[chat_ref.name]
+                    if "chat" not in conn_tbl:
+                        conn_tbl.add("chat", tomlkit.table(is_super_table=True))
+                    chat_tbl = conn_tbl["chat"]
+                    if chat_ref.chat not in chat_tbl:
+                        chat_tbl.add(chat_ref.chat, tomlkit.table())
 
     toml_path.write_text(tomlkit.dumps(doc))
 

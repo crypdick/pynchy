@@ -94,8 +94,17 @@ async def _handle_create_periodic_agent(
     group_dir = s.groups_dir / name
     group_dir.mkdir(parents=True, exist_ok=True)
 
+    command_center = s.command_center.connection
+    if not command_center:
+        logger.warning("create_periodic_agent requires command_center.connection")
+        return
+
+    chat_name = data.get("chat") or name
+    chat_ref = f"{command_center}.chat.{chat_name}"
+
     config = WorkspaceConfig(
         name=name,
+        chat=chat_ref,
         schedule=schedule,
         prompt=prompt,
         context_mode=context_mode,
@@ -108,13 +117,22 @@ async def _handle_create_periodic_agent(
         claude_md_path.write_text(claude_md)
 
     channels = deps.channels()
-    channel = next((ch for ch in channels if hasattr(ch, "create_group")), None)
+    channel = next(
+        (
+            ch
+            for ch in channels
+            if getattr(ch, "name", None) == command_center and hasattr(ch, "create_group")
+        ),
+        None,
+    )
     if channel is None:
-        logger.warning("No channel supports create_group, periodic agent created without chat")
+        logger.warning(
+            "Command center does not support create_group, periodic agent created without chat"
+        )
         return
 
     agent_display_name = name.replace("-", " ").title()
-    jid = await channel.create_group(agent_display_name)
+    jid = await channel.create_group(chat_name)
 
     profile = WorkspaceProfile(
         jid=jid,

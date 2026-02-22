@@ -4,16 +4,17 @@ Connects to Slack via Socket Mode (bolt) and maps Slack channels/DMs to
 pynchy workspaces.  Each Slack conversation is identified by a JID of the
 form ``slack:<CHANNEL_ID>`` so it coexists with other channel plugins.
 
-Activation: set ``[slack]`` tokens in config.toml (or env vars
-``SLACK__BOT_TOKEN`` / ``SLACK__APP_TOKEN``).  The plugin returns ``None``
-when tokens are absent, so it never interferes with installations that
-don't use Slack.
+Activation: define ``[connection.slack.<name>]`` entries in config.toml and
+provide token env var names (e.g. ``SLACK__BOT_TOKEN`` / ``SLACK__APP_TOKEN``).
+The plugin returns ``None`` when no Slack connections are configured, so it
+never interferes with installations that don't use Slack.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import re
 import time
 from collections.abc import Callable
@@ -80,19 +81,27 @@ class _TtlCache:
 class SlackChannel:
     """Pynchy ``Channel`` protocol implementation backed by Slack Socket Mode."""
 
-    name: str = "slack"
     prefix_assistant_name: bool = False  # Slack shows the bot username already
 
     def __init__(
         self,
+        connection_name: str,
         bot_token: str,
         app_token: str,
+        chat_names: list[str],
+        allow_create: bool,
         on_message: Callable[[str, NewMessage], None],
         on_chat_metadata: Callable[[str, str, str | None], None],
         on_reaction: Callable[[str, str, str, str], None] | None = None,
     ) -> None:
+        self.name = connection_name
+        self._connection_name = connection_name
         self._bot_token = bot_token
         self._app_token = app_token
+        self._chat_names = {_normalize_chat_name(name) for name in chat_names}
+        self._allow_create = allow_create
+        self._chat_name_to_id: dict[str, str] = {}
+        self._allowed_channel_ids: set[str] = set()
         self._on_message = on_message
         self._on_chat_metadata = on_chat_metadata
         self._on_reaction = on_reaction
@@ -131,6 +140,7 @@ class SlackChannel:
         except Exception:
             logger.warning("Failed to resolve bot user ID (mention stripping disabled)")
 
+        await self._sync_allowed_channels()
         self._register_handlers()
 
         self._handler = AsyncSocketModeHandler(self._app, self._app_token)
@@ -139,7 +149,11 @@ class SlackChannel:
         )
         self._handler_task.add_done_callback(self._on_handler_done)
         self._connected = True
-        logger.info("Slack channel connected (Socket Mode)", bot_user_id=self._bot_user_id)
+        logger.info(
+            "Slack channel connected (Socket Mode)",
+            connection=self._connection_name,
+            bot_user_id=self._bot_user_id,
+        )
 
     async def send_message(self, jid: str, text: str) -> None:
         if not self._app or not self.owns_jid(jid):
@@ -154,7 +168,9 @@ class SlackChannel:
         return self._connected and self._handler_task is not None and not self._handler_task.done()
 
     def owns_jid(self, jid: str) -> bool:
-        return jid.startswith(JID_PREFIX)
+        if not jid.startswith(JID_PREFIX):
+            return False
+        return self._is_allowed_channel(_channel_id_from_jid(jid))
 
     async def disconnect(self) -> None:
         self._connected = False
@@ -166,11 +182,11 @@ class SlackChannel:
                 await self._handler.close_async()
         if self._handler_task and not self._handler_task.done():
             self._handler_task.cancel()
-        logger.info("Slack channel disconnected")
+        logger.info("Slack channel disconnected", connection=self._connection_name)
 
     async def reconnect(self) -> None:
         """Force an immediate reconnect regardless of current state."""
-        logger.info("Slack reconnecting (forced)")
+        logger.info("Slack reconnecting (forced)", connection=self._connection_name)
         self._connected = False
         if self._handler:
             with contextlib.suppress(Exception):
@@ -200,6 +216,7 @@ class SlackChannel:
         exc = task.exception() if not task.cancelled() else None
         logger.warning(
             "Slack Socket Mode task exited unexpectedly — scheduling reconnect",
+            connection=self._connection_name,
             exc=str(exc) if exc else "cancelled",
         )
         self._connected = False
@@ -219,7 +236,7 @@ class SlackChannel:
         # aiohttp tasks that disconnect() can't cancel (shutdown race).
         if self._connected or self._shutting_down:
             return
-        logger.info("Slack attempting reconnect", delay=delay)
+        logger.info("Slack attempting reconnect", connection=self._connection_name, delay=delay)
         try:
             self._handler = None
             self._handler_task = None
@@ -237,6 +254,77 @@ class SlackChannel:
                 logger.debug("Cannot schedule Slack reconnect retry — event loop closing")
 
     # ------------------------------------------------------------------
+    # Configured chat allowlist
+    # ------------------------------------------------------------------
+
+    def _register_allowed_channel(self, name: str, channel_id: str) -> None:
+        normalized = _normalize_chat_name(name)
+        self._chat_name_to_id[normalized] = channel_id
+        self._allowed_channel_ids.add(channel_id)
+
+    def _is_allowed_channel(self, channel_id: str) -> bool:
+        if not self._allowed_channel_ids:
+            return False
+        return channel_id in self._allowed_channel_ids
+
+    async def _ensure_joined(self, channel_id: str, name: str) -> None:
+        if not self._app:
+            return
+        try:
+            await self._app.client.conversations_join(channel=channel_id)
+        except Exception as exc:
+            logger.debug(
+                "Failed to join Slack channel (may be private)",
+                channel=name,
+                err=str(exc),
+            )
+
+    async def _sync_allowed_channels(self) -> None:
+        if not self._chat_names:
+            logger.info("Slack connection has no configured chats", connection=self._connection_name)
+            self._allowed_channel_ids = set()
+            self._chat_name_to_id = {}
+            return
+
+        for name in sorted(self._chat_names):
+            channel_id = await self._find_channel_by_name(name)
+            if channel_id is None:
+                if self._allow_create:
+                    jid = await self.create_group(name)
+                    channel_id = _channel_id_from_jid(jid)
+                else:
+                    logger.warning(
+                        "Slack chat not found; skipping",
+                        connection=self._connection_name,
+                        chat=name,
+                    )
+                    continue
+            await self._ensure_joined(channel_id, name)
+            self._register_allowed_channel(name, channel_id)
+
+        logger.info(
+            "Slack chats configured",
+            connection=self._connection_name,
+            count=len(self._allowed_channel_ids),
+        )
+
+    async def resolve_chat_jid(self, chat_name: str) -> str | None:
+        """Resolve a configured chat name to a Slack JID."""
+        normalized = _normalize_chat_name(chat_name)
+        if normalized in self._chat_name_to_id:
+            return _jid(self._chat_name_to_id[normalized])
+
+        channel_id = await self._find_channel_by_name(normalized)
+        if channel_id is None:
+            if self._allow_create:
+                return await self.create_group(chat_name)
+            return None
+
+        await self._ensure_joined(channel_id, normalized)
+        self._register_allowed_channel(normalized, channel_id)
+        return _jid(channel_id)
+
+    # ------------------------------------------------------------------
     # Optional protocol extensions
     # ------------------------------------------------------------------
 
@@ -249,7 +337,7 @@ class SlackChannel:
         """
         assert self._app is not None
         # Slack channel names: lowercase, no spaces, max 80 chars.
-        slack_name = name.lower().replace(" ", "-")[:80]
+        slack_name = _normalize_chat_name(name)[:80]
         try:
             resp = await self._app.client.conversations_create(name=slack_name, is_private=False)
             channel_id = resp["channel"]["id"]
@@ -274,6 +362,8 @@ class SlackChannel:
                     err=str(join_exc),
                 )
             logger.info("Reusing existing Slack channel", name=slack_name, channel_id=channel_id)
+        self._chat_names.add(slack_name)
+        self._register_allowed_channel(slack_name, channel_id)
         return _jid(channel_id)
 
     async def _find_channel_by_name(self, name: str) -> str | None:
@@ -359,6 +449,8 @@ class SlackChannel:
         """
         if not self._app:
             return []
+        if not self._is_allowed_channel(channel_id):
+            return []
         try:
             resp = await self._app.client.conversations_history(
                 channel=channel_id, oldest=oldest, limit=limit
@@ -413,6 +505,8 @@ class SlackChannel:
                 " — reconciler should always provide one",
                 channel_jid=channel_jid,
             )
+            return []
+        if not self.owns_jid(channel_jid):
             return []
         channel_id = _channel_id_from_jid(channel_jid)
         # conversations.history `oldest` is inclusive (ts >= oldest), so add
@@ -476,6 +570,8 @@ class SlackChannel:
             ts = payload.get("ts", "")
 
             if not channel_id or not user_id:
+                return
+            if not self._is_allowed_channel(channel_id):
                 return
 
             jid = _jid(channel_id)
@@ -549,6 +645,8 @@ class SlackChannel:
 
         if not channel_id or not user_id:
             return
+        if not self._is_allowed_channel(channel_id):
+            return
 
         # Deduplicate: Slack fires both `message` and `app_mention` events
         # for the same @mention message — skip the second one.
@@ -602,6 +700,8 @@ class SlackChannel:
         message_ts = item.get("ts", "")
 
         if not channel_id or not user_id or not reaction:
+            return
+        if not self._is_allowed_channel(channel_id):
             return
 
         jid = _jid(channel_id)
@@ -666,13 +766,11 @@ class SlackChannelPlugin:
     """Built-in plugin that activates when Slack tokens are configured."""
 
     @hookimpl
-    def pynchy_create_channel(self, context: Any) -> SlackChannel | None:
-        cfg = get_settings().slack
-        bot_token = cfg.bot_token.get_secret_value() if cfg.bot_token else ""
-        app_token = cfg.app_token.get_secret_value() if cfg.app_token else ""
-
-        if not bot_token or not app_token:
-            logger.debug("Slack channel skipped — no tokens configured")
+    def pynchy_create_channel(self, context: Any) -> list[SlackChannel] | None:
+        s = get_settings()
+        configs = s.connection.slack
+        if not configs:
+            logger.debug("Slack channel skipped — no connections configured")
             return None
 
         # Guard against None/incomplete context (e.g. in tests)
@@ -684,19 +782,59 @@ class SlackChannelPlugin:
             return None
 
         on_reaction = getattr(context, "on_reaction_callback", None)
+        channels: list[SlackChannel] = []
 
-        return SlackChannel(
-            bot_token=bot_token,
-            app_token=app_token,
-            on_message=on_message,
-            on_chat_metadata=on_metadata,
-            on_reaction=on_reaction,
-        )
+        for name, cfg in configs.items():
+            connection_name = f"connection.slack.{name}"
+            bot_token = os.environ.get(cfg.bot_token_env, "")
+            app_token = os.environ.get(cfg.app_token_env, "")
+            chat_names = list(cfg.chat.keys())
+
+            if not chat_names:
+                logger.warning(
+                    "Slack connection has no configured chats; skipping",
+                    connection=connection_name,
+                )
+                continue
+
+            if not bot_token or not app_token:
+                logger.warning(
+                    "Slack connection skipped — missing tokens",
+                    connection=connection_name,
+                    bot_token_env=cfg.bot_token_env,
+                    app_token_env=cfg.app_token_env,
+                )
+                continue
+
+            allow_create = s.command_center.connection == connection_name
+
+            channels.append(
+                SlackChannel(
+                    connection_name=connection_name,
+                    bot_token=bot_token,
+                    app_token=app_token,
+                    chat_names=chat_names,
+                    allow_create=allow_create,
+                    on_message=on_message,
+                    on_chat_metadata=on_metadata,
+                    on_reaction=on_reaction,
+                )
+            )
+
+        return channels or None
 
 
 # ------------------------------------------------------------------
 # Utilities
 # ------------------------------------------------------------------
+
+
+def _normalize_chat_name(name: str) -> str:
+    """Normalize Slack channel name to the canonical slug form."""
+    cleaned = name.strip()
+    if cleaned.startswith("#"):
+        cleaned = cleaned[1:]
+    return cleaned.lower().replace(" ", "-")
 
 
 def _split_text(text: str, *, max_len: int = 3000) -> list[str]:

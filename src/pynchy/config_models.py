@@ -13,6 +13,8 @@ from typing import Any, Literal
 from croniter import croniter
 from pydantic import BaseModel, SecretStr, field_validator
 
+from pynchy.config_refs import parse_chat_ref, parse_connection_ref
+
 
 class _StrictModel(BaseModel):
     """Base for all config sub-models — reject unknown keys so typos fail loudly."""
@@ -93,6 +95,58 @@ class OwnerConfig(_StrictModel):
     # WhatsApp uses is_from_me, no config needed
 
 
+class ConnectionChatConfig(_StrictModel):
+    """Per-chat security overrides for a connection."""
+
+    security: "ChannelOverrideConfig" | None = None
+
+
+class SlackConnectionConfig(_StrictModel):
+    """Slack connection config (tokens are read from env vars)."""
+
+    bot_token_env: str
+    app_token_env: str
+    security: "ChannelOverrideConfig" | None = None
+    chat: dict[str, ConnectionChatConfig] = {}
+
+    @field_validator("bot_token_env", "app_token_env")
+    @classmethod
+    def _validate_env_name(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("env var name cannot be empty")
+        return v
+
+
+class WhatsAppConnectionConfig(_StrictModel):
+    """WhatsApp connection config (auth state stored in sqlite)."""
+
+    auth_db_path: str | None = None
+    security: "ChannelOverrideConfig" | None = None
+    chat: dict[str, ConnectionChatConfig] = {}
+
+
+class ConnectionsConfig(_StrictModel):
+    """Root container for all external chat connections."""
+
+    slack: dict[str, SlackConnectionConfig] = {}
+    whatsapp: dict[str, WhatsAppConnectionConfig] = {}
+
+
+class CommandCenterConfig(_StrictModel):
+    """Which connection is the dedicated command center."""
+
+    connection: str | None = None
+
+    @field_validator("connection")
+    @classmethod
+    def _validate_connection_ref(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if parse_connection_ref(v) is None:
+            raise ValueError("command_center.connection must be connection.<platform>.<name>")
+        return v
+
+
 class ChannelOverrideConfig(_StrictModel):
     """Per-channel config override — None fields inherit from workspace/defaults."""
 
@@ -167,7 +221,10 @@ class RepoConfig(_StrictModel):
 
 
 class WorkspaceConfig(_StrictModel):
-    name: str  # display name — required, no silent defaults
+    # FIXME: Rename "workspace" -> "sandbox" across config + codebase.
+    name: str | None = None  # display name — optional, derived when omitted
+    # TODO: Allow binding to a whole connection (not just a chat).
+    chat: str | None = None  # connection.<platform>.<name>.chat.<chat>
     is_admin: bool = False
     repo_access: str | None = None  # GitHub slug (owner/repo) from [repos.*]; None = no worktree
     schedule: str | None = None  # cron expression
@@ -183,9 +240,17 @@ class WorkspaceConfig(_StrictModel):
     trust: bool | None = None
     trigger: Literal["mention", "always"] | None = None
     allowed_users: list[str] | None = None
-    channels: dict[str, ChannelOverrideConfig] | None = None
     git_policy: Literal["merge-to-main", "pull-request"] | None = None  # None → merge-to-main
     idle_terminate: bool = True  # False → container stays alive until hard timeout
+
+    @field_validator("chat")
+    @classmethod
+    def validate_chat_ref(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if parse_chat_ref(v) is None:
+            raise ValueError("chat must be connection.<platform>.<name>.chat.<chat>")
+        return v
 
     @field_validator("schedule")
     @classmethod
@@ -269,18 +334,8 @@ class QueueConfig(_StrictModel):
     base_retry_seconds: float = 5.0
 
 
-class ChannelsConfig(_StrictModel):
-    command_center: str | None = None
-
-
 class PluginConfig(_StrictModel):
     enabled: bool = True
-
-
-# TODO: move this when we split out the slack plugin to its own repo.
-class SlackConfig(_StrictModel):
-    bot_token: SecretStr | None = None  # xoxb-... Bot User OAuth Token
-    app_token: SecretStr | None = None  # xapp-... App-Level Token (Socket Mode)
 
 
 class CalDAVServerConfig(_StrictModel):

@@ -1,8 +1,10 @@
 """Workspace configuration — reads from config.toml via Settings.
 
-Workspaces are defined in [workspaces.<folder_name>] sections of config.toml.
+Workspaces are defined in [sandbox.<folder_name>] sections of config.toml.
 Runtime creation (e.g. via IPC) writes new sections using add_workspace_to_toml().
 """
+
+# FIXME: Rename "workspace" -> "sandbox" across config + codebase.
 
 from __future__ import annotations
 
@@ -16,6 +18,7 @@ from zoneinfo import ZoneInfo
 from croniter import croniter
 
 from pynchy.config import get_settings
+from pynchy.config_refs import connection_ref_from_parts, parse_chat_ref
 from pynchy.config_models import WorkspaceConfig
 from pynchy.db import create_task, get_active_task_for_group, update_task
 from pynchy.logger import logger
@@ -79,10 +82,70 @@ def _workspace_specs() -> dict[str, WorkspaceSpec]:
     return merged
 
 
+async def _resolve_configured_jid(
+    *,
+    config: WorkspaceConfig,
+    channels: list[Channel],
+    allow_create: bool,
+) -> str | None:
+    chat_ref = parse_chat_ref(config.chat)
+    if chat_ref is None:
+        logger.warning("Invalid chat ref in workspace config", chat=config.chat)
+        return None
+
+    connection_name = connection_ref_from_parts(chat_ref.platform, chat_ref.name)
+    channel = next((ch for ch in channels if getattr(ch, "name", None) == connection_name), None)
+    if channel is None:
+        logger.warning(
+            "Configured connection not found for workspace",
+            connection=connection_name,
+        )
+        return None
+
+    jid: str | None = None
+    if hasattr(channel, "resolve_chat_jid"):
+        try:
+            jid = await channel.resolve_chat_jid(chat_ref.chat)
+        except Exception as exc:
+            logger.warning(
+                "Failed to resolve chat JID",
+                connection=connection_name,
+                chat=chat_ref.chat,
+                err=str(exc),
+            )
+            jid = None
+
+    if jid is None and allow_create and hasattr(channel, "create_group"):
+        try:
+            jid = await channel.create_group(chat_ref.chat)
+            logger.info(
+                "Created chat group for workspace",
+                connection=connection_name,
+                chat=chat_ref.chat,
+                jid=jid,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to create chat group for workspace",
+                connection=connection_name,
+                chat=chat_ref.chat,
+                err=str(exc),
+            )
+            jid = None
+
+    if jid is None:
+        logger.warning(
+            "Chat not found for workspace",
+            connection=connection_name,
+            chat=chat_ref.chat,
+        )
+    return jid
+
+
 def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
     """Read workspace config for a group from Settings.
 
-    Returns None if the group has no [workspaces.<folder>] section in config.toml.
+    Returns None if the group has no [sandbox.<folder>] section in config.toml.
     """
     specs = _workspace_specs()
     spec = specs.get(group_folder)
@@ -211,7 +274,6 @@ async def reconcile_workspaces(
 
     Idempotent — safe to run on every startup. Creates chat groups for
     any workspace with no DB entry, and manages scheduled tasks for periodic agents.
-    Also creates JID aliases on channels that didn't create the primary JID.
     """
     from pynchy.types import WorkspaceProfile
 
@@ -232,29 +294,30 @@ async def reconcile_workspaces(
         else:
             display_name = folder.replace("-", " ").title()
 
-        # 1. Ensure the group is registered (create chat group if needed)
+        # 1. Ensure the group is registered (bind to configured chat)
         jid = folder_to_jid.get(folder)
+        chat_ref = parse_chat_ref(config.chat)
+        connection_name = (
+            connection_ref_from_parts(chat_ref.platform, chat_ref.name) if chat_ref else ""
+        )
+        allow_create = bool(
+            s.command_center.connection and connection_name == s.command_center.connection
+        )
+
+        expected_jid = await _resolve_configured_jid(
+            config=config,
+            channels=channels,
+            allow_create=allow_create,
+        )
+
         if jid is None:
-            default_name = (get_settings().channels.command_center or "").strip()
-            channel = next(
-                (
-                    ch
-                    for ch in channels
-                    if getattr(ch, "name", None) == default_name and hasattr(ch, "create_group")
-                ),
-                None,
-            ) or next(
-                (ch for ch in channels if hasattr(ch, "create_group")),
-                None,
-            )
-            if channel is None:
+            if expected_jid is None:
                 logger.warning(
-                    "No channel supports create_group, skipping workspace",
+                    "Workspace chat unavailable, skipping registration",
                     folder=folder,
                 )
                 continue
-
-            jid = await channel.create_group(display_name)
+            jid = expected_jid
             profile = WorkspaceProfile(
                 jid=jid,
                 name=display_name,
@@ -266,10 +329,17 @@ async def reconcile_workspaces(
             await register_fn(profile)
             folder_to_jid[folder] = jid
             logger.info(
-                "Created chat group for workspace",
+                "Registered workspace for configured chat",
                 name=display_name,
                 folder=folder,
                 is_admin=config.is_admin,
+            )
+        elif expected_jid and jid != expected_jid:
+            logger.warning(
+                "Workspace JID mismatch with configured chat",
+                folder=folder,
+                registered_jid=jid,
+                expected_jid=expected_jid,
             )
 
         # 2. For periodic agents, ensure scheduled task exists and is up to date
