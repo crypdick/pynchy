@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <em>🦞 Pynchy</em> (pronounced "Pinchy") — A personal AI assistant inspired by <a href="https://github.com/openclaw/openclaw">OpenClaw</a>, with an emphasis on security and modularity, written in Python.
+  <em>🦞 Pynchy</em> (pronounced "Pinchy") — A personal AI assistant like <a href="https://github.com/openclaw/openclaw">OpenClaw</a> done right. Security first, modular, written in Python.
 </p>
 
 
@@ -13,9 +13,10 @@ Everyone is writing their own AI assistant. Why write another one? The biggest r
 
 ### Comparison to Related Projects
 
-- [ZeroClaw](https://github.com/theonlyhennygod/zeroclaw) looks great actually, but I don't know how to write in Rust. If I did, I would probably use that instead.
-- [NanoClaw](https://github.com/qwibitai/nanoclaw) is a bit too minimalist for my liking.
-- [OpenClaw](https://github.com/openclaw/openclaw) is a big inspiration, but it's a monstrosity. It's a security nightmare, and a massive pile of overcooked spaghetti code. Ain't no way I'm running that on my machine.
+- [ZeroClaw](https://github.com/theonlyhennygod/zeroclaw) looks great actually, but I don't know how to write in Rust.
+- [Happy](https://github.com/slopus/happy) looks great, but ultimately is a remote terminal to Claude Code. I want to add my own security features. Also, I am not fluent in TypeScript.
+- [NanoClaw](https://github.com/qwibitai/nanoclaw) is a too minimalist.
+- [OpenClaw](https://github.com/openclaw/openclaw) is a massive pile of overcooked spaghetti code. Ain't no way I'm running that security nightmare on my machine.
 - [pi mono](https://github.com/badlogic/pi-mono) is a less crazy project, which actually OpenClaw built on top of. It doesn't have the security features that I want.
 
 ## Features
