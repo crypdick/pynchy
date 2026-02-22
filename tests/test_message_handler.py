@@ -658,7 +658,7 @@ class TestProcessGroupMessages:
             await process_group_messages(deps, "g@g.us")
 
         deps.send_reaction_to_channels.assert_awaited_once_with(
-            "g@g.us", "msg-42", msg.sender, "👀"
+            "g@g.us", "msg-42", msg.sender, "🦞"
         )
         assert deps.set_typing_on_channels.await_count == 2
         deps.set_typing_on_channels.assert_any_await("g@g.us", True)
