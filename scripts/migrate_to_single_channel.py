@@ -66,11 +66,17 @@ async def migrate(channel: str, db_path: Path) -> None:
 
             await db.execute("BEGIN")
             try:
-                # chats: jid is the PK
-                await db.execute(
-                    "UPDATE chats SET jid = ? WHERE jid = ?",
-                    (target_jid, old_canonical),
-                )
+                # chats: target_jid may already have its own row (e.g. the Slack channel
+                # registered it independently). If so, just delete the old row;
+                # otherwise rename it.
+                cur_chats = await db.execute("SELECT jid FROM chats WHERE jid = ?", (target_jid,))
+                if await cur_chats.fetchone():
+                    await db.execute("DELETE FROM chats WHERE jid = ?", (old_canonical,))
+                else:
+                    await db.execute(
+                        "UPDATE chats SET jid = ? WHERE jid = ?",
+                        (target_jid, old_canonical),
+                    )
                 # messages: chat_jid FK
                 await db.execute(
                     "UPDATE messages SET chat_jid = ? WHERE chat_jid = ?",
