@@ -786,8 +786,18 @@ class SlackChannelPlugin:
 
         for name, cfg in configs.items():
             connection_name = f"connection.slack.{name}"
-            bot_token = os.environ.get(cfg.bot_token_env, "")
-            app_token = os.environ.get(cfg.app_token_env, "")
+            bot_env = (cfg.bot_token_env or "").strip()
+            app_env = (cfg.app_token_env or "").strip()
+            if not bot_env or not app_env:
+                logger.warning(
+                    "Slack connection skipped — empty token env var name",
+                    connection=connection_name,
+                    bot_token_env=cfg.bot_token_env,
+                    app_token_env=cfg.app_token_env,
+                )
+                continue
+            bot_token = os.environ.get(bot_env, "")
+            app_token = os.environ.get(app_env, "")
             chat_names = list(cfg.chat.keys())
 
             if not chat_names:
@@ -801,8 +811,8 @@ class SlackChannelPlugin:
                 logger.warning(
                     "Slack connection skipped — missing tokens",
                     connection=connection_name,
-                    bot_token_env=cfg.bot_token_env,
-                    app_token_env=cfg.app_token_env,
+                    bot_token_env=bot_env,
+                    app_token_env=app_env,
                 )
                 continue
 
