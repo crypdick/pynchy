@@ -120,6 +120,8 @@ Runs as `pynchy-litellm` Docker container with PostgreSQL sidecar (`pynchy-litel
 Master key: `ssh pynchy-server 'grep master_key ~/src/PERSONAL/pynchy/config.toml'`
 Pass as: `Authorization: Bearer <key>`
 
+If `master_key` is not in `config.toml`, it may be injected via `.env` or container env. Prefer a scripted lookup that **does not print the key**, e.g. using it inline for a request (see `references/litellm-diagnostics.md` for examples).
+
 Config: `~/src/PERSONAL/pynchy/litellm_config.yaml`. Editing it triggers an automatic restart (~30–90s). Do not manually restart containers.
 
 Dashboard: `http://pynchy-server:4000/ui/`
