@@ -51,7 +51,9 @@ def test_resolve_default_channel_returns_none_for_tui_default() -> None:
 
 
 def test_resolve_default_channel_uses_explicit_configured_channel() -> None:
-    settings = type("Settings", (), {"channels": type("Channels", (), {"default": "whatsapp"})()})()
+    settings = type(
+        "Settings", (), {"channels": type("Channels", (), {"command_center": "whatsapp"})()}
+    )()
     with patch("pynchy.chat.channel_runtime.get_settings", return_value=settings):
         selected = channel_runtime.resolve_default_channel([_FakeChannel("whatsapp")])
     assert selected is not None

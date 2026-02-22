@@ -234,7 +234,15 @@ async def reconcile_workspaces(
         # 1. Ensure the group is registered (create chat group if needed)
         jid = folder_to_jid.get(folder)
         if jid is None:
+            default_name = (get_settings().channels.command_center or "").strip()
             channel = next(
+                (
+                    ch
+                    for ch in channels
+                    if getattr(ch, "name", None) == default_name and hasattr(ch, "create_group")
+                ),
+                None,
+            ) or next(
                 (ch for ch in channels if hasattr(ch, "create_group")),
                 None,
             )
@@ -261,12 +269,6 @@ async def reconcile_workspaces(
                 name=display_name,
                 folder=folder,
                 is_admin=config.is_admin,
-            )
-
-        # 1b. Ensure aliases exist on channels that didn't create the primary JID
-        if register_alias_fn and jid:
-            await create_channel_aliases(
-                jid, display_name, channels, register_alias_fn, get_channel_jid_fn
             )
 
         # 2. For periodic agents, ensure scheduled task exists and is up to date
@@ -327,11 +329,3 @@ async def reconcile_workspaces(
 
     if reconciled:
         logger.info("Workspaces reconciled", count=reconciled)
-
-    # Ensure aliases exist for ALL registered groups, not just config-defined ones.
-    # Groups created via channel auto-registration won't appear
-    # in _workspace_specs() but still need aliases on other channels.
-    if register_alias_fn:
-        await _ensure_aliases_for_all_groups(
-            workspaces, channels, register_alias_fn, get_channel_jid_fn
-        )

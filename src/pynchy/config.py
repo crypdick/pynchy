@@ -296,7 +296,7 @@ class QueueConfig(_StrictModel):
 
 
 class ChannelsConfig(_StrictModel):
-    default: str | None = "tui"
+    command_center: str | None = None
 
 
 class PluginConfig(_StrictModel):
