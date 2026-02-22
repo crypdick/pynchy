@@ -317,22 +317,6 @@ class Settings(BaseSettings):
                     f"sandbox.{folder}.chat references unknown chat: {ws.chat}"
                 )
 
-        # Ensure WhatsApp auth DB paths are unique across connections
-        seen_paths: dict[str, str] = {}
-        for name, cfg in self.connection.whatsapp.items():
-            if cfg.auth_db_path:
-                path = Path(cfg.auth_db_path)
-                if not path.is_absolute():
-                    path = (self.project_root / path).resolve()
-            else:
-                path = (self.data_dir / "neonize.db").resolve()
-            key = str(path)
-            if key in seen_paths:
-                raise ValueError(
-                    "WhatsApp auth_db_path must be unique per connection: "
-                    f"{seen_paths[key]} and {name} both use {key}"
-                )
-            seen_paths[key] = name
         return self
 
     @classmethod

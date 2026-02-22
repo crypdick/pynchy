@@ -31,6 +31,7 @@ class WhatsAppPlugin:
         on_chat_metadata = context.on_chat_metadata_callback
         workspaces = context.workspaces
         channels: list[WhatsAppChannel] = []
+        seen_paths: dict[str, str] = {}
         for name, cfg in configs.items():
             connection_name = f"connection.whatsapp.{name}"
             if cfg.auth_db_path:
@@ -39,6 +40,13 @@ class WhatsAppPlugin:
                     auth_db_path = (s.project_root / auth_db_path).resolve()
             else:
                 auth_db_path = (s.data_dir / "neonize.db").resolve()
+            key = str(auth_db_path)
+            if key in seen_paths:
+                raise ValueError(
+                    "WhatsApp auth_db_path must be unique per connection: "
+                    f"{seen_paths[key]} and {name} both use {key}"
+                )
+            seen_paths[key] = name
             channels.append(
                 WhatsAppChannel(
                     connection_name=connection_name,

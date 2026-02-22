@@ -27,6 +27,17 @@ def _normalize_response_id(value: str | None) -> str | None:
     return value if value.startswith("resp") else None
 
 
+def _disable_tracing() -> None:
+    """Disable OpenAI Agents SDK tracing to avoid 401s in LiteLLM mode."""
+    try:
+        from agents import set_tracing_disabled
+
+        set_tracing_disabled(disabled=True)
+        _log("Tracing disabled")
+    except Exception as exc:
+        _log(f"Tracing disable skipped: {exc}")
+
+
 # ---------------------------------------------------------------------------
 # Shell executor — runs commands directly in the container
 # ---------------------------------------------------------------------------
@@ -155,6 +166,7 @@ class OpenAIAgentCore:
 
     async def start(self) -> None:
         """Initialize OpenAI Agent with tools and MCP servers."""
+        _disable_tracing()
         # Convert config.mcp_servers dict → MCPServer* instances
         for name, spec in self.config.mcp_servers.items():
             server = self._build_mcp_server(name, spec)
