@@ -1,6 +1,6 @@
 ---
 name: Pynchy Development
-description: Use when running pynchy locally — running the app, tests, linting, formatting, pre-commit hooks, or rebuilding the agent container. Also use when determining whether you're on pynchy-server or a local machine, and for debugging agent behavior: session transcript branching, inspecting message history and agent traces in SQLite, pytest hangs, or diagnosing known codebase issues.
+description: Use when running pynchy locally — running the app, tests, linting, formatting, pre-commit hooks, or rebuilding the agent container. Also use when determining whether you're on pynchy-server or a local machine, and for debugging agent behavior-- session transcript branching, inspecting message history and agent traces in SQLite, pytest hangs, or diagnosing known codebase issues.
 ---
 
 # Pynchy Development
