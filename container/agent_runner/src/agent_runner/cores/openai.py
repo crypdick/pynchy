@@ -20,6 +20,13 @@ def _log(message: str) -> None:
     print(f"[openai-core] {message}", file=sys.stderr, flush=True)
 
 
+def _normalize_response_id(value: str | None) -> str | None:
+    """Return a valid OpenAI response ID (resp*), or None if invalid."""
+    if not value:
+        return None
+    return value if value.startswith("resp") else None
+
+
 # ---------------------------------------------------------------------------
 # Shell executor — runs commands directly in the container
 # ---------------------------------------------------------------------------
@@ -111,8 +118,9 @@ class OpenAIAgentCore:
         self._agent: Agent | None = None
         self._mcp_servers: list[MCPServerStdio | MCPServerSse | MCPServerStreamableHttp] = []
         self._mcp_contexts: list[Any] = []
-        self._previous_response_id: str | None = config.session_id
-        self._session_id: str | None = config.session_id
+        previous = _normalize_response_id(config.session_id)
+        self._previous_response_id: str | None = previous
+        self._session_id: str | None = previous
 
     def _build_mcp_server(
         self, name: str, spec: dict[str, Any]
