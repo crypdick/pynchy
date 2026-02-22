@@ -1,7 +1,7 @@
 """Tests for dependency adapters.
 
 Tests critical routing and broadcasting logic in adapters.py:
-- GroupRegistry.admin_chat_jid() — finding the admin group for notifications
+- find_admin_jid() — finding the admin group for notifications
 - HostMessageBroadcaster — dual store+broadcast with correct formatting
 - EventBusAdapter — event type conversion for SSE/TUI bridge
 """
@@ -15,10 +15,10 @@ from unittest.mock import AsyncMock
 from pynchy.adapters import (
     EventBusAdapter,
     GroupMetadataManager,
-    GroupRegistry,
     HostMessageBroadcaster,
     MessageBroadcaster,
     SessionManager,
+    find_admin_jid,
 )
 from pynchy.event_bus import (
     AgentActivityEvent,
@@ -62,32 +62,29 @@ class FakeChannel:
 
 
 # ---------------------------------------------------------------------------
-# GroupRegistry
+# find_admin_jid
 # ---------------------------------------------------------------------------
 
 
-class TestGroupRegistry:
-    """Test admin_chat_jid() which finds the admin group for system notifications."""
+class TestFindAdminJid:
+    """Test find_admin_jid() which finds the admin group for system notifications."""
 
     def test_finds_admin_group_jid(self):
         groups = {
             "regular@g.us": _group(jid="regular@g.us", name="Regular"),
             "admin-1@g.us": _group(jid="admin-1@g.us", name="Admin", is_admin=True),
         }
-        registry = GroupRegistry(groups)
-        assert registry.admin_chat_jid() == "admin-1@g.us"
+        assert find_admin_jid(groups) == "admin-1@g.us"
 
     def test_returns_empty_string_when_no_admin_group(self):
         groups = {
             "a@g.us": _group(jid="a@g.us", name="A"),
             "b@g.us": _group(jid="b@g.us", name="B"),
         }
-        registry = GroupRegistry(groups)
-        assert registry.admin_chat_jid() == ""
+        assert find_admin_jid(groups) == ""
 
     def test_returns_empty_string_when_no_groups(self):
-        registry = GroupRegistry({})
-        assert registry.admin_chat_jid() == ""
+        assert find_admin_jid({}) == ""
 
     def test_returns_first_admin_group_if_multiple(self):
         """If somehow multiple admin groups exist, return the first one found."""
@@ -95,14 +92,8 @@ class TestGroupRegistry:
             "admin-1@g.us": _group(jid="admin-1@g.us", name="Admin1", is_admin=True),
             "admin-2@g.us": _group(jid="admin-2@g.us", name="Admin2", is_admin=True),
         }
-        registry = GroupRegistry(groups)
-        result = registry.admin_chat_jid()
+        result = find_admin_jid(groups)
         assert result in ("admin-1@g.us", "admin-2@g.us")
-
-    def test_workspaces_returns_reference(self):
-        groups = {"a@g.us": _group(jid="a@g.us", name="A")}
-        registry = GroupRegistry(groups)
-        assert registry.workspaces() is groups
 
 
 # ---------------------------------------------------------------------------

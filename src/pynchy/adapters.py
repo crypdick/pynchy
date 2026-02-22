@@ -6,7 +6,6 @@ HTTP server, and IPC watcher. Reduces boilerplate delegation code in PynchyApp.
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -16,7 +15,6 @@ from pynchy.utils import create_background_task, generate_message_id
 
 if TYPE_CHECKING:
     from pynchy.event_bus import EventBus
-    from pynchy.group_queue import GroupQueue
     from pynchy.types import Channel, NewMessage, WorkspaceProfile
 
 # Type aliases for callback signatures used across adapters
@@ -212,27 +210,12 @@ def find_admin_jid(groups: dict[str, WorkspaceProfile]) -> str:
 
     Returns the first admin group's JID, or empty string if none found.
     This is the single code path for all admin-group lookups — used by
-    GroupRegistry, startup, shutdown, and IPC deploy handlers.
+    dep_factory, startup, shutdown, and IPC deploy handlers.
     """
     for jid, group in groups.items():
         if group.is_admin:
             return jid
     return ""
-
-
-class GroupRegistry:
-    """Manages registered group lookup and metadata."""
-
-    def __init__(self, groups_dict: dict[str, WorkspaceProfile]) -> None:
-        self._groups = groups_dict
-
-    def workspaces(self) -> dict[str, WorkspaceProfile]:
-        """Return all registered groups."""
-        return self._groups
-
-    def admin_chat_jid(self) -> str:
-        """Find the JID of an admin group (returns first match)."""
-        return find_admin_jid(self._groups)
 
 
 class SessionManager:
@@ -275,32 +258,6 @@ class SessionManager:
         self._sessions.pop(group_folder, None)
         self._session_cleared.add(group_folder)
         await clear_session(group_folder)
-
-
-class QueueManager:
-    """Manages message queue operations."""
-
-    def __init__(self, queue: GroupQueue) -> None:
-        self._queue = queue
-
-    @property
-    def queue(self) -> GroupQueue:
-        """Return the group queue."""
-        return self._queue
-
-    def enqueue_message_check(self, group_jid: str) -> None:
-        """Enqueue a message check for a group."""
-        self._queue.enqueue_message_check(group_jid)
-
-    def on_process(
-        self,
-        group_jid: str,
-        proc: asyncio.subprocess.Process,
-        container_name: str,
-        group_folder: str,
-    ) -> None:
-        """Register a container process with the queue."""
-        self._queue.register_process(group_jid, proc, container_name, group_folder)
 
 
 class EventBusAdapter:

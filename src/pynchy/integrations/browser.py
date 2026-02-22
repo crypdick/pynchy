@@ -370,11 +370,6 @@ def cleanup_lock_files(profile: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def check_system_deps(needed: list[str]) -> list[str]:
-    """Return the subset of *needed* binaries that are missing from PATH."""
-    return [name for name in needed if not shutil.which(name)]
-
-
 def check_browser_plugin_deps(service_name: str) -> None:
     """Check Chrome + VNC deps for a browser plugin. Logs warnings only."""
     try:
