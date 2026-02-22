@@ -119,13 +119,6 @@ class SlackConnectionConfig(_StrictModel):
     security: ChannelOverrideConfig | None = None
     chat: dict[str, ConnectionChatConfig] = {}
 
-    @field_validator("bot_token_env", "app_token_env")
-    @classmethod
-    def _validate_env_name(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("env var name cannot be empty")
-        return v
-
 
 class WhatsAppConnectionConfig(_StrictModel):
     """WhatsApp connection config (auth state stored in sqlite)."""
