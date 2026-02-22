@@ -164,6 +164,27 @@ def _write_env_file(*, is_admin: bool, group_folder: str) -> Path | None:
         env_vars["GIT_AUTHOR_EMAIL"] = git_email
         env_vars["GIT_COMMITTER_EMAIL"] = git_email
 
+    # Chrome profiles — extract from workspace's mcp_servers list.
+    # If a workspace has mcp_servers = ["gdrive.anyscale", "gcal.work"],
+    # the profiles are {"anyscale", "work"} (extracted from instance names
+    # matching templates that have declared instances).
+    ws_cfg = s.workspaces.get(group_folder) if not is_admin else None
+    # For admin: expose all chrome_profiles. For non-admin: only attached ones.
+    if is_admin:
+        chrome_profiles = s.chrome_profiles
+    else:
+        chrome_profiles_set: set[str] = set()
+        if ws_cfg and ws_cfg.mcp_servers:
+            for entry in ws_cfg.mcp_servers:
+                if "." in entry:
+                    # "gdrive.anyscale" → check if "anyscale" is a chrome profile
+                    _, inst_name = entry.split(".", 1)
+                    if inst_name in s.chrome_profiles:
+                        chrome_profiles_set.add(inst_name)
+        chrome_profiles = sorted(chrome_profiles_set)
+    if chrome_profiles:
+        env_vars["PYNCHY_CHROME_PROFILES"] = ",".join(chrome_profiles)
+
     if not env_vars:
         logger.warning(
             "No credentials found — containers will fail to authenticate. "

@@ -137,10 +137,45 @@ class McpManager:
 
     @property
     def _merged_mcp_servers(self) -> dict[str, McpServerConfig]:
-        """Config.toml servers + plugin-provided servers (config wins on collision)."""
-        merged = dict(self._plugin_mcp_servers)
-        merged.update(self._settings.mcp_servers)  # config.toml wins
-        return merged
+        """Config.toml servers + plugin-provided servers, with instance expansion.
+
+        Instance expansion: for each template in ``mcp_server_instances``,
+        the bare template is consumed (removed from result) and replaced by
+        one entry per instance with auto-assigned port, chrome-profile volume
+        mount, and PORT env var.
+        """
+        result = dict(self._plugin_mcp_servers)
+        result.update(self._settings.mcp_servers)  # config.toml flat overrides
+
+        # Expand template × instance pairs
+        for template, instances in self._settings.mcp_server_instances.items():
+            base = result.pop(template, None)
+            if base is None:
+                logger.warning(
+                    "No base spec for MCP template",
+                    template=template,
+                )
+                continue
+
+            for i, (inst_name, overrides) in enumerate(sorted(instances.items())):
+                qualified = f"{template}.{inst_name}"
+                port = (base.port or 3000) + i
+                chrome_profile = overrides.get("chrome_profile")
+
+                # Build merged config updates
+                updates: dict[str, Any] = {"port": port}
+
+                if chrome_profile:
+                    vol = f"data/chrome-profiles/{chrome_profile}:/home/chrome"
+                    updates["volumes"] = list(base.volumes) + [vol]
+
+                merged_env = dict(base.env)
+                merged_env["PORT"] = str(port)
+                updates["env"] = merged_env
+
+                result[qualified] = base.model_copy(update=updates)
+
+        return result
 
     # ------------------------------------------------------------------
     # Public API

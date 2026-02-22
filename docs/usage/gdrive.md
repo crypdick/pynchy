@@ -20,59 +20,74 @@ Add `CHROME_PATH` to `.env`:
 CHROME_PATH=/usr/bin/google-chrome-stable
 ```
 
-## 1. Define the MCP server
+## 1. Define chrome profile and instance
 
-Add the gdrive MCP server to `config.toml`:
+Add a chrome profile and gdrive instance to `config.toml`:
 
 ```toml
-[mcp_servers.gdrive]
-type = "docker"
-image = "pynchy-mcp-gdrive:latest"
-dockerfile = "container/mcp/gdrive.Dockerfile"
-port = 3000
-transport = "streamable_http"
-volumes = [
-    "mcp-gdrive:/gdrive-server",
-    "data/gcp-oauth.keys.json:/app/gcp-oauth.keys.json:ro",
-]
+chrome_profiles = ["anyscale"]
+
+[mcp_servers.gdrive.anyscale]
+chrome_profile = "anyscale"
 ```
+
+The plugin provides the base spec (Docker image, port, transport, Dockerfile). You only declare the instance with its chrome profile attachment.
 
 ## 2. Grant workspace access
 
 ```toml
-[workspaces.my-workspace]
-mcp_servers = ["gdrive"]
+[workspaces.anyscale-1]
+mcp_servers = ["gdrive.anyscale"]
 ```
 
 ## 3. First-time setup
 
-Ask your agent to set up Google Drive:
+Ask your agent to set up Google for the profile:
 
 ```
-@Pynchy set up Google Drive access
+@Pynchy set up Google for the anyscale profile
 ```
 
-The agent automates the full GCP setup flow: create a project, enable the Drive API, configure OAuth consent, create credentials, and run the OAuth authorization. You click "Allow" on the Google consent screen to grant read-only Drive access.
+The agent calls `setup_google(chrome_profile="anyscale")`, which automates the full GCP setup flow: create a project, enable the Drive API, configure OAuth consent, create credentials, and run the OAuth authorization. You click "Allow" on the Google consent screen to grant read-only Drive access.
 
 On a **headless server**, the agent returns a noVNC URL — open it in your browser to interact with the GCP Console and Google login.
 
 ## 4. Verify
 
-Trigger a message in a workspace with `gdrive` access. The Docker container starts on-demand:
+Trigger a message in a workspace with `gdrive.anyscale` access. The Docker container starts on-demand:
 
 ```bash
 ssh pynchy-server 'docker ps --filter name=pynchy-mcp-gdrive'
 ```
 
+## Multiple accounts
+
+Each chrome profile maps to one Google account. To access Drive from multiple accounts:
+
+```toml
+chrome_profiles = ["anyscale", "work"]
+
+[mcp_servers.gdrive.anyscale]
+chrome_profile = "anyscale"
+
+[mcp_servers.gdrive.work]
+chrome_profile = "work"
+
+[workspaces.anyscale-1]
+mcp_servers = ["gdrive.anyscale", "gdrive.work"]
+```
+
+The agent sees separate tool namespaces: `mcp__gdrive_anyscale__search` and `mcp__gdrive_work__search`.
+
 ## Troubleshooting
 
 ### 403 errors from Drive API
 
-The Drive API isn't enabled for your GCP project. Ask the agent to enable it, or do it manually in the [GCP Console](https://console.cloud.google.com/apis/library/drive.googleapis.com).
+The Drive API isn't enabled for your GCP project. Ask the agent to set up Google for the profile — it will detect the missing API and enable it.
 
 ### Token expired / authentication errors
 
-Ask the agent to re-authorize Google Drive. It opens the consent screen via noVNC for you to click "Allow" again.
+Ask the agent to set up Google for the profile again. The `setup_google` tool is idempotent — it detects that credentials exist but tokens are expired, and runs only the OAuth flow.
 
 ### noVNC not loading
 
@@ -85,3 +100,30 @@ rm -f data/playwright-profiles/google/SingletonLock
 rm -f data/playwright-profiles/google/SingletonSocket
 rm -f data/playwright-profiles/google/SingletonCookie
 ```
+
+## Migration from old gdrive setup
+
+If you previously used the old `[mcp_servers.gdrive]` config with Docker named volumes:
+
+1. Create the chrome profile directory and move credentials:
+   ```bash
+   mkdir -p data/chrome-profiles/anyscale
+   cp data/gcp-oauth.keys.json data/chrome-profiles/anyscale/gcp-oauth.keys.json
+   ```
+
+2. Update `config.toml`:
+   - Add `chrome_profiles = ["anyscale"]`
+   - Remove the old `[mcp_servers.gdrive]` section (plugin provides it now)
+   - Add instance: `[mcp_servers.gdrive.anyscale]` with `chrome_profile = "anyscale"`
+   - Update workspace: `mcp_servers = ["gdrive.anyscale"]`
+
+3. Re-authorize (tokens in the old Docker volume won't carry over):
+   ```
+   @Pynchy set up Google for the anyscale profile
+   ```
+
+4. Clean up old artifacts:
+   ```bash
+   docker volume rm mcp-gdrive 2>/dev/null
+   rm data/gcp-oauth.keys.json
+   ```

@@ -176,6 +176,11 @@ is_admin = true
 trigger = "always"
 # repo_access = "owner/repo"
 
+# Example workspace with Google MCP (dot-syntax instance names):
+# [workspaces.anyscale-1]
+# name = "Anyscale"
+# mcp_servers = ["gdrive.anyscale", "gcal.anyscale"]
+
 # Example workspace with MCP access and per-MCP kwargs:
 # [workspaces.research]
 # mcp_servers = ["dev-tools", "remote-api"]   # groups + individual names, set-unioned
@@ -257,11 +262,39 @@ trigger = "always"
 # ignore = ["contact_birthdays"]   # hide auto-generated calendars
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Chrome Profiles
+# ─────────────────────────────────────────────────────────────────────────────
+# Generic list of profile names. Any MCP server can attach to a chrome profile.
+# Each profile maps to a host directory at data/chrome-profiles/{name}/.
+# Auth artifacts (OAuth keys, tokens) are stored there and auto-mounted into
+# containers that reference the profile.
+
+# chrome_profiles = ["anyscale", "work"]
+
+# ─────────────────────────────────────────────────────────────────────────────
 # MCP Server Definitions
 # ─────────────────────────────────────────────────────────────────────────────
 # Define MCP servers that agents can access. Docker-based MCPs start on-demand
 # and stop after idle_timeout. URL MCPs are always available.
 # Requires LiteLLM gateway mode (see [gateway] above).
+#
+# Google services (gdrive, gcal) — base specs are provided by the built-in
+# GoogleMcpPlugin. Declare instances with chrome_profile attachment:
+#
+# [mcp_servers.gdrive.anyscale]
+# chrome_profile = "anyscale"
+#
+# [mcp_servers.gdrive.work]
+# chrome_profile = "work"
+#
+# [mcp_servers.gcal.anyscale]
+# chrome_profile = "anyscale"
+#
+# Each instance is 2 lines. The plugin provides everything else (Docker image,
+# port, transport, Dockerfile). Ports auto-assign from the base. Volume
+# auto-mounts from the chrome_profile.
+#
+# The agent sees tools as mcp__gdrive_anyscale__search (dots → underscores).
 
 # Docker-based MCP (container managed by pynchy):
 # [mcp_servers.playwright]
@@ -308,6 +341,7 @@ trigger = "always"
 # [mcp_groups]
 # dev-tools = ["playwright", "github-mcp"]
 # social = ["twitter-mcp", "linkedin-mcp"]
+# google_anyscale = ["gdrive.anyscale", "gcal.anyscale"]
 # "all" is built-in — refers to every defined mcp_server
 
 # ─────────────────────────────────────────────────────────────────────────────

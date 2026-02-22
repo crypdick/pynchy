@@ -1,81 +1,44 @@
-"""Google Drive setup tools — GCP project setup, API enablement, and OAuth via IPC.
+"""Google setup tools — one per chrome profile, auto-generated.
 
-Uses Playwright on the host side with a persistent browser context and
-noVNC for human interaction (Google login, OAuth consent).  Three tools
-of increasing scope:
+Reads PYNCHY_CHROME_PROFILES env var (comma-separated, injected by the
+host based on which profiles the workspace's MCP servers reference) and
+registers a ``setup_google_{profile}`` IPC tool for each one.
 
-- ``enable_gdrive_api`` — just enable the Drive API (fixes 403 errors)
-- ``authorize_gdrive`` — re-run OAuth token exchange (existing credentials)
-- ``setup_gdrive`` — full flow from scratch (project + API + consent + OAuth)
-
-These tools write IPC requests that the host processes after applying
-policy middleware.
+The agent sees tools like ``setup_google_anyscale`` — same naming pattern
+as the MCP tools (``mcp__gdrive_anyscale__search``).  No guessing which
+profiles are available.
 """
+
+import os
 
 from agent_runner.agent_tools._registry import register_ipc_tool
 
-register_ipc_tool(
-    name="enable_gdrive_api",
-    description=(
-        "Enable the Google Drive API for a GCP project. Use this when GDrive "
-        "MCP tools return 403 errors indicating the API hasn't been enabled. "
-        "Opens a browser on the host (visible via noVNC) to automate the GCP "
-        "Console. May require human interaction for Google login."
-    ),
-    input_schema={
-        "type": "object",
-        "properties": {
-            "project_id": {
-                "type": "string",
-                "description": (
-                    "GCP project ID. Auto-detected from existing credentials if not provided."
-                ),
-            },
-        },
-    },
-)
+_raw = os.environ.get("PYNCHY_CHROME_PROFILES", "")
+_profiles = [p.strip() for p in _raw.split(",") if p.strip()]
 
-register_ipc_tool(
-    name="authorize_gdrive",
-    description=(
-        "Run the Google OAuth token exchange flow using existing OAuth client "
-        "credentials (data/gcp-oauth.keys.json). Opens a browser for the user "
-        "to click 'Allow' on the Google consent screen (via noVNC on headless "
-        "servers). Saves the resulting tokens to the mcp-gdrive Docker volume. "
-        "Use this when tokens have expired but credentials already exist."
-    ),
-    input_schema={
-        "type": "object",
-        "properties": {
-            "keys_path": {
-                "type": "string",
-                "description": (
-                    "Path to the OAuth client JSON file (default: data/gcp-oauth.keys.json)"
-                ),
+for _profile in _profiles:
+    register_ipc_tool(
+        name=f"setup_google_{_profile}",
+        description=(
+            f"Set up Google services (Drive, Calendar, etc.) for the "
+            f"'{_profile}' chrome profile. Idempotent — checks state and "
+            f"only does what's missing: GCP project creation, API enablement, "
+            f"OAuth consent screen, credential creation, and OAuth token "
+            f"exchange. Opens a browser on the host (visible via noVNC on "
+            f"headless servers) for Google login and OAuth consent. Required "
+            f"scopes are auto-computed from which MCP servers reference "
+            f"this profile."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": (
+                        "GCP project ID to create or reuse. Auto-detected from "
+                        "existing credentials if not provided."
+                    ),
+                },
             },
         },
-    },
-)
-
-register_ipc_tool(
-    name="setup_gdrive",
-    description=(
-        "Full Google Drive setup: create GCP project, enable Drive API, "
-        "configure OAuth consent screen, create Desktop App credentials, "
-        "and run OAuth authorization. Opens a browser on the host (visible "
-        "via noVNC) for human interaction. Only needed for first-time setup "
-        "or if the GCP project was deleted."
-    ),
-    input_schema={
-        "type": "object",
-        "properties": {
-            "project_id": {
-                "type": "string",
-                "description": (
-                    "GCP project ID to create or reuse. Auto-detected from "
-                    "existing credentials if not provided."
-                ),
-            },
-        },
-    },
-)
+    )

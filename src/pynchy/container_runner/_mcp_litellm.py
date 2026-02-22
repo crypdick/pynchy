@@ -112,9 +112,12 @@ async def sync_mcp_endpoints(
         # with the correct URL.  Delete extras and stale entries.
         # ----------------------------------------------------------
         # NOTE: LiteLLM field is "url", not "server_url".
-        # NOTE: LiteLLM rejects server_name values containing hyphens.
+        # NOTE: LiteLLM rejects server_name values containing hyphens;
+        # dots from instance names (e.g. "gdrive.anyscale") may also
+        # cause issues.  Sanitize to underscores for registration.
         for iid, instance in instances.items():
-            entries = existing.pop(iid, [])
+            sanitized_iid = iid.replace(".", "_").replace("-", "_")
+            entries = existing.pop(sanitized_iid, [])
             desired_url = instance.endpoint_url
 
             # Find an entry that already matches the desired URL
@@ -152,7 +155,7 @@ async def sync_mcp_endpoints(
                 transport = "http"
 
             payload: dict[str, Any] = {
-                "server_name": iid,
+                "server_name": sanitized_iid,
                 "url": desired_url,
                 "transport": transport,
                 "allow_all_keys": True,

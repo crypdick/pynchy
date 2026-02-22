@@ -94,27 +94,30 @@ def _collect_plugin_mcp_servers(
     from pynchy.config_mcp import McpServerConfig
 
     result: dict[str, McpServerConfig] = {}
-    for spec in plugin_manager.hook.pynchy_mcp_server_spec():
-        if not isinstance(spec, dict):
-            logger.warning(
-                "Ignoring invalid MCP server plugin spec",
-                spec_type=type(spec).__name__,
-            )
-            continue
+    for raw in plugin_manager.hook.pynchy_mcp_server_spec():
+        # Plugins can return a single dict or a list of dicts
+        specs = raw if isinstance(raw, list) else [raw]
+        for spec in specs:
+            if not isinstance(spec, dict):
+                logger.warning(
+                    "Ignoring invalid MCP server plugin spec",
+                    spec_type=type(spec).__name__,
+                )
+                continue
 
-        name = spec.pop("name", None)
-        if not isinstance(name, str):
-            logger.warning("Ignoring MCP server plugin spec without name", spec=spec)
-            continue
+            name = spec.pop("name", None)
+            if not isinstance(name, str):
+                logger.warning("Ignoring MCP server plugin spec without name", spec=spec)
+                continue
 
-        try:
-            config = McpServerConfig.model_validate({"type": "script", **spec})
-        except Exception:
-            logger.exception("Invalid MCP server config from plugin", name=name)
-            continue
+            try:
+                config = McpServerConfig.model_validate({"type": "script", **spec})
+            except Exception:
+                logger.exception("Invalid MCP server config from plugin", name=name)
+                continue
 
-        result[name] = config
-        logger.info("Collected plugin MCP server spec", name=name)
+            result[name] = config
+            logger.info("Collected plugin MCP server spec", name=name)
 
     return result
 
@@ -158,7 +161,7 @@ async def start_gateway(
     # Sync MCP state to LiteLLM after gateway is ready (LiteLLM mode only).
     # Collect plugin-provided MCP server specs and merge with config.toml.
     plugin_mcp_servers = _collect_plugin_mcp_servers(plugin_manager)
-    has_servers = s.mcp_servers or plugin_mcp_servers
+    has_servers = s.mcp_servers or s.mcp_server_instances or plugin_mcp_servers
     if isinstance(_gateway, LiteLLMGateway) and has_servers:
         from pynchy.container_runner.mcp_manager import McpManager, set_mcp_manager
 
