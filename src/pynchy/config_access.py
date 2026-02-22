@@ -15,7 +15,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pynchy.config import OwnerConfig, get_settings
+from pynchy.config import get_settings
+from pynchy.config_models import OwnerConfig
 
 if TYPE_CHECKING:
     from pynchy.types import ResolvedChannelConfig

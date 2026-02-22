@@ -21,7 +21,8 @@ from typing import Any
 
 import pluggy
 
-from pynchy.config import CalDAVConfig, CalDAVServerConfig, get_settings
+from pynchy.config import get_settings
+from pynchy.config_models import CalDAVConfig, CalDAVServerConfig
 from pynchy.logger import logger
 
 hookimpl = pluggy.HookimplMarker("pynchy")
