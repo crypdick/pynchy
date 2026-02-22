@@ -394,7 +394,7 @@ async def process_group_messages(
 
     # Send emoji reaction on the last message to indicate agent is reading
     last_msg = missed_messages[-1]
-    await deps.send_reaction_to_channels(chat_jid, last_msg.id, last_msg.sender, "👀")
+    await deps.send_reaction_to_channels(chat_jid, last_msg.id, last_msg.sender, "🦞")
 
     # Set typing indicator on all channels that support it
     await deps.set_typing_on_channels(chat_jid, True)

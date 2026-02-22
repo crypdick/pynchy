@@ -146,7 +146,7 @@ async def _route_incoming_group(
                 count=len(all_pending),
             )
             last_msg = all_pending[-1]
-            await deps.send_reaction_to_channels(group_jid, last_msg.id, last_msg.sender, "👀")
+            await deps.send_reaction_to_channels(group_jid, last_msg.id, last_msg.sender, "🦀")
             _mark_dispatched(deps, group_jid, all_pending[-1].timestamp)
         return
 
