@@ -5,8 +5,11 @@ node_modules/
 dist/
 site/
 
-# Local data & auth
-data/
+# Local data & auth (data/* not data/ — allows re-including subdirectories)
+data/*
+!data/chrome-profiles/
+data/chrome-profiles/*/
+!data/chrome-profiles/.gitkeep
 logs/
 
 # Groups - only track base structure and specific CLAUDE.md files

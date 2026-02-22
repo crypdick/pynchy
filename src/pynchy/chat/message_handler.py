@@ -329,8 +329,14 @@ async def process_group_messages(
     # Check for agent-initiated context reset prompt
     reset_file = s.data_dir / "ipc" / group.folder / "reset_prompt.json"
     reset_result = await _handle_reset_handoff(deps, chat_jid, group, reset_file)
-    if reset_result is not None:
-        return reset_result
+    if reset_result is False:
+        # Handoff failed — return False so GroupQueue will retry.
+        return False
+    # reset_result is None (no file) or True (handoff ran) — fall through to
+    # process any pending user messages in the same cycle.  The old code
+    # returned True on a successful handoff, silently dropping the message
+    # that triggered this run (e.g. the user's first message after a context
+    # reset could sit unprocessed until the next incoming message).
 
     is_admin_group = group.is_admin
     since_timestamp = deps.last_agent_timestamp.get(chat_jid, "")

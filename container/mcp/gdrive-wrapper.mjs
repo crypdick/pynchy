@@ -81,5 +81,14 @@ if (fs.existsSync(keyfilePath)) {
   console.error(`[gdrive-wrapper] OAuth keyfile not found at ${keyfilePath} — token refresh will not work`);
 }
 
+// Copy credentials from mounted chrome profile to where gdrive expects them.
+// The /gdrive-server/ directory exists in the base mcp/gdrive image.
+const chromeCredsPath = "/home/chrome/credentials.json";
+const gdriveCredsPath = "/gdrive-server/credentials.json";
+if (fs.existsSync(chromeCredsPath)) {
+  fs.copyFileSync(chromeCredsPath, gdriveCredsPath);
+  console.error("[gdrive-wrapper] Copied credentials from /home/chrome/");
+}
+
 // Import the original server — runs loadCredentialsAndRunServer() on load.
 await import("./dist/index.js");

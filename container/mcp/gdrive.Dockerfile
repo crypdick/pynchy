@@ -10,4 +10,5 @@
 FROM mcp/gdrive:latest
 RUN npm install -g supergateway
 COPY container/mcp/gdrive-wrapper.mjs /app/gdrive-wrapper.mjs
-ENTRYPOINT ["supergateway", "--stdio", "node /app/gdrive-wrapper.mjs", "--outputTransport", "streamableHttp", "--port", "3000"]
+ENV PORT=3100
+ENTRYPOINT ["sh", "-c", "supergateway --stdio 'node /app/gdrive-wrapper.mjs' --outputTransport streamableHttp --port $PORT"]

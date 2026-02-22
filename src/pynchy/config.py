@@ -476,14 +476,68 @@ class Settings(BaseSettings):
     slack: SlackConfig = SlackConfig()
     caldav: CalDAVConfig = CalDAVConfig()
 
+    # Chrome profiles — generic list of names; any MCP server can attach to one.
+    # Each profile maps to a host directory at data/chrome-profiles/{name}/.
+    chrome_profiles: list[str] = []
+
     # MCP management (imported from config_mcp)
     mcp_servers: dict[str, McpServerConfig] = {}  # [mcp_servers.<name>]
     mcp_groups: dict[str, list[str]] = {}  # {group_name: [server_names]}
     mcp_presets: dict[str, dict[str, str]] = {}  # {preset_name: {key: value}}
 
+    # Extracted by _separate_mcp_instances validator from nested sub-tables
+    # in mcp_servers.  {template_name: {instance_name: {chrome_profile: "...", ...}}}
+    mcp_server_instances: dict[str, dict[str, dict[str, Any]]] = {}
+
     # Sentinels (class-level, not fields)
     OUTPUT_START_MARKER: ClassVar[str] = "---PYNCHY_OUTPUT_START---"
     OUTPUT_END_MARKER: ClassVar[str] = "---PYNCHY_OUTPUT_END---"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _separate_mcp_instances(cls, data: dict[str, Any]) -> dict[str, Any]:
+        """Detect nested sub-tables in mcp_servers and separate them.
+
+        TOML input like ``[mcp_servers.gdrive.personal]`` with
+        ``chrome_profile = "personal"`` gets parsed as a nested dict under
+        ``mcp_servers.gdrive``.  This validator splits those into:
+        - ``mcp_servers`` — flat server definitions (base overrides)
+        - ``mcp_server_instances`` — ``{template: {instance: {overrides}}}``
+
+        A sub-key is treated as an instance (not a config field) when its
+        value is a dict and the key is NOT a known McpServerConfig field.
+        """
+        raw = data.get("mcp_servers")
+        if not isinstance(raw, dict):
+            return data
+
+        config_fields = set(McpServerConfig.model_fields)
+        flat: dict[str, Any] = {}
+        instanced: dict[str, dict[str, dict[str, Any]]] = {}
+
+        for name, spec in raw.items():
+            if not isinstance(spec, dict):
+                flat[name] = spec
+                continue
+
+            base: dict[str, Any] = {}
+            instances: dict[str, dict[str, Any]] = {}
+            for k, v in spec.items():
+                if isinstance(v, dict) and k not in config_fields:
+                    instances[k] = v
+                else:
+                    base[k] = v
+
+            if instances:
+                if base:
+                    flat[name] = base  # user-provided base overrides
+                instanced[name] = instances
+            else:
+                flat[name] = spec
+
+        data["mcp_servers"] = flat
+        data["mcp_server_instances"] = instanced
+        return data
 
     @model_validator(mode="after")
     def _require_explicit_fields(self) -> Settings:

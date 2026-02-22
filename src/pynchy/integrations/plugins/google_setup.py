@@ -1,14 +1,14 @@
-"""Built-in Google Setup plugin (service handler).
+"""Built-in Google Setup plugin — MCP specs + service handlers.
 
-Provides host-side handlers for GCP project setup, Drive API enablement,
-OAuth consent screen configuration, and OAuth token exchange.  Consolidates
-the standalone ``scripts/setup_gdrive_oauth.py`` and
-``scripts/gdrive_oauth_authorize.py`` into the plugin system.
+Two plugin classes:
 
-Three handlers:
-- ``enable_gdrive_api`` — enable Drive API for an existing GCP project
-- ``setup_gdrive`` — full flow: project + API + consent + credentials + OAuth
-- ``authorize_gdrive`` — OAuth token exchange (assumes credentials JSON exists)
+**GoogleMcpPlugin** — provides base MCP server specs for ``gdrive`` and
+``gcal``.  These are templates: they exist only to be inherited by config
+instances (e.g., ``[mcp_servers.gdrive.anyscale]``).
+
+**GoogleSetupPlugin** — provides host-side handlers for GCP project setup,
+API enablement, OAuth consent screen configuration, and OAuth token
+exchange.  Single idempotent tool: ``setup_google(chrome_profile=...)``.
 
 Uses the system Chrome/Chromium binary (``chrome_path()``) — Playwright's
 vendored Chromium is never used (see ``integrations.browser`` for rationale).
@@ -58,14 +58,31 @@ _GCP_CONSOLE = "https://console.cloud.google.com"
 _OAUTH_CALLBACK_PORT = 8085
 _GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 _GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-_DRIVE_READONLY_SCOPE = "https://www.googleapis.com/auth/drive.readonly"
-_SERVICE_MANAGEMENT_SCOPE = "https://www.googleapis.com/auth/service.management"
-_OAUTH_SCOPES = f"{_DRIVE_READONLY_SCOPE} {_SERVICE_MANAGEMENT_SCOPE}"
 _DEFAULT_PROJECT_ID = "pynchy-gdrive"
+
+# ---------------------------------------------------------------------------
+# Scope registry — maps MCP server template names to OAuth scopes + API IDs
+# ---------------------------------------------------------------------------
+
+_SERVER_SCOPES: dict[str, tuple[list[str], str]] = {
+    "gdrive": (
+        ["https://www.googleapis.com/auth/drive.readonly"],
+        "drive.googleapis.com",
+    ),
+    "gcal": (
+        ["https://www.googleapis.com/auth/calendar"],
+        "calendar-json.googleapis.com",
+    ),
+}
+
+# Service management scope is always included (enables REST API enablement)
+_SERVICE_MANAGEMENT_SCOPE = "https://www.googleapis.com/auth/service.management"
+
+_SERVICE_USAGE_URL = "https://serviceusage.googleapis.com/v1"
 
 
 # ---------------------------------------------------------------------------
-# Paths
+# Paths — chrome-profile-aware
 # ---------------------------------------------------------------------------
 
 
@@ -74,34 +91,71 @@ def _project_root() -> Path:
     return Path(root) if root else Path.cwd()
 
 
-def _download_dir() -> Path:
-    """Temporary download directory for credential files."""
-    d = _project_root() / "data" / "tmp" / "gdrive-setup"
+def _chrome_profile_dir(profile_name: str) -> Path:
+    """Host directory for a chrome profile's auth artifacts."""
+    d = _project_root() / "data" / "chrome-profiles" / profile_name
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
-def _keys_path() -> Path:
-    return _project_root() / "data" / "gcp-oauth.keys.json"
+def _keys_path(profile_name: str) -> Path:
+    """OAuth client credentials (gcp-oauth.keys.json) for a chrome profile."""
+    return _chrome_profile_dir(profile_name) / "gcp-oauth.keys.json"
+
+
+def _credentials_path(profile_name: str) -> Path:
+    """OAuth tokens (credentials.json) for a chrome profile."""
+    return _chrome_profile_dir(profile_name) / "credentials.json"
+
+
+def _download_dir() -> Path:
+    """Temporary download directory for credential files."""
+    d = _project_root() / "data" / "tmp" / "google-setup"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 # ---------------------------------------------------------------------------
-# REST API helpers (preferred over Playwright when scopes allow)
+# Scope computation — union scopes from all services referencing a profile
 # ---------------------------------------------------------------------------
 
-_SERVICE_USAGE_URL = "https://serviceusage.googleapis.com/v1"
 
+def _compute_scopes_for_profile(profile_name: str) -> tuple[str, list[str]]:
+    """Compute the union of OAuth scopes and API IDs for a chrome profile.
 
-def _get_project_number() -> str | None:
-    """Extract the GCP project number from the OAuth client_id.
-
-    The client_id format is ``{project_number}-{hash}.apps.googleusercontent.com``.
+    Checks which MCP server instances reference this profile across all
+    workspaces.  Returns (space-separated scopes, sorted API IDs).
     """
-    kp = _keys_path()
-    if not kp.exists():
+    from pynchy.config import get_settings
+
+    scopes: set[str] = set()
+    apis: set[str] = set()
+
+    for svc, (svc_scopes, api_id) in _SERVER_SCOPES.items():
+        instance_name = f"{svc}.{profile_name}"
+        for ws in get_settings().workspaces.values():
+            if instance_name in (ws.mcp_servers or []):
+                scopes.update(svc_scopes)
+                apis.add(api_id)
+                break
+
+    # Always include service management scope for REST API enablement
+    scopes.add(_SERVICE_MANAGEMENT_SCOPE)
+
+    return " ".join(sorted(scopes)), sorted(apis)
+
+
+# ---------------------------------------------------------------------------
+# REST API helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_project_number(keys_path: Path) -> str | None:
+    """Extract the GCP project number from the OAuth client_id."""
+    if not keys_path.exists():
         return None
     try:
-        with open(kp) as f:
+        with open(keys_path) as f:
             data = json.load(f)
         client = data.get("installed") or data.get("web")
         if client and client.get("client_id"):
@@ -111,12 +165,27 @@ def _get_project_number() -> str | None:
     return None
 
 
-def _refresh_access_token() -> str | None:
+def _read_project_id(keys_path: Path) -> str | None:
+    """Auto-detect project ID from existing credentials JSON."""
+    if not keys_path.exists():
+        return None
+    try:
+        with open(keys_path) as f:
+            data = json.load(f)
+        client = data.get("installed") or data.get("web")
+        if client and client.get("project_id"):
+            return client["project_id"]
+    except Exception:
+        pass
+    return None
+
+
+def _refresh_access_token(profile_name: str) -> str | None:
     """Refresh the OAuth access token using stored credentials.
 
-    Returns the new access token, or None if refresh fails.
+    Reads from chrome profile directory (not Docker volume).
     """
-    kp = _keys_path()
+    kp = _keys_path(profile_name)
     if not kp.exists():
         return None
 
@@ -125,33 +194,18 @@ def _refresh_access_token() -> str | None:
     except Exception:
         return None
 
-    # Read refresh token from the Docker volume
-    result = subprocess.run(
-        [
-            "docker",
-            "run",
-            "--rm",
-            "-v",
-            "mcp-gdrive:/gdrive-server:ro",
-            "busybox",
-            "cat",
-            "/gdrive-server/credentials.json",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
+    creds_path = _credentials_path(profile_name)
+    if not creds_path.exists():
         return None
 
     try:
-        creds = json.loads(result.stdout)
+        creds = json.loads(creds_path.read_text())
         refresh_token = creds.get("refresh_token")
         if not refresh_token:
             return None
     except Exception:
         return None
 
-    # Refresh
     data = urllib.parse.urlencode(
         {
             "client_id": client_id,
@@ -173,13 +227,9 @@ def _refresh_access_token() -> str | None:
         return None
 
 
-def _enable_drive_api_via_rest(project_number: str, access_token: str) -> bool:
-    """Enable Google Drive API via the Service Usage REST API.
-
-    Returns True on success, False if scopes are insufficient or another
-    error occurs (caller should fall back to Playwright).
-    """
-    url = f"{_SERVICE_USAGE_URL}/projects/{project_number}/services/drive.googleapis.com:enable"
+def _enable_api_via_rest(project_number: str, access_token: str, api_id: str) -> bool:
+    """Enable a Google API via the Service Usage REST API."""
+    url = f"{_SERVICE_USAGE_URL}/projects/{project_number}/services/{api_id}:enable"
     req = urllib.request.Request(
         url,
         data=b"{}",
@@ -192,17 +242,17 @@ def _enable_drive_api_via_rest(project_number: str, access_token: str) -> bool:
     try:
         with urllib.request.urlopen(req) as resp:
             result = json.loads(resp.read())
-        logger.info("Drive API enabled via REST", result_name=result.get("name", ""))
+        logger.info("API enabled via REST", api=api_id, result_name=result.get("name", ""))
         return True
     except urllib.error.HTTPError as exc:
         body = exc.read().decode()
         if "SCOPE_INSUFFICIENT" in body or "ACCESS_TOKEN_SCOPE_INSUFFICIENT" in body:
-            logger.info("REST enable failed (insufficient scopes), will try Playwright")
+            logger.info("REST enable failed (insufficient scopes)", api=api_id)
         else:
-            logger.warning("REST enable failed", status=exc.code, body=body[:200])
+            logger.warning("REST enable failed", api=api_id, status=exc.code, body=body[:200])
         return False
     except Exception as exc:
-        logger.warning("REST enable failed", error=str(exc))
+        logger.warning("REST enable failed", api=api_id, error=str(exc))
         return False
 
 
@@ -242,16 +292,7 @@ async def _wait_for_login(page) -> None:
 
 
 async def _try_step(page, step_fn, fallback_msg: str, done_check=None, timeout: int = 60):
-    """Attempt an automated Console step; fall back to manual + noVNC.
-
-    Args:
-        page: Playwright page.
-        step_fn: Async callable that attempts the automation.
-        fallback_msg: Instructions printed if automation fails.
-        done_check: Async callable(page) -> bool that returns True when the
-            step is complete (used for manual fallback polling).
-        timeout: Max seconds to wait for manual completion.
-    """
+    """Attempt an automated Console step; fall back to manual + noVNC."""
     try:
         await step_fn(page)
         return
@@ -347,23 +388,20 @@ async def _ensure_project(page, project_id: str) -> None:
     logger.info("GCP project ready", project_id=project_id)
 
 
-async def _ensure_drive_api(page, project_id: str) -> None:
-    """Enable Google Drive API for the project."""
-    logger.info("Enabling Google Drive API", project_id=project_id)
+async def _ensure_api(page, project_id: str, api_id: str) -> None:
+    """Enable a Google API for the project."""
+    logger.info("Enabling Google API", project_id=project_id, api=api_id)
 
     await page.goto(
-        f"{_GCP_CONSOLE}/apis/library/drive.googleapis.com?project={project_id}",
+        f"{_GCP_CONSOLE}/apis/library/{api_id}?project={project_id}",
         wait_until="domcontentloaded",
     )
     await page.wait_for_timeout(5000)
     await _dismiss_modals(page)
 
-    # Check for the Enable button — its presence means the API is NOT enabled.
-    # Don't rely on body text like "manage" — that word appears in GCP navigation
-    # on every page and produces false positives.
     enable_btn = page.get_by_role("button", name=re.compile(r"^enable$", re.I))
     if await enable_btn.count() == 0:
-        logger.info("Drive API already enabled (no Enable button found)")
+        logger.info("API already enabled (no Enable button found)", api=api_id)
         return
 
     async def _automate(p):
@@ -372,18 +410,16 @@ async def _ensure_drive_api(page, project_id: str) -> None:
         await p.wait_for_timeout(5000)
 
     async def _api_enabled(p) -> bool:
-        # After enabling, the Enable button disappears and is replaced by
-        # Manage / Disable buttons.
         btn = p.get_by_role("button", name=re.compile(r"^enable$", re.I))
         return await btn.count() == 0
 
     await _try_step(
         page,
         _automate,
-        'Click the "Enable" button for Google Drive API.',
+        f'Click the "Enable" button for {api_id}.',
         done_check=_api_enabled,
     )
-    logger.info("Drive API enabled")
+    logger.info("API enabled", api=api_id)
 
 
 async def _ensure_consent_screen(page, project_id: str) -> None:
@@ -498,7 +534,6 @@ async def _create_oauth_credentials(page, project_id: str) -> Path:
                 '4. Click "Download JSON" in the dialog'
             ),
         )
-        # Watch for download
         try:
             async with page.expect_download(timeout=180_000) as download_info:
                 download = await download_info.value
@@ -506,7 +541,8 @@ async def _create_oauth_credentials(page, project_id: str) -> Path:
         except Exception as exc:
             raise RuntimeError(
                 "Could not detect credential JSON download. "
-                "Download it manually and place at data/gcp-oauth.keys.json"
+                "Download it manually and place at "
+                "data/chrome-profiles/<profile>/gcp-oauth.keys.json"
             ) from exc
 
     if not dest.exists():
@@ -536,13 +572,13 @@ def _parse_client_credentials(keys_path: Path) -> tuple[str, str]:
     return client["client_id"], client["client_secret"]
 
 
-def _build_auth_url(client_id: str) -> str:
+def _build_auth_url(client_id: str, scopes: str) -> str:
     """Build the Google OAuth authorization URL."""
     params = {
         "client_id": client_id,
         "redirect_uri": f"http://localhost:{_OAUTH_CALLBACK_PORT}",
         "response_type": "code",
-        "scope": _OAUTH_SCOPES,
+        "scope": scopes,
         "access_type": "offline",
         "prompt": "consent",
     }
@@ -550,10 +586,7 @@ def _build_auth_url(client_id: str) -> str:
 
 
 def _start_callback_server() -> tuple[threading.Event, list[str], HTTPServer]:
-    """Start HTTP server to receive the OAuth callback.
-
-    Returns (done_event, auth_code_list, server).
-    """
+    """Start HTTP server to receive the OAuth callback."""
     auth_codes: list[str] = []
     done = threading.Event()
 
@@ -612,81 +645,31 @@ def _exchange_code_for_tokens(code: str, client_id: str, client_secret: str) -> 
     return tokens
 
 
-def _save_credentials_to_volume(tokens: dict) -> None:
-    """Write credentials.json into the mcp-gdrive Docker volume."""
-    import tempfile
-
-    subprocess.run(
-        ["docker", "volume", "create", "mcp-gdrive"],
-        capture_output=True,
+def _save_credentials_to_profile(tokens: dict, profile_name: str) -> Path:
+    """Write credentials.json to the chrome profile directory."""
+    dest = _credentials_path(profile_name)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(tokens, indent=2))
+    logger.info(
+        "OAuth tokens saved to chrome profile",
+        profile=profile_name,
+        path=str(dest),
+        has_refresh_token="refresh_token" in tokens,
     )
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        json.dump(tokens, f)
-        tmp_path = f.name
-
-    try:
-        result = subprocess.run(
-            [
-                "docker",
-                "run",
-                "--rm",
-                "-v",
-                "mcp-gdrive:/gdrive-server",
-                "-v",
-                f"{tmp_path}:/tmp/credentials.json:ro",
-                "busybox",
-                "cp",
-                "/tmp/credentials.json",
-                "/gdrive-server/credentials.json",
-            ],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to save to Docker volume: {result.stderr}")
-    finally:
-        os.unlink(tmp_path)
-
-
-def _read_project_id() -> str | None:
-    """Auto-detect project ID from existing credentials JSON.
-
-    The GCP OAuth client JSON contains a ``project_id`` field that holds
-    the human-readable project ID (e.g., ``vocal-invention-488106-k6``).
-    """
-    kp = _keys_path()
-    if not kp.exists():
-        return None
-    try:
-        with open(kp) as f:
-            data = json.load(f)
-        client = data.get("installed") or data.get("web")
-        if client and client.get("project_id"):
-            return client["project_id"]
-    except Exception:
-        pass
-    return None
+    return dest
 
 
 # ---------------------------------------------------------------------------
-# OAuth authorization flow (shared between setup_gdrive and authorize_gdrive)
+# OAuth authorization flow
 # ---------------------------------------------------------------------------
 
 
-async def _run_oauth_flow(page, keys_path: Path) -> dict:
-    """Run the OAuth consent + token exchange flow.
-
-    Opens the Google OAuth URL in the given Playwright page, waits for
-    the user to click "Allow", captures the callback, and exchanges the
-    code for tokens.
-
-    Returns the token dict.
-    """
+async def _run_oauth_flow(page, keys_path: Path, scopes: str) -> dict:
+    """Run the OAuth consent + token exchange flow."""
     client_id, client_secret = _parse_client_credentials(keys_path)
     done_event, auth_codes, callback_server = _start_callback_server()
 
-    auth_url = _build_auth_url(client_id)
+    auth_url = _build_auth_url(client_id, scopes)
     await page.goto(auth_url, wait_until="domcontentloaded")
 
     logger.info("Waiting for OAuth consent (click Allow in the browser)")
@@ -713,55 +696,109 @@ async def _run_oauth_flow(page, keys_path: Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Handler functions
+# Idempotent setup handler
 # ---------------------------------------------------------------------------
 
 
-async def _handle_enable_gdrive_api(data: dict) -> dict:
-    """Enable the Google Drive API.
+def _workspace_chrome_profiles(source_group: str) -> set[str]:
+    """Return the set of chrome profiles attached to a workspace's MCP servers."""
+    from pynchy.config import get_settings
 
-    Tries the Service Usage REST API first (instant, requires
-    service.management scope).  If that fails, returns the GCP Console
-    enable URL so the user can click it in any browser.
+    s = get_settings()
+    ws = s.workspaces.get(source_group)
+    if not ws or not ws.mcp_servers:
+        return set()
+
+    profiles: set[str] = set()
+    for entry in ws.mcp_servers:
+        if "." in entry:
+            _, inst_name = entry.split(".", 1)
+            if inst_name in s.chrome_profiles:
+                profiles.add(inst_name)
+    return profiles
+
+
+async def _handle_setup_google(data: dict) -> dict:
+    """Idempotent Google setup for a chrome profile.
+
+    Checks state and does only what's missing:
+    1. GCP project exists? → skip creation if so
+    2. Required APIs enabled? → enable any missing ones (REST first)
+    3. OAuth client credentials exist? → skip consent screen setup if so
+    4. Tokens exist and valid? → skip OAuth if so
     """
-    project_id = data.get("project_id") or _read_project_id() or _DEFAULT_PROJECT_ID
-    project_number = data.get("project_id") or _get_project_number()
+    from playwright.async_api import async_playwright
 
-    # --- Try REST first ---
-    if project_number:
-        access_token = _refresh_access_token()
-        if access_token and _enable_drive_api_via_rest(project_number, access_token):
+    profile_name = data.get("chrome_profile")
+    if not profile_name:
+        return {"error": "chrome_profile is required"}
+
+    # Workspace access control: non-admin workspaces can only set up
+    # profiles attached to their MCP servers.
+    source_group = data.get("source_group")
+    if source_group:
+        from pynchy.config import get_settings
+
+        ws = get_settings().workspaces.get(source_group)
+        is_admin = ws.is_admin if ws else False
+        if not is_admin:
+            allowed = _workspace_chrome_profiles(source_group)
+            if profile_name not in allowed:
+                return {
+                    "error": (
+                        f"Workspace '{source_group}' does not have access to "
+                        f"chrome profile '{profile_name}'. "
+                        f"Available profiles: {sorted(allowed) or 'none'}"
+                    )
+                }
+
+    kp = _keys_path(profile_name)
+    cp = _credentials_path(profile_name)
+    scopes, api_ids = _compute_scopes_for_profile(profile_name)
+
+    # If no services reference this profile, use default scopes
+    if not api_ids:
+        logger.info(
+            "No services reference this chrome profile, using default gdrive scopes",
+            profile=profile_name,
+        )
+        api_ids = ["drive.googleapis.com"]
+        scopes = " ".join(
+            sorted(
+                [
+                    "https://www.googleapis.com/auth/drive.readonly",
+                    _SERVICE_MANAGEMENT_SCOPE,
+                ]
+            )
+        )
+
+    steps_done: list[str] = []
+
+    # --- Check if we can skip everything ---
+    if kp.exists() and cp.exists():
+        # Try refreshing the token to see if credentials are still valid
+        access_token = _refresh_access_token(profile_name)
+        if access_token:
+            # Try enabling any missing APIs via REST
+            project_number = _get_project_number(kp)
+            if project_number:
+                for api_id in api_ids:
+                    _enable_api_via_rest(project_number, access_token, api_id)
+                steps_done.append("APIs verified/enabled via REST")
+
             return {
                 "result": {
-                    "status": "ok",
-                    "message": f"Google Drive API enabled for project {project_id}",
+                    "status": "already_configured",
+                    "message": (
+                        f"Google setup for profile '{profile_name}' is already "
+                        f"configured. Tokens are valid."
+                    ),
+                    "steps": steps_done,
                 }
             }
 
-    # --- Fallback: give the user a clickable URL ---
-    # The GCP Console enable URL works with either project ID or number.
-    enable_url = (
-        "https://console.developers.google.com/apis/api/"
-        f"drive.googleapis.com/overview?project={project_number or project_id}"
-    )
-    return {
-        "result": {
-            "status": "manual_action_required",
-            "message": (
-                "Could not enable the Drive API automatically (the OAuth "
-                "token may lack service.management scope). Open this link "
-                "in any browser and click 'Enable':"
-            ),
-            "enable_url": enable_url,
-        }
-    }
-
-
-async def _handle_setup_gdrive(data: dict) -> dict:
-    """Full Google Drive setup: project + API + consent + credentials + OAuth."""
-    from playwright.async_api import async_playwright
-
-    project_id = data.get("project_id") or _read_project_id() or _DEFAULT_PROJECT_ID
+    # --- Need interactive setup ---
+    project_id = data.get("project_id") or _read_project_id(kp) or _DEFAULT_PROJECT_ID
     profile = profile_dir("google")
     vnc_procs: list[subprocess.Popen] = []
     original_display = os.environ.get("DISPLAY")
@@ -790,41 +827,52 @@ async def _handle_setup_gdrive(data: dict) -> dict:
             await _wait_for_login(page)
             await _dismiss_modals(page)
 
-            # GCP Console setup
+            # 1. Ensure GCP project
             await _ensure_project(page, project_id)
-            await _ensure_drive_api(page, project_id)
-            await _ensure_consent_screen(page, project_id)
-            creds_path = await _create_oauth_credentials(page, project_id)
+            steps_done.append(f"GCP project '{project_id}' ready")
 
-            # OAuth authorization flow
-            tokens = await _run_oauth_flow(page, creds_path)
+            # 2. Enable required APIs
+            for api_id in api_ids:
+                await _ensure_api(page, project_id, api_id)
+                steps_done.append(f"API '{api_id}' enabled")
+
+            # 3. Ensure OAuth consent + credentials
+            if not kp.exists():
+                await _ensure_consent_screen(page, project_id)
+                creds_path = await _create_oauth_credentials(page, project_id)
+
+                # Copy to chrome profile directory
+                dest = _keys_path(profile_name)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(creds_path, dest)
+                steps_done.append("OAuth credentials created")
+
+                # Clean up temp download dir
+                dl = _download_dir()
+                if dl.exists():
+                    shutil.rmtree(dl, ignore_errors=True)
+            else:
+                steps_done.append("OAuth credentials already exist")
+
+            # 4. Run OAuth flow
+            tokens = await _run_oauth_flow(page, _keys_path(profile_name), scopes)
+            _save_credentials_to_profile(tokens, profile_name)
+            steps_done.append("OAuth tokens obtained")
 
             await context.close()
 
-        # Save to Docker volume
-        _save_credentials_to_volume(tokens)
-
-        # Back up the OAuth client keys
-        dest = _keys_path()
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(creds_path, dest)
-
-        # Clean up temp download dir
-        dl = _download_dir()
-        if dl.exists():
-            shutil.rmtree(dl, ignore_errors=True)
-
         result: dict[str, Any] = {
             "status": "ok",
-            "message": "Google Drive OAuth setup complete",
-            "keys_path": str(dest),
+            "message": f"Google setup complete for profile '{profile_name}'",
+            "steps": steps_done,
+            "keys_path": str(_keys_path(profile_name)),
         }
         if novnc_url:
             result["novnc_url"] = novnc_url
         return {"result": result}
 
     except Exception as exc:
-        logger.error("setup_gdrive failed", error=str(exc))
+        logger.error("setup_google failed", profile=profile_name, error=str(exc))
         return {"error": str(exc)}
 
     finally:
@@ -835,127 +883,61 @@ async def _handle_setup_gdrive(data: dict) -> dict:
             del os.environ["DISPLAY"]
 
 
-def _oauth_background_flow(
-    keys_path: Path,
-    profile: Path,
-    vnc_procs: list[subprocess.Popen],
-    original_display: str | None,
-) -> None:
-    """Background thread: wait for OAuth callback, exchange tokens, clean up."""
-    try:
-        client_id, client_secret = _parse_client_credentials(keys_path)
-        done_event, auth_codes, callback_server = _start_callback_server()
-
-        auth_url = _build_auth_url(client_id)
-
-        # Launch Chrome directly — the user interacts via noVNC, no automation needed
-        chrome_proc = subprocess.Popen(
-            [
-                chrome_path(),
-                f"--user-data-dir={profile}",
-                "--no-first-run",
-                "--no-default-browser-check",
-                auth_url,
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-
-        logger.info("Waiting for OAuth consent (click Allow in the browser)")
-        done_event.wait(timeout=300)
-        callback_server.shutdown()
-
-        with contextlib.suppress(Exception):
-            chrome_proc.terminate()
-            chrome_proc.wait(timeout=5)
-
-        if not auth_codes:
-            logger.warning("OAuth callback not received within 5 minutes")
-            return
-
-        logger.info("Exchanging authorization code for tokens")
-        tokens = _exchange_code_for_tokens(auth_codes[0], client_id, client_secret)
-        _save_credentials_to_volume(tokens)
-        logger.info(
-            "OAuth tokens saved to mcp-gdrive volume",
-            has_refresh_token="refresh_token" in tokens,
-        )
-
-    except Exception as exc:
-        logger.error("Background OAuth flow failed", error=str(exc))
-
-    finally:
-        stop_procs(vnc_procs)
-        if original_display is not None:
-            os.environ["DISPLAY"] = original_display
-        elif "DISPLAY" in os.environ and vnc_procs:
-            del os.environ["DISPLAY"]
+# ---------------------------------------------------------------------------
+# Plugin classes
+# ---------------------------------------------------------------------------
 
 
-async def _handle_authorize_gdrive(data: dict) -> dict:
-    """Start OAuth flow and return noVNC URL immediately.
+class GoogleMcpPlugin:
+    """Base MCP specs for Google services (gdrive, gcal).
 
-    Launches Chrome with the Google consent screen visible via noVNC.
-    The OAuth callback + token exchange run in a background thread so
-    the agent gets the noVNC URL right away and can show it to the user.
+    These are templates — they exist only to be inherited by config
+    instances (e.g., ``[mcp_servers.gdrive.anyscale]``).  If no instances
+    are declared, the template sits unused.
     """
-    keys_path = Path(data.get("keys_path", str(_keys_path())))
-    if not keys_path.exists():
-        return {
-            "error": (
-                f"{keys_path} not found. Run setup_gdrive first to create "
-                "GCP credentials, or copy your OAuth client JSON there."
-            )
-        }
 
-    vnc_procs: list[subprocess.Popen] = []
-    original_display = os.environ.get("DISPLAY")
-    novnc_url: str | None = None
-
-    try:
-        if not has_display():
-            vnc_procs, novnc_url = start_virtual_display()
-    except Exception as exc:
-        stop_procs(vnc_procs)
-        return {"error": f"Failed to start virtual display: {exc}"}
-
-    profile = profile_dir("google")
-
-    # Start the OAuth flow in a background thread — it waits up to 5 min
-    # for the user to click Allow, then saves tokens and cleans up.
-    thread = threading.Thread(
-        target=_oauth_background_flow,
-        args=(keys_path, profile, vnc_procs, original_display),
-        daemon=True,
-    )
-    thread.start()
-
-    result: dict[str, Any] = {
-        "status": "waiting_for_consent",
-        "message": (
-            "OAuth consent screen is opening in the browser. "
-            "Click 'Allow' to authorize Google Drive access. "
-            "After approval, tokens will be saved automatically."
-        ),
-    }
-    if novnc_url:
-        result["novnc_url"] = novnc_url
-        result["message"] += f" Open {novnc_url} to interact with the browser."
-    return {"result": result}
-
-
-# ---------------------------------------------------------------------------
-# Plugin class
-# ---------------------------------------------------------------------------
+    @hookimpl
+    def pynchy_mcp_server_spec(self) -> list[dict]:
+        return [
+            {
+                "name": "gdrive",
+                "type": "docker",
+                "image": "pynchy-mcp-gdrive:latest",
+                "dockerfile": "container/mcp/gdrive.Dockerfile",
+                "port": 3100,
+                "transport": "streamable_http",
+                "env": {"GDRIVE_OAUTH_PATH": "/home/chrome/gcp-oauth.keys.json"},
+            },
+            {
+                "name": "gcal",
+                "type": "docker",
+                "image": "pynchy-mcp-gcal:latest",
+                "dockerfile": "container/mcp/gcal.Dockerfile",
+                "port": 3200,
+                "transport": "streamable_http",
+            },
+        ]
 
 
 class GoogleSetupPlugin:
+    """Host-side handlers for Google OAuth setup.
+
+    Registers one ``setup_google_{profile}`` handler per chrome profile
+    defined in config.toml.  Each handler is a closure that injects the
+    profile name into the request data before calling the shared handler.
+    """
+
     @hookimpl
     def pynchy_service_handler(self) -> dict[str, Any]:
-        return {
-            "tools": {
-                "enable_gdrive_api": _handle_enable_gdrive_api,
-                "setup_gdrive": _handle_setup_gdrive,
-                "authorize_gdrive": _handle_authorize_gdrive,
-            },
-        }
+        from pynchy.config import get_settings
+
+        tools: dict[str, Any] = {}
+        for profile in get_settings().chrome_profiles:
+            # Closure captures profile by value via default arg
+            async def _handler(data: dict, _profile: str = profile) -> dict:
+                data["chrome_profile"] = _profile
+                return await _handle_setup_google(data)
+
+            tools[f"setup_google_{profile}"] = _handler
+
+        return {"tools": tools}

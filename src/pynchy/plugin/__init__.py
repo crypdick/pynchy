@@ -54,6 +54,11 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
     ),
     (
         "pynchy.integrations.plugins.google_setup",
+        "GoogleMcpPlugin",
+        "google",
+    ),
+    (
+        "pynchy.integrations.plugins.google_setup",
         "GoogleSetupPlugin",
         "google-setup",
     ),
