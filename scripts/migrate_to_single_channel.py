@@ -36,7 +36,7 @@ async def migrate(channel: str, db_path: Path) -> None:
         raise SystemExit("aiosqlite not available — run with 'uv run python ...'") from exc
 
     print(f"Opening {db_path}")
-    async with aiosqlite.connect(db_path) as db:
+    async with aiosqlite.connect(db_path, isolation_level=None) as db:
         db.row_factory = aiosqlite.Row
 
         # Collect aliases for the target channel
@@ -63,9 +63,6 @@ async def migrate(channel: str, db_path: Path) -> None:
                 continue
 
             print(f"  Migrating: {old_canonical} → {target_jid}")
-
-            async with db.execute("BEGIN"):
-                pass  # aiosqlite handles transactions via context manager below
 
             await db.execute("BEGIN")
             try:
