@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.config import (
+from pynchy.config_models import (
     McpToolSecurityConfig,
     RateLimitsConfig,
     WorkspaceConfig,

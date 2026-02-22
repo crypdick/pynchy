@@ -15,7 +15,8 @@ from zoneinfo import ZoneInfo
 
 from croniter import croniter
 
-from pynchy.config import WorkspaceConfig, get_settings
+from pynchy.config import get_settings
+from pynchy.config_models import WorkspaceConfig
 from pynchy.db import create_task, get_active_task_for_group, update_task
 from pynchy.logger import logger
 

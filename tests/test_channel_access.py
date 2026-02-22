@@ -12,17 +12,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from pynchy.config import (
-    ChannelOverrideConfig,
-    OwnerConfig,
-    Settings,
-    WorkspaceConfig,
-    WorkspaceDefaultsConfig,
-)
+from pynchy.config import Settings
 from pynchy.config_access import (
     is_user_allowed,
     resolve_allowed_users,
     resolve_channel_config,
+)
+from pynchy.config_models import (
+    ChannelOverrideConfig,
+    OwnerConfig,
+    WorkspaceConfig,
+    WorkspaceDefaultsConfig,
 )
 
 

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from pynchy.config import (
+from pynchy.config_models import (
     CalDAVConfig,
     CalDAVServerConfig,
     WorkspaceConfig,
