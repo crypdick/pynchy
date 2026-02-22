@@ -127,8 +127,7 @@ def _resolve_send_targets(
 
     Returns ``(channel, target_jid)`` pairs for channels that are connected,
     allowed outbound by access rules, and have a valid JID (alias or direct
-    ownership).  Logs a warning for channels that are connected and allowed
-    but have no route to the chat.
+    ownership).
     """
     targets: list[tuple[Channel, str]] = []
     for ch in deps.channels:
@@ -138,17 +137,21 @@ def _resolve_send_targets(
             continue
         if not _channel_allows_outbound(deps, chat_jid, ch.name):
             continue
-        alias = deps.get_channel_jid(chat_jid, ch.name)
-        target_jid = alias or chat_jid
-        if not alias and not ch.owns_jid(chat_jid):
-            logger.warning(
-                "No JID alias for channel — message will not be delivered",
-                channel=ch.name,
-                canonical_jid=chat_jid,
-            )
+        target_jid = _resolve_target_jid(deps, chat_jid, ch)
+        if not target_jid:
             continue
         targets.append((ch, target_jid))
     return targets
+
+
+def _resolve_target_jid(deps: BusDeps, chat_jid: str, channel: Channel) -> str | None:
+    """Return the channel-owned JID for *chat_jid*, or None if unreachable."""
+    alias = deps.get_channel_jid(chat_jid, channel.name)
+    if alias:
+        return alias
+    if channel.owns_jid(chat_jid):
+        return chat_jid
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -278,7 +281,9 @@ async def finalize_stream_or_broadcast(
             continue
         if not _channel_allows_outbound(deps, chat_jid, ch_name):
             continue
-        target_jid = deps.get_channel_jid(chat_jid, ch.name) or chat_jid
+        target_jid = _resolve_target_jid(deps, chat_jid, ch)
+        if not target_jid:
+            continue
         stream_targets.append((ch, msg_id, target_jid))
     stream_target_names = {ch.name for ch, _, _ in stream_targets}
 
