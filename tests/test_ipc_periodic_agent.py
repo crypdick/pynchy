@@ -97,12 +97,19 @@ class TestCreatePeriodicAgent:
 
     @staticmethod
     def _settings(tmp_path):
-        return make_settings(groups_dir=tmp_path, project_root=tmp_path)
+        from pynchy.config_models import CommandCenterConfig
+
+        return make_settings(
+            groups_dir=tmp_path,
+            project_root=tmp_path,
+            command_center=CommandCenterConfig(connection="connection.slack.main"),
+        )
 
     async def test_creates_full_periodic_agent(self, deps, tmp_path, monkeypatch):
         """Should create folder, config, CLAUDE.md, chat group, and task."""
         mock_channel = AsyncMock()
         mock_channel.create_group = AsyncMock(return_value="agent@g.us")
+        mock_channel.name = "connection.slack.main"
         deps._channels = [mock_channel]
 
         with (
@@ -155,6 +162,7 @@ class TestCreatePeriodicAgent:
         """Custom claude_md content should be written to CLAUDE.md."""
         mock_channel = AsyncMock()
         mock_channel.create_group = AsyncMock(return_value="custom@g.us")
+        mock_channel.name = "connection.slack.main"
         deps._channels = [mock_channel]
 
         with (
@@ -189,6 +197,7 @@ class TestCreatePeriodicAgent:
 
         mock_channel = AsyncMock()
         mock_channel.create_group = AsyncMock(return_value="existing@g.us")
+        mock_channel.name = "connection.slack.main"
         deps._channels = [mock_channel]
 
         with (
@@ -216,6 +225,7 @@ class TestCreatePeriodicAgent:
         """context_mode should be passed through to the task."""
         mock_channel = AsyncMock()
         mock_channel.create_group = AsyncMock(return_value="iso@g.us")
+        mock_channel.name = "connection.slack.main"
         deps._channels = [mock_channel]
 
         with (
@@ -245,6 +255,7 @@ class TestCreatePeriodicAgent:
         """Invalid context_mode should default to 'group'."""
         mock_channel = AsyncMock()
         mock_channel.create_group = AsyncMock(return_value="bad@g.us")
+        mock_channel.name = "connection.slack.main"
         deps._channels = [mock_channel]
 
         with (

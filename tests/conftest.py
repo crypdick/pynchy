@@ -44,8 +44,9 @@ def make_settings(**overrides):
     """
     from pynchy.config import (
         AgentConfig,
-        ChannelsConfig,
+        CommandCenterConfig,
         CommandWordsConfig,
+        ConnectionsConfig,
         ContainerConfig,
         IntervalsConfig,
         LoggingConfig,
@@ -74,7 +75,8 @@ def make_settings(**overrides):
         "intervals": IntervalsConfig(),
         "queue": QueueConfig(),
         "security": SecurityConfig(),
-        "channels": ChannelsConfig(),
+        "command_center": CommandCenterConfig(),
+        "connection": ConnectionsConfig(),
         "plugins": {},
         "cron_jobs": {},
     }

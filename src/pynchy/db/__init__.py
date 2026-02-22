@@ -31,6 +31,7 @@ from pynchy.db.channel_cursors import (
 from pynchy.db.chats import (
     get_all_chats,
     get_chat_cleared_at,
+    get_chat_jids_by_name,
     get_last_group_sync,
     set_chat_cleared_at,
     set_last_group_sync,
@@ -111,6 +112,7 @@ __all__ = [
     # chats
     "get_all_chats",
     "get_chat_cleared_at",
+    "get_chat_jids_by_name",
     "get_last_group_sync",
     "set_chat_cleared_at",
     "set_last_group_sync",

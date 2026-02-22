@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -69,18 +70,25 @@ def _make_channel(
     on_message: Any = None,
     on_chat_metadata: Any = None,
 ) -> SlackChannel:
-    return SlackChannel(
+    ch = SlackChannel(
+        connection_name="connection.slack.main",
         bot_token="xoxb-fake",
         app_token="xapp-fake",
+        chat_names=["general"],
+        allow_create=False,
         on_message=on_message or MagicMock(),
         on_chat_metadata=on_chat_metadata or MagicMock(),
     )
+    # Pre-register a couple of channel IDs for allowlist-dependent tests.
+    ch._register_allowed_channel("general", "C12345")
+    ch._register_allowed_channel("general", "C1")
+    return ch
 
 
 class TestSlackChannelProtocol:
     def test_name_is_slack(self) -> None:
         ch = _make_channel()
-        assert ch.name == "slack"
+        assert ch.name == "connection.slack.main"
 
     def test_prefix_assistant_name_is_false(self) -> None:
         ch = _make_channel()
@@ -441,8 +449,7 @@ class TestSlackChannelPlugin:
 
         with patch("pynchy.chat.plugins.slack.get_settings") as mock_settings:
             cfg = MagicMock()
-            cfg.slack.bot_token = None
-            cfg.slack.app_token = None
+            cfg.connection.slack = {}
             mock_settings.return_value = cfg
 
             result = plugin.pynchy_create_channel(context=context)
@@ -453,17 +460,28 @@ class TestSlackChannelPlugin:
         plugin = SlackChannelPlugin()
         context = MagicMock()
 
-        with patch("pynchy.chat.plugins.slack.get_settings") as mock_settings:
+        with (
+            patch("pynchy.chat.plugins.slack.get_settings") as mock_settings,
+            patch.dict(os.environ, {"BOT": "xoxb-test", "APP": "xapp-test"}, clear=False),
+        ):
             cfg = MagicMock()
-            cfg.slack.bot_token.get_secret_value.return_value = "xoxb-test"
-            cfg.slack.app_token.get_secret_value.return_value = "xapp-test"
+            cfg.command_center.connection = "connection.slack.main"
+            cfg.connection.slack = {
+                "main": MagicMock(
+                    bot_token_env="BOT",
+                    app_token_env="APP",
+                    chat={"general": MagicMock()},
+                )
+            }
             mock_settings.return_value = cfg
 
             result = plugin.pynchy_create_channel(context=context)
 
         assert result is not None
-        assert isinstance(result, SlackChannel)
-        assert result.name == "slack"
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert isinstance(result[0], SlackChannel)
+        assert result[0].name == "connection.slack.main"
 
 
 # ------------------------------------------------------------------

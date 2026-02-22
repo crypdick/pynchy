@@ -1,7 +1,7 @@
 """Tests for channel access mode resolution — the cascade logic in config_access.py.
 
 Covers:
-- resolve_channel_config: 4-level cascade (defaults → workspace → plugin → JID)
+- resolve_channel_config: defaults → connection → chat → workspace
 - resolve_allowed_users: group expansion, owner resolution, wildcard, cycle detection
 - is_user_allowed: sender matching with platform-specific owner checks
 """
@@ -20,7 +20,10 @@ from pynchy.config_access import (
 )
 from pynchy.config_models import (
     ChannelOverrideConfig,
+    ConnectionChatConfig,
+    ConnectionsConfig,
     OwnerConfig,
+    SlackConnectionConfig,
     WorkspaceConfig,
     WorkspaceDefaultsConfig,
 )
@@ -32,6 +35,7 @@ def _settings_with(
     workspaces: dict[str, WorkspaceConfig] | None = None,
     owner: OwnerConfig | None = None,
     user_groups: dict[str, list[str]] | None = None,
+    connections: ConnectionsConfig | None = None,
 ) -> MagicMock:
     """Create a Settings mock for resolve_channel_config tests."""
     s = MagicMock(spec=Settings)
@@ -39,6 +43,7 @@ def _settings_with(
     s.workspaces = workspaces or {}
     s.owner = owner or OwnerConfig()
     s.user_groups = user_groups or {}
+    s.connection = connections or ConnectionsConfig()
     return s
 
 
@@ -116,126 +121,81 @@ class TestResolveChannelConfig:
         assert result.access == "readwrite"  # inherited
         assert result.trigger == "mention"  # inherited
 
-    def test_channel_jid_overrides_workspace(self):
-        """Per-channel JID config overrides workspace-level."""
-        ws = WorkspaceConfig(
-            name="test",
-            trigger="mention",
-            allowed_users=["owner"],
-            channels={
-                "slack:C04GENERAL": ChannelOverrideConfig(
-                    trigger="always",
-                    allowed_users=["*"],
-                    mode="chat",
-                ),
-            },
+    def test_connection_security_overrides_defaults(self):
+        """Connection-level security overrides defaults."""
+        ws = WorkspaceConfig(name="test", chat="connection.slack.main.chat.general")
+        connections = ConnectionsConfig(
+            slack={
+                "main": SlackConnectionConfig(
+                    bot_token_env="BOT",
+                    app_token_env="APP",
+                    security=ChannelOverrideConfig(access="read", trust=False),
+                    chat={"general": ConnectionChatConfig()},
+                )
+            }
         )
         with patch(
             "pynchy.config_access.get_settings",
-            return_value=_settings_with(workspaces={"hub": ws}),
+            return_value=_settings_with(workspaces={"ws": ws}, connections=connections),
         ):
-            result = resolve_channel_config(
-                "hub",
-                channel_jid="slack:C04GENERAL",
-            )
-
-        assert result.trigger == "always"
-        assert result.allowed_users == ["*"]
-        assert result.mode == "chat"
-        # Unset in channel override → inherited from workspace
-        assert result.access == "readwrite"
-
-    def test_channel_plugin_overrides_workspace(self):
-        """Plugin-level channel config overrides workspace."""
-        ws = WorkspaceConfig(
-            name="test",
-            trigger="mention",
-            channels={
-                "slack": ChannelOverrideConfig(access="read"),
-            },
-        )
-        with patch(
-            "pynchy.config_access.get_settings",
-            return_value=_settings_with(workspaces={"ws": ws}),
-        ):
-            result = resolve_channel_config(
-                "ws",
-                channel_plugin_name="slack",
-            )
+            result = resolve_channel_config("ws")
 
         assert result.access == "read"
-        assert result.trigger == "mention"  # inherited from workspace
+        assert result.trust is False
 
-    def test_jid_overrides_plugin_level(self):
-        """JID-specific config takes precedence over plugin-level."""
-        ws = WorkspaceConfig(
-            name="test",
-            channels={
-                "slack": ChannelOverrideConfig(access="read", mode="chat"),
-                "slack:C04SPECIAL": ChannelOverrideConfig(
-                    access="readwrite",
-                    mode="agent",
-                ),
-            },
+    def test_chat_security_overrides_connection(self):
+        """Chat-level security overrides connection-level."""
+        ws = WorkspaceConfig(name="test", chat="connection.slack.main.chat.general")
+        connections = ConnectionsConfig(
+            slack={
+                "main": SlackConnectionConfig(
+                    bot_token_env="BOT",
+                    app_token_env="APP",
+                    security=ChannelOverrideConfig(access="read"),
+                    chat={
+                        "general": ConnectionChatConfig(
+                            security=ChannelOverrideConfig(access="readwrite", mode="chat")
+                        )
+                    },
+                )
+            }
         )
         with patch(
             "pynchy.config_access.get_settings",
-            return_value=_settings_with(workspaces={"ws": ws}),
+            return_value=_settings_with(workspaces={"ws": ws}, connections=connections),
         ):
-            result = resolve_channel_config(
-                "ws",
-                channel_jid="slack:C04SPECIAL",
-                channel_plugin_name="slack",
-            )
+            result = resolve_channel_config("ws")
 
-        # JID-level overrides plugin-level
         assert result.access == "readwrite"
-        assert result.mode == "agent"
+        assert result.mode == "chat"
 
-    def test_jid_partial_override_inherits_from_plugin(self):
-        """JID override only sets some fields; rest come from plugin-level."""
+    def test_workspace_overrides_chat_security(self):
+        """Workspace overrides win over connection/chat security."""
         ws = WorkspaceConfig(
             name="test",
-            channels={
-                "slack": ChannelOverrideConfig(access="read", mode="chat"),
-                "slack:C04SPECIAL": ChannelOverrideConfig(
-                    access="readwrite",
-                    # mode not set → inherits from plugin-level "chat"
-                ),
-            },
-        )
-        with patch(
-            "pynchy.config_access.get_settings",
-            return_value=_settings_with(workspaces={"ws": ws}),
-        ):
-            result = resolve_channel_config(
-                "ws",
-                channel_jid="slack:C04SPECIAL",
-                channel_plugin_name="slack",
-            )
-
-        assert result.access == "readwrite"  # from JID
-        assert result.mode == "chat"  # from plugin-level
-
-    def test_no_channel_override_uses_workspace(self):
-        """Channel JID not in channels dict → workspace values used."""
-        ws = WorkspaceConfig(
-            name="test",
+            chat="connection.slack.main.chat.general",
             access="write",
-            channels={
-                "slack:C04OTHER": ChannelOverrideConfig(access="read"),
-            },
+        )
+        connections = ConnectionsConfig(
+            slack={
+                "main": SlackConnectionConfig(
+                    bot_token_env="BOT",
+                    app_token_env="APP",
+                    chat={
+                        "general": ConnectionChatConfig(
+                            security=ChannelOverrideConfig(access="read")
+                        )
+                    },
+                )
+            }
         )
         with patch(
             "pynchy.config_access.get_settings",
-            return_value=_settings_with(workspaces={"ws": ws}),
+            return_value=_settings_with(workspaces={"ws": ws}, connections=connections),
         ):
-            result = resolve_channel_config(
-                "ws",
-                channel_jid="slack:C04NOMATCH",
-            )
+            result = resolve_channel_config("ws")
 
-        assert result.access == "write"  # workspace level, not channel override
+        assert result.access == "write"
 
 
 # ---------------------------------------------------------------------------
@@ -484,36 +444,6 @@ class TestComposedBehavior:
         assert result.trust is False
         assert result.trigger == "mention"
         assert result.allowed_users == ["*"]
-
-    def test_hybrid_per_channel(self):
-        """Different channels in the same workspace have different configs."""
-        ws = WorkspaceConfig(
-            name="test",
-            trigger="mention",
-            allowed_users=["owner"],
-            channels={
-                "slack:C04RESEARCH": ChannelOverrideConfig(access="read"),
-                "slack:C04ANNOUNCE": ChannelOverrideConfig(access="write"),
-                "slack:C04GENERAL": ChannelOverrideConfig(
-                    trigger="mention",
-                    allowed_users=["*"],
-                    mode="chat",
-                ),
-            },
-        )
-        settings = _settings_with(workspaces={"hub": ws})
-        with patch("pynchy.config_access.get_settings", return_value=settings):
-            research = resolve_channel_config("hub", channel_jid="slack:C04RESEARCH")
-            announce = resolve_channel_config("hub", channel_jid="slack:C04ANNOUNCE")
-            general = resolve_channel_config("hub", channel_jid="slack:C04GENERAL")
-            default = resolve_channel_config("hub")
-
-        assert research.access == "read"
-        assert announce.access == "write"
-        assert general.mode == "chat"
-        assert general.allowed_users == ["*"]
-        assert default.access == "readwrite"  # workspace level
-        assert default.trigger == "mention"
 
 
 # ---------------------------------------------------------------------------

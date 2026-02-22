@@ -1,12 +1,12 @@
 """Channel access resolution — walk the config cascade at runtime.
 
 Resolves the effective access mode, trigger, trust, and allowed users
-for a given workspace + channel combination by walking a 4-level cascade:
+for a given workspace by walking a 4-level cascade:
 
-1. ``[workspace_defaults]``    (global defaults)
-2. ``[workspaces.<name>]``     (workspace-level overrides)
-3. ``channels.<plugin_name>``  (plugin-level channel override)
-4. ``channels."<jid>"``        (JID-specific override, most specific)
+1. ``[workspace_defaults]``                 (global defaults)
+2. ``[connection.<type>.<name>].security``  (connection-level overrides)
+3. ``[connection.<type>.<name>.chat.*]``    (chat-level overrides)
+4. ``[sandbox.<name>]``                     (workspace overrides, most specific)
 
 At each level, non-None fields win over the previous layer.
 """
@@ -17,6 +17,11 @@ from typing import TYPE_CHECKING
 
 from pynchy.config import get_settings
 from pynchy.config_models import OwnerConfig
+from pynchy.config_refs import (
+    channel_platform_from_name,
+    connection_ref_from_parts,
+    parse_chat_ref,
+)
 
 if TYPE_CHECKING:
     from pynchy.types import ResolvedChannelConfig
@@ -40,6 +45,18 @@ def _apply_overrides(state: dict, source: object) -> None:
             state[field] = value
 
 
+def resolve_workspace_connection_name(workspace_name: str) -> str | None:
+    """Return the owning connection name for a sandbox, if configured."""
+    s = get_settings()
+    ws = s.workspaces.get(workspace_name)
+    if ws is None:
+        return None
+    chat_ref = parse_chat_ref(ws.chat)
+    if chat_ref is None:
+        return None
+    return connection_ref_from_parts(chat_ref.platform, chat_ref.name)
+
+
 def resolve_channel_config(
     workspace_name: str,
     channel_jid: str | None = None,
@@ -48,9 +65,9 @@ def resolve_channel_config(
     """Walk the resolution cascade and return a fully-resolved config.
 
     Cascade (most specific wins):
-    1. workspaces.<name>.channels."<jid>"
-    2. workspaces.<name>.channels.<plugin_name>
-    3. workspaces.<name>.*
+    1. sandbox.<name>.* (workspace overrides)
+    2. connection.<type>.<name>.chat.*.security
+    3. connection.<type>.<name>.security
     4. workspace_defaults.*
     """
     from pynchy.types import ResolvedChannelConfig
@@ -68,22 +85,25 @@ def resolve_channel_config(
         "allowed_users": defaults.allowed_users or ["owner"],
     }
 
-    # Layer 1: workspace-level overrides
+    # Layer 1: connection-level overrides
     if ws is not None:
+        chat_ref = parse_chat_ref(ws.chat)
+        if chat_ref is not None:
+            if chat_ref.platform == "slack":
+                conn_cfg = s.connection.slack.get(chat_ref.name)
+            elif chat_ref.platform == "whatsapp":
+                conn_cfg = s.connection.whatsapp.get(chat_ref.name)
+            else:
+                conn_cfg = None
+            if conn_cfg and conn_cfg.security:
+                _apply_overrides(state, conn_cfg.security)
+            if conn_cfg:
+                chat_cfg = conn_cfg.chat.get(chat_ref.chat)
+                if chat_cfg and chat_cfg.security:
+                    _apply_overrides(state, chat_cfg.security)
+
+        # Layer 2: workspace-level overrides (most specific)
         _apply_overrides(state, ws)
-
-        # Layer 2: per-channel overrides (plugin name, then specific JID)
-        if ws.channels:
-            if channel_plugin_name:
-                ch_override = ws.channels.get(channel_plugin_name)
-                if ch_override is not None:
-                    _apply_overrides(state, ch_override)
-
-            # JID-specific override (most specific, wins over plugin-level)
-            if channel_jid:
-                ch_override = ws.channels.get(channel_jid)
-                if ch_override is not None:
-                    _apply_overrides(state, ch_override)
 
     return ResolvedChannelConfig(**state)
 
@@ -153,13 +173,14 @@ def _resolve_into(
 
 def _resolve_owner(owner_config: OwnerConfig, channel_plugin_name: str | None) -> str | None:
     """Resolve the owner identity for a given channel platform."""
-    if channel_plugin_name == "whatsapp":
+    platform = channel_platform_from_name(channel_plugin_name)
+    if platform == "whatsapp":
         return "whatsapp:owner"  # Sentinel — checked via is_from_me at runtime
-    if channel_plugin_name == "slack" and owner_config.slack:
+    if platform == "slack" and owner_config.slack:
         return f"slack:{owner_config.slack}"
     # For unknown platforms or when no owner is configured, return a generic sentinel
     # that the caller can check against
-    if channel_plugin_name and owner_config.slack:
+    if platform and owner_config.slack:
         # Default: try the slack owner for any platform with a configured owner
         return f"slack:{owner_config.slack}"
     return None
@@ -187,8 +208,9 @@ def is_user_allowed(
         return True
 
     # Check literal sender ID
-    if channel_plugin_name:
-        qualified = f"{channel_plugin_name}:{sender}"
+    platform = channel_platform_from_name(channel_plugin_name)
+    if platform:
+        qualified = f"{platform}:{sender}"
         if qualified in resolved_users:
             return True
 

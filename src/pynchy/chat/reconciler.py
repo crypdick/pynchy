@@ -62,6 +62,14 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
 
     for ch in deps.channels:
         for canonical_jid in deps.workspaces:
+            from pynchy.config_access import resolve_workspace_connection_name
+
+            group = deps.workspaces.get(canonical_jid)
+            if group is not None:
+                expected = resolve_workspace_connection_name(group.folder)
+                if expected and expected != ch.name:
+                    continue
+
             channel_jid = deps.get_channel_jid(canonical_jid, ch.name)
             if not channel_jid and not ch.owns_jid(canonical_jid):
                 continue
