@@ -241,11 +241,6 @@ async def setup_admin_group(deps: StartupDeps, default_channel: Any | None) -> N
     await deps._register_workspace(profile)
     logger.info("Admin workspace created", group=group_name, jid=jid)
 
-    # Create aliases on other channels that support create_group
-    from pynchy.workspace_config import create_channel_aliases
-
-    await create_channel_aliases(jid, group_name, deps.channels, deps.register_jid_alias)
-
 
 def validate_plugin_credentials(plugin: Any) -> list[str]:
     """Check if plugin has required environment variables.

@@ -29,8 +29,8 @@ class ChannelPluginContext:
 
 
 def default_channel_name() -> str:
-    """Return configured default channel, falling back to tui."""
-    configured = get_settings().channels.default
+    """Return configured command-center channel, falling back to tui."""
+    configured = get_settings().channels.command_center
     if configured:
         return configured.strip()
     return "tui"
