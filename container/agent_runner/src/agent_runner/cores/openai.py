@@ -10,7 +10,7 @@ from typing import Any
 
 from agents import Agent, ApplyPatchTool, Runner, ShellTool, WebSearchTool
 from agents.editor import ApplyPatchEditor, ApplyPatchOperation, ApplyPatchResult
-from agents.mcp import MCPServerStdio
+from agents.mcp import MCPServerSse, MCPServerStdio, MCPServerStreamableHttp
 
 from ..core import AgentCoreConfig, AgentEvent
 
@@ -109,24 +109,49 @@ class OpenAIAgentCore:
     def __init__(self, config: AgentCoreConfig) -> None:
         self.config = config
         self._agent: Agent | None = None
-        self._mcp_servers: list[MCPServerStdio] = []
+        self._mcp_servers: list[MCPServerStdio | MCPServerSse | MCPServerStreamableHttp] = []
         self._mcp_contexts: list[Any] = []
         self._previous_response_id: str | None = config.session_id
         self._session_id: str | None = config.session_id
 
+    def _build_mcp_server(
+        self, name: str, spec: dict[str, Any]
+    ) -> MCPServerStdio | MCPServerSse | MCPServerStreamableHttp | None:
+        """Build an MCP server from a generic config dict."""
+        if "command" in spec:
+            params: dict[str, Any] = {"command": spec["command"]}
+            if "args" in spec:
+                params["args"] = spec.get("args", [])
+            if "env" in spec and spec["env"] is not None:
+                params["env"] = spec["env"]
+            return MCPServerStdio(params=params, name=name)
+
+        transport = spec.get("type") or spec.get("transport")
+        if transport is None and "url" in spec:
+            transport = "sse"
+
+        if transport in ("sse",):
+            params = {"url": spec["url"]}
+            if "headers" in spec and spec["headers"]:
+                params["headers"] = spec["headers"]
+            return MCPServerSse(params=params, name=name)
+
+        if transport in ("streamable_http", "http"):
+            params = {"url": spec["url"]}
+            if "headers" in spec and spec["headers"]:
+                params["headers"] = spec["headers"]
+            return MCPServerStreamableHttp(params=params, name=name)
+
+        _log(f"Skipping MCP server '{name}': unsupported spec {spec}")
+        return None
+
     async def start(self) -> None:
         """Initialize OpenAI Agent with tools and MCP servers."""
-        # Convert config.mcp_servers dict → MCPServerStdio instances
+        # Convert config.mcp_servers dict → MCPServer* instances
         for name, spec in self.config.mcp_servers.items():
-            server = MCPServerStdio(
-                name=name,
-                params={
-                    "command": spec["command"],
-                    "args": spec.get("args", []),
-                    "env": spec.get("env"),
-                },
-            )
-            self._mcp_servers.append(server)
+            server = self._build_mcp_server(name, spec)
+            if server is not None:
+                self._mcp_servers.append(server)
 
         # Enter MCP server async contexts
         for server in self._mcp_servers:
