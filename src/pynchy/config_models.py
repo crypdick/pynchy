@@ -95,10 +95,20 @@ class OwnerConfig(_StrictModel):
     # WhatsApp uses is_from_me, no config needed
 
 
+class ChannelOverrideConfig(_StrictModel):
+    """Per-channel config override — None fields inherit from workspace/defaults."""
+
+    access: Literal["read", "write", "readwrite"] | None = None
+    mode: Literal["agent", "chat"] | None = None
+    trust: bool | None = None
+    trigger: Literal["mention", "always"] | None = None
+    allowed_users: list[str] | None = None
+
+
 class ConnectionChatConfig(_StrictModel):
     """Per-chat security overrides for a connection."""
 
-    security: "ChannelOverrideConfig" | None = None
+    security: ChannelOverrideConfig | None = None
 
 
 class SlackConnectionConfig(_StrictModel):
@@ -106,7 +116,7 @@ class SlackConnectionConfig(_StrictModel):
 
     bot_token_env: str
     app_token_env: str
-    security: "ChannelOverrideConfig" | None = None
+    security: ChannelOverrideConfig | None = None
     chat: dict[str, ConnectionChatConfig] = {}
 
     @field_validator("bot_token_env", "app_token_env")
@@ -121,7 +131,7 @@ class WhatsAppConnectionConfig(_StrictModel):
     """WhatsApp connection config (auth state stored in sqlite)."""
 
     auth_db_path: str | None = None
-    security: "ChannelOverrideConfig" | None = None
+    security: ChannelOverrideConfig | None = None
     chat: dict[str, ConnectionChatConfig] = {}
 
 
@@ -145,16 +155,6 @@ class CommandCenterConfig(_StrictModel):
         if parse_connection_ref(v) is None:
             raise ValueError("command_center.connection must be connection.<platform>.<name>")
         return v
-
-
-class ChannelOverrideConfig(_StrictModel):
-    """Per-channel config override — None fields inherit from workspace/defaults."""
-
-    access: Literal["read", "write", "readwrite"] | None = None
-    mode: Literal["agent", "chat"] | None = None
-    trust: bool | None = None
-    trigger: Literal["mention", "always"] | None = None
-    allowed_users: list[str] | None = None
 
 
 class WorkspaceDefaultsConfig(_StrictModel):
