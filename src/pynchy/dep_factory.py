@@ -13,13 +13,12 @@ from pynchy.adapters import (
     EventBusAdapter,
     GroupMetadataManager,
     GroupRegistrationManager,
-    GroupRegistry,
     HostMessageBroadcaster,
     MessageBroadcaster,
     PeriodicAgentManager,
-    QueueManager,
     SessionManager,
     UserMessageHandler,
+    find_admin_jid,
 )
 from pynchy.config import get_settings
 from pynchy.container_runner import write_groups_snapshot as _write_groups_snapshot
@@ -45,13 +44,16 @@ def _get_broadcasters(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBr
 
 def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
     """Create the dependency object for the task scheduler."""
-    group_registry = GroupRegistry(app.workspaces)
-    queue_manager = QueueManager(app.queue)
 
     class SchedulerDeps:
-        workspaces = group_registry.workspaces
-        queue = queue_manager.queue
         broadcast_to_channels = app._broadcaster._broadcast_formatted
+
+        def workspaces(self) -> dict[str, Any]:
+            return app.workspaces
+
+        @property
+        def queue(self) -> Any:
+            return app.queue
 
         @staticmethod
         async def run_agent(*args: Any, **kwargs: Any) -> str:
@@ -67,7 +69,7 @@ def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
 async def _rebuild_and_deploy(
     *,
     host_broadcaster: HostMessageBroadcaster,
-    group_registry: GroupRegistry,
+    workspaces: dict[str, Any],
     session_manager: SessionManager,
     previous_sha: str,
     rebuild: bool = True,
@@ -79,7 +81,7 @@ async def _rebuild_and_deploy(
     """
     from pynchy.deploy import finalize_deploy
 
-    chat_jid = group_registry.admin_chat_jid()
+    chat_jid = find_admin_jid(workspaces)
     if chat_jid:
         msg = (
             "Container files changed — rebuilding and restarting..."
@@ -93,7 +95,7 @@ async def _rebuild_and_deploy(
 
         build_container_image()
 
-    active_sessions = session_manager.get_active_sessions(group_registry.workspaces())
+    active_sessions = session_manager.get_active_sessions(workspaces)
 
     await finalize_deploy(
         broadcast_host_message=host_broadcaster.broadcast_host_message,
@@ -107,7 +109,6 @@ async def _rebuild_and_deploy(
 def make_http_deps(app: PynchyApp) -> HttpDeps:
     """Create the dependency object for the HTTP server."""
     _broadcaster, host_broadcaster = _get_broadcasters(app)
-    group_registry = GroupRegistry(app.workspaces)
     session_manager = SessionManager(app.sessions, app._session_cleared)
     metadata_manager = GroupMetadataManager(app.workspaces, app.channels, app.get_available_groups)
     periodic_agent_manager = PeriodicAgentManager(app.workspaces)
@@ -118,7 +119,6 @@ def make_http_deps(app: PynchyApp) -> HttpDeps:
 
     class HttpDeps:
         broadcast_host_message = host_broadcaster.broadcast_host_message
-        admin_chat_jid = group_registry.admin_chat_jid
         channels_connected = metadata_manager.channels_connected
         get_groups = metadata_manager.get_groups
         get_messages = user_message_handler.get_messages
@@ -126,11 +126,14 @@ def make_http_deps(app: PynchyApp) -> HttpDeps:
         get_periodic_agents = periodic_agent_manager.get_periodic_agents
         subscribe_events = event_adapter.subscribe_events
 
+        def admin_chat_jid(self) -> str:
+            return find_admin_jid(app.workspaces)
+
         def is_shutting_down(self) -> bool:
             return app._shutting_down
 
         def get_active_sessions(self) -> dict[str, str]:
-            return session_manager.get_active_sessions(group_registry.workspaces())
+            return session_manager.get_active_sessions(app.workspaces)
 
     return HttpDeps()
 
@@ -143,8 +146,6 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
     )
     session_manager = SessionManager(app.sessions, app._session_cleared)
     metadata_manager = GroupMetadataManager(app.workspaces, app.channels, app.get_available_groups)
-    queue_manager = QueueManager(app.queue)
-    group_registry = GroupRegistry(app.workspaces)
 
     class IpcDeps:
         broadcast_to_channels = broadcaster._broadcast_to_channels
@@ -158,16 +159,18 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         has_active_session = session_manager.has_active_session
         clear_session = session_manager.clear_session
         clear_chat_history = registration_manager.clear_chat_history
-        enqueue_message_check = queue_manager.enqueue_message_check
         channels = metadata_manager.channels
 
+        def enqueue_message_check(self, group_jid: str) -> None:
+            app.queue.enqueue_message_check(group_jid)
+
         def get_active_sessions(self) -> dict[str, str]:
-            return session_manager.get_active_sessions(group_registry.workspaces())
+            return session_manager.get_active_sessions(app.workspaces)
 
         async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
             await _rebuild_and_deploy(
                 host_broadcaster=host_broadcaster,
-                group_registry=group_registry,
+                workspaces=app.workspaces,
                 session_manager=session_manager,
                 previous_sha=previous_sha,
                 rebuild=rebuild,
@@ -178,7 +181,6 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
 
 def make_status_deps(app: PynchyApp) -> StatusDeps:
     """Create the dependency object for the status collector."""
-    group_registry = GroupRegistry(app.workspaces)
     session_manager = SessionManager(app.sessions, app._session_cleared)
     metadata_manager = GroupMetadataManager(app.workspaces, app.channels, app.get_available_groups)
 
@@ -219,7 +221,7 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
             return {"mode": mode, "port": gw.port, "key": gw.key}
 
         def get_active_sessions_count(self) -> int:
-            active = session_manager.get_active_sessions(group_registry.workspaces())
+            active = session_manager.get_active_sessions(app.workspaces)
             return len(active)
 
         def get_workspace_count(self) -> int:
@@ -231,7 +233,6 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
 def make_git_sync_deps(app: PynchyApp) -> GitSyncDeps:
     """Create the dependency object for the git sync loop."""
     _broadcaster, host_broadcaster = _get_broadcasters(app)
-    group_registry = GroupRegistry(app.workspaces)
     session_manager = SessionManager(app.sessions, app._session_cleared)
 
     class GitSyncDeps:
@@ -242,12 +243,12 @@ def make_git_sync_deps(app: PynchyApp) -> GitSyncDeps:
             return session_manager.has_active_session(group_folder)
 
         def workspaces(self) -> dict[str, Any]:
-            return group_registry.workspaces()
+            return app.workspaces
 
         async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
             await _rebuild_and_deploy(
                 host_broadcaster=host_broadcaster,
-                group_registry=group_registry,
+                workspaces=app.workspaces,
                 session_manager=session_manager,
                 previous_sha=previous_sha,
                 rebuild=rebuild,
