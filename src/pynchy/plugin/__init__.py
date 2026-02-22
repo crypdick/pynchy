@@ -18,6 +18,8 @@ from __future__ import annotations
 import asyncio
 import importlib
 import warnings
+from collections.abc import Callable
+from typing import Any
 
 import pluggy
 
@@ -26,6 +28,7 @@ from pynchy.logger import logger
 from pynchy.plugin.hookspecs import PynchySpec
 
 __all__ = [
+    "collect_hook_results",
     "get_plugin_manager",
 ]
 
@@ -163,3 +166,47 @@ def get_plugin_manager() -> pluggy.PluginManager:
     logger.info("Plugin manager ready", plugins=plugin_names)
 
     return pm
+
+
+def collect_hook_results(
+    hook_attr: str,
+    validator: Callable[[Any], bool],
+    label: str,
+    *,
+    pm: pluggy.PluginManager | None = None,
+) -> list[Any]:
+    """Call a pluggy hook and return validated results.
+
+    Handles plugin manager retrieval, hook invocation, and filtering
+    through a validator function.  Invalid or ``None`` results are
+    logged and skipped.
+
+    Args:
+        hook_attr: Name of the hook attribute on ``pm.hook`` (e.g. ``"pynchy_memory"``).
+        validator: Callable that returns ``True`` for valid hook results.
+        label: Human-readable label for log messages (e.g. ``"memory"``).
+        pm: Optional pre-existing plugin manager.  If ``None``, calls
+            :func:`get_plugin_manager`.
+    """
+    if pm is None:
+        pm = get_plugin_manager()
+
+    try:
+        provided = getattr(pm.hook, hook_attr)()
+    except Exception:
+        logger.exception("Failed to resolve %s plugins", label)
+        return []
+
+    results: list[Any] = []
+    for item in provided:
+        if item is None:
+            continue
+        if not validator(item):
+            logger.warning(
+                "Ignoring invalid %s plugin",
+                label,
+                plugin_type=type(item).__name__,
+            )
+            continue
+        results.append(item)
+    return results

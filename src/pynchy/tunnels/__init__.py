@@ -46,23 +46,9 @@ def check_tunnels(pm: pluggy.PluginManager) -> None:
 
     Non-fatal: logs warnings but never raises.
     """
-    try:
-        provided = pm.hook.pynchy_tunnel()
-    except Exception:
-        logger.exception("Failed to resolve tunnel plugins")
-        return
+    from pynchy.plugin import collect_hook_results
 
-    tunnels: list[TunnelProvider] = []
-    for tunnel in provided:
-        if tunnel is None:
-            continue
-        if not _is_valid_tunnel_provider(tunnel):
-            logger.warning(
-                "Ignoring invalid tunnel plugin object",
-                tunnel_type=type(tunnel).__name__,
-            )
-            continue
-        tunnels.append(tunnel)
+    tunnels = collect_hook_results("pynchy_tunnel", _is_valid_tunnel_provider, "tunnel", pm=pm)
 
     if not tunnels:
         logger.info("No tunnel plugins registered")

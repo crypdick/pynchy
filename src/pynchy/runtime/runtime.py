@@ -38,31 +38,9 @@ def _is_valid_plugin_runtime(candidate: Any) -> bool:
 
 
 def _iter_plugin_runtimes() -> list[RuntimeProvider]:
-    try:
-        from pynchy.plugin import get_plugin_manager
-    except Exception:
-        logger.exception("Failed to import plugin manager while loading runtime plugins")
-        return []
+    from pynchy.plugin import collect_hook_results
 
-    try:
-        pm = get_plugin_manager()
-        provided = pm.hook.pynchy_container_runtime()
-    except Exception:
-        logger.exception("Failed to resolve runtime plugins")
-        return []
-
-    runtimes: list[RuntimeProvider] = []
-    for runtime in provided:
-        if runtime is None:
-            continue
-        if not _is_valid_plugin_runtime(runtime):
-            logger.warning(
-                "Ignoring invalid plugin runtime object",
-                runtime_type=type(runtime).__name__,
-            )
-            continue
-        runtimes.append(runtime)
-    return runtimes
+    return collect_hook_results("pynchy_container_runtime", _is_valid_plugin_runtime, "runtime")
 
 
 def detect_runtime() -> RuntimeProvider:

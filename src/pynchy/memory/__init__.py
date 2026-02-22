@@ -63,29 +63,10 @@ def _is_valid_provider(candidate: Any) -> bool:
 
 def get_memory_provider() -> MemoryProvider | None:
     """Discover memory plugin and return provider (first valid one wins)."""
-    try:
-        from pynchy.plugin import get_plugin_manager
-    except Exception:
-        logger.exception("Failed to import plugin manager while loading memory provider")
-        return None
+    from pynchy.plugin import collect_hook_results
 
-    try:
-        pm = get_plugin_manager()
-        provided = pm.hook.pynchy_memory()
-    except Exception:
-        logger.exception("Failed to resolve memory plugins")
-        return None
-
-    for provider in provided:
-        if provider is None:
-            continue
-        if not _is_valid_provider(provider):
-            logger.warning(
-                "Ignoring invalid memory plugin object",
-                provider_type=type(provider).__name__,
-            )
-            continue
-        logger.info("Memory provider discovered", name=provider.name)
-        return provider
-
+    providers = collect_hook_results("pynchy_memory", _is_valid_provider, "memory")
+    if providers:
+        logger.info("Memory provider discovered", name=providers[0].name)
+        return providers[0]
     return None

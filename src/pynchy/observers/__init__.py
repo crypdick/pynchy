@@ -40,29 +40,12 @@ def attach_observers(event_bus: EventBus) -> list[ObserverProvider]:
 
     Returns the list of attached observers (for later teardown via close()).
     """
-    try:
-        from pynchy.plugin import get_plugin_manager
-    except Exception:
-        logger.exception("Failed to import plugin manager while loading observers")
-        return []
+    from pynchy.plugin import collect_hook_results
 
-    try:
-        pm = get_plugin_manager()
-        provided = pm.hook.pynchy_observer()
-    except Exception:
-        logger.exception("Failed to resolve observer plugins")
-        return []
+    candidates = collect_hook_results("pynchy_observer", _is_valid_observer, "observer")
 
     observers: list[ObserverProvider] = []
-    for obs in provided:
-        if obs is None:
-            continue
-        if not _is_valid_observer(obs):
-            logger.warning(
-                "Ignoring invalid observer plugin object",
-                observer_type=type(obs).__name__,
-            )
-            continue
+    for obs in candidates:
         try:
             obs.subscribe(event_bus)
             observers.append(obs)
