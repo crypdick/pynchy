@@ -355,6 +355,20 @@ class OpenAIAgentCore:
                                         tool_input = {"commands": cmds}
                             elif hasattr(action, "patch") or hasattr(action, "path"):
                                 tool_name = "apply_patch"
+                        else:
+                            data = getattr(raw, "data", None)
+                            action = getattr(data, "action", None) if data is not None else None
+                            if action is not None and (
+                                hasattr(action, "command") or hasattr(action, "commands")
+                            ):
+                                tool_name = "shell"
+                                if tool_input is None:
+                                    cmd = getattr(action, "command", None)
+                                    cmds = getattr(action, "commands", None)
+                                    if cmd is not None:
+                                        tool_input = {"command": cmd}
+                                    elif cmds is not None:
+                                        tool_input = {"commands": cmds}
 
                     if tool_name in (None, "", "unknown_tool"):
                         raw_type = type(raw).__name__.lower()
