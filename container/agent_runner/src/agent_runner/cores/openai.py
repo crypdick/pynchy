@@ -81,6 +81,14 @@ def _make_shell_executor(cwd: str):
                 or data.get("shell_command")
                 or data.get("input")
             )
+            if cmd_val is None:
+                commands = data.get("commands")
+                if (
+                    isinstance(commands, (list, tuple))
+                    and commands
+                    and all(isinstance(item, str) for item in commands)
+                ):
+                    cmd_val = " && ".join(commands)
             if cmd_val is not None and not isinstance(cmd_val, (str, list, tuple)):
                 extract(cmd_val, depth + 1)
             else:
@@ -158,7 +166,16 @@ def _make_shell_executor(cwd: str):
             mapping = coerce_mapping(value)
             if mapping is not None:
                 extract_from_mapping(mapping, depth)
-                for key in ("params", "arguments", "input", "request", "payload"):
+                for key in (
+                    "params",
+                    "arguments",
+                    "input",
+                    "request",
+                    "payload",
+                    "data",
+                    "action",
+                    "raw",
+                ):
                     if key in mapping:
                         extract(mapping[key], depth + 1)
                 return
@@ -174,6 +191,8 @@ def _make_shell_executor(cwd: str):
                 "request",
                 "tool_input",
                 "data",
+                "action",
+                "commands",
             ):
                 if hasattr(value, attr):
                     extract(getattr(value, attr), depth + 1)
@@ -219,32 +238,6 @@ def _make_shell_executor(cwd: str):
                 if match:
                     command = match.group(1) or match.group(2) or match.group(3)
 
-        if isinstance(command, str) and "ShellCommandRequest" in command:
-            # Debug unexpected request shapes to learn the actual fields.
-            try:
-                _log(f"Shell request type={type(request)}")
-                mapping = coerce_mapping(request)
-                if mapping is not None:
-                    _log(f"Shell request keys={list(mapping.keys())}")
-                for name in (
-                    "command",
-                    "cmd",
-                    "shell_command",
-                    "input",
-                    "args",
-                    "parameters",
-                    "payload",
-                    "request",
-                    "tool_input",
-                    "data",
-                    "text",
-                    "content",
-                ):
-                    if hasattr(request, name):
-                        value = getattr(request, name)
-                        _log(f"Shell request {name}={str(value)[:300]}")
-            except Exception as exc:
-                _log(f"Shell request debug failed: {exc}")
         if isinstance(command, (list, tuple)):
             command = " ".join(str(part) for part in command)
         if args:
