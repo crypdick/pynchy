@@ -418,6 +418,11 @@ class GroupQueue:
 
     async def shutdown(self) -> None:
         self._shutting_down = True
+        logger.info(
+            "GroupQueue shutdown starting",
+            active_groups=len(self._groups),
+            active_count=self._active_count,
+        )
 
         # Destroy all persistent sessions first
         from pynchy.container_runner._session import destroy_all_sessions
@@ -432,7 +437,7 @@ class GroupQueue:
                 active.append((state.process, state.container_name))
 
         if not active:
-            logger.info("GroupQueue shutdown, no active containers")
+            logger.info("GroupQueue shutdown complete (no active containers)")
             return
 
         logger.info(
@@ -446,4 +451,8 @@ class GroupQueue:
         await asyncio.gather(
             *(_graceful_stop(proc, name) for proc, name in active),
             return_exceptions=True,
+        )
+        logger.info(
+            "GroupQueue shutdown complete",
+            stopped_count=len(active),
         )
