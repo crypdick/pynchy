@@ -73,15 +73,19 @@ def _make_shell_executor(cwd: str):
             if timeout_val is not None:
                 timeout_ms = timeout_val
 
-        def extract_from_mapping(data: dict[str, Any]) -> None:
-            merge(
+        def extract_from_mapping(data: dict[str, Any], depth: int) -> None:
+            cmd_val = (
                 data.get("command")
                 or data.get("cmd")
                 or data.get("shell_command")
-                or data.get("input"),
-                data.get("args"),
-                data.get("timeout_ms"),
+                or data.get("input")
             )
+            if cmd_val is not None and not isinstance(cmd_val, (str, list, tuple)):
+                extract(cmd_val, depth + 1)
+            else:
+                merge(cmd_val, data.get("args"), data.get("timeout_ms"))
+            if cmd_val is None:
+                merge(None, data.get("args"), data.get("timeout_ms"))
 
         def coerce_mapping(value: Any) -> dict[str, Any] | None:
             if isinstance(value, dict):
@@ -123,7 +127,7 @@ def _make_shell_executor(cwd: str):
 
             mapping = coerce_mapping(value)
             if mapping is not None:
-                extract_from_mapping(mapping)
+                extract_from_mapping(mapping, depth)
                 for key in ("params", "arguments", "input", "request", "payload"):
                     if key in mapping:
                         extract(mapping[key], depth + 1)
@@ -135,8 +139,32 @@ def _make_shell_executor(cwd: str):
 
         extract(request)
 
+        if command is not None and not isinstance(command, (str, list, tuple)):
+            nested_mapping = coerce_mapping(command)
+            if nested_mapping is not None:
+                nested_cmd = (
+                    nested_mapping.get("command")
+                    or nested_mapping.get("cmd")
+                    or nested_mapping.get("shell_command")
+                    or nested_mapping.get("input")
+                )
+                if nested_cmd is not None:
+                    command = nested_cmd
+            else:
+                for attr in ("command", "cmd", "shell_command", "input"):
+                    if hasattr(command, attr):
+                        command = getattr(command, attr)
+                        break
+
         if command is None:
             command = str(request)
+        if isinstance(command, str) and re.search(r"(?:command|cmd)\\s*[:=]", command):
+            match = re.search(
+                r"(?:command|cmd)\\s*[:=]\\s*(?:'([^']*)'|\"([^\"]*)\"|([^\\s,\\}\\)]+))",
+                command,
+            )
+            if match:
+                command = match.group(1) or match.group(2) or match.group(3)
         if isinstance(command, (list, tuple)):
             command = " ".join(str(part) for part in command)
         if args:
