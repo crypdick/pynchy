@@ -58,8 +58,32 @@ def _make_shell_executor(cwd: str):
 
     async def executor(request: Any) -> str:
         """Execute a shell command inside the container."""
-        command = request.command if hasattr(request, "command") else str(request)
-        timeout_ms = getattr(request, "timeout_ms", 120_000)
+        # OpenAI SDK request shapes vary; accept dicts/objects with command/cmd/args.
+        command: Any | None = None
+        args: Any | None = None
+        timeout_ms = 120_000
+        if isinstance(request, dict):
+            command = request.get("command") or request.get("cmd")
+            args = request.get("args")
+            timeout_ms = request.get("timeout_ms", timeout_ms)
+        else:
+            if hasattr(request, "command"):
+                command = getattr(request, "command")
+            elif hasattr(request, "cmd"):
+                command = getattr(request, "cmd")
+            args = getattr(request, "args", None)
+            timeout_ms = getattr(request, "timeout_ms", timeout_ms)
+
+        if command is None:
+            command = str(request)
+        if isinstance(command, (list, tuple)):
+            command = " ".join(str(part) for part in command)
+        if args:
+            if isinstance(args, (list, tuple)):
+                command = " ".join([str(command), *[str(part) for part in args]])
+            else:
+                command = f"{command} {args}"
+
         timeout_s = timeout_ms / 1000
 
         _log(f"Shell ({cwd}): {command[:200]}")
