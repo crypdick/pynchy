@@ -184,17 +184,19 @@ async def read_stderr(
 
 
 async def _graceful_stop(proc: asyncio.subprocess.Process, container_name: str) -> None:
-    """Stop container gracefully with 15s timeout, fallback to kill."""
+    """Stop container gracefully with short timeout, fallback to kill."""
     try:
         stop_proc = await asyncio.create_subprocess_exec(
             get_runtime().cli,
             "stop",
+            "-t",
+            "5",
             container_name,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
         try:
-            await asyncio.wait_for(stop_proc.wait(), timeout=15.0)
+            await asyncio.wait_for(stop_proc.wait(), timeout=7.0)
         except TimeoutError:
             logger.warning(
                 "Graceful stop timed out, force killing",
@@ -203,7 +205,7 @@ async def _graceful_stop(proc: asyncio.subprocess.Process, container_name: str) 
             proc.kill()
         if proc.returncode is None:
             try:
-                await asyncio.wait_for(proc.wait(), timeout=10.0)
+                await asyncio.wait_for(proc.wait(), timeout=5.0)
             except TimeoutError:
                 logger.warning(
                     "Container stop did not exit docker run, force killing",
