@@ -476,10 +476,47 @@ class OpenAIAgentCore:
                 if item.type == "tool_call_item":
                     # Extract tool name and arguments from the raw item
                     raw = getattr(item, "raw_item", item)
-                    tool_name = getattr(raw, "name", None) or getattr(
-                        raw, "type", "unknown_tool"
-                    )
+                    tool_name = getattr(raw, "tool_name", None) or getattr(raw, "name", None)
                     tool_input = getattr(raw, "arguments", None)
+
+                    func = getattr(raw, "function", None)
+                    if func is not None:
+                        tool_name = tool_name or getattr(func, "name", None)
+                        tool_input = tool_input or getattr(func, "arguments", None)
+
+                    call = getattr(raw, "call", None)
+                    if call is not None:
+                        tool_name = tool_name or getattr(call, "name", None)
+                        tool_input = tool_input or getattr(call, "arguments", None)
+
+                    if tool_name in (None, "", "unknown_tool", "function"):
+                        action = getattr(raw, "action", None)
+                        if action is not None:
+                            if hasattr(action, "command") or hasattr(action, "commands"):
+                                tool_name = "shell"
+                                if tool_input is None:
+                                    cmd = getattr(action, "command", None)
+                                    cmds = getattr(action, "commands", None)
+                                    if cmd is not None:
+                                        tool_input = {"command": cmd}
+                                    elif cmds is not None:
+                                        tool_input = {"commands": cmds}
+                            elif hasattr(action, "patch") or hasattr(action, "path"):
+                                tool_name = "apply_patch"
+
+                    if tool_name in (None, "", "unknown_tool"):
+                        raw_type = type(raw).__name__.lower()
+                        if "shell" in raw_type:
+                            tool_name = "shell"
+                        elif "patch" in raw_type:
+                            tool_name = "apply_patch"
+                        elif "search" in raw_type:
+                            tool_name = "web_search"
+                        else:
+                            tool_name = getattr(raw, "type", None) or "unknown_tool"
+
+                    if tool_input is None:
+                        tool_input = getattr(raw, "input", None)
                     if isinstance(tool_input, str):
                         try:
                             tool_input = json.loads(tool_input)

@@ -8,6 +8,7 @@ former nested closures in run_container_agent.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import time
 from collections.abc import Awaitable, Callable
@@ -200,6 +201,17 @@ async def _graceful_stop(proc: asyncio.subprocess.Process, container_name: str) 
                 container=container_name,
             )
             proc.kill()
+        if proc.returncode is None:
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=10.0)
+            except TimeoutError:
+                logger.warning(
+                    "Container stop did not exit docker run, force killing",
+                    container=container_name,
+                )
+                proc.kill()
+                with contextlib.suppress(Exception):
+                    await proc.wait()
     except Exception as exc:
         logger.exception(
             "Graceful stop failed, force killing",
