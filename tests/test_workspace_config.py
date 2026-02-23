@@ -40,12 +40,13 @@ class TestLoadWorkspaceConfig:
     def test_applies_workspace_defaults(self):
         s = _settings_with_workspaces(
             workspaces={"team": WorkspaceConfig(name="test", is_admin=False)},
-            defaults=WorkspaceDefaultsConfig(context_mode="isolated"),
+            defaults=WorkspaceDefaultsConfig(trigger="always", context_mode="isolated"),
         )
         with patch("pynchy.workspace_config.get_settings", return_value=s):
             cfg = load_workspace_config("team")
 
         assert cfg is not None
+        assert cfg.trigger is None  # trigger cascaded in resolve_channel_config, not here
         assert cfg.context_mode == "isolated"
         assert cfg.is_periodic is False
 
@@ -54,6 +55,7 @@ class TestLoadWorkspaceConfig:
             workspaces={
                 "daily": WorkspaceConfig(
                     is_admin=True,
+                    trigger="mention",
                     repo_access="owner/pynchy",
                     name="Daily Agent",
                     schedule="0 9 * * *",
@@ -103,6 +105,7 @@ class TestWorkspaceConfigModel:
     def test_defaults(self):
         cfg = WorkspaceConfig(name="test")
         assert cfg.is_admin is False
+        assert cfg.trigger is None
         assert cfg.repo_access is None
         assert cfg.context_mode is None
         assert cfg.is_periodic is False
