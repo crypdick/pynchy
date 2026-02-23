@@ -415,6 +415,15 @@ class OpenAIAgentCore:
                             else:
                                 tool_name = getattr(raw, "type", None) or "unknown_tool"
 
+                    if tool_name in (None, "", "unknown_tool"):
+                        if not tool_input:
+                            tool_name = "shell"
+                        elif isinstance(tool_input, dict):
+                            if "patch" in tool_input or "path" in tool_input:
+                                tool_name = "apply_patch"
+                            elif "query" in tool_input or "q" in tool_input:
+                                tool_name = "web_search"
+
                     if tool_input is None:
                         tool_input = getattr(raw, "input", None)
                     if isinstance(tool_input, str):
