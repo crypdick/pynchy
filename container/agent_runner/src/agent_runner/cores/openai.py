@@ -158,15 +158,21 @@ def _make_shell_executor(cwd: str):
 
         if command is None:
             command = str(request)
-        if isinstance(command, str) and re.search(r"(?:command|cmd)\\s*[:=]", command):
+        if isinstance(command, str) and re.search(
+            r"(?:shell_command|command|cmd)\\s*[:=]", command
+        ):
             # Prefer the innermost quoted command=... if present.
-            quoted = re.findall(r"(?:command|cmd)\\s*[:=]\\s*'([^']*)'", command)
-            quoted += re.findall(r'(?:command|cmd)\\s*[:=]\\s*\"([^\"]*)\"', command)
+            quoted = re.findall(
+                r"(?:shell_command|command|cmd)\\s*[:=]\\s*'([^']*)'", command
+            )
+            quoted += re.findall(
+                r'(?:shell_command|command|cmd)\\s*[:=]\\s*\"([^\"]*)\"', command
+            )
             if quoted:
                 command = quoted[-1]
             else:
                 match = re.search(
-                    r"(?:command|cmd)\\s*[:=]\\s*(?:'([^']*)'|\"([^\"]*)\"|([^\\s,\\}\\)]+))",
+                    r"(?:shell_command|command|cmd)\\s*[:=]\\s*(?:'([^']*)'|\"([^\"]*)\"|([^\\s,\\}\\)]+))",
                     command,
                 )
                 if match:
