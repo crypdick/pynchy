@@ -129,7 +129,7 @@ class _ContainerPatchEditor(ApplyPatchEditor):
             path.write_text(op.new_content or "")
             return ApplyPatchResult(status="completed")
         except Exception as exc:
-            return ApplyPatchResult(status="failed", error=str(exc))
+            return ApplyPatchResult(status="failed", output=str(exc))
 
     async def update_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
         from pathlib import Path
@@ -137,11 +137,11 @@ class _ContainerPatchEditor(ApplyPatchEditor):
         try:
             path = Path(op.path)
             if not path.exists():
-                return ApplyPatchResult(status="failed", error=f"File not found: {op.path}")
+                return ApplyPatchResult(status="failed", output=f"File not found: {op.path}")
             path.write_text(op.new_content or "")
             return ApplyPatchResult(status="completed")
         except Exception as exc:
-            return ApplyPatchResult(status="failed", error=str(exc))
+            return ApplyPatchResult(status="failed", output=str(exc))
 
     async def delete_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
         from pathlib import Path
@@ -150,7 +150,7 @@ class _ContainerPatchEditor(ApplyPatchEditor):
             Path(op.path).unlink(missing_ok=True)
             return ApplyPatchResult(status="completed")
         except Exception as exc:
-            return ApplyPatchResult(status="failed", error=str(exc))
+            return ApplyPatchResult(status="failed", output=str(exc))
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +298,34 @@ class OpenAIAgentCore:
             auto_previous_response_id=True,
         )
 
+        def _as_mapping(obj: Any) -> dict[str, Any] | None:
+            if obj is None:
+                return None
+            if isinstance(obj, dict):
+                return obj
+            if hasattr(obj, "model_dump"):
+                try:
+                    data = obj.model_dump()
+                except Exception:
+                    data = None
+                if isinstance(data, dict):
+                    return data
+            if hasattr(obj, "__dict__"):
+                data = vars(obj)
+                if isinstance(data, dict):
+                    return data
+            return None
+
+        def _normalize_shell_action(action: Any) -> dict[str, Any] | None:
+            action_map = _as_mapping(action)
+            if not action_map:
+                return None
+            # Local shell calls use "command" (list[str]); normalize to "commands".
+            if "commands" not in action_map and "command" in action_map:
+                action_map = dict(action_map)
+                action_map["commands"] = action_map.get("command")
+            return action_map
+
         async for event in result.stream_events():
             if event.type == "raw_response_event":
                 # Token-level text deltas — yield as text events
@@ -341,79 +369,97 @@ class OpenAIAgentCore:
                         tool_name = tool_name or getattr(call, "name", None)
                         tool_input = tool_input or getattr(call, "arguments", None)
 
-                    if tool_name in (None, "", "unknown_tool", "function"):
-                        action = getattr(raw, "action", None)
-                        if action is not None:
-                            if hasattr(action, "command") or hasattr(action, "commands"):
-                                tool_name = "shell"
-                                if tool_input is None:
-                                    cmd = getattr(action, "command", None)
-                                    cmds = getattr(action, "commands", None)
-                                    if cmd is not None:
-                                        tool_input = {"command": cmd}
-                                    elif cmds is not None:
-                                        tool_input = {"commands": cmds}
-                            elif hasattr(action, "patch") or hasattr(action, "path"):
-                                tool_name = "apply_patch"
-                        else:
-                            data = getattr(raw, "data", None)
-                            action = getattr(data, "action", None) if data is not None else None
-                            if action is not None and (
-                                hasattr(action, "command") or hasattr(action, "commands")
-                            ):
-                                tool_name = "shell"
-                                if tool_input is None:
-                                    cmd = getattr(action, "command", None)
-                                    cmds = getattr(action, "commands", None)
-                                    if cmd is not None:
-                                        tool_input = {"command": cmd}
-                                    elif cmds is not None:
-                                        tool_input = {"commands": cmds}
+                    action = getattr(raw, "action", None)
+                    if action is None:
+                        data = getattr(raw, "data", None)
+                        action = getattr(data, "action", None) if data is not None else None
+                    action_map = _normalize_shell_action(action)
+                    if action_map:
+                        if tool_name in (None, "", "unknown_tool", "function"):
+                            tool_name = "shell"
+                        if tool_input is None:
+                            tool_input = action_map
 
-                    if tool_name in (None, "", "unknown_tool"):
-                        def _extract_mapping(mapping: dict[str, Any]) -> None:
-                            nonlocal tool_name, tool_input
-                            if tool_name in (None, "", "unknown_tool"):
-                                for key in ("tool_name", "name", "tool", "type"):
-                                    value = mapping.get(key)
-                                    if value:
-                                        tool_name = value
-                                        break
+                    raw_map = _as_mapping(raw)
+                    raw_type = None
+                    if raw_map:
+                        raw_type = raw_map.get("type")
+                    if raw_type is None:
+                        raw_type = getattr(raw, "type", None)
+
+                    if raw_type in ("shell_call", "local_shell_call"):
+                        tool_name = tool_name or "shell"
+                        if tool_input is None:
+                            action_map = None
+                            if raw_map:
+                                action_map = _normalize_shell_action(raw_map.get("action"))
+                            if action_map is None:
+                                action_map = _normalize_shell_action(getattr(raw, "action", None))
+                            if action_map:
+                                tool_input = action_map
+                    elif raw_type == "apply_patch_call":
+                        tool_name = tool_name or "apply_patch"
+                        if tool_input is None:
+                            operation = None
+                            if raw_map:
+                                operation = raw_map.get("operation")
+                            if operation is None:
+                                operation = getattr(raw, "operation", None)
+                            tool_input = _as_mapping(operation) or operation
+                    elif raw_type == "web_search_call":
+                        tool_name = tool_name or "web_search"
+                        if tool_input is None:
+                            action = raw_map.get("action") if raw_map else getattr(raw, "action", None)
+                            tool_input = _as_mapping(action) or action
+                    elif raw_type in ("function_call", "mcp_call"):
+                        if tool_name in (None, "", "unknown_tool"):
+                            if raw_map and raw_map.get("name"):
+                                tool_name = raw_map.get("name")
+                            else:
+                                tool_name = getattr(raw, "name", None)
+                        if tool_input is None and raw_map:
+                            tool_input = raw_map.get("arguments") or raw_map.get("input")
+
+                    def _extract_mapping(mapping: dict[str, Any]) -> None:
+                        nonlocal tool_name, tool_input
+                        if tool_name in (None, "", "unknown_tool"):
+                            for key in ("tool_name", "name", "tool", "type"):
+                                value = mapping.get(key)
+                                if value:
+                                    tool_name = value
+                                    break
+                        if tool_input is None:
+                            tool_input = mapping.get("arguments") or mapping.get("input")
+                        action = mapping.get("action")
+                        if isinstance(action, dict):
                             if tool_input is None:
-                                tool_input = mapping.get("arguments") or mapping.get("input")
-                            action = mapping.get("action")
-                            if tool_name in (None, "", "unknown_tool") and isinstance(action, dict):
                                 cmds = action.get("commands")
                                 cmd = action.get("command")
                                 if cmds or cmd:
+                                    tool_input = {"commands": cmds} if cmds else {"command": cmd}
+                            if tool_name in (None, "", "unknown_tool"):
+                                if action.get("type") in ("exec", "shell", "shell_call"):
                                     tool_name = "shell"
-                                    if tool_input is None:
-                                        tool_input = {"commands": cmds} if cmds else {"command": cmd}
 
-                        data_dump = None
-                        if hasattr(raw, "model_dump"):
-                            try:
-                                data_dump = raw.model_dump()
-                            except Exception:
-                                data_dump = None
-                        if data_dump is None and hasattr(raw, "__dict__"):
-                            data_dump = vars(raw)
-                        if isinstance(data_dump, dict):
-                            _extract_mapping(data_dump)
-                            inner = data_dump.get("data")
-                            if isinstance(inner, dict):
-                                _extract_mapping(inner)
+                    data_dump = raw_map
+                    if data_dump is None and hasattr(raw, "__dict__"):
+                        data_dump = vars(raw)
+                    if isinstance(data_dump, dict):
+                        _extract_mapping(data_dump)
+                        inner = data_dump.get("data")
+                        if isinstance(inner, dict):
+                            _extract_mapping(inner)
 
-                        if tool_name in (None, "", "unknown_tool"):
-                            raw_type = type(raw).__name__.lower()
-                            if "shell" in raw_type:
-                                tool_name = "shell"
-                            elif "patch" in raw_type:
-                                tool_name = "apply_patch"
-                            elif "search" in raw_type:
-                                tool_name = "web_search"
-                            else:
-                                tool_name = getattr(raw, "type", None) or "unknown_tool"
+                    if tool_name in (None, "", "unknown_tool"):
+                        raw_type_name = type(raw).__name__.lower()
+                        if "shell" in raw_type_name:
+                            tool_name = "shell"
+                        elif "patch" in raw_type_name:
+                            tool_name = "apply_patch"
+                        elif "search" in raw_type_name:
+                            tool_name = "web_search"
+                        else:
+                            tool_name = raw_type or getattr(raw, "type", None) or "unknown_tool"
 
                     if tool_name in (None, "", "unknown_tool"):
                         if not tool_input:
@@ -431,6 +477,10 @@ class OpenAIAgentCore:
                             tool_input = json.loads(tool_input)
                         except (json.JSONDecodeError, TypeError):
                             tool_input = {"raw": tool_input}
+                    if not tool_input:
+                        _log(
+                            f"Tool call parsed without input: tool={tool_name} raw_type={raw_type}"
+                        )
                     yield AgentEvent(
                         type="tool_use",
                         data={
@@ -441,10 +491,19 @@ class OpenAIAgentCore:
 
                 elif item.type == "tool_call_output_item":
                     output = getattr(item, "output", "")
+                    raw = getattr(item, "raw_item", item)
+                    raw_map = _as_mapping(raw) or {}
+                    tool_result_id = (
+                        getattr(item, "call_id", None)
+                        or getattr(raw, "call_id", None)
+                        or raw_map.get("call_id")
+                        or raw_map.get("id")
+                        or ""
+                    )
                     yield AgentEvent(
                         type="tool_result",
                         data={
-                            "tool_result_id": getattr(item, "call_id", ""),
+                            "tool_result_id": tool_result_id,
                             "tool_result_content": str(output) if output else "",
                             "tool_result_is_error": False,
                         },
