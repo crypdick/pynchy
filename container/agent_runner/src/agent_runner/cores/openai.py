@@ -186,7 +186,7 @@ class OpenAIAgentCore:
         if self.config.system_prompt_append:
             instructions += "\n\n" + self.config.system_prompt_append
 
-        model = self.config.extra.get("model", "gpt-5.3-codex")
+        model = self.config.extra.get("model", "openai/gpt-5.3-codex")
         _log(f"Creating agent with model={model}, mcp_servers={len(self._mcp_servers)}")
 
         self._agent = Agent(
