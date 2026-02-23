@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import re
 import sys
@@ -85,11 +86,31 @@ def _make_shell_executor(cwd: str):
             else:
                 merge(cmd_val, data.get("args"), data.get("timeout_ms"))
             if cmd_val is None:
-                merge(None, data.get("args"), data.get("timeout_ms"))
+                args_val = data.get("args")
+                if (
+                    command is None
+                    and isinstance(args_val, (list, tuple))
+                    and args_val
+                    and isinstance(args_val[0], str)
+                ):
+                    merge(
+                        args_val[0],
+                        list(args_val[1:]) if len(args_val) > 1 else None,
+                        data.get("timeout_ms"),
+                    )
+                else:
+                    merge(None, args_val, data.get("timeout_ms"))
 
         def coerce_mapping(value: Any) -> dict[str, Any] | None:
             if isinstance(value, dict):
                 return value
+            if dataclasses.is_dataclass(value):
+                try:
+                    data = dataclasses.asdict(value)
+                except Exception:
+                    data = None
+                if isinstance(data, dict):
+                    return data
             for attr in ("model_dump", "dict", "to_dict"):
                 if hasattr(value, attr):
                     try:
@@ -100,6 +121,15 @@ def _make_shell_executor(cwd: str):
                         return data
             if hasattr(value, "__dict__"):
                 return vars(value)
+            if hasattr(value, "__slots__"):
+                data = {}
+                for slot in value.__slots__:
+                    try:
+                        data[slot] = getattr(value, slot)
+                    except Exception:
+                        continue
+                if data:
+                    return data
             return None
 
         def extract(value: Any, depth: int = 0) -> None:
@@ -108,9 +138,9 @@ def _make_shell_executor(cwd: str):
             if isinstance(value, str):
                 if command is None:
                     command_value = value
-                    if re.search(r"(?:command|cmd)\\s*[:=]", value):
+                    if re.search(r"(?:shell_command|command|cmd)\\s*[:=]", value):
                         match = re.search(
-                            r"(?:command|cmd)\\s*[:=]\\s*(?:'([^']*)'|\"([^\"]*)\"|([^\\s,\\}\\)]+))",
+                            r"(?:shell_command|command|cmd)\\s*[:=]\\s*(?:'([^']*)'|\"([^\"]*)\"|([^\\s,\\}\\)]+))",
                             value,
                         )
                         if match:
