@@ -65,3 +65,7 @@ sqlite3 data/messages.db "
 - **Full query cookbook** (cross-table traces, thinking, activity timelines): [references/sqlite-queries.md](references/sqlite-queries.md)
 - **Session transcript branching**: [references/session-transcript.md](references/session-transcript.md)
 - **Pytest hangs (100% pass, never exits)**: [references/pytest-hang-diagnostics.md](references/pytest-hang-diagnostics.md)
+
+## OpenAI Shell Tool Pitfall
+
+If the OpenAI backend shows `/bin/sh: Syntax error: word unexpected (expecting ")")` for shell tool calls, the shell executor is likely receiving a `ShellCommandRequest(...)` object and trying to run its repr. Ensure `_make_shell_executor` in `container/agent_runner/src/agent_runner/cores/openai.py` extracts `command` from object/mapping shapes (including parsing repr when needed).
