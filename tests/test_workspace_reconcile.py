@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock
 import pytest
 from conftest import make_settings
 
-from pynchy.config import WorkspaceConfig
+from pynchy.config import CommandCenterConfig, WorkspaceConfig
 from pynchy.db import _init_test_database, create_task, get_active_task_for_group, get_all_tasks
 from pynchy.types import WorkspaceProfile
 from pynchy.workspace_config import (
@@ -241,19 +241,34 @@ class TestReconcileWorkspaces:
         assert len(tasks) == 1
         assert tasks[0].id == "periodic-monitor-abc123"
 
-    async def test_creates_chat_group_for_unregistered_workspace(self, db, groups_dir):
+    async def test_creates_chat_group_for_unregistered_workspace(
+        self, db, monkeypatch, tmp_path
+    ):
         """Workspace with no DB entry should create a chat group via channel."""
+        conn_ref = "connection.whatsapp.main"
+        chat_ref = f"{conn_ref}.chat.new-agent"
+        workspaces: dict[str, WorkspaceConfig] = {}
+        s = make_settings(
+            workspaces=workspaces,
+            groups_dir=tmp_path / "groups",
+            command_center=CommandCenterConfig(connection=conn_ref),
+        )
+        monkeypatch.setattr("pynchy.workspace_config.get_settings", lambda: s)
+
         _write_workspace_yaml(
-            groups_dir,
+            workspaces,
             "new-agent",
             {
                 "schedule": "0 8 * * 1",
                 "prompt": "Weekly report",
                 "trigger": "always",
+                "chat": chat_ref,
             },
         )
 
         mock_channel = AsyncMock()
+        mock_channel.name = conn_ref
+        mock_channel.resolve_chat_jid = AsyncMock(return_value=None)
         mock_channel.create_group = AsyncMock(return_value="new-agent@g.us")
 
         registered: dict[str, WorkspaceProfile] = {}
@@ -261,29 +276,42 @@ class TestReconcileWorkspaces:
 
         await reconcile_workspaces(registered, [mock_channel], register_fn)
 
-        # Should have called create_group
-        mock_channel.create_group.assert_called_once()
+        # Should have called create_group with the chat name
+        mock_channel.create_group.assert_called_once_with("new-agent")
         # Should have registered the group
         register_fn.assert_called_once()
-        call_args = register_fn.call_args
-        profile = call_args[0][0]
+        profile = register_fn.call_args[0][0]
         assert profile.jid == "new-agent@g.us"
         assert profile.folder == "new-agent"
         assert profile.trigger is not None  # trigger is the @mention string
 
-    async def test_skips_when_no_channel_supports_create_group(self, db, groups_dir):
+    async def test_skips_when_no_channel_supports_create_group(
+        self, db, monkeypatch, tmp_path
+    ):
         """Workspace needing new group should be skipped if no channel supports it."""
+        conn_ref = "connection.whatsapp.main"
+        chat_ref = f"{conn_ref}.chat.orphan-agent"
+        workspaces: dict[str, WorkspaceConfig] = {}
+        s = make_settings(
+            workspaces=workspaces,
+            groups_dir=tmp_path / "groups",
+            command_center=CommandCenterConfig(connection=conn_ref),
+        )
+        monkeypatch.setattr("pynchy.workspace_config.get_settings", lambda: s)
+
         _write_workspace_yaml(
-            groups_dir,
+            workspaces,
             "orphan-agent",
             {
                 "schedule": "0 9 * * *",
                 "prompt": "Check things",
+                "chat": chat_ref,
             },
         )
 
-        # Channel without create_group attribute
+        # Channel matches connection but lacks create_group
         mock_channel = AsyncMock(spec=["send_message", "connect", "disconnect"])
+        mock_channel.name = conn_ref
 
         registered: dict[str, WorkspaceProfile] = {}
         register_fn = AsyncMock()

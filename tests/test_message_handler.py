@@ -408,7 +408,10 @@ class TestProcessGroupMessages:
         reset_file = ipc_dir / "reset_prompt.json"
         reset_file.write_text(json.dumps({"message": "Hello after reset"}))
 
-        with patch(_P_SETTINGS) as ms:
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([]),
+        ):
             ms.return_value.data_dir = tmp_path
             result = await process_group_messages(deps, "g@g.us")
 
@@ -434,7 +437,10 @@ class TestProcessGroupMessages:
             )
         )
 
-        with patch(_P_SETTINGS) as ms:
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([]),
+        ):
             ms.return_value.data_dir = tmp_path
             result = await process_group_messages(deps, "g@g.us")
 
