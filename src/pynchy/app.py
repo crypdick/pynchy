@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import signal
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -426,8 +427,9 @@ class PynchyApp:
         # Hard-exit watchdog: if graceful shutdown hangs, force-exit after 12s.
         # This ensures launchd/systemd can restart us even if a container or
         # channel disconnect blocks indefinitely.
-        loop = asyncio.get_running_loop()
-        loop.call_later(12, lambda: os._exit(1))
+        watchdog = threading.Timer(12, lambda: os._exit(1))
+        watchdog.daemon = True
+        watchdog.start()
 
         # Notify the admin group that the service is going down.
         # Best-effort: don't let notification failure block shutdown.

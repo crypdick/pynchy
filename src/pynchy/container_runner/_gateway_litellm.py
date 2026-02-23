@@ -447,7 +447,7 @@ class LiteLLMGateway:
 
     async def stop(self) -> None:
         logger.info("Stopping LiteLLM gateway containers")
-        stop_container(_LITELLM_CONTAINER)
-        stop_container(_POSTGRES_CONTAINER)
-        run_docker("network", "rm", _NETWORK_NAME, check=False)
+        await asyncio.to_thread(stop_container, _LITELLM_CONTAINER)
+        await asyncio.to_thread(stop_container, _POSTGRES_CONTAINER)
+        await asyncio.to_thread(run_docker, "network", "rm", _NETWORK_NAME, check=False)
         logger.info("LiteLLM gateway stopped")
