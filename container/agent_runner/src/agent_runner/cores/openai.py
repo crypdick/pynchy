@@ -38,6 +38,16 @@ def _disable_tracing() -> None:
         _log(f"Tracing disable skipped: {exc}")
 
 
+def _is_model_not_found(exc: Exception) -> bool:
+    """Return True if the error indicates the model is unavailable."""
+    message = str(exc).lower()
+    return (
+        "model_not_found" in message
+        or "does not exist" in message
+        or "no healthy deployments for this model" in message
+    )
+
+
 # ---------------------------------------------------------------------------
 # Shell executor — runs commands directly in the container
 # ---------------------------------------------------------------------------
@@ -127,6 +137,9 @@ class OpenAIAgentCore:
     def __init__(self, config: AgentCoreConfig) -> None:
         self.config = config
         self._agent: Agent | None = None
+        self._instructions: str | None = None
+        self._model_primary: str | None = None
+        self._model_fallback: str | None = None
         self._mcp_servers: list[MCPServerStdio | MCPServerSse | MCPServerStreamableHttp] = []
         self._mcp_contexts: list[Any] = []
         previous = _normalize_response_id(config.session_id)
@@ -164,6 +177,21 @@ class OpenAIAgentCore:
         _log(f"Skipping MCP server '{name}': unsupported spec {spec}")
         return None
 
+    def _make_agent(self, model: str) -> Agent:
+        if self._instructions is None:
+            raise RuntimeError("OpenAIAgentCore not started (missing instructions)")
+        return Agent(
+            name="pynchy",
+            instructions=self._instructions,
+            model=model,
+            tools=[
+                ShellTool(executor=_make_shell_executor(self.config.cwd)),
+                ApplyPatchTool(editor=_ContainerPatchEditor()),
+                WebSearchTool(),
+            ],
+            mcp_servers=self._mcp_servers,
+        )
+
     async def start(self) -> None:
         """Initialize OpenAI Agent with tools and MCP servers."""
         _disable_tracing()
@@ -187,19 +215,15 @@ class OpenAIAgentCore:
             instructions += "\n\n" + self.config.system_prompt_append
 
         model = self.config.extra.get("model", "openai/gpt-5.3-codex")
-        _log(f"Creating agent with model={model}, mcp_servers={len(self._mcp_servers)}")
-
-        self._agent = Agent(
-            name="pynchy",
-            instructions=instructions,
-            model=model,
-            tools=[
-                ShellTool(executor=_make_shell_executor(self.config.cwd)),
-                ApplyPatchTool(editor=_ContainerPatchEditor()),
-                WebSearchTool(),
-            ],
-            mcp_servers=self._mcp_servers,
+        self._model_primary = model
+        self._model_fallback = self.config.extra.get("fallback_model", "openai/gpt-5.2")
+        self._instructions = instructions
+        _log(
+            f"Creating agent with model={self._model_primary}, "
+            f"fallback={self._model_fallback}, "
+            f"mcp_servers={len(self._mcp_servers)}"
         )
+        self._agent = self._make_agent(self._model_primary)
 
     async def query(self, prompt: str) -> AsyncIterator[AgentEvent]:
         """Execute a query and yield AgentEvents."""
@@ -208,8 +232,38 @@ class OpenAIAgentCore:
 
         _log(f"Starting query (previous_response_id: {self._previous_response_id or 'none'})...")
 
+        for attempt, model in enumerate((self._model_primary, self._model_fallback), start=1):
+            if not model:
+                continue
+            emitted_any = False
+            try:
+                if attempt > 1:
+                    _log(f"Retrying with fallback model={model}")
+                async for event in self._run_streamed(prompt, model):
+                    emitted_any = True
+                    yield event
+                return
+            except Exception as exc:
+                if (
+                    attempt == 1
+                    and self._model_fallback
+                    and _is_model_not_found(exc)
+                    and not emitted_any
+                ):
+                    _log(f"Primary model failed ({exc}); trying fallback")
+                    continue
+                raise
+
+    async def _run_streamed(self, prompt: str, model: str) -> AsyncIterator[AgentEvent]:
+        """Run a single streamed request for the given model."""
+        agent = (
+            self._agent
+            if self._agent is not None and model == self._model_primary
+            else self._make_agent(model)
+        )
+
         result = Runner.run_streamed(
-            self._agent,
+            agent,
             input=prompt,
             previous_response_id=self._previous_response_id,
             auto_previous_response_id=True,
@@ -225,7 +279,9 @@ class OpenAIAgentCore:
                 elif hasattr(event.data, "type") and "reasoning" in str(
                     getattr(event.data, "type", "")
                 ):
-                    text = getattr(event.data, "text", None) or getattr(event.data, "summary", None)
+                    text = getattr(event.data, "text", None) or getattr(
+                        event.data, "summary", None
+                    )
                     if text:
                         yield AgentEvent(type="thinking", data={"thinking": text})
 
@@ -234,7 +290,9 @@ class OpenAIAgentCore:
                 if item.type == "tool_call_item":
                     # Extract tool name and arguments from the raw item
                     raw = getattr(item, "raw_item", item)
-                    tool_name = getattr(raw, "name", None) or getattr(raw, "type", "unknown_tool")
+                    tool_name = getattr(raw, "name", None) or getattr(
+                        raw, "type", "unknown_tool"
+                    )
                     tool_input = getattr(raw, "arguments", None)
                     if isinstance(tool_input, str):
                         try:
