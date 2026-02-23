@@ -63,23 +63,80 @@ def _make_shell_executor(cwd: str):
         command: Any | None = None
         args: Any | None = None
         timeout_ms = 120_000
-        if isinstance(request, dict):
-            command = request.get("command") or request.get("cmd")
-            args = request.get("args")
-            timeout_ms = request.get("timeout_ms", timeout_ms)
-        else:
-            if hasattr(request, "command"):
-                command = getattr(request, "command")
-            elif hasattr(request, "cmd"):
-                command = getattr(request, "cmd")
-            args = getattr(request, "args", None)
-            timeout_ms = getattr(request, "timeout_ms", timeout_ms)
+
+        def merge(cmd: Any | None, arg_val: Any | None, timeout_val: Any | None) -> None:
+            nonlocal command, args, timeout_ms
+            if cmd is not None and command is None:
+                command = cmd
+            if arg_val is not None and args is None:
+                args = arg_val
+            if timeout_val is not None:
+                timeout_ms = timeout_val
+
+        def extract_from_mapping(data: dict[str, Any]) -> None:
+            merge(
+                data.get("command")
+                or data.get("cmd")
+                or data.get("shell_command")
+                or data.get("input"),
+                data.get("args"),
+                data.get("timeout_ms"),
+            )
+
+        def coerce_mapping(value: Any) -> dict[str, Any] | None:
+            if isinstance(value, dict):
+                return value
+            for attr in ("model_dump", "dict", "to_dict"):
+                if hasattr(value, attr):
+                    try:
+                        data = getattr(value, attr)()
+                    except Exception:
+                        continue
+                    if isinstance(data, dict):
+                        return data
+            if hasattr(value, "__dict__"):
+                return vars(value)
+            return None
+
+        def extract(value: Any, depth: int = 0) -> None:
+            if value is None or depth > 3:
+                return
+            if isinstance(value, str):
+                if command is None:
+                    command_value = value
+                    if re.search(r"(?:command|cmd)\\s*[:=]", value):
+                        match = re.search(
+                            r"(?:command|cmd)\\s*[:=]\\s*(?:'([^']*)'|\"([^\"]*)\"|([^\\s,\\}\\)]+))",
+                            value,
+                        )
+                        if match:
+                            command_value = match.group(1) or match.group(2) or match.group(3)
+                    merge(command_value, None, None)
+                return
+            if isinstance(value, (list, tuple)):
+                if value and isinstance(value[0], str) and command is None:
+                    merge(value[0], list(value[1:]) if len(value) > 1 else None, None)
+                    return
+                for item in value:
+                    extract(item, depth + 1)
+                return
+
+            mapping = coerce_mapping(value)
+            if mapping is not None:
+                extract_from_mapping(mapping)
+                for key in ("params", "arguments", "input", "request", "payload"):
+                    if key in mapping:
+                        extract(mapping[key], depth + 1)
+                return
+
+            for attr in ("command", "cmd", "shell_command", "input", "params", "arguments"):
+                if hasattr(value, attr):
+                    extract(getattr(value, attr), depth + 1)
+
+        extract(request)
 
         if command is None:
-            # As a last resort, attempt to parse command=... from repr()
-            text = str(request)
-            match = re.search(r"command=(?:'([^']*)'|\"([^\"]*)\")", text)
-            command = (match.group(1) or match.group(2)) if match else text
+            command = str(request)
         if isinstance(command, (list, tuple)):
             command = " ".join(str(part) for part in command)
         if args:
