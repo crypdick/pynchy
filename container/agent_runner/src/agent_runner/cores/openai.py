@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import json
-import re
 import sys
 from collections.abc import AsyncIterator
 from typing import Any
@@ -60,192 +58,33 @@ def _make_shell_executor(cwd: str):
 
     async def executor(request: Any) -> str:
         """Execute a shell command inside the container."""
-        # OpenAI SDK request shapes vary; accept dicts/objects with command/cmd/args.
-        command: Any | None = None
-        args: Any | None = None
-        timeout_ms = 120_000
+        def get_field(obj: Any, name: str) -> Any:
+            if obj is None:
+                return None
+            if isinstance(obj, dict):
+                return obj.get(name)
+            return getattr(obj, name, None)
 
-        def merge(cmd: Any | None, arg_val: Any | None, timeout_val: Any | None) -> None:
-            nonlocal command, args, timeout_ms
-            if cmd is not None and command is None:
-                command = cmd
-            if arg_val is not None and args is None:
-                args = arg_val
-            if timeout_val is not None:
-                timeout_ms = timeout_val
+        data = get_field(request, "data")
+        action = get_field(data, "action") or get_field(request, "action")
 
-        def extract_from_mapping(data: dict[str, Any], depth: int) -> None:
-            cmd_val = (
-                data.get("command")
-                or data.get("cmd")
-                or data.get("shell_command")
-                or data.get("input")
-            )
-            if cmd_val is None:
-                commands = data.get("commands")
-                if (
-                    isinstance(commands, (list, tuple))
-                    and commands
-                    and all(isinstance(item, str) for item in commands)
-                ):
-                    cmd_val = " && ".join(commands)
-            if cmd_val is not None and not isinstance(cmd_val, (str, list, tuple)):
-                extract(cmd_val, depth + 1)
-            else:
-                merge(cmd_val, data.get("args"), data.get("timeout_ms"))
-            if cmd_val is None:
-                args_val = data.get("args")
-                if (
-                    command is None
-                    and isinstance(args_val, (list, tuple))
-                    and args_val
-                    and isinstance(args_val[0], str)
-                ):
-                    merge(
-                        args_val[0],
-                        list(args_val[1:]) if len(args_val) > 1 else None,
-                        data.get("timeout_ms"),
-                    )
-                else:
-                    merge(None, args_val, data.get("timeout_ms"))
+        commands = get_field(action, "commands")
+        if commands is None:
+            command = get_field(action, "command")
+            commands = [command] if command else None
 
-        def coerce_mapping(value: Any) -> dict[str, Any] | None:
-            if isinstance(value, dict):
-                return value
-            if dataclasses.is_dataclass(value):
-                try:
-                    data = dataclasses.asdict(value)
-                except Exception:
-                    data = None
-                if isinstance(data, dict):
-                    return data
-            for attr in ("model_dump", "dict", "to_dict"):
-                if hasattr(value, attr):
-                    try:
-                        data = getattr(value, attr)()
-                    except Exception:
-                        continue
-                    if isinstance(data, dict):
-                        return data
-            if hasattr(value, "__dict__"):
-                return vars(value)
-            if hasattr(value, "__slots__"):
-                data = {}
-                for slot in value.__slots__:
-                    try:
-                        data[slot] = getattr(value, slot)
-                    except Exception:
-                        continue
-                if data:
-                    return data
-            return None
+        if not commands:
+            return "Shell tool request missing commands."
 
-        def extract(value: Any, depth: int = 0) -> None:
-            if value is None or depth > 3:
-                return
-            if isinstance(value, str):
-                if command is None:
-                    command_value = value
-                    if re.search(r"(?:shell_command|command|cmd)\\s*[:=]", value):
-                        match = re.search(
-                            r"(?:shell_command|command|cmd)\\s*[:=]\\s*(?:'([^']*)'|\"([^\"]*)\"|([^\\s,\\}\\)]+))",
-                            value,
-                        )
-                        if match:
-                            command_value = match.group(1) or match.group(2) or match.group(3)
-                    merge(command_value, None, None)
-                return
-            if isinstance(value, (list, tuple)):
-                if value and isinstance(value[0], str) and command is None:
-                    merge(value[0], list(value[1:]) if len(value) > 1 else None, None)
-                    return
-                for item in value:
-                    extract(item, depth + 1)
-                return
+        if isinstance(commands, (list, tuple)):
+            command = " && ".join(str(cmd) for cmd in commands)
+        else:
+            command = str(commands)
 
-            mapping = coerce_mapping(value)
-            if mapping is not None:
-                extract_from_mapping(mapping, depth)
-                for key in (
-                    "params",
-                    "arguments",
-                    "input",
-                    "request",
-                    "payload",
-                    "data",
-                    "action",
-                    "raw",
-                ):
-                    if key in mapping:
-                        extract(mapping[key], depth + 1)
-                return
-
-            for attr in (
-                "command",
-                "cmd",
-                "shell_command",
-                "input",
-                "params",
-                "arguments",
-                "payload",
-                "request",
-                "tool_input",
-                "data",
-                "action",
-                "commands",
-            ):
-                if hasattr(value, attr):
-                    extract(getattr(value, attr), depth + 1)
-
-        extract(request)
-
-        if command is not None and not isinstance(command, (str, list, tuple)):
-            nested_mapping = coerce_mapping(command)
-            if nested_mapping is not None:
-                nested_cmd = (
-                    nested_mapping.get("command")
-                    or nested_mapping.get("cmd")
-                    or nested_mapping.get("shell_command")
-                    or nested_mapping.get("input")
-                )
-                if nested_cmd is not None:
-                    command = nested_cmd
-            else:
-                for attr in ("command", "cmd", "shell_command", "input"):
-                    if hasattr(command, attr):
-                        command = getattr(command, attr)
-                        break
-
-        if command is None:
-            command = str(request)
-        if isinstance(command, str) and re.search(
-            r"(?:shell_command|command|cmd)\\s*[:=]", command
-        ):
-            # Prefer the innermost quoted command=... if present.
-            quoted = re.findall(
-                r"(?:shell_command|command|cmd)\\s*[:=]\\s*'([^']*)'", command
-            )
-            quoted += re.findall(
-                r'(?:shell_command|command|cmd)\\s*[:=]\\s*\"([^\"]*)\"', command
-            )
-            if quoted:
-                command = quoted[-1]
-            else:
-                match = re.search(
-                    r"(?:shell_command|command|cmd)\\s*[:=]\\s*(?:'([^']*)'|\"([^\"]*)\"|([^\\s,\\}\\)]+))",
-                    command,
-                )
-                if match:
-                    command = match.group(1) or match.group(2) or match.group(3)
-
-        if isinstance(command, (list, tuple)):
-            command = " ".join(str(part) for part in command)
-        if args:
-            if isinstance(args, (list, tuple)):
-                command = " ".join([str(command), *[str(part) for part in args]])
-            else:
-                command = f"{command} {args}"
-
+        timeout_ms = get_field(action, "timeout_ms") or get_field(data, "timeout_ms") or 120_000
+        max_output_length = get_field(action, "max_output_length") or get_field(
+            data, "max_output_length"
+        )
         timeout_s = timeout_ms / 1000
 
         _log(f"Shell ({cwd}): {command[:200]}")
@@ -261,6 +100,8 @@ def _make_shell_executor(cwd: str):
             output = stdout.decode(errors="replace")
             if stderr:
                 output += "\n" + stderr.decode(errors="replace")
+            if isinstance(max_output_length, int) and max_output_length > 0:
+                output = output[:max_output_length]
             return output
         except TimeoutError:
             proc.kill()
@@ -402,7 +243,9 @@ class OpenAIAgentCore:
 
         model = self.config.extra.get("model", "openai/gpt-5.3-codex")
         self._model_primary = model
-        self._model_fallback = self.config.extra.get("fallback_model", "openai/gpt-5.2")
+        self._model_fallback = self.config.extra.get(
+            "fallback_model", "openai/gpt-5.2-codex"
+        )
         self._instructions = instructions
         _log(
             f"Creating agent with model={self._model_primary}, "
@@ -476,8 +319,17 @@ class OpenAIAgentCore:
                 if item.type == "tool_call_item":
                     # Extract tool name and arguments from the raw item
                     raw = getattr(item, "raw_item", item)
-                    tool_name = getattr(raw, "tool_name", None) or getattr(raw, "name", None)
-                    tool_input = getattr(raw, "arguments", None)
+                    tool_name = (
+                        getattr(item, "tool_name", None)
+                        or getattr(item, "name", None)
+                        or getattr(raw, "tool_name", None)
+                        or getattr(raw, "name", None)
+                    )
+                    tool_input = (
+                        getattr(item, "arguments", None)
+                        or getattr(item, "input", None)
+                        or getattr(raw, "arguments", None)
+                    )
 
                     func = getattr(raw, "function", None)
                     if func is not None:
