@@ -371,15 +371,49 @@ class OpenAIAgentCore:
                                         tool_input = {"commands": cmds}
 
                     if tool_name in (None, "", "unknown_tool"):
-                        raw_type = type(raw).__name__.lower()
-                        if "shell" in raw_type:
-                            tool_name = "shell"
-                        elif "patch" in raw_type:
-                            tool_name = "apply_patch"
-                        elif "search" in raw_type:
-                            tool_name = "web_search"
-                        else:
-                            tool_name = getattr(raw, "type", None) or "unknown_tool"
+                        def _extract_mapping(mapping: dict[str, Any]) -> None:
+                            nonlocal tool_name, tool_input
+                            if tool_name in (None, "", "unknown_tool"):
+                                for key in ("tool_name", "name", "tool", "type"):
+                                    value = mapping.get(key)
+                                    if value:
+                                        tool_name = value
+                                        break
+                            if tool_input is None:
+                                tool_input = mapping.get("arguments") or mapping.get("input")
+                            action = mapping.get("action")
+                            if tool_name in (None, "", "unknown_tool") and isinstance(action, dict):
+                                cmds = action.get("commands")
+                                cmd = action.get("command")
+                                if cmds or cmd:
+                                    tool_name = "shell"
+                                    if tool_input is None:
+                                        tool_input = {"commands": cmds} if cmds else {"command": cmd}
+
+                        data_dump = None
+                        if hasattr(raw, "model_dump"):
+                            try:
+                                data_dump = raw.model_dump()
+                            except Exception:
+                                data_dump = None
+                        if data_dump is None and hasattr(raw, "__dict__"):
+                            data_dump = vars(raw)
+                        if isinstance(data_dump, dict):
+                            _extract_mapping(data_dump)
+                            inner = data_dump.get("data")
+                            if isinstance(inner, dict):
+                                _extract_mapping(inner)
+
+                        if tool_name in (None, "", "unknown_tool"):
+                            raw_type = type(raw).__name__.lower()
+                            if "shell" in raw_type:
+                                tool_name = "shell"
+                            elif "patch" in raw_type:
+                                tool_name = "apply_patch"
+                            elif "search" in raw_type:
+                                tool_name = "web_search"
+                            else:
+                                tool_name = getattr(raw, "type", None) or "unknown_tool"
 
                     if tool_input is None:
                         tool_input = getattr(raw, "input", None)
