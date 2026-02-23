@@ -129,6 +129,16 @@ Dashboard: `http://pynchy-server:4000/ui/`
 - **Diagnostics, spend tracking, failure analysis**: [references/litellm-diagnostics.md](references/litellm-diagnostics.md)
 - **MCP server management API and gotchas**: [references/litellm-mcp-api.md](references/litellm-mcp-api.md)
 
+## Zombie Processes (LiteLLM)
+
+If SSH login reports zombie processes, check whether they live inside the LiteLLM container:
+
+```bash
+ssh pynchy-server 'docker exec pynchy-litellm ps -eo pid,ppid,stat,args | awk '\''$3 ~ /Z/ {print}'\'''
+```
+
+Note: use `args`, not `cmd` — `cmd` can appear empty for zombie processes.
+
 ## MCP Server Containers
 
 MCP tool servers (e.g., Playwright) run as separate Docker containers managed by `McpManager`. They start on-demand when an agent needs them and stop after the configured `idle_timeout`.
