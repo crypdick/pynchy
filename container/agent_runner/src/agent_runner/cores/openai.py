@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import sys
 from collections.abc import AsyncIterator
 from typing import Any
@@ -75,7 +76,10 @@ def _make_shell_executor(cwd: str):
             timeout_ms = getattr(request, "timeout_ms", timeout_ms)
 
         if command is None:
-            command = str(request)
+            # As a last resort, attempt to parse command=... from repr()
+            text = str(request)
+            match = re.search(r"command=(?:'([^']*)'|\"([^\"]*)\")", text)
+            command = (match.group(1) or match.group(2)) if match else text
         if isinstance(command, (list, tuple)):
             command = " ".join(str(part) for part in command)
         if args:
