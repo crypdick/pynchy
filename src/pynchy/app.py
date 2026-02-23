@@ -455,6 +455,9 @@ class PynchyApp:
             await asyncio.sleep(0.3)
             await self._http_runner.cleanup()
 
+        # Stop group containers early to avoid lingering docker run processes.
+        await self.queue.shutdown()
+
         from pynchy.container_runner.gateway import stop_gateway
 
         await stop_gateway()
@@ -465,7 +468,6 @@ class PynchyApp:
         batcher = output_handler.get_trace_batcher()
         if batcher is not None:
             await batcher.flush_all()
-        await self.queue.shutdown()
         for ch in self.channels:
             await ch.disconnect()
 
