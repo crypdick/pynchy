@@ -90,6 +90,7 @@ class TestReconcileWorkspaces:
             "regular-group",
             {
                 "is_admin": False,
+                "trigger": "mention",
             },
         )
 
@@ -248,6 +249,7 @@ class TestReconcileWorkspaces:
             {
                 "schedule": "0 8 * * 1",
                 "prompt": "Weekly report",
+                "trigger": "always",
             },
         )
 
@@ -267,6 +269,7 @@ class TestReconcileWorkspaces:
         profile = call_args[0][0]
         assert profile.jid == "new-agent@g.us"
         assert profile.folder == "new-agent"
+        assert profile.trigger is not None  # trigger is the @mention string
 
     async def test_skips_when_no_channel_supports_create_group(self, db, groups_dir):
         """Workspace needing new group should be skipped if no channel supports it."""

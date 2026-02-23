@@ -109,14 +109,16 @@ class TestFormatOutbound:
         assert result == "🦞 The answer is 42"
 
 
-# --- Trigger gating with trigger field ---
+# --- Trigger gating with trigger mode ---
 
 
 class TestTriggerGating:
     """Replicates the trigger gating logic from the orchestrator.
 
-    trigger="mention" + non-admin → require @mention in message.
-    trigger="always" or admin group → always process.
+    The resolved trigger field is Literal["mention", "always"]:
+    - "mention": require @trigger pattern in messages (unless admin group)
+    - "always": always process messages
+    Admin groups always process regardless of trigger mode.
     """
 
     @staticmethod
@@ -125,17 +127,16 @@ class TestTriggerGating:
         trigger: str,
         messages: list[NewMessage],
     ) -> bool:
-        if is_admin_group or trigger == "always":
+        if is_admin_group:
             return True
+        if trigger == "always":
+            return True
+        # trigger == "mention"
         return any(TRIGGER_PATTERN.search(m.content.strip()) for m in messages)
 
     def test_admin_group_always_processes(self, make_msg):
         msgs = [make_msg(content="hello no trigger")]
         assert self._should_process(True, "mention", msgs)
-
-    def test_admin_group_with_trigger_always(self, make_msg):
-        msgs = [make_msg(content="hello no trigger")]
-        assert self._should_process(True, "always", msgs)
 
     def test_non_admin_mention_requires_trigger(self, make_msg):
         msgs = [make_msg(content="hello no trigger")]
@@ -151,6 +152,7 @@ class TestTriggerGating:
 
 
 # --- parseHostTag ---
+
 
 
 class TestParseHostTag:
