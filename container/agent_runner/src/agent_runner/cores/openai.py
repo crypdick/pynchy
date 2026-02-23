@@ -163,7 +163,18 @@ def _make_shell_executor(cwd: str):
                         extract(mapping[key], depth + 1)
                 return
 
-            for attr in ("command", "cmd", "shell_command", "input", "params", "arguments"):
+            for attr in (
+                "command",
+                "cmd",
+                "shell_command",
+                "input",
+                "params",
+                "arguments",
+                "payload",
+                "request",
+                "tool_input",
+                "data",
+            ):
                 if hasattr(value, attr):
                     extract(getattr(value, attr), depth + 1)
 
@@ -207,6 +218,33 @@ def _make_shell_executor(cwd: str):
                 )
                 if match:
                     command = match.group(1) or match.group(2) or match.group(3)
+
+        if isinstance(command, str) and "ShellCommandRequest" in command:
+            # Debug unexpected request shapes to learn the actual fields.
+            try:
+                _log(f"Shell request type={type(request)}")
+                mapping = coerce_mapping(request)
+                if mapping is not None:
+                    _log(f"Shell request keys={list(mapping.keys())}")
+                for name in (
+                    "command",
+                    "cmd",
+                    "shell_command",
+                    "input",
+                    "args",
+                    "parameters",
+                    "payload",
+                    "request",
+                    "tool_input",
+                    "data",
+                    "text",
+                    "content",
+                ):
+                    if hasattr(request, name):
+                        value = getattr(request, name)
+                        _log(f"Shell request {name}={str(value)[:300]}")
+            except Exception as exc:
+                _log(f"Shell request debug failed: {exc}")
         if isinstance(command, (list, tuple)):
             command = " ".join(str(part) for part in command)
         if args:
