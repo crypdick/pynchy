@@ -417,6 +417,7 @@ class LiteLLMGateway:
 
         run_docker(
             "run", "-d",
+            "--init",
             "--name", _LITELLM_CONTAINER,
             "--network", _NETWORK_NAME,
             "-p", f"{self.port}:{_LITELLM_INTERNAL_PORT}",
