@@ -151,6 +151,24 @@ def _determine_result(
 
 
 # ---------------------------------------------------------------------------
+# Initial input file
+# ---------------------------------------------------------------------------
+
+
+def _write_initial_input(input_data: ContainerInput, input_dir: Path) -> None:
+    """Write ContainerInput as initial.json for the container to read on startup.
+
+    Uses atomic write (write to .tmp then rename) so the container's file
+    watcher never sees a partially-written file.
+    """
+    input_dir.mkdir(parents=True, exist_ok=True)
+    filepath = input_dir / "initial.json"
+    temp_path = filepath.with_suffix(".json.tmp")
+    temp_path.write_text(json.dumps(_input_to_dict(input_data)))
+    temp_path.rename(filepath)
+
+
+# ---------------------------------------------------------------------------
 # Shared spawn logic
 # ---------------------------------------------------------------------------
 
@@ -223,6 +241,10 @@ async def _spawn_container(
     # --- Build args ---
     container_args = _build_container_args(mounts, container_name)
 
+    # --- Write initial input as file (container reads on startup) ---
+    ipc_input_dir = s.data_dir / "ipc" / group.folder / "input"
+    _write_initial_input(input_data, ipc_input_dir)
+
     pre_spawn_ms = (time.monotonic() - start_time) * 1000
     logger.info(
         "Spawning container agent",
@@ -237,19 +259,14 @@ async def _spawn_container(
         pre_spawn_ms=round(pre_spawn_ms),
     )
 
-    # --- Spawn process ---
+    # --- Spawn process (stdin not needed — input delivered via IPC file) ---
     proc = await asyncio.create_subprocess_exec(
         get_runtime().cli,
         *container_args,
-        stdin=asyncio.subprocess.PIPE,
+        stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-
-    # Write input JSON and close stdin (Apple Container needs EOF to flush pipe)
-    assert proc.stdin is not None
-    proc.stdin.write(json.dumps(_input_to_dict(input_data)).encode())
-    proc.stdin.close()
 
     return proc, container_name, mounts
 
