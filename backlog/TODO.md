@@ -58,7 +58,7 @@ Single source of truth for all pynchy work items.
   - [Hook Step 5: Polish](2-planning/plugin-hook-5-polish.md) — Error handling, docs, and example plugin
 - [Security Hardening](2-planning/security-hardening.md) — Security improvements and hardening measures (overview - see sub-plans below)
   - [Security Step 0: IPC Surface](2-planning/security-hardening-0-ipc-surface.md) — Reduce IPC to signal-only protocol, Deputy mediation for data-carrying requests, replace polling with inotify
-  - [Security Step 1: Profiles](2-planning/security-hardening-1-profiles.md) — Workspace security profiles and config schema (types partially done: `WorkspaceProfile`/`WorkspaceSecurity` in `types.py`)
+  - ~~[Security Step 1: Profiles](2-planning/security-hardening-1-profiles.md)~~ — **DONE** (2026-02-24): Implemented with four-boolean trust model (`ServiceTrustConfig`) + two-taint `SecurityPolicy` + payload secrets scanner. See `docs/plans/2026-02-23-lethal-trifecta-defenses-design.md`.
   - [Security Step 2: MCP & Policy](2-planning/security-hardening-2-mcp-policy.md) — New MCP tools and basic policy enforcement
   - [Security Step 3: Email](2-planning/security-hardening-3-email.md) — Email service integration (IMAP/SMTP)
   - [Security Step 4: Calendar](2-planning/security-hardening-4-calendar.md) — Calendar service integration (CalDAV)

@@ -236,7 +236,8 @@ async def setup_admin_group(deps: StartupDeps, default_channel: Any | None) -> N
         trigger=f"@{s.agent.name}",
         added_at=datetime.now(UTC).isoformat(),
         is_admin=True,
-        security=WorkspaceSecurity(default_risk_tier="always-approve"),
+        # Admin workspace: no service-level gating needed — fully trusted.
+        security=WorkspaceSecurity(),
     )
     await deps._register_workspace(profile)
     logger.info("Admin workspace created", group=group_name, jid=jid)

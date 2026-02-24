@@ -1,4 +1,4 @@
-"""Tests for the IPC service request handler with policy enforcement."""
+"""Tests for the IPC service request handler with trust-based policy enforcement."""
 
 from __future__ import annotations
 
@@ -8,16 +8,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from pynchy.config_models import (
-    McpToolSecurityConfig,
-    RateLimitsConfig,
+    ServiceTrustTomlConfig,
     WorkspaceConfig,
-    WorkspaceSecurityConfig,
+    WorkspaceSecurityTomlConfig,
 )
 from pynchy.db import _init_test_database
 from pynchy.ipc._handlers_service import (
     _handle_service_request,
     clear_plugin_handler_cache,
-    clear_policy_cache,
 )
 from pynchy.types import WorkspaceProfile
 
@@ -25,7 +23,6 @@ from pynchy.types import WorkspaceProfile
 @pytest.fixture(autouse=True)
 async def _setup():
     await _init_test_database()
-    clear_policy_cache()
     clear_plugin_handler_cache()
 
 
@@ -56,7 +53,7 @@ def _make_request(tool_name: str, request_id: str = "test-req-1", **kwargs) -> d
     }
 
 
-def _make_settings(ws_security: WorkspaceSecurityConfig | None = None, **kwargs):
+def _make_settings(ws_security: WorkspaceSecurityTomlConfig | None = None, **kwargs):
     """Create a fake Settings with workspace security configured."""
 
     class FakeSettings:
@@ -64,16 +61,13 @@ def _make_settings(ws_security: WorkspaceSecurityConfig | None = None, **kwargs)
             self.workspaces = {
                 "test-ws": WorkspaceConfig(name="test", security=ws_security, **kwargs),
             }
+            self.services = {}
 
     return FakeSettings()
 
 
 def _make_fake_plugin_manager(*tool_names: str, handler_fn=None):
-    """Create a fake plugin manager that provides handlers for the given tool names.
-
-    If handler_fn is not provided, uses a default handler that returns
-    an "not implemented" error (simulating a stub service).
-    """
+    """Create a fake plugin manager that provides handlers for the given tool names."""
 
     async def _stub_handler(data: dict) -> dict:
         return {"error": f"Service '{data.get('type', '')}' is not implemented yet."}
@@ -92,10 +86,17 @@ async def test_plugin_dispatch_calls_handler(tmp_path):
     mock_handler = AsyncMock(return_value={"result": {"status": "ok"}})
     fake_pm = _make_fake_plugin_manager("my_tool", handler_fn=mock_handler)
 
+    # All-safe service: no gating
     settings = _make_settings(
-        ws_security=WorkspaceSecurityConfig(
-            mcp_tools={"my_tool": McpToolSecurityConfig(risk_tier="always-approve")},
-            default_risk_tier="human-approval",
+        ws_security=WorkspaceSecurityTomlConfig(
+            services={
+                "my_tool": ServiceTrustTomlConfig(
+                    public_source=False,
+                    secret_data=False,
+                    public_sink=False,
+                    dangerous_writes=False,
+                ),
+            },
         ),
     )
     settings.data_dir = tmp_path
@@ -117,15 +118,16 @@ async def test_plugin_dispatch_calls_handler(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_denied_disabled_tool(tmp_path):
-    """Test that a disabled tool is denied."""
-    fake_pm = _make_fake_plugin_manager("disabled_tool")
+async def test_forbidden_tool_denied(tmp_path):
+    """Test that a forbidden tool is denied."""
+    fake_pm = _make_fake_plugin_manager("forbidden_tool")
     settings = _make_settings(
-        ws_security=WorkspaceSecurityConfig(
-            mcp_tools={
-                "disabled_tool": McpToolSecurityConfig(risk_tier="human-approval", enabled=False)
+        ws_security=WorkspaceSecurityTomlConfig(
+            services={
+                "forbidden_tool": ServiceTrustTomlConfig(
+                    dangerous_writes="forbidden",
+                ),
             },
-            default_risk_tier="human-approval",
         ),
     )
     settings.data_dir = tmp_path
@@ -136,7 +138,7 @@ async def test_denied_disabled_tool(tmp_path):
         patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
         patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
     ):
-        data = _make_request("disabled_tool", param="value")
+        data = _make_request("forbidden_tool", param="value")
         await _handle_service_request(data, "test-ws", False, deps)
 
     response_file = tmp_path / "ipc" / "test-ws" / "responses" / "test-req-1.json"
@@ -147,15 +149,19 @@ async def test_denied_disabled_tool(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_human_approval_required(tmp_path):
-    """Test that human-approval tier returns approval-required error."""
+async def test_dangerous_writes_requires_human(tmp_path):
+    """Test that dangerous_writes=True triggers human approval gate."""
     fake_pm = _make_fake_plugin_manager("sensitive_tool")
     settings = _make_settings(
-        ws_security=WorkspaceSecurityConfig(
-            mcp_tools={
-                "sensitive_tool": McpToolSecurityConfig(risk_tier="human-approval", enabled=True)
+        ws_security=WorkspaceSecurityTomlConfig(
+            services={
+                "sensitive_tool": ServiceTrustTomlConfig(
+                    public_source=False,
+                    secret_data=False,
+                    public_sink=False,
+                    dangerous_writes=True,
+                ),
             },
-            default_risk_tier="human-approval",
         ),
     )
     settings.data_dir = tmp_path
@@ -176,47 +182,8 @@ async def test_human_approval_required(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_rate_limited(tmp_path):
-    """Test that rate-limited calls are denied."""
-    mock_handler = AsyncMock(return_value={"result": "ok"})
-    fake_pm = _make_fake_plugin_manager("fast_tool", handler_fn=mock_handler)
-    settings = _make_settings(
-        ws_security=WorkspaceSecurityConfig(
-            mcp_tools={"fast_tool": McpToolSecurityConfig(risk_tier="always-approve")},
-            default_risk_tier="human-approval",
-            rate_limits=RateLimitsConfig(max_calls_per_hour=1),
-        ),
-    )
-    settings.data_dir = tmp_path
-
-    deps = FakeDeps({"test@g.us": TEST_GROUP})
-
-    with (
-        patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
-        patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
-    ):
-        # First call succeeds (handler is called)
-        data = _make_request("fast_tool", request_id="req-1")
-        await _handle_service_request(data, "test-ws", False, deps)
-
-        response_file = tmp_path / "ipc" / "test-ws" / "responses" / "req-1.json"
-        response = json.loads(response_file.read_text())
-        assert "result" in response  # handler was called
-
-        # Second call is rate-limited
-        data = _make_request("fast_tool", request_id="req-2")
-        await _handle_service_request(data, "test-ws", False, deps)
-
-        response_file = tmp_path / "ipc" / "test-ws" / "responses" / "req-2.json"
-        response = json.loads(response_file.read_text())
-        assert "error" in response
-        assert "rate limit" in response["error"].lower()
-
-
-@pytest.mark.asyncio
 async def test_unknown_tool_type(tmp_path):
     """Test that unknown tool types get an error response."""
-    # No plugins provide "nonexistent_tool"
     fake_pm = _make_fake_plugin_manager()  # empty plugin
     settings = _make_settings()
     settings.data_dir = tmp_path
@@ -251,12 +218,13 @@ async def test_missing_request_id():
 
 @pytest.mark.asyncio
 async def test_fallback_security_for_unconfigured_workspace(tmp_path):
-    """Test that workspaces with no security config get strict defaults."""
+    """Workspaces with no security config get maximally cautious defaults."""
     fake_pm = _make_fake_plugin_manager("some_tool")
 
     class FakeSettings:
         def __init__(self):
             self.workspaces = {}  # No workspace configured
+            self.services = {}
 
     settings = FakeSettings()
     settings.data_dir = tmp_path
@@ -270,7 +238,7 @@ async def test_fallback_security_for_unconfigured_workspace(tmp_path):
         data = _make_request("some_tool")
         await _handle_service_request(data, "unknown-ws", False, deps)
 
-    # Default WorkspaceSecurity has default_risk_tier="human-approval"
+    # Default ServiceTrustConfig has dangerous_writes=True -> needs human
     response_file = tmp_path / "ipc" / "unknown-ws" / "responses" / "test-req-1.json"
     response = json.loads(response_file.read_text())
     assert "error" in response
@@ -278,14 +246,20 @@ async def test_fallback_security_for_unconfigured_workspace(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_unconfigured_tool_uses_default_tier(tmp_path):
-    """Test that tools not listed in mcp_tools use default_risk_tier."""
+async def test_safe_service_allowed(tmp_path):
+    """A fully safe service (all False) passes without gating."""
     mock_handler = AsyncMock(return_value={"result": "ok"})
-    fake_pm = _make_fake_plugin_manager("some_tool", handler_fn=mock_handler)
+    fake_pm = _make_fake_plugin_manager("safe_tool", handler_fn=mock_handler)
     settings = _make_settings(
-        ws_security=WorkspaceSecurityConfig(
-            mcp_tools={},  # No tools configured
-            default_risk_tier="always-approve",
+        ws_security=WorkspaceSecurityTomlConfig(
+            services={
+                "safe_tool": ServiceTrustTomlConfig(
+                    public_source=False,
+                    secret_data=False,
+                    public_sink=False,
+                    dangerous_writes=False,
+                ),
+            },
         ),
     )
     settings.data_dir = tmp_path
@@ -296,10 +270,9 @@ async def test_unconfigured_tool_uses_default_tier(tmp_path):
         patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
         patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
     ):
-        data = _make_request("some_tool")
+        data = _make_request("safe_tool")
         await _handle_service_request(data, "test-ws", False, deps)
 
     response_file = tmp_path / "ipc" / "test-ws" / "responses" / "test-req-1.json"
     response = json.loads(response_file.read_text())
-    # Should be approved (always-approve default) and handler called
     assert "result" in response

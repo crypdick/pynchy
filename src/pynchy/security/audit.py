@@ -22,9 +22,10 @@ async def record_security_event(
     chat_jid: str,
     workspace: str,
     tool_name: str,
-    decision: str,  # "allowed", "denied", "approval_requested", "rate_limited"
+    decision: str,  # "allowed", "denied", "blocked_forbidden", "approval_requested"
     *,
-    tier: str | None = None,
+    corruption_tainted: bool = False,
+    secret_tainted: bool = False,
     reason: str | None = None,
     request_id: str | None = None,
 ) -> None:
@@ -33,7 +34,8 @@ async def record_security_event(
         "workspace": workspace,
         "tool_name": tool_name,
         "decision": decision,
-        "tier": tier,
+        "corruption_tainted": corruption_tainted,
+        "secret_tainted": secret_tainted,
         "reason": reason,
         "request_id": request_id,
     }
