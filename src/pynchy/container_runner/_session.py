@@ -350,9 +350,10 @@ async def destroy_all_sessions() -> None:
 def _clean_ipc_input(group_folder: str) -> None:
     """Remove stale IPC input files for a group.
 
-    Preserves ``initial.json`` — the host writes it before spawn and the
-    container reads it on startup.  Cleaning it here would race with the
-    container's ``read_initial_input()`` call.
+    Preserves ``initial.json`` because this runs *after* the container has
+    already been spawned (see ``agent_runner._cold_start``).  The container
+    reads ``initial.json`` on startup, so deleting it here would race with
+    the container's ``read_initial_input()`` call.
     """
     s = get_settings()
     input_dir = s.data_dir / "ipc" / group_folder / "input"

@@ -32,6 +32,7 @@ from pynchy.container_runner._orchestrator import (
 )
 from pynchy.container_runner._process import StreamState
 from pynchy.container_runner._serialization import _input_to_dict, _parse_container_output
+from pynchy.container_runner._session import _clean_ipc_input
 from pynchy.container_runner._session_prep import (
     _is_skill_selected,
     _parse_skill_tier,
@@ -321,6 +322,25 @@ class TestWriteInitialInput:
         assert data["session_id"] == "sess-42"
         assert data["is_scheduled_task"] is True
         assert data["system_notices"] == ["notice1"]
+
+
+class TestCleanIpcInputPreservesInitialJson:
+    """_clean_ipc_input should not delete initial.json (race with container startup)."""
+
+    def test_preserves_initial_json(self, tmp_path: Path) -> None:
+        settings = make_settings(data_dir=tmp_path)
+        input_dir = tmp_path / "ipc" / "test-group" / "input"
+        input_dir.mkdir(parents=True)
+        (input_dir / "initial.json").write_text('{"messages": []}')
+        (input_dir / "stale-msg.json").write_text('{"type": "message"}')
+        (input_dir / "_close").write_text("")
+
+        with patch("pynchy.container_runner._session.get_settings", return_value=settings):
+            _clean_ipc_input("test-group")
+
+        assert (input_dir / "initial.json").exists()
+        assert not (input_dir / "stale-msg.json").exists()
+        assert not (input_dir / "_close").exists()
 
 
 class TestOutputParsing:
