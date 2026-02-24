@@ -348,12 +348,19 @@ async def destroy_all_sessions() -> None:
 
 
 def _clean_ipc_input(group_folder: str) -> None:
-    """Remove stale IPC input files for a group."""
+    """Remove stale IPC input files for a group.
+
+    Preserves ``initial.json`` — the host writes it before spawn and the
+    container reads it on startup.  Cleaning it here would race with the
+    container's ``read_initial_input()`` call.
+    """
     s = get_settings()
     input_dir = s.data_dir / "ipc" / group_folder / "input"
     if not input_dir.is_dir():
         return
     for f in input_dir.iterdir():
+        if f.name == "initial.json":
+            continue
         with contextlib.suppress(OSError):
             f.unlink()
 

@@ -1,6 +1,6 @@
 """Container runner — spawns agent execution in containers.
 
-Spawns subprocesses, writes JSON input to stdin,
+Spawns subprocesses, writes initial input as an IPC file (initial.json),
 parses streaming output using sentinel markers, manages activity-based timeouts,
 and writes log files.
 

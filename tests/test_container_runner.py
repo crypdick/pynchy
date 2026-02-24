@@ -26,6 +26,7 @@ from pynchy.container_runner._logging import _parse_final_output
 from pynchy.container_runner._mounts import _build_container_args, _build_volume_mounts
 from pynchy.container_runner._orchestrator import (
     _determine_result,
+    _write_initial_input,
     resolve_agent_core,
     run_container_agent,
 )
@@ -145,10 +146,13 @@ def _patch_settings(
 
 
 class FakeProcess:
-    """Simulates asyncio.subprocess.Process for testing."""
+    """Simulates asyncio.subprocess.Process for testing.
+
+    No stdin — the host writes initial input via IPC files, not a pipe.
+    """
 
     def __init__(self) -> None:
-        self.stdin = FakeStdin()
+        self.stdin = None  # stdin=DEVNULL → no pipe
         self.stdout = asyncio.StreamReader()
         self.stderr = asyncio.StreamReader()
         self._returncode: int | None = None
@@ -179,20 +183,6 @@ class FakeProcess:
     @property
     def returncode(self) -> int | None:
         return self._returncode
-
-
-class FakeStdin:
-    """Minimal stdin mock that accepts writes and close."""
-
-    def __init__(self) -> None:
-        self.data = b""
-        self.closed = False
-
-    def write(self, data: bytes) -> None:
-        self.data += data
-
-    def close(self) -> None:
-        self.closed = True
 
 
 # ---------------------------------------------------------------------------
@@ -241,6 +231,96 @@ class TestInputSerialization:
         d = _input_to_dict(inp)
         assert "session_id" not in d
         assert "is_scheduled_task" not in d
+
+
+class TestWriteInitialInput:
+    """Tests for _write_initial_input — atomic file write of ContainerInput."""
+
+    def test_creates_initial_json_with_correct_content(self, tmp_path: Path):
+        inp = ContainerInput(
+            messages=[{"message_type": "user", "content": "hello"}],
+            group_folder="test-group",
+            chat_jid="chat@g.us",
+            is_admin=False,
+        )
+        input_dir = tmp_path / "ipc" / "test-group" / "input"
+        _write_initial_input(inp, input_dir)
+
+        filepath = input_dir / "initial.json"
+        assert filepath.exists()
+        data = json.loads(filepath.read_text())
+        assert data["messages"] == [{"message_type": "user", "content": "hello"}]
+        assert data["group_folder"] == "test-group"
+        assert data["chat_jid"] == "chat@g.us"
+        assert data["is_admin"] is False
+
+    def test_creates_parent_directories(self, tmp_path: Path):
+        inp = ContainerInput(
+            messages=[],
+            group_folder="deep-group",
+            chat_jid="c",
+            is_admin=False,
+        )
+        input_dir = tmp_path / "a" / "b" / "c" / "input"
+        assert not input_dir.exists()
+        _write_initial_input(inp, input_dir)
+        assert (input_dir / "initial.json").exists()
+
+    def test_atomic_write_no_tmp_left_behind(self, tmp_path: Path):
+        inp = ContainerInput(
+            messages=[{"message_type": "user", "content": "hi"}],
+            group_folder="g",
+            chat_jid="c",
+            is_admin=False,
+        )
+        input_dir = tmp_path / "input"
+        _write_initial_input(inp, input_dir)
+
+        # Only initial.json should exist — no .tmp file
+        files = list(input_dir.iterdir())
+        assert len(files) == 1
+        assert files[0].name == "initial.json"
+
+    def test_overwrites_existing_initial_json(self, tmp_path: Path):
+        """Verify idempotency — a second call replaces the first file."""
+        input_dir = tmp_path / "input"
+        inp1 = ContainerInput(
+            messages=[{"message_type": "user", "content": "first"}],
+            group_folder="g",
+            chat_jid="c",
+            is_admin=False,
+        )
+        inp2 = ContainerInput(
+            messages=[{"message_type": "user", "content": "second"}],
+            group_folder="g",
+            chat_jid="c",
+            is_admin=True,
+        )
+        _write_initial_input(inp1, input_dir)
+        _write_initial_input(inp2, input_dir)
+
+        data = json.loads((input_dir / "initial.json").read_text())
+        assert data["messages"][0]["content"] == "second"
+        assert data["is_admin"] is True
+
+    def test_optional_fields_round_trip(self, tmp_path: Path):
+        """Optional fields like session_id survive the write/read cycle."""
+        inp = ContainerInput(
+            messages=[],
+            group_folder="g",
+            chat_jid="c",
+            is_admin=False,
+            session_id="sess-42",
+            is_scheduled_task=True,
+            system_notices=["notice1"],
+        )
+        input_dir = tmp_path / "input"
+        _write_initial_input(inp, input_dir)
+
+        data = json.loads((input_dir / "initial.json").read_text())
+        assert data["session_id"] == "sess-42"
+        assert data["is_scheduled_task"] is True
+        assert data["system_notices"] == ["notice1"]
 
 
 class TestOutputParsing:
@@ -509,9 +589,14 @@ def _patch_subprocess(fake_proc: FakeProcess):
     Also patches _docker_rm_force (called as fire-and-forget in
     run_container_agent) since it uses its own unpatched subprocess call
     from _session.py, which would hang the event loop during teardown.
+
+    Asserts that stdin=DEVNULL is passed (input is via IPC file, not pipe).
     """
 
     async def _fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
+        assert kwargs.get("stdin") == asyncio.subprocess.DEVNULL, (
+            f"Expected stdin=DEVNULL, got {kwargs.get('stdin')}"
+        )
         return fake_proc
 
     async def _noop_rm(name: str) -> None:
