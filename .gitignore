@@ -62,6 +62,7 @@ container/requirements-plugins.txt
 
 # Worktrees
 .worktrees/
+.claude/worktrees/
 
 # Misc
 japanese-emoticons.md
