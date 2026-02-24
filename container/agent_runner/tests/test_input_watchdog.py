@@ -53,7 +53,7 @@ class TestReturnsMessageOnJsonFile:
             await asyncio.sleep(0.1)
             _write_message(input_dir, "hello world")
 
-        asyncio.get_event_loop().create_task(write_after_delay())
+        asyncio.create_task(write_after_delay())
         result = await asyncio.wait_for(wait_for_ipc_message(), timeout=5.0)
         assert result == "hello world"
 
@@ -76,7 +76,7 @@ class TestReturnsNoneOnClose:
             await asyncio.sleep(0.1)
             (input_dir / "_close").touch()
 
-        asyncio.get_event_loop().create_task(close_after_delay())
+        asyncio.create_task(close_after_delay())
         result = await asyncio.wait_for(wait_for_ipc_message(), timeout=5.0)
         assert result is None
 
@@ -99,7 +99,7 @@ class TestDrainsMultipleMessages:
             _write_message(input_dir, "second", index=1)
             _write_message(input_dir, "third", index=2)
 
-        asyncio.get_event_loop().create_task(write_batch_after_delay())
+        asyncio.create_task(write_batch_after_delay())
         result = await asyncio.wait_for(wait_for_ipc_message(), timeout=5.0)
         assert result is not None
         parts = result.split("\n")
