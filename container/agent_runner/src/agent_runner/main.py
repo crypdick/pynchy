@@ -1,7 +1,7 @@
 """Pynchy Agent Runner — runs inside a container.
 
-This is the framework-agnostic runner. It handles stdin/stdout framing, IPC
-polling, and output marker wrapping. The actual LLM agent logic is delegated
+This is the framework-agnostic runner. It handles stdin parsing, IPC
+polling, and output file writing. The actual LLM agent logic is delegated
 to AgentCore implementations (Claude SDK, OpenAI, etc.).
 
 Input protocol:
@@ -9,8 +9,10 @@ Input protocol:
   IPC:   Follow-up messages written as JSON files to /workspace/ipc/input/
          Sentinel: /workspace/ipc/input/_close — signals session end
 
-Stdout protocol:
-  Each result is wrapped in OUTPUT_START_MARKER / OUTPUT_END_MARKER pairs.
+Output protocol:
+  Each event is written as a JSON file to /workspace/ipc/output/.
+  Filenames are monotonic nanosecond timestamps ({ns}.json) for guaranteed
+  ordering. Files are written atomically (write .json.tmp, then rename).
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ import asyncio
 import contextlib
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -30,8 +33,7 @@ IPC_INPUT_DIR = Path("/workspace/ipc/input")
 IPC_INPUT_CLOSE_SENTINEL = IPC_INPUT_DIR / "_close"
 IPC_POLL_SECONDS = 0.5
 
-OUTPUT_START_MARKER = "---PYNCHY_OUTPUT_START---"
-OUTPUT_END_MARKER = "---PYNCHY_OUTPUT_END---"
+IPC_OUTPUT_DIR = Path("/workspace/ipc/output")
 
 
 # ---------------------------------------------------------------------------
@@ -40,11 +42,18 @@ OUTPUT_END_MARKER = "---PYNCHY_OUTPUT_END---"
 
 
 def write_output(output: ContainerOutput) -> None:
-    """Write a marker-wrapped output to stdout."""
-    print(OUTPUT_START_MARKER)
-    print(json.dumps(output.to_dict()))
-    print(OUTPUT_END_MARKER)
-    sys.stdout.flush()
+    """Write an output event as a JSON file to the IPC output directory.
+
+    Uses monotonic_ns timestamps for filenames to guarantee ordering.
+    Writes atomically: data goes to a .json.tmp file first, then is
+    renamed to .json so the host-side watcher never sees partial writes.
+    """
+    IPC_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    filename = f"{time.monotonic_ns()}.json"
+    final_path = IPC_OUTPUT_DIR / filename
+    tmp_path = final_path.with_suffix(".json.tmp")
+    tmp_path.write_text(json.dumps(output.to_dict()))
+    tmp_path.rename(final_path)
 
 
 def log(message: str) -> None:

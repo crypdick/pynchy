@@ -1,7 +1,7 @@
-"""Container I/O models — dataclasses for stdin/stdout protocol framing.
+"""Container I/O models — dataclasses for IPC protocol framing.
 
 ContainerInput: parsed from JSON on stdin at container start.
-ContainerOutput: serialized to JSON on stdout, wrapped in output markers.
+ContainerOutput: serialized to JSON files in the IPC output directory.
 
 These are the container-side equivalents of the host-side types in
 ``pynchy.types`` — they share the same wire format but are defined
@@ -50,7 +50,7 @@ class ContainerInput:
 
 @dataclass
 class ContainerOutput:
-    """Output sent to the host via stdout JSON.
+    """Output sent to the host via IPC output files.
 
     The ``type`` field controls which subset of fields are serialized
     by ``to_dict()`` — only fields relevant to the event type are included.
