@@ -39,8 +39,8 @@ from pynchy.db import (
     update_task_after_run,
 )
 from pynchy.types import (
-    McpToolConfig,
     NewMessage,
+    ServiceTrustConfig,
     TaskRunLog,
     WorkspaceProfile,
     WorkspaceSecurity,
@@ -855,13 +855,21 @@ class TestWorkspaceProfiles:
 
     async def test_workspace_profile_with_security(self):
         security = WorkspaceSecurity(
-            mcp_tools={
-                "send_email": McpToolConfig(risk_tier="human-approval", enabled=True),
-                "read_file": McpToolConfig(risk_tier="always-approve", enabled=True),
+            services={
+                "email": ServiceTrustConfig(
+                    public_source=True,
+                    secret_data=True,
+                    public_sink=True,
+                    dangerous_writes=True,
+                ),
+                "calendar": ServiceTrustConfig(
+                    public_source=False,
+                    secret_data=False,
+                    public_sink=False,
+                    dangerous_writes=False,
+                ),
             },
-            default_risk_tier="rules-engine",
-            allow_filesystem_access=False,
-            allow_network_access=True,
+            contains_secrets=True,
         )
         profile = WorkspaceProfile(
             jid="secure@g.us",
@@ -875,12 +883,12 @@ class TestWorkspaceProfiles:
 
         result = await get_workspace_profile("secure@g.us")
         assert result is not None
-        assert result.security.default_risk_tier == "rules-engine"
-        assert result.security.allow_filesystem_access is False
-        assert result.security.allow_network_access is True
-        assert "send_email" in result.security.mcp_tools
-        assert result.security.mcp_tools["send_email"].risk_tier == "human-approval"
-        assert "read_file" in result.security.mcp_tools
+        assert result.security.contains_secrets is True
+        assert "email" in result.security.services
+        assert result.security.services["email"].public_source is True
+        assert result.security.services["email"].dangerous_writes is True
+        assert "calendar" in result.security.services
+        assert result.security.services["calendar"].public_source is False
 
     async def test_get_workspace_profile_returns_none(self):
         result = await get_workspace_profile("nonexistent@g.us")
@@ -941,9 +949,8 @@ class TestWorkspaceProfiles:
         # get_workspace_profile reads from the same table
         result = await get_workspace_profile("legacy@g.us")
         assert result is not None
-        assert result.security.default_risk_tier == "human-approval"
-        assert result.security.allow_filesystem_access is True
-        assert result.security.mcp_tools == {}
+        assert result.security.services == {}
+        assert result.security.contains_secrets is False
 
 
 # --- get_chat_history limit ---

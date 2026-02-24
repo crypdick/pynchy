@@ -9,6 +9,7 @@ dependencies = [
     "aiohttp>=3.13.3",
     "aiosqlite>=0.22.1",
     "croniter>=6.0.0",
+    "detect-secrets>=1.5.0",
     "mcp>=1.26.0",
     "pluggy>=1.6.0",
     "pydantic>=2.12.5",

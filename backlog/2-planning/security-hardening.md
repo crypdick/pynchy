@@ -15,32 +15,37 @@ An agent becomes dangerous when it has all three of:
 
 But **not every service contributes to the trifecta**. A personal calendar is fully trusted — we control the data, it's not sensitive, and writing to it is safe. Email, on the other hand, has untrusted input (incoming mail from strangers) and is an untrusted sink (can send to anyone).
 
-## The Solution: Three Booleans
+## The Solution: Four Booleans Per Service
 
-Each service or tool declares which legs of the trifecta it contributes:
+> **Updated 2026-02-24:** Implemented with four properties instead of three. The original `trusted_source`/`sensitive_info`/`trusted_sink` model was refined into `public_source`/`secret_data`/`public_sink`/`dangerous_writes` with a tri-state (False/True/"forbidden"). See `docs/plans/2026-02-23-lethal-trifecta-defenses-design.md`.
+
+Each service declares four trust properties:
 
 ```toml
 [services.calendar]
-trusted_source = true    # we control what's in it
-sensitive_info = false    # calendar events aren't secrets
-trusted_sink = true       # writing to our own calendar is safe
+public_source = false      # we control what's in it
+secret_data = false        # calendar events aren't secrets
+public_sink = false        # writing to our own calendar is safe
+dangerous_writes = false   # calendar writes are reversible
 
 [services.email]
-trusted_source = false   # incoming mail is untrusted
-sensitive_info = false    # email content isn't inherently secret
-trusted_sink = false      # can send to anyone — exfiltration vector
+public_source = true       # incoming mail is untrusted
+secret_data = false        # email content isn't inherently secret
+public_sink = true         # can send to anyone — exfiltration vector
+dangerous_writes = true    # sending email is irreversible
 
 [services.passwords]
-trusted_source = true    # vault data is trusted
-sensitive_info = true     # passwords ARE secrets
-trusted_sink = false      # retrieving passwords is a sensitive action
+public_source = false      # vault data is trusted
+secret_data = true         # passwords ARE secrets
+public_sink = false        # not a send channel
+dangerous_writes = "forbidden"  # never allow password writes
 ```
 
 These can be applied at any granularity:
 - **Per service instance** — a specific CalDAV address, a specific IMAP account
-- **Per tool** — mark the web search tool as `trusted_source = false`
+- **Per tool** — mark the web search tool as `public_source = true`
 
-This is all a user needs to understand to keep their system secure. Three booleans per service.
+This is all a user needs to understand to keep their system secure. Four booleans per service.
 
 ## How It Works: Tainted Container Model
 

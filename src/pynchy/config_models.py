@@ -159,39 +159,33 @@ class WorkspaceDefaultsConfig(_StrictModel):
     allowed_users: list[str] | None = None
 
 
-class McpToolSecurityConfig(_StrictModel):
-    """Per-tool security config in config.toml."""
+class ServiceTrustTomlConfig(_StrictModel):
+    """Per-service trust config in config.toml [services.<name>]."""
 
-    risk_tier: Literal["always-approve", "rules-engine", "human-approval"] = "human-approval"
-    enabled: bool = True
-
-
-class RateLimitsConfig(_StrictModel):
-    """Rate limiting config in config.toml."""
-
-    max_calls_per_hour: int = 500
-    per_tool_overrides: dict[str, int] = {}
-
-    @field_validator("max_calls_per_hour")
-    @classmethod
-    def validate_max_calls(cls, v: int) -> int:
-        if v < 1:
-            raise ValueError("max_calls_per_hour must be a positive integer")
-        return v
+    public_source: bool | Literal["forbidden"] = True
+    secret_data: bool = True
+    public_sink: bool | Literal["forbidden"] = True
+    dangerous_writes: bool | Literal["forbidden"] = True
 
 
-class WorkspaceSecurityConfig(_StrictModel):
-    """Security profile in config.toml.
+class WorkspaceServiceOverride(_StrictModel):
+    """Per-workspace service override — only 'forbidden' is allowed.
 
-    Configures per-workspace MCP tool access control and rate limiting.
-    Tools not listed in mcp_tools use the default_risk_tier.
+    All fields are optional (None = no override). Any non-None value
+    must be 'forbidden'. This prevents accidentally relaxing security.
     """
 
-    mcp_tools: dict[str, McpToolSecurityConfig] = {}
-    default_risk_tier: Literal["always-approve", "rules-engine", "human-approval"] = (
-        "human-approval"
-    )
-    rate_limits: RateLimitsConfig | None = None
+    public_source: Literal["forbidden"] | None = None
+    secret_data: None = None  # secret_data cannot be overridden
+    public_sink: Literal["forbidden"] | None = None
+    dangerous_writes: Literal["forbidden"] | None = None
+
+
+class WorkspaceSecurityTomlConfig(_StrictModel):
+    """Security profile in config.toml [workspaces.<name>.security]."""
+
+    services: dict[str, ServiceTrustTomlConfig] = {}
+    contains_secrets: bool = False
 
 
 class RepoConfig(_StrictModel):
@@ -223,7 +217,7 @@ class WorkspaceConfig(_StrictModel):
     schedule: str | None = None  # cron expression
     prompt: str | None = None  # prompt for scheduled tasks
     context_mode: str | None = None  # None → use workspace_defaults
-    security: WorkspaceSecurityConfig | None = None  # MCP tool access control
+    security: WorkspaceSecurityTomlConfig | None = None  # Trust-based security profile
     skills: list[str] | None = None  # tier names and/or skill names; None = all
     mcp_servers: list[str] | None = None  # server names + group names, set-unioned
     mcp: dict[str, dict[str, Any]] = {}  # {server_name: {key: value}} → per-MCP kwargs

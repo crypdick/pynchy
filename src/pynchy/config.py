@@ -53,6 +53,7 @@ from pynchy.config_models import (
     SecretsConfig,
     SecurityConfig,
     ServerConfig,
+    ServiceTrustTomlConfig,
     WorkspaceConfig,
     WorkspaceDefaultsConfig,
     _StrictModel,
@@ -159,6 +160,7 @@ class Settings(BaseSettings):
     secrets: SecretsConfig = SecretsConfig()
     gateway: GatewayConfig = GatewayConfig()
     workspace_defaults: WorkspaceDefaultsConfig = WorkspaceDefaultsConfig()
+    services: dict[str, ServiceTrustTomlConfig] = {}  # [services.<name>]
     repos: dict[str, RepoConfig] = {}  # [repos."owner/repo"]
     # FIXME: Rename "workspace" -> "sandbox" across config + codebase.
     workspaces: dict[str, WorkspaceConfig] = Field(
@@ -276,9 +278,7 @@ class Settings(BaseSettings):
         if self.command_center.connection:
             ref = parse_connection_ref(self.command_center.connection)
             if ref is None:
-                raise ValueError(
-                    "command_center.connection must be connection.<platform>.<name>"
-                )
+                raise ValueError("command_center.connection must be connection.<platform>.<name>")
             if ref.platform == "slack":
                 if ref.name not in self.connection.slack:
                     raise ValueError(
@@ -313,9 +313,7 @@ class Settings(BaseSettings):
                     f"{connection_ref_from_parts(chat_ref.platform, chat_ref.name)}"
                 )
             if chat_ref.chat not in conn.chat:
-                raise ValueError(
-                    f"sandbox.{folder}.chat references unknown chat: {ws.chat}"
-                )
+                raise ValueError(f"sandbox.{folder}.chat references unknown chat: {ws.chat}")
 
         return self
 
@@ -432,6 +430,7 @@ def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
     section. Resets the settings cache so next get_settings() picks it up.
     """
     import tomlkit
+
     from pynchy.logger import logger
 
     toml_path = Path("config.toml")
