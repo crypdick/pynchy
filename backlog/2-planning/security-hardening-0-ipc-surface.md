@@ -6,16 +6,31 @@ Shrink the container-to-host IPC channel from an arbitrary-payload pipe to a nar
 
 This is a transport-level hardening that complements the policy middleware (Step 2) and human approval gate (Step 6). Those steps enforce policy on IPC requests; this step reduces what can be requested in the first place.
 
+## Current implementation status
+
+**Done (since plan was written):**
+- Polling replaced with watchdog/inotify (`src/pynchy/ipc/_watcher.py`)
+- Startup sweep for crash recovery (`_sweep_existing()`)
+- Signal validation via `_protocol.py` (Tier 1 signals + Tier 2 requests with `request_id`)
+- IPC registry with handler dispatch (`_registry.py`)
+
+**Still TODO:**
+- Signal-only conversion for Tier 1 types (send_message, reset_context, refresh_groups)
+- Deputy mediation for Tier 2 data-carrying requests
+- send_message elimination (host reads SDK output instead)
+
 ## Context
 
 ### Current state
 
-Containers write arbitrary JSON payloads to `/workspace/ipc/{messages,tasks}/`. The host polls every 1 second, reads the files, and executes the requested actions directly. The container controls both the action type and the payload content.
+Containers write JSON payloads to `{data_dir}/ipc/{group}/tasks/`. The host watches via `watchdog` (inotify on Linux, FSEvents on macOS) and dispatches to registered handlers via `_registry.py`.
 
 Key files:
 - `container/agent_runner/src/agent_runner/ipc_mcp.py` — MCP tools that write IPC files (container side)
-- `src/pynchy/ipc.py` — Polling loop that processes IPC files (host side)
-- `src/pynchy/container_runner.py:360-363` — Volume mount of IPC directory
+- `src/pynchy/ipc/_watcher.py` — Watchdog-based event loop that processes IPC files (host side)
+- `src/pynchy/ipc/_registry.py` — Handler registration and dispatch
+- `src/pynchy/ipc/_protocol.py` — Signal validation (Tier 1 / Tier 2)
+- `src/pynchy/ipc/_handlers_service.py` — Service request handler with policy enforcement
 
 ### The problem
 
@@ -131,6 +146,6 @@ Steps 2 and 6 remain valuable even with a narrowed IPC surface — they handle t
 - [ ] `send_message` eliminated for scheduled tasks (container runner routes output to chat)
 - [ ] `reset_context`, `refresh_groups` converted to pure signals
 - [ ] `schedule_task`, `deploy`, `register_group`, `create_periodic_agent` routed through Deputy
-- [ ] Polling loop replaced with inotify/watchdog
-- [ ] Startup sweep processes files written while process was down
+- [x] Polling loop replaced with inotify/watchdog — DONE: `_watcher.py` uses `watchdog.Observer` with `FileSystemEventHandler`
+- [x] Startup sweep processes files written while process was down — DONE: `_watcher.py._sweep_existing()` runs on startup
 - [ ] Existing tests updated, new tests for signal processing and Deputy mediation
