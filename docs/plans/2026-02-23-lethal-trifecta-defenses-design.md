@@ -132,7 +132,10 @@ Two independent components determine the gating for write operations:
 
 **Human confirmation** — applied when:
 - `dangerous_writes = true` (always, regardless of taint), OR
-- `corruption_taint = true` AND `secret_taint = true` AND `public_sink = true` (full trifecta)
+- `corruption_taint = true` AND `secret_taint = true` AND `public_sink = true` (full trifecta), OR
+- Payload secrets scanner detects secrets in the outbound data (regardless of taint state)
+
+**Payload secrets scanner** — deterministic, non-LLM content check using `detect-secrets`. Scans every outbound write payload for leaked secrets (API keys, tokens, passwords, private keys). If secrets are detected, forces `needs_human = True` regardless of taint state or service properties. This is defense-in-depth: catches cases where secrets end up in payloads through indirect means that the taint model doesn't track.
 
 ### Full matrix
 
@@ -228,6 +231,7 @@ class SecurityPolicy:
 | TOML config parsing + override validation | Real | — |
 | Deputy scanning | **Stub** (always passes, logs) | Step 7 |
 | Human approval gate | **Stub** (always passes, logs warning) | Step 6 |
+| Payload secrets scanner | Real (detect-secrets library) | — |
 | Poisoned worktree diff scan | **Stub** (noted, needs deputy) | Step 7 |
 
 ## References

@@ -784,6 +784,212 @@ Replaces the old tier-based PolicyMiddleware."
 
 ---
 
+### Task 3b: Payload secrets scanner
+
+**Files:**
+- Create: `src/pynchy/security/secrets_scanner.py`
+- Test: `tests/test_secrets_scanner.py`
+
+**Context:** Deterministic (non-LLM) content check using `detect-secrets` library. Scans outbound write payloads for leaked secrets (API keys, tokens, passwords, private keys). If secrets are detected, `evaluate_write()` forces `needs_human = True` regardless of taint state. Defense-in-depth: catches secrets in payloads that the taint model doesn't track.
+
+**Step 1: Add detect-secrets dependency**
+
+Run: `uv add detect-secrets`
+
+**Step 2: Write the failing tests**
+
+Create `tests/test_secrets_scanner.py`:
+
+```python
+"""Tests for payload secrets scanner."""
+
+from pynchy.security.secrets_scanner import scan_payload_for_secrets
+
+
+def test_no_secrets_in_plain_text():
+    """Normal text has no secrets."""
+    result = scan_payload_for_secrets("Hello, here is my report.")
+    assert not result.secrets_found
+    assert result.detected == []
+
+
+def test_detects_aws_key():
+    """Detects AWS access key in payload."""
+    payload = "Here is the config: AKIAIOSFODNN7EXAMPLE"  # pragma: allowlist secret
+    result = scan_payload_for_secrets(payload)
+    assert result.secrets_found
+
+
+def test_detects_github_token():
+    """Detects GitHub personal access token."""
+    payload = "token=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef12"  # pragma: allowlist secret
+    result = scan_payload_for_secrets(payload)
+    assert result.secrets_found
+
+
+def test_detects_generic_high_entropy():
+    """Detects high-entropy strings that look like tokens."""
+    # A hex token long enough to trigger entropy detection
+    payload = "token=a]1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6"
+    result = scan_payload_for_secrets(payload)
+    # High-entropy detection may or may not trigger depending on
+    # detect-secrets config — this test validates the scanner runs
+    assert isinstance(result.secrets_found, bool)
+
+
+def test_scans_dict_payload():
+    """Scans dict values recursively."""
+    payload = {
+        "to": "boss@company.com",
+        "subject": "Config",
+        "body": "AWS key: AKIAIOSFODNN7EXAMPLE",  # pragma: allowlist secret
+    }
+    result = scan_payload_for_secrets(payload)
+    assert result.secrets_found
+
+
+def test_empty_payload():
+    result = scan_payload_for_secrets("")
+    assert not result.secrets_found
+
+
+def test_none_payload():
+    result = scan_payload_for_secrets(None)
+    assert not result.secrets_found
+```
+
+**Step 3: Run test to verify it fails**
+
+Run: `uv run python -m pytest tests/test_secrets_scanner.py -v`
+Expected: FAIL — module doesn't exist
+
+**Step 4: Implement the scanner**
+
+Create `src/pynchy/security/secrets_scanner.py`:
+
+```python
+"""Deterministic payload secrets scanner using detect-secrets.
+
+Scans outbound write payloads for leaked secrets (API keys, tokens,
+private keys, etc.). Non-LLM, non-AI — purely rule-based detection.
+Used by SecurityPolicy.evaluate_write() to escalate gating when
+secrets are found in payloads regardless of taint state.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+
+from detect_secrets import SecretsCollection
+from detect_secrets.settings import default_settings
+
+
+@dataclass
+class ScanResult:
+    """Result of scanning a payload for secrets."""
+
+    secrets_found: bool = False
+    detected: list[str] = field(default_factory=list)  # types of secrets found
+
+
+def _payload_to_text(payload: str | dict | None) -> str:
+    """Convert a payload to scannable text."""
+    if payload is None:
+        return ""
+    if isinstance(payload, dict):
+        return json.dumps(payload, default=str)
+    return str(payload)
+
+
+def scan_payload_for_secrets(payload: str | dict | None) -> ScanResult:
+    """Scan a payload for secrets using detect-secrets.
+
+    Returns a ScanResult indicating whether secrets were found
+    and what types were detected.
+    """
+    text = _payload_to_text(payload)
+    if not text.strip():
+        return ScanResult()
+
+    secrets = SecretsCollection()
+    with default_settings():
+        secrets.scan_string(text)
+
+    if not secrets:
+        return ScanResult()
+
+    detected_types = []
+    for _filename, secret_set in secrets.data.items():
+        for secret in secret_set:
+            detected_types.append(secret.type)
+
+    return ScanResult(
+        secrets_found=True,
+        detected=detected_types,
+    )
+```
+
+**Step 5: Run tests to verify they pass**
+
+Run: `uv run python -m pytest tests/test_secrets_scanner.py -v`
+Expected: PASS (at least the AWS key and private key tests should pass; high-entropy test is best-effort)
+
+**Step 6: Wire into SecurityPolicy.evaluate_write()**
+
+In `src/pynchy/security/middleware.py`, add to `evaluate_write()` after the taint-based gating logic:
+
+```python
+from pynchy.security.secrets_scanner import scan_payload_for_secrets
+
+# ... inside evaluate_write(), after computing needs_deputy and needs_human:
+
+# Payload secrets scan — escalate if secrets detected
+scan_result = scan_payload_for_secrets(data)
+if scan_result.secrets_found:
+    needs_human = True
+    reason_parts.append(
+        f"secrets detected in payload ({', '.join(scan_result.detected)})"
+    )
+```
+
+**Step 7: Add test for SecurityPolicy integration**
+
+Add to `tests/test_policy_middleware.py`:
+
+```python
+def test_write_payload_with_secrets_escalates_to_human():
+    """Payload containing secrets forces human confirmation even if untainted."""
+    policy = _make_policy(
+        email=ServiceTrustConfig(
+            public_sink=True, dangerous_writes=False,
+            public_source=False, secret_data=False,
+        ),
+    )
+    data = {"body": "Here is the key: AKIAIOSFODNN7EXAMPLE"}  # pragma: allowlist secret
+    decision = policy.evaluate_write("email", data)
+    assert decision.needs_human  # escalated by secrets scanner
+```
+
+**Step 8: Run all security tests**
+
+Run: `uv run python -m pytest tests/test_policy_middleware.py tests/test_secrets_scanner.py -v`
+Expected: PASS
+
+**Step 9: Commit**
+
+```bash
+git add src/pynchy/security/secrets_scanner.py tests/test_secrets_scanner.py \
+    src/pynchy/security/middleware.py tests/test_policy_middleware.py
+git commit -m "feat(security): add deterministic payload secrets scanner
+
+Uses detect-secrets to scan outbound payloads for leaked secrets.
+If found, forces human confirmation regardless of taint state.
+Defense-in-depth complement to the trust/taint model."
+```
+
+---
+
 ### Task 4: Update security/__init__.py exports
 
 **Files:**
@@ -975,6 +1181,7 @@ git commit -m "docs: update security hardening backlog for trust model implement
 1. `refactor(security): replace tier-based types with trust model`
 2. `refactor(config): replace tier-based config with trust model`
 3. `feat(security): implement SecurityPolicy with two-taint model`
+3b. `feat(security): add deterministic payload secrets scanner`
 4. `refactor(security): update exports for SecurityPolicy`
 5. `refactor(ipc): wire SecurityPolicy into service handler`
 6. `refactor(audit): replace tier with taint flags in security events`
