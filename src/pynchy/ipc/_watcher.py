@@ -14,6 +14,8 @@ from watchdog.events import FileCreatedEvent, FileMovedEvent, FileSystemEventHan
 from watchdog.observers import Observer
 
 from pynchy.config import get_settings
+from pynchy.container_runner._process import OnOutput, is_query_done_pulse
+from pynchy.container_runner._serialization import _parse_container_output
 from pynchy.ipc._deps import IpcDeps
 from pynchy.ipc._protocol import parse_ipc_file, validate_signal
 from pynchy.ipc._registry import dispatch
@@ -108,6 +110,84 @@ async def _process_task_file(
         _move_to_error_dir(ipc_base_dir, source_group, file_path)
 
 
+def _get_output_handler(group_folder: str) -> OnOutput | None:
+    """Look up the session's output callback for a group.
+
+    Returns None if no session is active or no handler is set.
+    Stub: Task 6 will wire this up to the actual session's output handler.
+    """
+    from pynchy.container_runner._session import get_session
+
+    session = get_session(group_folder)
+    if session is None:
+        return None
+    return session._on_output
+
+
+def _signal_query_done(group_folder: str) -> None:
+    """Signal query completion for a group's session.
+
+    Stub: Task 6 will wire this up to the actual session lifecycle.
+    Currently sets the session's _query_done event, clears the output
+    handler, and resets the idle timer — mirroring what the stdout reader
+    does when it detects a query-done pulse.
+    """
+    from pynchy.container_runner._session import get_session
+
+    session = get_session(group_folder)
+    if session is None:
+        return
+    session._query_done.set()
+    session._on_output = None
+    session._reset_idle_timer()
+
+
+async def _process_output_file(
+    file_path: Path,
+    source_group: str,
+    ipc_base_dir: Path,
+) -> None:
+    """Process a single output event file from a container.
+
+    Reads JSON, parses via _parse_container_output(), dispatches to the
+    session's output handler, and detects query-done pulses (result events
+    with new_session_id).  Deletes the file after processing.
+    """
+    try:
+        json_str = file_path.read_text()
+        output = _parse_container_output(json_str)
+
+        # Dispatch to the session's output handler
+        handler = _get_output_handler(source_group)
+        if handler is not None:
+            try:
+                await handler(output)
+            except Exception as exc:
+                logger.error(
+                    "Output handler callback failed",
+                    group=source_group,
+                    error=str(exc),
+                )
+
+        # Detect query-done pulse
+        if is_query_done_pulse(output):
+            _signal_query_done(source_group)
+            logger.info(
+                "Query done pulse received via output file",
+                group=source_group,
+            )
+
+        file_path.unlink()
+    except Exception as exc:
+        logger.error(
+            "Error processing output file",
+            file=file_path.name,
+            source_group=source_group,
+            err=str(exc),
+        )
+        _move_to_error_dir(ipc_base_dir, source_group, file_path)
+
+
 async def _handle_signal(
     signal_type: str,
     source_group: str,
@@ -171,6 +251,7 @@ async def _sweep_directory(
         is_admin = source_group in admin_folders
         messages_dir = ipc_base_dir / source_group / "messages"
         tasks_dir = ipc_base_dir / source_group / "tasks"
+        output_dir = ipc_base_dir / source_group / "output"
 
         # Process messages
         try:
@@ -200,6 +281,19 @@ async def _sweep_directory(
                 source_group=source_group,
             )
 
+        # Process output events
+        try:
+            if output_dir.exists():
+                for file_path in sorted(f for f in output_dir.iterdir() if f.suffix == ".json"):
+                    await _process_output_file(file_path, source_group, ipc_base_dir)
+                    processed += 1
+        except OSError as exc:
+            logger.error(
+                "Error reading IPC output directory during sweep",
+                err=str(exc),
+                source_group=source_group,
+            )
+
     return processed
 
 
@@ -225,8 +319,8 @@ class _IpcEventHandler(FileSystemEventHandler):
         try:
             relative = file_path.relative_to(self._ipc_base_dir)
             parts = relative.parts
-            # Expected: <group>/<messages|tasks>/<file>.json
-            if len(parts) == 3 and parts[1] in ("messages", "tasks"):
+            # Expected: <group>/<messages|tasks|output>/<file>.json
+            if len(parts) == 3 and parts[1] in ("messages", "tasks", "output"):
                 self._loop.call_soon_threadsafe(self._queue.put_nowait, file_path)
         except (ValueError, IndexError):
             pass  # File not under IPC base dir or malformed path — ignore
@@ -267,6 +361,8 @@ async def _process_queue(
                 await _process_message_file(file_path, source_group, is_admin, ipc_base_dir, deps)
             elif subdir == "tasks":
                 await _process_task_file(file_path, source_group, is_admin, ipc_base_dir, deps)
+            elif subdir == "output":
+                await _process_output_file(file_path, source_group, ipc_base_dir)
         except Exception as exc:
             logger.error(
                 "Error processing queued IPC file",
