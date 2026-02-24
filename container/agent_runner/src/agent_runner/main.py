@@ -1,13 +1,14 @@
 """Pynchy Agent Runner — runs inside a container.
 
-This is the framework-agnostic runner. It handles stdin parsing, IPC
+This is the framework-agnostic runner. It handles initial input parsing, IPC
 polling, and output file writing. The actual LLM agent logic is delegated
 to AgentCore implementations (Claude SDK, OpenAI, etc.).
 
 Input protocol:
-  Stdin: Full ContainerInput JSON (read until EOF)
-  IPC:   Follow-up messages written as JSON files to /workspace/ipc/input/
-         Sentinel: /workspace/ipc/input/_close — signals session end
+  Initial: ContainerInput JSON read from /workspace/ipc/input/initial.json
+           (written by host before container start, deleted after read)
+  IPC:     Follow-up messages written as JSON files to /workspace/ipc/input/
+           Sentinel: /workspace/ipc/input/_close — signals session end
 
 Output protocol:
   Each event is written as a JSON file to /workspace/ipc/output/.
@@ -25,13 +26,16 @@ import time
 from pathlib import Path
 from typing import Any
 
+from watchdog.events import FileCreatedEvent, FileMovedEvent, FileSystemEventHandler
+from watchdog.observers import Observer
+
 from .core import AgentCoreConfig, AgentEvent
 from .models import ContainerInput, ContainerOutput
 from .registry import create_agent_core
 
 IPC_INPUT_DIR = Path("/workspace/ipc/input")
 IPC_INPUT_CLOSE_SENTINEL = IPC_INPUT_DIR / "_close"
-IPC_POLL_SECONDS = 0.5
+INITIAL_INPUT_FILE = IPC_INPUT_DIR / "initial.json"
 
 IPC_OUTPUT_DIR = Path("/workspace/ipc/output")
 
@@ -66,6 +70,23 @@ def log(message: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def read_initial_input() -> ContainerInput:
+    """Read initial ContainerInput from the IPC input file.
+
+    The host writes ``initial.json`` to the IPC input directory before
+    starting the container.  We read it once on startup, parse it into a
+    ``ContainerInput``, and delete the file so ``drain_ipc_input()`` never
+    picks it up as a follow-up message.
+
+    Raises ``FileNotFoundError`` if the file is missing (container was
+    started without the host writing initial input).
+    """
+    data = json.loads(INITIAL_INPUT_FILE.read_text())
+    container_input = ContainerInput.from_dict(data)
+    INITIAL_INPUT_FILE.unlink()
+    return container_input
+
+
 def should_close() -> bool:
     """Check for _close sentinel."""
     if IPC_INPUT_CLOSE_SENTINEL.exists():
@@ -98,18 +119,63 @@ def drain_ipc_input() -> list[str]:
         return []
 
 
+class _InputEventHandler(FileSystemEventHandler):
+    """Watchdog handler that signals an asyncio.Event when input files appear.
+
+    Runs in the watchdog background thread; uses call_soon_threadsafe to wake
+    the async event loop.  Matches the pattern used by the host-side watcher
+    (src/pynchy/ipc/_watcher.py).
+    """
+
+    def __init__(self, loop: asyncio.AbstractEventLoop, event: asyncio.Event) -> None:
+        super().__init__()
+        self._loop = loop
+        self._event = event
+
+    def _signal_if_relevant(self, path_str: str) -> None:
+        p = Path(path_str)
+        # Wake up for .json message files or the _close sentinel
+        if p.suffix == ".json" or p.name == "_close":
+            self._loop.call_soon_threadsafe(self._event.set)
+
+    def on_created(self, event: Any) -> None:
+        if isinstance(event, FileCreatedEvent):
+            self._signal_if_relevant(event.src_path)
+
+    def on_moved(self, event: Any) -> None:
+        # Host writes atomically (tmp -> rename), which produces a moved event
+        if isinstance(event, FileMovedEvent):
+            self._signal_if_relevant(event.dest_path)
+
+
 async def wait_for_ipc_message() -> str | None:
     """Wait for a new IPC message or _close sentinel.
 
+    Uses watchdog to detect new files in IPC_INPUT_DIR instead of polling.
     Returns the messages as a single string, or None if _close.
     """
-    while True:
-        if should_close():
-            return None
-        messages = drain_ipc_input()
-        if messages:
-            return "\n".join(messages)
-        await asyncio.sleep(IPC_POLL_SECONDS)
+    loop = asyncio.get_running_loop()
+    wakeup = asyncio.Event()
+
+    handler = _InputEventHandler(loop, wakeup)
+    observer = Observer()
+    observer.schedule(handler, str(IPC_INPUT_DIR), recursive=False)
+    observer.daemon = True
+    observer.start()
+
+    try:
+        while True:
+            if should_close():
+                return None
+            messages = drain_ipc_input()
+            if messages:
+                return "\n".join(messages)
+            # Wait until watchdog signals new file activity, then re-check
+            await wakeup.wait()
+            wakeup.clear()
+    finally:
+        observer.stop()
+        observer.join(timeout=2)
 
 
 # ---------------------------------------------------------------------------
@@ -293,10 +359,9 @@ def event_to_output(event: AgentEvent, session_id: str | None) -> ContainerOutpu
 
 
 async def main() -> None:
-    # Read input from stdin
+    # Read initial input from file (written by host before container start)
     try:
-        stdin_data = sys.stdin.read()
-        container_input = ContainerInput.from_dict(json.loads(stdin_data))
+        container_input = read_initial_input()
         log(f"Received input for group: {container_input.group_folder}")
         core_ref = f"{container_input.agent_core_module}.{container_input.agent_core_class}"
         log(f"Using agent core: {core_ref}")
@@ -304,7 +369,7 @@ async def main() -> None:
         write_output(
             ContainerOutput(
                 status="error",
-                error=f"Failed to parse input: {exc}",
+                error=f"Failed to read initial input: {exc}",
             )
         )
         sys.exit(1)
