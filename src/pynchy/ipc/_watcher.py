@@ -114,32 +114,26 @@ def _get_output_handler(group_folder: str) -> OnOutput | None:
     """Look up the session's output callback for a group.
 
     Returns None if no session is active or no handler is set.
-    Stub: Task 6 will wire this up to the actual session's output handler.
+    Delegates to get_session_output_handler() which is the public API
+    on the session module.
     """
-    from pynchy.container_runner._session import get_session
+    from pynchy.container_runner._session import get_session_output_handler
 
-    session = get_session(group_folder)
-    if session is None:
-        return None
-    return session._on_output
+    return get_session_output_handler(group_folder)
 
 
 def _signal_query_done(group_folder: str) -> None:
     """Signal query completion for a group's session.
 
-    Stub: Task 6 will wire this up to the actual session lifecycle.
-    Currently sets the session's _query_done event, clears the output
-    handler, and resets the idle timer — mirroring what the stdout reader
-    does when it detects a query-done pulse.
+    Delegates to session.signal_query_done() which sets the _query_done
+    event, clears the output handler, and resets the idle timer.
     """
     from pynchy.container_runner._session import get_session
 
     session = get_session(group_folder)
     if session is None:
         return
-    session._query_done.set()
-    session._on_output = None
-    session._reset_idle_timer()
+    session.signal_query_done()
 
 
 async def _process_output_file(
@@ -231,11 +225,16 @@ async def _sweep_directory(
     ipc_base_dir: Path,
     deps: IpcDeps,
 ) -> int:
-    """Process all existing IPC files (crash recovery).
+    """Sweep stale IPC files on startup (crash recovery).
 
-    Returns the number of files processed.
+    Messages and tasks are *processed* (replayed).  Output files and stale
+    ``initial.json`` are *deleted* — they were mid-query artefacts from a
+    dead session and replaying them is meaningless.
+
+    Returns the total number of files handled (processed + cleaned).
     """
     processed = 0
+    cleaned = 0
     try:
         group_folders = [
             f.name for f in ipc_base_dir.iterdir() if f.is_dir() and f.name != "errors"
@@ -281,20 +280,40 @@ async def _sweep_directory(
                 source_group=source_group,
             )
 
-        # Process output events
+        # Delete stale output files — these were mid-query events from a dead
+        # session; replaying them on crash recovery is meaningless since there
+        # is no active session to dispatch to.
         try:
             if output_dir.exists():
                 for file_path in sorted(f for f in output_dir.iterdir() if f.suffix == ".json"):
-                    await _process_output_file(file_path, source_group, ipc_base_dir)
-                    processed += 1
+                    file_path.unlink()
+                    cleaned += 1
         except OSError as exc:
             logger.error(
-                "Error reading IPC output directory during sweep",
+                "Error cleaning IPC output directory during sweep",
                 err=str(exc),
                 source_group=source_group,
             )
 
-    return processed
+        # Delete stale initial.json — a cold-start prompt that was never
+        # consumed because the container crashed before reading it.
+        input_dir = ipc_base_dir / source_group / "input"
+        try:
+            initial_file = input_dir / "initial.json"
+            if initial_file.exists():
+                initial_file.unlink()
+                cleaned += 1
+        except OSError as exc:
+            logger.error(
+                "Error cleaning stale initial.json during sweep",
+                err=str(exc),
+                source_group=source_group,
+            )
+
+    if cleaned > 0:
+        logger.info("IPC startup sweep cleaned stale files", cleaned=cleaned)
+
+    return processed + cleaned
 
 
 class _IpcEventHandler(FileSystemEventHandler):
