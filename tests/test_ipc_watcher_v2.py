@@ -20,7 +20,6 @@ from pynchy.ipc._watcher import (
     _handle_signal,
     _IpcEventHandler,
     _process_message_file,
-    _process_output_file,
     _process_task_file,
     _sweep_directory,
 )
@@ -238,8 +237,12 @@ class TestStartupSweep:
 
         assert not file_path.exists()
 
-    async def test_sweep_processes_output_files(self, deps, tmp_path: Path):
-        """Startup sweep should process leftover output files."""
+    async def test_sweep_deletes_output_files(self, deps, tmp_path: Path):
+        """Startup sweep should delete orphaned output files, not process them.
+
+        Stale output files are mid-query artefacts from a dead session.
+        Replaying them is meaningless — there's no active session to dispatch to.
+        """
         ipc_dir = tmp_path / "ipc"
         _write_ipc_file(
             ipc_dir,
@@ -255,12 +258,66 @@ class TestStartupSweep:
         with patch(
             "pynchy.ipc._watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
-        ), patch("pynchy.ipc._watcher._get_output_handler", return_value=None):
-            processed = await _sweep_directory(ipc_dir, deps)
+        ), patch(
+            "pynchy.ipc._watcher._process_output_file",
+            new_callable=AsyncMock,
+        ) as mock_process:
+            handled = await _sweep_directory(ipc_dir, deps)
 
-        assert processed == 1
-        # File should be cleaned up
+        # File should be deleted without calling _process_output_file
+        mock_process.assert_not_called()
+        assert handled == 1
         assert not (ipc_dir / "admin-1" / "output" / "test.json").exists()
+
+    async def test_sweep_deletes_stale_initial_json(self, deps, tmp_path: Path):
+        """Startup sweep should delete stale initial.json from input/."""
+        ipc_dir = tmp_path / "ipc"
+        input_dir = ipc_dir / "admin-1" / "input"
+        input_dir.mkdir(parents=True)
+        initial_file = input_dir / "initial.json"
+        initial_file.write_text(json.dumps({"type": "initial", "text": "stale prompt"}))
+
+        with patch(
+            "pynchy.ipc._watcher.get_settings",
+            return_value=_test_settings(data_dir=tmp_path),
+        ):
+            handled = await _sweep_directory(ipc_dir, deps)
+
+        assert handled == 1
+        assert not initial_file.exists()
+
+    async def test_sweep_cleanup_counts(self, deps, tmp_path: Path):
+        """Sweep should return correct total count (processed + cleaned)."""
+        ipc_dir = tmp_path / "ipc"
+
+        # 1 message file (processed)
+        _write_ipc_file(
+            ipc_dir,
+            "admin-1",
+            "messages",
+            {"type": "message", "chatJid": "other@g.us", "text": "hello"},
+        )
+        # 2 output files (cleaned)
+        output_dir = ipc_dir / "admin-1" / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "001.json").write_text(json.dumps({"type": "text", "text": "a"}))
+        (output_dir / "002.json").write_text(json.dumps({"type": "text", "text": "b"}))
+        # 1 stale initial.json (cleaned)
+        input_dir = ipc_dir / "admin-1" / "input"
+        input_dir.mkdir(parents=True, exist_ok=True)
+        (input_dir / "initial.json").write_text(json.dumps({"type": "initial"}))
+
+        with patch(
+            "pynchy.ipc._watcher.get_settings",
+            return_value=_test_settings(data_dir=tmp_path),
+        ):
+            handled = await _sweep_directory(ipc_dir, deps)
+
+        # 1 processed + 2 output cleaned + 1 initial cleaned = 4
+        assert handled == 4
+        assert len(deps.broadcast_messages) == 1
+        assert not any(output_dir.iterdir())
+        assert not (input_dir / "initial.json").exists()
 
     async def test_sweep_moves_bad_files_to_errors(self, deps, tmp_path: Path):
         """Malformed files should be moved to errors/ during sweep."""

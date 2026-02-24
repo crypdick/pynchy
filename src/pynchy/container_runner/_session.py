@@ -8,6 +8,13 @@ container lifecycle from individual message processing.
 Two paths through run_agent():
   Cold path: first message or after reset — spawn container, start readers
   Warm path: subsequent messages — send IPC message, wait for query done
+
+Output routing:
+  Output arrives as files in the IPC output/ directory and is processed by the
+  IPC watcher (_watcher.py).  The watcher calls get_session_output_handler() to
+  look up the current callback and signal_query_done() when a query-done pulse
+  is detected.  The session no longer reads stdout for output — only stderr is
+  read (for log capture) and proc.wait() is monitored for unexpected death.
 """
 
 from __future__ import annotations
@@ -21,8 +28,6 @@ import time
 from pynchy.config import get_settings
 from pynchy.container_runner._process import (
     OnOutput,
-    extract_marker_outputs,
-    is_query_done_pulse,
 )
 from pynchy.logger import logger
 from pynchy.runtime.runtime import get_runtime
@@ -35,16 +40,19 @@ class SessionDiedError(Exception):
 class ContainerSession:
     """Owns a running container process and provides query-level interaction.
 
-    The background stdout reader runs for the lifetime of the container,
-    dispatching output events to a mutable callback and detecting the
-    session-update pulse that signals query completion.
+    Output is routed through file-based IPC: the container writes output files,
+    the host IPC watcher processes them and calls back into the session via
+    signal_query_done() and get_session_output_handler().
+
+    The session monitors stderr (for log capture) and proc.wait() (for
+    detecting unexpected container death).
     """
 
     def __init__(self, group_folder: str, container_name: str) -> None:
         self.group_folder = group_folder
         self.container_name = container_name
         self.proc: asyncio.subprocess.Process | None = None
-        self._stdout_task: asyncio.Task | None = None  # type: ignore[type-arg]
+        self._proc_monitor_task: asyncio.Task | None = None  # type: ignore[type-arg]
         self._stderr_task: asyncio.Task | None = None  # type: ignore[type-arg]
         self._on_output: OnOutput | None = None
         self._query_done = asyncio.Event()
@@ -58,13 +66,19 @@ class ContainerSession:
         return self.proc is not None and self.proc.returncode is None and not self._dead
 
     def start(self, proc: asyncio.subprocess.Process) -> None:
-        """Attach to a spawned container process and start background readers."""
+        """Attach to a spawned container process and start background monitors.
+
+        Starts:
+        - stderr reader (log capture)
+        - proc monitor (detects unexpected container death via proc.wait())
+
+        Output is handled by the IPC watcher, not by reading stdout.
+        """
         self.proc = proc
         self._dead = False
-        assert proc.stdout is not None
         assert proc.stderr is not None
-        self._stdout_task = asyncio.ensure_future(self._read_stdout(proc.stdout))
         self._stderr_task = asyncio.ensure_future(self._read_stderr(proc.stderr))
+        self._proc_monitor_task = asyncio.ensure_future(self._monitor_proc(proc))
         self._reset_idle_timer()
 
     def set_output_handler(self, on_output: OnOutput | None) -> None:
@@ -73,6 +87,17 @@ class ContainerSession:
         self._query_done.clear()
         self._died_before_pulse = False
         self._cancel_idle_timer()
+
+    def signal_query_done(self) -> None:
+        """Signal that the current query is complete.
+
+        Called by the IPC watcher when it detects a query-done pulse in an
+        output file.  Sets the _query_done event, clears the output handler,
+        and resets the idle timer.
+        """
+        self._query_done.set()
+        self._on_output = None
+        self._reset_idle_timer()
 
     async def send_ipc_message(self, text: str) -> None:
         """Write a JSON message file to the container's IPC input directory."""
@@ -137,7 +162,7 @@ class ContainerSession:
         await _docker_rm_force(self.container_name)
 
         # Cancel background tasks
-        for task in (self._stdout_task, self._stderr_task):
+        for task in (self._proc_monitor_task, self._stderr_task):
             if task and not task.done():
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
@@ -172,81 +197,44 @@ class ContainerSession:
             name=f"idle-destroy-{self.group_folder}",
         )
 
-    async def _read_stdout(self, stream: asyncio.StreamReader) -> None:
-        """Long-lived stdout reader — dispatches outputs and detects query-done pulses."""
-        parse_buffer = ""
-        spawn_time = time.monotonic()
-        first_chunk_logged = False
+    async def _monitor_proc(self, proc: asyncio.subprocess.Process) -> None:
+        """Monitor the container process and detect unexpected death.
 
-        while True:
-            chunk = await stream.read(8192)
-            if not chunk:
-                # EOF — container exited
-                self._dead = True
-                if not self._query_done.is_set():
-                    # Wait for the process to fully exit so we can inspect
-                    # the return code.  A clean exit (code 0) means the
-                    # container shut down intentionally (reset_context,
-                    # finished_work) — NOT a crash.
-                    exit_code = None
-                    if self.proc:
-                        with contextlib.suppress(TimeoutError):
-                            exit_code = await asyncio.wait_for(self.proc.wait(), timeout=5.0)
-                    if exit_code == 0:
-                        logger.info(
-                            "Container exited cleanly without pulse (likely reset_context)",
-                            group=self.group_folder,
-                            container=self.container_name,
-                            exit_code=exit_code,
-                        )
-                    else:
-                        self._died_before_pulse = True
-                        logger.warning(
-                            "Container died before query-done pulse",
-                            group=self.group_folder,
-                            container=self.container_name,
-                            exit_code=exit_code,
-                        )
-                self._query_done.set()
+        Waits for proc.wait() to return.  If the process exits while a query
+        is in-flight (i.e. _query_done is not yet set), sets _dead and
+        _died_before_pulse, then signals _query_done so the caller unblocks.
+
+        A clean exit (code 0) means the container shut down intentionally
+        (reset_context, finished_work) -- NOT a crash.
+        """
+        exit_code = await proc.wait()
+
+        self._dead = True
+
+        if not self._query_done.is_set():
+            if exit_code == 0:
                 logger.info(
-                    "Session stdout EOF",
+                    "Container exited cleanly without pulse (likely reset_context)",
                     group=self.group_folder,
                     container=self.container_name,
+                    exit_code=exit_code,
                 )
-                return
-
-            text = chunk.decode(errors="replace")
-
-            if not first_chunk_logged:
-                elapsed_ms = (time.monotonic() - spawn_time) * 1000
-                first_chunk_logged = True
-                logger.info(
-                    "Session first stdout",
+            else:
+                self._died_before_pulse = True
+                logger.warning(
+                    "Container died before query-done pulse",
                     group=self.group_folder,
-                    elapsed_ms=round(elapsed_ms),
+                    container=self.container_name,
+                    exit_code=exit_code,
                 )
+            self._query_done.set()
 
-            # Parse marker-delimited outputs
-            parse_buffer += text
-            outputs, parse_buffer = extract_marker_outputs(parse_buffer, self.group_folder)
-
-            for output in outputs:
-                # Dispatch to current output handler
-                if self._on_output is not None:
-                    try:
-                        await self._on_output(output)
-                    except Exception as exc:
-                        logger.error(
-                            "Session output callback failed",
-                            group=self.group_folder,
-                            error=str(exc),
-                        )
-
-                # Detect query-done pulse
-                if is_query_done_pulse(output):
-                    self._query_done.set()
-                    self._on_output = None
-                    self._reset_idle_timer()
+        logger.info(
+            "Session proc exited",
+            group=self.group_folder,
+            container=self.container_name,
+            exit_code=exit_code,
+        )
 
     async def _read_stderr(self, stream: asyncio.StreamReader) -> None:
         """Long-lived stderr reader — logs container stderr lines."""
@@ -286,6 +274,18 @@ def get_session(group_folder: str) -> ContainerSession | None:
     return session
 
 
+def get_session_output_handler(group_folder: str) -> OnOutput | None:
+    """Return the output handler for the active session of a group, or None.
+
+    Used by the IPC watcher to dispatch output events to the correct callback.
+    Returns None if no session is active or no handler is set.
+    """
+    session = get_session(group_folder)
+    if session is None:
+        return None
+    return session._on_output
+
+
 async def create_session(
     group_folder: str,
     container_name: str,
@@ -295,7 +295,7 @@ async def create_session(
     """Create and register a new session for a group.
 
     Cleans up any stale container with the same name and stale IPC input
-    files before registering.
+    and output files before registering.
     """
     # Destroy existing session if any
     old = _sessions.pop(group_folder, None)
@@ -305,8 +305,9 @@ async def create_session(
     # Force-remove stale container with same name
     await _docker_rm_force(container_name)
 
-    # Clean stale IPC input files
+    # Clean stale IPC files from the previous session
     _clean_ipc_input(group_folder)
+    _clean_ipc_output(group_folder)
 
     session = ContainerSession(group_folder, container_name)
     if idle_timeout_override is not None:
@@ -362,6 +363,23 @@ def _clean_ipc_input(group_folder: str) -> None:
     for f in input_dir.iterdir():
         if f.name == "initial.json":
             continue
+        with contextlib.suppress(OSError):
+            f.unlink()
+
+
+def _clean_ipc_output(group_folder: str) -> None:
+    """Remove stale IPC output files for a group.
+
+    Called when creating a new session to prevent replay of output events
+    from a previous (dead) session.  Output files are ephemeral mid-query
+    artefacts — they have no value once the session that produced them is
+    gone.
+    """
+    s = get_settings()
+    output_dir = s.data_dir / "ipc" / group_folder / "output"
+    if not output_dir.is_dir():
+        return
+    for f in output_dir.iterdir():
         with contextlib.suppress(OSError):
             f.unlink()
 
