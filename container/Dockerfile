@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get purge -y gpg && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
-# Disable Python stdout buffering so streaming markers reach the host immediately
+# Disable Python stdout buffering so stderr log lines reach the host immediately
 ENV PYTHONUNBUFFERED=1
 
 # Install claude-code globally
@@ -46,12 +46,12 @@ COPY requirements-plugins.txt /app/requirements-plugins.txt
 RUN uv pip install --system --no-cache-dir -r /app/requirements-plugins.txt
 
 # Create workspace directories
-RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/messages /workspace/ipc/tasks /workspace/ipc/input
+RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/messages /workspace/ipc/tasks /workspace/ipc/input /workspace/ipc/output
 
 # Create entrypoint script
 # Sources env from mounted /workspace/env-dir/env if it exists (set -a exports all vars)
-# Stdin is buffered to /tmp then piped (Apple Container requires EOF to flush stdin pipe)
-RUN printf '#!/bin/bash\nset -e\nif [ -f /workspace/env-dir/env ]; then set -a; . /workspace/env-dir/env; set +a; fi\ncat > /tmp/input.json\npython -m agent_runner < /tmp/input.json\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+# Input arrives via IPC files (initial.json), not stdin
+RUN printf '#!/bin/bash\nset -e\nif [ -f /workspace/env-dir/env ]; then set -a; . /workspace/env-dir/env; set +a; fi\npython -m agent_runner\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 # Create non-root user for security
 # NOTE: Update docs/security.md § Container Isolation if you change the username.
@@ -69,5 +69,5 @@ RUN git config --global credential.helper '!gh auth git-credential' \
 # Set working directory to group workspace
 WORKDIR /workspace/group
 
-# Entry point reads JSON from stdin, outputs JSON to stdout
+# Entry point reads initial input from IPC files, writes output as IPC files
 ENTRYPOINT ["/app/entrypoint.sh"]

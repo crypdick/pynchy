@@ -370,7 +370,7 @@ class TestContainerArgs:
 
     def test_includes_name_and_image(self):
         args = _build_container_args([], "my-container")
-        assert args[:4] == ["run", "-i", "--name", "my-container"]
+        assert args[:3] == ["run", "--name", "my-container"]
         # Last arg is the image
         assert args[-1].endswith("-agent:latest")
 
