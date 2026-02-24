@@ -60,5 +60,8 @@ container/requirements-plugins.txt
 .playwright-mcp/
 *.log
 
+# Worktrees
+.worktrees/
+
 # Misc
 japanese-emoticons.md
