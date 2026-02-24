@@ -1,7 +1,7 @@
 """Pynchy Agent Runner — runs inside a container.
 
 This is the framework-agnostic runner. It handles initial input parsing, IPC
-polling, and output file writing. The actual LLM agent logic is delegated
+file watching, and output file writing. The actual LLM agent logic is delegated
 to AgentCore implementations (Claude SDK, OpenAI, etc.).
 
 Input protocol:
