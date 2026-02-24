@@ -2,223 +2,103 @@
 
 ## Summary
 
-This project adds security layers to Pynchy, enabling agents to safely use external services (email, passwords, calendar, etc.) without creating the conditions for prompt injection attacks.
+This project adds security layers to Pynchy, enabling agents to safely use external services without creating the conditions for prompt injection attacks.
 
-**Status:** Broken into 7 sub-plans (see below)
+**Status:** Core trust model implemented (Steps 1, 2, 4 done). Remaining: IPC narrowing, human approval gate, deputy agent.
 
 ## The Problem: The Lethal Trifecta
 
 An agent becomes dangerous when it has all three of:
-- **A) Untrusted input** — data from sources we don't control (emails from strangers, web content)
-- **B) Sensitive data** — information that could cause harm if leaked (passwords, banking info)
-- **C) Untrusted sinks** — channels that could be used for exfiltration or harm (sending emails, external APIs)
+- **A) Untrusted input** — data from sources we don't control (Slack messages, web content)
+- **B) Sensitive data** — information that would cause harm if leaked (corporate docs, credentials)
+- **C) Untrusted sinks** — channels that could be used for exfiltration (sending messages, submitting forms)
 
-But **not every service contributes to the trifecta**. A personal calendar is fully trusted — we control the data, it's not sensitive, and writing to it is safe. Email, on the other hand, has untrusted input (incoming mail from strangers) and is an untrusted sink (can send to anyone).
+Not every service contributes to the trifecta. A personal calendar is fully trusted. A corporate Slack has untrusted input, sensitive data, and is an untrusted sink.
 
-## The Solution: Three Booleans
+## The Solution: Four Booleans Per Service
 
-Each service or tool declares which legs of the trifecta it contributes:
+Each service declares four trust properties in `config.toml`:
 
 ```toml
-[services.calendar]
-trusted_source = true    # we control what's in it
-sensitive_info = false    # calendar events aren't secrets
-trusted_sink = true       # writing to our own calendar is safe
+[services.caldav]
+public_source = false      # we control what's in it
+secret_data = false         # calendar events aren't confidential
+public_sink = false         # writing to our own calendar is safe
+dangerous_writes = false    # calendar edits are reversible
 
-[services.email]
-trusted_source = false   # incoming mail is untrusted
-sensitive_info = false    # email content isn't inherently secret
-trusted_sink = false      # can send to anyone — exfiltration vector
-
-[services.passwords]
-trusted_source = true    # vault data is trusted
-sensitive_info = true     # passwords ARE secrets
-trusted_sink = false      # retrieving passwords is a sensitive action
+[services.slack_mcp_acme]
+public_source = true        # messages from others in the workspace
+secret_data = true          # corporate conversations are confidential
+public_sink = true          # can DM and post to channels
+dangerous_writes = true     # sending messages is irreversible
 ```
 
-These can be applied at any granularity:
-- **Per service instance** — a specific CalDAV address, a specific IMAP account
-- **Per tool** — mark the web search tool as `trusted_source = false`
+Values: `false` (safe), `true` (risky — gated), `"forbidden"` (blocked entirely).
 
-This is all a user needs to understand to keep their system secure. Three booleans per service.
+Per-workspace overrides mark workspaces containing sensitive data:
+
+```toml
+[sandbox.acme-1.security]
+contains_secrets = true
+```
+
+See [docs/usage/security.md](../../docs/usage/security.md) for the full configuration guide.
 
 ## How It Works: Tainted Container Model
 
-The runtime tracks whether a container has been **tainted** by untrusted input:
+The runtime tracks two independent taint flags per container invocation:
 
-1. **Reads from untrusted source (`trusted_source = false`):**
-   - Content is sanitized by a **deputy agent** (fresh context, no tools) before the orchestrator sees it
-   - The container is **marked as tainted**
+- **`corruption_tainted`** — set when agent reads from a `public_source`
+- **`secret_tainted`** — set when agent reads `secret_data` or accesses a workspace with `contains_secrets = true`
 
-2. **Tainted container tries to write to untrusted sink (`trusted_sink = false`):**
-   - A deputy reviews the outbound content
-   - A **human gate** is triggered (approval via WhatsApp)
-   - Both must pass before the action proceeds
+The gating matrix on writes:
 
-3. **Tainted container accesses sensitive data (`sensitive_info = true`):**
-   - Human gate triggered — the combination of tainted + sensitive is dangerous
+| Condition | Gate |
+|-----------|------|
+| `dangerous_writes = "forbidden"` | **Blocked** |
+| `dangerous_writes = true` | **Human approval** |
+| corruption + secret + `public_sink` | **Human approval** (the trifecta) |
+| corruption + `public_sink` | **Deputy review** |
+| None of the above | **Allowed** |
 
-4. **Fully trusted services (`trusted_source = true, sensitive_info = false, trusted_sink = true`):**
-   - **No gating, no deputy, no overhead.** Execute unfettered.
-
-Rate limiting applies to all services regardless of trust declarations, to prevent runaway loops.
-
-## Service Trust Examples
-
-| Service | trusted_source | sensitive_info | trusted_sink | Result |
-|---------|---------------|----------------|-------------|--------|
-| Personal calendar | true | false | true | No gating |
-| Email (IMAP/SMTP) | false | false | false | Deputy on reads, taint + human gate on sends |
-| Password manager | true | true | false | Human gate when tainted container requests password |
-| Web browsing | false | false | N/A | Deputy on content, taints container |
-| Personal Nextcloud | true | false | true | No gating |
-| Shared calendar (untrusted participants) | false | false | true | Deputy on reads, taints container |
-
-## Service Integrations (Steps 3-5)
-
-Host-side adapters that execute IPC requests using real credentials:
-- **Email** (IMAP/SMTP) — `trusted_source: false, sensitive_info: false, trusted_sink: false`
-- **Calendar** (CalDAV) — `trusted_source: true, sensitive_info: false, trusted_sink: true`
-- **Passwords** (1Password CLI) — `trusted_source: true, sensitive_info: true, trusted_sink: false`
-
-Credentials live only in the host process, never exposed to containers or agents.
-
-## Cross-Cutting: Audit Log & Non-Retryable Denials
-
-Every policy evaluation is recorded in the existing `messages` table (`sender='security'`), prunable independently with `DELETE FROM messages WHERE sender = 'security' AND timestamp < cutoff`. No new tables needed. Policy denials are marked as non-retryable errors — the GroupQueue will not retry container runs that failed due to a deterministic policy denial.
-
-## SecurityPolicy Facade
-
-The components compose into a single `SecurityPolicy` object per workspace:
-
-```python
-class SecurityPolicy:
-    """Single entry point for all security decisions for a workspace."""
-    service_trust: dict[str, ServiceTrustConfig]  # per-service trust declarations
-    tainted: bool  # has this container seen untrusted input?
-    deputy: DeputyAgent | None
-    approval_manager: ApprovalManager | None
-
-    def is_tainted(self) -> bool:
-        """Has the container read from an untrusted source?"""
-        return self.tainted
-
-    async def evaluate_read(self, service_name, data) -> PolicyDecision:
-        """Evaluate a read operation. Deputy scans if untrusted source, taints container."""
-
-    async def evaluate_write(self, service_name, data) -> PolicyDecision:
-        """Evaluate a write operation. Human gate if tainted + untrusted sink."""
-
-    async def evaluate_access(self, service_name) -> PolicyDecision:
-        """Evaluate sensitive data access. Human gate if tainted + sensitive."""
-```
+A payload secrets scanner (`detect-secrets`) also runs on outbound writes, escalating to human approval if credential patterns are detected.
 
 ## Implementation Plan
 
-This project is broken into 8 sub-plans. The recommended order is **0 → 1 → 2 → 6 → 3/4/5 → 7**.
+### Completed
 
-### [Step 0: Reduce IPC Surface](security-hardening-0-ipc-surface.md)
+- **Step 1: Service Trust Profiles** → [5-completed/security-hardening-1-profiles.md](../5-completed/security-hardening-1-profiles.md)
+  `ServiceTrustConfig`, `WorkspaceSecurity`, TOML config, DB serialization.
+
+- **Step 2: Policy Middleware & Taint Tracking** → [5-completed/security-hardening-2-mcp-policy.md](../5-completed/security-hardening-2-mcp-policy.md)
+  `SecurityPolicy` with two-taint model, audit logging, IPC handler integration, payload secrets scanner.
+
+- **Step 4: Calendar Integration** → [5-completed/security-hardening-4-calendar.md](../5-completed/security-hardening-4-calendar.md)
+  CalDAV adapter (pre-existing plugin), now configured with trust declarations.
+
+### Remaining
+
+#### [Step 0: Reduce IPC Surface](security-hardening-0-ipc-surface.md)
 **Scope:** Signal-only IPC + inotify
 **Dependencies:** None
 
-### [Step 1: Service Trust Profiles](security-hardening-1-profiles.md)
-**Scope:** `ServiceTrustConfig` schema, per-workspace configuration, taint tracking
-**Dependencies:** None
+#### [Step 6: Human Approval Gate](security-hardening-6-approval.md)
+**Scope:** Approval flow for tainted containers writing to untrusted sinks
+**Dependencies:** Steps 1-2 (done)
 
-### [Step 2: Policy Middleware & Taint Tracking](security-hardening-2-mcp-policy.md)
-**Scope:** IPC MCP tools + taint-aware policy middleware + audit log + rate limiting
-**Dependencies:** Step 1
-
-### [Step 6: Human Approval Gate](security-hardening-6-approval.md)
-**Scope:** WhatsApp approval flow for tainted containers writing to untrusted sinks
-**Dependencies:** Steps 1-2
-
-### [Step 3: Email Integration](security-hardening-3-email.md)
-**Scope:** Host-side email adapter (IMAP/SMTP)
-**Dependencies:** Steps 0-2, 6
-
-### [Step 4: Calendar Integration](security-hardening-4-calendar.md)
-**Scope:** Host-side calendar adapter (CalDAV). Fully trusted — no gating needed.
-**Dependencies:** Steps 0-2
-
-### [Step 5: Password Manager Integration](security-hardening-5-passwords.md)
-**Scope:** Host-side 1Password CLI adapter
-**Dependencies:** Steps 0-2, 6
-
-### [Step 7: Deputy Agent (Input Filtering)](security-hardening-7-input-filter.md)
+#### [Step 7: Deputy Agent (Input Filtering)](security-hardening-7-input-filter.md)
 **Scope:** LLM-based content sanitization for untrusted sources
-**Dependencies:** Steps 1-2
-
-## Architecture
-
-```
-┌─────────────────────────────────────┐
-│   Container (Agent + MCP Server)    │
-│                                     │
-│  ┌─────────────────────────────┐   │
-│  │   Orchestrator Agent        │   │
-│  │   (Claude Agent SDK)        │   │
-│  └───────────┬─────────────────┘   │
-│              │ Tool calls          │
-│              ▼                      │
-│  ┌─────────────────────────────┐   │
-│  │   IPC MCP Server            │   │
-│  │   (read_email, send_email,  │   │
-│  │    get_password, etc.)      │   │
-│  └───────────┬─────────────────┘   │
-│              │ Write IPC files     │
-└──────────────┼─────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────┐
-│        Host Process                 │
-│                                     │
-│  ┌─────────────────────────────┐   │
-│  │   IPC Watcher (inotify)     │   │
-│  └───────────┬─────────────────┘   │
-│              │                      │
-│              ▼                      │
-│  ┌─────────────────────────────┐   │
-│  │   SecurityPolicy            │   │
-│  │                             │   │
-│  │   1. Rate limiter           │   │
-│  │   2. Trust check            │   │
-│  │      ├─ trusted service     │   │
-│  │      │  → pass through      │   │
-│  │      ├─ untrusted source    │   │
-│  │      │  → deputy scan       │   │
-│  │      │  → mark tainted      │   │
-│  │      └─ tainted + untrusted │   │
-│  │         sink/sensitive       │   │
-│  │         → deputy + human    │   │
-│  │           gate              │   │
-│  │   3. Audit log              │   │
-│  └───────────┬─────────────────┘   │
-│              │                      │
-│              ▼                      │
-│  ┌─────────────────────────────┐   │
-│  │   Service Adapters          │   │
-│  │   - Email (IMAP/SMTP)       │   │
-│  │   - Calendar (CalDAV)       │   │
-│  │   - Passwords (1Password)   │   │
-│  └───────────┬─────────────────┘   │
-│              │                      │
-│              ▼                      │
-│      External Services              │
-│      (Gmail, Nextcloud, 1Password)  │
-└─────────────────────────────────────┘
-```
+**Dependencies:** Steps 1-2 (done)
 
 ## Security Guarantees
 
-1. **Credentials never in container** - All service credentials live only in the host process
-2. **Agent cannot bypass gates** - Policy enforcement runs in host, not in LLM
-3. **Three booleans** - Users configure `trusted_source`, `sensitive_info`, `trusted_sink` per service. That's all they need to understand
-4. **Taint tracking** - Containers that read untrusted content are marked tainted; tainted containers face gating on untrusted sinks and sensitive data
-5. **Default deny** - Unknown services default to `{trusted_source: false, sensitive_info: true, trusted_sink: false}` (maximum gating)
-6. **Audit trail** - All policy evaluations recorded in existing `messages` table
-7. **Rate limiting** - Per-workspace, per-tool call limits prevent abuse even for fully trusted services
-8. **Non-retryable denials** - Policy denials are deterministic; the queue does not retry them
+1. **Credentials never in container** — all service credentials live only in the host process
+2. **Agent cannot bypass gates** — policy enforcement runs in host, not in LLM
+3. **Four booleans** — users configure `public_source`, `secret_data`, `public_sink`, `dangerous_writes` per service
+4. **Two-taint tracking** — corruption taint (untrusted input) and secret taint (sensitive data) tracked independently
+5. **Default deny** — unknown services default to all-true (maximum gating)
+6. **Audit trail** — all policy evaluations recorded in existing `messages` table
+7. **Payload scanning** — outbound writes scanned for credential patterns via detect-secrets
 
 ## References
 

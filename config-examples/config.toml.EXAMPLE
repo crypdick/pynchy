@@ -195,6 +195,10 @@
 # [sandbox.anyscale-1]
 # chat = "connection.slack.synapse.chat.anyscale-1"
 # mcp_servers = ["gdrive.anyscale", "gcal.anyscale"]
+#
+# Per-workspace security overrides (mark workspace as containing secrets):
+# [sandbox.anyscale-1.security]
+# contains_secrets = true
 
 # Example workspace with MCP access and per-MCP kwargs:
 # [sandbox.research]
@@ -373,7 +377,52 @@
 # allowed-origins = "twitter.com;x.com;reddit.com;linkedin.com"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Security
+# Service Trust Declarations (Lethal Trifecta Defenses)
+# ─────────────────────────────────────────────────────────────────────────────
+# Each service declares four trust properties that control how the security
+# policy gates agent access. See docs/usage/security.md for details.
+#
+# Properties:
+#   public_source     — Can this service deliver content from untrusted parties?
+#   secret_data       — Would leaking this data cause harm?
+#   public_sink       — Can this service send data to untrusted parties?
+#   dangerous_writes  — Are writes irreversible or high-impact?
+#
+# Values: false (safe), true (risky — gated), "forbidden" (blocked entirely)
+#
+# Unknown services default to all-true (maximum gating). Declare a service
+# here to loosen its policy.
+
+# Personal calendar (fully trusted — no gating):
+# [services.caldav]
+# public_source = false
+# secret_data = false
+# public_sink = false
+# dangerous_writes = false
+
+# Web browser (untrusted source and sink — full gating):
+# [services.playwright]
+# public_source = true
+# secret_data = false
+# public_sink = true
+# dangerous_writes = true
+
+# Corporate Slack (untrusted input, sensitive data, can send messages):
+# [services.slack_mcp_acme]
+# public_source = true
+# secret_data = true
+# public_sink = true
+# dangerous_writes = true
+
+# Google Drive (sensitive corporate data, but you control what's in it):
+# [services.gdrive]
+# public_source = false
+# secret_data = true
+# public_sink = false
+# dangerous_writes = false
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Mount Security
 # ─────────────────────────────────────────────────────────────────────────────
 # Default blocked patterns for mount security. These are merged with patterns
 # from the mount-allowlist.toml file.

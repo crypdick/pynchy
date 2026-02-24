@@ -16,15 +16,9 @@ This architecture lets agents interact with host resources (calendars, databases
 
 ## Security Policy
 
-All service tool requests pass through a security policy middleware before reaching the plugin handler. Tools are assigned to risk tiers:
+All service tool requests pass through `SecurityPolicy` before reaching the plugin handler. Each service declares four trust properties (`public_source`, `secret_data`, `public_sink`, `dangerous_writes`) that control how the policy gates access based on taint tracking.
 
-| Tier | Behavior | Example |
-|------|----------|---------|
-| `always-approve` | Executed without checks | Read-only queries |
-| `rules-engine` | Deterministic rules (auto-approved for now) | Scoped operations |
-| `human-approval` | Denied until a human approves via chat | Destructive operations |
-
-Admin workspaces bypass all policy gates. Non-admin workspaces fall back to strict defaults unless a security profile is configured. See [Security Model](security.md#5-mcp-service-tool-policy) for details.
+Admin workspaces bypass all policy gates. Non-admin workspaces are gated by service trust declarations — see [Service Trust Policy](security.md#5-service-trust-policy-lethal-trifecta-defenses) for the architecture and [Service Trust](../usage/security.md) for configuration.
 
 ## Handler Contract
 

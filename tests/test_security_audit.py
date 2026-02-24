@@ -24,8 +24,9 @@ async def test_record_security_event():
         workspace="main",
         tool_name="read_email",
         decision="allowed",
-        tier="always-approve",
-        reason="Auto-approved",
+        corruption_tainted=True,
+        secret_tainted=False,
+        reason="deputy (corruption taint)",
         request_id="req-123",
     )
 
@@ -38,7 +39,8 @@ async def test_record_security_event():
     assert metadata["tool_name"] == "read_email"
     assert metadata["decision"] == "allowed"
     assert metadata["workspace"] == "main"
-    assert metadata["tier"] == "always-approve"
+    assert metadata["corruption_tainted"] is True
+    assert metadata["secret_tainted"] is False
     assert metadata["request_id"] == "req-123"
 
 
@@ -58,9 +60,11 @@ async def test_record_security_event_strips_none():
     assert len(entries) == 1
 
     metadata = json.loads(entries[0]["metadata"])
-    assert "tier" not in metadata
     assert "reason" not in metadata
     assert "request_id" not in metadata
+    # corruption_tainted and secret_tainted are booleans (False), not None
+    assert metadata["corruption_tainted"] is False
+    assert metadata["secret_tainted"] is False
 
 
 @pytest.mark.asyncio

@@ -40,40 +40,40 @@ class ContainerConfig:
         )
 
 
-@dataclass
-class McpToolConfig:
-    """Configuration for a single MCP tool."""
-
-    risk_tier: Literal["always-approve", "rules-engine", "human-approval"]
-    enabled: bool = True
+# Tri-state: False (safe), True (risky/gated), "forbidden" (blocked)
+TrustLevel = Literal[False, True, "forbidden"]
 
 
 @dataclass
-class RateLimitConfig:
-    """Rate limiting configuration for a workspace."""
+class ServiceTrustConfig:
+    """Four trust properties per service — the user-facing security model.
 
-    max_calls_per_hour: int = 500  # Global limit across all tools
-    per_tool_overrides: dict[str, int] = field(default_factory=dict)  # tool -> max/hour
+    Each property answers an intuitive question:
+      public_source:    Can untrusted parties provide input through this?
+      secret_data:      Does this hold sensitive/secret information?
+      public_sink:      Can data I send here reach untrusted parties?
+      dangerous_writes: Are writes high-stakes or irreversible?
+
+    Defaults are maximally cautious (all True). Users set False for
+    dimensions that don't apply. "forbidden" blocks the capability entirely.
+    """
+
+    public_source: TrustLevel = True
+    secret_data: bool = True  # True/False only — "forbidden" doesn't apply
+    public_sink: TrustLevel = True
+    dangerous_writes: TrustLevel = True
 
 
 @dataclass
 class WorkspaceSecurity:
-    """Security configuration for a workspace."""
+    """Security configuration for a workspace.
 
-    # MCP tool permissions (tool_name -> config)
-    mcp_tools: dict[str, McpToolConfig] = field(default_factory=dict)
+    Holds per-service trust declarations and a flag for whether the
+    workspace's local filesystem contains secrets (.env files, etc.).
+    """
 
-    # Default risk tier for tools not explicitly listed in mcp_tools
-    default_risk_tier: Literal["always-approve", "rules-engine", "human-approval"] = (
-        "human-approval"
-    )
-
-    # Rate limiting (None = no limits)
-    rate_limits: RateLimitConfig | None = None
-
-    # Filesystem and network access
-    allow_filesystem_access: bool = True
-    allow_network_access: bool = True
+    services: dict[str, ServiceTrustConfig] = field(default_factory=dict)
+    contains_secrets: bool = False
 
 
 @dataclass
@@ -107,46 +107,12 @@ class WorkspaceProfile:
             List of error messages (empty if valid)
         """
         errors = []
-
-        # Validate required fields
         if not self.name:
             errors.append("Workspace name is required")
         if not self.folder:
             errors.append("Workspace folder is required")
         if not self.trigger:
             errors.append("Workspace trigger is required")
-
-        # Validate MCP tool risk tiers
-        valid_tiers = {"always-approve", "rules-engine", "human-approval"}
-        for tool_name, config in self.security.mcp_tools.items():
-            if config.risk_tier not in valid_tiers:
-                errors.append(
-                    f"Invalid risk tier '{config.risk_tier}' for tool '{tool_name}'. "
-                    f"Must be one of: {', '.join(valid_tiers)}"
-                )
-
-        # Validate default risk tier
-        if self.security.default_risk_tier not in valid_tiers:
-            errors.append(
-                f"Invalid default risk tier '{self.security.default_risk_tier}'. "
-                f"Must be one of: {', '.join(valid_tiers)}"
-            )
-
-        # Validate rate limits
-        rl = self.security.rate_limits
-        if rl is not None:
-            if not isinstance(rl.max_calls_per_hour, int) or rl.max_calls_per_hour < 1:
-                errors.append(
-                    f"Invalid max_calls_per_hour: {rl.max_calls_per_hour} "
-                    "(must be a positive integer)"
-                )
-            for tool_name, limit in rl.per_tool_overrides.items():
-                if not isinstance(limit, int) or limit < 1:
-                    errors.append(
-                        f"Invalid per-tool rate limit for '{tool_name}': {limit} "
-                        "(must be a positive integer)"
-                    )
-
         return errors
 
 

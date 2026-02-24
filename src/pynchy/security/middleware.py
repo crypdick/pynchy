@@ -1,22 +1,23 @@
-"""Policy enforcement middleware for IPC requests.
+"""Trust-based policy engine for the lethal trifecta defense.
 
-Evaluates tool calls against workspace security profiles using
-deterministic, host-side rules. The agent cannot bypass these gates —
-they run in the host process, not inside the container.
+Evaluates service operations against per-service trust declarations
+and two independent taint flags (corruption + secret). Derives gating
+decisions from the combination — users configure four booleans per
+service, not risk tiers.
 
-Risk tiers:
-  - "always-approve"   → auto-approved, no check needed
-  - "rules-engine"     → deterministic rules engine (auto-approve for now)
-  - "human-approval"   → denied until human approves via chat
+See docs/plans/2026-02-23-lethal-trifecta-defenses-design.md for the
+full gating matrix and design rationale.
 """
 
 from __future__ import annotations
 
-import time
-from collections import defaultdict
 from dataclasses import dataclass
 
-from pynchy.types import RateLimitConfig, WorkspaceSecurity
+from pynchy.security.secrets_scanner import scan_payload_for_secrets
+from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
+
+# Default trust for unknown services — maximally cautious
+_UNKNOWN_SERVICE = ServiceTrustConfig()
 
 
 class PolicyDeniedError(Exception):
@@ -29,112 +30,122 @@ class PolicyDecision:
 
     allowed: bool
     reason: str | None = None
-    requires_approval: bool = False
+    needs_deputy: bool = False
+    needs_human: bool = False
 
 
-class ActionTracker:
-    """Sliding-window rate limiter for tool calls."""
+class SecurityPolicy:
+    """Single entry point for all security decisions per container invocation.
 
-    def __init__(self, rate_limits: RateLimitConfig) -> None:
-        self._rate_limits = rate_limits
-        self._timestamps: list[float] = []
-        self._per_tool: dict[str, list[float]] = defaultdict(list)
-        self._window_seconds = 3600  # 1 hour
-
-    def _prune(self, timestamps: list[float], now: float) -> list[float]:
-        cutoff = now - self._window_seconds
-        return [t for t in timestamps if t > cutoff]
-
-    def check_and_record(self, tool_name: str) -> tuple[bool, str | None]:
-        """Check rate limit and record the call if allowed.
-
-        Returns (allowed, reason). reason is None when allowed.
-        """
-        now = time.monotonic()
-
-        self._timestamps = self._prune(self._timestamps, now)
-        self._per_tool[tool_name] = self._prune(self._per_tool[tool_name], now)
-
-        # Global limit
-        if len(self._timestamps) >= self._rate_limits.max_calls_per_hour:
-            return False, (
-                f"Global rate limit exceeded: {self._rate_limits.max_calls_per_hour} calls/hour"
-            )
-
-        # Per-tool override
-        per_tool_limit = self._rate_limits.per_tool_overrides.get(tool_name)
-        if per_tool_limit and len(self._per_tool[tool_name]) >= per_tool_limit:
-            return False, (
-                f"Per-tool rate limit exceeded for {tool_name}: {per_tool_limit} calls/hour"
-            )
-
-        self._timestamps.append(now)
-        self._per_tool[tool_name].append(now)
-        return True, None
-
-
-class PolicyMiddleware:
-    """Evaluates IPC requests against a workspace security profile.
-
-    Instantiated per-workspace so rate limit state is isolated.
+    Instantiated once per container run. Taint state is sticky for the
+    lifetime of the invocation — cleared only when the container restarts.
     """
 
     def __init__(self, security: WorkspaceSecurity) -> None:
-        self.security = security
-        self.tracker: ActionTracker | None = None
+        self._services = security.services
+        self._workspace_contains_secrets = security.contains_secrets
+        self._corruption_tainted = False
+        self._secret_tainted = False
 
-        if security.rate_limits is not None:
-            self.tracker = ActionTracker(security.rate_limits)
+    @property
+    def corruption_tainted(self) -> bool:
+        return self._corruption_tainted
 
-    def evaluate(self, tool_name: str, request: dict) -> PolicyDecision:
-        """Evaluate whether a tool call should be allowed.
+    @property
+    def secret_tainted(self) -> bool:
+        return self._secret_tainted
 
-        Checks rate limits first, then tier-based policy.
+    def _get_trust(self, service: str) -> ServiceTrustConfig:
+        return self._services.get(service, _UNKNOWN_SERVICE)
+
+    def notify_file_access(self) -> None:
+        """Called when the agent uses file-access tools (Read, Execute, Bash).
+
+        Sets secret taint if the workspace declares contains_secrets=True.
         """
-        # Rate limits apply to ALL tiers, even always-approve
-        if self.tracker:
-            allowed, reason = self.tracker.check_and_record(tool_name)
-            if not allowed:
-                return PolicyDecision(allowed=False, reason=reason)
+        if self._workspace_contains_secrets:
+            self._secret_tainted = True
 
-        # Look up tool in security profile
-        tool_config = self.security.mcp_tools.get(tool_name)
+    def evaluate_read(self, service: str) -> PolicyDecision:
+        """Evaluate a read operation on a service.
 
-        if tool_config is not None:
-            if not tool_config.enabled:
-                return PolicyDecision(
-                    allowed=False,
-                    reason=f"Tool '{tool_name}' is disabled in this workspace",
-                )
-            tier = tool_config.risk_tier
-        else:
-            # Tool not explicitly configured — use default tier
-            tier = self.security.default_risk_tier
+        - forbidden -> blocked
+        - public_source=True -> deputy scan, corruption taint set
+        - public_source=False -> no gating
+        - secret_data=True -> secret taint set (always, on any read)
+        """
+        trust = self._get_trust(service)
 
-        # Evaluate by tier
-        if tier == "always-approve":
-            return PolicyDecision(allowed=True, reason="Auto-approved")
-
-        if tier == "rules-engine":
-            return self._apply_rules(tool_name, request)
-
-        if tier == "human-approval":
+        if trust.public_source == "forbidden":
             return PolicyDecision(
                 allowed=False,
-                reason="Requires human approval",
-                requires_approval=True,
+                reason=f"Reading from '{service}' is forbidden",
             )
 
-        return PolicyDecision(allowed=False, reason=f"Unknown tier: {tier}")
+        # Secret taint: set on any read from a service with secret_data
+        if trust.secret_data:
+            self._secret_tainted = True
 
-    def _apply_rules(self, tool_name: str, request: dict) -> PolicyDecision:
-        """Apply deterministic rules for rules-engine tier tools.
+        if trust.public_source:
+            self._corruption_tainted = True
+            return PolicyDecision(
+                allowed=True,
+                reason=f"Public source '{service}': deputy scan required",
+                needs_deputy=True,
+            )
 
-        Auto-approves all operations for now.
-        Future: implement actual rules (e.g. "create_event only
-        if calendar is user's own").
+        return PolicyDecision(allowed=True)
+
+    def evaluate_write(self, service: str, data: dict) -> PolicyDecision:
+        """Evaluate a write operation on a service.
+
+        Checks forbidden first, then derives gating from the matrix:
+        - Deputy: corruption_tainted (any write by potentially-hijacked agent)
+        - Human: dangerous_writes=True OR (corruption + secret + public_sink)
         """
+        trust = self._get_trust(service)
+
+        # Forbidden checks
+        if trust.public_sink == "forbidden":
+            return PolicyDecision(
+                allowed=False,
+                reason=f"Writing to '{service}' is forbidden (public_sink)",
+            )
+        if trust.dangerous_writes == "forbidden":
+            return PolicyDecision(
+                allowed=False,
+                reason=f"Writing to '{service}' is forbidden (dangerous_writes)",
+            )
+
+        # Derive gating from taint state + service properties
+        needs_deputy = self._corruption_tainted
+        needs_human = False
+
+        # dangerous_writes=True -> always needs human confirmation
+        if trust.dangerous_writes:
+            needs_human = True
+
+        # Full trifecta: corruption + secret + public_sink
+        if self._corruption_tainted and self._secret_tainted and trust.public_sink:
+            needs_human = True
+
+        # Payload secrets scan — escalate if secrets detected
+        scan_result = scan_payload_for_secrets(data)
+        if scan_result.secrets_found:
+            needs_human = True
+
+        reason_parts = []
+        if needs_deputy:
+            reason_parts.append("deputy (corruption taint)")
+        if needs_human:
+            reason_parts.append("human confirmation")
+        if scan_result.secrets_found:
+            reason_parts.append(f"secrets detected in payload ({', '.join(scan_result.detected)})")
+        reason = "; ".join(reason_parts) if reason_parts else None
+
         return PolicyDecision(
             allowed=True,
-            reason="Rules-engine auto-approved (no rules configured yet)",
+            reason=reason,
+            needs_deputy=needs_deputy,
+            needs_human=needs_human,
         )

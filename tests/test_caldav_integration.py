@@ -11,8 +11,9 @@ import pytest
 from pynchy.config_models import (
     CalDAVConfig,
     CalDAVServerConfig,
+    ServiceTrustTomlConfig,
     WorkspaceConfig,
-    WorkspaceSecurityConfig,
+    WorkspaceSecurityTomlConfig,
 )
 from pynchy.db import _init_test_database
 from pynchy.integrations.plugins.caldav import (
@@ -27,7 +28,6 @@ from pynchy.integrations.plugins.caldav import (
 from pynchy.ipc._handlers_service import (
     _handle_service_request,
     clear_plugin_handler_cache,
-    clear_policy_cache,
 )
 from pynchy.types import WorkspaceProfile
 
@@ -35,7 +35,6 @@ from pynchy.types import WorkspaceProfile
 @pytest.fixture(autouse=True)
 async def _setup():
     await _init_test_database()
-    clear_policy_cache()
     clear_caldav_client_cache()
     clear_plugin_handler_cache()
 
@@ -86,10 +85,7 @@ def _make_settings(caldav_cfg=CALDAV_CONFIG, ws_security=None):
             self.workspaces = {
                 "test-ws": WorkspaceConfig(
                     name="test",
-                    security=ws_security
-                    or WorkspaceSecurityConfig(
-                        default_risk_tier="always-approve",
-                    ),
+                    security=ws_security or WorkspaceSecurityTomlConfig(),
                 ),
             }
 
@@ -687,7 +683,19 @@ async def test_calendar_tool_dispatches_to_plugin_handler(tmp_path):
     fake_client, cals = _make_fake_client("meetings")
     cals[0].date_search.return_value = [fake_event]
 
-    settings = _make_settings()
+    # Configure list_calendar as a safe service (no gating needed)
+    settings = _make_settings(
+        ws_security=WorkspaceSecurityTomlConfig(
+            services={
+                "list_calendar": ServiceTrustTomlConfig(
+                    public_source=False,
+                    secret_data=False,
+                    public_sink=False,
+                    dangerous_writes=False,
+                ),
+            },
+        ),
+    )
     settings.data_dir = tmp_path
 
     deps = FakeDeps({"test@g.us": TEST_GROUP})
