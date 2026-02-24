@@ -57,9 +57,13 @@ def _marker_wrap(output: dict[str, Any]) -> bytes:
     return payload.encode()
 
 
+async def _noop_docker_rm(name: str) -> None:
+    """No-op replacement for _docker_rm_force in tests."""
+
+
 @contextlib.contextmanager
 def _patch_test_settings(tmp_path: Path):
-    """Patch settings accessors to use tmp test directories."""
+    """Patch settings accessors and container helpers for test isolation."""
     s = make_settings(
         project_root=tmp_path,
         groups_dir=tmp_path / "groups",
@@ -71,11 +75,15 @@ def _patch_test_settings(tmp_path: Path):
             "pynchy.container_runner._mounts",
             "pynchy.container_runner._session_prep",
             "pynchy.container_runner._orchestrator",
+            "pynchy.container_runner._session",
             "pynchy.container_runner._snapshots",
             "pynchy.chat.message_handler",
             "pynchy.chat.output_handler",
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
+        stack.enter_context(
+            patch("pynchy.container_runner._session._docker_rm_force", _noop_docker_rm)
+        )
         yield
 
 
@@ -104,7 +112,11 @@ class FakeChannel:
 
 
 class FakeProcess:
-    """Simulates asyncio.subprocess.Process for integration tests."""
+    """Simulates asyncio.subprocess.Process for integration tests.
+
+    Output is delivered via the session's public API (simulating the IPC
+    watcher), not via stdout markers.
+    """
 
     def __init__(self) -> None:
         self.stdin = _FakeStdin()
@@ -116,7 +128,6 @@ class FakeProcess:
 
     def finish(self) -> None:
         self._returncode = 0
-        self.stdout.feed_eof()
         self.stderr.feed_eof()
         self._wait_event.set()
 
@@ -182,7 +193,11 @@ async def app(tmp_path: Path):
             added_at="2024-01-01T00:00:00.000Z",
         ),
     }
-    return a
+    yield a
+    # Clean up any persistent sessions created during the test
+    from pynchy.container_runner._session import destroy_all_sessions
+
+    await destroy_all_sessions()
 
 
 async def _run_with_trace_sequence(
@@ -190,18 +205,45 @@ async def _run_with_trace_sequence(
 ) -> tuple[FakeChannel, EventCapture]:
     """Run app._process_group_messages with a sequence of trace outputs.
 
+    Delivers output via the session's public API (simulating the IPC watcher).
     Returns (channel, event_capture) for assertions.
     """
+    from pynchy.container_runner._process import is_query_done_pulse
+    from pynchy.container_runner._serialization import _parse_container_output
+    from pynchy.container_runner._session import get_session
+
     msg = _make_message(content="@pynchy do something")
     await store_message(msg)
 
     fake_proc = FakeProcess()
 
     async def schedule():
-        await asyncio.sleep(0.01)
-        for output in trace_outputs:
-            fake_proc.stdout.feed_data(_marker_wrap(output))
+        # Wait for session to be created with an output handler
+        for _ in range(100):
+            session = get_session("test-group")
+            if session is not None and session._on_output is not None:
+                break
             await asyncio.sleep(0.01)
+        assert session is not None, "No session found for test-group"
+
+        for output_dict in trace_outputs:
+            await asyncio.sleep(0.01)
+            parsed = _parse_container_output(json.dumps(output_dict))
+            if session._on_output:
+                await session._on_output(parsed)
+            if is_query_done_pulse(parsed):
+                session.signal_query_done()
+
+        # Append query-done pulse if not already signaled
+        if not session._query_done.is_set():
+            pulse = _parse_container_output(
+                json.dumps({"status": "success", "result": None, "new_session_id": "test-session"})
+            )
+            if session._on_output:
+                await session._on_output(pulse)
+            session.signal_query_done()
+
+        await asyncio.sleep(0.01)
         fake_proc.finish()
 
     driver = asyncio.create_task(schedule())
