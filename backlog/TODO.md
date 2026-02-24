@@ -40,6 +40,7 @@ Single source of truth for all pynchy work items.
 - rename subsystems:
   - Providers (AI models)
   - Runtime (container runtimes)
+- enforce `"forbidden"` trust level — `TrustLevel = "forbidden"` is declared in `ServiceTrustConfig` but doesn't block anything yet. Needs: (1) SecurityPolicy.evaluate_read/evaluate_write to reject forbidden operations, (2) plugin hook so plugins can declare forbidden operations in their trust config, (3) expose as first-class plugin API so marking a service property as `"forbidden"` actually changes behavior at the plugin level.
 - GDrive integration
 - GMail integration
 - Protonmail integration
@@ -58,11 +59,6 @@ Single source of truth for all pynchy work items.
   - [Hook Step 5: Polish](2-planning/plugin-hook-5-polish.md) — Error handling, docs, and example plugin
 - [Security Hardening](2-planning/security-hardening.md) — Security improvements and hardening measures (overview - see sub-plans below)
   - [Security Step 0: IPC Surface](2-planning/security-hardening-0-ipc-surface.md) — Reduce IPC to signal-only protocol, Deputy mediation for data-carrying requests, replace polling with inotify
-  - ~~[Security Step 1: Profiles](2-planning/security-hardening-1-profiles.md)~~ — **DONE** (2026-02-24): Implemented with four-boolean trust model (`ServiceTrustConfig`) + two-taint `SecurityPolicy` + payload secrets scanner. See `docs/plans/2026-02-23-lethal-trifecta-defenses-design.md`.
-  - [Security Step 2: MCP & Policy](2-planning/security-hardening-2-mcp-policy.md) — New MCP tools and basic policy enforcement
-  - [Security Step 3: Email](2-planning/security-hardening-3-email.md) — Email service integration (IMAP/SMTP)
-  - [Security Step 4: Calendar](2-planning/security-hardening-4-calendar.md) — Calendar service integration (CalDAV)
-  - [Security Step 5: Passwords](2-planning/security-hardening-5-passwords.md) — Password manager integration (1Password CLI)
   - [Security Step 6: Approval](2-planning/security-hardening-6-approval.md) — Human approval gate for high-risk actions
   - [Security Step 7: Input Filter](2-planning/security-hardening-7-input-filter.md) — Deputy Agent for prompt injection detection (optional)
 - [Reliable bidirectional channel messaging](2-planning/reliable-channel-messaging.md) — Per-channel bidirectional cursors, standardized `Reconcilable` protocol on all channels, outbound ledger with retry, atomic cursor persistence
