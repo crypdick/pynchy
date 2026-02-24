@@ -502,13 +502,26 @@ async def fake_proc():
     return FakeProcess()
 
 
+@contextlib.contextmanager
 def _patch_subprocess(fake_proc: FakeProcess):
-    """Patch asyncio.create_subprocess_exec to return our fake process."""
+    """Patch asyncio.create_subprocess_exec and docker cleanup for tests.
+
+    Also patches _docker_rm_force (called as fire-and-forget in
+    run_container_agent) since it uses its own unpatched subprocess call
+    from _session.py, which would hang the event loop during teardown.
+    """
 
     async def _fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
         return fake_proc
 
-    return patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", _fake_create)
+    async def _noop_rm(name: str) -> None:
+        pass
+
+    with (
+        patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", _fake_create),
+        patch("pynchy.container_runner._session._docker_rm_force", _noop_rm),
+    ):
+        yield
 
 
 @contextlib.contextmanager
