@@ -20,6 +20,7 @@ from pynchy.ipc._watcher import (
     _handle_signal,
     _IpcEventHandler,
     _process_message_file,
+    _process_output_file,
     _process_task_file,
     _sweep_directory,
 )
@@ -236,6 +237,30 @@ class TestStartupSweep:
             await _sweep_directory(ipc_dir, deps)
 
         assert not file_path.exists()
+
+    async def test_sweep_processes_output_files(self, deps, tmp_path: Path):
+        """Startup sweep should process leftover output files."""
+        ipc_dir = tmp_path / "ipc"
+        _write_ipc_file(
+            ipc_dir,
+            "admin-1",
+            "output",
+            {
+                "status": "success",
+                "type": "text",
+                "text": "hello from sweep output",
+            },
+        )
+
+        with patch(
+            "pynchy.ipc._watcher.get_settings",
+            return_value=_test_settings(data_dir=tmp_path),
+        ), patch("pynchy.ipc._watcher._get_output_handler", return_value=None):
+            processed = await _sweep_directory(ipc_dir, deps)
+
+        assert processed == 1
+        # File should be cleaned up
+        assert not (ipc_dir / "admin-1" / "output" / "test.json").exists()
 
     async def test_sweep_moves_bad_files_to_errors(self, deps, tmp_path: Path):
         """Malformed files should be moved to errors/ during sweep."""
@@ -500,6 +525,49 @@ class TestIpcEventHandler:
 
         # File in tasks/ — should be queued
         handler.on_created(FileCreatedEvent(str(ipc_dir / "admin-1" / "tasks" / "task.json")))
+        self._drain(loop)
+        assert queue.qsize() == 1
+
+        loop.close()
+
+    def test_output_files_are_queued(self):
+        """Files in output/ subdirectory should be enqueued."""
+        loop = asyncio.new_event_loop()
+        queue: asyncio.Queue[Path] = asyncio.Queue()
+        ipc_dir = Path("/tmp/test-ipc")
+
+        handler = _IpcEventHandler(ipc_dir, loop, queue)
+
+        from watchdog.events import FileCreatedEvent
+
+        handler.on_created(
+            FileCreatedEvent(str(ipc_dir / "admin-1" / "output" / "001.json"))
+        )
+        self._drain(loop)
+        assert queue.qsize() == 1
+
+        # Verify the correct path was queued
+        queued = loop.run_until_complete(queue.get())
+        assert queued == ipc_dir / "admin-1" / "output" / "001.json"
+
+        loop.close()
+
+    def test_moved_output_files_are_queued(self):
+        """Atomic writes (tmp -> .json rename) in output/ should be enqueued."""
+        loop = asyncio.new_event_loop()
+        queue: asyncio.Queue[Path] = asyncio.Queue()
+        ipc_dir = Path("/tmp/test-ipc")
+
+        handler = _IpcEventHandler(ipc_dir, loop, queue)
+
+        from watchdog.events import FileMovedEvent
+
+        handler.on_moved(
+            FileMovedEvent(
+                str(ipc_dir / "admin-1" / "output" / "001.json.tmp"),
+                str(ipc_dir / "admin-1" / "output" / "001.json"),
+            )
+        )
         self._drain(loop)
         assert queue.qsize() == 1
 
