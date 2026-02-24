@@ -66,15 +66,39 @@ The host verifies messages and task operations against group identity:
 | View all tasks | ✓ | Own only |
 | Manage other groups | ✓ | ✗ |
 
-### 5. MCP Service Tool Policy
+### 5. Service Trust Policy (Lethal Trifecta Defenses)
 
-Host-side MCP service tools (calendar, etc.) are gated by a policy middleware. Tools are assigned to risk tiers:
+Host-side service tools (calendar, Slack, browser, etc.) are gated by `SecurityPolicy`, which prevents the *lethal trifecta*: an agent that simultaneously has access to **untrusted input**, **sensitive data**, and **untrusted output channels**.
 
-- **always-approve** — low-risk read operations, executed without checks
-- **rules-engine** — deterministic rules (auto-approved for now; future: contextual rules like "only your own calendar")
-- **human-approval** — high-risk operations, denied until a human approves via chat
+Each service declares four trust properties in `config.toml`:
 
-Admin workspaces bypass all policy gates — all service tools are auto-approved. Non-admin workspaces fall back to strict defaults (human-approval for all tools) unless a security profile is configured.
+| Property | Question it answers |
+|----------|-------------------|
+| `public_source` | Can this service deliver content from untrusted parties? |
+| `secret_data` | Would leaking this data cause harm? |
+| `public_sink` | Can this service send data to untrusted parties? |
+| `dangerous_writes` | Are writes irreversible or high-impact? |
+
+Values are `false` (safe), `true` (risky — triggers gating), or `"forbidden"` (blocked entirely). Unknown services default to all-true (maximum gating).
+
+**Taint tracking.** The policy tracks two independent flags per container invocation:
+
+- **`corruption_tainted`** — set when the agent reads from a `public_source`. The container has seen attacker-controlled content.
+- **`secret_tainted`** — set when the agent reads `secret_data` or accesses a workspace with `contains_secrets = true`.
+
+**Gating matrix.** When the agent writes to a service, the policy evaluates:
+
+| Condition | Gate |
+|-----------|------|
+| `dangerous_writes = "forbidden"` | **Blocked** — operation denied |
+| `dangerous_writes = true` | **Human approval required** |
+| `corruption_tainted` AND `secret_tainted` AND `public_sink` | **Human approval required** (trifecta) |
+| `corruption_tainted` AND `public_sink` | **Deputy review** (future: LLM-based content scan) |
+| None of the above | **Allowed** |
+
+A payload secrets scanner (`detect-secrets`) also runs on outbound writes. If it detects credential patterns (API keys, tokens), the write escalates to human approval regardless of taint state.
+
+Admin workspaces bypass all policy gates. See [Service Trust](../usage/security.md) for configuration.
 
 ### 6. Credential Handling
 
@@ -163,7 +187,7 @@ Channel messages can contain malicious instructions that attempt to manipulate C
 | `config.toml` | Mounted read-write | Not mounted |
 | Additional mounts | Configurable | Read-only unless allowed |
 | Network access | Unrestricted | Unrestricted |
-| MCP service tools | Auto-approved | Policy-gated (see below) |
+| MCP service tools | Auto-approved | Trust-gated (see [§5](#5-service-trust-policy-lethal-trifecta-defenses)) |
 
 ## Security Architecture Diagram
 

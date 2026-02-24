@@ -1,5 +1,7 @@
 # Security Hardening: Step 1 - Workspace Security Profiles
 
+> **Status: IMPLEMENTED** (2026-02-24) — Schema was implemented with a **four-boolean model** (`public_source`, `secret_data`, `public_sink`, `dangerous_writes`) plus a tri-state (`"forbidden"`) instead of the three-boolean model described below. Also uses two independent taint flags (corruption + secret) instead of a single taint. See `docs/plans/2026-02-23-lethal-trifecta-defenses-design.md` for the final design.
+
 ## Overview
 
 Establish the security profile schema and configuration system that defines how each workspace interacts with external services, based on a three-boolean trust model per service.
