@@ -1,6 +1,7 @@
 """Container I/O models — dataclasses for IPC protocol framing.
 
-ContainerInput: parsed from JSON on stdin at container start.
+ContainerInput: parsed from initial.json in the IPC input directory at
+                container start.
 ContainerOutput: serialized to JSON files in the IPC output directory.
 
 These are the container-side equivalents of the host-side types in
@@ -17,7 +18,7 @@ from typing import Any
 
 @dataclass
 class ContainerInput:
-    """Parsed input received from the host via stdin JSON."""
+    """Parsed input received from the host via initial.json in the IPC input dir."""
 
     messages: list[dict[str, Any]]
     group_folder: str
