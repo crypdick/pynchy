@@ -1,5 +1,15 @@
 # Security Hardening: Step 6 - Human Approval Gate
 
+> **Staleness note (2026-02-24):** This plan was LLM-generated and has stale file
+> paths and design assumptions. A new design doc will supersede the implementation
+> details below. Key corrections:
+> - Security module is at `src/pynchy/security/`, not `src/pynchy/policy/`
+> - Message handler is at `src/pynchy/chat/message_handler.py`
+> - IPC watcher is at `src/pynchy/ipc/_watcher.py`
+> - Approval state should be DB-backed, not in-memory dict
+> - Command syntax should use `!approve`/`!deny` (existing `!` command pattern)
+> - The stub already exists at `_handlers_service.py:176` (`needs_human` branch)
+
 ## Overview
 
 Implement the human approval system for high-risk MCP tool operations. When an agent writes to untrusted sinks by tainted containers, or accesses sensitive data by tainted containers (like sending email or retrieving passwords), the host sends an approval request via WhatsApp and waits for the user's response.
