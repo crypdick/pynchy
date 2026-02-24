@@ -288,6 +288,10 @@ async def run_container_agent(
     Used for one-shot runs (scheduled tasks).  For interactive messages,
     use the persistent session path in agent_runner.run_agent().
 
+    TODO(Task 8): This one-shot path still reads stdout for output via the old
+    marker-based reader.  Once the IPC watcher handles all output routing, this
+    can be converted to use file-based output and the stdout reader can be removed.
+
     Args:
         group: The registered group configuration.
         input_data: Input payload for the agent-runner.

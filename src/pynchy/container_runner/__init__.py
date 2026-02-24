@@ -29,6 +29,7 @@ from pynchy.container_runner._session import (
     destroy_all_sessions,
     destroy_session,
     get_session,
+    get_session_output_handler,
 )
 from pynchy.container_runner._snapshots import write_groups_snapshot, write_tasks_snapshot
 
@@ -44,6 +45,7 @@ __all__ = [
     "destroy_all_sessions",
     "destroy_session",
     "get_session",
+    "get_session_output_handler",
     "read_stderr",
     "read_stdout",
     "resolve_agent_core",

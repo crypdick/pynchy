@@ -2042,3 +2042,216 @@ class TestInputToDictEdgeCases:
         )
         d = _input_to_dict(inp)
         assert "agent_core_config" not in d
+
+
+# ---------------------------------------------------------------------------
+# ContainerSession — public API (Task 6)
+# ---------------------------------------------------------------------------
+
+
+class TestContainerSessionSignalQueryDone:
+    """Tests for ContainerSession.signal_query_done() public method."""
+
+    async def test_signal_query_done_sets_event(self):
+        """signal_query_done() should set the _query_done event."""
+        from pynchy.container_runner._session import ContainerSession
+
+        session = ContainerSession("test-group", "pynchy-test-group")
+        assert not session._query_done.is_set()
+
+        session.signal_query_done()
+
+        assert session._query_done.is_set()
+
+    async def test_signal_query_done_clears_output_handler(self):
+        """signal_query_done() should clear the _on_output callback."""
+        from pynchy.container_runner._session import ContainerSession
+
+        session = ContainerSession("test-group", "pynchy-test-group")
+        session._on_output = AsyncMock()  # simulate active handler
+
+        session.signal_query_done()
+
+        assert session._on_output is None
+
+    async def test_signal_query_done_resets_idle_timer(self):
+        """signal_query_done() should restart the idle timer.
+
+        With idle_timeout=0, _reset_idle_timer cancels any existing handle
+        but does not schedule a new one.
+        """
+        from pynchy.container_runner._session import ContainerSession
+
+        session = ContainerSession("test-group", "pynchy-test-group")
+        session._idle_timeout = 0
+
+        # Create a real timer handle to verify cancellation
+        loop = asyncio.get_running_loop()
+        session._idle_handle = loop.call_later(9999, lambda: None)
+        assert session._idle_handle is not None
+
+        session.signal_query_done()
+
+        # _reset_idle_timer cancels the old handle and, since timeout=0,
+        # does not schedule a new one
+        assert session._idle_handle is None
+
+    async def test_signal_query_done_after_set_output_handler(self):
+        """Full cycle: set handler, signal done, verify state reset."""
+        from pynchy.container_runner._session import ContainerSession
+
+        session = ContainerSession("test-group", "pynchy-test-group")
+        handler = AsyncMock()
+
+        # Simulate a query in progress
+        session.set_output_handler(handler)
+        assert not session._query_done.is_set()
+        assert session._on_output is handler
+
+        # Signal query done
+        session.signal_query_done()
+        assert session._query_done.is_set()
+        assert session._on_output is None
+
+
+class TestGetSessionOutputHandler:
+    """Tests for the module-level get_session_output_handler() function."""
+
+    def test_returns_handler_when_session_active(self):
+        """Should return the session's _on_output when an active session exists."""
+        from pynchy.container_runner._session import (
+            ContainerSession,
+            _sessions,
+            get_session_output_handler,
+        )
+
+        session = ContainerSession("handler-test", "pynchy-handler-test")
+        session.proc = FakeProcess()  # type: ignore[assignment]
+        handler = AsyncMock()
+        session._on_output = handler
+        _sessions["handler-test"] = session
+
+        try:
+            result = get_session_output_handler("handler-test")
+            assert result is handler
+        finally:
+            _sessions.pop("handler-test", None)
+
+    def test_returns_none_when_no_session(self):
+        """Should return None when no session exists for the group."""
+        from pynchy.container_runner._session import get_session_output_handler
+
+        result = get_session_output_handler("nonexistent-group")
+        assert result is None
+
+    def test_returns_none_when_no_handler_set(self):
+        """Should return None when session exists but no handler is set."""
+        from pynchy.container_runner._session import (
+            ContainerSession,
+            _sessions,
+            get_session_output_handler,
+        )
+
+        session = ContainerSession("no-handler-test", "pynchy-no-handler-test")
+        session.proc = FakeProcess()  # type: ignore[assignment]
+        session._on_output = None
+        _sessions["no-handler-test"] = session
+
+        try:
+            result = get_session_output_handler("no-handler-test")
+            assert result is None
+        finally:
+            _sessions.pop("no-handler-test", None)
+
+
+class TestSessionStartOnlyStderr:
+    """Tests that session.start() only starts stderr reader and proc monitor (not stdout)."""
+
+    async def test_start_creates_stderr_task(self):
+        """start() should create a stderr reader task."""
+        from pynchy.container_runner._session import ContainerSession
+
+        session = ContainerSession("start-test", "pynchy-start-test")
+        proc = FakeProcess()
+
+        session.start(proc)  # type: ignore[arg-type]
+
+        assert session._stderr_task is not None
+        assert not session._stderr_task.done()
+
+        # Clean up
+        proc.close()
+
+    async def test_start_creates_proc_monitor_task(self):
+        """start() should create a proc monitor task."""
+        from pynchy.container_runner._session import ContainerSession
+
+        session = ContainerSession("monitor-test", "pynchy-monitor-test")
+        proc = FakeProcess()
+
+        session.start(proc)  # type: ignore[arg-type]
+
+        assert session._proc_monitor_task is not None
+        assert not session._proc_monitor_task.done()
+
+        # Clean up
+        proc.close()
+
+    async def test_start_does_not_create_stdout_task(self):
+        """start() should NOT create a stdout reader task (output is via IPC files now)."""
+        from pynchy.container_runner._session import ContainerSession
+
+        session = ContainerSession("no-stdout-test", "pynchy-no-stdout-test")
+        proc = FakeProcess()
+
+        session.start(proc)  # type: ignore[arg-type]
+
+        # The session should not have a _stdout_task attribute at all
+        assert not hasattr(session, "_stdout_task")
+
+        # Clean up
+        proc.close()
+
+    async def test_proc_monitor_detects_death_during_query(self):
+        """When the container dies mid-query, proc monitor should set _died_before_pulse."""
+        from pynchy.container_runner._session import ContainerSession
+
+        session = ContainerSession("death-test", "pynchy-death-test")
+        proc = FakeProcess()
+
+        session.start(proc)  # type: ignore[arg-type]
+
+        # Simulate a query in progress
+        session.set_output_handler(AsyncMock())
+
+        # Kill the container with a non-zero exit code
+        proc.close(code=1)
+
+        # Wait for the proc monitor to detect the exit
+        await asyncio.sleep(0.05)
+
+        assert session._dead is True
+        assert session._died_before_pulse is True
+        assert session._query_done.is_set()
+
+    async def test_proc_monitor_clean_exit_no_died_before_pulse(self):
+        """A clean exit (code 0) during query should NOT set _died_before_pulse."""
+        from pynchy.container_runner._session import ContainerSession
+
+        session = ContainerSession("clean-exit-test", "pynchy-clean-exit-test")
+        proc = FakeProcess()
+
+        session.start(proc)  # type: ignore[arg-type]
+
+        # Simulate a query in progress
+        session.set_output_handler(AsyncMock())
+
+        # Clean exit
+        proc.close(code=0)
+
+        # Wait for the proc monitor to detect the exit
+        await asyncio.sleep(0.05)
+
+        assert session._dead is True
+        assert session._died_before_pulse is False
+        assert session._query_done.is_set()

@@ -54,9 +54,17 @@ def _marker_wrap(output: dict[str, Any]) -> bytes:
     return payload.encode()
 
 
+async def _noop_docker_rm(name: str) -> None:
+    """No-op replacement for _docker_rm_force in tests.
+
+    _docker_rm_force spawns a real subprocess (``container rm -f``) which
+    hangs in the test environment where there is no container runtime.
+    """
+
+
 @contextlib.contextmanager
 def _patch_test_settings(tmp_path: Path):
-    """Patch settings accessors to use tmp test directories."""
+    """Patch settings accessors and container helpers for test isolation."""
     s = make_settings(
         project_root=tmp_path,
         groups_dir=tmp_path / "groups",
@@ -68,11 +76,17 @@ def _patch_test_settings(tmp_path: Path):
             "pynchy.container_runner._mounts",
             "pynchy.container_runner._session_prep",
             "pynchy.container_runner._orchestrator",
+            "pynchy.container_runner._session",
             "pynchy.container_runner._snapshots",
             "pynchy.chat.message_handler",
             "pynchy.chat.output_handler",
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
+        # Patch _docker_rm_force which spawns a real subprocess to remove
+        # containers — would hang in the test environment.
+        stack.enter_context(
+            patch("pynchy.container_runner._session._docker_rm_force", _noop_docker_rm)
+        )
         yield
 
 
@@ -101,9 +115,18 @@ class FakeChannel:
 
 
 class FakeProcess:
-    """Simulates asyncio.subprocess.Process for integration tests."""
+    """Simulates asyncio.subprocess.Process for integration tests.
 
-    def __init__(self, output: dict[str, Any] | None = None) -> None:
+    Output is delivered via the session's public API (simulating what the IPC
+    watcher does), not via stdout markers.  The stdout stream is kept as a
+    StreamReader for compatibility with session.start() but is never fed data.
+    """
+
+    def __init__(
+        self,
+        output: dict[str, Any] | None = None,
+        group_folder: str = "test-group",
+    ) -> None:
         self.stdin = FakeStdin()
         self.stdout = asyncio.StreamReader()
         self.stderr = asyncio.StreamReader()
@@ -111,27 +134,47 @@ class FakeProcess:
         self._wait_event = asyncio.Event()
         self.pid = 12345
         self._output = output
+        self._group_folder = group_folder
 
     async def schedule_output(self) -> None:
-        """Emit output and close after a short delay.
+        """Deliver output via the session's output handler, then exit.
 
-        Emits the content output followed by a query-done pulse (for persistent
-        session detection), then feeds EOF.
+        Waits for the session to be created, dispatches the content output
+        and query-done pulse through the session API (mirroring the IPC
+        watcher's behavior), then simulates a clean process exit.
         """
-        await asyncio.sleep(0.01)
+        from pynchy.container_runner._serialization import _parse_container_output
+        from pynchy.container_runner._session import get_session
+
+        # Wait for the session to be created and have an output handler
+        session = None
+        for _ in range(200):
+            session = get_session(self._group_folder)
+            if session is not None and session._on_output is not None:
+                break
+            await asyncio.sleep(0.01)
+
+        assert session is not None, f"No session found for {self._group_folder}"
+        assert session._on_output is not None, "Session has no output handler"
+
         if self._output:
-            self.stdout.feed_data(_marker_wrap(self._output))
-            # Emit query-done pulse so the persistent session reader detects
-            # query completion (is_query_done_pulse requires result=None).
-            pulse = {
+            output = _parse_container_output(json.dumps(self._output))
+            if session._on_output:
+                await session._on_output(output)
+
+            # Emit query-done pulse via signal_query_done
+            pulse_data = {
                 "status": "success",
                 "result": None,
                 "new_session_id": self._output.get("new_session_id", "test-session"),
             }
-            self.stdout.feed_data(_marker_wrap(pulse))
+            pulse = _parse_container_output(json.dumps(pulse_data))
+            if session._on_output:
+                await session._on_output(pulse)
+            session.signal_query_done()
+
         await asyncio.sleep(0.01)
         self._returncode = 0
-        self.stdout.feed_eof()
         self.stderr.feed_eof()
         self._wait_event.set()
 
@@ -157,6 +200,61 @@ class FakeStdin:
 
     def close(self) -> None:
         self.closed = True
+
+
+async def _schedule_outputs_via_session(
+    fake_proc: FakeProcess,
+    outputs: list[dict[str, Any]],
+    *,
+    group_folder: str = "test-group",
+    final_session_id: str = "test-session",
+) -> None:
+    """Deliver a sequence of outputs via the session's output handler.
+
+    Simulates the IPC watcher's behavior: waits for the session to be created,
+    dispatches each output dict through the handler, then signals query done
+    and simulates a clean process exit.
+
+    The last output in the list should be the final result (with new_session_id)
+    that triggers query completion.  If no output has new_session_id, a
+    query-done pulse is appended automatically.
+    """
+    from pynchy.container_runner._process import is_query_done_pulse
+    from pynchy.container_runner._serialization import _parse_container_output
+    from pynchy.container_runner._session import get_session
+
+    # Wait for session to have an output handler
+    for _ in range(100):
+        session = get_session(group_folder)
+        if session is not None and session._on_output is not None:
+            break
+        await asyncio.sleep(0.01)
+
+    assert session is not None, f"No session found for {group_folder}"
+
+    for output_dict in outputs:
+        await asyncio.sleep(0.01)
+        parsed = _parse_container_output(json.dumps(output_dict))
+        if session._on_output:
+            await session._on_output(parsed)
+        if is_query_done_pulse(parsed):
+            session.signal_query_done()
+
+    # If no output triggered query done, append a pulse
+    if not session._query_done.is_set():
+        pulse = _parse_container_output(
+            json.dumps(
+                {"status": "success", "result": None, "new_session_id": final_session_id}
+            )
+        )
+        if session._on_output:
+            await session._on_output(pulse)
+        session.signal_query_done()
+
+    await asyncio.sleep(0.01)
+    fake_proc._returncode = 0
+    fake_proc.stderr.feed_eof()
+    fake_proc._wait_event.set()
 
 
 # ---------------------------------------------------------------------------
@@ -256,54 +354,20 @@ class TestProcessGroupMessages:
         msg = _make_message(content="@pynchy do something complex")
         await store_message(msg)
 
-        # Simulate a realistic agent session: thinking → tool_use → result
+        # Simulate a realistic agent session: thinking -> tool_use -> result
         fake_proc = FakeProcess()
-        driver_started = asyncio.Event()
 
-        async def schedule_trace_sequence():
-            driver_started.set()
-            await asyncio.sleep(0.01)
-            # 1. Thinking block
-            fake_proc.stdout.feed_data(
-                _marker_wrap(
-                    {
-                        "type": "thinking",
-                        "status": "success",
-                        "thinking": "Let me figure this out...",
-                    }
-                )
-            )
-            await asyncio.sleep(0.01)
-            # 2. Tool use block
-            fake_proc.stdout.feed_data(
-                _marker_wrap(
-                    {
-                        "type": "tool_use",
-                        "status": "success",
-                        "tool_name": "Bash",
-                        "tool_input": {"command": "ls"},
-                    }
-                )
-            )
-            await asyncio.sleep(0.01)
-            # 3. Final result
-            fake_proc.stdout.feed_data(
-                _marker_wrap(
-                    {
-                        "type": "result",
-                        "status": "success",
-                        "result": "Done!",
-                        "new_session_id": "sess-trace",
-                    }
-                )
-            )
-            await asyncio.sleep(0.01)
-            fake_proc._returncode = 0
-            fake_proc.stdout.feed_eof()
-            fake_proc.stderr.feed_eof()
-            fake_proc._wait_event.set()
+        trace_outputs = [
+            {"type": "thinking", "status": "success", "thinking": "Let me figure this out..."},
+            {"type": "tool_use", "status": "success", "tool_name": "Bash", "tool_input": {"command": "ls"}},
+            {"type": "result", "status": "success", "result": "Done!", "new_session_id": "sess-trace"},
+            # Query-done pulse
+            {"status": "success", "result": None, "new_session_id": "sess-trace"},
+        ]
 
-        driver = asyncio.create_task(schedule_trace_sequence())
+        driver = asyncio.create_task(
+            _schedule_outputs_via_session(fake_proc, trace_outputs, final_session_id="sess-trace")
+        )
 
         async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
             return fake_proc
@@ -356,13 +420,12 @@ class TestProcessGroupMessages:
 
         fake_proc = FakeProcess()
 
-        # Simulate error exit
+        # Simulate error exit — _monitor_proc detects via proc.wait()
         async def schedule_error():
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.05)
             fake_proc.stderr.feed_data(b"something broke\n")
             await asyncio.sleep(0.01)
             fake_proc._returncode = 1
-            fake_proc.stdout.feed_eof()
             fake_proc.stderr.feed_eof()
             fake_proc._wait_event.set()
 
@@ -386,7 +449,7 @@ class TestProcessGroupMessages:
         assert app.last_agent_timestamp.get("group@g.us", "") == ""
 
     async def test_main_group_processes_without_trigger(self, app: PynchyApp, tmp_path: Path):
-        """Main group doesn't require trigger — all messages are processed."""
+        """Admin group processes all messages without requiring a trigger mention."""
         app.workspaces = {
             "main@g.us": WorkspaceProfile(
                 jid="main@g.us",
@@ -394,6 +457,7 @@ class TestProcessGroupMessages:
                 folder="main",
                 trigger="always",
                 added_at="2024-01-01T00:00:00.000Z",
+                is_admin=True,
             ),
         }
         msg = _make_message(chat_jid="main@g.us", content="no trigger needed")
@@ -404,7 +468,8 @@ class TestProcessGroupMessages:
                 "status": "success",
                 "result": "Got it",
                 "new_session_id": "s-main",
-            }
+            },
+            group_folder="main",
         )
         driver = asyncio.create_task(fake_proc.schedule_output())
 
@@ -535,46 +600,16 @@ class TestTracePersistence:
 
         fake_proc = FakeProcess()
 
-        async def schedule_trace():
-            await asyncio.sleep(0.01)
-            fake_proc.stdout.feed_data(
-                _marker_wrap(
-                    {
-                        "type": "thinking",
-                        "status": "success",
-                        "thinking": "Let me think...",
-                    }
-                )
-            )
-            await asyncio.sleep(0.01)
-            fake_proc.stdout.feed_data(
-                _marker_wrap(
-                    {
-                        "type": "tool_use",
-                        "status": "success",
-                        "tool_name": "Bash",
-                        "tool_input": {"command": "echo hi"},
-                    }
-                )
-            )
-            await asyncio.sleep(0.01)
-            fake_proc.stdout.feed_data(
-                _marker_wrap(
-                    {
-                        "type": "result",
-                        "status": "success",
-                        "result": "Done",
-                        "new_session_id": "sess-trace",
-                    }
-                )
-            )
-            await asyncio.sleep(0.01)
-            fake_proc._returncode = 0
-            fake_proc.stdout.feed_eof()
-            fake_proc.stderr.feed_eof()
-            fake_proc._wait_event.set()
+        trace_outputs = [
+            {"type": "thinking", "status": "success", "thinking": "Let me think..."},
+            {"type": "tool_use", "status": "success", "tool_name": "Bash", "tool_input": {"command": "echo hi"}},
+            {"type": "result", "status": "success", "result": "Done", "new_session_id": "sess-trace"},
+            {"status": "success", "result": None, "new_session_id": "sess-trace"},
+        ]
 
-        driver = asyncio.create_task(schedule_trace())
+        driver = asyncio.create_task(
+            _schedule_outputs_via_session(fake_proc, trace_outputs, final_session_id="sess-trace")
+        )
 
         async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
             return fake_proc
@@ -605,36 +640,15 @@ class TestTracePersistence:
 
         fake_proc = FakeProcess()
 
-        async def schedule_system():
-            await asyncio.sleep(0.01)
-            fake_proc.stdout.feed_data(
-                _marker_wrap(
-                    {
-                        "type": "system",
-                        "status": "success",
-                        "system_subtype": "init",
-                        "system_data": {"session_id": "sess-sys"},
-                    }
-                )
-            )
-            await asyncio.sleep(0.01)
-            fake_proc.stdout.feed_data(
-                _marker_wrap(
-                    {
-                        "type": "result",
-                        "status": "success",
-                        "result": "Hi",
-                        "new_session_id": "sess-sys",
-                    }
-                )
-            )
-            await asyncio.sleep(0.01)
-            fake_proc._returncode = 0
-            fake_proc.stdout.feed_eof()
-            fake_proc.stderr.feed_eof()
-            fake_proc._wait_event.set()
+        trace_outputs = [
+            {"type": "system", "status": "success", "system_subtype": "init", "system_data": {"session_id": "sess-sys"}},
+            {"type": "result", "status": "success", "result": "Hi", "new_session_id": "sess-sys"},
+            {"status": "success", "result": None, "new_session_id": "sess-sys"},
+        ]
 
-        driver = asyncio.create_task(schedule_system())
+        driver = asyncio.create_task(
+            _schedule_outputs_via_session(fake_proc, trace_outputs, final_session_id="sess-sys")
+        )
 
         async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
             return fake_proc
@@ -664,31 +678,25 @@ class TestTracePersistence:
 
         fake_proc = FakeProcess()
 
-        async def schedule_meta():
-            await asyncio.sleep(0.01)
-            fake_proc.stdout.feed_data(
-                _marker_wrap(
-                    {
-                        "type": "result",
-                        "status": "success",
-                        "result": "Hi",
-                        "new_session_id": "sess-meta",
-                        "result_metadata": {
-                            "duration_ms": 2100,
-                            "total_cost_usd": 0.03,
-                            "num_turns": 3,
-                            "usage": {"input_tokens": 100, "output_tokens": 50},
-                        },
-                    }
-                )
-            )
-            await asyncio.sleep(0.01)
-            fake_proc._returncode = 0
-            fake_proc.stdout.feed_eof()
-            fake_proc.stderr.feed_eof()
-            fake_proc._wait_event.set()
+        trace_outputs = [
+            {
+                "type": "result",
+                "status": "success",
+                "result": "Hi",
+                "new_session_id": "sess-meta",
+                "result_metadata": {
+                    "duration_ms": 2100,
+                    "total_cost_usd": 0.03,
+                    "num_turns": 3,
+                    "usage": {"input_tokens": 100, "output_tokens": 50},
+                },
+            },
+            {"status": "success", "result": None, "new_session_id": "sess-meta"},
+        ]
 
-        driver = asyncio.create_task(schedule_meta())
+        driver = asyncio.create_task(
+            _schedule_outputs_via_session(fake_proc, trace_outputs, final_session_id="sess-meta")
+        )
 
         async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
             return fake_proc
