@@ -16,15 +16,13 @@ if TYPE_CHECKING:
     import pluggy
 
 from pynchy.config import get_settings
-from pynchy.container_runner._logging import _parse_final_output, _write_run_log
+from pynchy.container_runner._logging import _write_run_log
 from pynchy.container_runner._mounts import _build_container_args, _build_volume_mounts
 from pynchy.container_runner._process import (
-    StreamState,
     _graceful_stop,
     read_stderr,
-    read_stdout,
 )
-from pynchy.container_runner._serialization import _input_to_dict
+from pynchy.container_runner._serialization import _input_to_dict, _parse_container_output
 from pynchy.logger import logger
 from pynchy.runtime.runtime import get_runtime
 from pynchy.types import ContainerInput, ContainerOutput, VolumeMount, WorkspaceProfile
@@ -83,71 +81,38 @@ def resolve_agent_core(plugin_manager: pluggy.PluginManager | None) -> tuple[str
 
 
 # ---------------------------------------------------------------------------
-# Helpers extracted from run_container_agent
+# IPC output directory reading
 # ---------------------------------------------------------------------------
 
 
-def _determine_result(
-    state: StreamState,
-    exit_code: int | None,
-    config_timeout: float,
-    container_name: str,
-    group_name: str,
-    duration_ms: float,
-    on_output: OnOutput | None,
-    stdout_buf: str,
-    stderr_buf: str,
-) -> ContainerOutput:
-    """Determine final ContainerOutput from run state."""
-    if state.timed_out:
-        if state.had_streaming_output:
-            logger.info(
-                "Container timed out after output (idle cleanup)",
+def _read_output_files(output_dir: Path, group_name: str) -> list[ContainerOutput]:
+    """Read and parse all output event files from the IPC output directory.
+
+    Files are sorted by name (monotonic nanosecond timestamps) to preserve
+    ordering.  Each file is deleted after successful parsing.
+
+    Returns a list of parsed ContainerOutput events.
+    """
+    outputs: list[ContainerOutput] = []
+    if not output_dir.exists():
+        return outputs
+
+    for file_path in sorted(f for f in output_dir.iterdir() if f.suffix == ".json"):
+        try:
+            json_str = file_path.read_text()
+            parsed = _parse_container_output(json_str)
+            outputs.append(parsed)
+            file_path.unlink()
+        except (json.JSONDecodeError, KeyError, TypeError, OSError) as exc:
+            logger.warning(
+                "Failed to parse output file",
                 group=group_name,
-                container=container_name,
-                duration_ms=duration_ms,
+                file=file_path.name,
+                error_type=type(exc).__name__,
+                error=str(exc),
             )
-            return ContainerOutput(
-                status="success", result=None, new_session_id=state.new_session_id
-            )
-
-        logger.error(
-            "Container timed out with no output",
-            group=group_name,
-            container=container_name,
-            duration_ms=duration_ms,
-        )
-        return ContainerOutput(
-            status="error",
-            result=None,
-            error=f"Container timed out after {config_timeout:.0f}s",
-        )
-
-    if exit_code != 0:
-        logger.error(
-            "Container exited with error",
-            group=group_name,
-            code=exit_code,
-            duration_ms=duration_ms,
-        )
-        return ContainerOutput(
-            status="error",
-            result=None,
-            error=f"Container exited with code {exit_code}: {stderr_buf[-200:]}",
-        )
-
-    # Streaming mode: result already delivered via on_output callbacks
-    if on_output is not None:
-        logger.info(
-            "Container completed (streaming mode)",
-            group=group_name,
-            duration_ms=duration_ms,
-            new_session_id=state.new_session_id,
-        )
-        return ContainerOutput(status="success", result=None, new_session_id=state.new_session_id)
-
-    # Legacy mode: parse final output from stdout
-    return _parse_final_output(stdout_buf, container_name, stderr_buf, duration_ms)
+            # Leave the file for debugging; don't block other files
+    return outputs
 
 
 # ---------------------------------------------------------------------------
@@ -272,7 +237,7 @@ async def _spawn_container(
 
 
 # ---------------------------------------------------------------------------
-# One-shot entry point (scheduled tasks, legacy callers)
+# One-shot entry point (scheduled tasks)
 # ---------------------------------------------------------------------------
 
 
@@ -283,21 +248,21 @@ async def run_container_agent(
     on_output: OnOutput | None = None,
     plugin_manager: pluggy.PluginManager | None = None,
 ) -> ContainerOutput:
-    """Low-level primitive — spawn a container agent and stream output.
+    """Spawn a container agent, wait for exit, and collect output from IPC files.
 
     Used for one-shot runs (scheduled tasks).  For interactive messages,
     use the persistent session path in agent_runner.run_agent().
 
-    TODO(Task 8): This one-shot path still reads stdout for output via the old
-    marker-based reader.  Once the IPC watcher handles all output routing, this
-    can be converted to use file-based output and the stdout reader can be removed.
+    Output is collected from IPC output files written by the container, not
+    from stdout.  Stdout is consumed and discarded (container logs to stderr).
+    The on_output callback, if provided, is invoked for each output event
+    after the container exits.
 
     Args:
         group: The registered group configuration.
         input_data: Input payload for the agent-runner.
         on_process: Callback invoked with (proc, container_name) after spawn.
-        on_output: If provided, called for each streamed output marker pair.
-                   Enables streaming mode. Without it, uses legacy mode.
+        on_output: If provided, called for each output event after container exit.
         plugin_manager: Optional pluggy.PluginManager for plugin MCP mounts and config.
 
     Returns:
@@ -322,9 +287,7 @@ async def run_container_agent(
 
     on_process(proc, container_name)
 
-    # --- State and timeout ---
-    state = StreamState(spawn_time=time.monotonic())
-
+    # --- Timeout ---
     config_timeout = (
         group.container_config.timeout
         if group.container_config and group.container_config.timeout
@@ -332,10 +295,12 @@ async def run_container_agent(
     )
     # Grace period: hard timeout must be at least idle_timeout + 30s
     timeout_secs = max(config_timeout, s.idle_timeout + 30.0)
+    timed_out = False
     timeout_handle: asyncio.TimerHandle | None = None
 
     def kill_on_timeout() -> None:
-        state.timed_out = True
+        nonlocal timed_out
+        timed_out = True
         logger.error(
             "Container timeout, stopping gracefully",
             group=group.name,
@@ -343,24 +308,26 @@ async def run_container_agent(
         )
         asyncio.create_task(_graceful_stop(proc, container_name))
 
-    def reset_timeout() -> None:
-        nonlocal timeout_handle
-        if timeout_handle is not None:
-            timeout_handle.cancel()
-        timeout_handle = loop.call_later(timeout_secs, kill_on_timeout)
+    timeout_handle = loop.call_later(timeout_secs, kill_on_timeout)
 
-    reset_timeout()
-
-    # --- Run I/O readers concurrently, then wait for process exit ---
+    # --- Read stderr + drain stdout concurrently, then wait for exit ---
     assert proc.stdout is not None
     assert proc.stderr is not None
+
+    async def _drain_stdout(stream: asyncio.StreamReader) -> None:
+        """Consume stdout without accumulating — output comes via IPC files."""
+        while await stream.read(8192):
+            pass
+
+    stderr_buf_future = asyncio.ensure_future(
+        read_stderr(proc.stderr, s.container.max_output_size, group.name)
+    )
     await asyncio.gather(
-        read_stdout(
-            proc.stdout, state, s.container.max_output_size, group.name, on_output, reset_timeout
-        ),
-        read_stderr(proc.stderr, state, s.container.max_output_size, group.name),
+        _drain_stdout(proc.stdout),
+        stderr_buf_future,
     )
     exit_code = await proc.wait()
+    stderr_buf = stderr_buf_future.result()
 
     # Cancel timeout
     if timeout_handle is not None:
@@ -373,6 +340,23 @@ async def run_container_agent(
 
     duration_ms = (time.monotonic() - start_time) * 1000
 
+    # --- Collect output from IPC files ---
+    ipc_output_dir = s.data_dir / "ipc" / group.folder / "output"
+    outputs = _read_output_files(ipc_output_dir, group.name)
+
+    # Deliver output events via callback
+    if on_output is not None:
+        for output_event in outputs:
+            try:
+                await on_output(output_event)
+            except Exception as exc:
+                logger.error(
+                    "Output callback failed",
+                    group=group.name,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
+
     # --- Write log ---
     container_args = _build_container_args(mounts, container_name)
     _write_run_log(
@@ -382,25 +366,69 @@ async def run_container_agent(
         input_data=input_data,
         container_args=container_args,
         mounts=mounts,
-        stdout=state.stdout_buf,
-        stderr=state.stderr_buf,
-        stdout_truncated=state.stdout_truncated,
-        stderr_truncated=state.stderr_truncated,
+        stderr=stderr_buf,
         duration_ms=duration_ms,
         exit_code=exit_code,
-        timed_out=state.timed_out,
-        had_streaming_output=state.had_streaming_output,
+        timed_out=timed_out,
+        output_event_count=len(outputs),
     )
 
     # --- Determine result ---
-    return _determine_result(
-        state=state,
-        exit_code=exit_code,
-        config_timeout=config_timeout,
-        container_name=container_name,
-        group_name=group.name,
+    if timed_out:
+        if outputs:
+            # Had output before timeout — idle cleanup, not a real error
+            logger.info(
+                "Container timed out after output (idle cleanup)",
+                group=group.name,
+                container=container_name,
+                duration_ms=duration_ms,
+            )
+            last = outputs[-1]
+            return ContainerOutput(
+                status="success", result=None, new_session_id=last.new_session_id
+            )
+
+        logger.error(
+            "Container timed out with no output",
+            group=group.name,
+            container=container_name,
+            duration_ms=duration_ms,
+        )
+        return ContainerOutput(
+            status="error",
+            result=None,
+            error=f"Container timed out after {config_timeout:.0f}s",
+        )
+
+    if exit_code != 0:
+        logger.error(
+            "Container exited with error",
+            group=group.name,
+            code=exit_code,
+            duration_ms=duration_ms,
+        )
+        return ContainerOutput(
+            status="error",
+            result=None,
+            error=f"Container exited with code {exit_code}: {stderr_buf[-200:]}",
+        )
+
+    # Use the last output event as the final result
+    if outputs:
+        last = outputs[-1]
+        logger.info(
+            "Container completed",
+            group=group.name,
+            duration_ms=duration_ms,
+            output_events=len(outputs),
+            new_session_id=last.new_session_id,
+        )
+        return last
+
+    # Container exited successfully but produced no output files
+    logger.warning(
+        "Container exited successfully but produced no output",
+        group=group.name,
         duration_ms=duration_ms,
-        on_output=on_output,
-        stdout_buf=state.stdout_buf,
-        stderr_buf=state.stderr_buf,
     )
+    return ContainerOutput(status="success", result=None)

@@ -22,7 +22,7 @@ import os
 import re
 from functools import cached_property
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import (
@@ -192,10 +192,6 @@ class Settings(BaseSettings):
     # Extracted by _separate_mcp_instances validator from nested sub-tables
     # in mcp_servers.  {template_name: {instance_name: {chrome_profile: "...", ...}}}
     mcp_server_instances: dict[str, dict[str, dict[str, Any]]] = {}
-
-    # Sentinels (class-level, not fields)
-    OUTPUT_START_MARKER: ClassVar[str] = "---PYNCHY_OUTPUT_START---"
-    OUTPUT_END_MARKER: ClassVar[str] = "---PYNCHY_OUTPUT_END---"
 
     @model_validator(mode="before")
     @classmethod

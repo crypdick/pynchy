@@ -19,7 +19,6 @@ from conftest import make_settings
 
 from pynchy.app import PynchyApp
 from pynchy.chat.router import format_tool_preview
-from pynchy.config import Settings
 from pynchy.db import _init_test_database, store_message
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.types import NewMessage, WorkspaceProfile
@@ -48,13 +47,6 @@ def _make_message(
         content=content,
         timestamp=timestamp,
     )
-
-
-def _marker_wrap(output: dict[str, Any]) -> bytes:
-    payload = (
-        f"{Settings.OUTPUT_START_MARKER}\n{json.dumps(output)}\n{Settings.OUTPUT_END_MARKER}\n"
-    )
-    return payload.encode()
 
 
 async def _noop_docker_rm(name: str) -> None:

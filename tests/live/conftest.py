@@ -18,7 +18,6 @@ import pytest
 from conftest import make_settings
 
 from pynchy.app import PynchyApp
-from pynchy.config import Settings
 from pynchy.db import _init_test_database
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.types import NewMessage, WorkspaceProfile
@@ -180,11 +179,12 @@ class FakeProcess:
         self.pid = 12345
 
     def feed_output(self, output: dict[str, Any]) -> None:
-        """Feed a single container output event."""
-        payload = (
-            f"{Settings.OUTPUT_START_MARKER}\n{json.dumps(output)}\n{Settings.OUTPUT_END_MARKER}\n"
-        )
-        self.stdout.feed_data(payload.encode())
+        """Feed a single container output event via stdout (legacy, unused).
+
+        Output is now file-based IPC; this method exists only for backward
+        compatibility in live test fixtures that haven't been updated yet.
+        """
+        self.stdout.feed_data(json.dumps(output).encode())
 
     def finish(self) -> None:
         self._returncode = 0

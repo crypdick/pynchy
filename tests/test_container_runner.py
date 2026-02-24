@@ -14,7 +14,7 @@ import pytest
 from conftest import make_settings
 from pydantic import SecretStr
 
-from pynchy.config import GatewayConfig, Settings
+from pynchy.config import GatewayConfig
 from pynchy.container_runner._credentials import (
     _read_gh_token,
     _read_git_identity,
@@ -22,15 +22,12 @@ from pynchy.container_runner._credentials import (
     _shell_quote,
     _write_env_file,
 )
-from pynchy.container_runner._logging import _parse_final_output
 from pynchy.container_runner._mounts import _build_container_args, _build_volume_mounts
 from pynchy.container_runner._orchestrator import (
-    _determine_result,
     _write_initial_input,
     resolve_agent_core,
     run_container_agent,
 )
-from pynchy.container_runner._process import StreamState
 from pynchy.container_runner._serialization import _input_to_dict, _parse_container_output
 from pynchy.container_runner._session import _clean_ipc_input
 from pynchy.container_runner._session_prep import (
@@ -74,14 +71,6 @@ TEST_INPUT = ContainerInput(
     chat_jid="test@g.us",
     is_admin=False,
 )
-
-
-def _marker_wrap(output: dict[str, Any]) -> bytes:
-    """Wrap a dict as sentinel-marked output bytes."""
-    payload = (
-        f"{Settings.OUTPUT_START_MARKER}\n{json.dumps(output)}\n{Settings.OUTPUT_END_MARKER}\n"
-    )
-    return payload.encode()
 
 
 _CR_CREDS = "pynchy.container_runner._credentials"
@@ -386,28 +375,6 @@ class TestContainerArgs:
         assert args[-1].endswith("-agent:latest")
 
 
-class TestLegacyParsing:
-    def test_extracts_between_markers(self):
-        stdout = (
-            f"noise\n{Settings.OUTPUT_START_MARKER}\n"
-            + json.dumps(
-                {
-                    "status": "success",
-                    "result": "hello",
-                }
-            )
-            + f"\n{Settings.OUTPUT_END_MARKER}\nmore noise"
-        )
-        result = _parse_final_output(stdout, "test", "", 100)
-        assert result.status == "success"
-        assert result.result == "hello"
-
-    def test_returns_error_on_invalid_json(self):
-        result = _parse_final_output("not json at all", "test", "", 100)
-        assert result.status == "error"
-        assert "Invalid JSON" in (result.error or "")
-
-
 # ---------------------------------------------------------------------------
 # Mount building tests (require tmp dirs)
 # ---------------------------------------------------------------------------
@@ -637,21 +604,27 @@ def _patch_dirs(tmp_path: Path):
 
 
 class TestRunContainerAgent:
-    async def test_normal_exit_with_streaming_output(self, fake_proc: FakeProcess, tmp_path: Path):
+    @staticmethod
+    def _write_ipc_output(tmp_path: Path, output: dict[str, Any], *, ns: int = 1) -> None:
+        """Write an output event as an IPC file (simulates container behaviour)."""
+        output_dir = tmp_path / "data" / "ipc" / "test-group" / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / f"{ns}.json").write_text(json.dumps(output))
+
+    async def test_normal_exit_with_output(self, fake_proc: FakeProcess, tmp_path: Path):
         on_output = AsyncMock()
 
         with _patch_subprocess(fake_proc), _patch_dirs(tmp_path):
-            # Schedule output + close after a tiny delay
+
             async def _driver():
                 await asyncio.sleep(0.01)
-                fake_proc.emit_stdout(
-                    _marker_wrap(
-                        {
-                            "status": "success",
-                            "result": "Here is my response",
-                            "new_session_id": "session-123",
-                        }
-                    )
+                self._write_ipc_output(
+                    tmp_path,
+                    {
+                        "status": "success",
+                        "result": "Here is my response",
+                        "new_session_id": "session-123",
+                    },
                 )
                 await asyncio.sleep(0.01)
                 fake_proc.close(0)
@@ -664,6 +637,7 @@ class TestRunContainerAgent:
 
         assert result.status == "success"
         assert result.new_session_id == "session-123"
+        assert result.result == "Here is my response"
         on_output.assert_called_once()
         call_arg = on_output.call_args[0][0]
         assert call_arg.result == "Here is my response"
@@ -685,30 +659,25 @@ class TestRunContainerAgent:
         assert "code 1" in (result.error or "")
         assert "something went wrong" in (result.error or "")
 
-    async def test_legacy_mode_parses_stdout(self, fake_proc: FakeProcess, tmp_path: Path):
-        """Without on_output, final output is parsed from accumulated stdout."""
+    async def test_output_from_ipc_files(self, fake_proc: FakeProcess, tmp_path: Path):
+        """Output is collected from IPC files after container exit."""
         with _patch_subprocess(fake_proc), _patch_dirs(tmp_path):
 
             async def _driver():
                 await asyncio.sleep(0.01)
-                fake_proc.emit_stdout(
-                    _marker_wrap(
-                        {
-                            "status": "success",
-                            "result": "legacy result",
-                        }
-                    )
+                self._write_ipc_output(
+                    tmp_path,
+                    {"status": "success", "result": "file-based result"},
                 )
                 await asyncio.sleep(0.01)
                 fake_proc.close(0)
 
             driver = asyncio.create_task(_driver())
-            # No on_output → legacy mode
             result = await run_container_agent(TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None)
             await driver
 
         assert result.status == "success"
-        assert result.result == "legacy result"
+        assert result.result == "file-based result"
 
     async def test_timeout_with_short_timeout(self, fake_proc: FakeProcess, tmp_path: Path):
         """Test real timeout behavior with very short timeout values."""
@@ -735,7 +704,7 @@ class TestRunContainerAgent:
     async def test_timeout_after_output_with_short_timeout(
         self, fake_proc: FakeProcess, tmp_path: Path
     ):
-        """Timeout after streaming output should be idle cleanup (success)."""
+        """Timeout after output should be idle cleanup (success)."""
         on_output = AsyncMock()
 
         async def _fake_stop(proc: Any, name: str) -> None:
@@ -750,14 +719,13 @@ class TestRunContainerAgent:
 
             async def _driver():
                 await asyncio.sleep(0.01)
-                fake_proc.emit_stdout(
-                    _marker_wrap(
-                        {
-                            "status": "success",
-                            "result": "response",
-                            "new_session_id": "s-99",
-                        }
-                    )
+                self._write_ipc_output(
+                    tmp_path,
+                    {
+                        "status": "success",
+                        "result": "response",
+                        "new_session_id": "s-99",
+                    },
                 )
                 # Don't close — let timeout fire after the short period
 
@@ -767,31 +735,24 @@ class TestRunContainerAgent:
             )
             await driver
 
-        # Had streaming output → idle cleanup → success
+        # Had output → idle cleanup → success
         assert result.status == "success"
         assert result.new_session_id == "s-99"
 
-    async def test_stdout_truncation(self, fake_proc: FakeProcess, tmp_path: Path):
-        """Exceeding CONTAINER_MAX_OUTPUT_SIZE doesn't crash."""
-        with (
-            _patch_subprocess(fake_proc),
-            _patch_settings(tmp_path, max_output_size=100),
-        ):
+    async def test_no_output_files_returns_success(self, fake_proc: FakeProcess, tmp_path: Path):
+        """Container exits cleanly but writes no output files."""
+        with _patch_subprocess(fake_proc), _patch_dirs(tmp_path):
 
             async def _driver():
-                await asyncio.sleep(0.01)
-                # Emit more than 100 bytes
-                fake_proc.emit_stdout(b"x" * 200)
                 await asyncio.sleep(0.01)
                 fake_proc.close(0)
 
             driver = asyncio.create_task(_driver())
-            # Should not crash
             result = await run_container_agent(TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None)
             await driver
 
-        # No markers found, fallback parse fails → error
-        assert result.status == "error"
+        assert result.status == "success"
+        assert result.result is None
 
 
 # ---------------------------------------------------------------------------
@@ -1688,7 +1649,7 @@ class TestShellQuote:
 
 
 class TestOutputParsingEdgeCases:
-    """Edge cases for _parse_container_output and _parse_final_output."""
+    """Edge cases for _parse_container_output."""
 
     def test_parses_all_output_fields(self):
         """Verify all ContainerOutput fields are correctly parsed."""
@@ -1721,221 +1682,6 @@ class TestOutputParsingEdgeCases:
         assert out.tool_result_id == "tr-1"
         assert out.tool_result_is_error is False
         assert out.result_metadata == {"duration_ms": 1234}
-
-    def test_parse_final_output_empty_stdout(self):
-        """Empty stdout should return error output."""
-        result = _parse_final_output("", "test-container", "", 100)
-        assert result.status == "error"
-
-    def test_parse_final_output_markers_without_json(self):
-        """Markers present but content is not valid JSON."""
-        stdout = f"{Settings.OUTPUT_START_MARKER}\nnot json\n{Settings.OUTPUT_END_MARKER}"
-        result = _parse_final_output(stdout, "test-container", "", 100)
-        assert result.status == "error"
-        assert "Invalid JSON" in (result.error or "")
-
-    def test_parse_final_output_multiple_marker_pairs(self):
-        """When multiple marker pairs exist, uses the first one."""
-        first = json.dumps({"status": "success", "result": "first"})
-        second = json.dumps({"status": "success", "result": "second"})
-        stdout = (
-            f"{Settings.OUTPUT_START_MARKER}\n{first}\n{Settings.OUTPUT_END_MARKER}\n"
-            f"{Settings.OUTPUT_START_MARKER}\n{second}\n{Settings.OUTPUT_END_MARKER}"
-        )
-        result = _parse_final_output(stdout, "test-container", "", 100)
-        assert result.status == "success"
-        # Uses the first marker pair
-        assert result.result == "first"
-
-    def test_parse_final_output_fallback_to_last_line(self):
-        """Without markers, falls back to last non-empty line."""
-        last_line = json.dumps({"status": "success", "result": "fallback"})
-        stdout = f"some noise\nmore noise\n{last_line}\n"
-        result = _parse_final_output(stdout, "test-container", "", 100)
-        assert result.status == "success"
-        assert result.result == "fallback"
-
-    def test_parse_final_output_invalid_json_error_message(self):
-        """Invalid JSON should produce a specific 'Invalid JSON' error."""
-        result = _parse_final_output("{bad json", "test-container", "", 100)
-        assert result.status == "error"
-        assert "Invalid JSON" in (result.error or "")
-
-    def test_parse_final_output_missing_status_key(self):
-        """Valid JSON missing required 'status' key should report missing field."""
-        stdout = json.dumps({"result": "no status field"})
-        result = _parse_final_output(stdout, "test-container", "", 100)
-        assert result.status == "error"
-        assert "Missing required field" in (result.error or "") or "status" in (result.error or "")
-
-    def test_parse_final_output_truncates_long_preview_in_error(self):
-        """Very long invalid output should not flood error messages."""
-        long_garbage = "x" * 500
-        result = _parse_final_output(long_garbage, "test-container", "", 100)
-        assert result.status == "error"
-        # The error message should exist but be reasonable length
-        assert len(result.error or "") < 1000
-
-
-# ---------------------------------------------------------------------------
-# _determine_result tests
-# ---------------------------------------------------------------------------
-
-
-class TestDetermineResult:
-    """Tests for _determine_result — the branching logic that maps container
-    run state (timeout, exit code, streaming vs legacy) to ContainerOutput."""
-
-    def _make_state(self, **kwargs) -> StreamState:
-        """Create a StreamState with test defaults."""
-        return StreamState(**kwargs)
-
-    def test_timeout_with_streaming_output_returns_success(self):
-        """Timeout after streaming output = idle cleanup, not an error."""
-        state = self._make_state(
-            timed_out=True,
-            had_streaming_output=True,
-            new_session_id="session-1",
-        )
-        result = _determine_result(
-            state=state,
-            exit_code=None,
-            config_timeout=300.0,
-            container_name="test-container",
-            group_name="test-group",
-            duration_ms=300000.0,
-            on_output=AsyncMock(),
-            stdout_buf="",
-            stderr_buf="",
-        )
-        assert result.status == "success"
-        assert result.new_session_id == "session-1"
-
-    def test_timeout_without_output_returns_error(self):
-        """Timeout with no output at all = real error."""
-        state = self._make_state(timed_out=True, had_streaming_output=False)
-        result = _determine_result(
-            state=state,
-            exit_code=None,
-            config_timeout=300.0,
-            container_name="test-container",
-            group_name="test-group",
-            duration_ms=300000.0,
-            on_output=AsyncMock(),
-            stdout_buf="",
-            stderr_buf="",
-        )
-        assert result.status == "error"
-        assert "timed out" in (result.error or "").lower()
-        assert "300" in (result.error or "")
-
-    def test_nonzero_exit_code_returns_error(self):
-        """Non-zero exit code always means error, with stderr tail in message."""
-        state = self._make_state()
-        result = _determine_result(
-            state=state,
-            exit_code=1,
-            config_timeout=300.0,
-            container_name="test-container",
-            group_name="test-group",
-            duration_ms=5000.0,
-            on_output=AsyncMock(),
-            stdout_buf="",
-            stderr_buf="some error output from container",
-        )
-        assert result.status == "error"
-        assert "code 1" in (result.error or "")
-        assert "some error output" in (result.error or "")
-
-    def test_nonzero_exit_code_truncates_long_stderr(self):
-        """Stderr in error message is truncated to last 200 chars."""
-        state = self._make_state()
-        long_stderr = "x" * 500
-        result = _determine_result(
-            state=state,
-            exit_code=2,
-            config_timeout=300.0,
-            container_name="test-container",
-            group_name="test-group",
-            duration_ms=5000.0,
-            on_output=AsyncMock(),
-            stdout_buf="",
-            stderr_buf=long_stderr,
-        )
-        assert result.status == "error"
-        # Error message includes at most 200 chars of stderr
-        assert len(result.error or "") < 300
-
-    def test_streaming_mode_success(self):
-        """Streaming mode (on_output set) returns success with session ID."""
-        state = self._make_state(new_session_id="session-42")
-        result = _determine_result(
-            state=state,
-            exit_code=0,
-            config_timeout=300.0,
-            container_name="test-container",
-            group_name="test-group",
-            duration_ms=5000.0,
-            on_output=AsyncMock(),
-            stdout_buf="",
-            stderr_buf="",
-        )
-        assert result.status == "success"
-        assert result.new_session_id == "session-42"
-        assert result.result is None  # result delivered via callbacks
-
-    def test_legacy_mode_parses_stdout(self):
-        """Legacy mode (on_output=None) parses final output from stdout."""
-        output_json = json.dumps({"status": "success", "result": "hello world"})
-        stdout = f"{Settings.OUTPUT_START_MARKER}\n{output_json}\n{Settings.OUTPUT_END_MARKER}"
-        state = self._make_state()
-        result = _determine_result(
-            state=state,
-            exit_code=0,
-            config_timeout=300.0,
-            container_name="test-container",
-            group_name="test-group",
-            duration_ms=5000.0,
-            on_output=None,
-            stdout_buf=stdout,
-            stderr_buf="",
-        )
-        assert result.status == "success"
-        assert result.result == "hello world"
-
-    def test_timeout_takes_priority_over_exit_code(self):
-        """If both timed_out and exit_code are set, timeout path wins."""
-        state = self._make_state(timed_out=True, had_streaming_output=False)
-        result = _determine_result(
-            state=state,
-            exit_code=137,  # SIGKILL
-            config_timeout=300.0,
-            container_name="test-container",
-            group_name="test-group",
-            duration_ms=300000.0,
-            on_output=AsyncMock(),
-            stdout_buf="",
-            stderr_buf="",
-        )
-        assert result.status == "error"
-        assert "timed out" in (result.error or "").lower()
-
-    def test_streaming_mode_no_session_id(self):
-        """Streaming success without a session ID returns None for session."""
-        state = self._make_state(new_session_id=None)
-        result = _determine_result(
-            state=state,
-            exit_code=0,
-            config_timeout=300.0,
-            container_name="test-container",
-            group_name="test-group",
-            duration_ms=1000.0,
-            on_output=AsyncMock(),
-            stdout_buf="",
-            stderr_buf="",
-        )
-        assert result.status == "success"
-        assert result.new_session_id is None
 
 
 # ---------------------------------------------------------------------------
