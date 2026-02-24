@@ -12,7 +12,7 @@ data = json.loads(sys.stdin.read())
 print(data.get('tool_input', {}).get('command', ''))
 " <<< "$input" 2>/dev/null)
 
-if echo "$command" | grep -qP '\bgit\s+(push|pull|rebase)\b'; then
+if echo "$command" | grep -qE '\bgit\s+(push|pull|rebase)\b'; then
   cat <<'EOF'
 {"decision":"block","reason":"Direct git push/pull/rebase is blocked. Use the sync_worktree_to_main tool instead — it coordinates with the host to publish your changes (either merging into main or opening a PR, depending on workspace policy). Commit your changes first, then call sync_worktree_to_main."}
 EOF
