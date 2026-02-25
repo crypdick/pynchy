@@ -92,3 +92,19 @@ class TestAdvanceCursorsAtomic:
 
         assert await get_channel_cursor("slack", "group@g.us", "inbound") == ""
         assert await get_channel_cursor("slack", "group@g.us", "outbound") == ""
+
+    @pytest.mark.asyncio
+    async def test_never_regresses_cursor(self):
+        """Advancing with an older value keeps the newer stored cursor."""
+        await set_channel_cursor("slack", "group@g.us", "inbound", "2024-06-01")
+        await advance_cursors_atomic("slack", "group@g.us", inbound="2024-01-01")
+
+        assert await get_channel_cursor("slack", "group@g.us", "inbound") == "2024-06-01"
+
+    @pytest.mark.asyncio
+    async def test_advances_past_existing_cursor(self):
+        """Advancing with a newer value updates the stored cursor."""
+        await set_channel_cursor("slack", "group@g.us", "outbound", "2024-01-01")
+        await advance_cursors_atomic("slack", "group@g.us", outbound="2024-06-01")
+
+        assert await get_channel_cursor("slack", "group@g.us", "outbound") == "2024-06-01"
