@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
 
+from pynchy.chat.bus import resolve_target_jid
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
@@ -24,23 +25,13 @@ class ChannelDeps(Protocol):
     def get_channel_jid(self, canonical_jid: str, channel_name: str) -> str | None: ...
 
 
-def _resolve_target_jid(deps: ChannelDeps, chat_jid: str, channel: Channel) -> str | None:
-    """Return the channel-owned JID for *chat_jid*, or None if unreachable."""
-    alias = deps.get_channel_jid(chat_jid, channel.name)
-    if alias:
-        return alias
-    if channel.owns_jid(chat_jid):
-        return chat_jid
-    return None
-
-
 async def send_reaction_to_channels(
     deps: ChannelDeps, chat_jid: str, message_id: str, sender: str, emoji: str
 ) -> None:
     """Send a reaction emoji to a message on all channels that support it."""
     for ch in deps.channels:
         if ch.is_connected() and hasattr(ch, "send_reaction"):
-            target_jid = _resolve_target_jid(deps, chat_jid, ch)
+            target_jid = resolve_target_jid(deps, chat_jid, ch)
             if not target_jid:
                 continue
             try:
@@ -53,7 +44,7 @@ async def set_typing_on_channels(deps: ChannelDeps, chat_jid: str, is_typing: bo
     """Set typing indicator on all channels that support it."""
     for ch in deps.channels:
         if ch.is_connected() and hasattr(ch, "set_typing"):
-            target_jid = _resolve_target_jid(deps, chat_jid, ch)
+            target_jid = resolve_target_jid(deps, chat_jid, ch)
             if not target_jid:
                 continue
             try:

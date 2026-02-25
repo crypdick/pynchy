@@ -56,20 +56,23 @@ def resolve_container_timeout(group: WorkspaceProfile) -> float:
 # ---------------------------------------------------------------------------
 
 
+def _sanitize_folder(group_folder: str) -> str:
+    """Replace non-alphanumeric/non-dash chars with dashes for container names."""
+    return "".join(c if c.isalnum() or c == "-" else "-" for c in group_folder)
+
+
 def stable_container_name(group_folder: str) -> str:
     """Deterministic container name for persistent sessions.
 
     Using a stable name means we can docker rm -f the stale container
     before spawning a new one for the same group.
     """
-    safe_name = "".join(c if c.isalnum() or c == "-" else "-" for c in group_folder)
-    return f"pynchy-{safe_name}"
+    return f"pynchy-{_sanitize_folder(group_folder)}"
 
 
 def oneshot_container_name(group_folder: str) -> str:
     """Timestamped container name for one-shot runs (scheduled tasks)."""
-    safe_name = "".join(c if c.isalnum() or c == "-" else "-" for c in group_folder)
-    return f"pynchy-{safe_name}-{int(time.time() * 1000)}"
+    return f"pynchy-{_sanitize_folder(group_folder)}-{int(time.time() * 1000)}"
 
 
 # ---------------------------------------------------------------------------

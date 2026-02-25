@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
+from pynchy.chat.bus import resolve_target_jid
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
@@ -88,9 +89,8 @@ async def stream_text_to_channels(
         if not hasattr(ch, "update_message") or not hasattr(ch, "post_message"):
             continue
 
-        # Resolve alias so e.g. Slack can stream using its slack:CHANNEL_ID JID
-        target_jid = deps.get_channel_jid(chat_jid, ch.name) or chat_jid
-        if not ch.owns_jid(target_jid):
+        target_jid = resolve_target_jid(deps, chat_jid, ch)
+        if not target_jid:
             continue
 
         ch_name = getattr(ch, "name", "?")

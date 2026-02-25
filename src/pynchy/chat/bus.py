@@ -23,7 +23,13 @@ if TYPE_CHECKING:
     from pynchy.types import Channel
 
 
-class BusDeps(Protocol):
+class JidResolverDeps(Protocol):
+    """Deps for JID resolution — shared by bus, channel_handler, and streaming."""
+
+    def get_channel_jid(self, canonical_jid: str, channel_name: str) -> str | None: ...
+
+
+class BusDeps(JidResolverDeps, Protocol):
     """Minimal dependencies for the message bus."""
 
     @property
@@ -31,8 +37,6 @@ class BusDeps(Protocol):
 
     @property
     def workspaces(self) -> dict: ...
-
-    def get_channel_jid(self, canonical_jid: str, channel_name: str) -> str | None: ...
 
 
 # ---------------------------------------------------------------------------
@@ -141,15 +145,18 @@ def _resolve_send_targets(
             continue
         if not _channel_allows_outbound(deps, chat_jid, ch.name):
             continue
-        target_jid = _resolve_target_jid(deps, chat_jid, ch)
+        target_jid = resolve_target_jid(deps, chat_jid, ch)
         if not target_jid:
             continue
         targets.append((ch, target_jid))
     return targets
 
 
-def _resolve_target_jid(deps: BusDeps, chat_jid: str, channel: Channel) -> str | None:
-    """Return the channel-owned JID for *chat_jid*, or None if unreachable."""
+def resolve_target_jid(deps: JidResolverDeps, chat_jid: str, channel: Channel) -> str | None:
+    """Return the channel-owned JID for *chat_jid*, or None if unreachable.
+
+    Public within the chat package — used by bus, channel_handler, and streaming.
+    """
     alias = deps.get_channel_jid(chat_jid, channel.name)
     if alias:
         return alias
@@ -285,7 +292,7 @@ async def finalize_stream_or_broadcast(
             continue
         if not _channel_allows_outbound(deps, chat_jid, ch_name):
             continue
-        target_jid = _resolve_target_jid(deps, chat_jid, ch)
+        target_jid = resolve_target_jid(deps, chat_jid, ch)
         if not target_jid:
             continue
         stream_targets.append((ch, msg_id, target_jid))
