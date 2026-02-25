@@ -51,6 +51,7 @@ __pycache__/
 dist/
 .ruff_cache/
 .pytest_cache/
+.coverage
 
 # Generated build artifacts
 container/requirements-plugins.txt
