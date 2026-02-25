@@ -294,16 +294,19 @@ async def create_session(
 ) -> ContainerSession:
     """Create and register a new session for a group.
 
-    Cleans up any stale container with the same name and stale IPC input
-    and output files before registering.
+    Assumes the caller has already removed any stale container with the
+    same name *before* spawning ``proc``.  Stale IPC files are cleaned here.
+
+    IMPORTANT: Do NOT call ``_docker_rm_force(container_name)`` here.
+    By this point the container is already running — force-removing it
+    would race with (and potentially kill) the just-spawned process.
+    The old session's ``stop()`` call below handles the previous container,
+    and the caller (``_cold_start``) handles stale-name cleanup pre-spawn.
     """
     # Destroy existing session if any
     old = _sessions.pop(group_folder, None)
     if old is not None:
         await old.stop()
-
-    # Force-remove stale container with same name
-    await _docker_rm_force(container_name)
 
     # Clean stale IPC files from the previous session
     _clean_ipc_input(group_folder)
