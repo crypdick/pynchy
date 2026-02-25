@@ -195,6 +195,7 @@ class TestInputSerialization:
             "group_folder": "my-group",
             "chat_jid": "chat@g.us",
             "is_admin": True,
+            "is_scheduled_task": False,
             "agent_core_module": "agent_runner.cores.claude",
             "agent_core_class": "ClaudeAgentCore",
         }
@@ -212,7 +213,7 @@ class TestInputSerialization:
         assert d["session_id"] == "sess-1"
         assert d["is_scheduled_task"] is True
 
-    def test_optional_fields_omitted_when_default(self):
+    def test_optional_fields_omitted_when_none(self):
         inp = ContainerInput(
             messages=[{"message_type": "user", "content": "hi"}],
             group_folder="g",
@@ -220,8 +221,8 @@ class TestInputSerialization:
             is_admin=False,
         )
         d = _input_to_dict(inp)
-        assert "session_id" not in d
-        assert "is_scheduled_task" not in d
+        assert "session_id" not in d  # None → omitted
+        assert d["is_scheduled_task"] is False  # False → included (non-None)
 
 
 class TestWriteInitialInput:
@@ -1707,11 +1708,13 @@ class TestInputToDictEdgeCases:
         assert d["group_folder"] == "test"
         assert d["chat_jid"] == "test@g.us"
         assert d["is_admin"] is False
-        # Optional fields should not be present when at defaults
+        # None-valued optional fields should not be present
         assert "session_id" not in d
-        assert "is_scheduled_task" not in d
         assert "system_notices" not in d
         assert "repo_access" not in d
+        # Non-None defaults (False, strings) are included
+        assert d["is_scheduled_task"] is False
+        assert "agent_core_module" in d
 
     def test_all_optional_fields_set(self):
         """All optional fields populated should appear in dict."""
@@ -1731,8 +1734,8 @@ class TestInputToDictEdgeCases:
         assert d["system_notices"] == ["notice 1"]
         assert d["repo_access"] == "owner/pynchy"
 
-    def test_is_scheduled_task_false_omitted(self):
-        """is_scheduled_task=False should NOT be included."""
+    def test_is_scheduled_task_false_included(self):
+        """is_scheduled_task=False is included (non-None values are always included)."""
         inp = ContainerInput(
             messages=[],
             group_folder="g",
@@ -1741,7 +1744,7 @@ class TestInputToDictEdgeCases:
             is_scheduled_task=False,
         )
         d = _input_to_dict(inp)
-        assert "is_scheduled_task" not in d
+        assert d["is_scheduled_task"] is False
 
     def test_repo_access_none_omitted(self):
         """repo_access=None should NOT be included."""

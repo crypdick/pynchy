@@ -1,11 +1,16 @@
-"""Serialization helpers — camelCase/snake_case boundary crossing.
+"""Serialization helpers for host↔container IPC.
 
 Converts ContainerInput to dict for JSON transport into the container,
 and parses JSON output from the container back to ContainerOutput.
+
+Both functions are field-driven (via ``dataclasses.fields``) so new
+fields added to the dataclasses are automatically handled without
+updating the serialization code.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from typing import Any
 
@@ -13,54 +18,26 @@ from pynchy.types import ContainerInput, ContainerOutput
 
 
 def _input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
-    """Convert ContainerInput to dict for the Python agent-runner."""
-    d: dict[str, Any] = {
-        "messages": input_data.messages,
-        "group_folder": input_data.group_folder,
-        "chat_jid": input_data.chat_jid,
-        "is_admin": input_data.is_admin,
+    """Convert ContainerInput to dict for the Python agent-runner.
+
+    Includes all fields except those set to None.  The container-side
+    ``ContainerInput.from_dict()`` applies dataclass defaults for any
+    missing keys, so omitting None values is safe and keeps the wire
+    format compact.
+    """
+    return {
+        f.name: getattr(input_data, f.name)
+        for f in dataclasses.fields(input_data)
+        if getattr(input_data, f.name) is not None
     }
-    if input_data.session_id is not None:
-        d["session_id"] = input_data.session_id
-    if input_data.is_scheduled_task:
-        d["is_scheduled_task"] = True
-    if input_data.system_notices:
-        d["system_notices"] = input_data.system_notices
-    if input_data.repo_access:
-        d["repo_access"] = input_data.repo_access
-    # Always include agent core fields (container needs them to import the core)
-    d["agent_core_module"] = input_data.agent_core_module
-    d["agent_core_class"] = input_data.agent_core_class
-    if input_data.agent_core_config is not None:
-        d["agent_core_config"] = input_data.agent_core_config
-    if input_data.system_prompt_append is not None:
-        d["system_prompt_append"] = input_data.system_prompt_append
-    if input_data.mcp_gateway_url is not None:
-        d["mcp_gateway_url"] = input_data.mcp_gateway_url
-    if input_data.mcp_gateway_key is not None:
-        d["mcp_gateway_key"] = input_data.mcp_gateway_key
-    if input_data.mcp_direct_servers:
-        d["mcp_direct_servers"] = input_data.mcp_direct_servers
-    return d
 
 
 def _parse_container_output(json_str: str) -> ContainerOutput:
-    """Parse JSON from the Python agent-runner into ContainerOutput."""
+    """Parse JSON from the Python agent-runner into ContainerOutput.
+
+    Unknown keys in the JSON are silently ignored (forward-compat).
+    Missing keys use the dataclass defaults.
+    """
     data = json.loads(json_str)
-    return ContainerOutput(
-        status=data["status"],
-        result=data.get("result"),
-        new_session_id=data.get("new_session_id"),
-        error=data.get("error"),
-        type=data.get("type", "result"),
-        thinking=data.get("thinking"),
-        tool_name=data.get("tool_name"),
-        tool_input=data.get("tool_input"),
-        text=data.get("text"),
-        system_subtype=data.get("system_subtype"),
-        system_data=data.get("system_data"),
-        tool_result_id=data.get("tool_result_id"),
-        tool_result_content=data.get("tool_result_content"),
-        tool_result_is_error=data.get("tool_result_is_error"),
-        result_metadata=data.get("result_metadata"),
-    )
+    known = {f.name for f in dataclasses.fields(ContainerOutput)}
+    return ContainerOutput(**{k: v for k, v in data.items() if k in known})
