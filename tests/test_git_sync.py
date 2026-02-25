@@ -15,11 +15,9 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from conftest import make_settings
 
+from pynchy.git_ops._worktree_notify import host_notify_worktree_updates
 from pynchy.git_ops.repo import RepoContext
-from pynchy.git_ops.sync import (
-    host_notify_worktree_updates,
-    host_sync_worktree,
-)
+from pynchy.git_ops.sync import host_sync_worktree
 from pynchy.git_ops.sync_poll import (
     _hash_config_files,
     _host_container_files_changed,

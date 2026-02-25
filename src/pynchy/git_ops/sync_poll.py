@@ -12,12 +12,9 @@ import hashlib
 from pathlib import Path
 
 from pynchy.config import get_settings
+from pynchy.git_ops._worktree_notify import host_notify_worktree_updates, last_notified_sha
 from pynchy.git_ops.repo import RepoContext
-from pynchy.git_ops.sync import (
-    GitSyncDeps,
-    _last_worktree_notified_sha,
-    host_notify_worktree_updates,
-)
+from pynchy.git_ops.sync import GitSyncDeps
 from pynchy.git_ops.utils import (
     detect_main_branch,
     files_changed_between,
@@ -214,7 +211,7 @@ async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
                         local_head=local_head[:8],
                     )
                     if pynchy_repo_ctx:
-                        notified = _last_worktree_notified_sha.get(str(pynchy_root), "")
+                        notified = last_notified_sha.get(str(pynchy_root), "")
                         if notified != local_head:
                             await host_notify_worktree_updates(None, deps, pynchy_repo_ctx)
                     rebuild = needs_container_rebuild(deployed_sha, local_head)
@@ -246,7 +243,7 @@ async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
 
             new_head_after_pull = await asyncio.to_thread(_get_local_head_sha, pynchy_root)
             if pynchy_repo_ctx:
-                notified = _last_worktree_notified_sha.get(str(pynchy_root), "")
+                notified = last_notified_sha.get(str(pynchy_root), "")
                 if notified != new_head_after_pull:
                     await host_notify_worktree_updates(None, deps, pynchy_repo_ctx)
 
@@ -296,7 +293,7 @@ async def start_external_repo_sync_loop(repo_ctx: RepoContext, deps: GitSyncDeps
             last_origin_sha = current_origin
 
             new_head = await asyncio.to_thread(_get_local_head_sha, repo_root)
-            notified = _last_worktree_notified_sha.get(str(repo_root), "")
+            notified = last_notified_sha.get(str(repo_root), "")
             if notified != new_head:
                 await host_notify_worktree_updates(None, deps, repo_ctx)
 
