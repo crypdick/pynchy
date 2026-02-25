@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_runner.main import read_initial_input
+from agent_runner.ipc import read_initial_input
 from agent_runner.models import ContainerInput
 
 
@@ -23,7 +23,7 @@ def input_dir(tmp_path: Path) -> Path:
 @pytest.fixture(autouse=True)
 def _patch_initial_input_file(input_dir: Path) -> None:
     """Redirect INITIAL_INPUT_FILE to the temp input dir."""
-    with patch("agent_runner.main.INITIAL_INPUT_FILE", input_dir / "initial.json"):
+    with patch("agent_runner.ipc.INITIAL_INPUT_FILE", input_dir / "initial.json"):
         yield
 
 

@@ -18,12 +18,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "container" / "agent_runner" / "src"))
 
 from agent_runner.core import AgentEvent
+from agent_runner.ipc import drain_ipc_input, should_close
 from agent_runner.main import (
     build_core_config,
     build_sdk_messages,
-    drain_ipc_input,
     event_to_output,
-    should_close,
 )
 from agent_runner.models import ContainerInput, ContainerOutput
 
@@ -340,13 +339,13 @@ class TestShouldClose:
     """Test _close sentinel detection."""
 
     def test_no_sentinel(self, tmp_path):
-        with patch("agent_runner.main.IPC_INPUT_CLOSE_SENTINEL", tmp_path / "_close"):
+        with patch("agent_runner.ipc.IPC_INPUT_CLOSE_SENTINEL", tmp_path / "_close"):
             assert should_close() is False
 
     def test_sentinel_exists(self, tmp_path):
         sentinel = tmp_path / "_close"
         sentinel.touch()
-        with patch("agent_runner.main.IPC_INPUT_CLOSE_SENTINEL", sentinel):
+        with patch("agent_runner.ipc.IPC_INPUT_CLOSE_SENTINEL", sentinel):
             assert should_close() is True
             # Sentinel should be cleaned up
             assert not sentinel.exists()
@@ -361,14 +360,14 @@ class TestDrainIpcInput:
     """Test IPC input message draining."""
 
     def test_empty_directory(self, tmp_path):
-        with patch("agent_runner.main.IPC_INPUT_DIR", tmp_path):
+        with patch("agent_runner.ipc.IPC_INPUT_DIR", tmp_path):
             result = drain_ipc_input()
             assert result == []
 
     def test_single_message(self, tmp_path):
         msg_file = tmp_path / "001.json"
         msg_file.write_text(json.dumps({"type": "message", "text": "hello"}))
-        with patch("agent_runner.main.IPC_INPUT_DIR", tmp_path):
+        with patch("agent_runner.ipc.IPC_INPUT_DIR", tmp_path):
             result = drain_ipc_input()
             assert result == ["hello"]
             assert not msg_file.exists()  # File should be consumed
@@ -376,25 +375,25 @@ class TestDrainIpcInput:
     def test_multiple_messages_sorted(self, tmp_path):
         (tmp_path / "002.json").write_text(json.dumps({"type": "message", "text": "second"}))
         (tmp_path / "001.json").write_text(json.dumps({"type": "message", "text": "first"}))
-        with patch("agent_runner.main.IPC_INPUT_DIR", tmp_path):
+        with patch("agent_runner.ipc.IPC_INPUT_DIR", tmp_path):
             result = drain_ipc_input()
             assert result == ["first", "second"]
 
     def test_skips_non_message_types(self, tmp_path):
         (tmp_path / "001.json").write_text(json.dumps({"type": "other", "text": "ignored"}))
-        with patch("agent_runner.main.IPC_INPUT_DIR", tmp_path):
+        with patch("agent_runner.ipc.IPC_INPUT_DIR", tmp_path):
             result = drain_ipc_input()
             assert result == []
 
     def test_skips_messages_without_text(self, tmp_path):
         (tmp_path / "001.json").write_text(json.dumps({"type": "message"}))
-        with patch("agent_runner.main.IPC_INPUT_DIR", tmp_path):
+        with patch("agent_runner.ipc.IPC_INPUT_DIR", tmp_path):
             result = drain_ipc_input()
             assert result == []
 
     def test_handles_malformed_json(self, tmp_path):
         (tmp_path / "001.json").write_text("not json")
-        with patch("agent_runner.main.IPC_INPUT_DIR", tmp_path):
+        with patch("agent_runner.ipc.IPC_INPUT_DIR", tmp_path):
             result = drain_ipc_input()
             assert result == []
             assert not (tmp_path / "001.json").exists()  # Bad file cleaned up
@@ -402,7 +401,7 @@ class TestDrainIpcInput:
     def test_ignores_non_json_files(self, tmp_path):
         (tmp_path / "readme.txt").write_text("not a message")
         (tmp_path / "001.json").write_text(json.dumps({"type": "message", "text": "hi"}))
-        with patch("agent_runner.main.IPC_INPUT_DIR", tmp_path):
+        with patch("agent_runner.ipc.IPC_INPUT_DIR", tmp_path):
             result = drain_ipc_input()
             assert result == ["hi"]
             assert (tmp_path / "readme.txt").exists()  # Non-JSON untouched

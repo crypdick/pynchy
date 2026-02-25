@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_runner.main import write_output
+from agent_runner.ipc import write_output
 from agent_runner.models import ContainerOutput
 
 
@@ -23,7 +23,7 @@ def output_dir(tmp_path: Path) -> Path:
 @pytest.fixture(autouse=True)
 def _patch_output_dir(output_dir: Path) -> None:
     """Redirect all write_output calls to the temp output dir."""
-    with patch("agent_runner.main.IPC_OUTPUT_DIR", output_dir):
+    with patch("agent_runner.ipc.IPC_OUTPUT_DIR", output_dir):
         yield
 
 

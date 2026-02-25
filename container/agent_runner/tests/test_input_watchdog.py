@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_runner.main import wait_for_ipc_message
+from agent_runner.ipc import wait_for_ipc_message
 
 
 @pytest.fixture()
@@ -24,8 +24,8 @@ def input_dir(tmp_path: Path) -> Path:
 def _patch_ipc_dirs(input_dir: Path) -> None:
     """Redirect IPC_INPUT_DIR and the close sentinel to temp dirs."""
     with (
-        patch("agent_runner.main.IPC_INPUT_DIR", input_dir),
-        patch("agent_runner.main.IPC_INPUT_CLOSE_SENTINEL", input_dir / "_close"),
+        patch("agent_runner.ipc.IPC_INPUT_DIR", input_dir),
+        patch("agent_runner.ipc.IPC_INPUT_CLOSE_SENTINEL", input_dir / "_close"),
     ):
         yield
 
