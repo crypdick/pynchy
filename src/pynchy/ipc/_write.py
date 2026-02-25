@@ -19,6 +19,21 @@ from typing import Any
 from pynchy.config import get_settings
 
 
+def write_json_atomic(path: Path, data: Any, *, indent: int | None = None) -> None:
+    """Write JSON data to a file using atomic rename (tmp → final).
+
+    Ensures the target file is never partially written — readers either
+    see the old content or the complete new content.  Used for all IPC
+    files watched by filesystem events.
+
+    Creates parent directories if they don't exist.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=indent))
+    tmp.rename(path)
+
+
 def _ipc_input_dir(group_folder: str) -> Path:
     """Return the IPC input directory for a group, creating it if needed."""
     d = get_settings().data_dir / "ipc" / group_folder / "input"
@@ -34,10 +49,7 @@ def write_ipc_message(group_folder: str, text: str) -> None:
     """
     input_dir = _ipc_input_dir(group_folder)
     filename = f"{int(time.time() * 1000)}-{random.randbytes(3).hex()}.json"
-    filepath = input_dir / filename
-    temp_path = filepath.with_suffix(".json.tmp")
-    temp_path.write_text(json.dumps({"type": "message", "text": text}))
-    temp_path.rename(filepath)
+    write_json_atomic(input_dir / filename, {"type": "message", "text": text})
 
 
 def write_ipc_close_sentinel(group_folder: str) -> None:
@@ -61,7 +73,4 @@ def write_ipc_response(path: Path, data: dict[str, Any]) -> None:
     Used by IPC handlers to write responses that containers pick up
     (e.g. merge results, service request responses).
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data))
-    tmp.rename(path)
+    write_json_atomic(path, data)

@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from pynchy.config import get_settings
+from pynchy.ipc._write import write_json_atomic
 
 
 def _todos_path(group_folder: str) -> Path:
@@ -37,11 +38,7 @@ def _read_todos(group_folder: str) -> list[dict[str, Any]]:
 
 
 def _write_todos(group_folder: str, todos: list[dict[str, Any]]) -> None:
-    path = _todos_path(group_folder)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(todos, indent=2))
-    tmp.rename(path)
+    write_json_atomic(_todos_path(group_folder), todos, indent=2)
 
 
 def add_todo(group_folder: str, content: str) -> dict[str, Any]:

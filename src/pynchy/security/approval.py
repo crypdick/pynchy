@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from pynchy.config import get_settings
-from pynchy.ipc._write import ipc_response_path, write_ipc_response
+from pynchy.ipc._write import ipc_response_path, write_ipc_response, write_json_atomic
 from pynchy.logger import logger
 from pynchy.security.audit import record_security_event
 
@@ -83,10 +83,7 @@ def create_pending_approval(
         "timestamp": datetime.now(UTC).isoformat(),
     }
 
-    filepath = pending_dir / f"{request_id}.json"
-    temp_path = filepath.with_suffix(".json.tmp")
-    temp_path.write_text(json.dumps(data, indent=2))
-    temp_path.rename(filepath)
+    write_json_atomic(pending_dir / f"{request_id}.json", data, indent=2)
 
     logger.info(
         "Pending approval created",
