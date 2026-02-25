@@ -6,10 +6,10 @@ writing decision files that the IPC watcher picks up.
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from typing import Protocol
 
+from pynchy.ipc._write import write_json_atomic
 from pynchy.logger import logger
 from pynchy.security.approval import (
     _approval_decisions_dir,
@@ -57,10 +57,7 @@ async def handle_approval_command(
         "decided_at": datetime.now(UTC).isoformat(),
     }
 
-    filepath = decisions_dir / f"{request_id}.json"
-    temp_path = filepath.with_suffix(".json.tmp")
-    temp_path.write_text(json.dumps(decision_data, indent=2))
-    temp_path.rename(filepath)
+    write_json_atomic(decisions_dir / f"{request_id}.json", decision_data, indent=2)
 
     verb = "Approved" if approved else "Denied"
     await deps.broadcast_host_message(
