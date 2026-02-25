@@ -11,6 +11,7 @@ from mcp.types import CallToolResult, TextContent, Tool
 
 # Import tool modules to trigger self-registration
 import agent_runner.agent_tools._tools_admin  # noqa: F401
+import agent_runner.agent_tools._tools_ask_user  # noqa: F401
 import agent_runner.agent_tools._tools_calendar  # noqa: F401
 import agent_runner.agent_tools._tools_google_setup  # noqa: F401
 import agent_runner.agent_tools._tools_lifecycle  # noqa: F401
