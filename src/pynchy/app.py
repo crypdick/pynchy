@@ -79,6 +79,8 @@ class PynchyApp:
         self.event_bus: EventBus = EventBus()
         self._shutting_down: bool = False
         self._http_runner: Any | None = None
+        self._observers: list[Any] = []
+        self._memory: Any | None = None
         self.plugin_manager: pluggy.PluginManager | None = None
 
         # Shared broadcast infrastructure — single code path for all channel sends.
@@ -432,8 +434,7 @@ class PynchyApp:
         # cleanup sequence — prevents RuntimeError crash-loops when the
         # Slack websocket drops during gateway/queue shutdown.
         for ch in self.channels:
-            if hasattr(ch, "prepare_shutdown"):
-                ch.prepare_shutdown()
+            ch.prepare_shutdown()
 
         if self._http_runner:
             # Give SSE handlers a brief chance to observe shutdown state and
@@ -447,75 +448,49 @@ class PynchyApp:
         from pynchy.container_runner.gateway import stop_gateway
 
         await stop_gateway()
-        for obs in getattr(self, "_observers", []):
+        for obs in self._observers:
             await obs.close()
-        if memory := getattr(self, "_memory", None):
-            await memory.close()
+        if self._memory:
+            await self._memory.close()
         batcher = output_handler.get_trace_batcher()
         if batcher is not None:
             await batcher.flush_all()
         for ch in self.channels:
             await ch.disconnect()
 
-    async def run(self) -> None:
-        """Main entry point — startup sequence."""
-        from pynchy.dep_factory import (
-            make_git_sync_deps,
-            make_http_deps,
-            make_ipc_deps,
-            make_scheduler_deps,
-        )
-        from pynchy.git_ops.sync_poll import start_host_git_sync_loop
-        from pynchy.ipc import start_ipc_watcher
-        from pynchy.task_scheduler import start_scheduler_loop
+    async def _initialize_core(self) -> None:
+        """Phase 1: plugins, gateway, database, observers, memory, state."""
+        install_service()
 
-        s = get_settings()
-        continuation_path = s.data_dir / "deploy_continuation.json"
+        from pynchy.plugin import get_plugin_manager
+        from pynchy.workspace_config import configure_plugin_workspaces
 
-        try:
-            install_service()
+        self.plugin_manager = get_plugin_manager()
+        configure_plugin_workspaces(self.plugin_manager)
+        ensure_container_system_running()
 
-            from pynchy.plugin import get_plugin_manager
-            from pynchy.workspace_config import configure_plugin_workspaces
+        # Start the LLM gateway before any containers launch so they can
+        # reach it for credential-isolated API calls.
+        from pynchy.container_runner.gateway import start_gateway
 
-            self.plugin_manager = get_plugin_manager()
-            configure_plugin_workspaces(self.plugin_manager)
-            ensure_container_system_running()
+        await start_gateway(plugin_manager=self.plugin_manager)
 
-            # Start the LLM gateway before any containers launch so they can
-            # reach it for credential-isolated API calls.
-            from pynchy.container_runner.gateway import start_gateway
+        await init_database()
+        logger.info("Database initialized")
 
-            await start_gateway(plugin_manager=self.plugin_manager)
+        from pynchy.memory import get_memory_provider
+        from pynchy.observers import attach_observers
 
-            await init_database()
-            logger.info("Database initialized")
+        self._observers = attach_observers(self.event_bus)
 
-            from pynchy.memory import get_memory_provider
-            from pynchy.observers import attach_observers
+        self._memory = get_memory_provider()
+        if self._memory:
+            await self._memory.init()
 
-            self._observers = attach_observers(self.event_bus)
+        await self._load_state()
 
-            self._memory = get_memory_provider()
-            if self._memory:
-                await self._memory.init()
-
-            await self._load_state()
-        except Exception as exc:
-            # Auto-rollback if we crash during startup after a deploy
-            if continuation_path.exists():
-                await startup_handler.auto_rollback(continuation_path, exc)
-            raise
-
-        loop = asyncio.get_running_loop()
-
-        # Graceful shutdown
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            loop.add_signal_handler(
-                sig,
-                lambda s=sig: asyncio.ensure_future(self._shutdown(s.name)),
-            )
-
+    async def _setup_channels(self) -> None:
+        """Phase 2: create channel context, load channels, validate, connect."""
         context = ChannelPluginContext(
             on_message_callback=lambda jid, msg: asyncio.ensure_future(self._on_inbound(jid, msg)),
             on_chat_metadata_callback=lambda jid, ts, name=None: asyncio.ensure_future(
@@ -539,26 +514,17 @@ class PynchyApp:
                     channel=type(ch).__name__,
                     missing=missing,
                 )
-        default_channel = resolve_default_channel(self.channels)
         output_handler.init_trace_batcher(self)
 
-        try:
-            for ch in self.channels:
-                await ch.connect()
-        except Exception as exc:
-            if continuation_path.exists():
-                await startup_handler.auto_rollback(continuation_path, exc)
-            raise
+        for ch in self.channels:
+            await ch.connect()
 
-        # First-run: create a private group and register as admin channel
-        if not self.workspaces:
-            await startup_handler.setup_admin_group(self, default_channel)
-
-        # Reconcile worktrees: create missing ones for repo_access groups,
-        # fix broken worktrees, and rebase diverged branches before containers launch
-        from pynchy.git_ops.repo import get_repo_context
+    async def _reconcile_state(self) -> dict[str, list[str]]:
+        """Phase 3: worktree + workspace reconciliation. Returns repo_groups."""
         from pynchy.git_ops.worktree import reconcile_worktrees_at_startup
         from pynchy.workspace_config import reconcile_workspaces
+
+        s = get_settings()
 
         # Compute from config (authoritative) not saved state, so new workspaces
         # get their repos cloned and worktrees created on first boot.
@@ -581,14 +547,33 @@ class PynchyApp:
             get_channel_jid_fn=self.get_channel_jid,
         )
 
-        # Start subsystems
+        return repo_groups
+
+    async def _start_subsystems(self, repo_groups: dict[str, list[str]]) -> None:
+        """Phase 4: scheduler, IPC, git sync, HTTP server."""
+        from pynchy.dep_factory import (
+            make_git_sync_deps,
+            make_http_deps,
+            make_ipc_deps,
+            make_scheduler_deps,
+            make_status_deps,
+        )
+        from pynchy.git_ops.repo import get_repo_context
+        from pynchy.git_ops.sync_poll import (
+            start_external_repo_sync_loop,
+            start_host_git_sync_loop,
+        )
+        from pynchy.ipc import start_ipc_watcher
+        from pynchy.status import record_start_time
+        from pynchy.task_scheduler import start_scheduler_loop
+
+        s = get_settings()
+
         asyncio.create_task(start_scheduler_loop(make_scheduler_deps(self)))
         asyncio.create_task(start_ipc_watcher(make_ipc_deps(self)))
         asyncio.create_task(start_host_git_sync_loop(make_git_sync_deps(self)))
 
         # Start one external sync loop per non-pynchy repo with configured groups
-        from pynchy.git_ops.sync_poll import start_external_repo_sync_loop
-
         for slug, _folders in repo_groups.items():
             repo_ctx = get_repo_context(slug)
             if repo_ctx and repo_ctx.root.resolve() != s.project_root.resolve():
@@ -599,9 +584,6 @@ class PynchyApp:
 
         # HTTP server for remote health checks, deploys, and TUI API
         check_tunnels(self.plugin_manager)
-        from pynchy.dep_factory import make_status_deps
-        from pynchy.status import record_start_time
-
         record_start_time()
         self._http_runner = await start_http_server(
             make_http_deps(self), status_deps=make_status_deps(self)
@@ -615,6 +597,48 @@ class PynchyApp:
             local=f"http://localhost:{s.server.port}/status",
             remote=f"http://{hostname}:{s.server.port}/status",
         )
+
+    async def run(self) -> None:
+        """Main entry point — startup sequence.
+
+        Phases:
+        1. Core initialization (plugins, gateway, DB, observers, state)
+        2. Channel setup (load, validate, connect)
+        3. State reconciliation (worktrees, workspaces)
+        4. Subsystem startup (scheduler, IPC, git sync, HTTP)
+        5. Boot finalization (notification, recovery, message loop)
+        """
+        s = get_settings()
+        continuation_path = s.data_dir / "deploy_continuation.json"
+
+        try:
+            await self._initialize_core()
+        except Exception as exc:
+            if continuation_path.exists():
+                await startup_handler.auto_rollback(continuation_path, exc)
+            raise
+
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(
+                sig,
+                lambda s=sig: asyncio.ensure_future(self._shutdown(s.name)),
+            )
+
+        try:
+            await self._setup_channels()
+        except Exception as exc:
+            if continuation_path.exists():
+                await startup_handler.auto_rollback(continuation_path, exc)
+            raise
+
+        # First-run: create a private group and register as admin channel
+        if not self.workspaces:
+            default_channel = resolve_default_channel(self.channels)
+            await startup_handler.setup_admin_group(self, default_channel)
+
+        repo_groups = await self._reconcile_state()
+        await self._start_subsystems(repo_groups)
 
         await startup_handler.send_boot_notification(self)
         await self._catch_up_channel_history()
