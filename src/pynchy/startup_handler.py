@@ -86,7 +86,26 @@ async def send_boot_notification(deps: StartupDeps) -> None:
 
 async def recover_pending_messages(deps: StartupDeps) -> None:
     """Startup recovery: check for unprocessed messages in registered groups."""
+    from pynchy.workspace_config import load_workspace_config
+
     for chat_jid, group in deps.workspaces.items():
+        # Skip periodic (scheduled) workspaces — they run on their own
+        # schedule via the task scheduler, not through message recovery.
+        # Without this guard, any stale is_from_me=0 message triggers an
+        # agent run via the message handler path.  If that run commits and
+        # pushes (e.g. code-improver), sync_poll detects HEAD drift and
+        # deploys, sending SIGTERM before the message handler can advance
+        # last_agent_timestamp.  On restart, recovery finds the same
+        # message again → infinite restart loop.
+        ws_config = load_workspace_config(group.folder)
+        if ws_config and ws_config.is_periodic:
+            logger.debug(
+                "Skipping recovery for periodic workspace",
+                chat_jid=chat_jid,
+                group=group.folder,
+            )
+            continue
+
         since_timestamp = deps.last_agent_timestamp.get(chat_jid, "")
         pending = await get_messages_since(chat_jid, since_timestamp)
         if pending:
