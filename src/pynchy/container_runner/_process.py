@@ -4,6 +4,7 @@ Provides:
   - is_query_done_pulse() — detects query-done events in the IPC output stream
   - read_stderr() — reads container stderr, logs lines, accumulates with truncation
   - _graceful_stop() — stops a container gracefully with fallback to kill
+  - _docker_rm_force() — async force-remove a container by name
   - _wait_for_exit() — manage timeout, drain I/O, wait for container exit
   - _classify_exit() — classify exit state into final ContainerOutput
   - OnOutput type alias — callback for output events
@@ -184,8 +185,6 @@ async def _wait_for_exit(
     timeout_handle.cancel()
 
     # Schedule container removal (fire-and-forget)
-    from pynchy.container_runner._session import _docker_rm_force
-
     asyncio.ensure_future(_docker_rm_force(container_name))
 
     return _ExitInfo(
@@ -269,3 +268,26 @@ def _classify_exit(
         duration_ms=exit_info.duration_ms,
     )
     return ContainerOutput(status="success", result=None)
+
+
+async def _docker_rm_force(container_name: str) -> None:
+    """Force-remove a container by name, ignoring expected errors.
+
+    Async counterpart of :func:`_docker.remove_container` — used by the
+    agent-container code paths that operate on the event loop (session
+    management, one-shot container cleanup).
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            get_runtime().cli,
+            "rm",
+            "-f",
+            container_name,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.wait()
+    except OSError as exc:
+        # OSError covers FileNotFoundError (CLI missing) and other
+        # process-spawn failures — expected in degraded environments.
+        logger.debug("docker rm -f failed", container=container_name, err=str(exc))
