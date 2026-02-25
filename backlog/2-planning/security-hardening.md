@@ -4,7 +4,7 @@
 
 This project adds security layers to Pynchy, enabling agents to safely use external services without creating the conditions for prompt injection attacks.
 
-**Status:** Core trust model implemented (Steps 1, 2, 4 done). Step 0 denied (redundant with 4-bools). Remaining: human approval gate, deputy agent.
+**Status:** Core trust model implemented (Steps 1, 2, 4 done). Step 0 denied (redundant with 4-bools). Remaining: human approval gate, Cop agent, host-mutating gate.
 
 ## The Problem: The Lethal Trifecta
 
@@ -58,7 +58,7 @@ The gating matrix on writes:
 | `dangerous_writes = "forbidden"` | **Blocked** |
 | `dangerous_writes = true` | **Human approval** |
 | corruption + secret + `public_sink` | **Human approval** (the trifecta) |
-| corruption + `public_sink` | **Deputy review** |
+| corruption + `public_sink` | **Cop review** |
 | None of the above | **Allowed** |
 
 A payload secrets scanner (`detect-secrets`) also runs on outbound writes, escalating to human approval if credential patterns are detected.
@@ -79,7 +79,7 @@ A payload secrets scanner (`detect-secrets`) also runs on outbound writes, escal
 ### Denied
 
 - **Step 0: Reduce IPC Surface** → [denied/security-hardening-0-ipc-surface.md](../denied/security-hardening-0-ipc-surface.md)
-  Transport-level IPC narrowing is redundant with the 4-bools taint model. The valuable parts (inotify/watchdog, startup sweep, signal validation) were already completed. Remaining items (send_message elimination, Deputy mediation for all Tier 2) would break core functionality for marginal security gain.
+  Transport-level IPC narrowing is redundant with the 4-bools taint model. The valuable parts (inotify/watchdog, startup sweep, signal validation) were already completed. Remaining items (send_message elimination, Cop mediation for all Tier 2) would break core functionality for marginal security gain.
 
 ### Remaining
 
@@ -87,8 +87,14 @@ A payload secrets scanner (`detect-secrets`) also runs on outbound writes, escal
 **Scope:** Approval flow for tainted containers writing to untrusted sinks
 **Dependencies:** Steps 1-2 (done)
 
-#### [Step 7: Deputy Agent (Input Filtering)](security-hardening-7-input-filter.md)
+#### [Step 7: Cop Agent (Input Filtering)](security-hardening-7-input-filter.md)
 **Scope:** LLM-based content sanitization for untrusted sources
+**Dependencies:** Steps 1-2 (done)
+
+#### Host-Mutating Cop (extends Steps 6.1/7)
+**Scope:** Admin clean room, Cop LLM inspector, host-mutating gate for IPC operations
+**Design:** [Host-Mutating Operations & the Cop](../../docs/plans/2026-02-24-host-mutating-cop-design.md)
+**Implementation:** [Host-Mutating Cop Implementation Plan](../../docs/plans/2026-02-25-host-mutating-cop-impl.md)
 **Dependencies:** Steps 1-2 (done)
 
 ## Security Guarantees
