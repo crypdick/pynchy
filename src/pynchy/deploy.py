@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import signal
 import subprocess
@@ -12,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from pynchy.config import get_settings
+from pynchy.ipc._write import write_json_atomic
 from pynchy.logger import logger
 
 
@@ -98,8 +98,7 @@ async def finalize_deploy(
         "active_sessions": merged_sessions,
     }
     continuation_path = get_settings().data_dir / "deploy_continuation.json"
-    continuation_path.parent.mkdir(parents=True, exist_ok=True)
-    continuation_path.write_text(json.dumps(continuation, indent=2))
+    write_json_atomic(continuation_path, continuation, indent=2)
 
     # 3. Notify all UIs
     short_sha = commit_sha[:8] if commit_sha else "unknown"
