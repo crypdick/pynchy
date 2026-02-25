@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import pluggy
 
+    from pynchy.container_runner import OnOutput
+
 from pynchy import (
     session_handler,
     startup_handler,
@@ -198,7 +200,7 @@ class PynchyApp:
         group: WorkspaceProfile,
         chat_jid: str,
         messages: list[dict],
-        on_output: Any | None = None,
+        on_output: OnOutput | None = None,
         extra_system_notices: list[str] | None = None,
         *,
         is_scheduled_task: bool = False,

@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from asyncio.subprocess import PIPE
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -66,10 +66,10 @@ def compute_next_run(
 
 
 def create_background_task(
-    coro: asyncio.coroutines,  # type: ignore[type-arg]
+    coro: Coroutine[Any, Any, Any],
     *,
     name: str | None = None,
-) -> asyncio.Task:  # type: ignore[type-arg]
+) -> asyncio.Task[Any]:
     """Create an asyncio task that logs exceptions instead of swallowing them.
 
     A drop-in replacement for ``asyncio.create_task`` for fire-and-forget
@@ -81,7 +81,7 @@ def create_background_task(
     return task
 
 
-def _log_task_exception(task: asyncio.Task) -> None:  # type: ignore[type-arg]
+def _log_task_exception(task: asyncio.Task[Any]) -> None:
     """Callback attached to background tasks — logs unhandled exceptions."""
     if task.cancelled():
         return
