@@ -202,6 +202,30 @@ async def _handle_service_request(
         # No response file written — container blocks until human decides
         return
 
+    # Script-type MCP: auto-classified as host-mutating → Cop gate
+    if not data.get("_cop_approved"):
+        from pynchy.security.cop_gate import cop_gate
+
+        s = get_settings()
+        mcp_config = getattr(s, "mcp_servers", {}).get(tool_name)
+        if mcp_config and mcp_config.type == "script":
+            import json as json_mod
+
+            summary = (
+                f"script MCP tool: {tool_name}\n"
+                f"args: {json_mod.dumps({k: v for k, v in data.items() if k not in ('type', 'request_id', 'source_group')}, default=str)[:1000]}"
+            )
+            allowed = await cop_gate(
+                f"script_mcp:{tool_name}",
+                summary,
+                data,
+                source_group,
+                deps,
+                request_id=request_id,
+            )
+            if not allowed:
+                return
+
     # Allowed — record audit and dispatch to plugin handler
     await record_security_event(
         chat_jid=chat_jid,
