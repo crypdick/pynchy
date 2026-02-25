@@ -48,10 +48,9 @@ RUN uv pip install --system --no-cache-dir -r /app/requirements-plugins.txt
 # Create workspace directories
 RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/messages /workspace/ipc/tasks /workspace/ipc/input /workspace/ipc/output
 
-# Create entrypoint script
-# Sources env from mounted /workspace/env-dir/env if it exists (set -a exports all vars)
-# Input arrives via IPC files (initial.json), not stdin
-RUN printf '#!/bin/bash\nset -e\nif [ -f /workspace/env-dir/env ]; then set -a; . /workspace/env-dir/env; set +a; fi\npython -m agent_runner\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+# Copy entrypoint script (sources env, restores .claude.json from backup, runs agent)
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 # Create non-root user for security
 # NOTE: Update docs/security.md § Container Isolation if you change the username.
