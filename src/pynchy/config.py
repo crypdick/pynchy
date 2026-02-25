@@ -313,6 +313,39 @@ class Settings(BaseSettings):
 
         return self
 
+    @model_validator(mode="after")
+    def _validate_admin_clean_room(self) -> Settings:
+        """Reject admin workspaces that reference public_source MCPs.
+
+        Admin workspaces are the most privileged — they must never be
+        corruption-tainted by MCP servers that pull from public/untrusted
+        sources.  An MCP not declared in ``[services]`` is treated as
+        ``public_source=True`` (maximally cautious default), so it is also
+        blocked.
+        """
+        for ws_name, ws in self.workspaces.items():
+            if not ws.is_admin or not ws.mcp_servers:
+                continue
+            # Resolve MCP server list (expand groups, "all")
+            resolved: set[str] = set()
+            for entry in ws.mcp_servers:
+                if entry == "all":
+                    resolved.update(self.mcp_servers.keys())
+                elif entry in self.mcp_groups:
+                    resolved.update(self.mcp_groups[entry])
+                elif entry in self.mcp_servers:
+                    resolved.add(entry)
+            for server_name in resolved:
+                svc = self.services.get(server_name)
+                public_source = svc.public_source if svc else True
+                if public_source is not False:
+                    raise ValueError(
+                        f"Admin workspace '{ws_name}' has MCP server '{server_name}' "
+                        f"with public_source={public_source!r}. Admin workspaces cannot "
+                        f"have public_source MCPs (clean room policy)."
+                    )
+        return self
+
     @classmethod
     def settings_customise_sources(
         cls,
