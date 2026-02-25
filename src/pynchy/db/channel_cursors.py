@@ -63,3 +63,20 @@ async def advance_cursors_atomic(
                     "   updated_at = excluded.updated_at",
                     (channel_name, chat_jid, direction, value, now),
                 )
+
+
+async def prune_stale_cursors(active_channel_names: set[str]) -> int:
+    """Delete cursors for channels no longer in the active set.
+
+    Returns the number of rows deleted.
+    """
+    if not active_channel_names:
+        return 0
+    db = _get_db()
+    placeholders = ",".join("?" for _ in active_channel_names)
+    cursor = await db.execute(
+        f"DELETE FROM channel_cursors WHERE channel_name NOT IN ({placeholders})",
+        tuple(active_channel_names),
+    )
+    await db.commit()
+    return cursor.rowcount

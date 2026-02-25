@@ -8,6 +8,7 @@ from pynchy.db import (
     _init_test_database,
     advance_cursors_atomic,
     get_channel_cursor,
+    prune_stale_cursors,
     set_channel_cursor,
 )
 
@@ -108,3 +109,31 @@ class TestAdvanceCursorsAtomic:
         await advance_cursors_atomic("slack", "group@g.us", outbound="2024-06-01")
 
         assert await get_channel_cursor("slack", "group@g.us", "outbound") == "2024-06-01"
+
+
+@pytest.mark.usefixtures("_db")
+class TestPruneStaleCursors:
+    @pytest.mark.asyncio
+    async def test_deletes_cursors_for_unknown_channels(self):
+        await set_channel_cursor("old-channel", "group@g.us", "inbound", "2024-01-01")
+        await set_channel_cursor("active-channel", "group@g.us", "inbound", "2024-06-01")
+
+        pruned = await prune_stale_cursors({"active-channel"})
+
+        assert pruned == 1
+        assert await get_channel_cursor("old-channel", "group@g.us", "inbound") == ""
+        assert await get_channel_cursor("active-channel", "group@g.us", "inbound") == "2024-06-01"
+
+    @pytest.mark.asyncio
+    async def test_noop_when_all_channels_active(self):
+        await set_channel_cursor("slack", "group@g.us", "inbound", "2024-01-01")
+
+        pruned = await prune_stale_cursors({"slack"})
+
+        assert pruned == 0
+        assert await get_channel_cursor("slack", "group@g.us", "inbound") == "2024-01-01"
+
+    @pytest.mark.asyncio
+    async def test_noop_on_empty_table(self):
+        pruned = await prune_stale_cursors({"slack"})
+        assert pruned == 0

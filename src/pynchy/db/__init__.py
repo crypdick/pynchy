@@ -26,6 +26,7 @@ from pynchy.db.aliases import (
 from pynchy.db.channel_cursors import (
     advance_cursors_atomic,
     get_channel_cursor,
+    prune_stale_cursors,
     set_channel_cursor,
 )
 from pynchy.db.chats import (
@@ -102,6 +103,7 @@ __all__ = [
     # channel_cursors
     "advance_cursors_atomic",
     "get_channel_cursor",
+    "prune_stale_cursors",
     "set_channel_cursor",
     # outbound
     "gc_delivered",
