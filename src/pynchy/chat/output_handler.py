@@ -1,18 +1,30 @@
 """Streamed output handling — processes container output and broadcasts to channels.
 
+Dispatches container output events (thinking, tool_use, tool_result, system,
+text, result) to appropriate handlers.  Channel streaming and trace batching
+are delegated to ``_streaming``.
+
 Extracted from app.py to keep the orchestrator focused on wiring.
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
-import time
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from itertools import count
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any
 
+from pynchy.chat._streaming import (
+    OutputDeps,
+    StreamState,
+    TraceBatcher,
+    enqueue_or_broadcast,
+    finalize_active_stream,
+    get_trace_batcher,
+    init_trace_batcher,
+    stream_states,
+    stream_text_to_channels,
+)
 from pynchy.chat.bus import finalize_stream_or_broadcast
 from pynchy.chat.router import format_tool_preview, parse_host_tag
 from pynchy.config import get_settings
@@ -22,7 +34,18 @@ from pynchy.logger import logger
 from pynchy.utils import generate_message_id
 
 if TYPE_CHECKING:
-    from pynchy.types import Channel, ContainerOutput, WorkspaceProfile
+    from pynchy.types import ContainerOutput, WorkspaceProfile
+
+# Re-export for consumers that import from this module (app.py uses these)
+__all__ = [
+    "OutputDeps",
+    "TraceBatcher",
+    "broadcast_agent_input",
+    "broadcast_trace",
+    "get_trace_batcher",
+    "handle_streamed_output",
+    "init_trace_batcher",
+]
 
 _trace_counter = count(1)
 
@@ -36,164 +59,6 @@ _last_tool_name: dict[str, str] = {}
 # Channel broadcast truncation threshold for tool results.
 # Full content is always persisted to DB; only the channel broadcast is truncated.
 _MAX_TOOL_OUTPUT = 4000
-
-# Minimum interval between streaming updates to channels (seconds).
-_STREAM_THROTTLE = 0.5
-
-
-@dataclass
-class _StreamState:
-    """Tracks in-progress streaming text for a single chat."""
-
-    buffer: str = ""
-    # channel → message_id for in-place updates
-    message_ids: dict[str, str] = field(default_factory=dict)
-    last_update: float = 0.0
-
-
-# Per-chat streaming state, created on first text event, cleaned up on result.
-_stream_states: dict[str, _StreamState] = {}
-
-
-# ---------------------------------------------------------------------------
-# Trace batcher — debounce-batches trace messages per chat JID
-# ---------------------------------------------------------------------------
-
-_DEFAULT_TRACE_COOLDOWN = 3.0
-
-
-class TraceBatcher:
-    """Buffers trace channel_text strings per JID and flushes after a cooldown.
-
-    Result/host messages bypass the batcher entirely; callers should
-    ``await flush(chat_jid)`` before sending a result so traces always
-    appear before the bot reply.
-    """
-
-    def __init__(self, deps: OutputDeps, cooldown: float = _DEFAULT_TRACE_COOLDOWN) -> None:
-        self._deps = deps
-        self._cooldown = cooldown
-        self._buffers: dict[str, list[str]] = {}
-        self._timers: dict[str, asyncio.TimerHandle] = {}
-
-    # -- public API ----------------------------------------------------------
-
-    def enqueue(self, chat_jid: str, channel_text: str) -> None:
-        """Append *channel_text* to the per-JID buffer and (re)start the timer."""
-        self._buffers.setdefault(chat_jid, []).append(channel_text)
-        self._reset_timer(chat_jid)
-
-    async def flush(self, chat_jid: str) -> None:
-        """Flush pending traces for *chat_jid* immediately."""
-        self._cancel_timer(chat_jid)
-        texts = self._buffers.pop(chat_jid, [])
-        if texts:
-            await self._deps.broadcast_to_channels(chat_jid, "\n".join(texts))
-
-    async def flush_all(self) -> None:
-        """Flush every JID — used during shutdown."""
-        jids = list(self._buffers)
-        for jid in jids:
-            await self.flush(jid)
-
-    # -- internals -----------------------------------------------------------
-
-    def _reset_timer(self, chat_jid: str) -> None:
-        self._cancel_timer(chat_jid)
-        loop = asyncio.get_running_loop()
-        self._timers[chat_jid] = loop.call_later(
-            self._cooldown,
-            lambda jid=chat_jid: asyncio.ensure_future(self.flush(jid)),
-        )
-
-    def _cancel_timer(self, chat_jid: str) -> None:
-        timer = self._timers.pop(chat_jid, None)
-        if timer is not None:
-            timer.cancel()
-
-
-# Module-level singleton (matches _stream_states / _last_tool_name pattern).
-_trace_batcher: TraceBatcher | None = None
-
-
-def init_trace_batcher(deps: OutputDeps, cooldown: float = _DEFAULT_TRACE_COOLDOWN) -> None:
-    """Initialise the module-level TraceBatcher. Called once at startup."""
-    global _trace_batcher
-    _trace_batcher = TraceBatcher(deps, cooldown)
-
-
-def get_trace_batcher() -> TraceBatcher | None:
-    """Return the current TraceBatcher (or None before init)."""
-    return _trace_batcher
-
-
-async def _enqueue_or_broadcast(deps: OutputDeps, chat_jid: str, channel_text: str) -> None:
-    """Enqueue via batcher if available, otherwise broadcast directly."""
-    if _trace_batcher is not None:
-        _trace_batcher.enqueue(chat_jid, channel_text)
-    else:
-        await deps.broadcast_to_channels(chat_jid, channel_text)
-
-
-async def _stream_text_to_channels(
-    deps: OutputDeps,
-    chat_jid: str,
-    state: _StreamState,
-    *,
-    final: bool = False,
-) -> None:
-    """Push buffered text to channels that support update_message.
-
-    On first call, posts a new message. Subsequent calls update it in-place.
-    Throttled to _STREAM_THROTTLE unless ``final`` is True.
-
-    Uses JID alias resolution so channels that don't own the canonical JID
-    (e.g. Slack when the primary JID belongs to another channel) can still stream.
-    """
-    now = time.monotonic()
-    if not final and (now - state.last_update) < _STREAM_THROTTLE:
-        return
-
-    display = state.buffer + (" \u258c" if not final else "")
-    state.last_update = now
-
-    for ch in deps.channels:
-        if not ch.is_connected():
-            continue
-        if not hasattr(ch, "update_message") or not hasattr(ch, "post_message"):
-            continue
-
-        # Resolve alias so e.g. Slack can stream using its slack:CHANNEL_ID JID
-        target_jid = deps.get_channel_jid(chat_jid, ch.name) or chat_jid
-        if not ch.owns_jid(target_jid):
-            continue
-
-        ch_name = getattr(ch, "name", "?")
-        msg_id = state.message_ids.get(ch_name)
-
-        try:
-            if msg_id is None:
-                msg_id = await ch.post_message(target_jid, display)
-                if msg_id:
-                    state.message_ids[ch_name] = msg_id
-                else:
-                    logger.warning("Stream post_message returned no message_id", channel=ch_name)
-            else:
-                await ch.update_message(target_jid, msg_id, display)
-        except Exception as exc:
-            logger.warning("Stream post/update failed", channel=ch_name, err=str(exc))
-
-
-async def _finalize_active_stream(deps: OutputDeps, chat_jid: str) -> None:
-    """Finalize any in-progress text stream for *chat_jid*.
-
-    Called before trace events (tool_use, thinking) so that streamed text
-    becomes its own completed message, preserving chronological interleaving
-    between agent text and tool calls in the channel.
-    """
-    state = _stream_states.pop(chat_jid, None)
-    if state and state.buffer:
-        await _stream_text_to_channels(deps, chat_jid, state, final=True)
 
 
 def _next_trace_id(prefix: str) -> str:
@@ -211,21 +76,6 @@ def _truncate_output(content: str) -> str:
     tail = content[-500:]
     omitted = len(content) - 2500
     return f"{head}\n\n... ({omitted} chars omitted) ...\n\n{tail}"
-
-
-class OutputDeps(Protocol):
-    """Dependencies for output handling."""
-
-    @property
-    def channels(self) -> list[Channel]: ...
-
-    def get_channel_jid(self, canonical_jid: str, channel_name: str) -> str | None: ...
-
-    async def broadcast_to_channels(
-        self, chat_jid: str, text: str, *, suppress_errors: bool = True
-    ) -> None: ...
-
-    def emit(self, event: Any) -> None: ...
 
 
 async def broadcast_trace(
@@ -251,7 +101,7 @@ async def broadcast_trace(
         is_from_me=True,
         message_type=message_type,
     )
-    await _enqueue_or_broadcast(deps, chat_jid, channel_text)
+    await enqueue_or_broadcast(deps, chat_jid, channel_text)
     deps.emit(AgentTraceEvent(chat_jid=chat_jid, trace_type=trace_type, data=data))
 
 
@@ -321,7 +171,7 @@ async def _handle_thinking(deps: OutputDeps, chat_jid: str, result: ContainerOut
     """Handle a thinking trace event."""
     # Finalize any in-progress text stream so it becomes its own message
     # before the thinking trace appears.
-    await _finalize_active_stream(deps, chat_jid)
+    await finalize_active_stream(deps, chat_jid)
 
     await broadcast_trace(
         deps,
@@ -339,7 +189,7 @@ async def _handle_tool_use(deps: OutputDeps, chat_jid: str, result: ContainerOut
     """Handle a tool_use trace event."""
     # Finalize any in-progress text stream so text before this tool call
     # becomes its own message, preserving chronological interleaving.
-    await _finalize_active_stream(deps, chat_jid)
+    await finalize_active_stream(deps, chat_jid)
 
     tool_name = result.tool_name or "tool"
     tool_input = result.tool_input or {}
@@ -422,7 +272,7 @@ async def _handle_system(deps: OutputDeps, chat_jid: str, result: ContainerOutpu
     # Suppress init from channels — the descriptive text above is still
     # persisted to DB for debugging.
     if subtype != "init":
-        await _enqueue_or_broadcast(deps, chat_jid, channel_text)
+        await enqueue_or_broadcast(deps, chat_jid, channel_text)
 
 
 async def _handle_text(deps: OutputDeps, chat_jid: str, result: ContainerOutput) -> None:
@@ -437,16 +287,17 @@ async def _handle_text(deps: OutputDeps, chat_jid: str, result: ContainerOutput)
     )
     # Stream text deltas to channels that support update_message
     if delta:
-        state = _stream_states.get(chat_jid)
+        state = stream_states.get(chat_jid)
         if state is None:
             # Starting a new text stream — flush any pending traces first
             # so tool messages appear before this text in the channel.
-            if _trace_batcher is not None:
-                await _trace_batcher.flush(chat_jid)
-            state = _StreamState()
-            _stream_states[chat_jid] = state
+            batcher = get_trace_batcher()
+            if batcher is not None:
+                await batcher.flush(chat_jid)
+            state = StreamState()
+            stream_states[chat_jid] = state
         state.buffer += delta
-        await _stream_text_to_channels(deps, chat_jid, state)
+        await stream_text_to_channels(deps, chat_jid, state)
 
 
 async def _handle_result_metadata(
@@ -475,7 +326,7 @@ async def _handle_result_metadata(
         parts.append(f"{turns} turns")
     if parts:
         trace_text = f"\U0001f4ca {' \u00b7 '.join(parts)}"
-        await _enqueue_or_broadcast(deps, chat_jid, trace_text)
+        await enqueue_or_broadcast(deps, chat_jid, trace_text)
     deps.emit(
         AgentTraceEvent(
             chat_jid=chat_jid,
@@ -491,7 +342,7 @@ async def _handle_final_result(
     group: WorkspaceProfile,
     result: ContainerOutput,
     ts: str,
-    stream_state: _StreamState | None,
+    stream_state: StreamState | None,
 ) -> bool:
     """Handle the final result event — store, broadcast, and emit.
 
@@ -589,10 +440,11 @@ async def handle_streamed_output(
 
     # Finalize any streaming state — update streamed messages with final text
     # or clean up if the result is empty.
-    stream_state = _stream_states.pop(chat_jid, None)
+    stream_state = stream_states.pop(chat_jid, None)
 
     # Flush any buffered traces before the bot reply so ordering is preserved.
-    if _trace_batcher is not None:
-        await _trace_batcher.flush(chat_jid)
+    batcher = get_trace_batcher()
+    if batcher is not None:
+        await batcher.flush(chat_jid)
 
     return await _handle_final_result(deps, chat_jid, group, result, ts, stream_state)

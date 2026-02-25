@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from pynchy.chat._streaming import stream_states
 from pynchy.chat.output_handler import (
     _next_trace_id,
-    _stream_states,
     broadcast_trace,
     handle_streamed_output,
     init_trace_batcher,
@@ -564,7 +564,7 @@ class TestHandleStreamedOutput:
                 deps, jid, group, _make_output(type="text", text="Let me check")
             )
             # There should be an active stream state
-            assert jid in _stream_states
+            assert jid in stream_states
 
             # 2. tool_use arrives — should finalize text stream
             await handle_streamed_output(
@@ -574,7 +574,7 @@ class TestHandleStreamedOutput:
                 _make_output(type="tool_use", tool_name="Bash", tool_input={"cmd": "ls"}),
             )
             # Stream state should have been cleaned up
-            assert jid not in _stream_states
+            assert jid not in stream_states
             # Text should have been finalized (update_message called with final=True
             # means no trailing cursor block character)
             final_text = ch.update_message.call_args[0][2]
@@ -638,7 +638,7 @@ class TestHandleStreamedOutput:
             assert "Read" in flushed or "tool result" in flushed
 
         # Clean up stream state
-        _stream_states.pop(jid, None)
+        stream_states.pop(jid, None)
 
     @pytest.mark.asyncio
     async def test_full_interleaving_sequence(self):
@@ -730,4 +730,4 @@ class TestHandleStreamedOutput:
         assert any("Read" in b[1] or "tool result" in b[1] for b in broadcast_actions)
 
         # Clean up
-        _stream_states.pop(jid, None)
+        stream_states.pop(jid, None)
