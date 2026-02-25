@@ -317,6 +317,241 @@ async def broadcast_agent_input(
         )
 
 
+async def _handle_thinking(deps: OutputDeps, chat_jid: str, result: ContainerOutput) -> None:
+    """Handle a thinking trace event."""
+    # Finalize any in-progress text stream so it becomes its own message
+    # before the thinking trace appears.
+    await _finalize_active_stream(deps, chat_jid)
+
+    await broadcast_trace(
+        deps,
+        chat_jid,
+        "thinking",
+        {"thinking": result.thinking or ""},
+        "\U0001f4ad thinking...",
+        db_id_prefix="think",
+        db_sender="thinking",
+        message_type="assistant",
+    )
+
+
+async def _handle_tool_use(deps: OutputDeps, chat_jid: str, result: ContainerOutput) -> None:
+    """Handle a tool_use trace event."""
+    # Finalize any in-progress text stream so text before this tool call
+    # becomes its own message, preserving chronological interleaving.
+    await _finalize_active_stream(deps, chat_jid)
+
+    tool_name = result.tool_name or "tool"
+    tool_input = result.tool_input or {}
+    _last_tool_name[chat_jid] = tool_name
+    data = {"tool_name": tool_name, "tool_input": tool_input}
+    preview = format_tool_preview(tool_name, tool_input)
+    await broadcast_trace(
+        deps,
+        chat_jid,
+        "tool_use",
+        data,
+        f"\U0001f527 {preview}",
+        db_id_prefix="tool",
+        db_sender="tool_use",
+        message_type="assistant",
+    )
+
+
+async def _handle_tool_result(deps: OutputDeps, chat_jid: str, result: ContainerOutput) -> None:
+    """Handle a tool_result trace event."""
+    content = result.tool_result_content or ""
+    preceding_tool = _last_tool_name.pop(chat_jid, "")
+
+    # For select tools, broadcast the result content instead of the
+    # generic placeholder so users can review it (e.g. plan files).
+    # Truncate if it exceeds the channel broadcast threshold.
+    if preceding_tool in _VERBOSE_RESULT_TOOLS and content:
+        display = _truncate_output(content) if len(content) > _MAX_TOOL_OUTPUT else content
+        channel_text = f"\U0001f4cb {preceding_tool}:\n{display}"
+    else:
+        channel_text = "\U0001f4cb tool result"
+
+    await broadcast_trace(
+        deps,
+        chat_jid,
+        "tool_result",
+        {
+            "tool_use_id": result.tool_result_id or "",
+            "content": content,
+            "is_error": result.tool_result_is_error or False,
+        },
+        channel_text,
+        db_id_prefix="toolr",
+        db_sender="tool_result",
+        message_type="assistant",
+    )
+
+
+async def _handle_system(deps: OutputDeps, chat_jid: str, result: ContainerOutput) -> None:
+    """Handle a system trace event.
+
+    Persists to DB and emits to EventBus. Suppresses init events from
+    channels since they fire on every query and add no value for the user.
+    """
+    subtype = result.system_subtype or ""
+    sys_data = result.system_data or {}
+    data = {"subtype": subtype, "data": sys_data}
+
+    # Build a descriptive log line per subtype
+    if subtype == "init":
+        sid = sys_data.get("session_id", "")
+        sid_short = sid[:12] if sid else "none"
+        channel_text = f"\u2699\ufe0f session {sid_short} (resumed)"
+    else:
+        channel_text = f"\u2699\ufe0f system: {subtype or 'unknown'}"
+
+    ts = datetime.now(UTC).isoformat()
+    await store_message_direct(
+        id=_next_trace_id("sys"),
+        chat_jid=chat_jid,
+        sender="system",
+        sender_name="system",
+        content=json.dumps(data),
+        timestamp=ts,
+        is_from_me=True,
+        message_type="system",
+    )
+    deps.emit(AgentTraceEvent(chat_jid=chat_jid, trace_type="system", data=data))
+
+    # Suppress init from channels — the descriptive text above is still
+    # persisted to DB for debugging.
+    if subtype != "init":
+        await _enqueue_or_broadcast(deps, chat_jid, channel_text)
+
+
+async def _handle_text(deps: OutputDeps, chat_jid: str, result: ContainerOutput) -> None:
+    """Handle a text delta event — accumulates into streaming state."""
+    delta = result.text or ""
+    deps.emit(
+        AgentTraceEvent(
+            chat_jid=chat_jid,
+            trace_type="text",
+            data={"text": delta},
+        )
+    )
+    # Stream text deltas to channels that support update_message
+    if delta:
+        state = _stream_states.get(chat_jid)
+        if state is None:
+            # Starting a new text stream — flush any pending traces first
+            # so tool messages appear before this text in the channel.
+            if _trace_batcher is not None:
+                await _trace_batcher.flush(chat_jid)
+            state = _StreamState()
+            _stream_states[chat_jid] = state
+        state.buffer += delta
+        await _stream_text_to_channels(deps, chat_jid, state)
+
+
+async def _handle_result_metadata(
+    deps: OutputDeps, chat_jid: str, meta: dict[str, Any], ts: str
+) -> None:
+    """Persist result metadata (cost, usage, duration) and broadcast summary."""
+    await store_message_direct(
+        id=_next_trace_id("meta"),
+        chat_jid=chat_jid,
+        sender="result_meta",
+        sender_name="result_meta",
+        content=json.dumps(meta),
+        timestamp=ts,
+        is_from_me=True,
+        message_type="assistant",
+    )
+    cost = meta.get("total_cost_usd")
+    duration = meta.get("duration_ms")
+    turns = meta.get("num_turns")
+    parts = []
+    if cost is not None:
+        parts.append(f"{cost:.2f} USD")
+    if duration is not None:
+        parts.append(f"{duration / 1000:.1f}s")
+    if turns is not None:
+        parts.append(f"{turns} turns")
+    if parts:
+        trace_text = f"\U0001f4ca {' \u00b7 '.join(parts)}"
+        await _enqueue_or_broadcast(deps, chat_jid, trace_text)
+    deps.emit(
+        AgentTraceEvent(
+            chat_jid=chat_jid,
+            trace_type="result_meta",
+            data=meta,
+        )
+    )
+
+
+async def _handle_final_result(
+    deps: OutputDeps,
+    chat_jid: str,
+    group: WorkspaceProfile,
+    result: ContainerOutput,
+    ts: str,
+    stream_state: _StreamState | None,
+) -> bool:
+    """Handle the final result event — store, broadcast, and emit.
+
+    Returns True if a user-visible result was sent.
+    """
+    from pynchy.chat.router import strip_internal_tags
+
+    if not result.result:
+        return False
+
+    raw = result.result if isinstance(result.result, str) else json.dumps(result.result)
+    text = strip_internal_tags(raw)
+    if not text:
+        return False
+
+    s = get_settings()
+    is_host, content = parse_host_tag(text)
+    if is_host:
+        sender = "host"
+        sender_name = "host"
+        db_content = content
+        channel_text = f"\U0001f3e0 {content}"
+        logger.info("Host message", group=group.name, text=content[:200])
+    else:
+        sender = "bot"
+        sender_name = s.agent.name
+        db_content = text
+        channel_text = f"🦞 {text}"
+        logger.info("Agent output", group=group.name, text=raw[:200])
+
+    msg_type = "host" if sender == "host" else "assistant"
+    await store_message_direct(
+        id=generate_message_id("bot"),
+        chat_jid=chat_jid,
+        sender=sender,
+        sender_name=sender_name,
+        content=db_content,
+        timestamp=ts,
+        is_from_me=True,
+        message_type=msg_type,
+    )
+
+    # For channels that were streaming, finalize the existing message.
+    # For all others, post normally via broadcast.
+    stream_ids = stream_state.message_ids if stream_state else None
+    await finalize_stream_or_broadcast(
+        deps, chat_jid, channel_text, stream_ids, suppress_errors=False
+    )
+    deps.emit(
+        MessageEvent(
+            chat_jid=chat_jid,
+            sender_name=sender_name,
+            content=db_content,
+            timestamp=ts,
+            is_bot=True,
+        )
+    )
+    return True
+
+
 async def handle_streamed_output(
     deps: OutputDeps,
     chat_jid: str,
@@ -325,170 +560,32 @@ async def handle_streamed_output(
 ) -> bool:
     """Handle a streamed output from the container agent.
 
-    Broadcasts trace events and results to channels/TUI.
+    Dispatches to type-specific handlers for trace events (thinking,
+    tool_use, tool_result, system, text) and final results.
     Returns True if a user-visible result was sent.
     """
-    from pynchy.chat.router import strip_internal_tags
-
-    s = get_settings()
     ts = datetime.now(UTC).isoformat()
 
     # --- Trace events: persist to DB + broadcast ---
     if result.type == "thinking":
-        # Finalize any in-progress text stream so it becomes its own message
-        # before the thinking trace appears.
-        await _finalize_active_stream(deps, chat_jid)
-
-        await broadcast_trace(
-            deps,
-            chat_jid,
-            "thinking",
-            {"thinking": result.thinking or ""},
-            "\U0001f4ad thinking...",
-            db_id_prefix="think",
-            db_sender="thinking",
-            message_type="assistant",
-        )
+        await _handle_thinking(deps, chat_jid, result)
         return False
     if result.type == "tool_use":
-        # Finalize any in-progress text stream so text before this tool call
-        # becomes its own message, preserving chronological interleaving.
-        await _finalize_active_stream(deps, chat_jid)
-
-        tool_name = result.tool_name or "tool"
-        tool_input = result.tool_input or {}
-        _last_tool_name[chat_jid] = tool_name
-        data = {"tool_name": tool_name, "tool_input": tool_input}
-        preview = format_tool_preview(tool_name, tool_input)
-        await broadcast_trace(
-            deps,
-            chat_jid,
-            "tool_use",
-            data,
-            f"\U0001f527 {preview}",
-            db_id_prefix="tool",
-            db_sender="tool_use",
-            message_type="assistant",
-        )
+        await _handle_tool_use(deps, chat_jid, result)
         return False
     if result.type == "tool_result":
-        content = result.tool_result_content or ""
-        preceding_tool = _last_tool_name.pop(chat_jid, "")
-
-        # For select tools, broadcast the result content instead of the
-        # generic placeholder so users can review it (e.g. plan files).
-        # Truncate if it exceeds the channel broadcast threshold.
-        if preceding_tool in _VERBOSE_RESULT_TOOLS and content:
-            display = _truncate_output(content) if len(content) > _MAX_TOOL_OUTPUT else content
-            channel_text = f"\U0001f4cb {preceding_tool}:\n{display}"
-        else:
-            channel_text = "\U0001f4cb tool result"
-
-        await broadcast_trace(
-            deps,
-            chat_jid,
-            "tool_result",
-            {
-                "tool_use_id": result.tool_result_id or "",
-                "content": content,
-                "is_error": result.tool_result_is_error or False,
-            },
-            channel_text,
-            db_id_prefix="toolr",
-            db_sender="tool_result",
-            message_type="assistant",
-        )
+        await _handle_tool_result(deps, chat_jid, result)
         return False
     if result.type == "system":
-        subtype = result.system_subtype or ""
-        sys_data = result.system_data or {}
-        data = {"subtype": subtype, "data": sys_data}
-
-        # Build a descriptive log line per subtype
-        if subtype == "init":
-            sid = sys_data.get("session_id", "")
-            sid_short = sid[:12] if sid else "none"
-            channel_text = f"\u2699\ufe0f session {sid_short} (resumed)"
-        else:
-            channel_text = f"\u2699\ufe0f system: {subtype or 'unknown'}"
-
-        # Always persist to DB and emit to EventBus
-        ts = datetime.now(UTC).isoformat()
-        await store_message_direct(
-            id=_next_trace_id("sys"),
-            chat_jid=chat_jid,
-            sender="system",
-            sender_name="system",
-            content=json.dumps(data),
-            timestamp=ts,
-            is_from_me=True,
-            message_type="system",
-        )
-        deps.emit(AgentTraceEvent(chat_jid=chat_jid, trace_type="system", data=data))
-
-        # Suppress init from channels — it fires on every query and adds
-        # no value for the user.  The descriptive text above is still
-        # persisted to DB for debugging.
-        if subtype != "init":
-            await _enqueue_or_broadcast(deps, chat_jid, channel_text)
-
+        await _handle_system(deps, chat_jid, result)
         return False
     if result.type == "text":
-        delta = result.text or ""
-        deps.emit(
-            AgentTraceEvent(
-                chat_jid=chat_jid,
-                trace_type="text",
-                data={"text": delta},
-            )
-        )
-        # Stream text deltas to channels that support update_message
-        if delta:
-            state = _stream_states.get(chat_jid)
-            if state is None:
-                # Starting a new text stream — flush any pending traces first
-                # so tool messages appear before this text in the channel.
-                if _trace_batcher is not None:
-                    await _trace_batcher.flush(chat_jid)
-                state = _StreamState()
-                _stream_states[chat_jid] = state
-            state.buffer += delta
-            await _stream_text_to_channels(deps, chat_jid, state)
+        await _handle_text(deps, chat_jid, result)
         return False
 
-    # Persist result metadata if present (cost, usage, duration)
+    # --- Final result: metadata + result text ---
     if result.result_metadata:
-        meta = result.result_metadata
-        await store_message_direct(
-            id=_next_trace_id("meta"),
-            chat_jid=chat_jid,
-            sender="result_meta",
-            sender_name="result_meta",
-            content=json.dumps(meta),
-            timestamp=ts,
-            is_from_me=True,
-            message_type="assistant",
-        )
-        cost = meta.get("total_cost_usd")
-        duration = meta.get("duration_ms")
-        turns = meta.get("num_turns")
-        parts = []
-        if cost is not None:
-            parts.append(f"{cost:.2f} USD")
-        if duration is not None:
-            parts.append(f"{duration / 1000:.1f}s")
-        if turns is not None:
-            parts.append(f"{turns} turns")
-        if parts:
-            trace_text = f"\U0001f4ca {' \u00b7 '.join(parts)}"
-            await _enqueue_or_broadcast(deps, chat_jid, trace_text)
-        deps.emit(
-            AgentTraceEvent(
-                chat_jid=chat_jid,
-                trace_type="result_meta",
-                data=meta,
-            )
-        )
+        await _handle_result_metadata(deps, chat_jid, result.result_metadata, ts)
 
     # Finalize any streaming state — update streamed messages with final text
     # or clean up if the result is empty.
@@ -498,50 +595,4 @@ async def handle_streamed_output(
     if _trace_batcher is not None:
         await _trace_batcher.flush(chat_jid)
 
-    if result.result:
-        raw = result.result if isinstance(result.result, str) else json.dumps(result.result)
-        text = strip_internal_tags(raw)
-        if text:
-            is_host, content = parse_host_tag(text)
-            if is_host:
-                sender = "host"
-                sender_name = "host"
-                db_content = content
-                channel_text = f"\U0001f3e0 {content}"
-                logger.info("Host message", group=group.name, text=content[:200])
-            else:
-                sender = "bot"
-                sender_name = s.agent.name
-                db_content = text
-                channel_text = f"🦞 {text}"
-                logger.info("Agent output", group=group.name, text=raw[:200])
-            msg_type = "host" if sender == "host" else "assistant"
-            await store_message_direct(
-                id=generate_message_id("bot"),
-                chat_jid=chat_jid,
-                sender=sender,
-                sender_name=sender_name,
-                content=db_content,
-                timestamp=ts,
-                is_from_me=True,
-                message_type=msg_type,
-            )
-
-            # For channels that were streaming, finalize the existing message.
-            # For all others, post normally via broadcast.
-            stream_ids = stream_state.message_ids if stream_state else None
-            await finalize_stream_or_broadcast(
-                deps, chat_jid, channel_text, stream_ids, suppress_errors=False
-            )
-            deps.emit(
-                MessageEvent(
-                    chat_jid=chat_jid,
-                    sender_name=sender_name,
-                    content=db_content,
-                    timestamp=ts,
-                    is_bot=True,
-                )
-            )
-            return True
-
-    return False
+    return await _handle_final_result(deps, chat_jid, group, result, ts, stream_state)
