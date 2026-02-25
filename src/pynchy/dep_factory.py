@@ -192,22 +192,18 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
             return {ch.name: ch.is_connected() for ch in metadata_manager.channels()}
 
         def get_queue_snapshot(self) -> dict[str, Any]:
-            q = app.queue
+            raw = app.queue.snapshot()
+            meta = raw.pop("_meta", {})
+            # Resolve JID → folder name for display
             per_group: dict[str, Any] = {}
-            for jid, state in q._groups.items():
-                # Resolve group folder for display
+            for jid, data in raw.items():
                 ws = app.workspaces.get(jid)
                 label = ws.folder if ws else jid
-                per_group[label] = {
-                    "active": state.active,
-                    "is_task": state.active_is_task,
-                    "pending_messages": state.pending_messages,
-                    "pending_tasks": len(state.pending_tasks),
-                }
+                per_group[label] = data
             return {
-                "active_containers": q._active_count,
+                "active_containers": meta.get("active_count", 0),
                 "max_concurrent": get_settings().container.max_concurrent,
-                "groups_waiting": len(q._waiting_groups),
+                "groups_waiting": meta.get("waiting_count", 0),
                 "per_group": per_group,
             }
 
