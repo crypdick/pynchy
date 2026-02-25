@@ -79,6 +79,8 @@ async def ipc_service_request(
     tool_name: str,
     request: dict,
     timeout: float = 300,
+    *,
+    type_override: str | None = None,
 ) -> list[TextContent]:
     """Write an IPC service request and wait for the host's response.
 
@@ -90,12 +92,15 @@ async def ipc_service_request(
         tool_name: Name of the service tool (e.g. "read_email")
         request: Request payload (tool-specific fields)
         timeout: Seconds to wait for response (default 5 min for human approval)
+        type_override: Optional IPC type string. When set, overrides the default
+            ``service:{tool_name}`` prefix. Use this for tools that require a
+            different dispatch prefix on the host (e.g. ``"ask_user:ask"``).
 
     Returns:
         MCP TextContent with the result or error message.
     """
     request_id = uuid.uuid4().hex
-    request["type"] = f"service:{tool_name}"
+    request["type"] = type_override or f"service:{tool_name}"
     request["request_id"] = request_id
 
     response_file = RESPONSES_DIR / f"{request_id}.json"
