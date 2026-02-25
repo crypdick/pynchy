@@ -245,10 +245,33 @@ class TestFormatAnswerContext:
         text = _format_answer_context(pending_question, {"auth_strategy": "JWT tokens"})
 
         assert "Which auth strategy?" in text
-        assert "JWT tokens" in text
-        assert "Session cookies" in text
-        assert "OAuth 2.0" in text
+        assert "1. JWT tokens" in text
+        assert "2. Session cookies" in text
+        assert "3. OAuth 2.0" in text
         assert "Continue from where you left off" in text
+
+    def test_format_with_dict_options(self):
+        """Dict options with label/description should render labels, not raw dicts."""
+        from pynchy.chat.ask_user_handler import _format_answer_context
+
+        pending = {
+            "questions": [
+                {
+                    "question": "Which auth strategy?",
+                    "options": [
+                        {"label": "JWT", "description": "Stateless auth"},
+                        {"label": "OAuth", "description": "Delegated auth"},
+                    ],
+                }
+            ],
+        }
+        text = _format_answer_context(pending, {"answer": "JWT"})
+
+        assert "1. JWT" in text
+        assert "2. OAuth" in text
+        # Should NOT contain raw dict repr
+        assert "{'label'" not in text
+        assert '{"label"' not in text
 
     def test_format_without_options(self):
         """Format context text when the question has no options."""

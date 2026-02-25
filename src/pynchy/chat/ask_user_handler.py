@@ -98,7 +98,10 @@ def _format_answer_context(pending: dict, answer: dict[str, Any]) -> str:
 
         options = q.get("options")
         if options:
-            numbered = ", ".join(f"{i}. {opt}" for i, opt in enumerate(options, 1))
+            labels = [
+                opt.get("label", str(opt)) if isinstance(opt, dict) else str(opt) for opt in options
+            ]
+            numbered = ", ".join(f"{i}. {lbl}" for i, lbl in enumerate(labels, 1))
             parts.append(f"Options: {numbered}")
 
     # Format the answer dict as readable text

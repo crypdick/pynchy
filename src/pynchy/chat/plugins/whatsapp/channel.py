@@ -345,6 +345,15 @@ class WhatsAppChannel:
         if not source.IsFromMe:
             pending = find_pending_for_jid(chat_jid)
             if pending is not None:
+                # Skip stale pending questions — let the sweep handle cleanup.
+                # A stale file from a crash should not silently swallow real messages.
+                from pynchy.chat.pending_questions import PENDING_QUESTION_TIMEOUT_SECONDS
+
+                ts = datetime.fromisoformat(pending.get("timestamp", ""))
+                age = (datetime.now(UTC) - ts).total_seconds()
+                if age > PENDING_QUESTION_TIMEOUT_SECONDS:
+                    pending = None
+            if pending is not None:
                 answer = self._resolve_answer(content, pending)
                 if self._on_ask_user_answer:
                     self._on_ask_user_answer(pending["request_id"], answer)
