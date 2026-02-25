@@ -96,6 +96,38 @@ def find_pending_question(request_id: str) -> dict | None:
     return None
 
 
+def find_pending_for_jid(chat_jid: str) -> dict | None:
+    """Find a pending question by chat_jid, searching across all groups.
+
+    Returns the first match (there should only be one pending question
+    per chat at a time).
+
+    Note: This performs a synchronous filesystem scan across all group IPC
+    directories. Acceptable for personal deployments with a small number
+    of groups and pending questions. If this becomes a bottleneck, consider
+    an in-memory index keyed by chat_jid.
+    """
+    s = get_settings()
+    ipc_dir = s.data_dir / "ipc"
+    if not ipc_dir.exists():
+        return None
+
+    for group_dir in ipc_dir.iterdir():
+        if not group_dir.is_dir() or group_dir.name == "errors":
+            continue
+        pq_dir = group_dir / "pending_questions"
+        if not pq_dir.exists():
+            continue
+        for filepath in pq_dir.glob("*.json"):
+            try:
+                data = json.loads(filepath.read_text())
+                if data.get("chat_jid") == chat_jid:
+                    return data
+            except (json.JSONDecodeError, OSError):
+                continue
+    return None
+
+
 def resolve_pending_question(request_id: str, source_group: str) -> None:
     """Delete the pending question file (question has been answered)."""
     pending_dir = _pending_questions_dir(source_group)

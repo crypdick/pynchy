@@ -30,6 +30,7 @@ class WhatsAppPlugin:
         on_message = context.on_message_callback
         on_chat_metadata = context.on_chat_metadata_callback
         workspaces = context.workspaces
+        on_ask_user_answer = getattr(context, "on_ask_user_answer_callback", None)
         channels: list[WhatsAppChannel] = []
         seen_paths: dict[str, str] = {}
         for name, cfg in configs.items():
@@ -54,6 +55,7 @@ class WhatsAppPlugin:
                     on_message=on_message,
                     on_chat_metadata=on_chat_metadata,
                     workspaces=workspaces,
+                    on_ask_user_answer=on_ask_user_answer,
                 )
             )
         return channels
