@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from conftest import make_settings
@@ -30,7 +30,12 @@ def settings(tmp_path: Path):
 
 
 def _write_pending(
-    ipc_dir: Path, group: str, request_id: str, tool_name: str, request_data: dict
+    ipc_dir: Path,
+    group: str,
+    request_id: str,
+    tool_name: str,
+    request_data: dict,
+    handler_type: str = "service",
 ) -> Path:
     """Helper to write a pending approval file."""
     pending_dir = ipc_dir / group / "pending_approvals"
@@ -41,8 +46,9 @@ def _write_pending(
         "tool_name": tool_name,
         "source_group": group,
         "chat_jid": "j@g.us",
+        "handler_type": handler_type,
         "request_data": {
-            "type": f"service:{tool_name}",
+            "type": f"service:{tool_name}" if handler_type == "service" else tool_name,
             "request_id": request_id,
             **request_data,
         },
@@ -183,3 +189,102 @@ class TestProcessApprovalDecision:
         response = json.loads(response_file.read_text())
         assert "error" in response
         assert "boom" in response["error"]
+
+
+class TestIpcApprovalDispatch:
+    """Tests for handler_type="ipc" approval dispatch through the registry."""
+
+    @pytest.mark.asyncio
+    async def test_ipc_approved_dispatches_through_registry(
+        self, _setup_db, ipc_dir: Path, settings
+    ):
+        """Approved IPC request dispatches through ipc._registry.dispatch()."""
+        from pynchy.ipc._handlers_approval import process_approval_decision
+
+        _write_pending(
+            ipc_dir,
+            "grp",
+            "ipc-req1",
+            "sync_worktree_to_main",
+            {"diff": "fix typo"},
+            handler_type="ipc",
+        )
+        decision_file = _write_decision(ipc_dir, "grp", "ipc-req1", approved=True)
+
+        mock_deps = MagicMock()
+        mock_dispatch = AsyncMock()
+
+        with (
+            patch("pynchy.ipc._handlers_approval.get_settings", return_value=settings),
+            patch("pynchy.ipc._write.get_settings", return_value=settings),
+            patch("pynchy.ipc._registry.dispatch", mock_dispatch),
+        ):
+            await process_approval_decision(decision_file, "grp", deps=mock_deps)
+
+        mock_dispatch.assert_awaited_once()
+        call_args = mock_dispatch.call_args
+        dispatched_data = call_args.args[0]
+        assert dispatched_data["_cop_approved"] is True
+        assert call_args.args[1] == "grp"  # source_group
+        assert call_args.args[2] is True  # is_admin
+        assert call_args.args[3] is mock_deps  # deps
+
+        # Cleaned up
+        assert not (ipc_dir / "grp" / "pending_approvals" / "ipc-req1.json").exists()
+        assert not decision_file.exists()
+
+    @pytest.mark.asyncio
+    async def test_ipc_approved_without_deps_writes_error(self, _setup_db, ipc_dir: Path, settings):
+        """IPC approval without deps writes an error response."""
+        from pynchy.ipc._handlers_approval import process_approval_decision
+
+        _write_pending(
+            ipc_dir,
+            "grp",
+            "ipc-req2",
+            "sync_worktree_to_main",
+            {},
+            handler_type="ipc",
+        )
+        decision_file = _write_decision(ipc_dir, "grp", "ipc-req2", approved=True)
+
+        with (
+            patch("pynchy.ipc._handlers_approval.get_settings", return_value=settings),
+            patch("pynchy.ipc._write.get_settings", return_value=settings),
+        ):
+            await process_approval_decision(decision_file, "grp")  # No deps!
+
+        response_file = ipc_dir / "grp" / "responses" / "ipc-req2.json"
+        response = json.loads(response_file.read_text())
+        assert "error" in response
+        assert "deps" in response["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_ipc_dispatch_failure_writes_error(self, _setup_db, ipc_dir: Path, settings):
+        """If IPC dispatch raises, write an error response."""
+        from pynchy.ipc._handlers_approval import process_approval_decision
+
+        _write_pending(
+            ipc_dir,
+            "grp",
+            "ipc-req3",
+            "sync_worktree_to_main",
+            {},
+            handler_type="ipc",
+        )
+        decision_file = _write_decision(ipc_dir, "grp", "ipc-req3", approved=True)
+
+        mock_deps = MagicMock()
+        mock_dispatch = AsyncMock(side_effect=RuntimeError("dispatch failed"))
+
+        with (
+            patch("pynchy.ipc._handlers_approval.get_settings", return_value=settings),
+            patch("pynchy.ipc._write.get_settings", return_value=settings),
+            patch("pynchy.ipc._registry.dispatch", mock_dispatch),
+        ):
+            await process_approval_decision(decision_file, "grp", deps=mock_deps)
+
+        response_file = ipc_dir / "grp" / "responses" / "ipc-req3.json"
+        response = json.loads(response_file.read_text())
+        assert "error" in response
+        assert "dispatch failed" in response["error"]

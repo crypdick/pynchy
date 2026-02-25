@@ -65,11 +65,17 @@ def create_pending_approval(
     source_group: str,
     chat_jid: str,
     request_data: dict,
+    handler_type: str = "service",
 ) -> None:
     """Write a pending approval file (PENDING state).
 
     The file contains everything needed to execute the request later,
     so the decision handler is self-contained.
+
+    Args:
+        handler_type: How to dispatch on approval — "service" routes through
+            plugin handlers (existing MCP flow), "ipc" routes through
+            ipc._registry.dispatch() (host-mutating cop_gate flow).
     """
     pending_dir = _pending_approvals_dir(source_group)
 
@@ -80,6 +86,7 @@ def create_pending_approval(
         "source_group": source_group,
         "chat_jid": chat_jid,
         "request_data": request_data,
+        "handler_type": handler_type,
         "timestamp": datetime.now(UTC).isoformat(),
     }
 

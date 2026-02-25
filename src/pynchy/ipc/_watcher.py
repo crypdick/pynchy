@@ -402,7 +402,7 @@ async def _process_queue(
             elif subdir == "approval_decisions":
                 from pynchy.ipc._handlers_approval import process_approval_decision
 
-                await process_approval_decision(file_path, source_group)
+                await process_approval_decision(file_path, source_group, deps=deps)
         except Exception:
             logger.exception(
                 "Error processing queued IPC file",
