@@ -27,7 +27,10 @@ def _patch_settings(
     if data_dir is not None:
         overrides["data_dir"] = data_dir
     s = make_settings(**overrides)
-    with patch("pynchy.group_queue.get_settings", return_value=s):
+    with (
+        patch("pynchy.group_queue.get_settings", return_value=s),
+        patch("pynchy.ipc._write.get_settings", return_value=s),
+    ):
         yield
 
 

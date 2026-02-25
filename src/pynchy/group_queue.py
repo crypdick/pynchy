@@ -10,14 +10,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
-import random
-import time
 from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from pynchy.config import get_settings
+from pynchy.ipc._write import write_ipc_close_sentinel, write_ipc_message
 from pynchy.logger import logger
 from pynchy.security.middleware import PolicyDeniedError
 
@@ -186,16 +184,10 @@ class GroupQueue:
         if not state.active or not state.group_folder:
             return False
 
-        input_dir = get_settings().data_dir / "ipc" / state.group_folder / "input"
         try:
-            input_dir.mkdir(parents=True, exist_ok=True)
-            filename = f"{int(time.time() * 1000)}-{random.randbytes(3).hex()}.json"
-            filepath = input_dir / filename
-            temp_path = filepath.with_suffix(".json.tmp")
-            temp_path.write_text(json.dumps({"type": "message", "text": text}))
-            temp_path.rename(filepath)
+            write_ipc_message(state.group_folder, text)
             return True
-        except Exception as exc:
+        except OSError as exc:
             logger.warning(
                 "Failed to write IPC message to container",
                 group_jid=group_jid,
@@ -209,11 +201,9 @@ class GroupQueue:
         if not state.active or not state.group_folder:
             return
 
-        input_dir = get_settings().data_dir / "ipc" / state.group_folder / "input"
         try:
-            input_dir.mkdir(parents=True, exist_ok=True)
-            (input_dir / "_close").write_text("")
-        except Exception as exc:
+            write_ipc_close_sentinel(state.group_folder)
+        except OSError as exc:
             logger.warning(
                 "Failed to write close sentinel to container",
                 group_jid=group_jid,
