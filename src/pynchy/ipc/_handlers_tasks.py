@@ -46,6 +46,21 @@ async def _handle_schedule_task(
 ) -> None:
     workspaces = deps.workspaces()
 
+    if not data.get("_cop_approved"):
+        from pynchy.security.cop_gate import cop_gate
+
+        prompt_preview = (data.get("prompt") or "")[:500]
+        summary = f"target={data.get('targetGroup')}, schedule={data.get('schedule_type')}:{data.get('schedule_value')}, prompt={prompt_preview}"
+        allowed = await cop_gate(
+            "schedule_task",
+            summary,
+            data,
+            source_group,
+            deps,
+        )
+        if not allowed:
+            return
+
     prompt = data.get("prompt")
     schedule_type = data.get("schedule_type")
     schedule_value = data.get("schedule_value")
@@ -124,6 +139,20 @@ async def _handle_schedule_host_job(
     if not is_admin:
         logger.warning("Unauthorized schedule_host_job attempt", source_group=source_group)
         return
+
+    if not data.get("_cop_approved"):
+        from pynchy.security.cop_gate import cop_gate
+
+        summary = f"name={data.get('name')}, command={data.get('command')}, schedule={data.get('schedule_type')}:{data.get('schedule_value')}"
+        allowed = await cop_gate(
+            "schedule_host_job",
+            summary,
+            data,
+            source_group,
+            deps,
+        )
+        if not allowed:
+            return
 
     name = data.get("name")
     command = data.get("command")
