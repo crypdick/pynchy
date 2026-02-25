@@ -290,11 +290,10 @@ class GroupQueue:
                 group_jid=group_jid,
                 err=str(exc),
             )
-        except Exception as exc:
-            logger.error(
+        except Exception:
+            logger.exception(
                 "Error processing messages for group",
                 group_jid=group_jid,
-                err=str(exc),
             )
             self._schedule_retry(group_jid, state)
         finally:
@@ -318,12 +317,11 @@ class GroupQueue:
 
         try:
             await task.fn()
-        except Exception as exc:
-            logger.error(
+        except Exception:
+            logger.exception(
                 "Error running task",
                 group_jid=group_jid,
                 task_id=task.id,
-                err=str(exc),
             )
         finally:
             # Clean up stale IPC input files before drain may start a
