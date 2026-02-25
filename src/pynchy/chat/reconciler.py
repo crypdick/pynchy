@@ -114,7 +114,8 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
 
             # --- Outbound retry ---
             pending = await get_pending_outbound(ch.name, canonical_jid)
-            new_outbound_cursor = await get_channel_cursor(ch.name, canonical_jid, "outbound")
+            outbound_cursor = await get_channel_cursor(ch.name, canonical_jid, "outbound")
+            new_outbound_cursor = outbound_cursor
             for row in pending:
                 try:
                     await ch.send_message(target_jid, row.content)
@@ -131,10 +132,7 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                 ch.name,
                 canonical_jid,
                 inbound=new_inbound_cursor if new_inbound_cursor != inbound_cursor else None,
-                outbound=new_outbound_cursor
-                if new_outbound_cursor
-                != await get_channel_cursor(ch.name, canonical_jid, "outbound")
-                else None,
+                outbound=new_outbound_cursor if new_outbound_cursor != outbound_cursor else None,
             )
             _last_reconciled[key] = now
 
