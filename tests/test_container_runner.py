@@ -75,6 +75,7 @@ TEST_INPUT = ContainerInput(
 
 _CR_CREDS = "pynchy.container_runner._credentials"
 _CR_ORCH = "pynchy.container_runner._orchestrator"
+_CR_PROC = "pynchy.container_runner._process"
 _GATEWAY = "pynchy.container_runner.gateway"
 
 
@@ -691,7 +692,7 @@ class TestRunContainerAgent:
             # idle_timeout=-29.9 and container_timeout=0.1:
             # max(0.1, -29.9 + 30.0) == 0.1s
             _patch_settings(tmp_path, idle_timeout=-29.9, container_timeout=0.1),
-            patch(f"{_CR_ORCH}._graceful_stop", _fake_stop),
+            patch(f"{_CR_PROC}._graceful_stop", _fake_stop),
         ):
             # Don't emit any output — let it timeout
             result = await run_container_agent(
@@ -714,7 +715,7 @@ class TestRunContainerAgent:
         with (
             _patch_subprocess(fake_proc),
             _patch_settings(tmp_path, idle_timeout=-29.9, container_timeout=0.1),
-            patch(f"{_CR_ORCH}._graceful_stop", _fake_stop),
+            patch(f"{_CR_PROC}._graceful_stop", _fake_stop),
         ):
 
             async def _driver():

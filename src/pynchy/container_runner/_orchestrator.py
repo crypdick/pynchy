@@ -19,8 +19,8 @@ from pynchy.config import get_settings
 from pynchy.container_runner._logging import _write_run_log
 from pynchy.container_runner._mounts import _build_container_args, _build_volume_mounts
 from pynchy.container_runner._process import (
-    _graceful_stop,
-    read_stderr,
+    _classify_exit,
+    _wait_for_exit,
 )
 from pynchy.container_runner._serialization import _input_to_dict, _parse_container_output
 from pynchy.logger import logger
@@ -279,8 +279,6 @@ async def run_container_agent(
     Returns:
         ContainerOutput with the final status.
     """
-    start_time = time.monotonic()
-    loop = asyncio.get_running_loop()
     s = get_settings()
 
     container_name = oneshot_container_name(group.folder)
@@ -298,54 +296,14 @@ async def run_container_agent(
 
     on_process(proc, container_name)
 
-    # --- Timeout ---
+    # --- Wait for container exit (timeout, I/O drain, cleanup) ---
     config_timeout = resolve_container_timeout(group)
     # Grace period: hard timeout must be at least idle_timeout + 30s
     timeout_secs = max(config_timeout, s.idle_timeout + 30.0)
-    timed_out = False
-    timeout_handle: asyncio.TimerHandle | None = None
 
-    def kill_on_timeout() -> None:
-        nonlocal timed_out
-        timed_out = True
-        logger.error(
-            "Container timeout, stopping gracefully",
-            group=group.name,
-            container=container_name,
-        )
-        asyncio.create_task(_graceful_stop(proc, container_name))
-
-    timeout_handle = loop.call_later(timeout_secs, kill_on_timeout)
-
-    # --- Read stderr + drain stdout concurrently, then wait for exit ---
-    assert proc.stdout is not None
-    assert proc.stderr is not None
-
-    async def _drain_stdout(stream: asyncio.StreamReader) -> None:
-        """Consume stdout without accumulating — output comes via IPC files."""
-        while await stream.read(8192):
-            pass
-
-    stderr_buf_future = asyncio.ensure_future(
-        read_stderr(proc.stderr, s.container.max_output_size, group.name)
+    exit_info = await _wait_for_exit(
+        proc, container_name, group.name, timeout_secs, s.container.max_output_size
     )
-    await asyncio.gather(
-        _drain_stdout(proc.stdout),
-        stderr_buf_future,
-    )
-    exit_code = await proc.wait()
-    stderr_buf = stderr_buf_future.result()
-
-    # Cancel timeout
-    if timeout_handle is not None:
-        timeout_handle.cancel()
-
-    # Force-remove stopped one-shot container (no --rm any more)
-    from pynchy.container_runner._session import _docker_rm_force
-
-    asyncio.ensure_future(_docker_rm_force(container_name))
-
-    duration_ms = (time.monotonic() - start_time) * 1000
 
     # --- Collect output from IPC files ---
     ipc_output_dir = s.data_dir / "ipc" / group.folder / "output"
@@ -373,69 +331,11 @@ async def run_container_agent(
         input_data=input_data,
         container_args=container_args,
         mounts=mounts,
-        stderr=stderr_buf,
-        duration_ms=duration_ms,
-        exit_code=exit_code,
-        timed_out=timed_out,
+        stderr=exit_info.stderr,
+        duration_ms=exit_info.duration_ms,
+        exit_code=exit_info.exit_code,
+        timed_out=exit_info.timed_out,
         output_event_count=len(outputs),
     )
 
-    # --- Determine result ---
-    if timed_out:
-        if outputs:
-            # Had output before timeout — idle cleanup, not a real error
-            logger.info(
-                "Container timed out after output (idle cleanup)",
-                group=group.name,
-                container=container_name,
-                duration_ms=duration_ms,
-            )
-            last = outputs[-1]
-            return ContainerOutput(
-                status="success", result=None, new_session_id=last.new_session_id
-            )
-
-        logger.error(
-            "Container timed out with no output",
-            group=group.name,
-            container=container_name,
-            duration_ms=duration_ms,
-        )
-        return ContainerOutput(
-            status="error",
-            result=None,
-            error=f"Container timed out after {config_timeout:.0f}s",
-        )
-
-    if exit_code != 0:
-        logger.error(
-            "Container exited with error",
-            group=group.name,
-            code=exit_code,
-            duration_ms=duration_ms,
-        )
-        return ContainerOutput(
-            status="error",
-            result=None,
-            error=f"Container exited with code {exit_code}: {stderr_buf[-200:]}",
-        )
-
-    # Use the last output event as the final result
-    if outputs:
-        last = outputs[-1]
-        logger.info(
-            "Container completed",
-            group=group.name,
-            duration_ms=duration_ms,
-            output_events=len(outputs),
-            new_session_id=last.new_session_id,
-        )
-        return last
-
-    # Container exited successfully but produced no output files
-    logger.warning(
-        "Container exited successfully but produced no output",
-        group=group.name,
-        duration_ms=duration_ms,
-    )
-    return ContainerOutput(status="success", result=None)
+    return _classify_exit(exit_info, outputs, group.name, container_name, config_timeout)
