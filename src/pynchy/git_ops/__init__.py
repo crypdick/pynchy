@@ -4,7 +4,6 @@ from pynchy.git_ops.sync import (
     GitSyncDeps,
     host_notify_worktree_updates,
     host_sync_worktree,
-    write_ipc_response,
 )
 from pynchy.git_ops.sync_poll import (
     needs_container_rebuild,
@@ -59,5 +58,4 @@ __all__ = [
     "require_success",
     "run_git",
     "start_host_git_sync_loop",
-    "write_ipc_response",
 ]

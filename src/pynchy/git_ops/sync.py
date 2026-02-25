@@ -10,7 +10,6 @@ containers can't read host state (logs, config, etc.).
 from __future__ import annotations
 
 import dataclasses
-import json
 import subprocess
 from pathlib import Path
 from typing import Any, Protocol
@@ -511,16 +510,3 @@ async def host_notify_worktree_updates(
     current_head = get_head_sha(cwd=repo_ctx.root)
     if current_head != "unknown":
         _last_worktree_notified_sha[str(repo_ctx.root)] = current_head
-
-
-# ---------------------------------------------------------------------------
-# IPC response helper
-# ---------------------------------------------------------------------------
-
-
-def write_ipc_response(path: Path, data: dict[str, Any]) -> None:
-    """Write an IPC response file atomically."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data))
-    tmp.rename(path)
