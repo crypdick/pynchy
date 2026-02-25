@@ -7,12 +7,18 @@ When a decision file appears in approval_decisions/, this handler:
 - Cleans up pending and decision files
 
 The policy check is skipped on execution since the human already approved.
+
+Two handler types are supported:
+- "service" (default): dispatches through plugin handlers (MCP service requests)
+- "ipc": dispatches through ipc._registry.dispatch() with _cop_approved=True
+  (host-mutating operations that went through cop_gate)
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from pynchy.config import get_settings
 from pynchy.ipc._handlers_service import _get_plugin_handlers
@@ -21,7 +27,9 @@ from pynchy.logger import logger
 from pynchy.security.audit import record_security_event
 
 
-async def process_approval_decision(decision_file: Path, source_group: str) -> None:
+async def process_approval_decision(
+    decision_file: Path, source_group: str, *, deps: Any = None
+) -> None:
     """Process an approval decision file — execute or deny the original request."""
     try:
         decision = json.loads(decision_file.read_text())
@@ -59,35 +67,12 @@ async def process_approval_decision(decision_file: Path, source_group: str) -> N
     approved = decision.get("approved", False)
 
     if approved:
-        handlers = _get_plugin_handlers()
-        handler = handlers.get(tool_name)
+        handler_type = pending.get("handler_type", "service")
 
-        if handler is None:
-            logger.warning("Approved tool no longer available", tool_name=tool_name)
-            write_ipc_response(
-                ipc_response_path(source_group, request_id),
-                {"error": f"Approved but tool '{tool_name}' is no longer available"},
-            )
+        if handler_type == "ipc":
+            await _execute_ipc_approval(request_data, source_group, request_id, deps)
         else:
-            try:
-                request_data["source_group"] = source_group
-                response = await handler(request_data)
-                write_ipc_response(ipc_response_path(source_group, request_id), response)
-                logger.info(
-                    "Approved request executed",
-                    request_id=request_id,
-                    tool_name=tool_name,
-                )
-            except Exception as exc:
-                logger.error(
-                    "Approved request failed",
-                    request_id=request_id,
-                    err=str(exc),
-                )
-                write_ipc_response(
-                    ipc_response_path(source_group, request_id),
-                    {"error": f"Execution failed: {exc}"},
-                )
+            await _execute_service_approval(request_data, source_group, request_id, tool_name)
 
         await record_security_event(
             chat_jid=chat_jid,
@@ -113,3 +98,89 @@ async def process_approval_decision(decision_file: Path, source_group: str) -> N
     # Clean up files
     pending_file.unlink(missing_ok=True)
     decision_file.unlink(missing_ok=True)
+
+
+async def _execute_service_approval(
+    request_data: dict[str, Any],
+    source_group: str,
+    request_id: str,
+    tool_name: str,
+) -> None:
+    """Dispatch an approved service request through plugin handlers."""
+    handlers = _get_plugin_handlers()
+    handler = handlers.get(tool_name)
+
+    if handler is None:
+        logger.warning("Approved tool no longer available", tool_name=tool_name)
+        write_ipc_response(
+            ipc_response_path(source_group, request_id),
+            {"error": f"Approved but tool '{tool_name}' is no longer available"},
+        )
+    else:
+        try:
+            request_data["source_group"] = source_group
+            response = await handler(request_data)
+            write_ipc_response(ipc_response_path(source_group, request_id), response)
+            logger.info(
+                "Approved request executed",
+                request_id=request_id,
+                tool_name=tool_name,
+            )
+        except Exception as exc:
+            logger.error(
+                "Approved request failed",
+                request_id=request_id,
+                err=str(exc),
+            )
+            write_ipc_response(
+                ipc_response_path(source_group, request_id),
+                {"error": f"Execution failed: {exc}"},
+            )
+
+
+async def _execute_ipc_approval(
+    request_data: dict[str, Any],
+    source_group: str,
+    request_id: str,
+    deps: Any,
+) -> None:
+    """Dispatch an approved IPC request through the registry.
+
+    Sets _cop_approved=True on the request data so the handler skips
+    the cop_gate call on re-entry (prevents infinite approval loops).
+    Admin-only: host-mutating ops already passed admin checks before
+    cop_gate was invoked.
+    """
+    from pynchy.ipc._registry import dispatch
+
+    if deps is None:
+        logger.error(
+            "Cannot dispatch IPC approval without deps",
+            request_id=request_id,
+        )
+        write_ipc_response(
+            ipc_response_path(source_group, request_id),
+            {"error": "Internal error: IPC approval missing deps"},
+        )
+        return
+
+    try:
+        request_data["_cop_approved"] = True
+        await dispatch(request_data, source_group, True, deps)
+        # Note: the IPC handler writes its own response file on success.
+        # We write one here only on failure to ensure the container unblocks.
+        logger.info(
+            "Approved IPC request dispatched",
+            request_id=request_id,
+            task_type=request_data.get("type"),
+        )
+    except Exception as exc:
+        logger.error(
+            "Approved IPC request failed",
+            request_id=request_id,
+            err=str(exc),
+        )
+        write_ipc_response(
+            ipc_response_path(source_group, request_id),
+            {"error": f"Execution failed: {exc}"},
+        )
