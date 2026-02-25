@@ -108,6 +108,22 @@ async def _handle_sync_worktree_to_main(
     from pynchy.git_ops.repo import resolve_repo_for_group
 
     request_id = data.get("requestId", "")
+
+    if not data.get("_cop_approved"):
+        from pynchy.security.cop_gate import cop_gate
+
+        summary = f"sync_worktree_to_main from '{source_group}'"
+        allowed = await cop_gate(
+            "sync_worktree_to_main",
+            summary,
+            data,
+            source_group,
+            deps,
+            request_id=data.get("requestId"),
+        )
+        if not allowed:
+            return
+
     result_dir = get_settings().data_dir / "ipc" / source_group / "merge_results"
 
     repo_ctx = resolve_repo_for_group(source_group)

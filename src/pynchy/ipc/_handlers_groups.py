@@ -30,6 +30,22 @@ async def _handle_register_group(
         )
         return
 
+    if not data.get("_cop_approved"):
+        from pynchy.security.cop_gate import cop_gate
+
+        summary = (
+            f"name={data.get('name')}, folder={data.get('folder')}, trigger={data.get('trigger')}"
+        )
+        allowed = await cop_gate(
+            "register_group",
+            summary,
+            data,
+            source_group,
+            deps,
+        )
+        if not allowed:
+            return
+
     jid = data.get("jid")
     name = data.get("name")
     folder = data.get("folder")
@@ -68,6 +84,22 @@ async def _handle_create_periodic_agent(
             source_group=source_group,
         )
         return
+
+    if not data.get("_cop_approved"):
+        from pynchy.security.cop_gate import cop_gate
+
+        name = data.get("name", "")
+        prompt_preview = (data.get("prompt") or "")[:500]
+        summary = f"name={name}, schedule={data.get('schedule')}, prompt={prompt_preview}"
+        allowed = await cop_gate(
+            "create_periodic_agent",
+            summary,
+            data,
+            source_group,
+            deps,
+        )
+        if not allowed:
+            return
 
     from pynchy.config import add_workspace_to_toml
     from pynchy.config_models import WorkspaceConfig
