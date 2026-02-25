@@ -19,7 +19,6 @@ from pynchy.ipc._deps import IpcDeps, resolve_workspace_by_folder
 from pynchy.ipc._registry import register
 from pynchy.ipc._write import write_ipc_response
 from pynchy.logger import logger
-from pynchy.types import WorkspaceProfile
 
 
 async def _handle_reset_context(
@@ -146,23 +145,8 @@ async def _handle_sync_worktree_to_main(
         if result.get("success"):
             post_merge_sha = get_head_sha(cwd=repo_ctx.root)
 
-            class _GitSyncAdapter:
-                async def broadcast_host_message(self, jid: str, text: str) -> None:
-                    await deps.broadcast_host_message(jid, text)
-
-                async def broadcast_system_notice(self, jid: str, text: str) -> None:
-                    await deps.broadcast_system_notice(jid, text)
-
-                def has_active_session(self, group_folder: str) -> bool:
-                    return deps.has_active_session(group_folder)
-
-                def workspaces(self) -> dict[str, WorkspaceProfile]:
-                    return deps.workspaces()
-
-                async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
-                    pass  # adapter only used for worktree notifications
-
-            await host_notify_worktree_updates(source_group, _GitSyncAdapter(), repo_ctx)
+            # IpcDeps satisfies WorktreeNotifyDeps directly — no adapter needed.
+            await host_notify_worktree_updates(source_group, deps, repo_ctx)
 
             if (
                 pre_merge_sha != "unknown"
