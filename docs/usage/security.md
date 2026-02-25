@@ -52,8 +52,8 @@ Write to service
   ├─ corruption + secret + public_sink  →  HUMAN APPROVAL REQUIRED
   │                                        (the lethal trifecta)
   │
-  ├─ corruption + public_sink        →  DEPUTY REVIEW
-  │                                     (content scan, future: LLM review)
+  ├─ corruption + public_sink        →  COP REVIEW
+  │                                     (LLM-based content scan)
   │
   └─ none of the above              →  ALLOWED
 ```
@@ -128,6 +128,39 @@ contains_secrets = true
 ```
 
 When an agent accesses a workspace with `contains_secrets = true`, the secret taint flag gets set. This means any agent working in a corporate workspace that also reads from an untrusted source will trigger approval gates on outbound writes.
+
+## Admin Clean Room
+
+Admin workspaces are protected by a **clean room policy**: they cannot have any MCP server with `public_source=true`. This is enforced at startup — Pynchy refuses to start if an admin workspace references a public-source MCP.
+
+This means the admin workspace can never become corruption-tainted (it never reads untrusted content), which eliminates prompt injection as a threat vector for the most privileged operations.
+
+If an MCP server is not declared in `[services]`, it defaults to `public_source=true` (maximally cautious). To use an MCP in an admin workspace, you must explicitly declare it with `public_source = false`.
+
+**Example error:**
+```
+Admin workspace 'admin-1' has MCP server 'playwright' with public_source=True.
+Admin workspaces cannot have public_source MCPs (clean room policy).
+```
+
+For web browsing, email, or other untrusted-input tasks, use a non-admin workspace.
+
+## Host-Mutating Operations
+
+Certain IPC operations can change what code runs on the host: merging code, registering new workspaces, scheduling tasks, and running host commands. These are automatically inspected by the **Cop** — an LLM-based security reviewer.
+
+The Cop examines the payload of each host-mutating operation (the diff being merged, the task prompt, the group config) and flags anything suspicious. If flagged, the operation requires human approval before proceeding.
+
+**What's covered:**
+- Code merges (`sync_worktree_to_main`)
+- Workspace registration (`register_group`)
+- Periodic agent creation (`create_periodic_agent`)
+- Task scheduling (`schedule_task`, `schedule_host_job`)
+- Script-type MCP tool calls (auto-classified — any MCP with `type = "script"`)
+
+**What's not covered:** Docker-type MCPs (isolated in their own container), URL-type MCPs (remote, no host access), and deploy (just restarts with existing code).
+
+No configuration needed — host-mutating inspection is always on.
 
 ## Choosing Values
 

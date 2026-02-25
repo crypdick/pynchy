@@ -93,12 +93,49 @@ Values are `false` (safe), `true` (risky — triggers gating), or `"forbidden"` 
 | `dangerous_writes = "forbidden"` | **Blocked** — operation denied |
 | `dangerous_writes = true` | **Human approval required** |
 | `corruption_tainted` AND `secret_tainted` AND `public_sink` | **Human approval required** (trifecta) |
-| `corruption_tainted` AND `public_sink` | **Deputy review** (future: LLM-based content scan) |
+| `corruption_tainted` AND `public_sink` | **Cop review** (LLM-based content scan) |
 | None of the above | **Allowed** |
 
 A payload secrets scanner (`detect-secrets`) also runs on outbound writes. If it detects credential patterns (API keys, tokens), the write escalates to human approval regardless of taint state.
 
-Admin workspaces bypass all policy gates. See [Service Trust](../usage/security.md) for configuration.
+Admin workspaces bypass all policy gates. Admin workspaces are additionally protected by the clean room policy ([§5b](#5b-admin-clean-room)). See [Service Trust](../usage/security.md) for configuration.
+
+### 5a. Host-Mutating Operations (Cop Gate)
+
+Some IPC operations can change what code runs on the host machine. These are **host-mutating** and receive an additional layer of inspection from the Cop — an LLM-based security inspector that reviews payloads for signs of manipulation.
+
+**Host-mutating operations:**
+
+| Operation | What it mutates | Cop inspects |
+|---|---|---|
+| `sync_worktree_to_main` | Merges code into main branch | The merge summary |
+| `register_group` | Creates new workspace | Group config |
+| `create_periodic_agent` | Creates persistent agent | Agent name, schedule, prompt |
+| `schedule_task` | Schedules future execution | Task prompt and target |
+| `schedule_host_job` | Schedules host command | Command and schedule |
+| Script-type MCP tools | Runs host subprocess | Tool arguments |
+
+**Auto-classified:** MCP servers with `type = "script"` run as host subprocesses. Any tool call to a script-type MCP is implicitly host-mutating and goes through the Cop.
+
+**Not host-mutating:** Docker-type MCPs (isolated container), URL-type MCPs (remote), and `deploy` (restarts with existing code on main).
+
+**Escalation rule:**
+
+| Cop verdict | Action |
+|---|---|
+| Not flagged | Operation proceeds |
+| Flagged (request-reply) | Human approval required |
+| Flagged (fire-and-forget) | Operation blocked, warning broadcast |
+
+The Cop always inspects. Human involvement only when the Cop detects something suspicious.
+
+### 5b. Admin Clean Room
+
+Admin workspaces cannot have `public_source=true` MCP servers assigned. This is enforced at config validation (startup). If an admin workspace references an MCP with `public_source=true` (or an MCP not declared in `[services]`, which defaults to `public_source=true`), Pynchy refuses to start.
+
+This prevents the most privileged workspace from ever being corruption-tainted, eliminating prompt injection as a threat vector for admin operations.
+
+For tasks that require untrusted input (web browsing, email), create a non-admin workspace with appropriate trust declarations.
 
 ### 6. Credential Handling
 
@@ -169,6 +206,8 @@ Channel messages can contain malicious instructions that attempt to manipulate C
 - Agents can only access their group's mounted directories
 - Additional directory mounts require explicit per-group configuration
 - Claude's built-in safety training helps resist manipulation
+- **Admin clean room** prevents the admin workspace from reading untrusted content ([§5b](#5b-admin-clean-room))
+- **Cop inspection** reviews host-mutating payloads for manipulation before execution ([§5a](#5a-host-mutating-operations-cop-gate))
 
 **Recommendations:**
 
@@ -188,6 +227,7 @@ Channel messages can contain malicious instructions that attempt to manipulate C
 | Additional mounts | Configurable | Read-only unless allowed |
 | Network access | Unrestricted | Unrestricted |
 | MCP service tools | Auto-approved | Trust-gated (see [§5](#5-service-trust-policy-lethal-trifecta-defenses)) |
+| Public-source MCPs | Not allowed (clean room) | Trust-gated |
 
 ## Security Architecture Diagram
 
