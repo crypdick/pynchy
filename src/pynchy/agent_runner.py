@@ -438,8 +438,8 @@ async def run_agent(
             return await _warm_query(deps, group, chat_jid, session, messages, ctx)
         else:
             return await _cold_start(deps, group, chat_jid, messages, ctx)
-    except Exception as exc:
-        logger.error("Agent error", group=group.name, err=str(exc))
+    except Exception:
+        logger.exception("Agent error", group=group.name)
         return "error"
 
 
@@ -501,8 +501,8 @@ async def _run_scheduled_task(
             return "error"
 
         return "success"
-    except Exception as exc:
-        logger.error("Scheduled task error", group=group.name, err=str(exc))
+    except Exception:
+        logger.exception("Scheduled task error", group=group.name)
         return "error"
     finally:
         # Clean up the session created by the one-shot container.

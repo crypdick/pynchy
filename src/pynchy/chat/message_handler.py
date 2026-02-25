@@ -307,7 +307,7 @@ def _check_dirty_repo(group_name: str, dirty_check_file: Path) -> list[str]:
                 "Run `git status` and `git diff` to see what has changed."
             )
             logger.info("Added dirty repo warning after reset", group=group_name)
-    except Exception as exc:
+    except OSError as exc:
         logger.error("Error checking for dirty repo after reset", err=str(exc))
         dirty_check_file.unlink(missing_ok=True)
     return notices

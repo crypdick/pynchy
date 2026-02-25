@@ -43,8 +43,8 @@ async def _handle_reset_context(
 
     try:
         await merge_worktree_with_policy(group_folder)
-    except Exception as exc:
-        logger.error("Worktree sync failed during context reset", err=str(exc))
+    except Exception:
+        logger.exception("Worktree sync failed during context reset")
 
     await deps.clear_session(group_folder)
     await deps.clear_chat_history(chat_jid)

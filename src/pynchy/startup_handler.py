@@ -76,7 +76,7 @@ async def send_boot_notification(deps: StartupDeps) -> None:
             boot_warnings_path.unlink()
             for warning in warnings:
                 parts.append(f"WARNING: {warning}")
-        except Exception as exc:
+        except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Failed to read boot warnings", err=str(exc))
             boot_warnings_path.unlink(missing_ok=True)
 

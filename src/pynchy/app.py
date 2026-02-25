@@ -393,7 +393,7 @@ class PynchyApp:
             if admin_jid and self.channels:
                 await self.broadcast_host_message(admin_jid, f"Shutting down ({sig_name})")
         except Exception:
-            logger.debug("Shutdown notification failed (ignored)")
+            logger.debug("Shutdown notification failed", exc_info=True)
 
         # Tell channels to suppress reconnect attempts before the long
         # cleanup sequence — prevents RuntimeError crash-loops when the

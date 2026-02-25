@@ -789,12 +789,12 @@ class TestCheckDirtyRepo:
         assert "uncommitted" in result[0].lower()
         assert not marker.exists()
 
-    def test_exception_during_check_cleans_up(self, tmp_path):
-        """Exception during check → file cleaned up, empty result."""
+    def test_oserror_during_check_cleans_up(self, tmp_path):
+        """OSError during check → file cleaned up, empty result."""
         marker = tmp_path / "needs_dirty_check.json"
         marker.write_text("{}")
 
-        with patch(_P_DIRTY, side_effect=RuntimeError("git broken")):
+        with patch(_P_DIRTY, side_effect=OSError("permission denied")):
             result = _check_dirty_repo("test-group", marker)
 
         assert result == []

@@ -66,12 +66,11 @@ async def _process_message_file(
                     source_group=source_group,
                 )
         file_path.unlink()
-    except Exception as exc:
-        logger.error(
+    except Exception:
+        logger.exception(
             "Error processing IPC message",
             file=file_path.name,
             source_group=source_group,
-            err=str(exc),
         )
         _move_to_error_dir(ipc_base_dir, source_group, file_path)
 
@@ -100,12 +99,11 @@ async def _process_task_file(
         # Tier 2: data-carrying request
         await dispatch(data, source_group, is_admin, deps)
         file_path.unlink()
-    except Exception as exc:
-        logger.error(
+    except Exception:
+        logger.exception(
             "Error processing IPC task",
             file=file_path.name,
             source_group=source_group,
-            err=str(exc),
         )
         _move_to_error_dir(ipc_base_dir, source_group, file_path)
 
@@ -161,11 +159,10 @@ async def _process_output_file(
         if handler is not None:
             try:
                 await handler(output)
-            except Exception as exc:
-                logger.error(
+            except Exception:
+                logger.exception(
                     "Output handler callback failed",
                     group=source_group,
-                    error=str(exc),
                 )
 
         # Detect query-done pulse
@@ -181,12 +178,11 @@ async def _process_output_file(
         # run_container_agent() after the container exits.
         if handler is not None:
             file_path.unlink()
-    except Exception as exc:
-        logger.error(
+    except Exception:
+        logger.exception(
             "Error processing output file",
             file=file_path.name,
             source_group=source_group,
-            err=str(exc),
         )
         _move_to_error_dir(ipc_base_dir, source_group, file_path)
 
@@ -407,11 +403,10 @@ async def _process_queue(
                 from pynchy.ipc._handlers_approval import process_approval_decision
 
                 await process_approval_decision(file_path, source_group)
-        except Exception as exc:
-            logger.error(
+        except Exception:
+            logger.exception(
                 "Error processing queued IPC file",
                 file=str(file_path),
-                err=str(exc),
             )
         finally:
             queue.task_done()
