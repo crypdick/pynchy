@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import re
 import sys
 from collections import deque
 from collections.abc import Callable
@@ -25,6 +26,7 @@ from neonize.events import (
 from neonize.proto.Neonize_pb2 import JID
 from neonize.utils.jid import Jid2String
 
+from pynchy.chat.pending_questions import find_pending_for_jid
 from pynchy.config import get_settings
 from pynchy.db import (
     get_chat_jids_by_name,
@@ -57,6 +59,7 @@ class WhatsAppChannel:
         on_message: Callable[[str, NewMessage], None],
         on_chat_metadata: Callable[[str, str, str | None], None],
         workspaces: Callable[[], dict[str, WorkspaceProfile]],
+        on_ask_user_answer: Callable[[str, dict], None] | None = None,
     ) -> None:
         self.name = connection_name
         self._connection_name = connection_name
@@ -64,6 +67,7 @@ class WhatsAppChannel:
         self._on_message = on_message
         self._on_chat_metadata = on_chat_metadata
         self._workspaces = workspaces
+        self._on_ask_user_answer = on_ask_user_answer
         self._connected = False
         self._lid_to_phone: dict[str, str] = {}
         self._outgoing_queue: deque[_OutgoingMessage] = deque()
@@ -253,6 +257,61 @@ class WhatsAppChannel:
         finally:
             self._flushing = False
 
+    async def send_ask_user(self, jid: str, request_id: str, questions: list[dict]) -> str | None:
+        """Post a numbered-text question and return a tracking message ID.
+
+        WhatsApp doesn't support interactive widgets, so we format the
+        question as numbered text and send it as a regular message.
+        """
+        lines: list[str] = []
+        has_options = False
+
+        for q in questions:
+            question_text = q.get("question", "")
+            lines.append(f"The agent is asking: {question_text}")
+            options = q.get("options", [])
+            if options:
+                has_options = True
+                for i, opt in enumerate(options, 1):
+                    label = opt.get("label", str(opt)) if isinstance(opt, dict) else str(opt)
+                    lines.append(f"{i}. {label}")
+
+        lines.append("")
+        if has_options:
+            lines.append("Reply with a number or type your own answer.")
+        else:
+            lines.append("Reply with your answer.")
+
+        text = "\n".join(lines)
+        await self.send_message(jid, text)
+        # Use request_id as a tracking identifier since WhatsApp send_message
+        # doesn't return a message ID we can use.
+        return request_id
+
+    def _resolve_answer(self, content: str, pending: dict) -> dict:
+        """Match user reply to pending question options.
+
+        Only resolves numeric option selection against the first question's
+        options. Multi-question ask_user requests fall back to free-form text
+        matching, which is acceptable since WhatsApp's text-only interface
+        can't distinguish which question a number answers.
+        """
+        content = content.strip()
+        # Try to match a number.  Use re.fullmatch with [0-9] instead of
+        # str.isdigit() because isdigit() accepts unicode superscript digits
+        # (e.g. '²', '³') that int() cannot parse, causing a ValueError.
+        questions = pending.get("questions", [])
+        if questions:
+            options = questions[0].get("options", [])
+            if re.fullmatch(r"[0-9]+", content):
+                idx = int(content) - 1  # 1-indexed
+                if 0 <= idx < len(options):
+                    opt = options[idx]
+                    label = opt.get("label", opt) if isinstance(opt, dict) else str(opt)
+                    return {"answer": label}
+        # Free-form text
+        return {"answer": content}
+
     async def _handle_message(self, message: MessageEv) -> None:
         info = message.Info
         source = info.MessageSource
@@ -280,6 +339,25 @@ class WhatsAppChannel:
         )
         if source.IsFromMe and content.startswith(f"{get_settings().agent.name}:"):
             return
+
+        # Intercept answers to pending ask_user questions before normal pipeline.
+        # Only intercept messages from other users, not our own echoes.
+        if not source.IsFromMe:
+            pending = find_pending_for_jid(chat_jid)
+            if pending is not None:
+                # Skip stale pending questions — let the sweep handle cleanup.
+                # A stale file from a crash should not silently swallow real messages.
+                from pynchy.chat.pending_questions import PENDING_QUESTION_TIMEOUT_SECONDS
+
+                ts = datetime.fromisoformat(pending.get("timestamp", ""))
+                age = (datetime.now(UTC) - ts).total_seconds()
+                if age > PENDING_QUESTION_TIMEOUT_SECONDS:
+                    pending = None
+            if pending is not None:
+                answer = self._resolve_answer(content, pending)
+                if self._on_ask_user_answer:
+                    self._on_ask_user_answer(pending["request_id"], answer)
+                return  # Skip normal message pipeline
 
         sender_jid = Jid2String(source.Sender)
         sender_name = info.Pushname or source.Sender.User or sender_jid.split("@")[0]

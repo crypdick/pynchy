@@ -270,7 +270,7 @@ class ClaudeAgentCore:
             allowed_tools=allowed_tools,
             # Plan mode tools require interactive approval that headless
             # containers can't provide, causing an infinite resume loop.
-            disallowed_tools=["EnterPlanMode", "ExitPlanMode"],
+            disallowed_tools=["AskUserQuestion", "EnterPlanMode", "ExitPlanMode"],
             permission_mode="bypassPermissions",
             settings='{"attribution": {"commit": "", "pr": ""}}',
             setting_sources=["project", "user"],
