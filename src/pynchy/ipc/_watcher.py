@@ -322,6 +322,13 @@ async def _sweep_directory(
     if cleaned > 0:
         logger.info("IPC startup sweep cleaned stale files", cleaned=cleaned)
 
+    # Sweep expired approvals (crash recovery: auto-deny stale pending files)
+    from pynchy.security.approval import sweep_expired_approvals
+
+    expired = await sweep_expired_approvals()
+    if expired:
+        logger.info("Expired approvals auto-denied during sweep", count=len(expired))
+
     return processed + cleaned
 
 
@@ -347,8 +354,13 @@ class _IpcEventHandler(FileSystemEventHandler):
         try:
             relative = file_path.relative_to(self._ipc_base_dir)
             parts = relative.parts
-            # Expected: <group>/<messages|tasks|output>/<file>.json
-            if len(parts) == 3 and parts[1] in ("messages", "tasks", "output"):
+            # Expected: <group>/<messages|tasks|output|approval_decisions>/<file>.json
+            if len(parts) == 3 and parts[1] in (
+                "messages",
+                "tasks",
+                "output",
+                "approval_decisions",
+            ):
                 self._loop.call_soon_threadsafe(self._queue.put_nowait, file_path)
         except (ValueError, IndexError):
             pass  # File not under IPC base dir or malformed path — ignore
@@ -391,6 +403,10 @@ async def _process_queue(
                 await _process_task_file(file_path, source_group, is_admin, ipc_base_dir, deps)
             elif subdir == "output":
                 await _process_output_file(file_path, source_group, ipc_base_dir)
+            elif subdir == "approval_decisions":
+                from pynchy.ipc._handlers_approval import process_approval_decision
+
+                await process_approval_decision(file_path, source_group)
         except Exception as exc:
             logger.error(
                 "Error processing queued IPC file",
