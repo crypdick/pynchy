@@ -16,6 +16,20 @@ Replace the built-in `AskUserQuestion` with a custom MCP tool that routes
 questions through messaging channels (Slack Block Kit widgets, WhatsApp numbered
 options) and blocks until the user responds — or until a configurable timeout.
 
+## Existing Infrastructure: Approval Gate
+
+The human approval gate (merged 2026-02-24) uses the same state-machine pattern:
+
+- Container blocks (no response file written) via `_ipc_request.py` polling
+- Host stores pending state as files in `ipc/{group}/pending_approvals/`
+- User types `approve <id>` / `deny <id>` in chat
+- Chat pipeline writes decision file to `approval_decisions/`
+- IPC watcher picks up decision, executes or denies, writes response
+- Container unblocks
+
+Ask-user extends this pattern with richer UX (Block Kit widgets, multiple-choice)
+and different semantics (options + free text vs binary approve/deny).
+
 ## Architecture
 
 ```
@@ -24,7 +38,7 @@ Container (MCP subprocess)          Host                          Channel (Slack
 Claude calls ask_user MCP tool
   → writes task to ipc/tasks/
   → watchdog watches responses/  ──→ IPC watcher picks up task
-    (blocks on asyncio.Event)       → stores PendingQuestion in DB
+    (blocks on asyncio.Event)       → stores file in pending_questions/
                                     → calls channel.send_ask_user() ──→ Block Kit widget
                                     │                                   (buttons + text input)
                                     │
@@ -43,7 +57,7 @@ Claude calls ask_user MCP tool
 
 If the container was destroyed before the user responds:
 
-1. Slack interaction arrives → host looks up PendingQuestion in DB
+1. Slack interaction arrives → host looks up pending question file
 2. No live session → host cold-starts a new container
 3. Answer is injected into `initial.json` as context:
    `"You previously asked: [question]. The user answered: [answer]. Continue."`
@@ -66,23 +80,15 @@ If the container was destroyed before the user responds:
 
 ### 2. Host-Side Pending Question Store
 
-**File:** `src/pynchy/db/pending_questions.py`
+**File:** `src/pynchy/security/pending_questions.py`
 
-New SQLite table:
+File-based state, matching the approval gate pattern (`pending_approvals/`):
 
-| Column | Type | Purpose |
-|--------|------|---------|
-| `request_id` | TEXT PK | From the IPC task (links to response file) |
-| `group_folder` | TEXT | Which group's agent asked |
-| `chat_jid` | TEXT | Where to send the widget |
-| `channel_name` | TEXT | Which channel plugin to use |
-| `questions` | TEXT | JSON blob of question/options payload |
-| `message_id` | TEXT | Channel-native ID (Slack ts) for updating the widget |
-| `session_id` | TEXT | For late-answer session resume |
-| `created_at` | TEXT | Timestamp |
-| `status` | TEXT | `pending` / `answered` / `expired` |
-
-Persisted in DB (not in-memory) so pending questions survive host restarts.
+- Stored in `ipc/{group}/pending_questions/{request_id}.json`
+- Contains: request_id, short_id, questions payload, chat_jid, session_id,
+  channel_name, message_id (Slack ts), timestamp
+- Swept on startup (auto-expire stale questions, clean orphans)
+- Mirrors `security/approval.py` structure (create, list, find_by_short_id, sweep)
 
 ### 3. Host-Side IPC Handler
 
@@ -135,16 +141,16 @@ async def send_ask_user(
 3. Write answer to `ipc/responses/{request_id}.json`
 4. Container-side watchdog fires → MCP handler returns answer to Claude
 5. Update channel widget (replace buttons with "Answered: X")
-6. Mark question as `answered` in DB
+6. Delete pending question file
 
 **Path B — Container dead (late answer):**
 1. Same channel interaction callback fires
-2. Look up PendingQuestion in DB — still `pending`
+2. Look up pending question file — still exists
 3. No live session for this group
 4. Cold-start a new container via the normal `run_agent()` pipeline
 5. Inject answer into initial context: prior question + user's answer
 6. Session resumes via stored `session_id`
-7. Update channel widget, mark `answered`
+7. Update channel widget, delete pending question file
 
 ## Design Decisions
 
@@ -156,7 +162,7 @@ async def send_ask_user(
 | Timeout behavior | Cap + destroy container | 30-min default; user responds late → cold-start |
 | Late-answer delivery | Cold-start immediately | Responsive UX; answer triggers agent execution like a regular message |
 | Channel abstraction | Optional `send_ask_user` method | Channel-agnostic; Slack uses Block Kit, WhatsApp uses numbered text, unsupported channels return error |
-| State persistence | SQLite table | Survives host restarts; late-answer path needs durable state |
+| State persistence | File-based (`pending_questions/`) | Matches approval gate pattern; no schema migration; survives restarts |
 
 ## Out of Scope
 
@@ -164,7 +170,7 @@ async def send_ask_user(
   per call. For v1, each question is a separate widget. Batching into a single
   Slack message with multiple action groups is a future enhancement.
 - **Editing answers:** Once answered, the response is final. No "change my answer."
-- **Approval workflows:** This is specifically for `AskUserQuestion` semantics.
-  The existing `needs_human` path in the security middleware is a separate feature
-  (noted as TODO in `_handlers_service.py:186`), though it could reuse this
-  infrastructure later.
+- **Approval gate convergence:** The approval gate and ask-user share the same
+  state-machine pattern. A future refactor could extract a shared "pending human
+  input" abstraction. For now, they are parallel implementations with different
+  semantics.
