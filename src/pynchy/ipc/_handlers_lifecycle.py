@@ -6,10 +6,10 @@ import json
 from typing import Any
 
 from pynchy.config import get_settings
+from pynchy.git_ops._worktree_notify import host_notify_worktree_updates
 from pynchy.git_ops.sync import (
     GIT_POLICY_PR,
     host_create_pr_from_worktree,
-    host_notify_worktree_updates,
     host_sync_worktree,
     resolve_git_policy,
 )
