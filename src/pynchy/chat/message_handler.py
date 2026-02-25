@@ -31,6 +31,7 @@ from pynchy.logger import logger
 from pynchy.utils import generate_message_id, run_shell_command
 
 if TYPE_CHECKING:
+    from pynchy.container_runner import OnOutput
     from pynchy.group_queue import GroupQueue
     from pynchy.types import Channel, ContainerOutput, NewMessage, WorkspaceProfile
 
@@ -93,7 +94,7 @@ class MessageHandlerDeps(Protocol):
         group: WorkspaceProfile,
         chat_jid: str,
         messages: list[dict],
-        on_output: Any | None = None,
+        on_output: OnOutput | None = None,
         extra_system_notices: list[str] | None = None,
         *,
         input_source: str = "user",

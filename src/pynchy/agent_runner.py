@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from pynchy.config import get_settings
 from pynchy.container_runner import (
+    ContainerSession,
+    OnOutput,
     SessionDiedError,
     create_session,
     destroy_session,
@@ -52,7 +54,7 @@ class _PreContainerResult:
     system_notices: list[str]
     agent_core_module: str
     agent_core_class: str
-    wrapped_on_output: Any  # async (ContainerOutput) -> None
+    wrapped_on_output: OnOutput
     config_timeout: float
     snapshot_ms: float
 
@@ -156,7 +158,7 @@ async def _pre_container_setup(
     group: WorkspaceProfile,
     chat_jid: str,
     messages: list[dict],
-    on_output: Any | None,
+    on_output: OnOutput | None,
     extra_system_notices: list[str] | None,
     input_source: str,
     is_scheduled_task: bool,
@@ -260,7 +262,7 @@ async def _warm_query(
     deps: AgentRunnerDeps,
     group: WorkspaceProfile,
     chat_jid: str,
-    session: Any,  # ContainerSession
+    session: ContainerSession,
     messages: list[dict],
     ctx: _PreContainerResult,
 ) -> str:
@@ -371,7 +373,7 @@ async def run_agent(
     group: WorkspaceProfile,
     chat_jid: str,
     messages: list[dict],
-    on_output: Any | None = None,
+    on_output: OnOutput | None = None,
     extra_system_notices: list[str] | None = None,
     *,
     is_scheduled_task: bool = False,
@@ -453,7 +455,7 @@ async def _run_scheduled_task(
     group: WorkspaceProfile,
     chat_jid: str,
     messages: list[dict],
-    on_output: Any | None,
+    on_output: OnOutput | None,
     extra_system_notices: list[str] | None,
     repo_access_override: str | None,
     input_source: str,

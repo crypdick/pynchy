@@ -48,7 +48,6 @@ if TYPE_CHECKING:
     from pynchy.config_mcp import McpServerConfig
     from pynchy.container_runner.gateway import LiteLLMGateway
 
-_NETWORK_NAME = "pynchy-litellm-net"
 _MCP_CONTAINER_PREFIX = "pynchy-mcp"
 
 

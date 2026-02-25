@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from pynchy.container_runner import OnOutput
 from zoneinfo import ZoneInfo
 
 from croniter import croniter
@@ -42,7 +45,7 @@ class SchedulerDependencies(Protocol):
         group: WorkspaceProfile,
         chat_jid: str,
         messages: list[dict],
-        on_output: Any | None = None,
+        on_output: OnOutput | None = None,
         extra_system_notices: list[str] | None = None,
         *,
         is_scheduled_task: bool = False,
