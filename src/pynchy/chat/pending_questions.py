@@ -22,6 +22,10 @@ from pathlib import Path
 from pynchy.config import get_settings
 from pynchy.logger import logger
 
+# How long before a pending question expires (seconds).
+# Matches the container-side ASK_USER_TIMEOUT (1800s = 30 minutes).
+PENDING_QUESTION_TIMEOUT_SECONDS = 1800
+
 # -- Directory helpers ---------------------------------------------------------
 
 
@@ -186,3 +190,64 @@ def update_message_id(request_id: str, source_group: str, message_id: str) -> No
         source_group=source_group,
         message_id=message_id,
     )
+
+
+# -- Startup sweep -------------------------------------------------------------
+
+
+async def sweep_expired_questions() -> list[dict]:
+    """Find and auto-expire stale pending questions (crash recovery).
+
+    Called on startup alongside ``sweep_expired_approvals()``.  Writes an
+    error IPC response for each expired question so the container (if still
+    alive) unblocks with a timeout error.
+
+    Returns list of expired question dicts.
+    """
+    # Deferred import to avoid circular dependency:
+    # pending_questions -> ipc._write -> ipc.__init__ -> ipc._handlers_ask_user -> pending_questions
+    from pynchy.ipc._write import ipc_response_path, write_ipc_response
+
+    s = get_settings()
+    ipc_dir = s.data_dir / "ipc"
+    if not ipc_dir.exists():
+        return []
+
+    now = datetime.now(UTC)
+    expired: list[dict] = []
+
+    groups = [f.name for f in ipc_dir.iterdir() if f.is_dir() and f.name != "errors"]
+
+    for grp in groups:
+        pending_dir = ipc_dir / grp / "pending_questions"
+        if not pending_dir.exists():
+            continue
+        for filepath in list(pending_dir.glob("*.json")):
+            try:
+                data = json.loads(filepath.read_text())
+                ts = datetime.fromisoformat(data["timestamp"])
+                age = (now - ts).total_seconds()
+
+                if age > PENDING_QUESTION_TIMEOUT_SECONDS:
+                    write_ipc_response(
+                        ipc_response_path(grp, data["request_id"]),
+                        {"error": "Question expired (no response within timeout)"},
+                    )
+
+                    filepath.unlink()
+                    expired.append(data)
+
+                    logger.info(
+                        "Expired pending question auto-expired",
+                        request_id=data["request_id"],
+                        source_group=grp,
+                        age_seconds=round(age),
+                    )
+            except (json.JSONDecodeError, OSError, KeyError) as exc:
+                logger.warning(
+                    "Failed to process pending question during sweep",
+                    path=str(filepath),
+                    err=str(exc),
+                )
+
+    return expired
