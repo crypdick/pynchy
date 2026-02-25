@@ -488,13 +488,9 @@ async def _run_scheduled_task(
             on_process=lambda proc, name: deps.queue.register_process(
                 chat_jid, proc, name, group.folder
             ),
-            on_output=ctx.wrapped_on_output if on_output else None,
+            on_output=ctx.wrapped_on_output,
             plugin_manager=deps.plugin_manager,
         )
-
-        if output.new_session_id and group.folder not in deps._session_cleared:
-            deps.sessions[group.folder] = output.new_session_id
-            await set_session(group.folder, output.new_session_id)
 
         if output.status == "error":
             logger.error(
