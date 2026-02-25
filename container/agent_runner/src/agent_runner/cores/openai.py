@@ -58,6 +58,7 @@ def _make_shell_executor(cwd: str):
 
     async def executor(request: Any) -> str:
         """Execute a shell command inside the container."""
+
         def get_field(obj: Any, name: str) -> Any:
             if obj is None:
                 return None
@@ -76,7 +77,7 @@ def _make_shell_executor(cwd: str):
         if not commands:
             return "Shell tool request missing commands."
 
-        if isinstance(commands, (list, tuple)):
+        if isinstance(commands, list | tuple):
             command = " && ".join(str(cmd) for cmd in commands)
         else:
             command = str(commands)
@@ -243,9 +244,7 @@ class OpenAIAgentCore:
 
         model = self.config.extra.get("model", "openai/gpt-5.3-codex")
         self._model_primary = model
-        self._model_fallback = self.config.extra.get(
-            "fallback_model", "openai/gpt-5.2-codex"
-        )
+        self._model_fallback = self.config.extra.get("fallback_model", "openai/gpt-5.2-codex")
         self._instructions = instructions
         _log(
             f"Creating agent with model={self._model_primary}, "
@@ -336,9 +335,7 @@ class OpenAIAgentCore:
                 elif hasattr(event.data, "type") and "reasoning" in str(
                     getattr(event.data, "type", "")
                 ):
-                    text = getattr(event.data, "text", None) or getattr(
-                        event.data, "summary", None
-                    )
+                    text = getattr(event.data, "text", None) or getattr(event.data, "summary", None)
                     if text:
                         yield AgentEvent(type="thinking", data={"thinking": text})
 
@@ -409,7 +406,9 @@ class OpenAIAgentCore:
                     elif raw_type == "web_search_call":
                         tool_name = tool_name or "web_search"
                         if tool_input is None:
-                            action = raw_map.get("action") if raw_map else getattr(raw, "action", None)
+                            action = (
+                                raw_map.get("action") if raw_map else getattr(raw, "action", None)
+                            )
                             tool_input = _as_mapping(action) or action
                     elif raw_type in ("function_call", "mcp_call"):
                         if tool_name in (None, "", "unknown_tool"):
@@ -437,9 +436,12 @@ class OpenAIAgentCore:
                                 cmd = action.get("command")
                                 if cmds or cmd:
                                     tool_input = {"commands": cmds} if cmds else {"command": cmd}
-                            if tool_name in (None, "", "unknown_tool"):
-                                if action.get("type") in ("exec", "shell", "shell_call"):
-                                    tool_name = "shell"
+                            if tool_name in (None, "", "unknown_tool") and action.get("type") in (
+                                "exec",
+                                "shell",
+                                "shell_call",
+                            ):
+                                tool_name = "shell"
 
                     data_dump = raw_map
                     if data_dump is None and hasattr(raw, "__dict__"):
