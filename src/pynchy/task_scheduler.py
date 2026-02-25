@@ -233,7 +233,7 @@ async def _run_host_cron_job(job_name: str) -> None:
 async def _poll_host_cron_jobs() -> None:
     """Run due host cron jobs configured in settings.cron_jobs."""
     s = get_settings()
-    cron_jobs = getattr(s, "cron_jobs", {})
+    cron_jobs = s.cron_jobs
     if not cron_jobs:
         return
 

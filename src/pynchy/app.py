@@ -292,18 +292,7 @@ class PynchyApp:
             if not self.channels:
                 return True
 
-            for ch in self.channels:
-                try:
-                    if ch.owns_jid(jid):
-                        return True
-                except Exception as exc:
-                    logger.warning(
-                        "Channel ownership check failed",
-                        channel=ch.name,
-                        jid=jid,
-                        err=str(exc),
-                    )
-            return False
+            return any(ch.owns_jid(jid) for ch in self.channels)
 
         return [
             {

@@ -66,7 +66,7 @@ async def _mark_success(ledger_id: int | None, channel_name: str) -> None:
 
         await mark_delivered(ledger_id, channel_name)
     except Exception:
-        pass
+        logger.debug("Ledger mark_delivered failed (best-effort)", channel=channel_name)
 
 
 async def _mark_error(ledger_id: int | None, channel_name: str, error: str) -> None:
@@ -77,7 +77,7 @@ async def _mark_error(ledger_id: int | None, channel_name: str, error: str) -> N
 
         await mark_delivery_error(ledger_id, channel_name, error)
     except Exception:
-        pass
+        logger.debug("Ledger mark_delivery_error failed (best-effort)", channel=channel_name)
 
 
 # ---------------------------------------------------------------------------
