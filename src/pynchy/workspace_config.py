@@ -243,26 +243,6 @@ async def create_channel_aliases(
     return created
 
 
-async def _ensure_aliases_for_all_groups(
-    workspaces: dict[str, WorkspaceProfile],
-    channels: list[Channel],
-    register_alias_fn: Callable[[str, str, str], Awaitable[None]],
-    get_channel_jid_fn: Callable[[str, str], str | None] | None = None,
-) -> None:
-    """Create missing channel aliases for every registered group.
-
-    Groups created via channel auto-registration (e.g. a new chat group)
-    won't have aliases on other channels. This fills the gaps.
-    """
-    created = 0
-    for jid, group in workspaces.items():
-        created += await create_channel_aliases(
-            jid, group.name, channels, register_alias_fn, get_channel_jid_fn
-        )
-    if created:
-        logger.info("Created missing channel aliases", count=created)
-
-
 async def reconcile_workspaces(
     workspaces: dict[str, WorkspaceProfile],
     channels: list[Channel],
