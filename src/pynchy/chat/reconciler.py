@@ -17,6 +17,7 @@ from pynchy.db import (
     mark_delivered,
     mark_delivery_error,
     message_exists,
+    prune_stale_cursors,
 )
 from pynchy.logger import logger
 
@@ -152,6 +153,14 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
         logger.info("Recovered missed channel messages", count=recovered)
     if retried:
         logger.info("Retried pending outbound deliveries", count=retried)
+    if not recovered and not retried:
+        logger.debug("Reconciliation complete, nothing to recover")
+
+    # GC cursors for channels that no longer exist (e.g. after a rename)
+    active_names = {ch.name for ch in deps.channels}
+    pruned = await prune_stale_cursors(active_names)
+    if pruned:
+        logger.info("Pruned stale cursors", count=pruned)
 
 
 def reset_cooldowns() -> None:
