@@ -12,12 +12,12 @@ from pynchy.git_ops.sync import (
     host_notify_worktree_updates,
     host_sync_worktree,
     resolve_git_policy,
-    write_ipc_response,
 )
 from pynchy.git_ops.sync_poll import needs_container_rebuild, needs_deploy
 from pynchy.git_ops.utils import get_head_sha
 from pynchy.ipc._deps import IpcDeps
 from pynchy.ipc._registry import register
+from pynchy.ipc._write import write_ipc_response
 from pynchy.logger import logger
 from pynchy.types import WorkspaceProfile
 

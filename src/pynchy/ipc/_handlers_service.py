@@ -7,13 +7,13 @@ plugin-provided handlers discovered via the ``pynchy_service_handler`` hook.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from pynchy.config import get_settings
 from pynchy.ipc._deps import IpcDeps
 from pynchy.ipc._registry import register_prefix
+from pynchy.ipc._write import write_ipc_response
 from pynchy.logger import logger
 from pynchy.plugin import get_plugin_manager
 from pynchy.security.audit import record_security_event
@@ -49,13 +49,8 @@ def clear_plugin_handler_cache() -> None:
 def _write_response(source_group: str, request_id: str, response: dict) -> None:
     """Write a response file for the container to pick up."""
     s = get_settings()
-    responses_dir = s.data_dir / "ipc" / source_group / "responses"
-    responses_dir.mkdir(parents=True, exist_ok=True)
-
-    filepath = responses_dir / f"{request_id}.json"
-    temp_path = filepath.with_suffix(".json.tmp")
-    temp_path.write_text(json.dumps(response, indent=2))
-    temp_path.rename(filepath)
+    filepath = s.data_dir / "ipc" / source_group / "responses" / f"{request_id}.json"
+    write_ipc_response(filepath, response)
 
 
 def _resolve_security(source_group: str, *, is_admin: bool = False) -> WorkspaceSecurity:

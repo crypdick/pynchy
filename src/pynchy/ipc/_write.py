@@ -14,6 +14,7 @@ import json
 import random
 import time
 from pathlib import Path
+from typing import Any
 
 from pynchy.config import get_settings
 
@@ -43,3 +44,15 @@ def write_ipc_close_sentinel(group_folder: str) -> None:
     """Write the ``_close`` sentinel to signal a container to wind down."""
     input_dir = _ipc_input_dir(group_folder)
     (input_dir / "_close").write_text("")
+
+
+def write_ipc_response(path: Path, data: dict[str, Any]) -> None:
+    """Write a JSON response file atomically (tmp → rename).
+
+    Used by IPC handlers to write responses that containers pick up
+    (e.g. merge results, service request responses).
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data))
+    tmp.rename(path)

@@ -19,7 +19,6 @@ from pynchy.git_ops.repo import RepoContext
 from pynchy.git_ops.sync import (
     host_notify_worktree_updates,
     host_sync_worktree,
-    write_ipc_response,
 )
 from pynchy.git_ops.sync_poll import (
     _hash_config_files,
@@ -29,6 +28,7 @@ from pynchy.git_ops.sync_poll import (
     needs_deploy,
 )
 from pynchy.git_ops.worktree import ensure_worktree
+from pynchy.ipc._write import write_ipc_response
 
 # ---------------------------------------------------------------------------
 # Helpers
