@@ -12,7 +12,7 @@ from pathlib import Path
 from mcp.types import CallToolResult, TextContent, Tool
 
 from agent_runner.agent_tools import _ipc
-from agent_runner.agent_tools._registry import ToolEntry, register
+from agent_runner.agent_tools._registry import ToolEntry, register, tool_error
 
 # -- sync_worktree_to_main --
 
@@ -58,21 +58,18 @@ async def _sync_worktree_handle(arguments: dict) -> list[TextContent] | CallTool
 
             if result.get("success"):
                 return [TextContent(type="text", text=result["message"])]
-            return CallToolResult(
-                content=[TextContent(type="text", text=result["message"])],
-                isError=True,
-            )
+            return tool_error(result["message"])
         await asyncio.sleep(0.3)
 
-    return CallToolResult(
-        content=[
-            TextContent(
-                type="text",
-                text="Timed out (120s). Retry or check with the host.",
-            )
-        ],
-        isError=True,
-    )
+    return tool_error("Timed out (120s). Retry or check with the host.")
+
+
+def _exit_container() -> None:
+    """Write the close sentinel and terminate the container process."""
+    close_sentinel = Path("/workspace/ipc/input/_close")
+    close_sentinel.parent.mkdir(parents=True, exist_ok=True)
+    close_sentinel.write_text("")
+    os._exit(0)
 
 
 # -- finished_work --
@@ -109,11 +106,7 @@ async def _finished_work_handle(arguments: dict) -> list[TextContent]:
             "timestamp": _ipc.now_iso(),
         },
     )
-
-    close_sentinel = Path("/workspace/ipc/input/_close")
-    close_sentinel.parent.mkdir(parents=True, exist_ok=True)
-    close_sentinel.write_text("")
-    os._exit(0)
+    _exit_container()
 
 
 # -- reset_context --
@@ -167,11 +160,7 @@ async def _reset_context_handle(arguments: dict) -> list[TextContent]:
     if arguments.get("message"):
         data["message"] = arguments["message"]
     _ipc.write_ipc_file(_ipc.TASKS_DIR, data)
-
-    close_sentinel = Path("/workspace/ipc/input/_close")
-    close_sentinel.parent.mkdir(parents=True, exist_ok=True)
-    close_sentinel.write_text("")
-    os._exit(0)
+    _exit_container()
 
 
 register(

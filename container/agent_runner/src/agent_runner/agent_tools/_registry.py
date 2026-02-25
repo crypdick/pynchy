@@ -65,6 +65,14 @@ def all_tools() -> list[Tool]:
     return [t for e in _TOOLS.values() if (t := e.definition()) is not None]
 
 
+def tool_error(msg: str) -> CallToolResult:
+    """Return an MCP error result with a text message."""
+    return CallToolResult(
+        content=[TextContent(type="text", text=msg)],
+        isError=True,
+    )
+
+
 def get_handler(name: str) -> Callable[..., Awaitable[list[TextContent] | CallToolResult]] | None:
     """Look up the handler for a tool name."""
     entry = _TOOLS.get(name)

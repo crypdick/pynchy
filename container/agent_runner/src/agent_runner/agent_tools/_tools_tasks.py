@@ -8,7 +8,7 @@ from croniter import croniter
 from mcp.types import CallToolResult, TextContent, Tool
 
 from agent_runner.agent_tools import _ipc
-from agent_runner.agent_tools._registry import ToolEntry, register
+from agent_runner.agent_tools._registry import ToolEntry, register, tool_error
 
 # -- schedule_task --
 
@@ -151,59 +151,19 @@ async def _schedule_task_handle(arguments: dict) -> list[TextContent] | CallTool
     task_type = arguments.get("task_type", "agent")
 
     if task_type not in ("agent", "host"):
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f'Invalid task_type: "{task_type}". Must be "agent" or "host".',
-                )
-            ],
-            isError=True,
-        )
+        return tool_error(f'Invalid task_type: "{task_type}". Must be "agent" or "host".')
 
     if task_type == "host" and not _ipc.is_admin:
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text="Only the admin group can schedule host-level jobs.",
-                )
-            ],
-            isError=True,
-        )
+        return tool_error("Only the admin group can schedule host-level jobs.")
 
     if task_type == "agent":
         if not arguments.get("prompt"):
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text='Agent tasks require a "prompt" field.',
-                    )
-                ],
-                isError=True,
-            )
+            return tool_error('Agent tasks require a "prompt" field.')
     else:
         if not arguments.get("command"):
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text='Host tasks require a "command" field.',
-                    )
-                ],
-                isError=True,
-            )
+            return tool_error('Host tasks require a "command" field.')
         if not arguments.get("name"):
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text='Host tasks require a "name" field.',
-                    )
-                ],
-                isError=True,
-            )
+            return tool_error('Host tasks require a "name" field.')
 
     schedule_type = arguments["schedule_type"]
     schedule_value = arguments["schedule_value"]
@@ -263,19 +223,9 @@ def _validate_schedule(schedule_type: str, schedule_value: str) -> CallToolResul
         try:
             croniter(schedule_value)
         except (ValueError, KeyError):
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=(
-                            f'Invalid cron: "{schedule_value}". '
-                            "Use format like "
-                            '"0 9 * * *" (daily 9am) or '
-                            '"*/5 * * * *" (every 5 min).'
-                        ),
-                    )
-                ],
-                isError=True,
+            return tool_error(
+                f'Invalid cron: "{schedule_value}". '
+                'Use format like "0 9 * * *" (daily 9am) or "*/5 * * * *" (every 5 min).'
             )
 
     elif schedule_type == "interval":
@@ -284,18 +234,9 @@ def _validate_schedule(schedule_type: str, schedule_value: str) -> CallToolResul
             if ms <= 0:
                 raise ValueError
         except (ValueError, TypeError):
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=(
-                            f'Invalid interval: "{schedule_value}".'
-                            " Must be positive milliseconds "
-                            '(e.g., "300000" for 5 min).'
-                        ),
-                    )
-                ],
-                isError=True,
+            return tool_error(
+                f'Invalid interval: "{schedule_value}". '
+                'Must be positive milliseconds (e.g., "300000" for 5 min).'
             )
 
     elif schedule_type == "once":
@@ -304,18 +245,9 @@ def _validate_schedule(schedule_type: str, schedule_value: str) -> CallToolResul
         try:
             datetime.fromisoformat(schedule_value)
         except (ValueError, TypeError):
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=(
-                            f'Invalid timestamp: "{schedule_value}"'
-                            ". Use ISO 8601 format like "
-                            '"2026-02-01T15:30:00".'
-                        ),
-                    )
-                ],
-                isError=True,
+            return tool_error(
+                f'Invalid timestamp: "{schedule_value}". '
+                'Use ISO 8601 format like "2026-02-01T15:30:00".'
             )
 
     return None

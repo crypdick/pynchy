@@ -8,7 +8,7 @@ import subprocess
 from mcp.types import CallToolResult, TextContent, Tool
 
 from agent_runner.agent_tools import _ipc
-from agent_runner.agent_tools._registry import ToolEntry, register
+from agent_runner.agent_tools._registry import ToolEntry, register, tool_error
 
 # -- register_group --
 
@@ -50,15 +50,7 @@ def _register_group_definition() -> Tool:
 
 async def _register_group_handle(arguments: dict) -> list[TextContent] | CallToolResult:
     if not _ipc.is_admin:
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text="Only the admin group can register new groups.",
-                )
-            ],
-            isError=True,
-        )
+        return tool_error("Only the admin group can register new groups.")
 
     data = {
         "type": "register_group",
@@ -120,15 +112,7 @@ def _deploy_changes_definition() -> Tool | None:
 
 async def _deploy_changes_handle(arguments: dict) -> list[TextContent] | CallToolResult:
     if not _ipc.is_admin:
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text="Only the admin group can deploy.",
-                )
-            ],
-            isError=True,
-        )
+        return tool_error("Only the admin group can deploy.")
 
     try:
         head_sha = subprocess.run(
