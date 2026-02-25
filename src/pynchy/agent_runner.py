@@ -316,7 +316,7 @@ async def _cold_start(
     # After a service restart or container crash, a dead Docker container may
     # still exist with this stable name, causing `docker run` to fail with
     # exit code 125 (name conflict).
-    from pynchy.container_runner._session import _docker_rm_force
+    from pynchy.container_runner._process import _docker_rm_force
 
     await _docker_rm_force(container_name)
 

@@ -74,6 +74,9 @@ def _patch_test_settings(tmp_path: Path):
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         stack.enter_context(
+            patch("pynchy.container_runner._process._docker_rm_force", _noop_docker_rm)
+        )
+        stack.enter_context(
             patch("pynchy.container_runner._session._docker_rm_force", _noop_docker_rm)
         )
         yield
@@ -568,6 +571,4 @@ class TestUserMessageBroadcast:
         # 2. Message should be broadcast to OTHER channels (not back to source)
         # Currently this FAILS because _on_inbound doesn't broadcast
         sent_to_target = [m for m in target_channel.sent_messages if "Hello from source" in m[1]]
-        assert len(sent_to_target) == 1, (
-            "User messages should be broadcast to other channels"
-        )
+        assert len(sent_to_target) == 1, "User messages should be broadcast to other channels"

@@ -25,10 +25,10 @@ import contextlib
 from pynchy.config import get_settings
 from pynchy.container_runner._process import (
     OnOutput,
+    _docker_rm_force,
 )
 from pynchy.ipc._write import write_ipc_close_sentinel, write_ipc_message
 from pynchy.logger import logger
-from pynchy.runtime.runtime import get_runtime
 
 
 class SessionDiedError(Exception):
@@ -366,21 +366,3 @@ def _clean_ipc_output(group_folder: str) -> None:
     for f in output_dir.iterdir():
         with contextlib.suppress(OSError):
             f.unlink()
-
-
-async def _docker_rm_force(container_name: str) -> None:
-    """Force-remove a container by name, ignoring expected errors."""
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            get_runtime().cli,
-            "rm",
-            "-f",
-            container_name,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        await proc.wait()
-    except OSError as exc:
-        # OSError covers FileNotFoundError (CLI missing) and other
-        # process-spawn failures — expected in degraded environments.
-        logger.debug("docker rm -f failed", container=container_name, err=str(exc))

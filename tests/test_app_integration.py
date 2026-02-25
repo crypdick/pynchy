@@ -75,7 +75,12 @@ def _patch_test_settings(tmp_path: Path):
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         # Patch _docker_rm_force which spawns a real subprocess to remove
-        # containers — would hang in the test environment.
+        # containers — would hang in the test environment.  Must patch at both
+        # the canonical location (_process) and the import site (_session)
+        # because Python's from-import creates a separate reference.
+        stack.enter_context(
+            patch("pynchy.container_runner._process._docker_rm_force", _noop_docker_rm)
+        )
         stack.enter_context(
             patch("pynchy.container_runner._session._docker_rm_force", _noop_docker_rm)
         )

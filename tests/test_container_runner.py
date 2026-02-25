@@ -575,8 +575,8 @@ def _patch_subprocess(fake_proc: FakeProcess):
     """Patch asyncio.create_subprocess_exec and docker cleanup for tests.
 
     Also patches _docker_rm_force (called as fire-and-forget in
-    run_container_agent) since it uses its own unpatched subprocess call
-    from _session.py, which would hang the event loop during teardown.
+    run_container_agent) since it spawns a real subprocess to remove
+    containers, which would hang the event loop during teardown.
 
     Asserts that stdin=DEVNULL is passed (input is via IPC file, not pipe).
     """
@@ -592,6 +592,7 @@ def _patch_subprocess(fake_proc: FakeProcess):
 
     with (
         patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", _fake_create),
+        patch("pynchy.container_runner._process._docker_rm_force", _noop_rm),
         patch("pynchy.container_runner._session._docker_rm_force", _noop_rm),
     ):
         yield
