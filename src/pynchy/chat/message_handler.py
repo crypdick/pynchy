@@ -117,6 +117,8 @@ async def intercept_special_command(
     """
     content = message.content.strip()
 
+    # --- Commands that manage their own cursor (via _teardown_group) ---
+
     if is_context_reset(content):
         await deps.handle_context_reset(chat_jid, group, message.timestamp)
         logger.info("Context reset", group=group.name)
@@ -127,35 +129,29 @@ async def intercept_special_command(
         logger.info("End session", group=group.name)
         return True
 
+    # --- Redeploy: advance cursor BEFORE the call (process may die) ---
+
     if is_redeploy(content):
         deps.last_agent_timestamp[chat_jid] = message.timestamp
         await deps.save_state()
         await deps.trigger_manual_redeploy(chat_jid)
         return True
 
-    approval = is_approval_command(content)
-    if approval:
+    # --- Commands with uniform post-handler cursor advancement ---
+
+    if approval := is_approval_command(content):
         action, short_id = approval
         await handle_approval_command(deps, chat_jid, action, short_id, message.sender_name)
-        deps.last_agent_timestamp[chat_jid] = message.timestamp
-        await deps.save_state()
-        return True
-
-    if is_pending_query(content):
+    elif is_pending_query(content):
         await handle_pending_query(deps, chat_jid)
-        deps.last_agent_timestamp[chat_jid] = message.timestamp
-        await deps.save_state()
-        return True
+    elif content.startswith("!") and content[1:]:
+        await execute_direct_command(deps, chat_jid, group, message, content[1:])
+    else:
+        return False
 
-    if content.startswith("!"):
-        command = content[1:]
-        if command:
-            await execute_direct_command(deps, chat_jid, group, message, command)
-            deps.last_agent_timestamp[chat_jid] = message.timestamp
-            await deps.save_state()
-            return True
-
-    return False
+    deps.last_agent_timestamp[chat_jid] = message.timestamp
+    await deps.save_state()
+    return True
 
 
 async def execute_direct_command(
