@@ -19,14 +19,14 @@ This package is split into focused submodules:
 # Re-export public API so that `from pynchy.container_runner import X` keeps working.
 # Private helpers (_xxx) should be imported from their submodules directly.
 
-from pynchy.container_runner._credentials import _write_env_file
+from pynchy.container_runner._credentials import has_api_credentials
 from pynchy.container_runner._orchestrator import (
     OnOutput,
     OnProcess,
     resolve_agent_core,
     resolve_container_timeout,
 )
-from pynchy.container_runner._process import _graceful_stop, read_stderr
+from pynchy.container_runner._process import _graceful_stop
 from pynchy.container_runner._session import (
     ContainerSession,
     SessionDiedError,
@@ -44,13 +44,12 @@ __all__ = [
     "OnProcess",
     "SessionDiedError",
     "_graceful_stop",
-    "_write_env_file",
+    "has_api_credentials",
     "create_session",
     "destroy_all_sessions",
     "destroy_session",
     "get_session",
     "get_session_output_handler",
-    "read_stderr",
     "resolve_agent_core",
     "resolve_container_timeout",
     "write_groups_snapshot",

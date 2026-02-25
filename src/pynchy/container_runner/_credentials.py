@@ -104,6 +104,18 @@ def _shell_quote(value: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def has_api_credentials() -> bool:
+    """Check whether LLM API credentials are available for containers.
+
+    Pure check with no filesystem side effects — use this instead of
+    calling :func:`_write_env_file` with a dummy group folder.
+    """
+    from pynchy.container_runner.gateway import get_gateway
+
+    gateway = get_gateway()
+    return gateway is not None and gateway.has_provider("anthropic")
+
+
 def _write_env_file(*, is_admin: bool, group_folder: str) -> Path | None:
     """Write credential env vars for a specific group's container.
 
