@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from pynchy.config import get_settings
 from pynchy.db import get_messages_since, store_message
 from pynchy.git_ops.utils import get_head_commit_message, get_head_sha, is_repo_dirty, run_git
+from pynchy.ipc._write import write_json_atomic
 from pynchy.logger import logger
 from pynchy.types import NewMessage, WorkspaceProfile, WorkspaceSecurity
 from pynchy.utils import generate_message_id
@@ -131,7 +132,7 @@ async def auto_rollback(continuation_path: Path, exc: Exception) -> None:
         f"ROLLBACK: Startup failed ({error_short}). Rolled back to {previous_sha[:8]}."
     )
     continuation["previous_commit_sha"] = ""
-    continuation_path.write_text(json.dumps(continuation, indent=2))
+    write_json_atomic(continuation_path, continuation, indent=2)
 
     logger.info("Rollback complete, exiting for service restart")
     sys.exit(1)
