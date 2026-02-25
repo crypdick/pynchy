@@ -8,7 +8,7 @@ import json
 import subprocess
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from conftest import make_settings
@@ -1872,7 +1872,9 @@ class TestGetSessionOutputHandler:
         )
 
         session = ContainerSession("handler-test", "pynchy-handler-test")
-        session.proc = FakeProcess()  # type: ignore[assignment]
+        mock_proc = MagicMock()
+        mock_proc.returncode = None  # simulate a running process
+        session.proc = mock_proc  # type: ignore[assignment]
         handler = AsyncMock()
         session._on_output = handler
         _sessions["handler-test"] = session
@@ -1899,7 +1901,9 @@ class TestGetSessionOutputHandler:
         )
 
         session = ContainerSession("no-handler-test", "pynchy-no-handler-test")
-        session.proc = FakeProcess()  # type: ignore[assignment]
+        mock_proc = MagicMock()
+        mock_proc.returncode = None  # simulate a running process
+        session.proc = mock_proc  # type: ignore[assignment]
         session._on_output = None
         _sessions["no-handler-test"] = session
 

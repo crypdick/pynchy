@@ -94,8 +94,7 @@ def _channel_allows_outbound(deps: BusDeps, chat_jid: str, channel_name: str) ->
     group = _find_workspace_by_jid(deps, chat_jid)
     if group is None:
         return True
-    from pynchy.config_access import resolve_channel_config
-    from pynchy.config_access import resolve_workspace_connection_name
+    from pynchy.config_access import resolve_channel_config, resolve_workspace_connection_name
 
     expected = resolve_workspace_connection_name(group.folder)
     if expected and expected != channel_name:

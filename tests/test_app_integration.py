@@ -235,9 +235,7 @@ async def _schedule_outputs_via_session(
     # If no output triggered query done, append a pulse
     if not session._query_done.is_set():
         pulse = _parse_container_output(
-            json.dumps(
-                {"status": "success", "result": None, "new_session_id": final_session_id}
-            )
+            json.dumps({"status": "success", "result": None, "new_session_id": final_session_id})
         )
         if session._on_output:
             await session._on_output(pulse)
@@ -351,8 +349,18 @@ class TestProcessGroupMessages:
 
         trace_outputs = [
             {"type": "thinking", "status": "success", "thinking": "Let me figure this out..."},
-            {"type": "tool_use", "status": "success", "tool_name": "Bash", "tool_input": {"command": "ls"}},
-            {"type": "result", "status": "success", "result": "Done!", "new_session_id": "sess-trace"},
+            {
+                "type": "tool_use",
+                "status": "success",
+                "tool_name": "Bash",
+                "tool_input": {"command": "ls"},
+            },
+            {
+                "type": "result",
+                "status": "success",
+                "result": "Done!",
+                "new_session_id": "sess-trace",
+            },
             # Query-done pulse
             {"status": "success", "result": None, "new_session_id": "sess-trace"},
         ]
@@ -537,6 +545,8 @@ class TestRecoverPendingMessages:
     """Test startup crash recovery."""
 
     async def test_enqueues_groups_with_pending_messages(self, app: PynchyApp):
+        from pynchy import startup_handler
+
         # Store a message but don't advance the cursor
         msg = _make_message(content="missed message")
         await store_message(msg)
@@ -544,15 +554,17 @@ class TestRecoverPendingMessages:
         enqueued = []
         app.queue.enqueue_message_check = lambda jid: enqueued.append(jid)  # type: ignore[assignment]
 
-        await app._recover_pending_messages()
+        await startup_handler.recover_pending_messages(app)
         assert "group@g.us" in enqueued
 
     async def test_skips_groups_with_no_pending_messages(self, app: PynchyApp):
+        from pynchy import startup_handler
+
         # No messages stored at all
         enqueued = []
         app.queue.enqueue_message_check = lambda jid: enqueued.append(jid)  # type: ignore[assignment]
 
-        await app._recover_pending_messages()
+        await startup_handler.recover_pending_messages(app)
         assert len(enqueued) == 0
 
 
@@ -594,8 +606,18 @@ class TestTracePersistence:
 
         trace_outputs = [
             {"type": "thinking", "status": "success", "thinking": "Let me think..."},
-            {"type": "tool_use", "status": "success", "tool_name": "Bash", "tool_input": {"command": "echo hi"}},
-            {"type": "result", "status": "success", "result": "Done", "new_session_id": "sess-trace"},
+            {
+                "type": "tool_use",
+                "status": "success",
+                "tool_name": "Bash",
+                "tool_input": {"command": "echo hi"},
+            },
+            {
+                "type": "result",
+                "status": "success",
+                "result": "Done",
+                "new_session_id": "sess-trace",
+            },
             {"status": "success", "result": None, "new_session_id": "sess-trace"},
         ]
 
@@ -633,7 +655,12 @@ class TestTracePersistence:
         fake_proc = FakeProcess()
 
         trace_outputs = [
-            {"type": "system", "status": "success", "system_subtype": "init", "system_data": {"session_id": "sess-sys"}},
+            {
+                "type": "system",
+                "status": "success",
+                "system_subtype": "init",
+                "system_data": {"session_id": "sess-sys"},
+            },
             {"type": "result", "status": "success", "result": "Hi", "new_session_id": "sess-sys"},
             {"status": "success", "result": None, "new_session_id": "sess-sys"},
         ]

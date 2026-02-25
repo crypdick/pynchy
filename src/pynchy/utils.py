@@ -1,17 +1,15 @@
 """Shared utility functions.
 
 Small helpers used across multiple modules. Avoids duplication of common
-patterns like timestamped ID generation, safe JSON loading, schedule
-calculations, and idle timer management.
+patterns like timestamped ID generation, schedule calculations, and idle
+timer management.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 from collections.abc import Callable
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Literal
 from zoneinfo import ZoneInfo
 
@@ -30,18 +28,6 @@ def generate_message_id(prefix: str = "") -> str:
     """
     ms = int(datetime.now(UTC).timestamp() * 1000)
     return f"{prefix}-{ms}" if prefix else str(ms)
-
-
-def safe_json_load(path: Path, *, default: object = None) -> object:
-    """Read and parse a JSON file, returning *default* on any error.
-
-    Logs a warning on failure so callers don't need their own try/except.
-    """
-    try:
-        return json.loads(path.read_text())
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.warning("Failed to read JSON file", path=str(path), err=str(exc))
-        return default
 
 
 def compute_next_run(

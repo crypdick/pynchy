@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
-from pathlib import Path
 
 import pytest
 
@@ -12,7 +10,6 @@ from pynchy.utils import (
     compute_next_run,
     create_background_task,
     generate_message_id,
-    safe_json_load,
 )
 
 
@@ -51,51 +48,6 @@ class TestGenerateMessageId:
         result = generate_message_id("host")
         ts_part = result.split("-", 1)[1]
         assert ts_part.isdigit()
-
-
-class TestSafeJsonLoad:
-    """Test safe_json_load for graceful error handling."""
-
-    def test_reads_valid_json(self, tmp_path: Path):
-        f = tmp_path / "data.json"
-        f.write_text('{"key": "value"}')
-        result = safe_json_load(f)
-        assert result == {"key": "value"}
-
-    def test_reads_json_list(self, tmp_path: Path):
-        f = tmp_path / "data.json"
-        f.write_text("[1, 2, 3]")
-        result = safe_json_load(f)
-        assert result == [1, 2, 3]
-
-    def test_returns_default_on_missing_file(self, tmp_path: Path):
-        f = tmp_path / "nonexistent.json"
-        result = safe_json_load(f, default={"fallback": True})
-        assert result == {"fallback": True}
-
-    def test_returns_none_default_on_missing_file(self, tmp_path: Path):
-        f = tmp_path / "nonexistent.json"
-        result = safe_json_load(f)
-        assert result is None
-
-    def test_returns_default_on_invalid_json(self, tmp_path: Path):
-        f = tmp_path / "bad.json"
-        f.write_text("not json at all {{{")
-        result = safe_json_load(f, default=[])
-        assert result == []
-
-    def test_returns_default_on_empty_file(self, tmp_path: Path):
-        f = tmp_path / "empty.json"
-        f.write_text("")
-        result = safe_json_load(f, default="empty")
-        assert result == "empty"
-
-    def test_handles_nested_json(self, tmp_path: Path):
-        data = {"a": {"b": [1, 2, {"c": True}]}}
-        f = tmp_path / "nested.json"
-        f.write_text(json.dumps(data))
-        result = safe_json_load(f)
-        assert result == data
 
 
 class TestComputeNextRun:

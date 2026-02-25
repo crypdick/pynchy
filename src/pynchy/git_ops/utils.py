@@ -1,4 +1,4 @@
-"""Shared git helpers used by worktree, workspace_ops, and git_sync modules."""
+"""Shared git helpers used by worktree and git_sync modules."""
 
 from __future__ import annotations
 
