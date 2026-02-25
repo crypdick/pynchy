@@ -191,6 +191,11 @@
 # trigger = "always"
 # repo_access = "owner/repo"
 
+# CLEAN ROOM POLICY: Admin workspaces cannot have MCP servers with public_source = true.
+# Any MCP not declared in [services] defaults to public_source = true.
+# Pynchy refuses to start if this constraint is violated.
+# See: https://pynchy.ricardodecal.com/usage/security/#admin-clean-room
+
 # Example workspace with Google MCP (dot-syntax instance names):
 # [sandbox.anyscale-1]
 # chat = "connection.slack.synapse.chat.anyscale-1"
@@ -214,12 +219,12 @@
 # chat = "connection.slack.synapse.chat.acme-1"
 # mcp_servers = ["slack_mcp_acme"]
 
-# Example admin workspace with unrestricted MCP access:
+# Example admin workspace with private-source MCPs only (clean room policy enforced):
 # [sandbox.admin]
 # chat = "connection.slack.synapse.chat.admin"
 # is_admin = true
-# mcp_servers = ["all"]
-# # no [mcp.playwright] section → no --allowed-origins → unrestricted
+# mcp_servers = ["caldav"]   # only MCPs declared with public_source = false are allowed
+# # mcp_servers = ["all"] would fail if any server has public_source = true (the default)
 
 # Plugins can provide additional managed sandboxes automatically
 # (for example, the `code-improver` periodic agent for pynchy core).
@@ -272,7 +277,7 @@
 # [caldav.servers.work]
 # url = "https://work.nextcloud.com/remote.php/dav/"
 # username = "user@work.com"
-# password = "work-app-password"
+# password = "work-app-password"  # pragma: allowlist secret
 # default_calendar = "meetings"    # optional: what "primary" resolves to
 # allow = ["meetings", "standup"]  # optional: only expose these calendars
 # ignore = ["trash"]               # optional: hide these (ignored if allow is set)
@@ -280,7 +285,7 @@
 # [caldav.servers.personal]
 # url = "https://personal.nextcloud.com/remote.php/dav/"
 # username = "me@example.com"
-# password = "personal-app-password"
+# password = "personal-app-password"  # pragma: allowlist secret
 # ignore = ["contact_birthdays"]   # hide auto-generated calendars
 
 # ─────────────────────────────────────────────────────────────────────────────
