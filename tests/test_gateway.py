@@ -119,7 +119,8 @@ class TestCollectYamlEnvRefs:
         monkeypatch.setenv("FOO_TOKEN", "foo-val")
         monkeypatch.setenv("BAR_TOKEN", "bar-val")
 
-        result = LiteLLMGateway._collect_yaml_env_refs(cfg)
+        env = LiteLLMGateway._resolve_env(cfg)
+        result = LiteLLMGateway._collect_yaml_env_refs(cfg, env)
         assert ("BAR_TOKEN", "bar-val") in result
         assert ("FOO_TOKEN", "foo-val") in result
         assert len(result) == 2
@@ -136,7 +137,8 @@ class TestCollectYamlEnvRefs:
         monkeypatch.setenv("LITELLM_MASTER_KEY", "should-not-appear")
         monkeypatch.setenv("MY_KEY", "my-val")
 
-        result = LiteLLMGateway._collect_yaml_env_refs(cfg)
+        env = LiteLLMGateway._resolve_env(cfg)
+        result = LiteLLMGateway._collect_yaml_env_refs(cfg, env)
         names = [name for name, _ in result]
         assert "LITELLM_MASTER_KEY" not in names
         assert "MY_KEY" in names
@@ -146,7 +148,8 @@ class TestCollectYamlEnvRefs:
         cfg.write_text("api_key: os.environ/MISSING_VAR\n")
         monkeypatch.delenv("MISSING_VAR", raising=False)
 
-        result = LiteLLMGateway._collect_yaml_env_refs(cfg)
+        env = LiteLLMGateway._resolve_env(cfg)
+        result = LiteLLMGateway._collect_yaml_env_refs(cfg, env)
         assert result == []
 
     def test_reads_from_dotenv_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -157,7 +160,8 @@ class TestCollectYamlEnvRefs:
         # .env as sibling of config file — no CWD dependency
         (tmp_path / ".env").write_text("DOTENV_ONLY_TOKEN=from-dotenv\n")
 
-        result = LiteLLMGateway._collect_yaml_env_refs(cfg)
+        env = LiteLLMGateway._resolve_env(cfg)
+        result = LiteLLMGateway._collect_yaml_env_refs(cfg, env)
         assert ("DOTENV_ONLY_TOKEN", "from-dotenv") in result
 
     @pytest.mark.asyncio

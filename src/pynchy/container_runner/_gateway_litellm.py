@@ -190,21 +190,19 @@ class LiteLLMGateway:
         return {**dotenv_vars, **os.environ}
 
     @staticmethod
-    def _collect_yaml_env_refs(config_path: Path) -> list[tuple[str, str]]:
-        """Scan litellm config for ``os.environ/`` references and resolve from host env.
-
-        Checks both ``os.environ`` and the project ``.env`` file (via
-        python-dotenv).  ``os.environ`` wins on conflicts.
+    def _collect_yaml_env_refs(config_path: Path, env: dict[str, str]) -> list[tuple[str, str]]:
+        """Scan litellm config for ``os.environ/`` references and resolve from *env*.
 
         Returns ``(name, value)`` pairs for every referenced var that is
-        set on the host.  Gateway-managed vars are excluded.  Missing or
+        set in *env*.  Gateway-managed vars are excluded.  Missing or
         placeholder vars produce a warning and are skipped.
+
+        Callers should pass the **filtered** config path so that env vars
+        belonging to removed model entries are not forwarded.
         """
         text = config_path.read_text()
         var_names = set(re.findall(r"os\.environ/(\w+)", text))
         var_names -= LiteLLMGateway._GATEWAY_MANAGED_VARS
-
-        env = LiteLLMGateway._resolve_env(config_path)
 
         resolved: list[tuple[str, str]] = []
         for name in sorted(var_names):
@@ -221,7 +219,7 @@ class LiteLLMGateway:
         return resolved
 
     @staticmethod
-    def _prepare_config(config_path: Path, output_dir: Path) -> Path:
+    def _prepare_config(config_path: Path, output_dir: Path, env: dict[str, str]) -> Path:
         """Create a filtered copy of the litellm config.
 
         Removes ``model_list`` entries whose ``api_key`` references an
@@ -236,7 +234,6 @@ class LiteLLMGateway:
         """
         import yaml
 
-        env = LiteLLMGateway._resolve_env(config_path)
         config = yaml.safe_load(config_path.read_text())
 
         if not isinstance(config, dict) or "model_list" not in config:
@@ -384,8 +381,11 @@ class LiteLLMGateway:
         # Remove stale LiteLLM container from previous run
         remove_container(_LITELLM_CONTAINER)
 
+        # Resolve env vars once — shared by config filtering and env-var forwarding.
+        env = self._resolve_env(self._config_path)
+
         # Filter the config: remove model entries with missing/placeholder keys
-        filtered_config = self._prepare_config(self._config_path, self._data_dir)
+        filtered_config = self._prepare_config(self._config_path, self._data_dir, env)
 
         logger.info(
             "Starting LiteLLM proxy container",
@@ -404,8 +404,9 @@ class LiteLLMGateway:
             f"DATABASE_URL={self._database_url}",
         ]
 
-        # Forward env vars referenced in litellm_config.yaml
-        for var_name, value in self._collect_yaml_env_refs(self._config_path):
+        # Forward env vars referenced in the *filtered* config so we don't
+        # forward vars for model entries that were already removed.
+        for var_name, value in self._collect_yaml_env_refs(filtered_config, env):
             env_vars.extend(["-e", f"{var_name}={value}"])
 
         # Add UI credentials if configured
