@@ -346,6 +346,37 @@ class PynchyApp:
 
         await handle_reaction(self, jid, message_ts, user_id, emoji)
 
+    async def _on_ask_user_answer(self, request_id: str, answer: dict) -> None:
+        """Handle an ask_user answer from a channel interaction callback."""
+        from pynchy.chat.ask_user_handler import handle_ask_user_answer
+
+        await handle_ask_user_answer(request_id, answer, self)
+
+    async def enqueue_message(self, chat_jid: str, text: str) -> None:
+        """Inject a synthetic message for cold-start answer delivery.
+
+        Satisfies the AskUserDeps protocol.  Stores the message directly
+        and triggers queue processing, bypassing user-message filters
+        (allowed_users, trigger patterns) that would reject system messages.
+        """
+        import uuid
+        from datetime import UTC, datetime
+
+        from pynchy.db import store_message
+
+        msg = NewMessage(
+            id=f"ask-user-answer-{uuid.uuid4().hex[:8]}",
+            chat_jid=chat_jid,
+            sender="system",
+            sender_name="System",
+            content=text,
+            timestamp=datetime.now(UTC).isoformat(),
+            is_from_me=False,
+            message_type="system",
+        )
+        await store_message(msg)
+        self.queue.enqueue_message_check(chat_jid)
+
     async def _send_clear_confirmation(self, chat_jid: str) -> None:
         await session_handler.send_clear_confirmation(self, chat_jid)
 
@@ -492,6 +523,9 @@ class PynchyApp:
             send_message=self.broadcast_to_channels,
             on_reaction_callback=lambda jid, ts, user, emoji: asyncio.ensure_future(
                 self._on_reaction(jid, ts, user, emoji)
+            ),
+            on_ask_user_answer_callback=lambda request_id, answer: asyncio.ensure_future(
+                self._on_ask_user_answer(request_id, answer)
             ),
         )
         self.channels = load_channels(self.plugin_manager, context)

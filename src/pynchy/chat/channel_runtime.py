@@ -26,6 +26,7 @@ class ChannelPluginContext:
     workspaces: Callable[[], dict[str, WorkspaceProfile]]
     send_message: Callable[[str, str], Any]
     on_reaction_callback: Callable[[str, str, str, str], None] | None = None
+    on_ask_user_answer_callback: Callable[[str, dict], None] | None = None
 
 
 def default_channel_name() -> str:
@@ -43,7 +44,7 @@ def load_channels(pm: pluggy.PluginManager, context: ChannelPluginContext) -> li
     for c in candidates:
         if c is None:
             continue
-        if isinstance(c, (list, tuple)):
+        if isinstance(c, list | tuple):
             channels.extend([item for item in c if item is not None])
         else:
             channels.append(c)
