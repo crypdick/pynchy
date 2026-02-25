@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
-from asyncio.subprocess import PIPE
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -26,7 +23,7 @@ from pynchy.db import (
 from pynchy.group_queue import GroupQueue
 from pynchy.logger import logger
 from pynchy.types import ContainerOutput, ScheduledTask, TaskRunLog, WorkspaceProfile
-from pynchy.utils import IdleTimer, compute_next_run
+from pynchy.utils import IdleTimer, compute_next_run, log_shell_result, run_shell_command
 from pynchy.workspace_config import load_workspace_config
 
 
@@ -126,87 +123,6 @@ def _resolve_cron_job_cwd(cwd: str | None) -> str:
     return str((project_root / path).resolve())
 
 
-@dataclass
-class ShellResult:
-    """Result of a shell command execution."""
-
-    returncode: int | None
-    stdout: str
-    stderr: str
-    timed_out: bool = False
-    start_error: str | None = None
-
-
-async def _run_shell_command(
-    command: str,
-    *,
-    cwd: str,
-    timeout_seconds: float = 600,
-) -> ShellResult:
-    """Run a shell command with timeout and structured result.
-
-    Shared by cron jobs and database host jobs to avoid duplicating
-    subprocess creation, timeout handling, and cleanup logic.
-    """
-    try:
-        process = await asyncio.create_subprocess_shell(
-            command,
-            cwd=cwd,
-            stdout=PIPE,
-            stderr=PIPE,
-        )
-    except OSError as exc:
-        return ShellResult(returncode=None, stdout="", stderr="", start_error=str(exc))
-
-    try:
-        stdout, stderr = await asyncio.wait_for(
-            process.communicate(),
-            timeout=timeout_seconds,
-        )
-    except TimeoutError:
-        with contextlib.suppress(ProcessLookupError):
-            process.kill()
-        with contextlib.suppress(Exception):
-            await process.communicate()
-        return ShellResult(returncode=None, stdout="", stderr="", timed_out=True)
-    except Exception as exc:
-        return ShellResult(returncode=None, stdout="", stderr="", start_error=str(exc))
-
-    return ShellResult(
-        returncode=process.returncode,
-        stdout=stdout.decode(errors="replace").strip(),
-        stderr=stderr.decode(errors="replace").strip(),
-    )
-
-
-def _log_shell_result(
-    result: ShellResult,
-    *,
-    label: str,
-    **extra: Any,
-) -> None:
-    """Log the outcome of a shell command execution."""
-    if result.start_error:
-        logger.error(f"Failed to start {label}", err=result.start_error, **extra)
-    elif result.timed_out:
-        logger.error(f"{label} timed out", **extra)
-    elif result.returncode == 0:
-        logger.info(
-            f"{label} completed",
-            exit_code=result.returncode,
-            stdout_tail=result.stdout[-500:] if result.stdout else "",
-            **extra,
-        )
-    else:
-        logger.error(
-            f"{label} failed",
-            exit_code=result.returncode,
-            stdout_tail=result.stdout[-500:] if result.stdout else "",
-            stderr_tail=result.stderr[-500:] if result.stderr else "",
-            **extra,
-        )
-
-
 async def _run_host_cron_job(job_name: str) -> None:
     """Run one host-level cron job command directly (no LLM/container)."""
     s = get_settings()
@@ -222,12 +138,12 @@ async def _run_host_cron_job(job_name: str) -> None:
         cwd=command_cwd,
     )
 
-    result = await _run_shell_command(
+    result = await run_shell_command(
         job.command,
         cwd=command_cwd,
         timeout_seconds=job.timeout_seconds,
     )
-    _log_shell_result(result, label="Host cron job", job=job_name)
+    log_shell_result(result, label="Host cron job", job=job_name)
 
 
 async def _poll_host_cron_jobs() -> None:
@@ -273,12 +189,12 @@ async def _poll_database_host_jobs() -> None:
 
         command_cwd = _resolve_cron_job_cwd(job.cwd)
 
-        result = await _run_shell_command(
+        result = await run_shell_command(
             job.command,
             cwd=command_cwd,
             timeout_seconds=job.timeout_seconds,
         )
-        _log_shell_result(result, label="Database host job", job_id=job.id)
+        log_shell_result(result, label="Database host job", job_id=job.id)
 
         # Calculate next run
         next_run = compute_next_run(job.schedule_type, job.schedule_value, s.timezone)

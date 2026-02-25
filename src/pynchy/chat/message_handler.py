@@ -10,7 +10,6 @@ Message routing and the polling loop live in :mod:`_message_routing`.
 from __future__ import annotations
 
 import json
-import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -29,7 +28,7 @@ from pynchy.db import get_messages_since, store_message_direct
 from pynchy.event_bus import AgentActivityEvent, MessageEvent
 from pynchy.git_ops.utils import is_repo_dirty
 from pynchy.logger import logger
-from pynchy.utils import generate_message_id
+from pynchy.utils import generate_message_id, run_shell_command
 
 if TYPE_CHECKING:
     from pynchy.group_queue import GroupQueue
@@ -169,68 +168,63 @@ async def execute_direct_command(
     s = get_settings()
     logger.info("Executing direct command", group=group.name, command=command[:100])
 
-    try:
-        result = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            cwd=str(s.groups_dir / group.folder),
-        )
+    result = await run_shell_command(
+        command,
+        cwd=str(s.groups_dir / group.folder),
+        timeout_seconds=30,
+    )
 
-        if result.returncode == 0:
-            output = result.stdout if result.stdout else "(no output)"
-            status_emoji = "✅"
-        else:
-            output = result.stderr if result.stderr else result.stdout or "(no output)"
-            status_emoji = "❌"
+    if result.start_error:
+        await deps.broadcast_host_message(chat_jid, f"❌ Command failed: {result.start_error}")
+        logger.error("Direct command error", group=group.name, error=result.start_error)
+        return
 
-        ts = datetime.now(UTC).isoformat()
-        output_text = (
-            f"{status_emoji} Command output (exit {result.returncode}):\n```\n{output}\n```"
-        )
+    if result.timed_out:
+        await deps.broadcast_host_message(chat_jid, "⏱️ Command timed out (30s limit)")
+        logger.warning("Direct command timeout", group=group.name, command=command[:100])
+        return
 
-        await store_message_direct(
-            id=generate_message_id("cmd"),
+    if result.returncode == 0:
+        output = result.stdout or "(no output)"
+        status_emoji = "✅"
+    else:
+        output = result.stderr or result.stdout or "(no output)"
+        status_emoji = "❌"
+
+    ts = datetime.now(UTC).isoformat()
+    output_text = f"{status_emoji} Command output (exit {result.returncode}):\n```\n{output}\n```"
+
+    await store_message_direct(
+        id=generate_message_id("cmd"),
+        chat_jid=chat_jid,
+        sender="command_output",
+        sender_name="command",
+        content=output_text,
+        timestamp=ts,
+        is_from_me=True,
+        message_type="tool_result",
+        metadata={"exit_code": result.returncode},
+    )
+
+    channel_text = f"🔧 {output_text}"
+    await deps.broadcast_to_channels(chat_jid, channel_text)
+
+    deps.emit(
+        MessageEvent(
             chat_jid=chat_jid,
-            sender="command_output",
             sender_name="command",
             content=output_text,
             timestamp=ts,
-            is_from_me=True,
-            message_type="tool_result",
-            metadata={"exit_code": result.returncode},
+            is_bot=True,
         )
+    )
 
-        channel_text = f"🔧 {output_text}"
-        await deps.broadcast_to_channels(chat_jid, channel_text)
-
-        deps.emit(
-            MessageEvent(
-                chat_jid=chat_jid,
-                sender_name="command",
-                content=output_text,
-                timestamp=ts,
-                is_bot=True,
-            )
-        )
-
-        logger.info(
-            "Direct command executed",
-            group=group.name,
-            exit_code=result.returncode,
-            output_len=len(output),
-        )
-
-    except subprocess.TimeoutExpired:
-        error_msg = "⏱️ Command timed out (30s limit)"
-        await deps.broadcast_host_message(chat_jid, error_msg)
-        logger.warning("Direct command timeout", group=group.name, command=command[:100])
-    except Exception as exc:
-        error_msg = f"❌ Command failed: {str(exc)}"
-        await deps.broadcast_host_message(chat_jid, error_msg)
-        logger.error("Direct command error", group=group.name, error=str(exc))
+    logger.info(
+        "Direct command executed",
+        group=group.name,
+        exit_code=result.returncode,
+        output_len=len(output),
+    )
 
 
 async def _handle_reset_handoff(

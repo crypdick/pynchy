@@ -1,16 +1,19 @@
 """Shared utility functions.
 
 Small helpers used across multiple modules. Avoids duplication of common
-patterns like timestamped ID generation, schedule calculations, and idle
-timer management.
+patterns like timestamped ID generation, schedule calculations, async shell
+execution, and idle timer management.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
+from asyncio.subprocess import PIPE
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from croniter import croniter
@@ -89,6 +92,86 @@ def _log_task_exception(task: asyncio.Task) -> None:  # type: ignore[type-arg]
             task_name=task.get_name(),
             error=str(exc),
             exc_type=type(exc).__name__,
+        )
+
+
+@dataclass
+class ShellResult:
+    """Result of an async shell command execution."""
+
+    returncode: int | None
+    stdout: str
+    stderr: str
+    timed_out: bool = False
+    start_error: str | None = None
+
+
+async def run_shell_command(
+    command: str,
+    *,
+    cwd: str,
+    timeout_seconds: float = 600,
+) -> ShellResult:
+    """Run a shell command asynchronously with timeout and structured result.
+
+    Unlike subprocess.run, this does not block the event loop.
+    """
+    try:
+        process = await asyncio.create_subprocess_shell(
+            command,
+            cwd=cwd,
+            stdout=PIPE,
+            stderr=PIPE,
+        )
+    except OSError as exc:
+        return ShellResult(returncode=None, stdout="", stderr="", start_error=str(exc))
+
+    try:
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(),
+            timeout=timeout_seconds,
+        )
+    except TimeoutError:
+        with contextlib.suppress(ProcessLookupError):
+            process.kill()
+        with contextlib.suppress(Exception):
+            await process.communicate()
+        return ShellResult(returncode=None, stdout="", stderr="", timed_out=True)
+    except Exception as exc:
+        return ShellResult(returncode=None, stdout="", stderr="", start_error=str(exc))
+
+    return ShellResult(
+        returncode=process.returncode,
+        stdout=stdout.decode(errors="replace").strip(),
+        stderr=stderr.decode(errors="replace").strip(),
+    )
+
+
+def log_shell_result(
+    result: ShellResult,
+    *,
+    label: str,
+    **extra: Any,
+) -> None:
+    """Log the outcome of a shell command execution."""
+    if result.start_error:
+        logger.error(f"Failed to start {label}", err=result.start_error, **extra)
+    elif result.timed_out:
+        logger.error(f"{label} timed out", **extra)
+    elif result.returncode == 0:
+        logger.info(
+            f"{label} completed",
+            exit_code=result.returncode,
+            stdout_tail=result.stdout[-500:] if result.stdout else "",
+            **extra,
+        )
+    else:
+        logger.error(
+            f"{label} failed",
+            exit_code=result.returncode,
+            stdout_tail=result.stdout[-500:] if result.stdout else "",
+            stderr_tail=result.stderr[-500:] if result.stderr else "",
+            **extra,
         )
 
 
