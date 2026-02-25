@@ -262,9 +262,6 @@ class TestAskUserE2E:
         assert "error" in response_data
         assert "does not support" in response_data["error"]
 
-        # Verify: pending question was still created (before the send attempt).
-        # NOTE: This file is intentionally orphaned — the handler writes the error
-        # response but does not clean up the pending file. It will be removed by
-        # sweep_expired_questions() on the next startup.
+        # Verify: pending question file is cleaned up immediately (no orphan).
         pending_path = tmp_path / "ipc" / "mygroup" / "pending_questions" / f"{REQUEST_ID}.json"
-        assert pending_path.exists(), "Pending question is created before channel send attempt"
+        assert not pending_path.exists(), "Pending question should be deleted after error response"

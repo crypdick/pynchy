@@ -12,7 +12,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from pynchy.chat.pending_questions import create_pending_question, update_message_id
+from pynchy.chat.pending_questions import (
+    create_pending_question,
+    resolve_pending_question,
+    update_message_id,
+)
 from pynchy.ipc._deps import IpcDeps
 from pynchy.ipc._registry import register_prefix
 from pynchy.ipc._write import ipc_response_path, write_ipc_response
@@ -97,6 +101,8 @@ async def _handle_ask_user_request(
             ipc_response_path(source_group, request_id),
             {"error": f"Channel '{channel.name}' does not support interactive questions"},
         )
+        # Clean up the pending question file — no one will answer it.
+        resolve_pending_question(request_id, source_group)
 
 
 register_prefix("ask_user:", _handle_ask_user_request)

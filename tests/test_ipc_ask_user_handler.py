@@ -197,6 +197,7 @@ class TestHandleAskUserRequest:
             patch("pynchy.ipc._write.get_settings", return_value=settings),
             patch("pynchy.ipc._handlers_ask_user.create_pending_question"),
             patch("pynchy.ipc._handlers_ask_user.update_message_id"),
+            patch("pynchy.ipc._handlers_ask_user.resolve_pending_question") as mock_resolve,
         ):
             await _handle_ask_user_request(data, "my-group", False, deps)
 
@@ -206,6 +207,9 @@ class TestHandleAskUserRequest:
         response = json.loads(response_file.read_text())
         assert "error" in response
         assert "whatsapp" in response["error"].lower()
+
+        # The pending question should be cleaned up immediately
+        mock_resolve.assert_called_once_with("req123hex", "my-group")
 
     @pytest.mark.asyncio
     async def test_handles_missing_request_id_gracefully(self):

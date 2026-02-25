@@ -88,7 +88,10 @@ def _pending_data(
     chat_jid: str = CHAT_JID,
     request_id: str = REQUEST_ID,
     questions: list[dict] | None = None,
+    timestamp: str | None = None,
 ) -> dict:
+    from datetime import UTC, datetime
+
     return {
         "request_id": request_id,
         "short_id": request_id[:8],
@@ -98,7 +101,7 @@ def _pending_data(
         "session_id": "sess-001",
         "questions": questions or _questions_with_options(),
         "message_id": None,
-        "timestamp": "2026-02-24T00:00:00+00:00",
+        "timestamp": timestamp or datetime.now(UTC).isoformat(),
     }
 
 
@@ -434,14 +437,8 @@ class TestHandleMessageIntercept:
     """End-to-end test that calls _handle_message and verifies the ask_user
     interception path triggers the callback and skips normal routing."""
 
-    @pytest.mark.asyncio
-    async def test_intercepts_answer_and_skips_on_message(self) -> None:
-        """A numeric reply to a pending question calls the callback and
-        does NOT reach _on_message."""
-        callback = MagicMock()
-        ch = _make_channel(on_ask_user_answer=callback)
-
-        # Build a mock MessageEv with the structure _handle_message expects
+    def _build_message_ev(self, content: str = "2") -> MagicMock:
+        """Build a mock MessageEv with the structure _handle_message expects."""
         message = MagicMock()
         message.Info.MessageSource.Chat = MagicMock()  # JID object
         message.Info.MessageSource.IsFromMe = False
@@ -450,11 +447,20 @@ class TestHandleMessageIntercept:
         message.Info.Timestamp = 1740000000
         message.Info.ID = "msg-123"
         message.Info.Pushname = "Test User"
-        message.Message.conversation = "2"  # numeric answer
+        message.Message.conversation = content
         message.Message.extendedTextMessage.text = ""
         message.Message.imageMessage.caption = ""
         message.Message.videoMessage.caption = ""
+        return message
 
+    @pytest.mark.asyncio
+    async def test_intercepts_answer_and_skips_on_message(self) -> None:
+        """A numeric reply to a pending question calls the callback and
+        does NOT reach _on_message."""
+        callback = MagicMock()
+        ch = _make_channel(on_ask_user_answer=callback)
+
+        message = self._build_message_ev("2")
         pending = _pending_data()
 
         # Patch Jid2String to return the CHAT_JID for any call
@@ -475,3 +481,34 @@ class TestHandleMessageIntercept:
 
         # Normal message pipeline should NOT have been called
         ch._on_message.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_stale_pending_question_not_intercepted(self) -> None:
+        """A stale pending question (old timestamp) should NOT intercept messages.
+
+        If a pending question file was left behind by a crash, real user
+        messages must flow to the normal pipeline instead of being swallowed.
+        """
+        callback = MagicMock()
+        ch = _make_channel(on_ask_user_answer=callback)
+
+        message = self._build_message_ev("hello there")
+        # Create a pending question with a very old timestamp (well past timeout)
+        stale_pending = _pending_data()
+        stale_pending["timestamp"] = "2025-01-01T00:00:00+00:00"
+
+        jid2string_mock = sys.modules["neonize.utils.jid"].Jid2String
+        jid2string_mock.return_value = CHAT_JID
+        ch._translate_jid = MagicMock(return_value=CHAT_JID)
+
+        with patch(
+            "pynchy.chat.plugins.whatsapp.channel.find_pending_for_jid",
+            return_value=stale_pending,
+        ):
+            await ch._handle_message(message)
+
+        # The callback should NOT have been called — stale question is skipped
+        callback.assert_not_called()
+
+        # Normal message pipeline SHOULD have been called
+        ch._on_message.assert_called_once()
