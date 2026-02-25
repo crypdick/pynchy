@@ -22,7 +22,7 @@ def test_policy_decision_defaults():
     d = PolicyDecision(allowed=True)
     assert d.allowed is True
     assert d.reason is None
-    assert d.needs_deputy is False
+    assert d.needs_cop is False
     assert d.needs_human is False
 
 
@@ -58,16 +58,16 @@ def test_read_trusted_source_no_taint():
     policy = _make_policy(calendar=ServiceTrustConfig(public_source=False))
     decision = policy.evaluate_read("calendar")
     assert decision.allowed is True
-    assert decision.needs_deputy is False
+    assert decision.needs_cop is False
     assert not policy.corruption_tainted
 
 
 def test_read_public_source_taints():
-    """Reading from public source: deputy scan + corruption taint."""
+    """Reading from public source: cop scan + corruption taint."""
     policy = _make_policy(email=ServiceTrustConfig(public_source=True))
     decision = policy.evaluate_read("email")
     assert decision.allowed is True
-    assert decision.needs_deputy is True
+    assert decision.needs_cop is True
     assert policy.corruption_tainted
 
 
@@ -112,7 +112,7 @@ def test_write_no_taint_no_dangerous_no_gating():
     )
     decision = policy.evaluate_write("calendar", {})
     assert decision.allowed is True
-    assert not decision.needs_deputy
+    assert not decision.needs_cop
     assert not decision.needs_human
 
 
@@ -123,7 +123,7 @@ def test_write_no_taint_dangerous_writes_human_only():
     )
     decision = policy.evaluate_write("email", {})
     assert decision.allowed is True
-    assert not decision.needs_deputy
+    assert not decision.needs_cop
     assert decision.needs_human
 
 
@@ -134,39 +134,39 @@ def test_write_no_taint_public_sink_no_dangerous_no_gating():
     )
     decision = policy.evaluate_write("reddit", {})
     assert decision.allowed is True
-    assert not decision.needs_deputy
+    assert not decision.needs_cop
     assert not decision.needs_human
 
 
 # --- Write gating: corruption tainted ---
 
 
-def test_write_corrupted_no_secret_no_public_sink_deputy_only():
-    """Corrupted, no secret taint, private sink -> deputy only."""
+def test_write_corrupted_no_secret_no_public_sink_cop_only():
+    """Corrupted, no secret taint, private sink -> cop only."""
     policy = _make_policy(
         web=ServiceTrustConfig(public_source=True),
         notes=ServiceTrustConfig(public_sink=False, dangerous_writes=False),
     )
     policy.evaluate_read("web")  # corruption taint
     decision = policy.evaluate_write("notes", {})
-    assert decision.needs_deputy
+    assert decision.needs_cop
     assert not decision.needs_human
 
 
-def test_write_corrupted_no_secret_public_sink_deputy_only():
-    """Corrupted, no secret taint, public sink -> deputy only (no secrets to exfil)."""
+def test_write_corrupted_no_secret_public_sink_cop_only():
+    """Corrupted, no secret taint, public sink -> cop only (no secrets to exfil)."""
     policy = _make_policy(
         web=ServiceTrustConfig(public_source=True, secret_data=False),
         reddit=ServiceTrustConfig(public_sink=True, dangerous_writes=False, secret_data=False),
     )
     policy.evaluate_read("web")  # corruption taint
     decision = policy.evaluate_write("reddit", {})
-    assert decision.needs_deputy
+    assert decision.needs_cop
     assert not decision.needs_human  # no secret taint -> no full trifecta
 
 
-def test_write_full_trifecta_deputy_plus_human():
-    """Corrupted + secret + public sink -> deputy + human (full trifecta)."""
+def test_write_full_trifecta_cop_plus_human():
+    """Corrupted + secret + public sink -> cop + human (full trifecta)."""
     policy = _make_policy(
         web=ServiceTrustConfig(public_source=True, secret_data=False),
         passwords=ServiceTrustConfig(secret_data=True, public_source=False),
@@ -175,19 +175,19 @@ def test_write_full_trifecta_deputy_plus_human():
     policy.evaluate_read("web")  # corruption taint
     policy.evaluate_read("passwords")  # secret taint
     decision = policy.evaluate_write("email", {})
-    assert decision.needs_deputy
+    assert decision.needs_cop
     assert decision.needs_human  # full trifecta!
 
 
-def test_write_corrupted_dangerous_writes_deputy_plus_human():
-    """Corrupted + dangerous_writes -> deputy + human."""
+def test_write_corrupted_dangerous_writes_cop_plus_human():
+    """Corrupted + dangerous_writes -> cop + human."""
     policy = _make_policy(
         web=ServiceTrustConfig(public_source=True),
         db=ServiceTrustConfig(public_sink=False, dangerous_writes=True),
     )
     policy.evaluate_read("web")  # corruption taint
     decision = policy.evaluate_write("db", {})
-    assert decision.needs_deputy
+    assert decision.needs_cop
     assert decision.needs_human
 
 
@@ -223,7 +223,7 @@ def test_unknown_service_read_uses_cautious_defaults():
     """Reading from an unknown service treats it as public_source=True."""
     policy = _make_policy()
     decision = policy.evaluate_read("unknown_service")
-    assert decision.needs_deputy  # public_source=True default
+    assert decision.needs_cop  # public_source=True default
     assert policy.corruption_tainted
 
 

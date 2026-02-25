@@ -26,7 +26,7 @@ async def test_record_security_event():
         decision="allowed",
         corruption_tainted=True,
         secret_tainted=False,
-        reason="deputy (corruption taint)",
+        reason="cop (corruption taint)",
         request_id="req-123",
     )
 
