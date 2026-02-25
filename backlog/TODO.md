@@ -65,10 +65,7 @@ Single source of truth for all pynchy work items.
 ### 3 - Ready
 *Plan approved or not needed. Ready for an agent to pick up.*
 
-- factor out tailscale support into a separate plugin. make sure that at least one tunnel is always active. we might need to create a new tunnel plugin type.
-- factor out openai backend as a separate plugin (currently built-in at `plugin/builtin_agent_openai.py` — needs extraction to separate package)
-- factor out claude backend as a separate plugin (currently built-in at `plugin/builtin_agent_claude.py` — needs extraction to separate package)
-- make the code improver plugin able to update the plugin repos as well as the core pynchy repo.
+- make sure that links to the docs from outside the docs/ dir are actual http links to pynchy.ricardodecal.com instead of rel links
 
 #### Bugs
 - [MCP gateway transport](3-ready/mcp-gateway-transport.md) — Claude SDK `type: "http"` hangs during init against LiteLLM's Streamable HTTP `/mcp/` endpoint; `type: "sse"` fails gracefully but tools unavailable
