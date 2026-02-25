@@ -93,6 +93,7 @@ class SlackChannel:
         on_message: Callable[[str, NewMessage], None],
         on_chat_metadata: Callable[[str, str, str | None], None],
         on_reaction: Callable[[str, str, str, str], None] | None = None,
+        on_ask_user_answer: Callable[[str, dict], None] | None = None,
     ) -> None:
         self.name = connection_name
         self._connection_name = connection_name
@@ -105,6 +106,7 @@ class SlackChannel:
         self._on_message = on_message
         self._on_chat_metadata = on_chat_metadata
         self._on_reaction = on_reaction
+        self._on_ask_user_answer = on_ask_user_answer
         self._connected = False
         self._shutting_down = False
 
@@ -281,7 +283,9 @@ class SlackChannel:
 
     async def _sync_allowed_channels(self) -> None:
         if not self._chat_names:
-            logger.info("Slack connection has no configured chats", connection=self._connection_name)
+            logger.info(
+                "Slack connection has no configured chats", connection=self._connection_name
+            )
             self._allowed_channel_ids = set()
             self._chat_name_to_id = {}
             return
@@ -430,6 +434,32 @@ class SlackChannel:
         except Exception as exc:
             logger.debug("Slack reaction failed", err=str(exc))
 
+    async def send_ask_user(self, jid: str, request_id: str, questions: list[dict]) -> str | None:
+        """Post an interactive question widget and return the message ``ts``.
+
+        Builds a Block Kit payload with:
+        - A ``section`` block per question (mrkdwn text)
+        - An ``actions`` block with buttons if options are provided
+        - An ``input`` block with ``plain_text_input`` for free-form answers
+        - A submit button for the text input
+
+        The ``request_id`` is embedded in ``block_id`` and ``action_id`` values
+        so that interaction callbacks can route answers to the right pending
+        question.
+        """
+        if not self._app or not self.owns_jid(jid):
+            return None
+        channel_id = _channel_id_from_jid(jid)
+
+        blocks = _build_ask_user_blocks(request_id, questions)
+        # Fallback text for notifications / clients that don't render blocks
+        fallback = "Question: " + "; ".join(q.get("question", "") for q in questions)
+
+        resp = await self._app.client.chat_postMessage(
+            channel=channel_id, blocks=blocks, text=fallback
+        )
+        return resp.get("ts")
+
     # ------------------------------------------------------------------
     # History catch-up (reconnect recovery)
     # ------------------------------------------------------------------
@@ -533,6 +563,14 @@ class SlackChannel:
         @self._app.event("reaction_added")
         async def _handle_reaction(event: dict[str, Any]) -> None:  # noqa: ARG001
             await self._on_slack_reaction(event)
+
+        # --- ask_user interaction handlers (Block Kit buttons & text submit) ---
+        @self._app.action(_ASK_USER_ACTION_RE)
+        async def _handle_ask_user_action(
+            ack: Any, body: dict[str, Any], action: dict[str, Any]
+        ) -> None:
+            await ack()
+            await self._on_ask_user_interaction(body, action)
 
         # --- Slack Assistant panel (sidebar DM experience) ---
         self._register_assistant_handlers()
@@ -707,6 +745,71 @@ class SlackChannel:
         jid = _jid(channel_id)
         self._on_reaction(jid, message_ts, user_id, reaction)
 
+    async def _on_ask_user_interaction(self, body: dict[str, Any], action: dict[str, Any]) -> None:
+        """Handle a block_actions interaction from an ask_user widget.
+
+        Dispatches button clicks and text-submit actions, invokes the
+        ``on_ask_user_answer`` callback, and updates the original message
+        to replace interactive blocks with a static "Answered" confirmation.
+        """
+        action_id = action.get("action_id", "")
+        channel_id = body.get("channel", {}).get("id", "")
+
+        # Guard: only process interactions from allowed channels (consistent
+        # with _on_slack_message and _on_slack_reaction).
+        if channel_id and not self._is_allowed_channel(channel_id):
+            return
+
+        message_ts = body.get("message", {}).get("ts", "")
+        user_id = body.get("user", {}).get("id", "")
+
+        # Parse action type, request_id, and answer.
+        # The answer label is stored in the button's ``value`` field (safe
+        # regardless of underscores in request_id or label).
+        if action_id.startswith("ask_user_btn_"):
+            # Button click — answer is the button value
+            block_id = action.get("block_id", "")
+            # block_id format: ask_user_actions_{request_id}_{q_idx}
+            # Rsplit on _ to isolate q_idx, everything before is the request_id.
+            rest = block_id.removeprefix("ask_user_actions_")
+            request_id = rest.rsplit("_", 1)[0] if "_" in rest else rest
+            answer = action.get("value", "")
+        elif action_id.startswith("ask_user_submit_"):
+            # Free-text submit — request_id is the entire suffix after prefix
+            request_id = action_id.removeprefix("ask_user_submit_")
+            # Extract text from state.values
+            answer = _extract_text_input_value(body, request_id)
+        else:
+            return  # Not an ask_user action we handle
+
+        answer_dict = {
+            "answer": answer,
+            "answered_by": user_id,
+            "channel_id": channel_id,
+            "message_ts": message_ts,
+        }
+
+        if self._on_ask_user_answer:
+            self._on_ask_user_answer(request_id, answer_dict)
+
+        # Update the original message to show the answer and remove interactivity
+        if channel_id and message_ts:
+            answered_text = f"Answered: *{answer}*"
+            try:
+                await self._app.client.chat_update(
+                    channel=channel_id,
+                    ts=message_ts,
+                    text=answered_text,
+                    blocks=[
+                        {
+                            "type": "section",
+                            "text": {"type": "mrkdwn", "text": answered_text},
+                        }
+                    ],
+                )
+            except Exception as exc:
+                logger.debug("Failed to update ask_user message", err=str(exc))
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -782,6 +885,7 @@ class SlackChannelPlugin:
             return None
 
         on_reaction = getattr(context, "on_reaction_callback", None)
+        on_ask_user_answer = getattr(context, "on_ask_user_answer_callback", None)
         channels: list[SlackChannel] = []
 
         for name, cfg in configs.items():
@@ -828,6 +932,7 @@ class SlackChannelPlugin:
                     on_message=on_message,
                     on_chat_metadata=on_metadata,
                     on_reaction=on_reaction,
+                    on_ask_user_answer=on_ask_user_answer,
                 )
             )
 
@@ -868,3 +973,127 @@ def _split_text(text: str, *, max_len: int = 3000) -> list[str]:
         chunks.append(remaining[:split_at])
         remaining = remaining[split_at:].lstrip("\n")
     return chunks
+
+
+# ------------------------------------------------------------------
+# Block Kit builders for ask_user widgets
+# ------------------------------------------------------------------
+
+# action_id prefixes used to match interaction callbacks:
+#   ask_user_btn_{request_id}_{q_idx}_{label}  — option button click
+#   ask_user_submit_{request_id}                — free-text submit button
+#   ask_user_text_{request_id}_{q_idx}          — plain_text_input element
+# Only btn (button click) and submit (text-input submit button) fire
+# block_actions events. The input element uses dispatch_action=False so
+# its action_id (ask_user_text_*) is never dispatched by Slack.
+_ASK_USER_ACTION_RE = re.compile(r"^ask_user_(btn|submit)_")
+
+
+def _build_ask_user_blocks(request_id: str, questions: list[dict]) -> list[dict]:
+    """Build Block Kit blocks for an ask_user widget.
+
+    Each question gets:
+    - A ``section`` block with the question text (mrkdwn)
+    - An ``actions`` block with buttons (one per option), if options exist
+    - A ``divider`` between questions
+    After all questions, a single ``input`` block with ``plain_text_input``
+    and a submit button for free-form answers.
+    """
+    blocks: list[dict] = []
+
+    for q_idx, q in enumerate(questions):
+        question_text = q.get("question", "")
+        options = q.get("options", [])
+
+        # Section with question text
+        blocks.append(
+            {
+                "type": "section",
+                "block_id": f"ask_user_q_{request_id}_{q_idx}",
+                "text": {"type": "mrkdwn", "text": f"*{question_text}*"},
+            }
+        )
+
+        # Option buttons (if any)
+        if options:
+            buttons = []
+            for opt in options:
+                label = opt.get("label", "")
+                desc = opt.get("description", "")
+                button: dict[str, Any] = {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": label[:75]},
+                    "action_id": f"ask_user_btn_{request_id}_{q_idx}_{label}",
+                    "value": label,
+                }
+                if desc:
+                    button["confirm"] = {
+                        "title": {"type": "plain_text", "text": label},
+                        "text": {"type": "mrkdwn", "text": desc},
+                        "confirm": {"type": "plain_text", "text": "Select"},
+                        "deny": {"type": "plain_text", "text": "Cancel"},
+                    }
+                buttons.append(button)
+            blocks.append(
+                {
+                    "type": "actions",
+                    "block_id": f"ask_user_actions_{request_id}_{q_idx}",
+                    "elements": buttons,
+                }
+            )
+
+        # Divider between questions
+        if q_idx < len(questions) - 1:
+            blocks.append({"type": "divider"})
+
+    # Free-form text input (always present — users can type a custom answer)
+    blocks.append(
+        {
+            "type": "input",
+            "block_id": f"ask_user_input_{request_id}_0",
+            "optional": True,
+            "dispatch_action": False,
+            "element": {
+                "type": "plain_text_input",
+                "action_id": f"ask_user_text_{request_id}_0",
+                "placeholder": {"type": "plain_text", "text": "Type a custom answer..."},
+            },
+            "label": {"type": "plain_text", "text": "Or type your answer"},
+        }
+    )
+
+    # Submit button for the text input
+    blocks.append(
+        {
+            "type": "actions",
+            "block_id": f"ask_user_submit_actions_{request_id}",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Submit"},
+                    "action_id": f"ask_user_submit_{request_id}",
+                    "value": "submit",
+                    "style": "primary",
+                }
+            ],
+        }
+    )
+
+    return blocks
+
+
+def _extract_text_input_value(body: dict, request_id: str) -> str:
+    """Extract the plain_text_input value from a block_actions ``state.values``.
+
+    Slack nests input values under ``state.values.<block_id>.<action_id>.value``.
+    We search for the ask_user text input block matching ``request_id``.
+    """
+    values = body.get("state", {}).get("values", {})
+    # Look for any block matching ask_user_input_{request_id}_*
+    for block_id, actions in values.items():
+        if not block_id.startswith(f"ask_user_input_{request_id}"):
+            continue
+        for action_id, payload in actions.items():
+            if action_id.startswith(f"ask_user_text_{request_id}"):
+                return payload.get("value", "") or ""
+    return ""
