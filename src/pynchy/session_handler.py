@@ -10,8 +10,10 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 from pynchy.chat.bus import broadcast
+from pynchy.container_runner._session import destroy_session
 from pynchy.db import clear_session, set_chat_cleared_at, store_message
 from pynchy.event_bus import ChatClearedEvent, MessageEvent
+from pynchy.git_ops.worktree import background_merge_worktree
 from pynchy.logger import logger
 from pynchy.utils import create_background_task
 
@@ -52,25 +54,34 @@ class SessionDeps(Protocol):
     def emit(self, event: Any) -> None: ...
 
 
-async def handle_context_reset(
-    deps: SessionDeps, chat_jid: str, group: WorkspaceProfile, timestamp: str
+async def _teardown_group(
+    deps: SessionDeps,
+    group: WorkspaceProfile,
+    chat_jid: str,
+    timestamp: str,
+    *,
+    clear_context: bool = False,
 ) -> None:
-    """Clear session state, merge worktree, destroy session, and confirm context reset."""
-    from pynchy.container_runner._session import destroy_session
-    from pynchy.git_ops.worktree import background_merge_worktree
+    """Shared teardown for context reset and end session.
 
-    # Merge worktree commits before clearing session so work isn't stranded
+    Merges worktree, destroys the persistent session, stops containers,
+    advances the cursor, and persists state.  When *clear_context* is True,
+    also wipes the session from memory and DB (full context reset).
+    """
+    # Merge worktree commits before killing the container so work isn't stranded
     background_merge_worktree(group)
 
-    # Destroy persistent session before clearing state
+    # Destroy persistent session (kills container)
     create_background_task(
         destroy_session(group.folder),
         name=f"destroy-session-{group.folder}",
     )
 
-    deps.sessions.pop(group.folder, None)
-    deps._session_cleared.add(group.folder)
-    await clear_session(group.folder)
+    if clear_context:
+        deps.sessions.pop(group.folder, None)
+        deps._session_cleared.add(group.folder)
+        await clear_session(group.folder)
+
     deps.queue.clear_pending_tasks(chat_jid)
     create_background_task(
         deps.queue.stop_active_process(chat_jid),
@@ -78,6 +89,13 @@ async def handle_context_reset(
     )
     deps.last_agent_timestamp[chat_jid] = timestamp
     await deps.save_state()
+
+
+async def handle_context_reset(
+    deps: SessionDeps, chat_jid: str, group: WorkspaceProfile, timestamp: str
+) -> None:
+    """Clear session state, merge worktree, destroy session, and confirm context reset."""
+    await _teardown_group(deps, group, chat_jid, timestamp, clear_context=True)
     await send_clear_confirmation(deps, chat_jid)
 
 
@@ -89,26 +107,7 @@ async def handle_end_session(
     Unlike context reset, this preserves conversation history. The next
     message will start a fresh container that picks up where it left off.
     """
-    from pynchy.container_runner._session import destroy_session
-    from pynchy.git_ops.worktree import background_merge_worktree
-
-    # Merge worktree commits before stopping so work isn't stranded
-    background_merge_worktree(group)
-
-    # Destroy persistent session (kills container, preserves conversation history)
-    create_background_task(
-        destroy_session(group.folder),
-        name=f"destroy-session-{group.folder}",
-    )
-
-    # Stop any remaining one-shot container
-    deps.queue.clear_pending_tasks(chat_jid)
-    create_background_task(
-        deps.queue.stop_active_process(chat_jid),
-        name=f"stop-container-{chat_jid[:20]}",
-    )
-    deps.last_agent_timestamp[chat_jid] = timestamp
-    await deps.save_state()
+    await _teardown_group(deps, group, chat_jid, timestamp)
     await deps.broadcast_host_message(chat_jid, "👋")
 
 
