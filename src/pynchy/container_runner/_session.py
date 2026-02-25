@@ -21,14 +21,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
-import random
-import time
 
 from pynchy.config import get_settings
 from pynchy.container_runner._process import (
     OnOutput,
 )
+from pynchy.ipc._write import write_ipc_close_sentinel, write_ipc_message
 from pynchy.logger import logger
 from pynchy.runtime.runtime import get_runtime
 
@@ -101,21 +99,7 @@ class ContainerSession:
 
     async def send_ipc_message(self, text: str) -> None:
         """Write a JSON message file to the container's IPC input directory."""
-        s = get_settings()
-        input_dir = s.data_dir / "ipc" / self.group_folder / "input"
-        input_dir.mkdir(parents=True, exist_ok=True)
-        filename = f"{int(time.time() * 1000)}-{random.randbytes(3).hex()}.json"
-        filepath = input_dir / filename
-        temp_path = filepath.with_suffix(".json.tmp")
-
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(
-            None,
-            lambda: (
-                temp_path.write_text(json.dumps({"type": "message", "text": text})),
-                temp_path.rename(filepath),
-            ),
-        )
+        write_ipc_message(self.group_folder, text)
 
     async def wait_for_query_done(self, timeout: float) -> None:
         """Wait for the query-done pulse or container death.
@@ -146,11 +130,8 @@ class ContainerSession:
         self._dead = True
 
         # Write close sentinel
-        s = get_settings()
-        input_dir = s.data_dir / "ipc" / self.group_folder / "input"
         with contextlib.suppress(OSError):
-            input_dir.mkdir(parents=True, exist_ok=True)
-            (input_dir / "_close").write_text("")
+            write_ipc_close_sentinel(self.group_folder)
 
         # Stop the container
         if self.proc and self.proc.returncode is None:
