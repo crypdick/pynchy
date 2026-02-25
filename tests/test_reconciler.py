@@ -248,3 +248,28 @@ class TestCooldown:
         await reconcile_all_channels(deps)
 
         assert ch.fetch_inbound_since.await_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Cursor GC
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("_db")
+class TestCursorGC:
+    @pytest.mark.asyncio
+    async def test_prunes_stale_cursors_after_reconciliation(self):
+        """Cursors for channels not in deps.channels are pruned."""
+        await set_channel_cursor("dead-channel", "group@g.us", "inbound", "2024-01-01")
+        await set_channel_cursor("slack", "group@g.us", "inbound", "2024-06-01")
+
+        ch = _make_channel(name="slack")
+        deps = _make_deps(
+            channels=[ch],
+            workspaces={"group@g.us": TEST_GROUP},
+        )
+
+        await reconcile_all_channels(deps)
+
+        assert await get_channel_cursor("dead-channel", "group@g.us", "inbound") == ""
+        assert await get_channel_cursor("slack", "group@g.us", "inbound") == "2024-06-01"
