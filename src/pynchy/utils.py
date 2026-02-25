@@ -87,11 +87,13 @@ def _log_task_exception(task: asyncio.Task) -> None:  # type: ignore[type-arg]
         return
     exc = task.exception()
     if exc is not None:
+        # Pass the exception to exc_info so structlog renders the full
+        # traceback.  logger.exception() won't work here because we're
+        # in a done-callback, not an except handler.
         logger.error(
             "Background task failed",
             task_name=task.get_name(),
-            error=str(exc),
-            exc_type=type(exc).__name__,
+            exc_info=exc,
         )
 
 
