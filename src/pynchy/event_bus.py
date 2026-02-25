@@ -78,5 +78,5 @@ class EventBus:
 async def _safe_call(listener: Listener, event: Event) -> None:
     try:
         await listener(event)
-    except Exception as exc:
-        logger.warning("EventBus listener error", err=str(exc))
+    except Exception:
+        logger.exception("EventBus listener error")
