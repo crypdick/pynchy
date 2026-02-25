@@ -16,14 +16,9 @@ from pathlib import Path
 
 from pynchy.config import get_settings
 from pynchy.ipc._handlers_service import _get_plugin_handlers
-from pynchy.ipc._write import write_ipc_response
+from pynchy.ipc._write import ipc_response_path, write_ipc_response
 from pynchy.logger import logger
 from pynchy.security.audit import record_security_event
-
-
-def _response_path(source_group: str, request_id: str) -> Path:
-    """Build the IPC response file path for a request."""
-    return get_settings().data_dir / "ipc" / source_group / "responses" / f"{request_id}.json"
 
 
 async def process_approval_decision(decision_file: Path, source_group: str) -> None:
@@ -70,14 +65,14 @@ async def process_approval_decision(decision_file: Path, source_group: str) -> N
         if handler is None:
             logger.warning("Approved tool no longer available", tool_name=tool_name)
             write_ipc_response(
-                _response_path(source_group, request_id),
+                ipc_response_path(source_group, request_id),
                 {"error": f"Approved but tool '{tool_name}' is no longer available"},
             )
         else:
             try:
                 request_data["source_group"] = source_group
                 response = await handler(request_data)
-                write_ipc_response(_response_path(source_group, request_id), response)
+                write_ipc_response(ipc_response_path(source_group, request_id), response)
                 logger.info(
                     "Approved request executed",
                     request_id=request_id,
@@ -90,7 +85,7 @@ async def process_approval_decision(decision_file: Path, source_group: str) -> N
                     err=str(exc),
                 )
                 write_ipc_response(
-                    _response_path(source_group, request_id),
+                    ipc_response_path(source_group, request_id),
                     {"error": f"Execution failed: {exc}"},
                 )
 
@@ -103,7 +98,7 @@ async def process_approval_decision(decision_file: Path, source_group: str) -> N
         )
     else:
         write_ipc_response(
-            _response_path(source_group, request_id),
+            ipc_response_path(source_group, request_id),
             {"error": "Denied by user"},
         )
         await record_security_event(

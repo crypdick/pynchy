@@ -130,7 +130,10 @@ class TestSweepExpiredApprovals:
             sweep_expired_approvals,
         )
 
-        with patch("pynchy.security.approval.get_settings", return_value=settings):
+        with (
+            patch("pynchy.security.approval.get_settings", return_value=settings),
+            patch("pynchy.ipc._write.get_settings", return_value=settings),
+        ):
             create_pending_approval("req-old", "tool_a", "grp", "j@g.us", {})
 
             # Backdate the file

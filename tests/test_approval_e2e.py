@@ -167,6 +167,7 @@ class TestApprovalE2E:
 
         with (
             patch("pynchy.ipc._handlers_approval.get_settings", return_value=approval_settings),
+            patch("pynchy.ipc._write.get_settings", return_value=approval_settings),
             patch(
                 "pynchy.ipc._handlers_approval._get_plugin_handlers",
                 return_value={"x_post": mock_handler},
@@ -227,7 +228,10 @@ class TestApprovalE2E:
         decisions_dir = tmp_path / "ipc" / "mygroup" / "approval_decisions"
         decision_files = list(decisions_dir.glob("*.json"))
 
-        with patch("pynchy.ipc._handlers_approval.get_settings", return_value=approval_settings):
+        with (
+            patch("pynchy.ipc._handlers_approval.get_settings", return_value=approval_settings),
+            patch("pynchy.ipc._write.get_settings", return_value=approval_settings),
+        ):
             await process_approval_decision(decision_files[0], "mygroup")
 
         # Verify: error response written
@@ -258,6 +262,7 @@ class TestApprovalE2E:
 
         with (
             patch("pynchy.ipc._handlers_service.get_settings", return_value=ws_settings),
+            patch("pynchy.ipc._write.get_settings", return_value=ws_settings),
             patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=pm),
         ):
             data = {

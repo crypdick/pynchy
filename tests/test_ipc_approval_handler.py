@@ -80,6 +80,7 @@ class TestProcessApprovalDecision:
 
         with (
             patch("pynchy.ipc._handlers_approval.get_settings", return_value=settings),
+            patch("pynchy.ipc._write.get_settings", return_value=settings),
             patch(
                 "pynchy.ipc._handlers_approval._get_plugin_handlers",
                 return_value={"my_tool": mock_handler},
@@ -109,7 +110,10 @@ class TestProcessApprovalDecision:
         _write_pending(ipc_dir, "grp", "req456", "my_tool", {})
         decision_file = _write_decision(ipc_dir, "grp", "req456", approved=False)
 
-        with patch("pynchy.ipc._handlers_approval.get_settings", return_value=settings):
+        with (
+            patch("pynchy.ipc._handlers_approval.get_settings", return_value=settings),
+            patch("pynchy.ipc._write.get_settings", return_value=settings),
+        ):
             await process_approval_decision(decision_file, "grp")
 
         response_file = ipc_dir / "grp" / "responses" / "req456.json"
@@ -143,6 +147,7 @@ class TestProcessApprovalDecision:
 
         with (
             patch("pynchy.ipc._handlers_approval.get_settings", return_value=settings),
+            patch("pynchy.ipc._write.get_settings", return_value=settings),
             patch(
                 "pynchy.ipc._handlers_approval._get_plugin_handlers",
                 return_value={},
@@ -166,6 +171,7 @@ class TestProcessApprovalDecision:
 
         with (
             patch("pynchy.ipc._handlers_approval.get_settings", return_value=settings),
+            patch("pynchy.ipc._write.get_settings", return_value=settings),
             patch(
                 "pynchy.ipc._handlers_approval._get_plugin_handlers",
                 return_value={"bad_tool": mock_handler},

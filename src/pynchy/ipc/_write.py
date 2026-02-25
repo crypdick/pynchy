@@ -46,6 +46,15 @@ def write_ipc_close_sentinel(group_folder: str) -> None:
     (input_dir / "_close").write_text("")
 
 
+def ipc_response_path(source_group: str, request_id: str) -> Path:
+    """Build the IPC response file path for a group request.
+
+    Single source of truth — used by service handlers, approval handlers,
+    and the approval sweep.
+    """
+    return get_settings().data_dir / "ipc" / source_group / "responses" / f"{request_id}.json"
+
+
 def write_ipc_response(path: Path, data: dict[str, Any]) -> None:
     """Write a JSON response file atomically (tmp → rename).
 

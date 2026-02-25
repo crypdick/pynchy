@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from pynchy.config import get_settings
-from pynchy.ipc._write import write_ipc_response
+from pynchy.ipc._write import ipc_response_path, write_ipc_response
 from pynchy.logger import logger
 from pynchy.security.audit import record_security_event
 
@@ -54,11 +54,6 @@ def _approval_decisions_dir(source_group: str) -> Path:
     d = get_settings().data_dir / "ipc" / source_group / "approval_decisions"
     d.mkdir(parents=True, exist_ok=True)
     return d
-
-
-def _response_path(source_group: str, request_id: str) -> Path:
-    """Build the IPC response file path for a request."""
-    return get_settings().data_dir / "ipc" / source_group / "responses" / f"{request_id}.json"
 
 
 # -- State operations ----------------------------------------------------------
@@ -192,7 +187,7 @@ async def sweep_expired_approvals() -> list[dict]:
                     if age > APPROVAL_TIMEOUT_SECONDS:
                         # Auto-deny: write error response
                         write_ipc_response(
-                            _response_path(grp, data["request_id"]),
+                            ipc_response_path(grp, data["request_id"]),
                             {"error": "Approval expired (no response within timeout)"},
                         )
 
