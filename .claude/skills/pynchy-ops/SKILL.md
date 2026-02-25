@@ -70,6 +70,48 @@ ssh pynchy-server 'docker ps --filter name=pynchy'
 ssh pynchy-server 'systemctl --user restart pynchy'
 ```
 
+## Monitoring Live Agent Activity
+
+**journalctl only shows lifecycle events** (container spawn, session create/destroy, errors). It does NOT show agent output (tool calls, thinking, text broadcasts). To monitor what an agent is actually doing, query SQLite:
+
+```bash
+# Recent activity for a specific group (replace <JID> with e.g. slack:C0AFR6DB0FK)
+ssh pynchy-server 'sqlite3 data/messages.db "
+  SELECT timestamp, message_type, substr(content, 1, 120)
+  FROM messages WHERE chat_jid = '\''<JID>'\''
+  ORDER BY timestamp DESC LIMIT 15;
+"'
+
+# All recent activity across all groups
+ssh pynchy-server 'sqlite3 data/messages.db "
+  SELECT timestamp, chat_jid, message_type, substr(content, 1, 80)
+  FROM messages ORDER BY timestamp DESC LIMIT 15;
+"'
+```
+
+**When to use what:**
+
+| What you need | Tool |
+|---------------|------|
+| Is the service running? | `systemctl --user status pynchy` |
+| Did the container spawn/crash? | `journalctl` or `docker logs` |
+| What is the agent doing right now? | **SQLite** `messages` table |
+| Agent tool calls and traces | **SQLite** `events` table |
+| Container startup errors (before DB writes) | `docker logs pynchy-<group>` |
+
+## Sending Synthetic Messages
+
+Use the TUI API to inject messages into any group's chat pipeline (useful for testing):
+
+```bash
+# Send a message as if a user typed it
+curl -s -X POST http://pynchy-server:8484/api/send \
+  -H "Content-Type: application/json" \
+  -d '{"jid": "<JID>", "content": "your message here"}'
+```
+
+This goes through the full message pipeline (routing → agent → output → broadcast), same as a real Slack/WhatsApp message.
+
 ## Service Management Reference
 
 macOS:
