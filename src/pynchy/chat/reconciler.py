@@ -68,10 +68,21 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
             if group is not None:
                 expected = resolve_workspace_connection_name(group.folder)
                 if expected and expected != ch.name:
+                    logger.debug(
+                        "connection_gate_skip",
+                        channel=ch.name,
+                        canonical_jid=canonical_jid,
+                        expected=expected,
+                    )
                     continue
 
             channel_jid = deps.get_channel_jid(canonical_jid, ch.name)
             if not channel_jid and not ch.owns_jid(canonical_jid):
+                logger.debug(
+                    "jid_ownership_skip",
+                    channel=ch.name,
+                    canonical_jid=canonical_jid,
+                )
                 continue
 
             target_jid = channel_jid or canonical_jid
@@ -93,11 +104,12 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
 
             try:
                 remote_messages = await ch.fetch_inbound_since(target_jid, inbound_cursor)
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     "fetch_inbound_since failed",
                     channel=ch.name,
                     jid=canonical_jid,
+                    error=str(exc),
                 )
                 continue
 
