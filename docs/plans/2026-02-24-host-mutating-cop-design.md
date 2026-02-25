@@ -127,6 +127,7 @@ New backlog items from this design:
 | Cop outbound inspection | Cop implementation (Step 6.1) |
 | Playwright allowlist enforcement | Nothing — can ship independently |
 | Cross-group Cop mediation for admin | Cop implementation (Step 6.1) |
+| Update security docs | After implementation — update `docs/architecture/security.md` (§5, §7, rename Deputy→Cop, add host-mutating section) and `docs/usage/security.md` (add admin clean room guidance, host-mutating explanation) |
 
 ## References
 
