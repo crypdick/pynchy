@@ -31,9 +31,13 @@ class FakeDeps:
 
     def __init__(self, groups: dict[str, WorkspaceProfile] | None = None):
         self._groups = groups or {}
+        self.broadcast_messages: list[tuple[str, str]] = []
 
     def workspaces(self) -> dict[str, WorkspaceProfile]:
         return self._groups
+
+    async def broadcast_to_channels(self, jid: str, text: str) -> None:
+        self.broadcast_messages.append((jid, text))
 
 
 TEST_GROUP = WorkspaceProfile(
@@ -171,14 +175,26 @@ async def test_dangerous_writes_requires_human(tmp_path):
     with (
         patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
         patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
+        patch("pynchy.security.approval.get_settings", return_value=settings),
     ):
         data = _make_request("sensitive_tool", item_id="123")
         await _handle_service_request(data, "test-ws", False, deps)
 
+    # No response file — container blocks until human decides
     response_file = tmp_path / "ipc" / "test-ws" / "responses" / "test-req-1.json"
-    response = json.loads(response_file.read_text())
-    assert "error" in response
-    assert "approval" in response["error"].lower()
+    assert not response_file.exists()
+
+    # Pending approval file was created
+    pending_file = tmp_path / "ipc" / "test-ws" / "pending_approvals" / "test-req-1.json"
+    assert pending_file.exists()
+    pending = json.loads(pending_file.read_text())
+    assert pending["tool_name"] == "sensitive_tool"
+    assert pending["request_id"] == "test-req-1"
+
+    # Notification was broadcast
+    assert len(deps.broadcast_messages) == 1
+    assert "Approval required" in deps.broadcast_messages[0][1]
+    assert "sensitive_tool" in deps.broadcast_messages[0][1]
 
 
 @pytest.mark.asyncio
@@ -234,15 +250,19 @@ async def test_fallback_security_for_unconfigured_workspace(tmp_path):
     with (
         patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
         patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
+        patch("pynchy.security.approval.get_settings", return_value=settings),
     ):
         data = _make_request("some_tool")
         await _handle_service_request(data, "unknown-ws", False, deps)
 
     # Default ServiceTrustConfig has dangerous_writes=True -> needs human
+    # No response file written (container blocks)
     response_file = tmp_path / "ipc" / "unknown-ws" / "responses" / "test-req-1.json"
-    response = json.loads(response_file.read_text())
-    assert "error" in response
-    assert "approval" in response["error"].lower()
+    assert not response_file.exists()
+
+    # Pending approval file created
+    pending_file = tmp_path / "ipc" / "unknown-ws" / "pending_approvals" / "test-req-1.json"
+    assert pending_file.exists()
 
 
 @pytest.mark.asyncio

@@ -169,6 +169,21 @@ async def _handle_service_request(
         return
 
     if decision.needs_human:
+        # Lazy import to avoid circular: security.approval → ipc._write → ipc.__init__ → here
+        from pynchy.security.approval import create_pending_approval, format_approval_notification
+
+        short_id = request_id[:8]
+        create_pending_approval(
+            request_id=request_id,
+            tool_name=tool_name,
+            source_group=source_group,
+            chat_jid=chat_jid,
+            request_data=data,
+        )
+
+        notification = format_approval_notification(tool_name, data, short_id)
+        await deps.broadcast_to_channels(chat_jid, notification)
+
         await record_security_event(
             chat_jid=chat_jid,
             workspace=source_group,
@@ -179,17 +194,14 @@ async def _handle_service_request(
             reason=decision.reason,
             request_id=request_id,
         )
-        _write_response(
-            source_group,
-            request_id,
-            {"error": "Human approval required (TODO: not yet implemented)"},
-        )
         logger.info(
             "Service request needs human approval",
             tool_name=tool_name,
             source_group=source_group,
+            short_id=short_id,
             reason=decision.reason,
         )
+        # No response file written — container blocks until human decides
         return
 
     # Allowed — record audit and dispatch to plugin handler
