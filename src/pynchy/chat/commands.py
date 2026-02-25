@@ -1,12 +1,18 @@
 """Magic command word matching.
 
 Detects special single-word or two-word commands (context reset, end session,
-redeploy) using configurable word lists from config.toml.
+redeploy) using configurable word lists from config.toml. Also detects
+approval gate commands (approve/deny/pending).
 """
 
 from __future__ import annotations
 
+import re
+
 from pynchy.config import get_settings
+
+# Matches 4-32 hex chars (short_id is 8, full request_id is 32)
+_HEX_ID_RE = re.compile(r"^[0-9a-f]{4,32}$")
 
 
 def _strip_trigger(text: str) -> str:
@@ -68,3 +74,30 @@ def is_redeploy(text: str) -> bool:
 def is_any_magic_command(text: str) -> bool:
     """Check if a message matches any magic command (reset, end session, redeploy)."""
     return is_context_reset(text) or is_end_session(text) or is_redeploy(text)
+
+
+# -- Approval gate commands ----------------------------------------------------
+
+
+def is_approval_command(text: str) -> tuple[str, str] | None:
+    """Check if text is an approve/deny command.
+
+    Returns ``(action, short_id)`` or ``None``.
+    Accepts bare ``approve <id>`` or with trigger prefix ``@pynchy approve <id>``.
+    """
+    text = _strip_trigger(text)
+    words = text.strip().lower().split()
+    if len(words) != 2:
+        return None
+    action, short_id = words
+    if action not in ("approve", "deny"):
+        return None
+    if not _HEX_ID_RE.match(short_id):
+        return None
+    return (action, short_id)
+
+
+def is_pending_query(text: str) -> bool:
+    """Check if text is a ``pending`` query command."""
+    text = _strip_trigger(text)
+    return text.strip().lower() == "pending"

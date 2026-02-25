@@ -16,9 +16,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
+from pynchy.chat.approval_handler import handle_approval_command, handle_pending_query
 from pynchy.chat.commands import (
+    is_approval_command,
     is_context_reset,
     is_end_session,
+    is_pending_query,
     is_redeploy,
 )
 from pynchy.config import get_settings
@@ -128,6 +131,20 @@ async def intercept_special_command(
         deps.last_agent_timestamp[chat_jid] = message.timestamp
         await deps.save_state()
         await deps.trigger_manual_redeploy(chat_jid)
+        return True
+
+    approval = is_approval_command(content)
+    if approval:
+        action, short_id = approval
+        await handle_approval_command(deps, chat_jid, action, short_id, message.sender_name)
+        deps.last_agent_timestamp[chat_jid] = message.timestamp
+        await deps.save_state()
+        return True
+
+    if is_pending_query(content):
+        await handle_pending_query(deps, chat_jid)
+        deps.last_agent_timestamp[chat_jid] = message.timestamp
+        await deps.save_state()
         return True
 
     if content.startswith("!"):
