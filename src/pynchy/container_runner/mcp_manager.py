@@ -227,6 +227,23 @@ class McpManager:
             workspaces=list(self._workspace_instances.keys()),
         )
 
+    async def ensure_workspace_running(self, group_folder: str) -> None:
+        """Ensure all MCP instances for a workspace are running.
+
+        Calls :meth:`ensure_running` for each instance assigned to the
+        workspace.  Failures are logged and skipped so one broken MCP
+        server doesn't block the entire agent launch.
+        """
+        for iid in self.get_workspace_instance_ids(group_folder):
+            try:
+                await self.ensure_running(iid)
+            except (TimeoutError, RuntimeError):
+                logger.warning(
+                    "Failed to start MCP instance",
+                    instance_id=iid,
+                    group=group_folder,
+                )
+
     async def ensure_running(self, instance_id: str) -> None:
         """Start an MCP instance (Docker container or host subprocess) if not running.
 

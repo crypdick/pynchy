@@ -24,6 +24,7 @@ from pynchy.container_runner import (
 )
 from pynchy.container_runner._orchestrator import (
     _spawn_container,
+    resolve_container_timeout,
     run_container_agent,
     stable_container_name,
 )
@@ -165,7 +166,6 @@ async def _pre_container_setup(
     from pynchy.directives import resolve_directives
     from pynchy.workspace_config import get_repo_access
 
-    s = get_settings()
     is_admin = group.is_admin
     if repo_access_override is not None:
         repo_access: str | None = repo_access_override
@@ -235,11 +235,7 @@ async def _pre_container_setup(
 
     agent_core_module, agent_core_class = resolve_agent_core(deps.plugin_manager)
 
-    config_timeout = (
-        group.container_config.timeout
-        if group.container_config and group.container_config.timeout
-        else s.container_timeout
-    )
+    config_timeout = resolve_container_timeout(group)
 
     return _PreContainerResult(
         is_admin=is_admin,
@@ -274,12 +270,7 @@ async def _warm_query(
 
     mcp_mgr = get_mcp_manager()
     if mcp_mgr is not None:
-        instance_ids = mcp_mgr.get_workspace_instance_ids(group.folder)
-        for iid in instance_ids:
-            try:
-                await mcp_mgr.ensure_running(iid)
-            except (TimeoutError, RuntimeError):
-                logger.warning("Failed to start MCP instance", instance_id=iid, group=group.folder)
+        await mcp_mgr.ensure_workspace_running(group.folder)
 
     # Register the session's process so send_message() works for follow-ups
     deps.queue.register_process(chat_jid, session.proc, session.container_name, group.folder)

@@ -36,6 +36,22 @@ OnOutput = Callable[[ContainerOutput], Awaitable[None]]
 
 
 # ---------------------------------------------------------------------------
+# Container timeout resolution
+# ---------------------------------------------------------------------------
+
+
+def resolve_container_timeout(group: WorkspaceProfile) -> float:
+    """Return the effective container timeout in seconds.
+
+    Per-workspace ``container_config.timeout`` takes priority; falls back to
+    the global ``container.timeout_ms`` from Settings (converted to seconds).
+    """
+    if group.container_config and group.container_config.timeout:
+        return group.container_config.timeout
+    return get_settings().container_timeout
+
+
+# ---------------------------------------------------------------------------
 # Container name helpers
 # ---------------------------------------------------------------------------
 
@@ -188,13 +204,8 @@ async def _spawn_container(
     mcp_mgr = get_mcp_manager()
     mcp_instance_count = 0
     if mcp_mgr is not None:
-        instance_ids = mcp_mgr.get_workspace_instance_ids(group.folder)
-        mcp_instance_count = len(instance_ids)
-        for iid in instance_ids:
-            try:
-                await mcp_mgr.ensure_running(iid)
-            except (TimeoutError, RuntimeError):
-                logger.warning("Failed to start MCP instance", instance_id=iid, group=group.folder)
+        mcp_instance_count = len(mcp_mgr.get_workspace_instance_ids(group.folder))
+        await mcp_mgr.ensure_workspace_running(group.folder)
 
         # Provide direct MCP server URLs (bypasses LiteLLM MCP proxy which
         # doesn't work with Claude SDK — see backlog/3-ready/mcp-gateway-transport.md).
@@ -288,11 +299,7 @@ async def run_container_agent(
     on_process(proc, container_name)
 
     # --- Timeout ---
-    config_timeout = (
-        group.container_config.timeout
-        if group.container_config and group.container_config.timeout
-        else s.container_timeout
-    )
+    config_timeout = resolve_container_timeout(group)
     # Grace period: hard timeout must be at least idle_timeout + 30s
     timeout_secs = max(config_timeout, s.idle_timeout + 30.0)
     timed_out = False
