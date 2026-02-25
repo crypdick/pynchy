@@ -89,12 +89,7 @@ def resolve_channel_config(
     if ws is not None:
         chat_ref = parse_chat_ref(ws.chat)
         if chat_ref is not None:
-            if chat_ref.platform == "slack":
-                conn_cfg = s.connection.slack.get(chat_ref.name)
-            elif chat_ref.platform == "whatsapp":
-                conn_cfg = s.connection.whatsapp.get(chat_ref.name)
-            else:
-                conn_cfg = None
+            conn_cfg = s.connection.get_connection(chat_ref.platform, chat_ref.name)
             if conn_cfg and conn_cfg.security:
                 _apply_overrides(state, conn_cfg.security)
             if conn_cfg:

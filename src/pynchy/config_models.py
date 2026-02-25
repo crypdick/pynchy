@@ -129,10 +129,28 @@ class WhatsAppConnectionConfig(_StrictModel):
 
 
 class ConnectionsConfig(_StrictModel):
-    """Root container for all external chat connections."""
+    """Root container for all external chat connections.
+
+    Each field is a ``dict[str, <PlatformConfig>]`` keyed by connection name.
+    Use :meth:`get_connection` for platform-generic lookups so callers don't
+    need to hardcode platform names.
+    """
 
     slack: dict[str, SlackConnectionConfig] = {}
     whatsapp: dict[str, WhatsAppConnectionConfig] = {}
+
+    def get_connection(
+        self, platform: str, name: str
+    ) -> SlackConnectionConfig | WhatsAppConnectionConfig | None:
+        """Look up a connection config by platform and name.
+
+        Uses ``getattr`` so new platform fields work automatically without
+        callers needing ``if/elif`` chains for each platform.
+        """
+        platform_dict = getattr(self, platform, None)
+        if isinstance(platform_dict, dict):
+            return platform_dict.get(name)
+        return None
 
 
 class CommandCenterConfig(_StrictModel):

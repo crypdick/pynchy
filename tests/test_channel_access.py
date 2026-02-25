@@ -24,6 +24,7 @@ from pynchy.config_models import (
     ConnectionsConfig,
     OwnerConfig,
     SlackConnectionConfig,
+    WhatsAppConnectionConfig,
     WorkspaceConfig,
     WorkspaceDefaultsConfig,
 )
@@ -474,3 +475,58 @@ class TestChannelOverrideConfig:
     def test_invalid_trigger_rejected(self):
         with pytest.raises(ValueError, match="Input should be"):
             ChannelOverrideConfig(trigger="invalid")
+
+
+# ---------------------------------------------------------------------------
+# ConnectionsConfig.get_connection — generic lookup
+# ---------------------------------------------------------------------------
+
+
+class TestConnectionsConfigGetConnection:
+    """Test the platform-generic connection lookup."""
+
+    def test_slack_lookup(self):
+        connections = ConnectionsConfig(
+            slack={"main": SlackConnectionConfig(bot_token_env="BOT", app_token_env="APP")}
+        )
+        result = connections.get_connection("slack", "main")
+        assert isinstance(result, SlackConnectionConfig)
+        assert result.bot_token_env == "BOT"
+
+    def test_whatsapp_lookup(self):
+        connections = ConnectionsConfig(
+            whatsapp={"phone1": WhatsAppConnectionConfig(auth_db_path="/tmp/wa.db")}
+        )
+        result = connections.get_connection("whatsapp", "phone1")
+        assert isinstance(result, WhatsAppConnectionConfig)
+        assert result.auth_db_path == "/tmp/wa.db"
+
+    def test_unknown_platform_returns_none(self):
+        connections = ConnectionsConfig()
+        assert connections.get_connection("telegram", "main") is None
+
+    def test_unknown_name_returns_none(self):
+        connections = ConnectionsConfig(
+            slack={"main": SlackConnectionConfig(bot_token_env="BOT", app_token_env="APP")}
+        )
+        assert connections.get_connection("slack", "other") is None
+
+    def test_cascade_with_whatsapp_connection(self):
+        """Connection security cascade works for WhatsApp (not just Slack)."""
+        ws = WorkspaceConfig(name="test", chat="connection.whatsapp.phone1.chat.group1")
+        connections = ConnectionsConfig(
+            whatsapp={
+                "phone1": WhatsAppConnectionConfig(
+                    security=ChannelOverrideConfig(access="read", trust=False),
+                    chat={"group1": ConnectionChatConfig()},
+                )
+            }
+        )
+        with patch(
+            "pynchy.config_access.get_settings",
+            return_value=_settings_with(workspaces={"ws": ws}, connections=connections),
+        ):
+            result = resolve_channel_config("ws")
+
+        assert result.access == "read"
+        assert result.trust is False
