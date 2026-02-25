@@ -277,7 +277,7 @@
 # [caldav.servers.work]
 # url = "https://work.nextcloud.com/remote.php/dav/"
 # username = "user@work.com"
-# password = "work-app-password"  # pragma: allowlist secret
+# password_env = "CALDAV__WORK__PASSWORD"  # env var in .env; see config-examples/.env.EXAMPLE  # pragma: allowlist secret
 # default_calendar = "meetings"    # optional: what "primary" resolves to
 # allow = ["meetings", "standup"]  # optional: only expose these calendars
 # ignore = ["trash"]               # optional: hide these (ignored if allow is set)
@@ -285,7 +285,7 @@
 # [caldav.servers.personal]
 # url = "https://personal.nextcloud.com/remote.php/dav/"
 # username = "me@example.com"
-# password = "personal-app-password"  # pragma: allowlist secret
+# password_env = "CALDAV__PERSONAL__PASSWORD"  # pragma: allowlist secret
 # ignore = ["contact_birthdays"]   # hide auto-generated calendars
 
 # ─────────────────────────────────────────────────────────────────────────────

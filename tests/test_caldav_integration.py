@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
@@ -55,17 +56,20 @@ TEST_GROUP = WorkspaceProfile(
     added_at="2024-01-01",
 )
 
+os.environ.setdefault("CALDAV_TEST_WORK_PASS", "workpass")  # pragma: allowlist secret
+os.environ.setdefault("CALDAV_TEST_PERSONAL_PASS", "personalpass")  # pragma: allowlist secret
+
 WORK_SERVER = CalDAVServerConfig(
     url="https://work.nextcloud.com/remote.php/dav/",
     username="user@work.com",
-    password="workpass",  # pragma: allowlist secret
+    password_env="CALDAV_TEST_WORK_PASS",  # pragma: allowlist secret
     default_calendar="meetings",
 )
 
 PERSONAL_SERVER = CalDAVServerConfig(
     url="https://personal.nextcloud.com/remote.php/dav/",
     username="me@example.com",
-    password="personalpass",  # pragma: allowlist secret
+    password_env="CALDAV_TEST_PERSONAL_PASS",  # pragma: allowlist secret
 )
 
 CALDAV_CONFIG = CalDAVConfig(
@@ -400,7 +404,7 @@ async def test_list_calendar_filtered_out():
             "work": CalDAVServerConfig(
                 url="http://x",
                 username="u",
-                password="p",
+                password_env="CALDAV_TEST_WORK_PASS",  # pragma: allowlist secret
                 ignore=["secret-cal"],
             ),
         },
@@ -455,7 +459,7 @@ async def test_list_calendars_respects_ignore():
             "work": CalDAVServerConfig(
                 url="http://x",
                 username="u",
-                password="p",
+                password_env="CALDAV_TEST_WORK_PASS",  # pragma: allowlist secret
                 ignore=["trash"],
             ),
         },
@@ -485,7 +489,7 @@ async def test_list_calendars_respects_allow():
             "work": CalDAVServerConfig(
                 url="http://x",
                 username="u",
-                password="p",
+                password_env="CALDAV_TEST_WORK_PASS",  # pragma: allowlist secret
                 allow=["meetings"],
             ),
         },

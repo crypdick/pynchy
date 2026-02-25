@@ -3,6 +3,12 @@
 Extracted from :mod:`pynchy.config` to keep the root Settings class
 focused on composition and validation.  Follows the same pattern as
 :mod:`pynchy.config_mcp`.
+
+ARCHITECTURE NOTE: Plugin-specific config models belong in the plugin's own
+source file, not here. This file should only contain models for pynchy core
+settings (agent, container, gateway, connections, etc.). Built-in plugins
+(CalDAV, Slack) have their models here for historical reasons; migrate them
+to their respective plugin files when refactoring.
 """
 
 from __future__ import annotations
@@ -346,7 +352,7 @@ class PluginConfig(_StrictModel):
 class CalDAVServerConfig(_StrictModel):
     url: str
     username: str
-    password: SecretStr | None = None
+    password_env: str | None = None  # env var name; resolves at runtime via os.environ
     default_calendar: str | None = None  # what "primary" resolves to; None → first discovered
     allow: list[str] | None = None  # only expose these calendars (case-insensitive)
     ignore: list[str] | None = None  # hide these (case-insensitive; ignored if allow set)

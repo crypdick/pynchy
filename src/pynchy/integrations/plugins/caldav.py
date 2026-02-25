@@ -16,6 +16,7 @@ policy enforcement.
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -39,7 +40,7 @@ def _get_caldav_client(name: str, server_cfg: CalDAVServerConfig):
     import caldav
 
     if name not in _caldav_client_cache:
-        password = server_cfg.password.get_secret_value() if server_cfg.password else None
+        password = os.environ.get(server_cfg.password_env) if server_cfg.password_env else None
         _caldav_client_cache[name] = caldav.DAVClient(
             url=server_cfg.url,
             username=server_cfg.username,
