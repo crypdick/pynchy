@@ -145,8 +145,6 @@ async def _inspect(
             text = text.split("\n", 1)[1] if "\n" in text else text[3:]
             if text.endswith("```"):
                 text = text[:-3].strip()
-        if text.startswith("```json"):
-            text = text[7:]
 
         result = _json.loads(text)
         verdict = CopVerdict(
