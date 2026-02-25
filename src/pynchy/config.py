@@ -269,25 +269,20 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_connections(self) -> Settings:
-        """Validate connection refs and WhatsApp auth DB uniqueness."""
+        """Validate that connection refs point to configured connections/chats.
+
+        Uses ConnectionsConfig.get_connection() for platform-generic lookups
+        so this validator doesn't need to hardcode platform names.
+        """
         # Validate command_center.connection exists (if set)
         if self.command_center.connection:
             ref = parse_connection_ref(self.command_center.connection)
             if ref is None:
                 raise ValueError("command_center.connection must be connection.<platform>.<name>")
-            if ref.platform == "slack":
-                if ref.name not in self.connection.slack:
-                    raise ValueError(
-                        f"command_center.connection references unknown slack connection: {ref.name}"
-                    )
-            elif ref.platform == "whatsapp":
-                if ref.name not in self.connection.whatsapp:
-                    raise ValueError(
-                        f"command_center.connection references unknown whatsapp connection: {ref.name}"
-                    )
-            else:
+            if self.connection.get_connection(ref.platform, ref.name) is None:
                 raise ValueError(
-                    f"command_center.connection uses unsupported platform: {ref.platform}"
+                    f"command_center.connection references unknown connection: "
+                    f"{connection_ref_from_parts(ref.platform, ref.name)}"
                 )
 
         # Validate workspace chat refs point to configured connections/chats
@@ -297,12 +292,7 @@ class Settings(BaseSettings):
                 raise ValueError(
                     f"sandbox.{folder}.chat must be connection.<platform>.<name>.chat.<chat>"
                 )
-            if chat_ref.platform == "slack":
-                conn = self.connection.slack.get(chat_ref.name)
-            elif chat_ref.platform == "whatsapp":
-                conn = self.connection.whatsapp.get(chat_ref.name)
-            else:
-                conn = None
+            conn = self.connection.get_connection(chat_ref.platform, chat_ref.name)
             if conn is None:
                 raise ValueError(
                     f"sandbox.{folder}.chat references unknown connection: "
