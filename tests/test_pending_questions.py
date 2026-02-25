@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -224,3 +225,97 @@ class TestUpdateMessageId:
 
         with patch("pynchy.chat.pending_questions.get_settings", return_value=settings):
             update_message_id("ghost", "grp", "msg-123")  # should not raise
+
+
+# -- sweep_expired_questions ---------------------------------------------------
+
+
+class TestSweepExpiredQuestions:
+    @pytest.mark.asyncio
+    async def test_expires_old_pending(self, ipc_dir: Path, settings):
+        from pynchy.chat.pending_questions import (
+            create_pending_question,
+            sweep_expired_questions,
+        )
+
+        with (
+            patch("pynchy.chat.pending_questions.get_settings", return_value=settings),
+            patch("pynchy.ipc._write.get_settings", return_value=settings),
+        ):
+            create_pending_question(
+                request_id="req-old",
+                source_group="grp",
+                chat_jid="slack:C1",
+                channel_name="slack",
+                session_id="sess-1",
+                questions=[{"question": "Pick one"}],
+            )
+
+            # Backdate the file past the 30-minute timeout
+            pending_file = ipc_dir / "grp" / "pending_questions" / "req-old.json"
+            data = json.loads(pending_file.read_text())
+            data["timestamp"] = (datetime.now(UTC) - timedelta(minutes=35)).isoformat()
+            pending_file.write_text(json.dumps(data))
+
+            expired = await sweep_expired_questions()
+
+        assert len(expired) == 1
+        assert expired[0]["request_id"] == "req-old"
+        assert not pending_file.exists()
+
+        # Error response should have been written
+        response_file = ipc_dir / "grp" / "responses" / "req-old.json"
+        assert response_file.exists()
+        response = json.loads(response_file.read_text())
+        assert "error" in response
+        assert "expired" in response["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_keeps_fresh_pending(self, ipc_dir: Path, settings):
+        from pynchy.chat.pending_questions import (
+            create_pending_question,
+            sweep_expired_questions,
+        )
+
+        with patch("pynchy.chat.pending_questions.get_settings", return_value=settings):
+            create_pending_question(
+                request_id="req-fresh",
+                source_group="grp",
+                chat_jid="slack:C1",
+                channel_name="slack",
+                session_id="sess-1",
+                questions=[],
+            )
+            expired = await sweep_expired_questions()
+
+        assert len(expired) == 0
+        assert (ipc_dir / "grp" / "pending_questions" / "req-fresh.json").exists()
+
+    @pytest.mark.asyncio
+    async def test_empty_ipc_dir_returns_empty(self, tmp_path: Path):
+        """No ipc/ directory at all should return empty list."""
+        from pynchy.chat.pending_questions import sweep_expired_questions
+
+        s = make_settings(data_dir=tmp_path / "empty")
+        with patch("pynchy.chat.pending_questions.get_settings", return_value=s):
+            expired = await sweep_expired_questions()
+
+        assert expired == []
+
+    @pytest.mark.asyncio
+    async def test_corrupt_json_handled_gracefully(self, ipc_dir: Path, settings):
+        """Corrupt JSON files should be skipped without raising."""
+        from pynchy.chat.pending_questions import sweep_expired_questions
+
+        # Create a corrupt file directly
+        pending_dir = ipc_dir / "grp" / "pending_questions"
+        pending_dir.mkdir(parents=True)
+        corrupt_file = pending_dir / "req-corrupt.json"
+        corrupt_file.write_text("{not valid json")
+
+        with patch("pynchy.chat.pending_questions.get_settings", return_value=settings):
+            expired = await sweep_expired_questions()
+
+        assert expired == []
+        # Corrupt file is left in place (not deleted, not crashed)
+        assert corrupt_file.exists()
