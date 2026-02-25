@@ -109,6 +109,7 @@ async def test_plugin_dispatch_calls_handler(tmp_path):
 
     with (
         patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
+        patch("pynchy.ipc._write.get_settings", return_value=settings),
         patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
     ):
         data = _make_request("my_tool", some_param="value")
@@ -140,6 +141,7 @@ async def test_forbidden_tool_denied(tmp_path):
 
     with (
         patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
+        patch("pynchy.ipc._write.get_settings", return_value=settings),
         patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
     ):
         data = _make_request("forbidden_tool", param="value")
@@ -208,6 +210,7 @@ async def test_unknown_tool_type(tmp_path):
 
     with (
         patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
+        patch("pynchy.ipc._write.get_settings", return_value=settings),
         patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
     ):
         data = {
@@ -288,6 +291,7 @@ async def test_safe_service_allowed(tmp_path):
 
     with (
         patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
+        patch("pynchy.ipc._write.get_settings", return_value=settings),
         patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
     ):
         data = _make_request("safe_tool")

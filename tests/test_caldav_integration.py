@@ -710,6 +710,7 @@ async def test_calendar_tool_dispatches_to_plugin_handler(tmp_path):
 
     with (
         patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
+        patch("pynchy.ipc._write.get_settings", return_value=settings),
         patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
         patch("pynchy.integrations.plugins.caldav.get_settings", return_value=settings),
         patch("pynchy.integrations.plugins.caldav._get_caldav_client", return_value=fake_client),
