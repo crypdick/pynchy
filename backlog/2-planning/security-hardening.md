@@ -4,7 +4,7 @@
 
 This project adds security layers to Pynchy, enabling agents to safely use external services without creating the conditions for prompt injection attacks.
 
-**Status:** Core trust model implemented (Steps 1, 2, 4 done). Remaining: IPC narrowing, human approval gate, deputy agent.
+**Status:** Core trust model implemented (Steps 1, 2, 4 done). Step 0 denied (redundant with 4-bools). Remaining: human approval gate, deputy agent.
 
 ## The Problem: The Lethal Trifecta
 
@@ -76,11 +76,12 @@ A payload secrets scanner (`detect-secrets`) also runs on outbound writes, escal
 - **Step 4: Calendar Integration** → [5-completed/security-hardening-4-calendar.md](../5-completed/security-hardening-4-calendar.md)
   CalDAV adapter (pre-existing plugin), now configured with trust declarations.
 
-### Remaining
+### Denied
 
-#### [Step 0: Reduce IPC Surface](security-hardening-0-ipc-surface.md)
-**Scope:** Signal-only IPC + inotify
-**Dependencies:** None
+- **Step 0: Reduce IPC Surface** → [denied/security-hardening-0-ipc-surface.md](../denied/security-hardening-0-ipc-surface.md)
+  Transport-level IPC narrowing is redundant with the 4-bools taint model. The valuable parts (inotify/watchdog, startup sweep, signal validation) were already completed. Remaining items (send_message elimination, Deputy mediation for all Tier 2) would break core functionality for marginal security gain.
+
+### Remaining
 
 #### [Step 6: Human Approval Gate](security-hardening-6-approval.md)
 **Scope:** Approval flow for tainted containers writing to untrusted sinks
