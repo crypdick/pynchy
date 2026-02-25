@@ -11,7 +11,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from pynchy.config import get_settings
-from pynchy.ipc._deps import IpcDeps
+from pynchy.ipc._deps import IpcDeps, resolve_chat_jid
 from pynchy.ipc._registry import register_prefix
 from pynchy.ipc._write import ipc_response_path, write_ipc_response
 from pynchy.logger import logger
@@ -133,11 +133,7 @@ async def _handle_service_request(
     policy = SecurityPolicy(security)
 
     # Find the chat_jid for this group (for audit logging)
-    chat_jid = "unknown"
-    for jid, group in deps.workspaces().items():
-        if group.folder == source_group:
-            chat_jid = jid
-            break
+    chat_jid = resolve_chat_jid(source_group, deps) or "unknown"
 
     # Evaluate policy — service requests are writes (they perform actions)
     decision = policy.evaluate_write(tool_name, data)

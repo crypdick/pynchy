@@ -17,7 +17,7 @@ from pynchy.chat.pending_questions import (
     resolve_pending_question,
     update_message_id,
 )
-from pynchy.ipc._deps import IpcDeps
+from pynchy.ipc._deps import IpcDeps, resolve_chat_jid
 from pynchy.ipc._registry import register_prefix
 from pynchy.ipc._write import ipc_response_path, write_ipc_response
 from pynchy.logger import logger
@@ -38,12 +38,7 @@ async def _handle_ask_user_request(
     questions = data.get("questions", [])
 
     # Resolve chat_jid for this group
-    workspaces = deps.workspaces()
-    chat_jid: str | None = None
-    for jid, ws in workspaces.items():
-        if ws.folder == source_group:
-            chat_jid = jid
-            break
+    chat_jid = resolve_chat_jid(source_group, deps)
 
     if chat_jid is None:
         logger.warning(

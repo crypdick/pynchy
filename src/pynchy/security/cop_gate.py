@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pynchy.ipc._deps import IpcDeps
+from pynchy.ipc._deps import IpcDeps, resolve_chat_jid
 from pynchy.logger import logger
 from pynchy.security.approval import create_pending_approval, format_approval_notification
 from pynchy.security.audit import record_security_event
@@ -52,7 +52,7 @@ async def cop_gate(
     verdict = await inspect_outbound(operation, payload_summary)
 
     # Resolve chat_jid for audit and notifications
-    chat_jid = _resolve_chat_jid(source_group, deps)
+    chat_jid = resolve_chat_jid(source_group, deps) or "unknown"
 
     await record_security_event(
         chat_jid=chat_jid,
@@ -96,11 +96,3 @@ async def cop_gate(
         )
 
     return False
-
-
-def _resolve_chat_jid(source_group: str, deps: IpcDeps) -> str:
-    """Look up the chat JID for a group folder from the workspace registry."""
-    for jid, group in deps.workspaces().items():
-        if group.folder == source_group:
-            return jid
-    return "unknown"

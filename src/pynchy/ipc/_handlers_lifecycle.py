@@ -15,7 +15,7 @@ from pynchy.git_ops.sync import (
 )
 from pynchy.git_ops.sync_poll import needs_container_rebuild, needs_deploy
 from pynchy.git_ops.utils import get_head_sha
-from pynchy.ipc._deps import IpcDeps
+from pynchy.ipc._deps import IpcDeps, resolve_workspace_by_folder
 from pynchy.ipc._registry import register
 from pynchy.ipc._write import write_ipc_response
 from pynchy.logger import logger
@@ -83,10 +83,7 @@ async def _handle_finished_work(
 
     from pynchy.git_ops.worktree import background_merge_worktree
 
-    group = next(
-        (g for g in deps.workspaces().values() if g.folder == source_group),
-        None,
-    )
+    group = resolve_workspace_by_folder(source_group, deps)
     if group:
         background_merge_worktree(group)
 

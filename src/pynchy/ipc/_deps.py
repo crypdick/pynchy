@@ -1,4 +1,4 @@
-"""Dependency protocol for IPC processing."""
+"""Dependency protocol and helpers for IPC processing."""
 
 from __future__ import annotations
 
@@ -45,3 +45,19 @@ class IpcDeps(Protocol):
     def channels(self) -> list[Channel]: ...
 
     async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None: ...
+
+
+def resolve_chat_jid(source_group: str, deps: IpcDeps) -> str | None:
+    """Look up the chat JID for a group folder from the workspace registry."""
+    for jid, ws in deps.workspaces().items():
+        if ws.folder == source_group:
+            return jid
+    return None
+
+
+def resolve_workspace_by_folder(source_group: str, deps: IpcDeps) -> WorkspaceProfile | None:
+    """Look up a WorkspaceProfile by its folder name."""
+    return next(
+        (ws for ws in deps.workspaces().values() if ws.folder == source_group),
+        None,
+    )
