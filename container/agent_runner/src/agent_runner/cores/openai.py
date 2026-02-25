@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import sys
 from collections.abc import AsyncIterator
 from typing import Any
@@ -13,6 +12,7 @@ from agents.editor import ApplyPatchEditor, ApplyPatchOperation, ApplyPatchResul
 from agents.mcp import MCPServerSse, MCPServerStdio, MCPServerStreamableHttp
 
 from ..core import AgentCoreConfig, AgentEvent
+from ._openai_tool_parsing import extract_tool_call, extract_tool_result
 
 
 def _log(message: str) -> None:
@@ -297,41 +297,13 @@ class OpenAIAgentCore:
             auto_previous_response_id=True,
         )
 
-        def _as_mapping(obj: Any) -> dict[str, Any] | None:
-            if obj is None:
-                return None
-            if isinstance(obj, dict):
-                return obj
-            if hasattr(obj, "model_dump"):
-                try:
-                    data = obj.model_dump()
-                except Exception:
-                    data = None
-                if isinstance(data, dict):
-                    return data
-            if hasattr(obj, "__dict__"):
-                data = vars(obj)
-                if isinstance(data, dict):
-                    return data
-            return None
-
-        def _normalize_shell_action(action: Any) -> dict[str, Any] | None:
-            action_map = _as_mapping(action)
-            if not action_map:
-                return None
-            # Local shell calls use "command" (list[str]); normalize to "commands".
-            if "commands" not in action_map and "command" in action_map:
-                action_map = dict(action_map)
-                action_map["commands"] = action_map.get("command")
-            return action_map
-
         async for event in result.stream_events():
             if event.type == "raw_response_event":
-                # Token-level text deltas — yield as text events
+                # Token-level text deltas
                 delta = getattr(event.data, "delta", None)
                 if delta and isinstance(delta, str):
                     yield AgentEvent(type="text", data={"text": delta})
-                # Check for reasoning/thinking content (o-series models)
+                # Reasoning/thinking content (o-series models)
                 elif hasattr(event.data, "type") and "reasoning" in str(
                     getattr(event.data, "type", "")
                 ):
@@ -341,148 +313,11 @@ class OpenAIAgentCore:
 
             elif event.type == "run_item_stream_event":
                 item = event.item
+
                 if item.type == "tool_call_item":
-                    # Extract tool name and arguments from the raw item
-                    raw = getattr(item, "raw_item", item)
-                    tool_name = (
-                        getattr(item, "tool_name", None)
-                        or getattr(item, "name", None)
-                        or getattr(raw, "tool_name", None)
-                        or getattr(raw, "name", None)
-                    )
-                    tool_input = (
-                        getattr(item, "arguments", None)
-                        or getattr(item, "input", None)
-                        or getattr(raw, "arguments", None)
-                    )
-
-                    func = getattr(raw, "function", None)
-                    if func is not None:
-                        tool_name = tool_name or getattr(func, "name", None)
-                        tool_input = tool_input or getattr(func, "arguments", None)
-
-                    call = getattr(raw, "call", None)
-                    if call is not None:
-                        tool_name = tool_name or getattr(call, "name", None)
-                        tool_input = tool_input or getattr(call, "arguments", None)
-
-                    action = getattr(raw, "action", None)
-                    if action is None:
-                        data = getattr(raw, "data", None)
-                        action = getattr(data, "action", None) if data is not None else None
-                    action_map = _normalize_shell_action(action)
-                    if action_map:
-                        if tool_name in (None, "", "unknown_tool", "function"):
-                            tool_name = "shell"
-                        if tool_input is None:
-                            tool_input = action_map
-
-                    raw_map = _as_mapping(raw)
-                    raw_type = None
-                    if raw_map:
-                        raw_type = raw_map.get("type")
-                    if raw_type is None:
-                        raw_type = getattr(raw, "type", None)
-
-                    if raw_type in ("shell_call", "local_shell_call"):
-                        tool_name = tool_name or "shell"
-                        if tool_input is None:
-                            action_map = None
-                            if raw_map:
-                                action_map = _normalize_shell_action(raw_map.get("action"))
-                            if action_map is None:
-                                action_map = _normalize_shell_action(getattr(raw, "action", None))
-                            if action_map:
-                                tool_input = action_map
-                    elif raw_type == "apply_patch_call":
-                        tool_name = tool_name or "apply_patch"
-                        if tool_input is None:
-                            operation = None
-                            if raw_map:
-                                operation = raw_map.get("operation")
-                            if operation is None:
-                                operation = getattr(raw, "operation", None)
-                            tool_input = _as_mapping(operation) or operation
-                    elif raw_type == "web_search_call":
-                        tool_name = tool_name or "web_search"
-                        if tool_input is None:
-                            action = (
-                                raw_map.get("action") if raw_map else getattr(raw, "action", None)
-                            )
-                            tool_input = _as_mapping(action) or action
-                    elif raw_type in ("function_call", "mcp_call"):
-                        if tool_name in (None, "", "unknown_tool"):
-                            if raw_map and raw_map.get("name"):
-                                tool_name = raw_map.get("name")
-                            else:
-                                tool_name = getattr(raw, "name", None)
-                        if tool_input is None and raw_map:
-                            tool_input = raw_map.get("arguments") or raw_map.get("input")
-
-                    def _extract_mapping(mapping: dict[str, Any]) -> None:
-                        nonlocal tool_name, tool_input
-                        if tool_name in (None, "", "unknown_tool"):
-                            for key in ("tool_name", "name", "tool", "type"):
-                                value = mapping.get(key)
-                                if value:
-                                    tool_name = value
-                                    break
-                        if tool_input is None:
-                            tool_input = mapping.get("arguments") or mapping.get("input")
-                        action = mapping.get("action")
-                        if isinstance(action, dict):
-                            if tool_input is None:
-                                cmds = action.get("commands")
-                                cmd = action.get("command")
-                                if cmds or cmd:
-                                    tool_input = {"commands": cmds} if cmds else {"command": cmd}
-                            if tool_name in (None, "", "unknown_tool") and action.get("type") in (
-                                "exec",
-                                "shell",
-                                "shell_call",
-                            ):
-                                tool_name = "shell"
-
-                    data_dump = raw_map
-                    if data_dump is None and hasattr(raw, "__dict__"):
-                        data_dump = vars(raw)
-                    if isinstance(data_dump, dict):
-                        _extract_mapping(data_dump)
-                        inner = data_dump.get("data")
-                        if isinstance(inner, dict):
-                            _extract_mapping(inner)
-
-                    if tool_name in (None, "", "unknown_tool"):
-                        raw_type_name = type(raw).__name__.lower()
-                        if "shell" in raw_type_name:
-                            tool_name = "shell"
-                        elif "patch" in raw_type_name:
-                            tool_name = "apply_patch"
-                        elif "search" in raw_type_name:
-                            tool_name = "web_search"
-                        else:
-                            tool_name = raw_type or getattr(raw, "type", None) or "unknown_tool"
-
-                    if tool_name in (None, "", "unknown_tool"):
-                        if not tool_input:
-                            tool_name = "shell"
-                        elif isinstance(tool_input, dict):
-                            if "patch" in tool_input or "path" in tool_input:
-                                tool_name = "apply_patch"
-                            elif "query" in tool_input or "q" in tool_input:
-                                tool_name = "web_search"
-
-                    if tool_input is None:
-                        tool_input = getattr(raw, "input", None)
-                    if isinstance(tool_input, str):
-                        try:
-                            tool_input = json.loads(tool_input)
-                        except (json.JSONDecodeError, TypeError):
-                            tool_input = {"raw": tool_input}
+                    tool_name, tool_input = extract_tool_call(item)
                     if not tool_input:
-                        _log(
-                            f"Tool call parsed without input: tool={tool_name} raw_type={raw_type}"
-                        )
+                        _log(f"Tool call parsed without input: tool={tool_name}")
                     yield AgentEvent(
                         type="tool_use",
                         data={
@@ -492,27 +327,17 @@ class OpenAIAgentCore:
                     )
 
                 elif item.type == "tool_call_output_item":
-                    output = getattr(item, "output", "")
-                    raw = getattr(item, "raw_item", item)
-                    raw_map = _as_mapping(raw) or {}
-                    tool_result_id = (
-                        getattr(item, "call_id", None)
-                        or getattr(raw, "call_id", None)
-                        or raw_map.get("call_id")
-                        or raw_map.get("id")
-                        or ""
-                    )
+                    tool_result_id, output = extract_tool_result(item)
                     yield AgentEvent(
                         type="tool_result",
                         data={
                             "tool_result_id": tool_result_id,
-                            "tool_result_content": str(output) if output else "",
+                            "tool_result_content": output,
                             "tool_result_is_error": False,
                         },
                     )
 
                 elif item.type == "message_output_item":
-                    # Full message output — extract text content
                     from agents import ItemHelpers
 
                     text = ItemHelpers.text_message_output(item)
@@ -520,7 +345,6 @@ class OpenAIAgentCore:
                         yield AgentEvent(type="text", data={"text": text})
 
                 elif item.type == "reasoning_item":
-                    # Reasoning/thinking from o-series models
                     text = getattr(item, "text", None) or ""
                     summary_parts = getattr(item, "summary", None)
                     if summary_parts and isinstance(summary_parts, list):
