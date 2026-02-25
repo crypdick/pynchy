@@ -178,6 +178,26 @@ class GroupQueue:
         state = self._get_group(group_jid)
         return state.active and state.active_is_task
 
+    def snapshot(self) -> dict[str, dict[str, object]]:
+        """Return a read-only snapshot of queue state for status reporting.
+
+        Returns a dict keyed by group JID, each containing the group's
+        active/pending state.  Also includes ``_meta`` with global counters.
+        """
+        per_group: dict[str, dict[str, object]] = {}
+        for jid, state in self._groups.items():
+            per_group[jid] = {
+                "active": state.active,
+                "is_task": state.active_is_task,
+                "pending_messages": state.pending_messages,
+                "pending_tasks": len(state.pending_tasks),
+            }
+        per_group["_meta"] = {
+            "active_count": self._active_count,
+            "waiting_count": len(self._waiting_groups),
+        }
+        return per_group
+
     def send_message(self, group_jid: str, text: str) -> bool:
         """Send a follow-up message to the active container via IPC file."""
         state = self._get_group(group_jid)

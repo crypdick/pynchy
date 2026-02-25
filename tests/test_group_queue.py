@@ -447,6 +447,97 @@ class TestGroupQueueRetry:
             assert call_count == 6
 
 
+class TestSnapshot:
+    """Tests for snapshot(): read-only view of queue state."""
+
+    async def test_empty_queue_snapshot(self, queue: GroupQueue):
+        """Empty queue returns only _meta with zero counts."""
+        snap = queue.snapshot()
+        assert snap == {"_meta": {"active_count": 0, "waiting_count": 0}}
+
+    async def test_snapshot_reflects_active_group(self, queue: GroupQueue):
+        """Snapshot includes active groups with their state."""
+        completions: list[asyncio.Event] = []
+
+        async def process_messages(group_jid: str) -> bool:
+            event = asyncio.Event()
+            completions.append(event)
+            await event.wait()
+            return True
+
+        queue.set_process_messages_fn(process_messages)
+        queue.enqueue_message_check("group1@g.us")
+        await asyncio.sleep(0.02)
+
+        snap = queue.snapshot()
+        assert snap["group1@g.us"] == {
+            "active": True,
+            "is_task": False,
+            "pending_messages": False,
+            "pending_tasks": 0,
+        }
+        assert snap["_meta"]["active_count"] == 1
+
+        completions[0].set()
+        await asyncio.sleep(0.05)
+
+    async def test_snapshot_shows_pending_and_waiting(self, queue: GroupQueue):
+        """Snapshot shows pending messages and waiting groups correctly."""
+        completions: list[asyncio.Event] = []
+
+        async def process_messages(group_jid: str) -> bool:
+            event = asyncio.Event()
+            completions.append(event)
+            await event.wait()
+            return True
+
+        queue.set_process_messages_fn(process_messages)
+
+        # Fill both slots (max_concurrent=2)
+        queue.enqueue_message_check("group1@g.us")
+        queue.enqueue_message_check("group2@g.us")
+        await asyncio.sleep(0.02)
+
+        # Queue a third group (should go to waiting)
+        queue.enqueue_message_check("group3@g.us")
+
+        snap = queue.snapshot()
+        assert snap["_meta"]["active_count"] == 2
+        assert snap["_meta"]["waiting_count"] == 1
+        assert snap["group3@g.us"]["pending_messages"] is True
+
+        # Clean up
+        for evt in completions:
+            evt.set()
+        await asyncio.sleep(0.1)
+
+    async def test_snapshot_shows_pending_tasks(self, queue: GroupQueue):
+        """Snapshot reflects queued tasks for an active group."""
+        completions: list[asyncio.Event] = []
+
+        async def process_messages(group_jid: str) -> bool:
+            event = asyncio.Event()
+            completions.append(event)
+            await event.wait()
+            return True
+
+        queue.set_process_messages_fn(process_messages)
+        queue.enqueue_message_check("group1@g.us")
+        await asyncio.sleep(0.02)
+
+        async def task_fn():
+            pass
+
+        queue.enqueue_task("group1@g.us", "task-1", task_fn)
+        queue.enqueue_task("group1@g.us", "task-2", task_fn)
+
+        snap = queue.snapshot()
+        assert snap["group1@g.us"]["pending_tasks"] == 2
+
+        completions[0].set()
+        await asyncio.sleep(0.15)
+
+
 class TestCloseStdin:
     """Tests for close_stdin: writing _close sentinel to active containers."""
 
