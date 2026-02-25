@@ -14,7 +14,7 @@ from pathlib import Path
 
 from mcp.types import CallToolResult, TextContent, Tool
 
-from agent_runner.agent_tools._registry import ToolEntry, register
+from agent_runner.agent_tools._registry import ToolEntry, register, tool_error
 
 _TODOS_FILE = Path("/workspace/ipc/todos.json")
 
@@ -106,10 +106,7 @@ async def _complete_todo_handle(arguments: dict) -> list[TextContent] | CallTool
             _write_todos(todos)
             return [TextContent(type="text", text=f"Todo {todo_id} marked as done.")]
 
-    return CallToolResult(
-        content=[TextContent(type="text", text=f"Todo {todo_id} not found.")],
-        isError=True,
-    )
+    return tool_error(f"Todo {todo_id} not found.")
 
 
 # -- registration --------------------------------------------------------------
