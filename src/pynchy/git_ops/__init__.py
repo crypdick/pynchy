@@ -1,6 +1,6 @@
 """Git operations — sync, worktrees, and shared helpers."""
 
-from pynchy.git_ops._worktree_notify import host_notify_worktree_updates
+from pynchy.git_ops._worktree_notify import WorktreeNotifyDeps, host_notify_worktree_updates
 from pynchy.git_ops.sync import (
     GitSyncDeps,
     host_sync_worktree,
@@ -36,6 +36,7 @@ from pynchy.git_ops.worktree import (
 __all__ = [
     "GitCommandError",
     "GitSyncDeps",
+    "WorktreeNotifyDeps",
     "WorktreeError",
     "WorktreeResult",
     "count_unpushed_commits",

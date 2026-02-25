@@ -10,11 +10,32 @@ ipc/_handlers_lifecycle.py (after a sync_worktree_to_main merge).
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING, Protocol
 
 from pynchy.git_ops.repo import RepoContext
-from pynchy.git_ops.sync import GitSyncDeps
 from pynchy.git_ops.utils import detect_main_branch, get_head_sha, run_git
 from pynchy.logger import logger
+
+if TYPE_CHECKING:
+    from pynchy.types import WorkspaceProfile
+
+
+class WorktreeNotifyDeps(Protocol):
+    """Narrow dependency protocol for worktree rebase notifications.
+
+    Subset of GitSyncDeps — only the methods host_notify_worktree_updates()
+    actually uses.  This allows IpcDeps (and any other superset) to satisfy
+    the protocol directly without adapter boilerplate.
+    """
+
+    async def broadcast_host_message(self, jid: str, text: str) -> None: ...
+
+    async def broadcast_system_notice(self, jid: str, text: str) -> None: ...
+
+    def has_active_session(self, group_folder: str) -> bool: ...
+
+    def workspaces(self) -> dict[str, WorkspaceProfile]: ...
+
 
 # Track the last HEAD SHA for which worktree notifications were sent, per repo root.
 # This prevents the poll loop from re-notifying when the IPC handler
@@ -51,7 +72,7 @@ def _build_rebase_notice(worktree_path: Path, old_head: str, commit_count: int) 
 
 async def host_notify_worktree_updates(
     exclude_group: str | None,
-    deps: GitSyncDeps,
+    deps: WorktreeNotifyDeps,
     repo_ctx: RepoContext,
 ) -> None:
     """Host-side: rebase all worktrees for a repo onto main, notify agents.
