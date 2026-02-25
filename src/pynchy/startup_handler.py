@@ -176,7 +176,24 @@ async def check_deploy_continuation(deps: StartupDeps) -> None:
         group_count=len(active_sessions),
     )
 
+    from pynchy.workspace_config import load_workspace_config
+
     for jid, _session_id in active_sessions.items():
+        # Skip periodic (scheduled) workspaces — they don't need deploy
+        # resumption since they'll run at their next scheduled time.
+        # Without this guard, every deploy injects a user-visible message
+        # that triggers a full agent run (burning tokens for no reason).
+        group = deps.workspaces.get(jid)
+        if group:
+            ws_config = load_workspace_config(group.folder)
+            if ws_config and ws_config.is_periodic:
+                logger.debug(
+                    "Skipping deploy resume for periodic workspace",
+                    chat_jid=jid,
+                    group=group.folder,
+                )
+                continue
+
         # No cleared_at check here: if a session is in active_sessions,
         # get_active_sessions() already excluded cleared sessions via the
         # in-memory _session_cleared guard. A DB cleared_at value can be

@@ -504,3 +504,9 @@ async def _run_scheduled_task(
     except Exception as exc:
         logger.error("Scheduled task error", group=group.name, err=str(exc))
         return "error"
+    finally:
+        # Clean up the session created by the one-shot container.
+        # Without this, the workspace appears "active" and receives
+        # deploy resume messages that trigger unnecessary agent runs.
+        await destroy_session(group.folder)
+        deps.sessions.pop(group.folder, None)
