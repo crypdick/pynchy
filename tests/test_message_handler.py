@@ -311,8 +311,12 @@ class TestInterceptSpecialCommand:
 
 
 class TestExecuteDirectCommand:
+    _P_SHELL = "pynchy.chat.message_handler.run_shell_command"
+
     @pytest.mark.asyncio
     async def test_successful_command_broadcasts_output(self):
+        from pynchy.utils import ShellResult
+
         group = _make_group()
         deps = _make_deps()
         msg = _make_message("!echo hi")
@@ -320,10 +324,10 @@ class TestExecuteDirectCommand:
         with (
             patch(_P_SETTINGS) as mock_settings,
             patch(_P_STORE, new_callable=AsyncMock),
-            patch("subprocess.run") as mock_run,
+            patch(self._P_SHELL, new_callable=AsyncMock) as mock_shell,
         ):
             mock_settings.return_value.groups_dir = Path("/tmp/groups")
-            mock_run.return_value = MagicMock(returncode=0, stdout="hi\n", stderr="")
+            mock_shell.return_value = ShellResult(returncode=0, stdout="hi", stderr="")
             await execute_direct_command(deps, "g@g.us", group, msg, "echo hi")
 
         deps.broadcast_to_channels.assert_awaited_once()
@@ -333,6 +337,8 @@ class TestExecuteDirectCommand:
 
     @pytest.mark.asyncio
     async def test_failed_command_shows_error(self):
+        from pynchy.utils import ShellResult
+
         group = _make_group()
         deps = _make_deps()
         msg = _make_message("!false")
@@ -340,10 +346,10 @@ class TestExecuteDirectCommand:
         with (
             patch(_P_SETTINGS) as mock_settings,
             patch(_P_STORE, new_callable=AsyncMock),
-            patch("subprocess.run") as mock_run,
+            patch(self._P_SHELL, new_callable=AsyncMock) as mock_shell,
         ):
             mock_settings.return_value.groups_dir = Path("/tmp/groups")
-            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="error msg")
+            mock_shell.return_value = ShellResult(returncode=1, stdout="", stderr="error msg")
             await execute_direct_command(deps, "g@g.us", group, msg, "false")
 
         channel_text = deps.broadcast_to_channels.call_args[0][1]
@@ -352,20 +358,20 @@ class TestExecuteDirectCommand:
 
     @pytest.mark.asyncio
     async def test_timeout_sends_host_message(self):
+        from pynchy.utils import ShellResult
+
         group = _make_group()
         deps = _make_deps()
         msg = _make_message("!sleep 99")
 
-        import subprocess as sp
-
         with (
             patch(_P_SETTINGS) as mock_settings,
-            patch(
-                "subprocess.run",
-                side_effect=sp.TimeoutExpired("sleep", 30),
-            ),
+            patch(self._P_SHELL, new_callable=AsyncMock) as mock_shell,
         ):
             mock_settings.return_value.groups_dir = Path("/tmp/groups")
+            mock_shell.return_value = ShellResult(
+                returncode=None, stdout="", stderr="", timed_out=True
+            )
             await execute_direct_command(deps, "g@g.us", group, msg, "sleep 99")
 
         deps.broadcast_host_message.assert_awaited_once()
