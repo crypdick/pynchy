@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from pynchy.startup_handler import auto_rollback, validate_plugin_credentials
+from pynchy.startup_handler import (
+    auto_rollback,
+    check_deploy_continuation,
+    validate_plugin_credentials,
+)
+from pynchy.types import WorkspaceProfile
 
 # ---------------------------------------------------------------------------
 # validate_plugin_credentials
@@ -103,7 +108,7 @@ class TestAutoRollback:
         cont_path.write_text(
             json.dumps(
                 {
-                    "previous_commit_sha": "abc123def",
+                    "previous_commit_sha": "prev-sha-1",
                     "resume_prompt": "Deploy complete.",
                 }
             )
@@ -119,7 +124,7 @@ class TestAutoRollback:
         ):
             await auto_rollback(cont_path, RuntimeError("startup failed"))
 
-        mock_git.assert_called_once_with("reset", "--hard", "abc123def")
+        mock_git.assert_called_once_with("reset", "--hard", "prev-sha-1")
         assert exc_info.value.code == 1
 
         # Continuation should be rewritten with rollback info
@@ -131,7 +136,7 @@ class TestAutoRollback:
     async def test_returns_when_git_reset_fails(self, tmp_path):
         """Should return (not exit) when git reset fails."""
         cont_path = tmp_path / "continuation.json"
-        cont_path.write_text(json.dumps({"previous_commit_sha": "abc123def"}))
+        cont_path.write_text(json.dumps({"previous_commit_sha": "prev-sha-1"}))
 
         class FailResult:
             returncode = 1
@@ -148,3 +153,150 @@ class TestAutoRollback:
 
         await auto_rollback(missing_path, RuntimeError("startup failed"))
         # Should not raise
+
+
+# ---------------------------------------------------------------------------
+# check_deploy_continuation
+# ---------------------------------------------------------------------------
+
+
+def _make_workspace(jid: str, folder: str, is_admin: bool = False) -> WorkspaceProfile:
+    return WorkspaceProfile(
+        jid=jid,
+        name=folder,
+        folder=folder,
+        trigger="always",
+        is_admin=is_admin,
+    )
+
+
+class FakeQueue:
+    def __init__(self):
+        self.enqueued: list[str] = []
+
+    def enqueue_message_check(self, jid: str) -> None:
+        self.enqueued.append(jid)
+
+
+class FakeDeps:
+    def __init__(self, ws: dict[str, WorkspaceProfile]):
+        self._workspaces = ws
+        self.queue = FakeQueue()
+        self.last_agent_timestamp: dict[str, str] = {}
+        self.channels: list = []
+        self.broadcast_host_message = AsyncMock()
+        self._register_workspace = AsyncMock()
+        self.register_jid_alias = AsyncMock()
+
+    @property
+    def workspaces(self) -> dict[str, WorkspaceProfile]:
+        return self._workspaces
+
+
+class TestCheckDeployContinuation:
+    """Tests for check_deploy_continuation — inject resume messages on deploy."""
+
+    @pytest.mark.asyncio
+    async def test_skips_periodic_workspace(self, tmp_path, monkeypatch):
+        """Periodic workspaces should NOT receive deploy resume messages."""
+        periodic_jid = "slack:PERIODIC"
+        interactive_jid = "slack:INTERACTIVE"
+
+        ws = {
+            periodic_jid: _make_workspace(periodic_jid, "code-improver"),
+            interactive_jid: _make_workspace(interactive_jid, "my-group"),
+        }
+        deps = FakeDeps(ws)
+
+        # Write continuation file
+        cont_path = tmp_path / "deploy_continuation.json"
+        cont_path.write_text(
+            json.dumps(
+                {
+                    "commit_sha": "abc123",
+                    "resume_prompt": "Deploy complete.",
+                    "active_sessions": {
+                        periodic_jid: "session-1",
+                        interactive_jid: "session-2",
+                    },
+                }
+            )
+        )
+
+        # Patch settings to point data_dir at tmp_path
+        monkeypatch.setattr(
+            "pynchy.startup_handler.get_settings",
+            lambda: type("S", (), {"data_dir": tmp_path})(),
+        )
+
+        # Patch load_workspace_config: periodic for code-improver, non-periodic for others
+        from pynchy.config_models import WorkspaceConfig
+
+        def mock_load(folder):
+            if folder == "code-improver":
+                return WorkspaceConfig(schedule="0 */1 * * *", prompt="Run task.")
+            return WorkspaceConfig()
+
+        monkeypatch.setattr(
+            "pynchy.workspace_config.load_workspace_config",
+            mock_load,
+        )
+
+        # Patch store_message to capture calls
+        stored: list = []
+
+        async def fake_store(msg):
+            stored.append(msg)
+
+        monkeypatch.setattr("pynchy.startup_handler.store_message", fake_store)
+
+        await check_deploy_continuation(deps)
+
+        # Only the interactive workspace should get a resume message
+        assert len(stored) == 1
+        assert stored[0].chat_jid == interactive_jid
+        assert len(deps.queue.enqueued) == 1
+        assert deps.queue.enqueued[0] == interactive_jid
+
+    @pytest.mark.asyncio
+    async def test_resumes_interactive_workspace(self, tmp_path, monkeypatch):
+        """Non-periodic workspaces should receive deploy resume messages."""
+        jid = "slack:INTERACTIVE"
+        ws = {jid: _make_workspace(jid, "my-group")}
+        deps = FakeDeps(ws)
+
+        cont_path = tmp_path / "deploy_continuation.json"
+        cont_path.write_text(
+            json.dumps(
+                {
+                    "commit_sha": "abc123",
+                    "resume_prompt": "Deploy complete.",
+                    "active_sessions": {jid: "session-1"},
+                }
+            )
+        )
+
+        monkeypatch.setattr(
+            "pynchy.startup_handler.get_settings",
+            lambda: type("S", (), {"data_dir": tmp_path})(),
+        )
+
+        from pynchy.config_models import WorkspaceConfig
+
+        monkeypatch.setattr(
+            "pynchy.workspace_config.load_workspace_config",
+            lambda folder: WorkspaceConfig(),
+        )
+
+        stored: list = []
+
+        async def fake_store(msg):
+            stored.append(msg)
+
+        monkeypatch.setattr("pynchy.startup_handler.store_message", fake_store)
+
+        await check_deploy_continuation(deps)
+
+        assert len(stored) == 1
+        assert stored[0].chat_jid == jid
+        assert "[DEPLOY COMPLETE" in stored[0].content
