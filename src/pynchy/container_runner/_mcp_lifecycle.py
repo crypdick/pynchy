@@ -204,7 +204,7 @@ async def warm_image_cache(instances: dict[str, McpInstance]) -> None:
             await asyncio.to_thread(_ensure_mcp_image, cfg)
             logger.info("Warmed MCP image cache", image=cfg.image)
         except Exception:
-            logger.warning("Failed to warm MCP image", image=cfg.image)
+            logger.exception("Failed to warm MCP image", image=cfg.image)
 
 
 # ---------------------------------------------------------------------------

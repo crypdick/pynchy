@@ -315,12 +315,10 @@ async def run_container_agent(
         for output_event in outputs:
             try:
                 await on_output(output_event)
-            except Exception as exc:
-                logger.error(
+            except Exception:
+                logger.exception(
                     "Output callback failed",
                     group=group.name,
-                    error_type=type(exc).__name__,
-                    error=str(exc),
                 )
 
     # --- Write log ---
