@@ -1,6 +1,6 @@
 """Tests for git_utils.py — shared git helpers.
 
-These functions are used by worktree, workspace_ops, and git_sync modules.
+These functions are used by worktree and git_sync modules.
 They handle critical operations like pushing commits and detecting repo state,
 with retry logic and error recovery that warrant thorough testing.
 """

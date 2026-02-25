@@ -5,11 +5,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import sys
-from pathlib import Path
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 
 from neonize.aioze import client as neonize_client
 from neonize.aioze import events as neonize_events
@@ -26,7 +26,12 @@ from neonize.proto.Neonize_pb2 import JID
 from neonize.utils.jid import Jid2String
 
 from pynchy.config import get_settings
-from pynchy.db import get_chat_jids_by_name, get_last_group_sync, set_last_group_sync, update_chat_name
+from pynchy.db import (
+    get_chat_jids_by_name,
+    get_last_group_sync,
+    set_last_group_sync,
+    update_chat_name,
+)
 from pynchy.logger import logger
 from pynchy.types import NewMessage, WorkspaceProfile
 

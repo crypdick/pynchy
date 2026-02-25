@@ -7,7 +7,6 @@ import json
 import os
 import signal
 import threading
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -331,29 +330,6 @@ class PynchyApp:
         """Delegates direct command execution to the message handler module."""
         await message_handler.execute_direct_command(self, chat_jid, group, message, command)
 
-    async def _broadcast_trace(
-        self,
-        chat_jid: str,
-        trace_type: str,
-        data: dict[str, Any],
-        channel_text: str,
-        *,
-        db_id_prefix: str,
-        db_sender: str,
-        message_type: str = "assistant",
-    ) -> None:
-        """Delegates trace broadcasting to the output handler module."""
-        await output_handler.broadcast_trace(
-            self,
-            chat_jid,
-            trace_type,
-            data,
-            channel_text,
-            db_id_prefix=db_id_prefix,
-            db_sender=db_sender,
-            message_type=message_type,
-        )
-
     # ------------------------------------------------------------------
     # Message loop & startup delegation
     # ------------------------------------------------------------------
@@ -365,18 +341,6 @@ class PynchyApp:
             return
         self.message_loop_running = True
         await start_message_loop(self, lambda: self._shutting_down)
-
-    async def _send_boot_notification(self) -> None:
-        await startup_handler.send_boot_notification(self)
-
-    async def _recover_pending_messages(self) -> None:
-        await startup_handler.recover_pending_messages(self)
-
-    async def _auto_rollback(self, continuation_path: Path, exc: Exception) -> None:
-        await startup_handler.auto_rollback(continuation_path, exc)
-
-    async def _check_deploy_continuation(self) -> None:
-        await startup_handler.check_deploy_continuation(self)
 
     # Internal delegation for session_handler (used by dep_factory adapters)
     async def _ingest_user_message(
@@ -518,7 +482,7 @@ class PynchyApp:
         except Exception as exc:
             # Auto-rollback if we crash during startup after a deploy
             if continuation_path.exists():
-                await self._auto_rollback(continuation_path, exc)
+                await startup_handler.auto_rollback(continuation_path, exc)
             raise
 
         loop = asyncio.get_running_loop()
@@ -558,7 +522,7 @@ class PynchyApp:
                 await ch.connect()
         except Exception as exc:
             if continuation_path.exists():
-                await self._auto_rollback(continuation_path, exc)
+                await startup_handler.auto_rollback(continuation_path, exc)
             raise
 
         # First-run: create a private group and register as admin channel
@@ -627,8 +591,8 @@ class PynchyApp:
             remote=f"http://{hostname}:{s.server.port}/status",
         )
 
-        await self._send_boot_notification()
+        await startup_handler.send_boot_notification(self)
         await self._catch_up_channel_history()
-        await self._recover_pending_messages()
-        await self._check_deploy_continuation()
+        await startup_handler.recover_pending_messages(self)
+        await startup_handler.check_deploy_continuation(self)
         await self._start_message_loop()

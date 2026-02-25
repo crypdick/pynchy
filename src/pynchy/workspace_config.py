@@ -18,8 +18,8 @@ from zoneinfo import ZoneInfo
 from croniter import croniter
 
 from pynchy.config import get_settings
-from pynchy.config_refs import connection_ref_from_parts, parse_chat_ref
 from pynchy.config_models import WorkspaceConfig
+from pynchy.config_refs import connection_ref_from_parts, parse_chat_ref
 from pynchy.db import create_task, get_active_task_for_group, update_task
 from pynchy.logger import logger
 
