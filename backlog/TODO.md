@@ -38,13 +38,12 @@ Single source of truth for all pynchy work items.
 - hide `register_group` tool from non-admin containers — currently the tool definition is always returned (only the handler checks `is_admin`). Should return `None` from `_register_group_definition()` when `_ipc.is_admin` is false, like `deploy_changes` already does.
 - if container 1 syncs a change, the host recieves and pushes to the rest of the containers, and one of the container's worktree has a merge conflict, and that container is hibernating, that container ought to be spun up, sent a system message about the failed abortion, and a follow up message telling it to fix the broken rebase. that way, working in one container does not fuck up the work of a hibernating container.
 - rename subsystems:
-  - Providers (AI models)
-  - Runtime (container runtimes)
+    - Providers (AI models)
+    - Runtime (container runtimes)
 - enforce `"forbidden"` trust level — `TrustLevel = "forbidden"` is declared in `ServiceTrustConfig` but doesn't block anything yet. Needs: (1) SecurityPolicy.evaluate_read/evaluate_write to reject forbidden operations, (2) plugin hook so plugins can declare forbidden operations in their trust config, (3) expose as first-class plugin API so marking a service property as `"forbidden"` actually changes behavior at the plugin level.
-- GDrive integration
 - GMail integration
 - Protonmail integration
-- migrate to scraping jsonl files
+- if a deployment fails, it should spawn a local claude agent out-of-band to rescue the deployment
 
 
 ### 2 - Planning
