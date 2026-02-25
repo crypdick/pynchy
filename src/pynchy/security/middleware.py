@@ -30,7 +30,7 @@ class PolicyDecision:
 
     allowed: bool
     reason: str | None = None
-    needs_deputy: bool = False
+    needs_cop: bool = False
     needs_human: bool = False
 
 
@@ -70,7 +70,7 @@ class SecurityPolicy:
         """Evaluate a read operation on a service.
 
         - forbidden -> blocked
-        - public_source=True -> deputy scan, corruption taint set
+        - public_source=True -> cop scan, corruption taint set
         - public_source=False -> no gating
         - secret_data=True -> secret taint set (always, on any read)
         """
@@ -90,8 +90,8 @@ class SecurityPolicy:
             self._corruption_tainted = True
             return PolicyDecision(
                 allowed=True,
-                reason=f"Public source '{service}': deputy scan required",
-                needs_deputy=True,
+                reason=f"Public source '{service}': cop scan required",
+                needs_cop=True,
             )
 
         return PolicyDecision(allowed=True)
@@ -100,7 +100,7 @@ class SecurityPolicy:
         """Evaluate a write operation on a service.
 
         Checks forbidden first, then derives gating from the matrix:
-        - Deputy: corruption_tainted (any write by potentially-hijacked agent)
+        - Cop: corruption_tainted (any write by potentially-hijacked agent)
         - Human: dangerous_writes=True OR (corruption + secret + public_sink)
         """
         trust = self._get_trust(service)
@@ -118,7 +118,7 @@ class SecurityPolicy:
             )
 
         # Derive gating from taint state + service properties
-        needs_deputy = self._corruption_tainted
+        needs_cop = self._corruption_tainted
         needs_human = False
 
         # dangerous_writes=True -> always needs human confirmation
@@ -135,8 +135,8 @@ class SecurityPolicy:
             needs_human = True
 
         reason_parts = []
-        if needs_deputy:
-            reason_parts.append("deputy (corruption taint)")
+        if needs_cop:
+            reason_parts.append("cop (corruption taint)")
         if needs_human:
             reason_parts.append("human confirmation")
         if scan_result.secrets_found:
@@ -146,6 +146,6 @@ class SecurityPolicy:
         return PolicyDecision(
             allowed=True,
             reason=reason,
-            needs_deputy=needs_deputy,
+            needs_cop=needs_cop,
             needs_human=needs_human,
         )
