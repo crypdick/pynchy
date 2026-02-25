@@ -145,7 +145,12 @@ async def _process_output_file(
 
     Reads JSON, parses via _parse_container_output(), dispatches to the
     session's output handler, and detects query-done pulses (result events
-    with new_session_id).  Deletes the file after processing.
+    with new_session_id).
+
+    Only deletes the file if a session handler consumed it.  One-shot
+    containers (scheduled tasks) have no session, so their output files
+    must be left in place for run_container_agent() to collect after
+    the container exits.
     """
     try:
         json_str = file_path.read_text()
@@ -171,7 +176,11 @@ async def _process_output_file(
                 group=source_group,
             )
 
-        file_path.unlink()
+        # Only delete if a session handler consumed the event.  One-shot
+        # containers have no session — their files are collected by
+        # run_container_agent() after the container exits.
+        if handler is not None:
+            file_path.unlink()
     except Exception as exc:
         logger.error(
             "Error processing output file",

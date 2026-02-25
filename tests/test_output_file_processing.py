@@ -62,8 +62,8 @@ class TestOutputFileProcessing:
         assert output.text == "Hello world"
         assert output.status == "success"
 
-    async def test_file_deleted_after_processing(self, _db, tmp_path: Path):
-        """Output file should be unlinked after successful processing."""
+    async def test_file_deleted_when_handler_exists(self, _db, tmp_path: Path):
+        """Output file should be unlinked after a handler consumes it."""
         ipc_dir = tmp_path / "ipc"
         file_path = _write_output_file(
             ipc_dir,
@@ -75,13 +75,19 @@ class TestOutputFileProcessing:
             },
         )
 
-        with patch("pynchy.ipc._watcher._get_output_handler", return_value=None):
+        handler = AsyncMock()
+        with patch("pynchy.ipc._watcher._get_output_handler", return_value=handler):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
         assert not file_path.exists()
 
-    async def test_no_handler_still_processes(self, _db, tmp_path: Path):
-        """Output events should be processed (and deleted) even with no handler."""
+    async def test_file_preserved_when_no_handler(self, _db, tmp_path: Path):
+        """Output files should be left in place when no session handler exists.
+
+        One-shot containers (scheduled tasks) have no session, so the
+        watcher must leave their output files for run_container_agent()
+        to collect after the container exits.
+        """
         ipc_dir = tmp_path / "ipc"
         file_path = _write_output_file(
             ipc_dir,
@@ -89,14 +95,14 @@ class TestOutputFileProcessing:
             {
                 "status": "success",
                 "type": "text",
-                "text": "no handler",
+                "text": "one-shot output",
             },
         )
 
         with patch("pynchy.ipc._watcher._get_output_handler", return_value=None):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
-        assert not file_path.exists()
+        assert file_path.exists(), "File should be preserved for one-shot container collection"
 
     async def test_thinking_event_dispatched(self, _db, tmp_path: Path):
         """Thinking events should be dispatched to the output handler."""
@@ -165,8 +171,9 @@ class TestQueryDonePulse:
             },
         )
 
+        handler = AsyncMock()
         with (
-            patch("pynchy.ipc._watcher._get_output_handler", return_value=None),
+            patch("pynchy.ipc._watcher._get_output_handler", return_value=handler),
             patch("pynchy.ipc._watcher._signal_query_done") as mock_signal,
         ):
             await _process_output_file(file_path, "test-group", ipc_dir)
