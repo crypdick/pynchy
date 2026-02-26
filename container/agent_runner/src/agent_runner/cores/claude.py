@@ -169,8 +169,8 @@ def _create_pre_compact_hook():
                         "category": "conversation",
                     },
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                _log(f"save_memory IPC failed (non-fatal): {exc}")
         except Exception as exc:
             _log(f"Failed to archive transcript: {exc}")
 
