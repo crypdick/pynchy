@@ -404,22 +404,32 @@ class SlackChannel:
         chunks = split_text(text, max_len=3000)
         await self._app.client.chat_update(channel=channel_id, ts=message_id, text=chunks[0])
 
+    # Unicode → Slack emoji name mapping.  Callers may pass either format;
+    # Slack's reactions.add API requires the short-code name.
+    _UNICODE_TO_SLACK_NAME: dict[str, str] = {
+        "👀": "eyes",
+        "🦞": "lobster",
+        "🦀": "crab",
+        "❌": "x",
+    }
+
     async def send_reaction(
         self,
         jid: str,
         message_id: str,
-        sender: str,
-        emoji: str,  # noqa: ARG002
+        sender: str,  # noqa: ARG002
+        emoji: str,
     ) -> None:
         """Add a reaction to a Slack message.
 
         ``message_id`` should be a Slack message ``ts`` value.
+        Accepts either Slack names (``eyes``) or Unicode emoji (``👀``).
         """
         if not self._app or not self.owns_jid(jid):
             return
         channel_id = _channel_id_from_jid(jid)
-        # Normalize emoji name (strip colons if present)
-        emoji_name = emoji.strip(":")
+        # Convert Unicode emoji to Slack name, or strip colons from name format
+        emoji_name = self._UNICODE_TO_SLACK_NAME.get(emoji, emoji.strip(":"))
         try:
             await self._app.client.reactions_add(
                 channel=channel_id, timestamp=message_id, name=emoji_name
