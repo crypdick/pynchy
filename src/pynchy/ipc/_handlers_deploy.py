@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from pynchy.deploy import build_container_image, finalize_deploy
 from pynchy.ipc._deps import IpcDeps
 from pynchy.ipc._registry import register
 from pynchy.logger import logger
@@ -49,8 +50,6 @@ async def _handle_deploy(
             "Deploy request missing chatJid, resolved from admin group",
             chat_jid=chat_jid,
         )
-
-    from pynchy.deploy import build_container_image, finalize_deploy
 
     if rebuild_container:
         build = build_container_image()

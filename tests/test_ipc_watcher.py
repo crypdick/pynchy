@@ -251,7 +251,9 @@ class TestIpcDeployEdgeCases:
         """Deploy request missing chatJid should fall back to admin group's JID."""
         from pynchy.ipc._handlers_deploy import _handle_deploy
 
-        with patch("pynchy.deploy.finalize_deploy", new_callable=AsyncMock) as mock_finalize:
+        with patch(
+            "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
+        ) as mock_finalize:
             await _handle_deploy(
                 {
                     "rebuildContainer": False,
@@ -279,7 +281,9 @@ class TestIpcDeployEdgeCases:
         )
         await _init_test_database()
 
-        with patch("pynchy.deploy.finalize_deploy", new_callable=AsyncMock) as mock_finalize:
+        with patch(
+            "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
+        ) as mock_finalize:
             await _handle_deploy(
                 {
                     "rebuildContainer": False,
