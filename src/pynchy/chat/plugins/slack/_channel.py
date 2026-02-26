@@ -1,33 +1,26 @@
-"""Built-in Slack channel plugin.
-
-Connects to Slack via Socket Mode (bolt) and maps Slack channels/DMs to
-pynchy workspaces.  Each Slack conversation is identified by a JID of the
-form ``slack:<CHANNEL_ID>`` so it coexists with other channel plugins.
-
-Activation: define ``[connection.slack.<name>]`` entries in config.toml and
-provide token env var names (e.g. ``SLACK__BOT_TOKEN`` / ``SLACK__APP_TOKEN``).
-The plugin returns ``None`` when no Slack connections are configured, so it
-never interferes with installations that don't use Slack.
-"""
+"""SlackChannel — pynchy Channel protocol implementation backed by Slack Socket Mode."""
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
-import os
 import re
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
-import pluggy
-
 from pynchy.config import get_settings
 from pynchy.logger import logger
 from pynchy.types import NewMessage
 
-hookimpl = pluggy.HookimplMarker("pynchy")
+from ._ui import (
+    ASK_USER_ACTION_RE,
+    build_ask_user_blocks,
+    extract_text_input_value,
+    normalize_chat_name,
+    split_text,
+)
 
 JID_PREFIX = "slack:"
 
@@ -99,7 +92,7 @@ class SlackChannel:
         self._connection_name = connection_name
         self._bot_token = bot_token
         self._app_token = app_token
-        self._chat_names = {_normalize_chat_name(name) for name in chat_names}
+        self._chat_names = {normalize_chat_name(name) for name in chat_names}
         self._allow_create = allow_create
         self._chat_name_to_id: dict[str, str] = {}
         self._allowed_channel_ids: set[str] = set()
@@ -162,7 +155,7 @@ class SlackChannel:
             return
         channel_id = _channel_id_from_jid(jid)
         # Slack block limit is 3000 chars per section; split long messages.
-        chunks = _split_text(text, max_len=3000)
+        chunks = split_text(text, max_len=3000)
         for chunk in chunks:
             await self._app.client.chat_postMessage(channel=channel_id, text=chunk)
 
@@ -260,7 +253,7 @@ class SlackChannel:
     # ------------------------------------------------------------------
 
     def _register_allowed_channel(self, name: str, channel_id: str) -> None:
-        normalized = _normalize_chat_name(name)
+        normalized = normalize_chat_name(name)
         self._chat_name_to_id[normalized] = channel_id
         self._allowed_channel_ids.add(channel_id)
 
@@ -314,7 +307,7 @@ class SlackChannel:
 
     async def resolve_chat_jid(self, chat_name: str) -> str | None:
         """Resolve a configured chat name to a Slack JID."""
-        normalized = _normalize_chat_name(chat_name)
+        normalized = normalize_chat_name(chat_name)
         if normalized in self._chat_name_to_id:
             return _jid(self._chat_name_to_id[normalized])
 
@@ -341,7 +334,7 @@ class SlackChannel:
         """
         assert self._app is not None
         # Slack channel names: lowercase, no spaces, max 80 chars.
-        slack_name = _normalize_chat_name(name)[:80]
+        slack_name = normalize_chat_name(name)[:80]
         try:
             resp = await self._app.client.conversations_create(name=slack_name, is_private=False)
             channel_id = resp["channel"]["id"]
@@ -408,7 +401,7 @@ class SlackChannel:
             logger.warning("update_message skipped — JID not owned", jid=jid)
             return
         channel_id = _channel_id_from_jid(jid)
-        chunks = _split_text(text, max_len=3000)
+        chunks = split_text(text, max_len=3000)
         await self._app.client.chat_update(channel=channel_id, ts=message_id, text=chunks[0])
 
     async def send_reaction(
@@ -451,7 +444,7 @@ class SlackChannel:
             return None
         channel_id = _channel_id_from_jid(jid)
 
-        blocks = _build_ask_user_blocks(request_id, questions)
+        blocks = build_ask_user_blocks(request_id, questions)
         # Fallback text for notifications / clients that don't render blocks
         fallback = "Question: " + "; ".join(q.get("question", "") for q in questions)
 
@@ -565,7 +558,7 @@ class SlackChannel:
             await self._on_slack_reaction(event)
 
         # --- ask_user interaction handlers (Block Kit buttons & text submit) ---
-        @self._app.action(_ASK_USER_ACTION_RE)
+        @self._app.action(ASK_USER_ACTION_RE)
         async def _handle_ask_user_action(
             ack: Any, body: dict[str, Any], action: dict[str, Any]
         ) -> None:
@@ -778,7 +771,7 @@ class SlackChannel:
             # Free-text submit — request_id is the entire suffix after prefix
             request_id = action_id.removeprefix("ask_user_submit_")
             # Extract text from state.values
-            answer = _extract_text_input_value(body, request_id)
+            answer = extract_text_input_value(body, request_id)
         else:
             return  # Not an ask_user action we handle
 
@@ -858,242 +851,3 @@ class SlackChannel:
             return name
         except Exception:
             return channel_id
-
-
-# ------------------------------------------------------------------
-# Plugin entry point
-# ------------------------------------------------------------------
-
-
-class SlackChannelPlugin:
-    """Built-in plugin that activates when Slack tokens are configured."""
-
-    @hookimpl
-    def pynchy_create_channel(self, context: Any) -> list[SlackChannel] | None:
-        s = get_settings()
-        configs = s.connection.slack
-        if not configs:
-            logger.debug("Slack channel skipped — no connections configured")
-            return None
-
-        # Guard against None/incomplete context (e.g. in tests)
-        if context is None:
-            return None
-        on_message = getattr(context, "on_message_callback", None)
-        on_metadata = getattr(context, "on_chat_metadata_callback", None)
-        if on_message is None or on_metadata is None:
-            return None
-
-        on_reaction = getattr(context, "on_reaction_callback", None)
-        on_ask_user_answer = getattr(context, "on_ask_user_answer_callback", None)
-        channels: list[SlackChannel] = []
-
-        for name, cfg in configs.items():
-            connection_name = f"connection.slack.{name}"
-            bot_env = (cfg.bot_token_env or "").strip()
-            app_env = (cfg.app_token_env or "").strip()
-            if not bot_env or not app_env:
-                logger.warning(
-                    "Slack connection skipped — empty token env var name",
-                    connection=connection_name,
-                    bot_token_env=cfg.bot_token_env,
-                    app_token_env=cfg.app_token_env,
-                )
-                continue
-            bot_token = os.environ.get(bot_env, "")
-            app_token = os.environ.get(app_env, "")
-            chat_names = list(cfg.chat.keys())
-
-            if not chat_names:
-                logger.warning(
-                    "Slack connection has no configured chats; skipping",
-                    connection=connection_name,
-                )
-                continue
-
-            if not bot_token or not app_token:
-                logger.warning(
-                    "Slack connection skipped — missing tokens",
-                    connection=connection_name,
-                    bot_token_env=bot_env,
-                    app_token_env=app_env,
-                )
-                continue
-
-            allow_create = s.command_center.connection == connection_name
-
-            channels.append(
-                SlackChannel(
-                    connection_name=connection_name,
-                    bot_token=bot_token,
-                    app_token=app_token,
-                    chat_names=chat_names,
-                    allow_create=allow_create,
-                    on_message=on_message,
-                    on_chat_metadata=on_metadata,
-                    on_reaction=on_reaction,
-                    on_ask_user_answer=on_ask_user_answer,
-                )
-            )
-
-        return channels or None
-
-
-# ------------------------------------------------------------------
-# Utilities
-# ------------------------------------------------------------------
-
-
-def _normalize_chat_name(name: str) -> str:
-    """Normalize Slack channel name to the canonical slug form."""
-    cleaned = name.strip()
-    if cleaned.startswith("#"):
-        cleaned = cleaned[1:]
-    return cleaned.lower().replace(" ", "-")
-
-
-def _split_text(text: str, *, max_len: int = 3000) -> list[str]:
-    """Split text into chunks respecting the Slack block size limit.
-
-    Tries to break on newlines when possible.
-    """
-    if len(text) <= max_len:
-        return [text]
-
-    chunks: list[str] = []
-    remaining = text
-    while remaining:
-        if len(remaining) <= max_len:
-            chunks.append(remaining)
-            break
-        # Try to find a newline break point
-        split_at = remaining.rfind("\n", 0, max_len)
-        if split_at <= 0:
-            split_at = max_len
-        chunks.append(remaining[:split_at])
-        remaining = remaining[split_at:].lstrip("\n")
-    return chunks
-
-
-# ------------------------------------------------------------------
-# Block Kit builders for ask_user widgets
-# ------------------------------------------------------------------
-
-# action_id prefixes used to match interaction callbacks:
-#   ask_user_btn_{request_id}_{q_idx}_{label}  — option button click
-#   ask_user_submit_{request_id}                — free-text submit button
-#   ask_user_text_{request_id}_{q_idx}          — plain_text_input element
-# Only btn (button click) and submit (text-input submit button) fire
-# block_actions events. The input element uses dispatch_action=False so
-# its action_id (ask_user_text_*) is never dispatched by Slack.
-_ASK_USER_ACTION_RE = re.compile(r"^ask_user_(btn|submit)_")
-
-
-def _build_ask_user_blocks(request_id: str, questions: list[dict]) -> list[dict]:
-    """Build Block Kit blocks for an ask_user widget.
-
-    Each question gets:
-    - A ``section`` block with the question text (mrkdwn)
-    - An ``actions`` block with buttons (one per option), if options exist
-    - A ``divider`` between questions
-    After all questions, a single ``input`` block with ``plain_text_input``
-    and a submit button for free-form answers.
-    """
-    blocks: list[dict] = []
-
-    for q_idx, q in enumerate(questions):
-        question_text = q.get("question", "")
-        options = q.get("options", [])
-
-        # Section with question text
-        blocks.append(
-            {
-                "type": "section",
-                "block_id": f"ask_user_q_{request_id}_{q_idx}",
-                "text": {"type": "mrkdwn", "text": f"*{question_text}*"},
-            }
-        )
-
-        # Option buttons (if any)
-        if options:
-            buttons = []
-            for opt in options:
-                label = opt.get("label", "")
-                desc = opt.get("description", "")
-                button: dict[str, Any] = {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": label[:75]},
-                    "action_id": f"ask_user_btn_{request_id}_{q_idx}_{label}",
-                    "value": label,
-                }
-                if desc:
-                    button["confirm"] = {
-                        "title": {"type": "plain_text", "text": label},
-                        "text": {"type": "mrkdwn", "text": desc},
-                        "confirm": {"type": "plain_text", "text": "Select"},
-                        "deny": {"type": "plain_text", "text": "Cancel"},
-                    }
-                buttons.append(button)
-            blocks.append(
-                {
-                    "type": "actions",
-                    "block_id": f"ask_user_actions_{request_id}_{q_idx}",
-                    "elements": buttons,
-                }
-            )
-
-        # Divider between questions
-        if q_idx < len(questions) - 1:
-            blocks.append({"type": "divider"})
-
-    # Free-form text input (always present — users can type a custom answer)
-    blocks.append(
-        {
-            "type": "input",
-            "block_id": f"ask_user_input_{request_id}_0",
-            "optional": True,
-            "dispatch_action": False,
-            "element": {
-                "type": "plain_text_input",
-                "action_id": f"ask_user_text_{request_id}_0",
-                "placeholder": {"type": "plain_text", "text": "Type a custom answer..."},
-            },
-            "label": {"type": "plain_text", "text": "Or type your answer"},
-        }
-    )
-
-    # Submit button for the text input
-    blocks.append(
-        {
-            "type": "actions",
-            "block_id": f"ask_user_submit_actions_{request_id}",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "Submit"},
-                    "action_id": f"ask_user_submit_{request_id}",
-                    "value": "submit",
-                    "style": "primary",
-                }
-            ],
-        }
-    )
-
-    return blocks
-
-
-def _extract_text_input_value(body: dict, request_id: str) -> str:
-    """Extract the plain_text_input value from a block_actions ``state.values``.
-
-    Slack nests input values under ``state.values.<block_id>.<action_id>.value``.
-    We search for the ask_user text input block matching ``request_id``.
-    """
-    values = body.get("state", {}).get("values", {})
-    # Look for any block matching ask_user_input_{request_id}_*
-    for block_id, actions in values.items():
-        if not block_id.startswith(f"ask_user_input_{request_id}"):
-            continue
-        for action_id, payload in actions.items():
-            if action_id.startswith(f"ask_user_text_{request_id}"):
-                return payload.get("value", "") or ""
-    return ""
