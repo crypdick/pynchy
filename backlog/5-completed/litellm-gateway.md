@@ -80,4 +80,4 @@ Write a full implementation plan covering:
 
 - [Factor out Claude backend as plugin](../3-ready/) (in 3-ready, blocked on this)
 - [Factor out OpenAI backend as plugin](../3-ready/) (in 3-ready, blocked on this)
-- [Security Hardening](2-planning/security-hardening.md) (complementary — this solves the credential isolation gap)
+- [Security Hardening](security-hardening.md) (complementary — this solves the credential isolation gap)

@@ -4,7 +4,7 @@
 
 This project adds security layers to Pynchy, enabling agents to safely use external services without creating the conditions for prompt injection attacks.
 
-**Status:** Core trust model implemented (Steps 1, 2, 4 done). Step 0 denied (redundant with 4-bools). Remaining: human approval gate, Cop agent, host-mutating gate.
+**Status:** Complete. All steps implemented. Step 0 denied (redundant with 4-bools). Steps 3 and 5 denied (email/passwords deferred).
 
 ## The Problem: The Lethal Trifecta
 
@@ -67,35 +67,37 @@ A payload secrets scanner (`detect-secrets`) also runs on outbound writes, escal
 
 ### Completed
 
-- **Step 1: Service Trust Profiles** → [5-completed/security-hardening-1-profiles.md](../5-completed/security-hardening-1-profiles.md)
+- **Step 1: Service Trust Profiles** → [security-hardening-1-profiles.md](security-hardening-1-profiles.md)
   `ServiceTrustConfig`, `WorkspaceSecurity`, TOML config, DB serialization.
 
-- **Step 2: Policy Middleware & Taint Tracking** → [5-completed/security-hardening-2-mcp-policy.md](../5-completed/security-hardening-2-mcp-policy.md)
+- **Step 2: Policy Middleware & Taint Tracking** → [security-hardening-2-mcp-policy.md](security-hardening-2-mcp-policy.md)
   `SecurityPolicy` with two-taint model, audit logging, IPC handler integration, payload secrets scanner.
 
-- **Step 4: Calendar Integration** → [5-completed/security-hardening-4-calendar.md](../5-completed/security-hardening-4-calendar.md)
+- **Step 4: Calendar Integration** → [security-hardening-4-calendar.md](security-hardening-4-calendar.md)
   CalDAV adapter (pre-existing plugin), now configured with trust declarations.
+
+- **Step 6: Human Approval Gate** → [security-hardening-6-approval.md](security-hardening-6-approval.md)
+  Approval flow for tainted containers writing to untrusted sinks. DB-backed pending approvals, `!approve`/`!deny` commands, timeout-to-deny.
+
+- **Step 6.1: Cop Agent** → [security-hardening-6.1-cop.md](security-hardening-6.1-cop.md)
+  LLM-based Cop inspector for prompt injection detection and host-mutating payload review.
+
+- **Step 7: Input Filtering** → [security-hardening-7-input-filter.md](security-hardening-7-input-filter.md)
+  Subsumed by the Cop's inbound inspection (Step 6.1). Original deputy agent plan preserved for reference.
+
+- **Host-Mutating Cop** (extends Steps 6.1/7)
+  Admin clean room config validation, Cop dual-inspection (inbound + outbound), host-mutating gate for all IPC operations, script-type MCP auto-classification.
+  Design: [Host-Mutating Operations & the Cop](../../docs/plans/2026-02-24-host-mutating-cop-design.md)
+  Implementation: [Host-Mutating Cop Implementation Plan](../../docs/plans/2026-02-25-host-mutating-cop-impl.md)
 
 ### Denied
 
 - **Step 0: Reduce IPC Surface** → [denied/security-hardening-0-ipc-surface.md](../denied/security-hardening-0-ipc-surface.md)
-  Transport-level IPC narrowing is redundant with the 4-bools taint model. The valuable parts (inotify/watchdog, startup sweep, signal validation) were already completed. Remaining items (send_message elimination, Cop mediation for all Tier 2) would break core functionality for marginal security gain.
+  Transport-level IPC narrowing is redundant with the 4-bools taint model.
 
-### Remaining
+- **Step 3: Email Integration** → [denied/security-hardening-3-email.md](../denied/security-hardening-3-email.md)
 
-#### [Step 6: Human Approval Gate](security-hardening-6-approval.md)
-**Scope:** Approval flow for tainted containers writing to untrusted sinks
-**Dependencies:** Steps 1-2 (done)
-
-#### [Step 7: Cop Agent (Input Filtering)](security-hardening-7-input-filter.md)
-**Scope:** LLM-based content sanitization for untrusted sources
-**Dependencies:** Steps 1-2 (done)
-
-#### Host-Mutating Cop (extends Steps 6.1/7)
-**Scope:** Admin clean room, Cop LLM inspector, host-mutating gate for IPC operations
-**Design:** [Host-Mutating Operations & the Cop](../../docs/plans/2026-02-24-host-mutating-cop-design.md)
-**Implementation:** [Host-Mutating Cop Implementation Plan](../../docs/plans/2026-02-25-host-mutating-cop-impl.md)
-**Dependencies:** Steps 1-2 (done)
+- **Step 5: Password Manager** → [denied/security-hardening-5-passwords.md](../denied/security-hardening-5-passwords.md)
 
 ## Security Guarantees
 
