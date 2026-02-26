@@ -60,6 +60,7 @@ from pynchy.db.messages import (
     get_messaging_stats,
     get_new_messages,
     message_exists,
+    prune_messages_by_sender,
     store_message,
     store_message_direct,
 )
@@ -75,6 +76,7 @@ from pynchy.db.sessions import (
     get_all_sessions,
     get_router_state,
     get_session,
+    save_router_state_batch,
     set_router_state,
     set_session,
 )
@@ -127,6 +129,7 @@ __all__ = [
     "get_messaging_stats",
     "get_new_messages",
     "message_exists",
+    "prune_messages_by_sender",
     "store_message",
     "store_message_direct",
     # tasks
@@ -154,6 +157,7 @@ __all__ = [
     "get_all_sessions",
     "get_router_state",
     "get_session",
+    "save_router_state_batch",
     "set_router_state",
     "set_session",
     # groups

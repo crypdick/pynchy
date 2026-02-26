@@ -106,17 +106,14 @@ class PynchyApp:
         Both rows are written in a single transaction so a crash can never
         leave them inconsistent.
         """
-        from pynchy.db._connection import atomic_write
+        from pynchy.db import save_router_state_batch
 
-        async with atomic_write() as db:
-            await db.execute(
-                "INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)",
-                ("last_timestamp", self.last_timestamp),
-            )
-            await db.execute(
-                "INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)",
-                ("last_agent_timestamp", json.dumps(self.last_agent_timestamp)),
-            )
+        await save_router_state_batch(
+            {
+                "last_timestamp": self.last_timestamp,
+                "last_agent_timestamp": json.dumps(self.last_agent_timestamp),
+            }
+        )
 
     # ------------------------------------------------------------------
     # JID alias cache

@@ -177,6 +177,21 @@ async def get_messaging_stats() -> dict[str, int | str | None]:
     }
 
 
+async def prune_messages_by_sender(sender: str, before_timestamp: str) -> int:
+    """Delete messages by sender older than a timestamp.
+
+    Only deletes rows matching the given sender — other messages are untouched.
+    Returns the number of rows deleted.
+    """
+    db = _get_db()
+    cursor = await db.execute(
+        "DELETE FROM messages WHERE sender = ? AND timestamp < ?",
+        (sender, before_timestamp),
+    )
+    await db.commit()
+    return cursor.rowcount
+
+
 async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
     """Get recent messages for a chat, including bot responses. Newest last.
 
