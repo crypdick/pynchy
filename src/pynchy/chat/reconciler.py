@@ -142,7 +142,17 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
             for msg in remote_messages:
                 # Remap chat_jid to canonical (the channel returned channel-native JIDs)
                 msg.chat_jid = canonical_jid
-                if not await message_exists(msg.id, canonical_jid):
+                exists = await message_exists(msg.id, canonical_jid)
+                logger.info(
+                    "reconciler_trace",
+                    step="msg_check",
+                    jid=canonical_jid,
+                    msg_id=msg.id,
+                    msg_ts=msg.timestamp[:30] if msg.timestamp else "none",
+                    exists=exists,
+                    sender=msg.sender,
+                )
+                if not exists:
                     # Sender filter: match _route_incoming_group behavior.
                     # Admin groups bypass; non-admin groups check allowed_users.
                     if not filter_allowed_messages([msg], group, ch.name):
@@ -155,12 +165,26 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                         if msg.timestamp > new_inbound_cursor:
                             new_inbound_cursor = msg.timestamp
                         continue
+                    logger.info(
+                        "reconciler_trace",
+                        step="ingesting",
+                        jid=canonical_jid,
+                        msg_id=msg.id,
+                    )
                     await deps._ingest_user_message(msg, source_channel=ch.name)
                     deps.queue.enqueue_message_check(canonical_jid)
                     recovered += 1
                 if msg.timestamp > new_inbound_cursor:
                     new_inbound_cursor = msg.timestamp
 
+            logger.info(
+                "reconciler_trace",
+                step="cursor_advance",
+                jid=canonical_jid,
+                old_cursor=inbound_cursor[:30] if inbound_cursor else "none",
+                new_cursor=new_inbound_cursor[:30] if new_inbound_cursor else "none",
+                will_advance=new_inbound_cursor != inbound_cursor,
+            )
             # --- Outbound retry ---
             pending = await get_pending_outbound(ch.name, canonical_jid)
             outbound_cursor = await get_channel_cursor(ch.name, canonical_jid, "outbound")
