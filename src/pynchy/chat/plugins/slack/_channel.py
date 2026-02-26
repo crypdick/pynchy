@@ -12,7 +12,7 @@ from typing import Any
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
-from pynchy.types import NewMessage
+from pynchy.types import InboundFetchResult, NewMessage
 
 from ._ui import (
     ASK_USER_ACTION_RE,
@@ -481,70 +481,117 @@ class SlackChannel:
     # History catch-up (reconnect recovery)
     # ------------------------------------------------------------------
 
-    async def fetch_missed_messages(
-        self, channel_id: str, oldest: str, *, limit: int = 200
-    ) -> list[NewMessage]:
-        """Fetch messages sent while disconnected via ``conversations.history``.
+    async def _fetch_missed_messages_with_watermark(
+        self, channel_id: str, oldest: str, *, limit: int = 1000
+    ) -> tuple[list[NewMessage], str]:
+        """Fetch messages via ``conversations.history`` with pagination.
 
-        Args:
-            channel_id: Slack channel ID to query.
-            oldest: Epoch timestamp string — only messages after this are returned.
-            limit: Max messages to fetch (Slack cap: 1000).
+        Returns ``(user_messages, high_water_mark)`` where *high_water_mark*
+        is the ISO timestamp of the newest raw message seen (including bot
+        messages).  The reconciler uses it to advance its cursor past
+        bot-only windows.
 
-        Returns a chronologically ordered list of ``NewMessage`` objects with
-        deterministic IDs.  Bot messages and subtypes are filtered out.
+        Paginates through bot-only pages (up to 10 pages) so that stale
+        cursors buried under hundreds of bot messages can still reach
+        recent user messages.
         """
         if not self._app:
-            return []
+            return [], ""
         if not self._is_allowed_channel(channel_id):
-            return []
-        try:
-            resp = await self._app.client.conversations_history(
-                channel=channel_id, oldest=oldest, limit=limit
-            )
-        except Exception:
-            logger.warning("Failed to fetch Slack history for catch-up", channel=channel_id)
-            return []
+            return [], ""
 
-        raw_messages: list[dict] = resp.get("messages", [])
-        # Slack returns newest-first; reverse for chronological order.
-        raw_messages.reverse()
+        _MAX_PAGES = 10
+        current_oldest = oldest
+        high_water_mark = ""
 
-        results: list[NewMessage] = []
-        for event in raw_messages:
-            # Same filters as _on_slack_message
-            if event.get("bot_id") or event.get("subtype"):
-                continue
-            user_id = event.get("user")
-            text = event.get("text", "")
-            ts = event.get("ts", "")
-            if not user_id or not ts:
-                continue
-
-            text = self._normalize_bot_mention(text)
-            sender_name = await self._resolve_user_name(user_id)
-            timestamp = datetime.fromtimestamp(float(ts), tz=UTC).isoformat()
-
-            results.append(
-                NewMessage(
-                    id=f"slack-{ts}",
-                    chat_jid=_jid(channel_id),
-                    sender=user_id,
-                    sender_name=sender_name,
-                    content=text,
-                    timestamp=timestamp,
-                    is_from_me=False,
-                    metadata={"slack_ts": ts},
+        for _page in range(_MAX_PAGES):
+            try:
+                resp = await self._app.client.conversations_history(
+                    channel=channel_id, oldest=current_oldest, limit=limit
                 )
-            )
-        return results
+            except Exception:
+                logger.warning("Failed to fetch Slack history for catch-up", channel=channel_id)
+                return [], high_water_mark
 
-    async def fetch_inbound_since(self, channel_jid: str, since: str) -> list[NewMessage]:
+            raw_messages: list[dict] = resp.get("messages", [])
+            if not raw_messages:
+                return [], high_water_mark
+
+            # Slack returns newest-first; reverse for chronological order.
+            raw_messages.reverse()
+
+            # Track the newest raw ts for the high-water mark.
+            newest_ts = raw_messages[-1].get("ts", "")
+            if newest_ts:
+                hwm_iso = datetime.fromtimestamp(float(newest_ts), tz=UTC).isoformat()
+                if hwm_iso > high_water_mark:
+                    high_water_mark = hwm_iso
+
+            results: list[NewMessage] = []
+            for event in raw_messages:
+                # Same filters as _on_slack_message
+                if event.get("bot_id") or event.get("subtype"):
+                    continue
+                user_id = event.get("user")
+                text = event.get("text", "")
+                ts = event.get("ts", "")
+                if not user_id or not ts:
+                    continue
+
+                text = self._normalize_bot_mention(text)
+                sender_name = await self._resolve_user_name(user_id)
+                timestamp = datetime.fromtimestamp(float(ts), tz=UTC).isoformat()
+
+                results.append(
+                    NewMessage(
+                        id=f"slack-{ts}",
+                        chat_jid=_jid(channel_id),
+                        sender=user_id,
+                        sender_name=sender_name,
+                        content=text,
+                        timestamp=timestamp,
+                        is_from_me=False,
+                        metadata={"slack_ts": ts},
+                    )
+                )
+
+            if results or not resp.get("has_more"):
+                return results, high_water_mark
+
+            # Page was all bot messages and there's more — skip ahead.
+            if not newest_ts or newest_ts == current_oldest:
+                return results, high_water_mark  # safety: avoid infinite loop
+            logger.debug(
+                "Skipping bot-only page in catch-up",
+                channel=channel_id,
+                page=_page,
+                skipped_to=newest_ts,
+            )
+            current_oldest = newest_ts
+
+        return [], high_water_mark
+
+    async def fetch_missed_messages(
+        self, channel_id: str, oldest: str, *, limit: int = 1000
+    ) -> list[NewMessage]:
+        """Fetch messages sent while disconnected — convenience wrapper.
+
+        Delegates to :meth:`_fetch_missed_messages_with_watermark` and
+        discards the high-water mark.  Kept for backward compatibility
+        with callers that don't need the watermark (e.g. reconnect
+        recovery).
+        """
+        messages, _ = await self._fetch_missed_messages_with_watermark(
+            channel_id, oldest, limit=limit
+        )
+        return messages
+
+    async def fetch_inbound_since(self, channel_jid: str, since: str) -> InboundFetchResult:
         """Fetch Slack messages newer than ``since`` for a single channel.
 
         The reconciler resolves JIDs before calling — ``channel_jid`` is a
         Slack-native JID like ``slack:C123``.  ``since`` is an ISO timestamp.
-        Returns messages with ``chat_jid`` set to the given ``channel_jid``.
+        Returns an ``InboundFetchResult`` with messages and high-water mark.
         """
         if not since:
             logger.warning(
@@ -552,15 +599,18 @@ class SlackChannel:
                 " — reconciler should always provide one",
                 channel_jid=channel_jid,
             )
-            return []
+            return InboundFetchResult(messages=[])
         if not self.owns_jid(channel_jid):
-            return []
+            return InboundFetchResult(messages=[])
         channel_id = _channel_id_from_jid(channel_jid)
         # conversations.history `oldest` is inclusive (ts >= oldest), so add
         # a 1µs epsilon to make it exclusive and prevent the cursor from
         # stalling on the boundary message every reconciliation cycle.
         since_epoch = str(datetime.fromisoformat(since).timestamp() + 1e-6)
-        return await self.fetch_missed_messages(channel_id, since_epoch)
+        messages, hwm = await self._fetch_missed_messages_with_watermark(
+            channel_id, since_epoch
+        )
+        return InboundFetchResult(messages=messages, high_water_mark=hwm)
 
     # ------------------------------------------------------------------
     # Internal: Slack event handlers
