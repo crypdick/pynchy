@@ -275,6 +275,93 @@ def pynchy_observer(self) -> Any | None:
 !!! warning
     Observer plugins run **in the host process** and subscribe to all events. A misbehaving observer can slow down event dispatch. Keep handlers lightweight and non-blocking.
 
+## pynchy_memory
+
+Provide a persistent memory backend (save, recall, forget, list). Agents use memory tools to store facts across sessions.
+
+**Calling strategy:** All results collected; first non-`None` result wins.
+
+```python
+@hookimpl
+def pynchy_memory(self) -> Any | None:
+    return MyMemoryBackend()
+```
+
+**Memory backend contract:**
+
+| Attribute / Method | Type | Description |
+|--------------------|------|-------------|
+| `name` | `str` | Backend identifier (e.g., `"sqlite"`, `"jsonl"`) |
+| `save(group_folder, key, content, category, metadata)` | `async (...) -> dict` | Store or update a memory entry |
+| `recall(group_folder, query, category, limit)` | `async (...) -> list[dict]` | Search memories by keyword (BM25-ranked) |
+| `forget(group_folder, key)` | `async (...) -> dict` | Delete a memory entry by key |
+| `list_keys(group_folder, category)` | `async (...) -> list[dict]` | List all memory keys, optionally filtered by category |
+| `init()` | `async () -> None` | Create tables or other setup |
+| `close()` | `async () -> None` | Flush and teardown |
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `group_folder` | `str` | Workspace folder name — memories are isolated per group |
+| `key` | `str` | Unique identifier for the memory entry |
+| `content` | `str` | The information to store |
+| `category` | `str` | `"core"` (permanent), `"daily"` (session), or `"conversation"` (auto-archived) |
+| `metadata` | `dict \| None` | Optional metadata attached to the entry |
+| `query` | `str` | Search keywords for recall |
+| `limit` | `int` | Maximum results to return |
+
+**Built-in:** The SQLite memory plugin (`src/pynchy/memory/plugins/sqlite_memory/`) stores memories in the main database with FTS5 full-text search.
+
+## pynchy_mcp_server_spec
+
+Provide an MCP server specification. Plugin-provided specs are merged with user-defined servers in `config.toml`. Config.toml definitions override plugin defaults when both use the same server name.
+
+**Calling strategy:** All results collected and merged. A plugin can return a single dict or a list of dicts (for plugins providing multiple servers).
+
+```python
+@hookimpl
+def pynchy_mcp_server_spec(self) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": "gdrive",
+            "type": "docker",
+            "image": "pynchy-mcp-gdrive:latest",
+            "dockerfile": "container/mcp/gdrive.Dockerfile",
+            "port": 3100,
+            "transport": "streamable_http",
+            "env": {"GDRIVE_OAUTH_PATH": "/home/chrome/gcp-oauth.keys.json"},
+        },
+    ]
+```
+
+**Return keys:**
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `name` | `str` | Server identifier (used as the `mcp_servers` key) |
+| `type` | `str` | `"docker"`, `"script"`, or `"url"` (default `"script"`) |
+| `image` | `str` | Docker image name (required for `type="docker"`) |
+| `dockerfile` | `str \| None` | Relative path to a local Dockerfile — auto-built by the MCP manager |
+| `command` | `str \| None` | Executable to run (for `type="script"`) |
+| `args` | `list[str] \| None` | Command arguments |
+| `port` | `int` | HTTP port the server listens on |
+| `extra_ports` | `list[int] \| None` | Additional ports to publish (e.g., `[8888]` for JupyterLab) |
+| `transport` | `str` | MCP transport type (default `"streamable_http"`) |
+| `idle_timeout` | `int` | Seconds before auto-stop (default `600`) |
+| `env` | `dict[str, str] \| None` | Static env vars passed to the server |
+| `env_forward` | `list[str] \| dict[str, str] \| None` | Host env vars to forward |
+| `volumes` | `list[str] \| None` | Volume mounts as `"host_path:container_path"` strings; supports `{key}` placeholders expanded from instance kwargs |
+
+**Instance expansion:** Users don't configure the base spec — they declare *instances* in `config.toml` that reference the plugin-provided template:
+
+```toml
+[mcp_servers.gdrive.anyscale]
+chrome_profile = "anyscale"
+```
+
+The MCP manager merges this with the plugin-provided base spec, auto-assigns ports, and mounts chrome profile directories. See [MCP Servers](../usage/mcp.md) for user-facing config details.
+
 ## pynchy_workspace_spec
 
 Provide a managed workspace definition (for example a periodic agent).
