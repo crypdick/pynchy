@@ -7,6 +7,7 @@ file processing.  On startup, sweeps existing files for crash recovery.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from pathlib import Path
 from typing import Any
 
@@ -26,10 +27,23 @@ _ipc_watcher_running = False
 
 
 def _move_to_error_dir(ipc_base_dir: Path, source_group: str, file_path: Path) -> None:
-    """Move a failed IPC file to the errors/ directory for later inspection."""
-    error_dir = ipc_base_dir / "errors"
-    error_dir.mkdir(parents=True, exist_ok=True)
-    file_path.rename(error_dir / f"{source_group}-{file_path.name}")
+    """Move a failed IPC file to the errors/ directory for later inspection.
+
+    Safe to call inside ``except`` blocks — catches its own OSError so a
+    failed move never masks the original error or escapes the handler.
+    """
+    try:
+        error_dir = ipc_base_dir / "errors"
+        error_dir.mkdir(parents=True, exist_ok=True)
+        file_path.rename(error_dir / f"{source_group}-{file_path.name}")
+    except OSError:
+        logger.warning(
+            "Failed to move IPC file to error dir, deleting instead",
+            file=file_path.name,
+            source_group=source_group,
+        )
+        with contextlib.suppress(OSError):
+            file_path.unlink()
 
 
 async def _process_message_file(
