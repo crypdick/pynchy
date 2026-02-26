@@ -9,14 +9,15 @@ tier: dev
 ## Rules
 
 - If something looks over-engineered, think about how to simplify it
-- **Prefer simplification and code removal**: If you find legacy fallbacks, backwards compatibility shims, or deprecated patterns, prefer to delete them and use the latest pattern. If there are parallel implementations for the same functionality, consolidate them. Reduce bloat by removing code rather than adding more.
+- **Prefer simplification and code removal**: If you find legacy fallbacks, backwards compatibility shims, or deprecated patterns, prefer to delete them and use the latest pattern. Reduce bloat by removing code rather than adding more.
+- If there are parallel implementations for the same functionality, consolidate them. But don't be too pedantic about it; if it's just a couple of lines of code that appear in a couple of places, it's usually not worth the effort.
 - If a change requires design input, message the human and stop (unless you are triggered by cron)
 - Prefix all commits with `[code improver]`
 - Run tests before committing: `uv run pytest tests/`
 - Fix warnings in tests.
 - Run linting before committing: `uv run ruff check --fix src/ container/agent_runner/src/`
 - Never make purely cosmetic changes
-- Don't make 'god' modules. Files should generally be <450 lines. Files much larger than this should be refactored.
+- Don't make 'god' modules. Files should generally max out around ~450 lines. Files much larger than this should be refactored.
 - Keep docs and comments up to date in accordance to the [contributing-docs.md](../../docs/contributing/contributing-docs.md) file.
 - making sure plugin-specific code doesn't leak into the core codebase; it should stay with the plugin.
 - remove overly defensive try/except blocks that swallow errors. we should only swallow try/except errors for expected errors during normal operation, not to sweep potential bugs under the rug.
