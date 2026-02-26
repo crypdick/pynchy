@@ -68,6 +68,8 @@ async def _teardown_group(
     advances the cursor, and persists state.  When *clear_context* is True,
     also wipes the session from memory and DB (full context reset).
     """
+    logger.info("teardown_trace", step="start", group=group.name, clear_context=clear_context)
+
     # Merge worktree commits before killing the container so work isn't stranded
     background_merge_worktree(group)
 
@@ -80,7 +82,9 @@ async def _teardown_group(
     if clear_context:
         deps.sessions.pop(group.folder, None)
         deps._session_cleared.add(group.folder)
+        logger.info("teardown_trace", step="clear_session_start", group=group.name)
         await clear_session(group.folder)
+        logger.info("teardown_trace", step="clear_session_done", group=group.name)
 
     deps.queue.clear_pending_tasks(chat_jid)
     create_background_task(
@@ -88,7 +92,9 @@ async def _teardown_group(
         name=f"stop-container-{chat_jid[:20]}",
     )
     deps.last_agent_timestamp[chat_jid] = timestamp
+    logger.info("teardown_trace", step="save_state_start", group=group.name)
     await deps.save_state()
+    logger.info("teardown_trace", step="done", group=group.name)
 
 
 async def handle_context_reset(
@@ -96,7 +102,9 @@ async def handle_context_reset(
 ) -> None:
     """Clear session state, merge worktree, destroy session, and confirm context reset."""
     await _teardown_group(deps, group, chat_jid, timestamp, clear_context=True)
+    logger.info("teardown_trace", step="send_clear_confirmation_start", group=group.name)
     await send_clear_confirmation(deps, chat_jid)
+    logger.info("teardown_trace", step="send_clear_confirmation_done", group=group.name)
 
 
 async def handle_end_session(
