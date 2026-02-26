@@ -208,15 +208,12 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
     group = next((g for g in groups.values() if g.folder == task.group_folder), None)
 
     # Advance next_run BEFORE execution so subsequent scheduler polls
-    # don't re-queue this task while it's still running.
+    # don't re-queue this task while it's still running.  The definitive
+    # next_run is recalculated AFTER execution (see bottom of function)
+    # based on actual completion time — important for long-running tasks
+    # where the pre-execution value may already be in the past.
     next_run = compute_next_run(task.schedule_type, task.schedule_value, s.timezone)
     await update_task(task.id, {"next_run": next_run})
-
-    if group:
-        await deps.broadcast_to_channels(
-            task.chat_jid,
-            "⏱ Scheduled task starting.",
-        )
 
     if not group:
         logger.error(
@@ -235,6 +232,11 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
             )
         )
         return
+
+    await deps.broadcast_to_channels(
+        task.chat_jid,
+        "⏱ Scheduled task starting.",
+    )
 
     result: str | None = None
     error: str | None = None
@@ -317,7 +319,9 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
         )
     )
 
-    # Calculate next run
+    # Recalculate next_run from actual completion time.  The pre-execution
+    # value (set above) was a guard against re-queuing; this post-execution
+    # value is the definitive schedule for the next run.
     next_run = compute_next_run(task.schedule_type, task.schedule_value, s.timezone)
 
     result_summary = f"Error: {error}" if error else (result[:200] if result else "Completed")
