@@ -12,7 +12,6 @@ import pytest
 from pynchy.config_models import (
     CalDAVConfig,
     CalDAVServerConfig,
-    ServiceTrustTomlConfig,
     WorkspaceConfig,
     WorkspaceSecurityTomlConfig,
 )
@@ -30,7 +29,8 @@ from pynchy.ipc._handlers_service import (
     _handle_service_request,
     clear_plugin_handler_cache,
 )
-from pynchy.types import WorkspaceProfile
+from pynchy.security.gate import _gates, create_gate
+from pynchy.types import ServiceTrustConfig, WorkspaceSecurity, WorkspaceProfile
 
 
 @pytest.fixture(autouse=True)
@@ -38,6 +38,8 @@ async def _setup():
     await _init_test_database()
     clear_caldav_client_cache()
     clear_plugin_handler_cache()
+    yield
+    _gates.clear()
 
 
 class FakeDeps:
@@ -687,19 +689,20 @@ async def test_calendar_tool_dispatches_to_plugin_handler(tmp_path):
     fake_client, cals = _make_fake_client("meetings")
     cals[0].date_search.return_value = [fake_event]
 
-    # Configure list_calendar as a safe service (no gating needed)
-    settings = _make_settings(
-        ws_security=WorkspaceSecurityTomlConfig(
-            services={
-                "list_calendar": ServiceTrustTomlConfig(
-                    public_source=False,
-                    secret_data=False,
-                    public_sink=False,
-                    dangerous_writes=False,
-                ),
-            },
-        ),
+    # Register a SecurityGate with all-safe trust for list_calendar
+    security = WorkspaceSecurity(
+        services={
+            "list_calendar": ServiceTrustConfig(
+                public_source=False,
+                secret_data=False,
+                public_sink=False,
+                dangerous_writes=False,
+            ),
+        },
     )
+    create_gate("test-ws", 1000.0, security)
+
+    settings = _make_settings()
     settings.data_dir = tmp_path
 
     deps = FakeDeps({"test@g.us": TEST_GROUP})

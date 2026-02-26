@@ -17,8 +17,7 @@ from pynchy.ipc._write import ipc_response_path, write_ipc_response
 from pynchy.logger import logger
 from pynchy.plugin import get_plugin_manager
 from pynchy.security.audit import record_security_event
-from pynchy.security.middleware import SecurityPolicy
-from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
+from pynchy.security.gate import SecurityGate, get_gate_for_group, resolve_security
 
 # Lazily populated mapping of tool_name -> async handler from plugins.
 _plugin_handlers: dict[str, Callable[[dict], Awaitable[dict]]] | None = None
@@ -49,45 +48,6 @@ def clear_plugin_handler_cache() -> None:
 def _write_response(source_group: str, request_id: str, response: dict) -> None:
     """Write a response file for the container to pick up."""
     write_ipc_response(ipc_response_path(source_group, request_id), response)
-
-
-def _resolve_security(source_group: str, *, is_admin: bool = False) -> WorkspaceSecurity:
-    """Resolve the security profile for a workspace from config.toml.
-
-    Merges top-level [services.*] declarations with per-workspace overrides.
-    Falls back to maximally cautious defaults (all True) if unconfigured.
-
-    Admin workspaces get an empty services dict (no gating) since they
-    are fully trusted.
-    """
-    if is_admin:
-        # Admin: all services default to ServiceTrustConfig() which is
-        # maximally cautious. But admin workspaces skip policy gates
-        # at the handler level, so this is fine.
-        return WorkspaceSecurity()
-
-    s = get_settings()
-    ws_config = s.workspaces.get(source_group)
-
-    if ws_config is None or ws_config.security is None:
-        return WorkspaceSecurity()
-
-    sec = ws_config.security
-
-    # Build per-service trust configs from TOML
-    services: dict[str, ServiceTrustConfig] = {}
-    for svc_name, svc_cfg in sec.services.items():
-        services[svc_name] = ServiceTrustConfig(
-            public_source=svc_cfg.public_source,
-            secret_data=svc_cfg.secret_data,
-            public_sink=svc_cfg.public_sink,
-            dangerous_writes=svc_cfg.dangerous_writes,
-        )
-
-    return WorkspaceSecurity(
-        services=services,
-        contains_secrets=sec.contains_secrets,
-    )
 
 
 async def _handle_service_request(
@@ -126,17 +86,23 @@ async def _handle_service_request(
         )
         return
 
-    # Resolve workspace security from config.toml
-    security = _resolve_security(source_group, is_admin=is_admin)
-
-    # Create per-invocation SecurityPolicy (taint state is per-invocation)
-    policy = SecurityPolicy(security)
+    # Look up session-scoped SecurityGate (created at container start).
+    # Falls back to an ephemeral gate if none registered (e.g. during tests
+    # or if the orchestrator hasn't created one yet).
+    gate = get_gate_for_group(source_group)
+    if gate is None:
+        security = resolve_security(source_group, is_admin=is_admin)
+        gate = SecurityGate(security)
+        logger.warning(
+            "No SecurityGate for group, created ephemeral",
+            source_group=source_group,
+        )
 
     # Find the chat_jid for this group (for audit logging)
     chat_jid = resolve_chat_jid(source_group, deps) or "unknown"
 
     # Evaluate policy — service requests are writes (they perform actions)
-    decision = policy.evaluate_write(tool_name, data)
+    decision = gate.evaluate_write(tool_name, data)
 
     if not decision.allowed:
         await record_security_event(
@@ -144,8 +110,8 @@ async def _handle_service_request(
             workspace=source_group,
             tool_name=tool_name,
             decision="blocked_forbidden",
-            corruption_tainted=policy.corruption_tainted,
-            secret_tainted=policy.secret_tainted,
+            corruption_tainted=gate.policy.corruption_tainted,
+            secret_tainted=gate.policy.secret_tainted,
             reason=decision.reason,
             request_id=request_id,
         )
@@ -183,8 +149,8 @@ async def _handle_service_request(
             workspace=source_group,
             tool_name=tool_name,
             decision="approval_requested",
-            corruption_tainted=policy.corruption_tainted,
-            secret_tainted=policy.secret_tainted,
+            corruption_tainted=gate.policy.corruption_tainted,
+            secret_tainted=gate.policy.secret_tainted,
             reason=decision.reason,
             request_id=request_id,
         )
@@ -228,8 +194,8 @@ async def _handle_service_request(
         workspace=source_group,
         tool_name=tool_name,
         decision="allowed",
-        corruption_tainted=policy.corruption_tainted,
-        secret_tainted=policy.secret_tainted,
+        corruption_tainted=gate.policy.corruption_tainted,
+        secret_tainted=gate.policy.secret_tainted,
         reason=decision.reason,
         request_id=request_id,
     )
