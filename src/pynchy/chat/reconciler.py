@@ -63,10 +63,7 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
 
     for ch in deps.channels:
         for canonical_jid in deps.workspaces:
-            from pynchy.config_access import (
-                filter_allowed_messages,
-                resolve_workspace_connection_name,
-            )
+            from pynchy.config_access import filter_allowed_messages, resolve_workspace_connection_name
 
             group = deps.workspaces.get(canonical_jid)
             if group is not None:
