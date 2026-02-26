@@ -24,7 +24,7 @@ from pynchy.logger import logger
 if TYPE_CHECKING:
     from pynchy.types import Channel, NewMessage, WorkspaceProfile
 
-RECONCILE_COOLDOWN = timedelta(seconds=90)
+RECONCILE_COOLDOWN = timedelta(seconds=30)
 _INITIAL_LOOKBACK = timedelta(hours=24)
 _EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
 
