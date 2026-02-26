@@ -7,6 +7,7 @@ This package is split into domain-specific submodules:
   _schema      — DDL, column migrations, data migrations
   _connection  — connection lifecycle, write utilities
   chats        — chat metadata
+  events       — EventBus event persistence
   messages     — message storage and retrieval
   tasks        — scheduled task CRUD and run logging
   host_jobs    — host-level cron jobs
@@ -39,6 +40,7 @@ from pynchy.db.chats import (
     store_chat_metadata,
     update_chat_name,
 )
+from pynchy.db.events import store_event
 from pynchy.db.groups import (
     get_all_workspace_profiles,
     get_workspace_profile,
@@ -114,6 +116,8 @@ __all__ = [
     "mark_delivered",
     "mark_delivery_error",
     "record_outbound",
+    # events
+    "store_event",
     # chats
     "get_all_chats",
     "get_chat_cleared_at",

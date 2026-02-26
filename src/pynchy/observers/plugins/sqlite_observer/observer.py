@@ -1,29 +1,17 @@
-"""SQLite event observer — persists EventBus events to a dedicated events table."""
+"""SQLite event observer — persists EventBus events to the ``events`` table.
+
+Schema lives in ``db/_schema.py``; storage is delegated to ``db.store_event()``.
+"""
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
     from pynchy.event_bus import EventBus
-
-_EVENTS_SCHEMA = """\
-CREATE TABLE IF NOT EXISTS events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_type TEXT NOT NULL,
-    chat_jid TEXT,
-    timestamp TEXT NOT NULL,
-    payload TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
-CREATE INDEX IF NOT EXISTS idx_events_chat ON events(chat_jid);
-CREATE INDEX IF NOT EXISTS idx_events_ts ON events(timestamp);
-"""
 
 
 class SqliteEventObserver:
@@ -92,14 +80,9 @@ class SqliteEventObserver:
 
     async def _store(self, event_type: str, chat_jid: str | None, payload: dict) -> None:
         try:
-            from pynchy.db._connection import _get_db
+            from pynchy.db import store_event
 
-            db = _get_db()
-            await db.execute(
-                "INSERT INTO events (event_type, chat_jid, timestamp, payload) VALUES (?, ?, ?, ?)",
-                (event_type, chat_jid, datetime.now(UTC).isoformat(), json.dumps(payload)),
-            )
-            await db.commit()
+            await store_event(event_type, chat_jid, payload)
         except Exception as exc:
             logger.warning(
                 "SQLite observer failed to store event",
