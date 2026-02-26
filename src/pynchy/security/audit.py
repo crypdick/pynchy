@@ -14,8 +14,7 @@ import json
 import time
 from datetime import UTC, datetime
 
-from pynchy.db._connection import _get_db
-from pynchy.db.messages import store_message_direct
+from pynchy.db import prune_messages_by_sender, store_message_direct
 
 
 async def record_security_event(
@@ -62,10 +61,4 @@ async def prune_security_audit(retention_days: int = 30) -> int:
     """
     cutoff_ts = time.time() - (retention_days * 86400)
     cutoff_iso = datetime.fromtimestamp(cutoff_ts, tz=UTC).isoformat()
-    db = _get_db()
-    cursor = await db.execute(
-        "DELETE FROM messages WHERE sender = 'security' AND timestamp < ?",
-        (cutoff_iso,),
-    )
-    await db.commit()
-    return cursor.rowcount
+    return await prune_messages_by_sender("security", cutoff_iso)

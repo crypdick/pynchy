@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pynchy.db._connection import _get_db
+from pynchy.db._connection import _get_db, atomic_write
 
 # --- Router state ---
 
@@ -23,6 +23,19 @@ async def set_router_state(key: str, value: str) -> None:
         (key, value),
     )
     await db.commit()
+
+
+async def save_router_state_batch(pairs: dict[str, str]) -> None:
+    """Write multiple router state values in a single atomic transaction.
+
+    All keys are written together — a crash can never leave them inconsistent.
+    """
+    async with atomic_write() as db:
+        for key, value in pairs.items():
+            await db.execute(
+                "INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)",
+                (key, value),
+            )
 
 
 # --- Sessions ---
