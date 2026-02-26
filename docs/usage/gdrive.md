@@ -25,10 +25,10 @@ CHROME_PATH=/usr/bin/google-chrome-stable
 Add a chrome profile and gdrive instance to `config.toml`:
 
 ```toml
-chrome_profiles = ["anyscale"]
+chrome_profiles = ["mycompany"]
 
-[mcp_servers.gdrive.anyscale]
-chrome_profile = "anyscale"
+[mcp_servers.gdrive.mycompany]
+chrome_profile = "mycompany"
 ```
 
 The plugin provides the base spec (Docker image, port, transport, Dockerfile). You only declare the instance with its chrome profile attachment.
@@ -36,8 +36,8 @@ The plugin provides the base spec (Docker image, port, transport, Dockerfile). Y
 ## 2. Grant workspace access
 
 ```toml
-[workspaces.anyscale-1]
-mcp_servers = ["gdrive.anyscale"]
+[workspaces.mycompany-1]
+mcp_servers = ["gdrive.mycompany"]
 ```
 
 ## 3. First-time setup
@@ -45,16 +45,16 @@ mcp_servers = ["gdrive.anyscale"]
 Ask your agent to set up Google for the profile:
 
 ```
-@Pynchy set up Google for the anyscale profile
+@Pynchy set up Google for the mycompany profile
 ```
 
-The agent calls `setup_google(chrome_profile="anyscale")`, which automates the full GCP setup flow: create a project, enable the Drive API, configure OAuth consent, create credentials, and run the OAuth authorization. You click "Allow" on the Google consent screen to grant read-only Drive access.
+The agent calls `setup_google(chrome_profile="mycompany")`, which automates the full GCP setup flow: create a project, enable the Drive API, configure OAuth consent, create credentials, and run the OAuth authorization. You click "Allow" on the Google consent screen to grant read-only Drive access.
 
 On a **headless server**, the agent returns a noVNC URL — open it in your browser to interact with the GCP Console and Google login.
 
 ## 4. Verify
 
-Trigger a message in a workspace with `gdrive.anyscale` access. The Docker container starts on-demand:
+Trigger a message in a workspace with `gdrive.mycompany` access. The Docker container starts on-demand:
 
 ```bash
 ssh pynchy-server 'docker ps --filter name=pynchy-mcp-gdrive'
@@ -65,19 +65,19 @@ ssh pynchy-server 'docker ps --filter name=pynchy-mcp-gdrive'
 Each chrome profile maps to one Google account. To access Drive from multiple accounts:
 
 ```toml
-chrome_profiles = ["anyscale", "work"]
+chrome_profiles = ["mycompany", "work"]
 
-[mcp_servers.gdrive.anyscale]
-chrome_profile = "anyscale"
+[mcp_servers.gdrive.mycompany]
+chrome_profile = "mycompany"
 
 [mcp_servers.gdrive.work]
 chrome_profile = "work"
 
-[workspaces.anyscale-1]
-mcp_servers = ["gdrive.anyscale", "gdrive.work"]
+[workspaces.mycompany-1]
+mcp_servers = ["gdrive.mycompany", "gdrive.work"]
 ```
 
-The agent sees separate tool namespaces: `mcp__gdrive_anyscale__search` and `mcp__gdrive_work__search`.
+The agent sees separate tool namespaces: `mcp__gdrive_mycompany__search` and `mcp__gdrive_work__search`.
 
 ## Troubleshooting
 
@@ -107,19 +107,19 @@ If you previously used the old `[mcp_servers.gdrive]` config with Docker named v
 
 1. Create the chrome profile directory and move credentials:
    ```bash
-   mkdir -p data/chrome-profiles/anyscale
-   cp data/gcp-oauth.keys.json data/chrome-profiles/anyscale/gcp-oauth.keys.json
+   mkdir -p data/chrome-profiles/mycompany
+   cp data/gcp-oauth.keys.json data/chrome-profiles/mycompany/gcp-oauth.keys.json
    ```
 
 2. Update `config.toml`:
-   - Add `chrome_profiles = ["anyscale"]`
+   - Add `chrome_profiles = ["mycompany"]`
    - Remove the old `[mcp_servers.gdrive]` section (plugin provides it now)
-   - Add instance: `[mcp_servers.gdrive.anyscale]` with `chrome_profile = "anyscale"`
-   - Update workspace: `mcp_servers = ["gdrive.anyscale"]`
+   - Add instance: `[mcp_servers.gdrive.mycompany]` with `chrome_profile = "mycompany"`
+   - Update workspace: `mcp_servers = ["gdrive.mycompany"]`
 
 3. Re-authorize (tokens in the old Docker volume won't carry over):
    ```
-   @Pynchy set up Google for the anyscale profile
+   @Pynchy set up Google for the mycompany profile
    ```
 
 4. Clean up old artifacts:

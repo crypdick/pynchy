@@ -202,12 +202,12 @@
 # See: https://pynchy.ricardodecal.com/usage/security/#admin-clean-room
 
 # Example workspace with Google MCP (dot-syntax instance names):
-# [sandbox.anyscale-1]
-# chat = "connection.slack.synapse.chat.anyscale-1"
-# mcp_servers = ["gdrive.anyscale", "gcal.anyscale"]
+# [sandbox.mycompany-1]
+# chat = "connection.slack.synapse.chat.mycompany-1"
+# mcp_servers = ["gdrive.mycompany", "gcal.mycompany"]
 #
 # Per-workspace security overrides (mark workspace as containing secrets):
-# [sandbox.anyscale-1.security]
+# [sandbox.mycompany-1.security]
 # contains_secrets = true
 
 # Example workspace with MCP access and per-MCP kwargs:
@@ -301,7 +301,7 @@
 # Auth artifacts (OAuth keys, tokens) are stored there and auto-mounted into
 # containers that reference the profile.
 
-# chrome_profiles = ["anyscale", "work"]
+# chrome_profiles = ["mycompany", "work"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MCP Server Definitions
@@ -313,20 +313,20 @@
 # Google services (gdrive, gcal) — base specs are provided by the built-in
 # GoogleMcpPlugin. Declare instances with chrome_profile attachment:
 #
-# [mcp_servers.gdrive.anyscale]
-# chrome_profile = "anyscale"
+# [mcp_servers.gdrive.mycompany]
+# chrome_profile = "mycompany"
 #
 # [mcp_servers.gdrive.work]
 # chrome_profile = "work"
 #
-# [mcp_servers.gcal.anyscale]
-# chrome_profile = "anyscale"
+# [mcp_servers.gcal.mycompany]
+# chrome_profile = "mycompany"
 #
 # Each instance is 2 lines. The plugin provides everything else (Docker image,
 # port, transport, Dockerfile). Ports auto-assign from the base. Volume
 # auto-mounts from the chrome_profile.
 #
-# The agent sees tools as mcp__gdrive_anyscale__search (dots → underscores).
+# The agent sees tools as mcp__gdrive_mycompany__search (dots → underscores).
 
 # Docker-based MCP (container managed by pynchy):
 # [mcp_servers.playwright]
@@ -373,7 +373,7 @@
 # [mcp_groups]
 # dev-tools = ["playwright", "github-mcp"]
 # social = ["twitter-mcp", "linkedin-mcp"]
-# google_anyscale = ["gdrive.anyscale", "gcal.anyscale"]
+# google_mycompany = ["gdrive.mycompany", "gcal.mycompany"]
 # "all" is built-in — refers to every defined mcp_server
 
 # ─────────────────────────────────────────────────────────────────────────────

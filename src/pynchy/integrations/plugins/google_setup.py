@@ -4,7 +4,7 @@ Two plugin classes:
 
 **GoogleMcpPlugin** — provides base MCP server specs for ``gdrive`` and
 ``gcal``.  These are templates: they exist only to be inherited by config
-instances (e.g., ``[mcp_servers.gdrive.anyscale]``).
+instances (e.g., ``[mcp_servers.gdrive.mycompany]``).
 
 **GoogleSetupPlugin** — provides host-side handlers for GCP project setup,
 API enablement, OAuth consent screen configuration, and OAuth token
@@ -888,7 +888,7 @@ class GoogleMcpPlugin:
     """Base MCP specs for Google services (gdrive, gcal).
 
     These are templates — they exist only to be inherited by config
-    instances (e.g., ``[mcp_servers.gdrive.anyscale]``).  If no instances
+    instances (e.g., ``[mcp_servers.gdrive.mycompany]``).  If no instances
     are declared, the template sits unused.
     """
 
