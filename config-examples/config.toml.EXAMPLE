@@ -145,6 +145,11 @@
 # bot_token_env = "SLACK__BOT_TOKEN"
 # app_token_env = "SLACK__APP_TOKEN"
 #
+# # Connection-level security — applies to all workspaces on this connection
+# # unless overridden at the chat or workspace level.
+# [connection.slack.synapse.security]
+# allowed_users = ["*"]
+#
 # [connection.slack.synapse.chat.admin-1]
 # # Optional per-chat security overrides:
 # # [connection.slack.synapse.chat.admin-1.security]
