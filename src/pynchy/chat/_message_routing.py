@@ -60,7 +60,7 @@ async def _route_incoming_group(
 
     # Access check: skip write-only or read-only workspaces
     if resolved.access in ("read", "write"):
-        logger.debug("route_trace", step="skip_access", group=group.name, access=resolved.access)
+        logger.info("route_trace", step="skip_access", group=group.name, access=resolved.access)
         return
 
     # Sender filter: only process messages from allowed users.
@@ -68,7 +68,7 @@ async def _route_incoming_group(
     # command-center channel is implicitly trusted.
     group_messages = filter_allowed_messages(group_messages, group, channel_plugin_name)
     if not group_messages:
-        logger.debug("route_trace", step="skip_all_filtered", group=group.name)
+        logger.info("route_trace", step="skip_all_filtered", group=group.name)
         return
 
     is_admin_group = group.is_admin
@@ -79,7 +79,7 @@ async def _route_incoming_group(
         # Magic commands (c, boom, done, r, etc.) bypass trigger
         last_content = group_messages[-1].content.strip()
         if not has_trigger and not is_any_magic_command(last_content):
-            logger.debug(
+            logger.info(
                 "route_trace",
                 step="skip_no_trigger",
                 group=group.name,
@@ -94,15 +94,10 @@ async def _route_incoming_group(
         deps.last_agent_timestamp.get(group_jid, ""),
         deps._dispatched_through.get(group_jid, ""),
     )
-    logger.debug(
-        "route_trace",
-        step="get_messages_since",
-        group=group.name,
-        cursor=cursor[:30] if cursor else "empty",
-    )
+    logger.info("route_trace", step="get_messages_since", group=group.name, cursor=cursor[:30] if cursor else "empty")
     all_pending = await get_messages_since(group_jid, cursor)
     if not all_pending:
-        logger.debug("route_trace", step="skip_no_pending", group=group.name)
+        logger.info("route_trace", step="skip_no_pending", group=group.name)
         return
 
     # System notices (e.g. clean rebase notifications) shouldn't wake a
@@ -113,7 +108,7 @@ async def _route_incoming_group(
     ):
         return
 
-    logger.debug(
+    logger.info(
         "route_trace",
         step="intercept_check",
         group=group.name,
@@ -123,7 +118,7 @@ async def _route_incoming_group(
         logger.info("route_trace", step="intercepted", group=group.name)
         return
 
-    logger.debug("route_trace", step="not_intercepted", group=group.name)
+    logger.info("route_trace", step="not_intercepted", group=group.name)
 
     formatted = "\n".join(f"{msg.sender_name}: {msg.content}" for msg in all_pending)
     last_content = all_pending[-1].content.strip()
@@ -137,7 +132,7 @@ async def _route_incoming_group(
 
     # --- Active message container: pipe follow-up messages ---
     if deps.queue.send_message(group_jid, formatted):
-        logger.debug("route_trace", step="piped_to_container", group=group.name)
+        logger.info("route_trace", step="piped_to_container", group=group.name)
         if is_btw:
             # Non-interrupting — forward to active container via IPC but
             # don't advance the cursor.  Will be reprocessed after the
@@ -238,9 +233,9 @@ async def start_message_loop(
 
                 # Advance "seen" cursor immediately
                 deps.last_timestamp = new_timestamp
-                logger.debug("message_loop_trace", step="save_state_start")
+                logger.info("message_loop_trace", step="save_state_start")
                 await deps.save_state()
-                logger.debug("message_loop_trace", step="save_state_done")
+                logger.info("message_loop_trace", step="save_state_done")
 
                 # Group by chat JID and route each group independently
                 messages_by_group: dict[str, list] = {}
@@ -250,13 +245,13 @@ async def start_message_loop(
                 for group_jid, group_messages in messages_by_group.items():
                     group = deps.workspaces.get(group_jid)
                     if group:
-                        logger.debug(
+                        logger.info(
                             "message_loop_trace",
                             step="route_start",
                             group=group.name,
                         )
                         await _route_incoming_group(deps, group_jid, group, group_messages)
-                        logger.debug(
+                        logger.info(
                             "message_loop_trace",
                             step="route_done",
                             group=group.name,
@@ -271,9 +266,9 @@ async def start_message_loop(
         if now - _last_catchup >= _CATCHUP_INTERVAL:
             _last_catchup = now
             try:
-                logger.debug("message_loop_trace", step="catch_up_start")
+                logger.info("message_loop_trace", step="catch_up_start")
                 await deps.catch_up_channels()
-                logger.debug("message_loop_trace", step="catch_up_done")
+                logger.info("message_loop_trace", step="catch_up_done")
             except Exception:
                 logger.exception("Error in channel catch-up")
 
