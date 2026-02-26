@@ -9,9 +9,6 @@ from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from pynchy.container_runner import OnOutput
-from zoneinfo import ZoneInfo
-
-from croniter import croniter
 
 from pynchy.config import get_settings
 from pynchy.db import (
@@ -108,13 +105,6 @@ async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
         await asyncio.sleep(get_settings().scheduler.poll_interval)
 
 
-def _get_cron_job_next_run(schedule: str, timezone: str) -> str:
-    """Compute next run time for a host cron job, always in UTC."""
-    tz = ZoneInfo(timezone)
-    cron = croniter(schedule, datetime.now(tz))
-    return cron.get_next(datetime).astimezone(UTC).isoformat()
-
-
 def _resolve_cron_job_cwd(cwd: str | None) -> str:
     """Resolve optional cron job cwd against project root."""
     project_root = get_settings().project_root
@@ -165,7 +155,7 @@ async def _poll_host_cron_jobs() -> None:
 
         next_run = _cron_job_next_runs.get(job_name)
         if next_run is None:
-            next_run = _get_cron_job_next_run(job.schedule, timezone)
+            next_run = compute_next_run("cron", job.schedule, timezone)
             _cron_job_next_runs[job_name] = next_run
 
         due_at = datetime.fromisoformat(next_run).astimezone(UTC)
@@ -173,7 +163,7 @@ async def _poll_host_cron_jobs() -> None:
             continue
 
         # Set next run before execution to avoid repeat-triggering in tight loops.
-        _cron_job_next_runs[job_name] = _get_cron_job_next_run(job.schedule, timezone)
+        _cron_job_next_runs[job_name] = compute_next_run("cron", job.schedule, timezone)
         await _run_host_cron_job(job_name)
 
 

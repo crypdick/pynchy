@@ -13,15 +13,13 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
-from zoneinfo import ZoneInfo
-
-from croniter import croniter
 
 from pynchy.config import get_settings, reset_settings
 from pynchy.config_models import WorkspaceConfig
 from pynchy.config_refs import connection_ref_from_parts, parse_chat_ref
 from pynchy.db import create_task, get_active_task_for_group, update_task
 from pynchy.logger import logger
+from pynchy.utils import compute_next_run
 
 if TYPE_CHECKING:
     import pluggy
@@ -330,9 +328,7 @@ async def reconcile_workspaces(
         existing_task = await get_active_task_for_group(folder)
 
         if existing_task is None:
-            tz = ZoneInfo(s.timezone)
-            cron = croniter(config.schedule, datetime.now(tz))
-            next_run = cron.get_next(datetime).astimezone(UTC).isoformat()
+            next_run = compute_next_run("cron", config.schedule, s.timezone)
 
             task_id = f"periodic-{folder}-{uuid.uuid4().hex[:8]}"
             await create_task(
@@ -360,9 +356,7 @@ async def reconcile_workspaces(
             updates: dict[str, Any] = {}
             if existing_task.schedule_value != config.schedule:
                 updates["schedule_value"] = config.schedule
-                tz = ZoneInfo(s.timezone)
-                cron = croniter(config.schedule, datetime.now(tz))
-                updates["next_run"] = cron.get_next(datetime).astimezone(UTC).isoformat()
+                updates["next_run"] = compute_next_run("cron", config.schedule, s.timezone)
             if existing_task.prompt != config.prompt:
                 updates["prompt"] = config.prompt
             if existing_task.repo_access != config.repo_access:
