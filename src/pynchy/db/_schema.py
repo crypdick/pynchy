@@ -241,14 +241,14 @@ async def _migrate_repo_access_column(database: aiosqlite.Connection) -> None:
         try:
             await database.execute("ALTER TABLE scheduled_tasks DROP COLUMN pynchy_repo_access")
             logger.info("Dropped scheduled_tasks.pynchy_repo_access column")
-        except Exception as exc:
+        except aiosqlite.OperationalError as exc:
             logger.warning("Failed to drop pynchy_repo_access column", err=str(exc))
 
     if "project_access" in cols:
         try:
             await database.execute("ALTER TABLE scheduled_tasks DROP COLUMN project_access")
             logger.info("Dropped scheduled_tasks.project_access column")
-        except Exception as exc:
+        except aiosqlite.OperationalError as exc:
             logger.warning("Failed to drop project_access column", err=str(exc))
 
     await database.commit()
