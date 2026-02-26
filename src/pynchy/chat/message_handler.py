@@ -116,15 +116,18 @@ async def intercept_special_command(
     Returns True if a command was intercepted and handled, False otherwise.
     """
     content = message.content.strip()
+    logger.info("intercept_trace", step="start", group=group.name, content=content[:50])
 
     # --- Commands that manage their own cursor (via _teardown_group) ---
 
     if is_context_reset(content):
+        logger.info("intercept_trace", step="context_reset_start", group=group.name)
         await deps.handle_context_reset(chat_jid, group, message.timestamp)
         logger.info("Context reset", group=group.name)
         return True
 
     if is_end_session(content):
+        logger.info("intercept_trace", step="end_session_start", group=group.name)
         await deps.handle_end_session(chat_jid, group, message.timestamp)
         logger.info("End session", group=group.name)
         return True
