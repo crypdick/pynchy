@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from pynchy.chat.reconciler import reconcile_all_channels, reset_cooldowns
-from pynchy.config_models import OwnerConfig, WorkspaceConfig
+from pynchy.config_models import OwnerConfig, WorkspaceConfig, WorkspaceDefaultsConfig
 from pynchy.db import (
     _init_test_database,
     get_channel_cursor,
@@ -16,10 +16,7 @@ from pynchy.db import (
     set_channel_cursor,
 )
 from pynchy.db._connection import _get_db
-from pynchy.types import NewMessage, WorkspaceProfile
-
-from pynchy.config_models import WorkspaceDefaultsConfig
-
+from pynchy.types import InboundFetchResult, NewMessage, WorkspaceProfile
 from tests.conftest import make_settings
 
 # ---------------------------------------------------------------------------
@@ -41,13 +38,19 @@ def _make_channel(
     connected: bool = True,
     owns: bool = True,
     inbound: list[NewMessage] | None = None,
+    high_water_mark: str = "",
 ) -> MagicMock:
     ch = MagicMock()
     ch.name = name
     ch.is_connected.return_value = connected
     ch.owns_jid = MagicMock(return_value=owns)
     ch.send_message = AsyncMock()
-    ch.fetch_inbound_since = AsyncMock(return_value=inbound or [])
+    msgs = inbound or []
+    # Default high_water_mark to the latest message timestamp if not provided
+    hwm = high_water_mark or (msgs[-1].timestamp if msgs else "")
+    ch.fetch_inbound_since = AsyncMock(
+        return_value=InboundFetchResult(messages=msgs, high_water_mark=hwm)
+    )
     return ch
 
 

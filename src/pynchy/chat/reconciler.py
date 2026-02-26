@@ -94,7 +94,7 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                 continue
 
             # --- Inbound ---
-            logger.info(
+            logger.debug(
                 "reconciler_trace",
                 step="past_cooldown",
                 channel=ch.name,
@@ -110,7 +110,7 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                 # naturally as messages are walked.
                 inbound_cursor = (now - _INITIAL_LOOKBACK).isoformat()
 
-            logger.info(
+            logger.debug(
                 "reconciler_trace",
                 step="fetch_inbound",
                 channel=ch.name,
@@ -118,7 +118,7 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                 cursor=inbound_cursor[:30] if inbound_cursor else "none",
             )
             try:
-                remote_messages = await ch.fetch_inbound_since(target_jid, inbound_cursor)
+                result = await ch.fetch_inbound_since(target_jid, inbound_cursor)
             except Exception as exc:
                 logger.warning(
                     "fetch_inbound_since failed",
@@ -128,19 +128,27 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                 )
                 continue
 
-            logger.info(
+            remote_messages = result.messages
+            logger.debug(
                 "reconciler_trace",
                 step="fetch_result",
                 channel=ch.name,
                 jid=canonical_jid,
                 msg_count=len(remote_messages),
+                high_water_mark=result.high_water_mark[:30] if result.high_water_mark else "none",
             )
-            new_inbound_cursor = inbound_cursor
+            # Seed with high-water mark so the cursor advances past bot-only
+            # pages even when no user messages are found.
+            new_inbound_cursor = (
+                result.high_water_mark
+                if result.high_water_mark > inbound_cursor
+                else inbound_cursor
+            )
             for msg in remote_messages:
                 # Remap chat_jid to canonical (the channel returned channel-native JIDs)
                 msg.chat_jid = canonical_jid
                 exists = await message_exists(msg.id, canonical_jid)
-                logger.info(
+                logger.debug(
                     "reconciler_trace",
                     step="msg_check",
                     jid=canonical_jid,
@@ -153,7 +161,7 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                     # Sender filter: match _route_incoming_group behavior.
                     # Admin groups bypass; non-admin groups check allowed_users.
                     if not filter_allowed_messages([msg], group, ch.name):
-                        logger.info(
+                        logger.debug(
                             "reconciler_skip_sender",
                             channel=ch.name,
                             jid=canonical_jid,
@@ -162,7 +170,7 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                         if msg.timestamp > new_inbound_cursor:
                             new_inbound_cursor = msg.timestamp
                         continue
-                    logger.info(
+                    logger.debug(
                         "reconciler_trace",
                         step="ingesting",
                         jid=canonical_jid,
@@ -174,7 +182,7 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                 if msg.timestamp > new_inbound_cursor:
                     new_inbound_cursor = msg.timestamp
 
-            logger.info(
+            logger.debug(
                 "reconciler_trace",
                 step="cursor_advance",
                 jid=canonical_jid,

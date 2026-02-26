@@ -35,7 +35,7 @@ from pynchy.db import (
     update_chat_name,
 )
 from pynchy.logger import logger
-from pynchy.types import NewMessage, WorkspaceProfile
+from pynchy.types import InboundFetchResult, NewMessage, WorkspaceProfile
 
 GROUP_SYNC_INTERVAL: float = 24 * 60 * 60  # 24 hours in seconds
 
@@ -403,9 +403,9 @@ class WhatsAppChannel:
 
     async def fetch_inbound_since(
         self,
-        channel_jid: str,
+        channel_jid: str,  # noqa: ARG002
         since: str,  # noqa: ARG002
-    ) -> list[NewMessage]:
+    ) -> InboundFetchResult:
         # WhatsApp has no "fetch history since timestamp" API.  Neonize
         # exposes HistorySyncEv (bootstrap + on-demand via
         # build_history_sync_request), but it requires an anchor message
@@ -413,4 +413,4 @@ class WhatsAppChannel:
         # HistorySyncEv handler to capture the bootstrap sync WhatsApp
         # pushes on connect, dropped messages on this channel are
         # unrecoverable by the reconciler.
-        return []
+        return InboundFetchResult(messages=[])

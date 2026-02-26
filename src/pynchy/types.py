@@ -145,6 +145,20 @@ class NewMessage:
 
 
 @dataclass
+class InboundFetchResult:
+    """Result of fetching inbound messages from a channel.
+
+    ``high_water_mark`` is the ISO timestamp of the newest raw message
+    seen in the API response (including bot messages that were filtered).
+    The reconciler uses it to advance its cursor past bot-only windows
+    even when no user messages are found.
+    """
+
+    messages: list[NewMessage]
+    high_water_mark: str = ""
+
+
+@dataclass
 class ScheduledTask:
     id: str
     group_folder: str
@@ -326,12 +340,12 @@ class Channel(Protocol):
         """
         ...
 
-    async def fetch_inbound_since(self, channel_jid: str, since: str) -> list[NewMessage]:
+    async def fetch_inbound_since(self, channel_jid: str, since: str) -> InboundFetchResult:
         """Fetch messages from channel API newer than ``since``.
 
-        Channels without server-side history (e.g. TUI, WhatsApp) return [].
-        The reconciler resolves JIDs before calling — ``channel_jid`` is
-        channel-native (e.g. ``slack:C123``).
+        Channels without server-side history (e.g. TUI, WhatsApp) return
+        an empty result.  The reconciler resolves JIDs before calling —
+        ``channel_jid`` is channel-native (e.g. ``slack:C123``).
         """
         ...
 
