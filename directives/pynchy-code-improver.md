@@ -1,9 +1,3 @@
----
-name: code-improver
-description: Code improvement guidelines for the pynchy core repository. Finds and fixes concrete code issues in pynchy core.
-tier: dev
----
-
 # Pynchy Core Code Improver
 
 ## Rules
