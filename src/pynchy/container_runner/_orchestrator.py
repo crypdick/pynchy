@@ -145,7 +145,7 @@ def _write_initial_input(input_data: ContainerInput, input_dir: Path) -> None:
     Uses atomic write (write to .tmp then rename) so the container's file
     watcher never sees a partially-written file.
     """
-    from pynchy.ipc._write import write_json_atomic
+    from pynchy.utils import write_json_atomic
 
     write_json_atomic(input_dir / "initial.json", _input_to_dict(input_data))
 

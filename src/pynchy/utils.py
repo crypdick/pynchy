@@ -2,23 +2,41 @@
 
 Small helpers used across multiple modules. Avoids duplication of common
 patterns like timestamped ID generation, schedule calculations, async shell
-execution, and idle timer management.
+execution, atomic file writing, and idle timer management.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 from asyncio.subprocess import PIPE
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from croniter import croniter
 
 from pynchy.logger import logger
+
+
+def write_json_atomic(path: Path, data: Any, *, indent: int | None = None) -> None:
+    """Write JSON data to a file using atomic rename (tmp → final).
+
+    Ensures the target file is never partially written — readers either
+    see the old content or the complete new content.  Used for IPC files
+    watched by filesystem events and any other write where partial reads
+    must be avoided.
+
+    Creates parent directories if they don't exist.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=indent))
+    tmp.rename(path)
 
 
 def generate_message_id(prefix: str = "") -> str:
