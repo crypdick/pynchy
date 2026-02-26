@@ -183,6 +183,26 @@ Supports incremental mode (only diffs from last snapshot) for token savings. Con
 
 No need for OpenClaw's multi-format system — playwright-mcp's single format is already the best one.
 
+## Next Step: Implementation Plan
+
+This design is approved. The next step is to create a detailed implementation plan.
+
+Run the `writing-plans` skill against this design doc:
+
+```
+/writing-plans docs/plans/2026-02-26-playwright-browser-plugin-design.md
+```
+
+Key references to feed into the plan:
+- **Plugin pattern to follow**: `src/pynchy/integrations/plugins/x_integration.py` (existing plugin with MCP spec + service handler + skills)
+- **MCP server lifecycle**: `src/pynchy/container_runner/mcp_manager.py` (how script-type servers are started/stopped)
+- **Security fencing source**: `.tmp/openclaw/src/security/external-content.ts` (OpenClaw's wrapping implementation to port)
+- **Cop integration point**: `src/pynchy/security/cop.py` (`inspect_inbound()` for injection scanning)
+- **Browser utilities to reuse**: `src/pynchy/integrations/browser.py` (system Chrome, profiles, Xvfb/noVNC)
+- **Skill example**: `container/skills/` (existing skills with YAML frontmatter)
+- **Config model**: `src/pynchy/config_mcp.py` (`McpServerConfig` for script-type servers)
+- **playwright-mcp source**: `/tmp/playwright/packages/playwright/src/mcp/` (snapshot implementation, tool definitions)
+
 ## Future Considerations
 
 - **Outbound Cop inspection**: optionally route agent browser actions (navigate, type) through `inspect_outbound()` to catch agents being tricked into dangerous actions (e.g., "type the API key into this form")
