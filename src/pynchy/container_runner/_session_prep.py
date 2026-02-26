@@ -94,7 +94,7 @@ def _sync_skills(
     Args:
         session_dir: Path to the .claude directory for this session
         plugin_manager: Optional pluggy.PluginManager for plugin skills
-        workspace_skills: Skill tier/name filter from workspace config; None = all
+        workspace_skills: Skill tier/name filter from workspace config; None = core only
     """
     s = get_settings()
     skills_dst = session_dir / "skills"
