@@ -120,6 +120,16 @@ async def _spawn_container(
     Raises OSError if the subprocess fails to start.
     """
     start_time = time.monotonic()
+
+    # Create session-scoped SecurityGate keyed by (group_folder, invocation_ts).
+    # Must exist before the container starts so IPC/MCP handlers can look it up.
+    from pynchy.security.gate import create_gate, resolve_security
+
+    security = resolve_security(group.folder, is_admin=input_data.is_admin)
+    invocation_ts = start_time
+    create_gate(group.folder, invocation_ts, security)
+    input_data.invocation_ts = invocation_ts
+
     s = get_settings()
     group_dir = s.groups_dir / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
