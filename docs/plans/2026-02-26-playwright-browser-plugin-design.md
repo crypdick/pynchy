@@ -187,21 +187,44 @@ No need for OpenClaw's multi-format system — playwright-mcp's single format is
 
 This design is approved. The next step is to create a detailed implementation plan.
 
-Run the `writing-plans` skill against this design doc:
+### 1. Clone reference repos (ephemeral, not checked in)
+
+These repos contain reference implementations. Clone them before starting:
+
+```bash
+# OpenClaw — security fencing patterns (external-content.ts), browser tool wrapping
+git clone --depth 1 https://github.com/openclaw/openclaw.git /tmp/openclaw
+
+# Playwright monorepo — playwright-mcp source lives here (compiled JS in playwright-mcp repo)
+git clone --depth 1 --filter=blob:none --sparse https://github.com/microsoft/playwright.git /tmp/playwright
+cd /tmp/playwright && git sparse-checkout set packages/playwright/src/mcp && cd -
+
+# playwright-mcp repo — config types, tests, package structure
+git clone --depth 1 https://github.com/microsoft/playwright-mcp.git /tmp/playwright-mcp
+```
+
+### 2. Run writing-plans skill
 
 ```
 /writing-plans docs/plans/2026-02-26-playwright-browser-plugin-design.md
 ```
 
-Key references to feed into the plan:
-- **Plugin pattern to follow**: `src/pynchy/integrations/plugins/x_integration.py` (existing plugin with MCP spec + service handler + skills)
-- **MCP server lifecycle**: `src/pynchy/container_runner/mcp_manager.py` (how script-type servers are started/stopped)
-- **Security fencing source**: `.tmp/openclaw/src/security/external-content.ts` (OpenClaw's wrapping implementation to port)
-- **Cop integration point**: `src/pynchy/security/cop.py` (`inspect_inbound()` for injection scanning)
-- **Browser utilities to reuse**: `src/pynchy/integrations/browser.py` (system Chrome, profiles, Xvfb/noVNC)
-- **Skill example**: `container/skills/` (existing skills with YAML frontmatter)
-- **Config model**: `src/pynchy/config_mcp.py` (`McpServerConfig` for script-type servers)
-- **playwright-mcp source**: `/tmp/playwright/packages/playwright/src/mcp/` (snapshot implementation, tool definitions)
+### 3. Key references
+
+**In pynchy (always available):**
+- `src/pynchy/integrations/plugins/x_integration.py` — existing plugin with MCP spec + service handler + skills (pattern to follow)
+- `src/pynchy/container_runner/mcp_manager.py` — how script-type MCP servers are started/stopped
+- `src/pynchy/security/cop.py` — `inspect_inbound()` for injection scanning
+- `src/pynchy/integrations/browser.py` — system Chrome detection, persistent profiles, Xvfb/noVNC
+- `src/pynchy/config_mcp.py` — `McpServerConfig` model for script-type servers
+- `container/skills/` — existing skills with YAML frontmatter
+
+**In cloned repos (from step 1):**
+- `/tmp/openclaw/src/security/external-content.ts` — untrusted content fencing to port (marker sanitization, random-ID fences, Unicode homoglyph defense, security warning)
+- `/tmp/openclaw/src/agents/tools/browser-tool.ts` lines 448-590 — how OpenClaw wraps browser snapshots before sending to LLM
+- `/tmp/playwright/packages/playwright/src/mcp/browser/tab.ts` — `captureSnapshot()` using `_snapshotForAI()`, incremental snapshot support
+- `/tmp/playwright/packages/playwright/src/mcp/browser/tools/snapshot.ts` — tool definitions (click, hover, drag, etc.) and element ref resolution
+- `/tmp/playwright-mcp/packages/playwright-mcp/config.d.ts` — full Config type (capabilities, network origins, snapshot mode, secrets)
 
 ## Future Considerations
 
