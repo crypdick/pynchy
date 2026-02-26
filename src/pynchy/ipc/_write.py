@@ -10,28 +10,13 @@ never sees a partially-written file.
 
 from __future__ import annotations
 
-import json
 import random
 import time
 from pathlib import Path
 from typing import Any
 
 from pynchy.config import get_settings
-
-
-def write_json_atomic(path: Path, data: Any, *, indent: int | None = None) -> None:
-    """Write JSON data to a file using atomic rename (tmp → final).
-
-    Ensures the target file is never partially written — readers either
-    see the old content or the complete new content.  Used for all IPC
-    files watched by filesystem events.
-
-    Creates parent directories if they don't exist.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, indent=indent))
-    tmp.rename(path)
+from pynchy.utils import write_json_atomic
 
 
 def _ipc_input_dir(group_folder: str) -> Path:

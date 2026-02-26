@@ -338,4 +338,16 @@ From [litellm-diagnostics.md](/.claude/skills/pynchy-ops/references/litellm-diag
 
 ## Done
 
-*To be filled in on completion.*
+All implementation steps complete:
+
+1. **Step 1** — `get_head_commit_message()` moved to `git_ops/utils.py` (shared by `/health` and `/status`).
+2. **Step 2** — Deploy timestamps (`last_deploy_at`, `last_deploy_sha`) persisted in `router_state` by `finalize_deploy()`.
+3. **Step 3** — `src/pynchy/status.py` — pure data-collection module with per-section collectors, concurrent I/O via `asyncio.gather()`.
+4. **Step 4** — `StatusDeps` protocol defined in `status.py`.
+5. **Step 5** — Deps wired in `dep_factory.py:make_status_deps()`, passed to `start_http_server()`.
+6. **Step 6** — `_handle_status` handler + `GET /status` route registered. `record_start_time()` called at boot.
+7. **Step 7** — `/health` left as-is (intentionally lightweight for automated checks).
+
+Also fixed: circular import between `deploy.py` ↔ `ipc._handlers_deploy` (moved to lazy import).
+
+Tests: `tests/test_status.py` — 24 tests covering all collectors, the HTTP endpoint, error paths, and edge cases.

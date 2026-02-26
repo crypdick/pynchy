@@ -12,9 +12,9 @@ from typing import TYPE_CHECKING, Any, Protocol
 from pynchy.config import get_settings
 from pynchy.db import get_messages_since
 from pynchy.git_ops.utils import get_head_commit_message, get_head_sha, is_repo_dirty, run_git
-from pynchy.ipc._write import write_json_atomic
 from pynchy.logger import logger
 from pynchy.types import WorkspaceProfile, WorkspaceSecurity
+from pynchy.utils import write_json_atomic
 
 if TYPE_CHECKING:
     from pynchy.group_queue import GroupQueue

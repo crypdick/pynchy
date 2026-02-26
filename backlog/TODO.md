@@ -79,7 +79,6 @@ Single source of truth for all pynchy work items.
 ### 4 - In Progress
 *Being implemented.*
 
-- [Status endpoint](4-in-progress/status-endpoint.md) — Comprehensive `GET /status` endpoint aggregating health from all subsystems (service, channels, gateway, queue, repos/worktrees, messages, tasks, host jobs)
 
 ### Completed
 We don't track completed items here. Plans are moved to `5-completed/` via `git mv` and the line is removed.

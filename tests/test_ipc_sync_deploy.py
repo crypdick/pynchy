@@ -389,9 +389,7 @@ class TestDeployEdgeCases:
 
     async def test_deploy_without_chat_jid_uses_admin_group(self, deps: MockDeps):
         """Deploy request missing chatJid should fall back to admin group's JID."""
-        with patch(
-            "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
-        ) as mock_finalize:
+        with patch("pynchy.deploy.finalize_deploy", new_callable=AsyncMock) as mock_finalize:
             await _handle_deploy(
                 {
                     "rebuildContainer": False,
@@ -413,9 +411,7 @@ class TestDeployEdgeCases:
         # Deps with no admin group
         no_admin_deps = MockDeps({"other@g.us": OTHER_GROUP})
 
-        with patch(
-            "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
-        ) as mock_finalize:
+        with patch("pynchy.deploy.finalize_deploy", new_callable=AsyncMock) as mock_finalize:
             await _handle_deploy(
                 {
                     "rebuildContainer": False,
@@ -433,12 +429,10 @@ class TestDeployEdgeCases:
 
         with (
             patch(
-                "pynchy.ipc._handlers_deploy.build_container_image",
+                "pynchy.deploy.build_container_image",
                 return_value=BuildResult(success=True, skipped=True),
             ),
-            patch(
-                "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
-            ) as mock_finalize,
+            patch("pynchy.deploy.finalize_deploy", new_callable=AsyncMock) as mock_finalize,
         ):
             await _handle_deploy(
                 {
@@ -456,9 +450,7 @@ class TestDeployEdgeCases:
 
     async def test_deploy_uses_default_resume_prompt(self, deps: MockDeps):
         """Deploy with no resumePrompt should use the default."""
-        with patch(
-            "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
-        ) as mock_finalize:
+        with patch("pynchy.deploy.finalize_deploy", new_callable=AsyncMock) as mock_finalize:
             await _handle_deploy(
                 {
                     "rebuildContainer": False,

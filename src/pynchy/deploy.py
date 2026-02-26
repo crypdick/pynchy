@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from pynchy.config import get_settings
-from pynchy.ipc._write import write_json_atomic
 from pynchy.logger import logger
+from pynchy.utils import write_json_atomic
 
 
 @dataclass

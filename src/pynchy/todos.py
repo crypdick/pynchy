@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from pynchy.config import get_settings
-from pynchy.ipc._write import write_json_atomic
+from pynchy.utils import write_json_atomic
 
 
 def _todos_path(group_folder: str) -> Path:
