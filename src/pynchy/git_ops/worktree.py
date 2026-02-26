@@ -273,7 +273,12 @@ def reconcile_worktrees_at_startup(
         repo_groups: Dict mapping slug → list of group folder names.
     """
     from pynchy.config import get_settings
-    from pynchy.git_ops.repo import check_token_expiry, ensure_repo_cloned, get_repo_context, get_repo_token
+    from pynchy.git_ops.repo import (
+        check_token_expiry,
+        ensure_repo_cloned,
+        get_repo_context,
+        get_repo_token,
+    )
 
     repo_groups = repo_groups or {}
 
