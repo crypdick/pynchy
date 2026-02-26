@@ -698,6 +698,30 @@ class TestListToolsVisibility:
         assert "deploy_changes" not in tool_names
 
     @pytest.mark.asyncio
+    async def test_admin_sees_register_group(self):
+        from agent_runner.agent_tools._server import list_tools
+
+        with (
+            patch("agent_runner.agent_tools._ipc.is_admin", True),
+            patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
+        ):
+            tools = await list_tools()
+        tool_names = [t.name for t in tools]
+        assert "register_group" in tool_names
+
+    @pytest.mark.asyncio
+    async def test_non_admin_no_register_group(self):
+        from agent_runner.agent_tools._server import list_tools
+
+        with (
+            patch("agent_runner.agent_tools._ipc.is_admin", False),
+            patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
+        ):
+            tools = await list_tools()
+        tool_names = [t.name for t in tools]
+        assert "register_group" not in tool_names
+
+    @pytest.mark.asyncio
     async def test_scheduled_task_sees_finished_work(self):
         from agent_runner.agent_tools._server import list_tools
 
@@ -738,7 +762,6 @@ class TestListToolsVisibility:
             "pause_task",
             "resume_task",
             "cancel_task",
-            "register_group",
             "sync_worktree_to_main",
             "reset_context",
             "list_todos",
