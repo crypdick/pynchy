@@ -273,7 +273,7 @@ def reconcile_worktrees_at_startup(
         repo_groups: Dict mapping slug → list of group folder names.
     """
     from pynchy.config import get_settings
-    from pynchy.git_ops.repo import check_token_expiry, ensure_repo_cloned, get_repo_context
+    from pynchy.git_ops.repo import check_token_expiry, ensure_repo_cloned, get_repo_context, get_repo_token
 
     repo_groups = repo_groups or {}
 
@@ -291,7 +291,7 @@ def reconcile_worktrees_at_startup(
         repo_cfg = s.repos.get(slug)
         if repo_cfg and repo_cfg.token:
             check_token_expiry(slug, repo_cfg.token.get_secret_value())
-        elif not s.secrets.gh_token:
+        elif not get_repo_token(slug):
             logger.warning(
                 "No git token for repo — private repos will fail to clone",
                 slug=slug,
