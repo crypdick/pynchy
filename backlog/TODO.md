@@ -62,7 +62,7 @@ Single source of truth for all pynchy work items.
 
 - add a mcp that allows admin accounts to add passwords to the .env. it should be upsert only permissions. it should be written in such a way that when the user pastes in their password, it bypasses the llm, the mcp updates .env, and a message posted on the chat saying they can delete the message they posted containing their password. the password should never be stored in the sqlite db. when using the service adder mcp, it should print a system message saying that if the mcp requires any password_env fields, to paste it in. maybe there should be a magic phrase, like 'env add KEY=VALUE' and this is what the harness intercepts. i guess in that case it shouldn't even be an MCP, it should be part of the harness. oh, and afterwards there should be a system (not host) message broadcast so that the local agent is aware when the env files are updated.
 
-- [Observability gaps](3-ready/observability-gaps.md) — Slack message loss alerting, scheduled task progress heartbeats, boot failure notifications
+- [Observability gaps](5-completed/observability-gaps.md) — Slack message loss alerting, scheduled task progress heartbeats (RESOLVED), boot failure notifications
 
 #### Bugs
 - [MCP gateway transport](3-ready/mcp-gateway-transport.md) — Claude SDK `type: "http"` hangs during init against LiteLLM's Streamable HTTP `/mcp/` endpoint; `type: "sse"` fails gracefully but tools unavailable
