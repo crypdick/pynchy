@@ -454,7 +454,7 @@ class GroupQueue:
             containers=[name for _, name in active],
         )
 
-        from pynchy.container_runner import _graceful_stop
+        from pynchy.container_runner._process import _graceful_stop
 
         await asyncio.gather(
             *(_graceful_stop(proc, name) for proc, name in active),

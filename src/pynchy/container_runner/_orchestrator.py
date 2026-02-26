@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,14 +19,7 @@ from pynchy.container_runner._mounts import _build_container_args, _build_volume
 from pynchy.container_runner._serialization import _input_to_dict
 from pynchy.logger import logger
 from pynchy.runtime.runtime import get_runtime
-from pynchy.types import ContainerInput, ContainerOutput, VolumeMount, WorkspaceProfile
-
-# ---------------------------------------------------------------------------
-# Type aliases
-# ---------------------------------------------------------------------------
-
-OnOutput = Callable[[ContainerOutput], Awaitable[None]]
-
+from pynchy.types import ContainerInput, VolumeMount, WorkspaceProfile
 
 # ---------------------------------------------------------------------------
 # Container timeout resolution

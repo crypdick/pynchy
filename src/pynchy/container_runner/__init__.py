@@ -20,11 +20,10 @@ This package is split into focused submodules:
 
 from pynchy.container_runner._credentials import has_api_credentials
 from pynchy.container_runner._orchestrator import (
-    OnOutput,
     resolve_agent_core,
     resolve_container_timeout,
 )
-from pynchy.container_runner._process import _graceful_stop
+from pynchy.container_runner._process import OnOutput
 from pynchy.container_runner._session import (
     ContainerSession,
     SessionDiedError,
@@ -40,7 +39,6 @@ __all__ = [
     "ContainerSession",
     "OnOutput",
     "SessionDiedError",
-    "_graceful_stop",
     "has_api_credentials",
     "create_session",
     "destroy_all_sessions",
