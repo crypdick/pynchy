@@ -13,7 +13,9 @@ from agent_runner.agent_tools._registry import ToolEntry, register, tool_error
 # -- register_group --
 
 
-def _register_group_definition() -> Tool:
+def _register_group_definition() -> Tool | None:
+    if not _ipc.is_admin:
+        return None
     return Tool(
         name="register_group",
         description=(
