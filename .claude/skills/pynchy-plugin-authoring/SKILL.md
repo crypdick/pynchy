@@ -20,7 +20,7 @@ Use this skill when the user asks to:
 2. In the plugin repository `pyproject.toml` (not `pynchy/pyproject.toml`), define entry points under `[project.entry-points."pynchy"]`.
 3. For host runtime/channel code, treat plugin code as high trust and avoid risky side effects in import-time code.
 4. For plugin docs, cross-link to `pynchy/docs/plugins/*` instead of duplicating long explanations.
-5. Refer to the [quickstart guide](docs/plugins/quickstart.md) for the recommended plugin directory structure.
+5. Refer to the [quickstart guide](https://pynchy.ricardodecal.com/plugins/quickstart/) for the recommended plugin directory structure.
 6. **Plugin config models belong in the plugin.** Define Pydantic config models inside the plugin's own source file, not in `pynchy/src/pynchy/config_models.py`. The core `config_models.py` is for pynchy core settings only.
 
 ## File Scope Conventions
@@ -92,7 +92,7 @@ uv run mkdocs build --strict
 
 All plugin Python code runs on the host during discovery (`__init__`, `validate()`, category methods). Installing a plugin means trusting its code. **Only install plugins from authors you trust.**
 
-For the full risk-by-category breakdown, see [Plugin Security](docs/plugins/index.md#security-model).
+For the full risk-by-category breakdown, see [Plugin Security](https://pynchy.ricardodecal.com/plugins/#security-model).
 
 ## References
 
