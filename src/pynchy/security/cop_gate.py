@@ -54,13 +54,25 @@ async def cop_gate(
     # Resolve chat_jid for audit and notifications
     chat_jid = resolve_chat_jid(source_group, deps) or "unknown"
 
+    decision = "cop_flagged" if verdict.flagged else "cop_allowed"
     await record_security_event(
         chat_jid=chat_jid,
         workspace=source_group,
         tool_name=operation,
-        decision="cop_flagged" if verdict.flagged else "cop_allowed",
+        decision=decision,
         reason=verdict.reason,
     )
+
+    # Notify user of audit result (token stream transparency)
+    if verdict.flagged:
+        await deps.broadcast_host_message(
+            chat_jid,
+            f"\U0001f46e FAIL {operation}: {verdict.reason}",
+        )
+    else:
+        await deps.broadcast_host_message(
+            chat_jid, f"\U0001f46e pass {operation}"
+        )
 
     if not verdict.flagged:
         return True

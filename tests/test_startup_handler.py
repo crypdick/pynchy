@@ -185,6 +185,7 @@ class FakeDeps:
         self.last_agent_timestamp: dict[str, str] = {}
         self.channels: list = []
         self.broadcast_host_message = AsyncMock()
+        self.broadcast_system_notice = AsyncMock()
         self._register_workspace = AsyncMock()
         self.register_jid_alias = AsyncMock()
 
@@ -241,20 +242,18 @@ class TestCheckDeployContinuation:
             "pynchy.workspace_config.load_workspace_config",
             mock_load,
         )
-
-        # Patch store_message to capture calls
-        stored: list = []
-
-        async def fake_store(msg):
-            stored.append(msg)
-
-        monkeypatch.setattr("pynchy.startup_handler.store_message", fake_store)
+        # Stub get_head_commit_message so it doesn't touch the real repo
+        monkeypatch.setattr(
+            "pynchy.startup_handler.get_head_commit_message",
+            lambda *a: "test commit",
+        )
 
         await check_deploy_continuation(deps)
 
-        # Only the interactive workspace should get a resume message
-        assert len(stored) == 1
-        assert stored[0].chat_jid == interactive_jid
+        # Only the interactive workspace should get a resume notice
+        deps.broadcast_system_notice.assert_awaited_once()
+        call_jid = deps.broadcast_system_notice.call_args[0][0]
+        assert call_jid == interactive_jid
         assert len(deps.queue.enqueued) == 1
         assert deps.queue.enqueued[0] == interactive_jid
 
@@ -287,16 +286,14 @@ class TestCheckDeployContinuation:
             "pynchy.workspace_config.load_workspace_config",
             lambda folder: WorkspaceConfig(),
         )
-
-        stored: list = []
-
-        async def fake_store(msg):
-            stored.append(msg)
-
-        monkeypatch.setattr("pynchy.startup_handler.store_message", fake_store)
+        monkeypatch.setattr(
+            "pynchy.startup_handler.get_head_commit_message",
+            lambda *a: "test commit",
+        )
 
         await check_deploy_continuation(deps)
 
-        assert len(stored) == 1
-        assert stored[0].chat_jid == jid
-        assert "[DEPLOY COMPLETE" in stored[0].content
+        deps.broadcast_system_notice.assert_awaited_once()
+        call_jid, call_text = deps.broadcast_system_notice.call_args[0]
+        assert call_jid == jid
+        assert "Deploy complete" in call_text

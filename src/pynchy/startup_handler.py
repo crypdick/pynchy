@@ -10,12 +10,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from pynchy.config import get_settings
-from pynchy.db import get_messages_since, store_message
+from pynchy.db import get_messages_since
 from pynchy.git_ops.utils import get_head_commit_message, get_head_sha, is_repo_dirty, run_git
 from pynchy.ipc._write import write_json_atomic
 from pynchy.logger import logger
-from pynchy.types import NewMessage, WorkspaceProfile, WorkspaceSecurity
-from pynchy.utils import generate_message_id
+from pynchy.types import WorkspaceProfile, WorkspaceSecurity
 
 if TYPE_CHECKING:
     from pynchy.group_queue import GroupQueue
@@ -35,6 +34,8 @@ class StartupDeps(Protocol):
     def channels(self) -> list[Any]: ...
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
+
+    async def broadcast_system_notice(self, chat_jid: str, text: str) -> None: ...
 
     async def _register_workspace(self, profile: WorkspaceProfile) -> None: ...
 
@@ -158,10 +159,11 @@ async def auto_rollback(continuation_path: Path, exc: Exception) -> None:
 
 
 async def check_deploy_continuation(deps: StartupDeps) -> None:
-    """Check for a deploy continuation file and inject resume messages.
+    """Check for a deploy continuation file and resume active sessions.
 
-    Reads the ``active_sessions`` dict from the continuation file and injects
-    a synthetic resume message for every group that had an active session.
+    Reads the ``active_sessions`` dict from the continuation file and sends
+    a system notice (visible to both user and LLM) for every group that had
+    an active session before the deploy.
     """
     continuation_path = get_settings().data_dir / "deploy_continuation.json"
     if not continuation_path.exists():
@@ -196,6 +198,10 @@ async def check_deploy_continuation(deps: StartupDeps) -> None:
         group_count=len(active_sessions),
     )
 
+    sha_short = commit_sha[:8]
+    commit_msg = get_head_commit_message(50)
+    label = f"{sha_short} {commit_msg}".strip() if commit_msg else sha_short
+
     from pynchy.workspace_config import load_workspace_config
 
     for jid, _session_id in active_sessions.items():
@@ -214,23 +220,13 @@ async def check_deploy_continuation(deps: StartupDeps) -> None:
                 )
                 continue
 
-        # No cleared_at check here: if a session is in active_sessions,
-        # get_active_sessions() already excluded cleared sessions via the
-        # in-memory _session_cleared guard. A DB cleared_at value can be
-        # stale when a reset handoff revived the session (the handoff clears
-        # _session_cleared but doesn't update cleared_at in the DB).
-        synthetic_msg = NewMessage(
-            id=generate_message_id(f"deploy-{commit_sha[:8]}-{jid[:12]}"),
-            chat_jid=jid,
-            sender="deploy",
-            sender_name="deploy",
-            content=f"[DEPLOY COMPLETE -- {commit_sha[:8]}] {resume_prompt}",
-            timestamp=datetime.now(UTC).isoformat(),
-            is_from_me=False,
-        )
-        await store_message(synthetic_msg)
+        # Active session existed before deploy → send as system notice
+        # (visible to both user and LLM). broadcast_system_notice stores
+        # the message, broadcasts to channels, and enqueues a message check.
+        notice = f"Deploy complete -- {label}. {resume_prompt}"
+        await deps.broadcast_system_notice(jid, notice)
         deps.queue.enqueue_message_check(jid)
-        logger.info("Injected resume message", chat_jid=jid)
+        logger.info("Deploy resume notice sent", chat_jid=jid)
 
 
 # ------------------------------------------------------------------
