@@ -313,7 +313,7 @@ async def _list_tasks_handle(arguments: dict) -> list[TextContent]:
             )
         ]
 
-    except Exception as exc:
+    except (OSError, json.JSONDecodeError, KeyError) as exc:
         return [TextContent(type="text", text=f"Error reading tasks: {exc}")]
 
 

@@ -113,7 +113,7 @@ def _get_session_summary(session_id: str, transcript_path: str) -> str | None:
         for entry in index.get("entries", []):
             if entry.get("sessionId") == session_id:
                 return entry.get("summary")
-    except Exception as exc:
+    except (json.JSONDecodeError, OSError) as exc:
         _log(f"Failed to read sessions index: {exc}")
 
     return None
