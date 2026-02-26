@@ -61,14 +61,14 @@ def _is_skill_selected(name: str, tier: str, workspace_skills: list[str] | None)
     """Determine whether a skill should be included for a workspace.
 
     Resolution rules:
-    - ``workspace_skills is None`` → include everything (backwards compat)
+    - ``workspace_skills is None`` → core only (safe default)
     - ``"all"`` in the list → include everything
     - Tier matches an entry → include
     - Name matches an entry → include
     - ``tier == "core"`` → always included when any filtering is active
     """
     if workspace_skills is None:
-        return True
+        return tier == "core"
     if "all" in workspace_skills:
         return True
     if tier in workspace_skills:

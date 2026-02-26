@@ -1199,7 +1199,7 @@ class TestSyncSkills:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(session_dir)
+            _sync_skills(session_dir, workspace_skills=["all"])
 
         skills_dst = session_dir / "skills" / "my-skill"
         assert skills_dst.exists()
@@ -1234,7 +1234,7 @@ class TestSyncSkills:
             hook = FakeHook()
 
         with _patch_settings(tmp_path):
-            _sync_skills(session_dir, plugin_manager=FakePM())
+            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["all"])
 
         ext_dst = session_dir / "skills" / "ext-skill"
         assert ext_dst.exists()
@@ -1266,7 +1266,7 @@ class TestSyncSkills:
             _patch_settings(tmp_path),
             pytest.raises(ValueError, match="collision"),
         ):
-            _sync_skills(session_dir, plugin_manager=FakePM())
+            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["all"])
 
     def test_skips_nonexistent_plugin_skill_path(self, tmp_path: Path):
         """Plugin skill paths that don't exist are skipped with a warning."""
@@ -1362,8 +1362,10 @@ class TestParseSkillTier:
 class TestIsSkillSelected:
     """Test skill selection resolution logic."""
 
-    def test_none_includes_everything(self):
-        assert _is_skill_selected("any-skill", "community", None) is True
+    def test_none_is_core_only(self):
+        """skills=None means core-only (safe default)."""
+        assert _is_skill_selected("any-skill", "community", None) is False
+        assert _is_skill_selected("browser", "core", None) is True
 
     def test_all_includes_everything(self):
         assert _is_skill_selected("any-skill", "community", ["all"]) is True
@@ -1405,8 +1407,8 @@ class TestSyncSkillsFiltering:
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text(f"---\nname: {name}\ntier: {tier}\n---\n# {name}\n")
 
-    def test_none_copies_all_skills(self, tmp_path: Path):
-        """workspace_skills=None copies everything (backwards compat)."""
+    def test_none_copies_core_only(self, tmp_path: Path):
+        """workspace_skills=None copies only core-tier skills (safe default)."""
         skills_src = tmp_path / "container" / "skills"
         self._create_skill(skills_src, "browser", "core")
         self._create_skill(skills_src, "improver", "dev")
@@ -1419,7 +1421,7 @@ class TestSyncSkillsFiltering:
             _sync_skills(session_dir, workspace_skills=None)
 
         copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
-        assert copied == {"browser", "improver", "extra"}
+        assert copied == {"browser"}
 
     def test_core_only_filters_correctly(self, tmp_path: Path):
         """workspace_skills=["core"] copies only core-tier skills."""
