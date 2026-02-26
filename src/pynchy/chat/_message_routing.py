@@ -45,7 +45,7 @@ async def _route_incoming_group(
     filtering, special commands).
     """
     s = get_settings()
-    from pynchy.config_access import is_user_allowed, resolve_allowed_users, resolve_channel_config
+    from pynchy.config_access import filter_allowed_messages, resolve_channel_config
 
     channel_plugin_name = next(
         (ch.name for ch in deps.channels if ch.owns_jid(group_jid)),
@@ -63,33 +63,15 @@ async def _route_incoming_group(
         logger.info("route_trace", step="skip_access", group=group.name, access=resolved.access)
         return
 
-    is_admin_group = group.is_admin
-
     # Sender filter: only process messages from allowed users.
     # Admin groups accept all senders — anyone with access to the
     # command-center channel is implicitly trusted.
-    if not is_admin_group:
-        allowed = resolve_allowed_users(
-            resolved.allowed_users,
-            s.user_groups,
-            s.owner,
-            channel_plugin_name=channel_plugin_name,
-        )
-        filtered = []
-        for m in group_messages:
-            if is_user_allowed(m.sender, channel_plugin_name, allowed, m.is_from_me):
-                filtered.append(m)
-            else:
-                logger.info(
-                    "route_trace",
-                    step="skip_sender",
-                    group=group.name,
-                    sender=m.sender,
-                )
-        group_messages = filtered
-        if not group_messages:
-            logger.info("route_trace", step="skip_all_filtered", group=group.name)
-            return
+    group_messages = filter_allowed_messages(group_messages, group, channel_plugin_name)
+    if not group_messages:
+        logger.info("route_trace", step="skip_all_filtered", group=group.name)
+        return
+
+    is_admin_group = group.is_admin
     needs_trigger = not is_admin_group and resolved.trigger == "mention"
 
     if needs_trigger:

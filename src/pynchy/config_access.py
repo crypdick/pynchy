@@ -181,6 +181,56 @@ def _resolve_owner(owner_config: OwnerConfig, channel_plugin_name: str | None) -
     return None
 
 
+def filter_allowed_messages(
+    messages: list,
+    group: object,
+    channel_plugin_name: str | None,
+) -> list:
+    """Filter messages to only those from allowed senders.
+
+    Admin groups bypass the filter entirely (return all messages unchanged).
+    Uses the same resolve → filter logic as _route_incoming_group so that
+    the reconciler and the main message loop apply identical sender gating.
+
+    Args:
+        messages: List of NewMessage objects to filter.
+        group: WorkspaceProfile with at least ``is_admin`` and ``folder``.
+        channel_plugin_name: Channel name for platform resolution (e.g. "slack").
+
+    Returns:
+        Filtered list — only messages from allowed senders.
+    """
+    if getattr(group, "is_admin", False):
+        return messages
+
+    s = get_settings()
+    resolved = resolve_channel_config(
+        getattr(group, "folder", ""),
+        channel_plugin_name=channel_plugin_name,
+    )
+    allowed = resolve_allowed_users(
+        resolved.allowed_users,
+        s.user_groups,
+        s.owner,
+        channel_plugin_name=channel_plugin_name,
+    )
+
+    from pynchy.logger import logger
+
+    filtered = []
+    for m in messages:
+        if is_user_allowed(m.sender, channel_plugin_name, allowed, m.is_from_me):
+            filtered.append(m)
+        else:
+            logger.info(
+                "filter_allowed_messages",
+                step="skip_sender",
+                group=getattr(group, "name", "?"),
+                sender=m.sender,
+            )
+    return filtered
+
+
 def is_user_allowed(
     sender: str,
     channel_plugin_name: str | None,
