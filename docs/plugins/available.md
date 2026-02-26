@@ -17,7 +17,10 @@ These ship with pynchy and are always available. Some require optional dependenc
 | `caldav` | MCP Server Handler | CalDAV calendar tools (list, create, delete events). Works with Nextcloud and other CalDAV servers. | `[caldav] url / username / password` + `uv sync --extra caldav` | [MCP service tools](../architecture/mcp-service-tools.md) |
 | `docker-runtime` | Container Runtime | Docker container runtime. Default on Linux, fallback on macOS. | Always active (requires `docker` CLI) | [Container isolation](../architecture/container-isolation.md) |
 | `apple-runtime` | Container Runtime | Apple Container runtime for macOS hosts. | macOS only (auto-detected) | [Container isolation](../architecture/container-isolation.md) |
-| `google-setup` | Service Handler | Google Drive setup tools — GCP project creation, Drive API enablement, OAuth authorization. | Always active | [Google Drive](../usage/gdrive.md) |
+| `google-setup` | Service Handler + MCP Server | Google Drive and Calendar setup — GCP project creation, API enablement, OAuth authorization. Provides base MCP server specs for `gdrive` and `gcal`. | Always active | [Google Drive](../usage/gdrive.md) |
+| `slack-token-extractor` | Service Handler | Extracts fresh Slack browser tokens (xoxc/xoxd) from persistent browser sessions. | Always active | — |
+| `x-integration` | Service Handler | Post tweets, like, reply, retweet, and quote on X (Twitter) via browser automation. | Always active | — |
+| `notebook-server` | MCP Server | JupyterLab notebook execution server for running Python notebooks in agent containers. | Always active | [Notebooks](../usage/notebooks.md) |
 | `sqlite-observer` | Observer | Persists EventBus events to a dedicated `events` table for observability. | Always active | [Observers](../architecture/observers.md) |
 | `tailscale` | Tunnel | Tailscale connectivity detection. Warns at startup if tunnel is down. | Always active (requires `tailscale` CLI) | [Tunnels](../architecture/tunnels.md) |
 
