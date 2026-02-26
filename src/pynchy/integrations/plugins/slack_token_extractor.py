@@ -32,6 +32,7 @@ from pynchy.integrations.browser import (
     chrome_path,
     has_display,
     profile_dir,
+    project_root,
     start_virtual_display,
     stop_procs,
 )
@@ -45,13 +46,8 @@ hookimpl = pluggy.HookimplMarker("pynchy")
 # ---------------------------------------------------------------------------
 
 
-def _project_root() -> Path:
-    root = os.environ.get("PYNCHY_PROJECT_ROOT", "")
-    return Path(root) if root else Path.cwd()
-
-
 def _find_dotenv() -> Path:
-    return _project_root() / ".env"
+    return project_root() / ".env"
 
 
 def _update_dotenv_var(dotenv_path: Path, key: str, value: str) -> None:
