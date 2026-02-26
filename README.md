@@ -33,7 +33,7 @@ Everyone is writing their own AI assistant. Why write another one? The biggest r
 - Customizable; [eight types of plugins](https://pynchy.ricardodecal.com/plugins/) are supported — agent cores, skills, channels, service handlers, container runtimes, workspaces, observers, and tunnels.
 - Persistent memory with BM25-ranked full-text search — agents save and recall facts across sessions.
 - Reoccurring tasks can be scheduled to run at a specific time or interval.
-- (work in progress) policy groups to prevent [lethal trifecta prompt injection attacks](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/).
+- Policy groups to prevent [lethal trifecta prompt injection attacks](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/).
 
 ## Integrations
 
