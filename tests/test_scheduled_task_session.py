@@ -1,11 +1,8 @@
 """Tests that _run_scheduled_task uses session-based real-time streaming.
 
-The fix converts one-shot containers from batch output collection
-(run_container_agent → read files post-exit) to the session-based pattern
-(create_session → IPC watcher streams events in real-time).
-
-These tests verify the new session-based orchestration in _run_scheduled_task,
-NOT the end-to-end output routing (which is tested via the IPC watcher tests).
+These tests verify the session-based orchestration in _run_scheduled_task
+(create_session → IPC watcher streams events in real-time), NOT the
+end-to-end output routing (which is tested via the IPC watcher tests).
 """
 
 from __future__ import annotations
@@ -181,13 +178,12 @@ class TestScheduledTaskUsesSession:
 
         self.fake_session.wait_for_query_done.assert_awaited_once_with(timeout=300.0)
 
-    def test_run_container_agent_not_imported(self):
-        """run_container_agent should no longer be imported in agent_runner."""
-        import pynchy.agent_runner as mod
+    def test_run_container_agent_fully_removed(self):
+        """run_container_agent was removed — ensure it doesn't reappear."""
+        import pynchy.container_runner._orchestrator as orch
 
-        assert not hasattr(mod, "run_container_agent"), (
-            "run_container_agent should not be imported — "
-            "scheduled tasks now use session-based streaming"
+        assert not hasattr(orch, "run_container_agent"), (
+            "run_container_agent was removed — scheduled tasks use session-based streaming"
         )
 
     @pytest.mark.asyncio

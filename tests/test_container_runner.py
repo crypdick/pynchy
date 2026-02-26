@@ -1,4 +1,4 @@
-"""Tests for the container runner. Uses FakeProcess to simulate subprocess behavior."""
+"""Tests for the container runner."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import contextlib
 import json
 import subprocess
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -26,7 +25,6 @@ from pynchy.container_runner._mounts import _build_container_args, _build_volume
 from pynchy.container_runner._orchestrator import (
     _write_initial_input,
     resolve_agent_core,
-    run_container_agent,
 )
 from pynchy.container_runner._serialization import _input_to_dict, _parse_container_output
 from pynchy.container_runner._session import _clean_ipc_input
@@ -75,7 +73,6 @@ TEST_INPUT = ContainerInput(
 
 _CR_CREDS = "pynchy.container_runner._credentials"
 _CR_ORCH = "pynchy.container_runner._orchestrator"
-_CR_PROC = "pynchy.container_runner._process"
 _GATEWAY = "pynchy.container_runner.gateway"
 
 
@@ -558,204 +555,6 @@ class TestMountBuilding:
 
             paths = [m.container_path for m in mounts]
             assert "/workspace/project/config.toml" not in paths
-
-
-# ---------------------------------------------------------------------------
-# Integration tests — run_container_agent with FakeProcess
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-async def fake_proc():
-    """Must be async so StreamReader is created on the test's event loop."""
-    return FakeProcess()
-
-
-@contextlib.contextmanager
-def _patch_subprocess(fake_proc: FakeProcess):
-    """Patch asyncio.create_subprocess_exec and docker cleanup for tests.
-
-    Also patches _docker_rm_force (called as fire-and-forget in
-    run_container_agent) since it spawns a real subprocess to remove
-    containers, which would hang the event loop during teardown.
-
-    Asserts that stdin=DEVNULL is passed (input is via IPC file, not pipe).
-    """
-
-    async def _fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
-        assert kwargs.get("stdin") == asyncio.subprocess.DEVNULL, (
-            f"Expected stdin=DEVNULL, got {kwargs.get('stdin')}"
-        )
-        return fake_proc
-
-    async def _noop_rm(name: str) -> None:
-        pass
-
-    with (
-        patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", _fake_create),
-        patch("pynchy.container_runner._process._docker_rm_force", _noop_rm),
-        patch("pynchy.container_runner._session._docker_rm_force", _noop_rm),
-    ):
-        yield
-
-
-@contextlib.contextmanager
-def _patch_dirs(tmp_path: Path):
-    """Patch directory settings to use tmp_path."""
-    with _patch_settings(tmp_path):
-        yield
-
-
-class TestRunContainerAgent:
-    @staticmethod
-    def _write_ipc_output(tmp_path: Path, output: dict[str, Any], *, ns: int = 1) -> None:
-        """Write an output event as an IPC file (simulates container behaviour)."""
-        output_dir = tmp_path / "data" / "ipc" / "test-group" / "output"
-        output_dir.mkdir(parents=True, exist_ok=True)
-        (output_dir / f"{ns}.json").write_text(json.dumps(output))
-
-    async def test_normal_exit_with_output(self, fake_proc: FakeProcess, tmp_path: Path):
-        on_output = AsyncMock()
-
-        with _patch_subprocess(fake_proc), _patch_dirs(tmp_path):
-
-            async def _driver():
-                await asyncio.sleep(0.01)
-                self._write_ipc_output(
-                    tmp_path,
-                    {
-                        "status": "success",
-                        "result": "Here is my response",
-                        "new_session_id": "session-123",
-                    },
-                )
-                await asyncio.sleep(0.01)
-                fake_proc.close(0)
-
-            driver = asyncio.create_task(_driver())
-            result = await run_container_agent(
-                TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None, on_output=on_output
-            )
-            await driver
-
-        assert result.status == "success"
-        assert result.new_session_id == "session-123"
-        assert result.result == "Here is my response"
-        on_output.assert_called_once()
-        call_arg = on_output.call_args[0][0]
-        assert call_arg.result == "Here is my response"
-
-    async def test_nonzero_exit_is_error(self, fake_proc: FakeProcess, tmp_path: Path):
-        with _patch_subprocess(fake_proc), _patch_dirs(tmp_path):
-
-            async def _driver():
-                await asyncio.sleep(0.01)
-                fake_proc.emit_stderr(b"something went wrong\n")
-                await asyncio.sleep(0.01)
-                fake_proc.close(1)
-
-            driver = asyncio.create_task(_driver())
-            result = await run_container_agent(TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None)
-            await driver
-
-        assert result.status == "error"
-        assert "code 1" in (result.error or "")
-        assert "something went wrong" in (result.error or "")
-
-    async def test_output_from_ipc_files(self, fake_proc: FakeProcess, tmp_path: Path):
-        """Output is collected from IPC files after container exit."""
-        with _patch_subprocess(fake_proc), _patch_dirs(tmp_path):
-
-            async def _driver():
-                await asyncio.sleep(0.01)
-                self._write_ipc_output(
-                    tmp_path,
-                    {"status": "success", "result": "file-based result"},
-                )
-                await asyncio.sleep(0.01)
-                fake_proc.close(0)
-
-            driver = asyncio.create_task(_driver())
-            result = await run_container_agent(TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None)
-            await driver
-
-        assert result.status == "success"
-        assert result.result == "file-based result"
-
-    async def test_timeout_with_short_timeout(self, fake_proc: FakeProcess, tmp_path: Path):
-        """Test real timeout behavior with very short timeout values."""
-
-        async def _fake_stop(proc: Any, name: str) -> None:
-            if hasattr(proc, "close"):
-                proc.close(137)
-
-        with (
-            _patch_subprocess(fake_proc),
-            # idle_timeout=-29.9 and container_timeout=0.1:
-            # max(0.1, -29.9 + 30.0) == 0.1s
-            _patch_settings(tmp_path, idle_timeout=-29.9, container_timeout=0.1),
-            patch(f"{_CR_PROC}._graceful_stop", _fake_stop),
-        ):
-            # Don't emit any output — let it timeout
-            result = await run_container_agent(
-                TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None, on_output=AsyncMock()
-            )
-
-        assert result.status == "error"
-        assert "timed out" in (result.error or "")
-
-    async def test_timeout_after_output_with_short_timeout(
-        self, fake_proc: FakeProcess, tmp_path: Path
-    ):
-        """Timeout after output should be idle cleanup (success)."""
-        on_output = AsyncMock()
-
-        async def _fake_stop(proc: Any, name: str) -> None:
-            if hasattr(proc, "close"):
-                proc.close(137)
-
-        with (
-            _patch_subprocess(fake_proc),
-            _patch_settings(tmp_path, idle_timeout=-29.9, container_timeout=0.1),
-            patch(f"{_CR_PROC}._graceful_stop", _fake_stop),
-        ):
-
-            async def _driver():
-                await asyncio.sleep(0.01)
-                self._write_ipc_output(
-                    tmp_path,
-                    {
-                        "status": "success",
-                        "result": "response",
-                        "new_session_id": "s-99",
-                    },
-                )
-                # Don't close — let timeout fire after the short period
-
-            driver = asyncio.create_task(_driver())
-            result = await run_container_agent(
-                TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None, on_output=on_output
-            )
-            await driver
-
-        # Had output → idle cleanup → success
-        assert result.status == "success"
-        assert result.new_session_id == "s-99"
-
-    async def test_no_output_files_returns_success(self, fake_proc: FakeProcess, tmp_path: Path):
-        """Container exits cleanly but writes no output files."""
-        with _patch_subprocess(fake_proc), _patch_dirs(tmp_path):
-
-            async def _driver():
-                await asyncio.sleep(0.01)
-                fake_proc.close(0)
-
-            driver = asyncio.create_task(_driver())
-            result = await run_container_agent(TEST_GROUP, TEST_INPUT, on_process=lambda p, n: None)
-            await driver
-
-        assert result.status == "success"
-        assert result.result is None
 
 
 # ---------------------------------------------------------------------------

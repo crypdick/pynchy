@@ -1,28 +1,23 @@
-"""Main entry point — spawns container agent, manages lifecycle, returns result.
+"""Container spawning and agent core resolution.
 
-Also contains agent core resolution (plugin lookup).
+Provides ``_spawn_container()`` (shared by cold-start and scheduled-task
+paths in ``agent_runner``) and ``resolve_agent_core()`` (plugin lookup).
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pluggy
 
 from pynchy.config import get_settings
-from pynchy.container_runner._logging import _write_run_log
 from pynchy.container_runner._mounts import _build_container_args, _build_volume_mounts
-from pynchy.container_runner._process import (
-    _classify_exit,
-    _wait_for_exit,
-)
-from pynchy.container_runner._serialization import _input_to_dict, _parse_container_output
+from pynchy.container_runner._serialization import _input_to_dict
 from pynchy.logger import logger
 from pynchy.runtime.runtime import get_runtime
 from pynchy.types import ContainerInput, ContainerOutput, VolumeMount, WorkspaceProfile
@@ -31,7 +26,6 @@ from pynchy.types import ContainerInput, ContainerOutput, VolumeMount, Workspace
 # Type aliases
 # ---------------------------------------------------------------------------
 
-OnProcess = Callable[[asyncio.subprocess.Process, str], Any]
 OnOutput = Callable[[ContainerOutput], Awaitable[None]]
 
 
@@ -100,41 +94,6 @@ def resolve_agent_core(plugin_manager: pluggy.PluginManager | None) -> tuple[str
 
 
 # ---------------------------------------------------------------------------
-# IPC output directory reading
-# ---------------------------------------------------------------------------
-
-
-def _read_output_files(output_dir: Path, group_name: str) -> list[ContainerOutput]:
-    """Read and parse all output event files from the IPC output directory.
-
-    Files are sorted by name (monotonic nanosecond timestamps) to preserve
-    ordering.  Each file is deleted after successful parsing.
-
-    Returns a list of parsed ContainerOutput events.
-    """
-    outputs: list[ContainerOutput] = []
-    if not output_dir.exists():
-        return outputs
-
-    for file_path in sorted(f for f in output_dir.iterdir() if f.suffix == ".json"):
-        try:
-            json_str = file_path.read_text()
-            parsed = _parse_container_output(json_str)
-            outputs.append(parsed)
-            file_path.unlink()
-        except (json.JSONDecodeError, KeyError, TypeError, OSError) as exc:
-            logger.warning(
-                "Failed to parse output file",
-                group=group_name,
-                file=file_path.name,
-                error_type=type(exc).__name__,
-                error=str(exc),
-            )
-            # Leave the file for debugging; don't block other files
-    return outputs
-
-
-# ---------------------------------------------------------------------------
 # Initial input file
 # ---------------------------------------------------------------------------
 
@@ -163,8 +122,8 @@ async def _spawn_container(
 ) -> tuple[asyncio.subprocess.Process, str, list[VolumeMount]]:
     """Resolve environment, build mounts, and spawn a container subprocess.
 
-    Shared by both one-shot run_container_agent() and the persistent session
-    cold-start path.  Returns (proc, container_name, mounts).
+    Shared by the cold-start and scheduled-task paths in ``agent_runner``.
+    Returns (proc, container_name, mounts).
 
     Raises OSError if the subprocess fails to start.
     """
@@ -246,95 +205,3 @@ async def _spawn_container(
     )
 
     return proc, container_name, mounts
-
-
-# ---------------------------------------------------------------------------
-# One-shot entry point (scheduled tasks)
-# ---------------------------------------------------------------------------
-
-
-async def run_container_agent(
-    group: WorkspaceProfile,
-    input_data: ContainerInput,
-    on_process: OnProcess,
-    on_output: OnOutput | None = None,
-    plugin_manager: pluggy.PluginManager | None = None,
-) -> ContainerOutput:
-    """Spawn a container agent, wait for exit, and collect output from IPC files.
-
-    Used for one-shot runs (scheduled tasks).  For interactive messages,
-    use the persistent session path in agent_runner.run_agent().
-
-    Output is collected from IPC output files written by the container, not
-    from stdout.  Stdout is consumed and discarded (container logs to stderr).
-    The on_output callback, if provided, is invoked for each output event
-    after the container exits.
-
-    Args:
-        group: The registered group configuration.
-        input_data: Input payload for the agent-runner.
-        on_process: Callback invoked with (proc, container_name) after spawn.
-        on_output: If provided, called for each output event after container exit.
-        plugin_manager: Optional pluggy.PluginManager for plugin MCP mounts and config.
-
-    Returns:
-        ContainerOutput with the final status.
-    """
-    s = get_settings()
-
-    container_name = oneshot_container_name(group.folder)
-
-    logs_dir = s.groups_dir / group.folder / "logs"
-    logs_dir.mkdir(parents=True, exist_ok=True)
-
-    try:
-        proc, container_name, mounts = await _spawn_container(
-            group, input_data, container_name, plugin_manager
-        )
-    except OSError as exc:
-        logger.error("Failed to spawn container", error=str(exc), container=container_name)
-        return ContainerOutput(status="error", result=None, error=f"Spawn failed: {exc}")
-
-    on_process(proc, container_name)
-
-    # --- Wait for container exit (timeout, I/O drain, cleanup) ---
-    config_timeout = resolve_container_timeout(group)
-    # Grace period: hard timeout must be at least idle_timeout + 30s
-    timeout_secs = max(config_timeout, s.idle_timeout + 30.0)
-
-    exit_info = await _wait_for_exit(
-        proc, container_name, group.name, timeout_secs, s.container.max_output_size
-    )
-
-    # --- Collect output from IPC files ---
-    ipc_output_dir = s.data_dir / "ipc" / group.folder / "output"
-    outputs = _read_output_files(ipc_output_dir, group.name)
-
-    # Deliver output events via callback
-    if on_output is not None:
-        for output_event in outputs:
-            try:
-                await on_output(output_event)
-            except Exception:
-                logger.exception(
-                    "Output callback failed",
-                    group=group.name,
-                )
-
-    # --- Write log ---
-    container_args = _build_container_args(mounts, container_name)
-    _write_run_log(
-        logs_dir=logs_dir,
-        group_name=group.name,
-        container_name=container_name,
-        input_data=input_data,
-        container_args=container_args,
-        mounts=mounts,
-        stderr=exit_info.stderr,
-        duration_ms=exit_info.duration_ms,
-        exit_code=exit_info.exit_code,
-        timed_out=exit_info.timed_out,
-        output_event_count=len(outputs),
-    )
-
-    return _classify_exit(exit_info, outputs, group.name, container_name, config_timeout)

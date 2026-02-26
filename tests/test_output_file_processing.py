@@ -82,12 +82,7 @@ class TestOutputFileProcessing:
         assert not file_path.exists()
 
     async def test_file_preserved_when_no_handler(self, _db, tmp_path: Path):
-        """Output files should be left in place when no session handler exists.
-
-        One-shot containers (scheduled tasks) have no session, so the
-        watcher must leave their output files for run_container_agent()
-        to collect after the container exits.
-        """
+        """Output files should be left in place when no session handler exists."""
         ipc_dir = tmp_path / "ipc"
         file_path = _write_output_file(
             ipc_dir,
