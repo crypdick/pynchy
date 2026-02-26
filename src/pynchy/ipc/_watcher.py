@@ -145,10 +145,9 @@ async def _process_output_file(
     session's output handler, and detects query-done pulses (result events
     with new_session_id).
 
-    Only deletes the file if a session handler consumed it.  One-shot
-    containers (scheduled tasks) have no session, so their output files
-    must be left in place for run_container_agent() to collect after
-    the container exits.
+    Only deletes the file if a session handler consumed it.  If no handler
+    is registered (e.g. a stale output file from a dead session), the file
+    is left in place for the startup sweep to clean up.
     """
     try:
         json_str = file_path.read_text()
@@ -173,9 +172,9 @@ async def _process_output_file(
                 group=source_group,
             )
 
-        # Only delete if a session handler consumed the event.  One-shot
-        # containers have no session — their files are collected by
-        # run_container_agent() after the container exits.
+        # Only delete if a session handler consumed the event.  If no
+        # handler is set (e.g. stale file from a dead session), leave for
+        # the startup sweep to clean up.
         if handler is not None:
             file_path.unlink()
     except Exception:
