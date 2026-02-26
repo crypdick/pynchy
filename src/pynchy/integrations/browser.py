@@ -42,7 +42,8 @@ from pynchy.logger import logger
 # ---------------------------------------------------------------------------
 
 
-def _project_root() -> Path:
+def project_root() -> Path:
+    """Pynchy project root — ``PYNCHY_PROJECT_ROOT`` env var or cwd."""
     root = os.environ.get("PYNCHY_PROJECT_ROOT", "")
     return Path(root) if root else Path.cwd()
 
@@ -160,7 +161,7 @@ def profile_dir(name: str) -> Path:
 
     Returns ``data/playwright-profiles/{name}/``, creating it if needed.
     """
-    d = _project_root() / "data" / "playwright-profiles" / name
+    d = project_root() / "data" / "playwright-profiles" / name
     d.mkdir(parents=True, exist_ok=True)
     return d
 

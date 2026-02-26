@@ -43,6 +43,7 @@ from pynchy.integrations.browser import (
     chrome_path,
     has_display,
     profile_dir,
+    project_root,
     start_virtual_display,
     stop_procs,
 )
@@ -86,14 +87,9 @@ _SERVICE_USAGE_URL = "https://serviceusage.googleapis.com/v1"
 # ---------------------------------------------------------------------------
 
 
-def _project_root() -> Path:
-    root = os.environ.get("PYNCHY_PROJECT_ROOT", "")
-    return Path(root) if root else Path.cwd()
-
-
 def _chrome_profile_dir(profile_name: str) -> Path:
     """Host directory for a chrome profile's auth artifacts."""
-    d = _project_root() / "data" / "chrome-profiles" / profile_name
+    d = project_root() / "data" / "chrome-profiles" / profile_name
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -110,7 +106,7 @@ def _credentials_path(profile_name: str) -> Path:
 
 def _download_dir() -> Path:
     """Temporary download directory for credential files."""
-    d = _project_root() / "data" / "tmp" / "google-setup"
+    d = project_root() / "data" / "tmp" / "google-setup"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
