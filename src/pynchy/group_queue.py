@@ -36,15 +36,21 @@ class GroupState:
     process: asyncio.subprocess.Process | None = None
     container_name: str | None = None
     group_folder: str | None = None
+    invocation_ts: float = 0.0  # Monotonic timestamp for SecurityGate keying
     retry_count: int = 0
 
     def release(self) -> None:
         """Reset transient per-run state when a container slot is freed."""
+        if self.group_folder and self.invocation_ts:
+            from pynchy.security.gate import destroy_gate
+
+            destroy_gate(self.group_folder, self.invocation_ts)
         self.active = False
         self.active_is_task = False
         self.process = None
         self.container_name = None
         self.group_folder = None
+        self.invocation_ts = 0.0
 
 
 class GroupQueue:
@@ -161,6 +167,7 @@ class GroupQueue:
         proc: asyncio.subprocess.Process | None,
         container_name: str,
         group_folder: str | None = None,
+        invocation_ts: float = 0.0,
     ) -> None:
         """Associate a running container process with a group.
 
@@ -172,6 +179,7 @@ class GroupQueue:
         state.container_name = container_name
         if group_folder:
             state.group_folder = group_folder
+        state.invocation_ts = invocation_ts
 
     def is_active_task(self, group_jid: str) -> bool:
         """Check if the active container for this group is a scheduled task."""

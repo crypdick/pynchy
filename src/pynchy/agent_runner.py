@@ -345,7 +345,9 @@ async def _cold_start(
     )
 
     # Register process so send_message() works for follow-ups during this query
-    deps.queue.register_process(chat_jid, proc, container_name, group.folder)
+    deps.queue.register_process(
+        chat_jid, proc, container_name, group.folder, input_data.invocation_ts
+    )
 
     # Set output handler and wait
     session.set_output_handler(ctx.wrapped_on_output)
@@ -499,7 +501,9 @@ async def _run_scheduled_task(
         logger.error("Failed to spawn container", error=str(exc), container=container_name)
         return "error"
 
-    deps.queue.register_process(chat_jid, proc, container_name, group.folder)
+    deps.queue.register_process(
+        chat_jid, proc, container_name, group.folder, input_data.invocation_ts
+    )
 
     session = await create_session(
         group.folder,

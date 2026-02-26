@@ -246,7 +246,7 @@ class TestScheduledTaskUsesSession:
         """Should register the container process for send_message() support."""
         registered = []
 
-        def track_register(chat_jid, proc, name, folder):
+        def track_register(chat_jid, proc, name, folder, invocation_ts=0.0):
             registered.append((chat_jid, proc, name, folder))
 
         self.deps.queue.register_process = track_register
