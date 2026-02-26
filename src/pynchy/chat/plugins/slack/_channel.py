@@ -422,17 +422,31 @@ class SlackChannel:
     ) -> None:
         """Add a reaction to a Slack message.
 
-        ``message_id`` should be a Slack message ``ts`` value.
+        ``message_id`` is a pynchy message ID (e.g. ``slack-{ts}``).  The raw
+        Slack ``ts`` is extracted from the prefix.  Non-Slack message IDs are
+        silently ignored (no valid Slack ts to react to).
         Accepts either Slack names (``eyes``) or Unicode emoji (``👀``).
         """
         if not self._app or not self.owns_jid(jid):
+            return
+        # Extract raw Slack ts from the pynchy message ID.
+        # Regular messages: "slack-{ts}", assistant: "slack-assistant-{ts}".
+        if message_id.startswith("slack-assistant-"):
+            slack_ts = message_id.removeprefix("slack-assistant-")
+        elif message_id.startswith("slack-"):
+            slack_ts = message_id.removeprefix("slack-")
+        else:
+            logger.debug(
+                "send_reaction skipped — not a Slack-originated message",
+                message_id=message_id,
+            )
             return
         channel_id = _channel_id_from_jid(jid)
         # Convert Unicode emoji to Slack name, or strip colons from name format
         emoji_name = self._UNICODE_TO_SLACK_NAME.get(emoji, emoji.strip(":"))
         try:
             await self._app.client.reactions_add(
-                channel=channel_id, timestamp=message_id, name=emoji_name
+                channel=channel_id, timestamp=slack_ts, name=emoji_name
             )
         except Exception as exc:
             logger.debug("Slack reaction failed", err=str(exc))
