@@ -101,14 +101,14 @@ def drain_ipc_input() -> list[str]:
             try:
                 data = json.loads(file_path.read_text())
                 file_path.unlink()
-                if data.get("type") == "message" and data.get("text"):
+                if isinstance(data, dict) and data.get("type") == "message" and data.get("text"):
                     messages.append(data["text"])
-            except Exception as exc:
+            except (json.JSONDecodeError, OSError) as exc:
                 log(f"Failed to process input file {file_path.name}: {exc}")
                 with contextlib.suppress(OSError):
                     file_path.unlink()
         return messages
-    except Exception as exc:
+    except OSError as exc:
         log(f"IPC drain error: {exc}")
         return []
 
