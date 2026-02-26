@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from pynchy.security.gate import SecurityGate, create_gate, destroy_gate, get_gate
+from pynchy.security.gate import (
+    SecurityGate,
+    create_gate,
+    destroy_gate,
+    get_gate,
+    get_gate_for_group,
+)
 from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
 
 
@@ -92,6 +98,37 @@ class TestSecurityGateTaintPersistence:
         gate1.evaluate_read("browser")
         assert gate1.policy.corruption_tainted
         assert not gate2.policy.corruption_tainted
+
+
+class TestGetGateForGroup:
+    """Tests for get_gate_for_group — lookup by group folder only."""
+
+    def test_returns_none_when_no_gates(self):
+        assert get_gate_for_group("nonexistent") is None
+
+    def test_returns_single_gate(self):
+        security = _make_security()
+        gate = create_gate("test-ws", 1000.0, security)
+        assert get_gate_for_group("test-ws") is gate
+
+    def test_returns_latest_timestamp(self):
+        """When multiple gates exist for same group, returns the one with highest ts."""
+        security = _make_security()
+        _old = create_gate("test-ws", 1000.0, security)
+        newest = create_gate("test-ws", 2000.0, security)
+        assert get_gate_for_group("test-ws") is newest
+
+    def test_does_not_return_other_groups(self):
+        security = _make_security()
+        create_gate("other-ws", 1000.0, security)
+        assert get_gate_for_group("test-ws") is None
+
+    def test_returns_correct_gate_among_multiple_groups(self):
+        security = _make_security()
+        create_gate("ws-a", 1000.0, security)
+        gate_b = create_gate("ws-b", 2000.0, security)
+        create_gate("ws-a", 3000.0, security)
+        assert get_gate_for_group("ws-b") is gate_b
 
 
 class TestSecurityGateEvaluate:
