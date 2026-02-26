@@ -145,6 +145,38 @@ async def get_messages_since(chat_jid: str, since_timestamp: str) -> list[NewMes
     return [_row_to_message(row) for row in rows]
 
 
+async def get_messaging_stats() -> dict[str, int | str | None]:
+    """Return aggregate messaging stats for the status endpoint.
+
+    Combines inbound message counts, outbound ledger counts, and pending
+    delivery counts into a single efficient query (scalar subqueries).
+
+    Touches ``outbound_ledger`` and ``outbound_deliveries`` tables in
+    addition to ``messages`` — kept here rather than split across modules
+    because it's a single cross-cutting stats query.
+    """
+    db = _get_db()
+    cursor = await db.execute(
+        """
+        SELECT
+            (SELECT COUNT(*) FROM messages WHERE is_from_me = 0) AS total_inbound,
+            (SELECT COUNT(*) FROM outbound_ledger) AS total_outbound,
+            (SELECT MAX(timestamp) FROM messages WHERE is_from_me = 0) AS last_received_at,
+            (SELECT MAX(timestamp) FROM outbound_ledger) AS last_sent_at,
+            (SELECT COUNT(*) FROM outbound_deliveries WHERE delivered_at IS NULL)
+                AS pending_deliveries
+        """
+    )
+    row = await cursor.fetchone()
+    return {
+        "total_inbound": row["total_inbound"] if row else 0,
+        "total_outbound": row["total_outbound"] if row else 0,
+        "last_received_at": row["last_received_at"] if row else None,
+        "last_sent_at": row["last_sent_at"] if row else None,
+        "pending_deliveries": row["pending_deliveries"] if row else 0,
+    }
+
+
 async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
     """Get recent messages for a chat, including bot responses. Newest last.
 

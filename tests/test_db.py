@@ -19,6 +19,7 @@ from pynchy.db import (
     get_due_tasks,
     get_host_job_by_id,
     get_messages_since,
+    get_messaging_stats,
     get_new_messages,
     get_router_state,
     get_session,
@@ -1234,3 +1235,64 @@ class TestEnsureColumns:
         # Should not raise
         await _ensure_columns(db)
         await db.close()
+
+
+# --- get_messaging_stats ---
+
+
+class TestMessagingStats:
+    async def test_empty_db_returns_zeros(self):
+        result = await get_messaging_stats()
+        assert result["total_inbound"] == 0
+        assert result["total_outbound"] == 0
+        assert result["last_received_at"] is None
+        assert result["last_sent_at"] is None
+        assert result["pending_deliveries"] == 0
+
+    async def test_counts_inbound_and_outbound(self):
+        await store_chat_metadata("g@g.us", "2026-01-01T00:00:00", "Test")
+        await store_message(
+            _store(
+                id="m1",
+                chat_jid="g@g.us",
+                sender="u@s",
+                sender_name="Alice",
+                content="hello",
+                timestamp="2026-02-20T10:00:00",
+            )
+        )
+        await store_message(
+            _store(
+                id="m2",
+                chat_jid="g@g.us",
+                sender="u@s",
+                sender_name="Alice",
+                content="world",
+                timestamp="2026-02-20T10:00:01",
+            )
+        )
+
+        from pynchy.db import record_outbound
+
+        await record_outbound("g@g.us", "hi back", "test", ["whatsapp"])
+
+        result = await get_messaging_stats()
+        assert result["total_inbound"] == 2
+        assert result["total_outbound"] == 1
+        assert result["last_received_at"] == "2026-02-20T10:00:01"
+        assert result["last_sent_at"] is not None
+        assert result["pending_deliveries"] == 1  # undelivered whatsapp entry
+
+    async def test_pending_deliveries_excludes_delivered(self):
+        await store_chat_metadata("g@g.us", "2026-01-01T00:00:00", "Test")
+
+        from pynchy.db import mark_delivered, record_outbound
+
+        ledger_id = await record_outbound("g@g.us", "msg", "test", ["whatsapp", "slack"])
+
+        # Mark whatsapp as delivered, leave slack pending
+        await mark_delivered(ledger_id, "whatsapp")
+
+        result = await get_messaging_stats()
+        assert result["total_outbound"] == 1
+        assert result["pending_deliveries"] == 1  # only slack is pending
