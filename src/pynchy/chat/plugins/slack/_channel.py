@@ -606,10 +606,14 @@ class SlackChannel:
         # conversations.history `oldest` is inclusive (ts >= oldest), so add
         # a 1µs epsilon to make it exclusive and prevent the cursor from
         # stalling on the boundary message every reconciliation cycle.
-        since_epoch = str(datetime.fromisoformat(since).timestamp() + 1e-6)
-        messages, hwm = await self._fetch_missed_messages_with_watermark(
-            channel_id, since_epoch
-        )
+        # IMPORTANT: Slack timestamps are "seconds.microseconds" (two
+        # integers separated by a dot), NOT floats.  str(float) can produce
+        # 7+ decimal digits which Slack misparses, shifting the decimal
+        # point and creating a far-future timestamp that returns 0 results.
+        dt = datetime.fromisoformat(since)
+        total_us = int(dt.timestamp() * 1_000_000) + 1  # +1µs epsilon
+        since_epoch = f"{total_us // 1_000_000}.{total_us % 1_000_000:06d}"
+        messages, hwm = await self._fetch_missed_messages_with_watermark(channel_id, since_epoch)
         return InboundFetchResult(messages=messages, high_water_mark=hwm)
 
     # ------------------------------------------------------------------
