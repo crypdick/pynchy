@@ -4,8 +4,8 @@ Reads PYNCHY_CHROME_PROFILES env var (comma-separated, injected by the
 host based on which profiles the workspace's MCP servers reference) and
 registers a ``setup_google_{profile}`` IPC tool for each one.
 
-The agent sees tools like ``setup_google_anyscale`` — same naming pattern
-as the MCP tools (``mcp__gdrive_anyscale__search``).  No guessing which
+The agent sees tools like ``setup_google_mycompany`` — same naming pattern
+as the MCP tools (``mcp__gdrive_mycompany__search``).  No guessing which
 profiles are available.
 """
 

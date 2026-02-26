@@ -113,7 +113,7 @@ async def sync_mcp_endpoints(
         # ----------------------------------------------------------
         # NOTE: LiteLLM field is "url", not "server_url".
         # NOTE: LiteLLM rejects server_name values containing hyphens;
-        # dots from instance names (e.g. "gdrive.anyscale") may also
+        # dots from instance names (e.g. "gdrive.mycompany") may also
         # cause issues.  Sanitize to underscores for registration.
         for iid, instance in instances.items():
             sanitized_iid = iid.replace(".", "_").replace("-", "_")

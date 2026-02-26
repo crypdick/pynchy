@@ -177,8 +177,8 @@ def _write_env_file(*, is_admin: bool, group_folder: str) -> Path | None:
         env_vars["GIT_COMMITTER_EMAIL"] = git_email
 
     # Chrome profiles — extract from workspace's mcp_servers list.
-    # If a workspace has mcp_servers = ["gdrive.anyscale", "gcal.work"],
-    # the profiles are {"anyscale", "work"} (extracted from instance names
+    # If a workspace has mcp_servers = ["gdrive.mycompany", "gcal.work"],
+    # the profiles are {"mycompany", "work"} (extracted from instance names
     # matching templates that have declared instances).
     ws_cfg = s.workspaces.get(group_folder) if not is_admin else None
     # For admin: expose all chrome_profiles. For non-admin: only attached ones.
@@ -189,7 +189,7 @@ def _write_env_file(*, is_admin: bool, group_folder: str) -> Path | None:
         if ws_cfg and ws_cfg.mcp_servers:
             for entry in ws_cfg.mcp_servers:
                 if "." in entry:
-                    # "gdrive.anyscale" → check if "anyscale" is a chrome profile
+                    # "gdrive.mycompany" → check if "mycompany" is a chrome profile
                     _, inst_name = entry.split(".", 1)
                     if inst_name in s.chrome_profiles:
                         chrome_profiles_set.add(inst_name)

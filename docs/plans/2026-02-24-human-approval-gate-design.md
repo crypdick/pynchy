@@ -152,7 +152,7 @@ Decision file schema:
 {
   "request_id": "a7f3b2c1d4e5f6a7...",
   "approved": true,
-  "decided_by": "ricardo",
+  "decided_by": "admin",
   "decided_at": "2026-02-24T12:01:30Z"
 }
 ```

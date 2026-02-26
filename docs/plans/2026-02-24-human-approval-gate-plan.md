@@ -1590,7 +1590,7 @@ async def test_full_approve_flow(tmp_path: Path):
     decision_file.write_text(json.dumps({
         "request_id": "req1a2b3c4d5e6f",
         "approved": True,
-        "decided_by": "ricardo",
+        "decided_by": "admin",
         "decided_at": "2026-02-24T12:01:00+00:00",
     }))
 
@@ -1658,7 +1658,7 @@ async def test_full_deny_flow(tmp_path: Path):
     decision_file = decisions_dir / "deny123.json"
     decision_file.write_text(json.dumps({
         "request_id": "deny123", "approved": False,
-        "decided_by": "ricardo", "decided_at": "2026-02-24T12:01:00+00:00",
+        "decided_by": "admin", "decided_at": "2026-02-24T12:01:00+00:00",
     }))
 
     with patch("pynchy.ipc._handlers_approval.get_settings", return_value=settings):
