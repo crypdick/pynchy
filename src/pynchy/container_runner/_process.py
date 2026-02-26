@@ -104,7 +104,7 @@ async def _graceful_stop(proc: asyncio.subprocess.Process, container_name: str) 
                     container=container_name,
                 )
                 proc.kill()
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(OSError):
                     await proc.wait()
     except Exception as exc:
         logger.exception(
