@@ -1,12 +1,11 @@
-"""Main orchestrator — wires all subsystems together."""
+"""Main orchestrator — owns runtime state and wires subsystems together.
+
+Lifecycle (startup phases, shutdown) lives in :mod:`_lifecycle`.
+"""
 
 from __future__ import annotations
 
-import asyncio
 import json
-import os
-import signal
-import threading
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -14,21 +13,12 @@ if TYPE_CHECKING:
 
     from pynchy.container_runner import OnOutput
 
-from pynchy import (
-    session_handler,
-    startup_handler,
-)
+from pynchy import session_handler
 from pynchy.adapters import HostMessageBroadcaster, MessageBroadcaster
 from pynchy.chat import (
     channel_handler,
     message_handler,
     output_handler,
-)
-from pynchy.chat._message_routing import start_message_loop
-from pynchy.chat.channel_runtime import (
-    ChannelPluginContext,
-    load_channels,
-    resolve_default_channel,
 )
 from pynchy.config import get_settings
 from pynchy.db import (
@@ -38,18 +28,12 @@ from pynchy.db import (
     get_all_sessions,
     get_all_workspace_profiles,
     get_router_state,
-    init_database,
     set_jid_alias,
     set_workspace_profile,
-    store_chat_metadata,
 )
 from pynchy.event_bus import EventBus
 from pynchy.group_queue import GroupQueue
-from pynchy.http_server import start_http_server
 from pynchy.logger import logger
-from pynchy.runtime.system_checks import ensure_container_system_running
-from pynchy.service_installer import install_service
-from pynchy.tunnels import check_tunnels
 from pynchy.types import (
     Channel,
     ContainerOutput,
@@ -327,17 +311,6 @@ class PynchyApp:
         await message_handler.execute_direct_command(self, chat_jid, group, message, command)
 
     # ------------------------------------------------------------------
-    # Message loop & startup delegation
-    # ------------------------------------------------------------------
-
-    async def _start_message_loop(self) -> None:
-        """Main polling loop — delegated to _message_routing."""
-        if self.message_loop_running:
-            logger.debug("Message loop already running, skipping duplicate start")
-            return
-        self.message_loop_running = True
-        await start_message_loop(self, lambda: self._shutting_down)
-
     # Internal delegation for session_handler (used by dep_factory adapters)
     async def _ingest_user_message(
         self, msg: NewMessage, *, source_channel: str | None = None
@@ -389,7 +362,7 @@ class PynchyApp:
             message_type="system",
         )
         await store_message(msg)
-        await self.broadcast_host_message(chat_jid, f"\U0001f60e Answer forwarded to agent")
+        await self.broadcast_host_message(chat_jid, "\U0001f60e Answer forwarded to agent")
         self.queue.enqueue_message_check(chat_jid)
 
     async def _send_clear_confirmation(self, chat_jid: str) -> None:
@@ -412,247 +385,11 @@ class PynchyApp:
         await reconcile_all_channels(self)
 
     # ------------------------------------------------------------------
-    # Lifecycle
+    # Lifecycle (delegated to _lifecycle module)
     # ------------------------------------------------------------------
 
-    async def _shutdown(self, sig_name: str) -> None:
-        """Graceful shutdown handler. Second signal force-exits."""
-        if self._shutting_down:
-            logger.info("Force shutdown")
-            os._exit(1)
-        self._shutting_down = True
-        logger.info("Shutdown signal received", signal=sig_name)
-
-        # Hard-exit watchdog: if graceful shutdown hangs, force-exit after 12s.
-        # This ensures launchd/systemd can restart us even if a container or
-        # channel disconnect blocks indefinitely.
-        watchdog = threading.Timer(12, lambda: os._exit(1))
-        watchdog.daemon = True
-        watchdog.start()
-
-        # Notify the admin group that the service is going down.
-        # Best-effort: don't let notification failure block shutdown.
-        try:
-            from pynchy.adapters import find_admin_jid
-
-            admin_jid = find_admin_jid(self.workspaces) or None
-            if admin_jid and self.channels:
-                await self.broadcast_host_message(admin_jid, f"Shutting down ({sig_name})")
-        except Exception:
-            logger.debug("Shutdown notification failed", exc_info=True)
-
-        # Tell channels to suppress reconnect attempts before the long
-        # cleanup sequence — prevents RuntimeError crash-loops when the
-        # Slack websocket drops during gateway/queue shutdown.
-        for ch in self.channels:
-            ch.prepare_shutdown()
-
-        if self._http_runner:
-            # Give SSE handlers a brief chance to observe shutdown state and
-            # exit before aiohttp forcibly tears down request tasks.
-            await asyncio.sleep(0.3)
-            await self._http_runner.cleanup()
-
-        # Stop group containers early to avoid lingering docker run processes.
-        await self.queue.shutdown()
-
-        from pynchy.container_runner.gateway import stop_gateway
-
-        await stop_gateway()
-        for obs in self._observers:
-            await obs.close()
-        if self._memory:
-            await self._memory.close()
-        batcher = output_handler.get_trace_batcher()
-        if batcher is not None:
-            await batcher.flush_all()
-        for ch in self.channels:
-            await ch.disconnect()
-
-    async def _initialize_core(self) -> None:
-        """Phase 1: plugins, gateway, database, observers, memory, state."""
-        install_service()
-
-        from pynchy.plugin import get_plugin_manager
-        from pynchy.workspace_config import configure_plugin_workspaces
-
-        self.plugin_manager = get_plugin_manager()
-        configure_plugin_workspaces(self.plugin_manager)
-        ensure_container_system_running()
-
-        # Start the LLM gateway before any containers launch so they can
-        # reach it for credential-isolated API calls.
-        from pynchy.container_runner.gateway import start_gateway
-
-        await start_gateway(plugin_manager=self.plugin_manager)
-
-        await init_database()
-        logger.info("Database initialized")
-
-        from pynchy.memory import get_memory_provider
-        from pynchy.observers import attach_observers
-
-        self._observers = attach_observers(self.event_bus)
-
-        self._memory = get_memory_provider()
-        if self._memory:
-            await self._memory.init()
-
-        await self._load_state()
-
-    async def _setup_channels(self) -> None:
-        """Phase 2: create channel context, load channels, validate, connect."""
-        context = ChannelPluginContext(
-            on_message_callback=lambda jid, msg: asyncio.ensure_future(self._on_inbound(jid, msg)),
-            on_chat_metadata_callback=lambda jid, ts, name=None: asyncio.ensure_future(
-                store_chat_metadata(jid, ts, name)
-            ),
-            workspaces=lambda: self.workspaces,
-            send_message=self.broadcast_to_channels,
-            on_reaction_callback=lambda jid, ts, user, emoji: asyncio.ensure_future(
-                self._on_reaction(jid, ts, user, emoji)
-            ),
-            on_ask_user_answer_callback=lambda request_id, answer: asyncio.ensure_future(
-                self._on_ask_user_answer(request_id, answer)
-            ),
-        )
-        self.channels = load_channels(self.plugin_manager, context)
-        for ch in self.channels:
-            missing = startup_handler.validate_plugin_credentials(ch)
-            if missing:
-                logger.warning(
-                    "Channel missing credentials",
-                    channel=type(ch).__name__,
-                    missing=missing,
-                )
-        output_handler.init_trace_batcher(self)
-
-        for ch in self.channels:
-            await ch.connect()
-
-    async def _reconcile_state(self) -> dict[str, list[str]]:
-        """Phase 3: worktree + workspace reconciliation. Returns repo_groups."""
-        from pynchy.git_ops.worktree import reconcile_worktrees_at_startup
-        from pynchy.workspace_config import reconcile_workspaces
-
-        s = get_settings()
-
-        # Compute from config (authoritative) not saved state, so new workspaces
-        # get their repos cloned and worktrees created on first boot.
-        repo_groups: dict[str, list[str]] = {}
-        for folder, ws_cfg in s.workspaces.items():
-            if ws_cfg.repo_access:
-                repo_groups.setdefault(ws_cfg.repo_access, []).append(folder)
-
-        await asyncio.to_thread(
-            reconcile_worktrees_at_startup,
-            repo_groups=repo_groups,
-        )
-
-        # Reconcile workspaces (create chat groups + tasks from config.toml)
-        await reconcile_workspaces(
-            workspaces=self.workspaces,
-            channels=self.channels,
-            register_fn=self._register_workspace,
-            register_alias_fn=self.register_jid_alias,
-            get_channel_jid_fn=self.get_channel_jid,
-        )
-
-        return repo_groups
-
-    async def _start_subsystems(self, repo_groups: dict[str, list[str]]) -> None:
-        """Phase 4: scheduler, IPC, git sync, HTTP server."""
-        from pynchy.dep_factory import (
-            make_git_sync_deps,
-            make_http_deps,
-            make_ipc_deps,
-            make_scheduler_deps,
-            make_status_deps,
-        )
-        from pynchy.git_ops.repo import get_repo_context
-        from pynchy.git_ops.sync_poll import (
-            start_external_repo_sync_loop,
-            start_host_git_sync_loop,
-        )
-        from pynchy.ipc import start_ipc_watcher
-        from pynchy.status import record_start_time
-        from pynchy.task_scheduler import start_scheduler_loop
-
-        s = get_settings()
-
-        asyncio.create_task(start_scheduler_loop(make_scheduler_deps(self)))
-        asyncio.create_task(start_ipc_watcher(make_ipc_deps(self)))
-        asyncio.create_task(start_host_git_sync_loop(make_git_sync_deps(self)))
-
-        # Start one external sync loop per non-pynchy repo with configured groups
-        for slug, _folders in repo_groups.items():
-            repo_ctx = get_repo_context(slug)
-            if repo_ctx and repo_ctx.root.resolve() != s.project_root.resolve():
-                asyncio.create_task(
-                    start_external_repo_sync_loop(repo_ctx, make_git_sync_deps(self))
-                )
-        self.queue.set_process_messages_fn(self._process_group_messages)
-
-        # HTTP server for remote health checks, deploys, and TUI API
-        check_tunnels(self.plugin_manager)
-        record_start_time()
-        self._http_runner = await start_http_server(
-            make_http_deps(self), status_deps=make_status_deps(self)
-        )
-        import socket
-
-        hostname = socket.gethostname()
-        logger.info(
-            "HTTP server ready",
-            port=s.server.port,
-            local=f"http://localhost:{s.server.port}/status",
-            remote=f"http://{hostname}:{s.server.port}/status",
-        )
-
     async def run(self) -> None:
-        """Main entry point — startup sequence.
+        """Main entry point — see :func:`pynchy._lifecycle.run_app`."""
+        from pynchy._lifecycle import run_app
 
-        Phases:
-        1. Core initialization (plugins, gateway, DB, observers, state)
-        2. Channel setup (load, validate, connect)
-        3. State reconciliation (worktrees, workspaces)
-        4. Subsystem startup (scheduler, IPC, git sync, HTTP)
-        5. Boot finalization (notification, recovery, message loop)
-        """
-        s = get_settings()
-        continuation_path = s.data_dir / "deploy_continuation.json"
-
-        try:
-            await self._initialize_core()
-        except Exception as exc:
-            if continuation_path.exists():
-                await startup_handler.auto_rollback(continuation_path, exc)
-            raise
-
-        loop = asyncio.get_running_loop()
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            loop.add_signal_handler(
-                sig,
-                lambda s=sig: asyncio.ensure_future(self._shutdown(s.name)),
-            )
-
-        try:
-            await self._setup_channels()
-        except Exception as exc:
-            if continuation_path.exists():
-                await startup_handler.auto_rollback(continuation_path, exc)
-            raise
-
-        # First-run: create a private group and register as admin channel
-        if not self.workspaces:
-            default_channel = resolve_default_channel(self.channels)
-            await startup_handler.setup_admin_group(self, default_channel)
-
-        repo_groups = await self._reconcile_state()
-        await self._start_subsystems(repo_groups)
-
-        await startup_handler.send_boot_notification(self)
-        await self._catch_up_channel_history()
-        await startup_handler.recover_pending_messages(self)
-        await startup_handler.check_deploy_continuation(self)
-        await self._start_message_loop()
+        await run_app(self)
