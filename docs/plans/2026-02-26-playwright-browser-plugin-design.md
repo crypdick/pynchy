@@ -1,7 +1,11 @@
 # Playwright Browser Plugin Design
 
 **Date:** 2026-02-26
-**Status:** Proposed
+**Status:** Superseded by [MCP Proxy & Security Gate Design](2026-02-26-mcp-proxy-security-gate-design.md)
+
+> **Note:** This document captures the original browser plugin design. The security
+> middleware (fencing, Cop integration) and plugin structure have been redesigned as
+> part of the centralized MCP proxy. See the superseding doc for the current design.
 
 ## Summary
 
@@ -37,7 +41,7 @@ Inspired by [OpenClaw's](https://github.com/openclaw/openclaw) browser control a
 │  │                       │  untrusted content reminder  │
 │  └───────────────────────┘                              │
 └──────────────┬──────────────────────────────────────────┘
-               │ MCP protocol (via LiteLLM gateway)
+               │ MCP protocol (via MCP proxy)
                │
 ┌──────────────┼──────────────────────────────────────────┐
 │  Host: Security Middleware                               │
