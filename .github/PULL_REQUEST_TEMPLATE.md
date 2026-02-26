@@ -19,4 +19,4 @@
 ## Checklist
 
 - [ ] Tests pass locally
-- [ ] I've read the [contributing guide](docs/contributing/contributing-code.md)
+- [ ] I've read the [contributing guide](https://pynchy.ricardodecal.com/contributing/contributing-code/)

@@ -1,6 +1,6 @@
 # Pynchy
 
-Personal Claude assistant. See [README.md](README.md) for philosophy. See [docs/install.md](docs/install.md) for installation. See [docs/architecture/](docs/architecture/index.md) for architecture.
+Personal Claude assistant. See [README.md](README.md) for philosophy. See [installation guide](https://pynchy.ricardodecal.com/install/) for installation. See [architecture](https://pynchy.ricardodecal.com/architecture/) for architecture.
 
 ## Deployment Awareness
 
@@ -40,11 +40,11 @@ Python process that connects to messaging channels (WhatsApp, Slack, etc. via pl
 
 | Guide | When to Read |
 |-------|-------------|
-| [Architecture](docs/architecture/index.md) | System design, container isolation, message routing, groups, tasks |
-| [Security model](docs/architecture/security.md) | Trust model, security boundaries, credential handling |
-| [Plugin authoring](docs/plugins/index.md) | Writing plugins: hooks, packaging, distribution |
-| [Worktree isolation](docs/usage/worktrees.md) | How non-admin groups get isolated git worktrees |
-| [Style guide](docs/contributing/contributing-docs.md) | Documentation philosophy, information architecture, code comments |
+| [Architecture](https://pynchy.ricardodecal.com/architecture/) | System design, container isolation, message routing, groups, tasks |
+| [Security model](https://pynchy.ricardodecal.com/architecture/security/) | Trust model, security boundaries, credential handling |
+| [Plugin authoring](https://pynchy.ricardodecal.com/plugins/) | Writing plugins: hooks, packaging, distribution |
+| [Worktree isolation](https://pynchy.ricardodecal.com/usage/worktrees/) | How non-admin groups get isolated git worktrees |
+| [Style guide](https://pynchy.ricardodecal.com/contributing/contributing-docs/) | Documentation philosophy, information architecture, code comments |
 
 ## Expert Pushback Policy
 
