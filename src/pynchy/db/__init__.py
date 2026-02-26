@@ -57,6 +57,7 @@ from pynchy.db.host_jobs import (
 from pynchy.db.messages import (
     get_chat_history,
     get_messages_since,
+    get_messaging_stats,
     get_new_messages,
     message_exists,
     store_message,
@@ -123,6 +124,7 @@ __all__ = [
     # messages
     "get_chat_history",
     "get_messages_since",
+    "get_messaging_stats",
     "get_new_messages",
     "message_exists",
     "store_message",

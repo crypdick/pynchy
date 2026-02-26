@@ -19,9 +19,9 @@ from pynchy.container_runner._docker import run_docker
 from pynchy.db import (
     get_all_host_jobs,
     get_all_tasks,
+    get_messaging_stats,
     get_router_state,
 )
-from pynchy.db._connection import _get_db
 from pynchy.git_ops.repo import RepoContext, get_repo_context
 from pynchy.git_ops.utils import (
     count_unpushed_commits,
@@ -225,35 +225,8 @@ def _worktree_status(worktree_path: Path, main_branch: str, repo_root: Path) -> 
 
 
 async def _collect_messages() -> dict[str, Any]:
-    """Message stats — async DB queries."""
-    db = _get_db()
-
-    inbound_cur = await db.execute("SELECT COUNT(*) as cnt FROM messages WHERE is_from_me = 0")
-    inbound_row = await inbound_cur.fetchone()
-
-    outbound_cur = await db.execute("SELECT COUNT(*) as cnt FROM outbound_ledger")
-    outbound_row = await outbound_cur.fetchone()
-
-    last_recv_cur = await db.execute(
-        "SELECT MAX(timestamp) as ts FROM messages WHERE is_from_me = 0"
-    )
-    last_recv_row = await last_recv_cur.fetchone()
-
-    last_sent_cur = await db.execute("SELECT MAX(timestamp) as ts FROM outbound_ledger")
-    last_sent_row = await last_sent_cur.fetchone()
-
-    pending_cur = await db.execute(
-        "SELECT COUNT(*) as cnt FROM outbound_deliveries WHERE delivered_at IS NULL"
-    )
-    pending_row = await pending_cur.fetchone()
-
-    return {
-        "total_inbound": inbound_row["cnt"] if inbound_row else 0,
-        "total_outbound": outbound_row["cnt"] if outbound_row else 0,
-        "last_received_at": last_recv_row["ts"] if last_recv_row else None,
-        "last_sent_at": last_sent_row["ts"] if last_sent_row else None,
-        "pending_deliveries": pending_row["cnt"] if pending_row else 0,
-    }
+    """Message stats — delegated to db.get_messaging_stats()."""
+    return await get_messaging_stats()
 
 
 async def _collect_tasks() -> list[dict[str, Any]]:
