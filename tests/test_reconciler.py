@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from pynchy.chat.reconciler import reconcile_all_channels, reset_cooldowns
+from pynchy.config_models import OwnerConfig, WorkspaceConfig
 from pynchy.db import (
     _init_test_database,
     get_channel_cursor,
@@ -16,6 +17,10 @@ from pynchy.db import (
 )
 from pynchy.db._connection import _get_db
 from pynchy.types import NewMessage, WorkspaceProfile
+
+from pynchy.config_models import WorkspaceDefaultsConfig
+
+from tests.conftest import make_settings
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -63,12 +68,13 @@ def _make_deps(
 @pytest.fixture()
 async def _db():
     await _init_test_database()
-    # Seed a chat row for the FK constraint
+    # Seed chat rows for the FK constraint
     db = _get_db()
-    await db.execute(
-        "INSERT INTO chats (jid, last_message_time) VALUES (?, ?)",
-        ("group@g.us", "2024-01-01T00:00:00"),
-    )
+    for jid in ("group@g.us", "admin@g.us"):
+        await db.execute(
+            "INSERT INTO chats (jid, last_message_time) VALUES (?, ?)",
+            (jid, "2024-01-01T00:00:00"),
+        )
     await db.commit()
 
 
@@ -78,6 +84,17 @@ def _reset_cooldowns():
     reset_cooldowns()
     yield
     reset_cooldowns()
+
+
+@pytest.fixture(autouse=True)
+def _permissive_sender_defaults(monkeypatch):
+    """Default to wildcard allowed_users so tests that don't care about sender
+    filtering are unaffected.  Tests in TestSenderFilter override this with
+    restrictive settings via monkeypatch."""
+    monkeypatch.setattr(
+        "pynchy.config._settings",
+        make_settings(workspace_defaults=WorkspaceDefaultsConfig(allowed_users=["*"])),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -273,3 +290,105 @@ class TestCursorGC:
 
         assert await get_channel_cursor("dead-channel", "group@g.us", "inbound") == ""
         assert await get_channel_cursor("slack", "group@g.us", "inbound") == "2024-06-01"
+
+
+# ---------------------------------------------------------------------------
+# Sender filter — reconciler must match _route_incoming_group behavior
+# ---------------------------------------------------------------------------
+
+
+ADMIN_GROUP = WorkspaceProfile(
+    jid="admin@g.us",
+    name="Admin",
+    folder="admin",
+    trigger="@pynchy",
+    added_at="2024-01-01",
+    is_admin=True,
+)
+
+
+def _owner_settings(*, workspace_folder: str = "test", **ws_overrides):
+    """Settings with owner-only allowed_users for a workspace."""
+    ws_kwargs = {"name": workspace_folder, "allowed_users": ["owner"], **ws_overrides}
+    return make_settings(
+        owner=OwnerConfig(slack="U04OWNER"),
+        workspaces={workspace_folder: WorkspaceConfig(**ws_kwargs)},
+    )
+
+
+@pytest.mark.usefixtures("_db")
+class TestSenderFilter:
+    """Reconciler must apply the sender filter — disallowed senders are not ingested."""
+
+    @pytest.mark.asyncio
+    async def test_disallowed_sender_not_ingested(self, monkeypatch):
+        """Recovered messages from disallowed senders are skipped."""
+        msg = NewMessage(
+            id="msg-intruder",
+            chat_jid="slack:C123",
+            sender="U04INTRUDER",
+            sender_name="Intruder",
+            content="hack the planet",
+            timestamp="2024-06-01T00:00:00",
+        )
+        ch = _make_channel(inbound=[msg])
+        deps = _make_deps(
+            channels=[ch],
+            workspaces={"group@g.us": TEST_GROUP},
+        )
+        await set_channel_cursor("slack", "group@g.us", "inbound", "2024-01-01T00:00:00")
+        monkeypatch.setattr("pynchy.config._settings", _owner_settings())
+
+        await reconcile_all_channels(deps)
+
+        deps._ingest_user_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_allowed_sender_ingested(self, monkeypatch):
+        """Recovered messages from allowed senders ARE ingested."""
+        msg = NewMessage(
+            id="msg-owner",
+            chat_jid="slack:C123",
+            sender="U04OWNER",
+            sender_name="Owner",
+            content="hello",
+            timestamp="2024-06-01T00:00:00",
+        )
+        ch = _make_channel(inbound=[msg])
+        deps = _make_deps(
+            channels=[ch],
+            workspaces={"group@g.us": TEST_GROUP},
+        )
+        await set_channel_cursor("slack", "group@g.us", "inbound", "2024-01-01T00:00:00")
+        monkeypatch.setattr("pynchy.config._settings", _owner_settings())
+
+        await reconcile_all_channels(deps)
+
+        deps._ingest_user_message.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_admin_group_bypasses_sender_filter(self, monkeypatch):
+        """Admin groups accept all senders — no filtering applied."""
+        msg = NewMessage(
+            id="msg-random",
+            chat_jid="slack:C123",
+            sender="U04RANDOM",
+            sender_name="Random",
+            content="admin stuff",
+            timestamp="2024-06-01T00:00:00",
+        )
+        ch = _make_channel(inbound=[msg])
+        deps = _make_deps(
+            channels=[ch],
+            workspaces={"admin@g.us": ADMIN_GROUP},
+        )
+        await set_channel_cursor("slack", "admin@g.us", "inbound", "2024-01-01T00:00:00")
+        # Even with restrictive owner-only settings, admin groups pass everything
+        monkeypatch.setattr(
+            "pynchy.config._settings",
+            _owner_settings(workspace_folder="admin", is_admin=True),
+        )
+
+        await reconcile_all_channels(deps)
+
+        deps._ingest_user_message.assert_awaited_once()

@@ -63,7 +63,7 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
 
     for ch in deps.channels:
         for canonical_jid in deps.workspaces:
-            from pynchy.config_access import resolve_workspace_connection_name
+            from pynchy.config_access import filter_allowed_messages, resolve_workspace_connection_name
 
             group = deps.workspaces.get(canonical_jid)
             if group is not None:
@@ -119,6 +119,18 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                 # Remap chat_jid to canonical (the channel returned channel-native JIDs)
                 msg.chat_jid = canonical_jid
                 if not await message_exists(msg.id, canonical_jid):
+                    # Sender filter: match _route_incoming_group behavior.
+                    # Admin groups bypass; non-admin groups check allowed_users.
+                    if not filter_allowed_messages([msg], group, ch.name):
+                        logger.info(
+                            "reconciler_skip_sender",
+                            channel=ch.name,
+                            jid=canonical_jid,
+                            sender=msg.sender,
+                        )
+                        if msg.timestamp > new_inbound_cursor:
+                            new_inbound_cursor = msg.timestamp
+                        continue
                     await deps._ingest_user_message(msg, source_channel=ch.name)
                     deps.queue.enqueue_message_check(canonical_jid)
                     recovered += 1
