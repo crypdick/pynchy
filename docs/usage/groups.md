@@ -15,6 +15,7 @@ The admin channel serves as the admin/control group (typically your WhatsApp sel
 
 | Capability | Admin | Non-Admin |
 |------------|-----|---------|
+| Sender filter | All channel members accepted | `allowed_users` (default: owner only) |
 | Schedule tasks for any group | Yes | Own group only |
 | View and manage all tasks | Yes | Own group only |
 | Configure additional directory mounts | Yes | No |
