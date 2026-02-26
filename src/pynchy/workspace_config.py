@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 
 from croniter import croniter
 
-from pynchy.config import get_settings
+from pynchy.config import get_settings, reset_settings
 from pynchy.config_models import WorkspaceConfig
 from pynchy.config_refs import connection_ref_from_parts, parse_chat_ref
 from pynchy.db import create_task, get_active_task_for_group, update_task
@@ -380,3 +380,64 @@ async def reconcile_workspaces(
 
     if reconciled:
         logger.info("Workspaces reconciled", count=reconciled)
+
+
+# ---------------------------------------------------------------------------
+# TOML writer
+# ---------------------------------------------------------------------------
+
+
+def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
+    """Programmatically add a sandbox to config.toml using tomlkit.
+
+    Preserves existing comments and formatting. Creates [sandbox.<folder>]
+    section. Resets the settings cache so next get_settings() picks it up.
+    """
+    from pathlib import Path
+
+    import tomlkit
+
+    toml_path = Path("config.toml")
+    doc = tomlkit.parse(toml_path.read_text()) if toml_path.exists() else tomlkit.document()
+
+    if "sandbox" not in doc:
+        doc.add("sandbox", tomlkit.table(is_super_table=True))
+
+    ws_table = tomlkit.table()
+    data = config.model_dump(exclude_none=True, exclude_defaults=True)
+    for key, value in data.items():
+        ws_table.add(key, value)
+
+    doc["sandbox"][folder] = ws_table  # type: ignore[index]
+
+    # Ensure the referenced chat exists under [connection.*] if possible.
+    chat_ref = parse_chat_ref(config.chat)
+    if chat_ref is not None:
+        if "connection" not in doc:
+            logger.warning("Config missing [connection] section; chat not added", chat=config.chat)
+        else:
+            connection_tbl = doc["connection"]
+            if chat_ref.platform not in connection_tbl:
+                logger.warning(
+                    "Config missing connection platform; chat not added",
+                    platform=chat_ref.platform,
+                )
+            else:
+                platform_tbl = connection_tbl[chat_ref.platform]
+                if chat_ref.name not in platform_tbl:
+                    logger.warning(
+                        "Config missing connection; chat not added",
+                        connection=connection_ref_from_parts(chat_ref.platform, chat_ref.name),
+                    )
+                else:
+                    conn_tbl = platform_tbl[chat_ref.name]
+                    if "chat" not in conn_tbl:
+                        conn_tbl.add("chat", tomlkit.table(is_super_table=True))
+                    chat_tbl = conn_tbl["chat"]
+                    if chat_ref.chat not in chat_tbl:
+                        chat_tbl.add(chat_ref.chat, tomlkit.table())
+
+    toml_path.write_text(tomlkit.dumps(doc))
+
+    # Reset so next get_settings() re-reads the file
+    reset_settings()
