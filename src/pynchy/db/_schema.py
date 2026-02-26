@@ -153,7 +153,6 @@ CREATE TABLE IF NOT EXISTS registered_groups (
     added_at TEXT NOT NULL,
     container_config TEXT,
     security_profile TEXT,
-    is_god INTEGER DEFAULT 0,
     is_admin INTEGER DEFAULT 0
 );
 """
@@ -218,6 +217,24 @@ async def _migrate_renamed_columns(database: aiosqlite.Connection) -> None:
                 f"UPDATE {table} SET {new_col} = {old_col} WHERE {new_col} = 0 AND {old_col} = 1"
             )
     await database.commit()
+
+
+async def _drop_is_god_column(database: aiosqlite.Connection) -> None:
+    """Drop the legacy is_god column from registered_groups (idempotent).
+
+    Values were already migrated to is_admin by _migrate_renamed_columns.
+    """
+    cursor = await database.execute("PRAGMA table_info(registered_groups)")
+    cols = {row[1] for row in await cursor.fetchall()}
+    if "is_god" not in cols:
+        return
+
+    try:
+        await database.execute("ALTER TABLE registered_groups DROP COLUMN is_god")
+        await database.commit()
+        logger.info("Dropped registered_groups.is_god column")
+    except aiosqlite.OperationalError as exc:
+        logger.warning("Failed to drop is_god column", err=str(exc))
 
 
 async def _migrate_repo_access_column(database: aiosqlite.Connection) -> None:
@@ -332,5 +349,6 @@ async def create_schema(database: aiosqlite.Connection) -> None:
     await database.executescript(_SCHEMA)
     await _ensure_columns(database)
     await _migrate_renamed_columns(database)
+    await _drop_is_god_column(database)
     await _migrate_repo_access_column(database)
     await _seed_channel_cursors(database)
