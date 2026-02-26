@@ -94,6 +94,13 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                 continue
 
             # --- Inbound ---
+            logger.info(
+                "reconciler_trace",
+                step="past_cooldown",
+                channel=ch.name,
+                jid=canonical_jid,
+                target_jid=target_jid,
+            )
             inbound_cursor = await get_channel_cursor(ch.name, canonical_jid, "inbound")
             if not inbound_cursor:
                 # No cursor yet — channel was never reconciled (e.g. a
@@ -103,6 +110,13 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                 # naturally as messages are walked.
                 inbound_cursor = (now - _INITIAL_LOOKBACK).isoformat()
 
+            logger.info(
+                "reconciler_trace",
+                step="fetch_inbound",
+                channel=ch.name,
+                jid=canonical_jid,
+                cursor=inbound_cursor[:30] if inbound_cursor else "none",
+            )
             try:
                 remote_messages = await ch.fetch_inbound_since(target_jid, inbound_cursor)
             except Exception as exc:
@@ -114,6 +128,13 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                 )
                 continue
 
+            logger.info(
+                "reconciler_trace",
+                step="fetch_result",
+                channel=ch.name,
+                jid=canonical_jid,
+                msg_count=len(remote_messages),
+            )
             new_inbound_cursor = inbound_cursor
             for msg in remote_messages:
                 # Remap chat_jid to canonical (the channel returned channel-native JIDs)
