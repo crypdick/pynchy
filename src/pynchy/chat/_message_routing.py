@@ -60,6 +60,7 @@ async def _route_incoming_group(
 
     # Access check: skip write-only or read-only workspaces
     if resolved.access in ("read", "write"):
+        logger.info("route_trace", step="skip_access", group=group.name, access=resolved.access)
         return
 
     # Sender filter: only process messages from allowed users
@@ -74,14 +75,15 @@ async def _route_incoming_group(
         if is_user_allowed(m.sender, channel_plugin_name, allowed, m.is_from_me):
             filtered.append(m)
         else:
-            logger.debug(
-                "Ignoring message from disallowed sender",
+            logger.info(
+                "route_trace",
+                step="skip_sender",
                 group=group.name,
                 sender=m.sender,
-                channel_plugin_name=channel_plugin_name,
             )
     group_messages = filtered
     if not group_messages:
+        logger.info("route_trace", step="skip_all_filtered", group=group.name)
         return
 
     is_admin_group = group.is_admin
@@ -92,10 +94,10 @@ async def _route_incoming_group(
         # Magic commands (c, boom, done, r, etc.) bypass trigger
         last_content = group_messages[-1].content.strip()
         if not has_trigger and not is_any_magic_command(last_content):
-            logger.debug(
-                "Skipping group, no trigger mention found",
+            logger.info(
+                "route_trace",
+                step="skip_no_trigger",
                 group=group.name,
-                group_jid=group_jid,
             )
             return
 
@@ -107,9 +109,10 @@ async def _route_incoming_group(
         deps.last_agent_timestamp.get(group_jid, ""),
         deps._dispatched_through.get(group_jid, ""),
     )
-    logger.info("route_trace", step="get_messages_since", group=group.name)
+    logger.info("route_trace", step="get_messages_since", group=group.name, cursor=cursor[:30] if cursor else "empty")
     all_pending = await get_messages_since(group_jid, cursor)
     if not all_pending:
+        logger.info("route_trace", step="skip_no_pending", group=group.name)
         return
 
     # System notices (e.g. clean rebase notifications) shouldn't wake a
