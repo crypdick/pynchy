@@ -838,7 +838,9 @@ class TestDeployAuth:
 
     async def test_admin_deploy_invokes_finalize(self, deps):
         """God deploy with valid data calls finalize_deploy."""
-        with patch("pynchy.deploy.finalize_deploy", new_callable=AsyncMock) as mock_finalize:
+        with patch(
+            "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
+        ) as mock_finalize:
             await dispatch(
                 {
                     "type": "deploy",
