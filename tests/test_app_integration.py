@@ -794,7 +794,10 @@ class TestDeployContinuationResume:
         enqueued: list[str] = []
         app.queue.enqueue_message_check = lambda jid: enqueued.append(jid)  # type: ignore[assignment]
 
-        with patch("pynchy.startup_handler.get_settings") as mock_settings:
+        with (
+            patch("pynchy.startup_handler.get_settings") as mock_settings,
+            patch("pynchy.startup_handler.get_head_commit_message", return_value="test commit"),
+        ):
             s = MagicMock()
             s.data_dir = data_dir
             mock_settings.return_value = s
@@ -809,8 +812,8 @@ class TestDeployContinuationResume:
         # Both groups should have a deploy resume message in history
         admin_history = await get_chat_history("admin-1@g.us", limit=10)
         team_history = await get_chat_history("team@g.us", limit=10)
-        assert any("DEPLOY COMPLETE" in m.content for m in admin_history)
-        assert any("DEPLOY COMPLETE" in m.content for m in team_history)
+        assert any("Deploy complete" in m.content for m in admin_history)
+        assert any("Deploy complete" in m.content for m in team_history)
 
         # Continuation file should be deleted
         assert not (data_dir / "deploy_continuation.json").exists()

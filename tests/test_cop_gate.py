@@ -14,6 +14,7 @@ def mock_deps():
     deps = MagicMock()
     deps.workspaces.return_value = {"jid-1": MagicMock(folder="admin-1")}
     deps.broadcast_to_channels = AsyncMock()
+    deps.broadcast_host_message = AsyncMock()
     return deps
 
 

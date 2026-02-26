@@ -244,6 +244,9 @@ class PynchyApp:
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None:
         await self._host_broadcaster.broadcast_host_message(chat_jid, text)
 
+    async def broadcast_system_notice(self, chat_jid: str, text: str) -> None:
+        await self._host_broadcaster.broadcast_system_notice(chat_jid, text)
+
     def _make_host_broadcaster(self) -> HostMessageBroadcaster:
         """Create a HostMessageBroadcaster wired to this app's store and event bus."""
         from pynchy.db import store_message_direct
@@ -362,6 +365,13 @@ class PynchyApp:
         Satisfies the AskUserDeps protocol.  Stores the message directly
         and triggers queue processing, bypassing user-message filters
         (allowed_users, trigger patterns) that would reject system messages.
+
+        NOTE: This intentionally uses a direct store_message call with
+        is_from_me=False because the LLM polling loop (get_messages_since)
+        only returns is_from_me=0 rows.  broadcast_host_message and
+        broadcast_system_notice both set is_from_me=True, so they can't
+        be used here.  The host message below ensures the user sees what
+        was forwarded (token stream transparency).
         """
         import uuid
         from datetime import UTC, datetime
@@ -379,6 +389,7 @@ class PynchyApp:
             message_type="system",
         )
         await store_message(msg)
+        await self.broadcast_host_message(chat_jid, f"\U0001f60e Answer forwarded to agent")
         self.queue.enqueue_message_check(chat_jid)
 
     async def _send_clear_confirmation(self, chat_jid: str) -> None:

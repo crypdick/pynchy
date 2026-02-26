@@ -29,6 +29,7 @@ def mock_ipc_deps():
     deps.workspaces.return_value = {
         "admin-jid": MagicMock(folder="admin-1", is_admin=True),
     }
+    deps.broadcast_host_message = AsyncMock()
     return deps
 
 
