@@ -191,9 +191,12 @@ def collect_hook_results(
     if pm is None:
         pm = get_plugin_manager()
 
+    hook_caller = getattr(pm.hook, hook_attr)  # AttributeError = bug in calling code
     try:
-        provided = getattr(pm.hook, hook_attr)()
+        provided = hook_caller()
     except Exception:
+        # Individual plugin hook implementations can raise arbitrary errors.
+        # One bad plugin shouldn't crash the caller — log and return empty.
         logger.exception("Failed to resolve %s plugins", label)
         return []
 

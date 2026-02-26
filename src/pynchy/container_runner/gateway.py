@@ -112,8 +112,8 @@ def _collect_plugin_mcp_servers(
 
             try:
                 config = McpServerConfig.model_validate({"type": "script", **spec})
-            except Exception:
-                logger.exception("Invalid MCP server config from plugin", name=name)
+            except (ValueError, TypeError) as exc:
+                logger.warning("Invalid MCP server config from plugin", name=name, err=str(exc))
                 continue
 
             result[name] = config

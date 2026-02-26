@@ -62,8 +62,8 @@ def configure_plugin_workspaces(plugin_manager: pluggy.PluginManager | None) -> 
 
         try:
             parsed = WorkspaceConfig.model_validate(config_data)
-        except Exception:
-            logger.exception("Invalid workspace config from plugin", folder=folder)
+        except (ValueError, TypeError) as exc:
+            logger.warning("Invalid workspace config from plugin", folder=folder, err=str(exc))
             continue
 
         _plugin_workspace_specs[folder] = WorkspaceSpec(config=parsed)
