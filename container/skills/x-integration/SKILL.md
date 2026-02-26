@@ -1,7 +1,7 @@
 ---
 name: x-integration
 description: Post tweets, like, reply, retweet, and quote on X (Twitter) using browser automation. Use when the user asks you to interact with X/Twitter.
-tier: ops
+tier: social
 ---
 
 # X (Twitter) Integration
