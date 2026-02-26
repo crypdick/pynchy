@@ -31,19 +31,9 @@ Three independent issues occurred simultaneously, creating the appearance of a t
 
 **Files:** `src/pynchy/chat/reconciler.py` — in the inbound recovery section, after storing recovered messages, broadcast a notification.
 
-### Fix 2: Scheduled task progress heartbeats
+### Fix 2: Scheduled task progress heartbeats — RESOLVED
 
-**Problem:** One-shot containers (`run_container_agent()` in `_orchestrator.py`) have no session handler, so the IPC watcher skips their output files (by design — files are left for post-exit collection). This means zero intermediate visibility during long runs.
-
-**Two approaches (pick one):**
-
-**A) Periodic status log (simpler):** In `task_scheduler.py`, after spawning the one-shot container, start a periodic check (every 60s) that queries `docker ps` or the process status and broadcasts a heartbeat to the group: "⏱ Task still running (2m elapsed, container active)". Stop when the container exits.
-
-**B) Watcher-based streaming (better UX but more work):** For one-shot containers, register a temporary output handler in the IPC watcher so output events ARE streamed during the run (same as interactive sessions). This would require `run_container_agent()` to register a session or output handler before waiting for exit, and clean it up after.
-
-**Files:**
-- Approach A: `src/pynchy/task_scheduler.py`
-- Approach B: `src/pynchy/container_runner/_orchestrator.py`, `src/pynchy/ipc/_watcher.py`, `src/pynchy/container_runner/_session.py`
+**Resolved:** `_run_scheduled_task` now uses the session-based pattern (approach B). One-shot containers create a `ContainerSession` with `idle_timeout_override=0.0`, and the IPC watcher streams output events in real-time — same as interactive sessions. Events are stored to DB and broadcast immediately, so a service restart no longer loses them.
 
 ### Fix 3: Boot failure notification
 

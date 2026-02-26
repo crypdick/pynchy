@@ -3,7 +3,7 @@
 Supports two execution paths:
   Cold path: first message or after reset — spawn container, create session
   Warm path: subsequent messages — send via IPC to existing session
-  One-shot: scheduled tasks — always spawn fresh, no persistent session
+  One-shot: scheduled tasks — spawn fresh with session for real-time streaming
 """
 
 from __future__ import annotations
@@ -26,8 +26,8 @@ from pynchy.container_runner import (
 )
 from pynchy.container_runner._orchestrator import (
     _spawn_container,
+    oneshot_container_name,
     resolve_container_timeout,
-    run_container_agent,
     stable_container_name,
 )
 from pynchy.db import get_all_host_jobs, get_all_tasks, set_session
@@ -460,7 +460,13 @@ async def _run_scheduled_task(
     repo_access_override: str | None,
     input_source: str,
 ) -> str:
-    """Run a scheduled task in a one-shot container, destroying any existing session."""
+    """Run a scheduled task in a one-shot container with real-time output streaming.
+
+    Uses the same session-based pattern as _cold_start so that the IPC watcher
+    dispatches output events to the session handler in real-time.  Events are
+    stored to DB and broadcast immediately, making them resilient to service
+    restarts (unlike the old batch-collect-after-exit approach).
+    """
     # Destroy any persistent session for this group — tasks need a clean slate
     await destroy_session(group.folder)
 
@@ -482,27 +488,36 @@ async def _run_scheduled_task(
         snapshot_ms=round(ctx.snapshot_ms),
     )
 
+    input_data = _build_container_input(messages, ctx, chat_jid, group, is_scheduled_task=True)
+    container_name = oneshot_container_name(group.folder)
+
     try:
-        input_data = _build_container_input(messages, ctx, chat_jid, group, is_scheduled_task=True)
-        output = await run_container_agent(
-            group=group,
-            input_data=input_data,
-            on_process=lambda proc, name: deps.queue.register_process(
-                chat_jid, proc, name, group.folder
-            ),
-            on_output=ctx.wrapped_on_output,
-            plugin_manager=deps.plugin_manager,
+        proc, container_name, _mounts = await _spawn_container(
+            group, input_data, container_name, deps.plugin_manager
         )
+    except OSError as exc:
+        logger.error("Failed to spawn container", error=str(exc), container=container_name)
+        return "error"
 
-        if output.status == "error":
-            logger.error(
-                "Scheduled task agent error",
-                group=group.name,
-                error=output.error,
-            )
-            return "error"
+    deps.queue.register_process(chat_jid, proc, container_name, group.folder)
 
-        return "success"
+    session = await create_session(
+        group.folder,
+        container_name,
+        proc,
+        idle_timeout_override=0.0,
+    )
+    session.set_output_handler(ctx.wrapped_on_output)
+
+    try:
+        await session.wait_for_query_done(timeout=ctx.config_timeout)
+    except TimeoutError:
+        logger.error("Scheduled task timed out, destroying session", group=group.name)
+        await destroy_session(group.folder)
+        return "error"
+    except SessionDiedError:
+        logger.error("Container died during scheduled task", group=group.name)
+        return "error"
     except Exception:
         logger.exception("Scheduled task error", group=group.name)
         return "error"
@@ -512,3 +527,5 @@ async def _run_scheduled_task(
         # deploy resume messages that trigger unnecessary agent runs.
         await destroy_session(group.folder)
         deps.sessions.pop(group.folder, None)
+
+    return "success"
