@@ -1331,6 +1331,8 @@ git commit -m "test: end-to-end bash security gate smoke tests"
 
 ### Task 11: Update Documentation
 
+> **For Claude:** Use the docs-manager skill (`.claude/skills/docs-manager/`) for all documentation work in this task. It covers information architecture, writing philosophy, where to document things, and how to maintain doc consistency.
+
 The bash security gate touches the security model, container isolation, IPC protocol, and agent core capabilities. These docs need updates:
 
 **Files:**
