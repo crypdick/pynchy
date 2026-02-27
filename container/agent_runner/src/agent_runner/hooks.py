@@ -14,6 +14,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass
 from enum import StrEnum
 
 
@@ -38,6 +39,9 @@ class HookEvent(StrEnum):
     SESSION_END = "session_end"
     """Fired when a session ends."""
 
+    BEFORE_TOOL_USE = "before_tool_use"
+    """Fired before a tool is executed. Can return deny to block."""
+
     ERROR = "error"
     """Fired when an error occurs during query execution."""
 
@@ -45,6 +49,7 @@ class HookEvent(StrEnum):
 # Mapping from Claude SDK hook names to agnostic events
 # Used by ClaudeAgentCore to reverse-map from agnostic events
 CLAUDE_HOOK_MAP: dict[str, HookEvent] = {
+    "PreToolUse": HookEvent.BEFORE_TOOL_USE,
     "PreCompact": HookEvent.BEFORE_COMPACT,
     "PostCompact": HookEvent.AFTER_COMPACT,
     "PreQuery": HookEvent.BEFORE_QUERY,
@@ -56,6 +61,14 @@ CLAUDE_HOOK_MAP: dict[str, HookEvent] = {
 
 # Reverse mapping: agnostic event → Claude SDK hook name
 AGNOSTIC_TO_CLAUDE: dict[HookEvent, str] = {v: k for k, v in CLAUDE_HOOK_MAP.items()}
+
+
+@dataclass
+class HookDecision:
+    """Result of a before_tool_use hook evaluation."""
+
+    allowed: bool = True
+    reason: str | None = None
 
 
 def load_hooks(plugin_hooks: list[dict[str, str]]) -> dict[HookEvent, list[Callable]]:
