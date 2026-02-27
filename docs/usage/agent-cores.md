@@ -36,6 +36,16 @@ An alternative core using OpenAI's Agents SDK.
 - **Activation:** Set `core = "openai"` in config and ensure an OpenAI API key is available
 - **Model selection:** Configured via the LiteLLM gateway
 
+## Tool Security
+
+Both cores share the same `BEFORE_TOOL_USE` hook pipeline. Built-in hooks run first (security), followed by any plugin-provided hooks.
+
+**Bash security gate.** Every Bash tool call is intercepted before execution. Safe commands (file operations, text processing) run immediately; network-capable commands are evaluated against the session's taint state and may require Cop review or human approval. This is transparent to the agent unless a command is blocked. See [Bash Command Gating](security.md#bash-command-gating) for details.
+
+**WebFetch removal.** The `WebFetch` tool has been removed from both cores. Web access is now provided exclusively through the Playwright browser MCP server, which goes through the standard service trust policy as a declared MCP with its own trust properties.
+
+**Extensibility.** The `BEFORE_TOOL_USE` hook is extensible via plugins. A plugin can register a hook module that exports a `before_tool_use(tool_name, tool_input)` function returning a `HookDecision`. See the [Plugin Authoring Guide](../plugins/index.md) for details.
+
 ## LLM Gateway
 
 Regardless of which core is active, all LLM API calls route through a host-side gateway. This provides:
