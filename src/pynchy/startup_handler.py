@@ -258,10 +258,8 @@ async def setup_admin_group(deps: StartupDeps, default_channel: Any | None) -> N
 
     # Create admin workspace with permissive security profile.
     # Admin group is fully trusted — auto-approve all tools.
-    # TODO: Re-evaluate when human-approval gate is implemented (see
-    #   backlog/2-planning/security-hardening-6-approval.md). At that point,
-    #   consider keeping admin at always-approve but requiring approval for
-    #   non-admin workspaces' destructive actions.
+    # Non-admin workspaces get security gating via the human-approval gate
+    # (see security/approval.py and WorkspaceSecurity in config_models.py).
     profile = WorkspaceProfile(
         jid=jid,
         name=group_name,
