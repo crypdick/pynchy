@@ -41,9 +41,9 @@ class TestHandleApprovalCommand:
         with (
             patch("pynchy.security.approval.get_settings", return_value=settings),
         ):
-            create_pending_approval("aabb001122334455", "x_post", "grp", "j@g.us", {"text": "hi"})
+            short_id = create_pending_approval("aabb001122334455", "x_post", "grp", "j@g.us", {"text": "hi"})
             deps = FakeDeps()
-            await handle_approval_command(deps, "j@g.us", "approve", "aabb0011", "testuser")
+            await handle_approval_command(deps, "j@g.us", "approve", short_id, "testuser")
 
         decisions_dir = ipc_dir / "grp" / "approval_decisions"
         files = list(decisions_dir.glob("*.json"))
@@ -62,9 +62,9 @@ class TestHandleApprovalCommand:
         with (
             patch("pynchy.security.approval.get_settings", return_value=settings),
         ):
-            create_pending_approval("aabb001122334455", "x_post", "grp", "j@g.us", {"text": "hi"})
+            short_id = create_pending_approval("aabb001122334455", "x_post", "grp", "j@g.us", {"text": "hi"})
             deps = FakeDeps()
-            await handle_approval_command(deps, "j@g.us", "deny", "aabb0011", "testuser")
+            await handle_approval_command(deps, "j@g.us", "deny", short_id, "testuser")
 
         decisions_dir = ipc_dir / "grp" / "approval_decisions"
         data = json.loads(list(decisions_dir.glob("*.json"))[0].read_text())
@@ -89,9 +89,9 @@ class TestHandleApprovalCommand:
         with (
             patch("pynchy.security.approval.get_settings", return_value=settings),
         ):
-            create_pending_approval("aabb001122334455", "x_post", "grp", "j@g.us", {})
+            short_id = create_pending_approval("aabb001122334455", "x_post", "grp", "j@g.us", {})
             deps = FakeDeps()
-            await handle_approval_command(deps, "j@g.us", "approve", "aabb0011", "testuser")
+            await handle_approval_command(deps, "j@g.us", "approve", short_id, "testuser")
 
         assert len(deps.broadcast_messages) == 1
         msg = deps.broadcast_messages[0][1]

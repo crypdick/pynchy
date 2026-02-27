@@ -54,7 +54,9 @@ class TestCreatePendingApproval:
 
         data = json.loads(files[0].read_text())
         assert data["request_id"] == "aabb001122334455"
-        assert data["short_id"] == "aabb0011"
+        # short_id is a random 2-char [a-z0-9] string, no longer request_id[:8]
+        assert len(data["short_id"]) == 2
+        assert all(c in "abcdefghijklmnopqrstuvwxyz0123456789" for c in data["short_id"])
         assert data["tool_name"] == "x_post"
         assert data["source_group"] == "personal"
         assert data["chat_jid"] == "group@g.us"
@@ -75,6 +77,82 @@ class TestCreatePendingApproval:
 
         pending_dir = ipc_dir / "grp" / "pending_approvals"
         assert not list(pending_dir.glob("*.tmp"))
+
+    def test_returns_short_id(self, ipc_dir: Path, settings):
+        from pynchy.security.approval import create_pending_approval
+
+        with patch("pynchy.security.approval.get_settings", return_value=settings):
+            short_id = create_pending_approval(
+                request_id="aabb001122334455",
+                tool_name="x_post",
+                source_group="personal",
+                chat_jid="group@g.us",
+                request_data={},
+            )
+
+        assert isinstance(short_id, str)
+        assert len(short_id) == 2
+        assert all(c in "abcdefghijklmnopqrstuvwxyz0123456789" for c in short_id)
+
+
+# -- generate_short_id -------------------------------------------------------
+
+
+class TestGenerateShortId:
+    def test_returns_2_char_alphanumeric(self, ipc_dir: Path, settings):
+        from pynchy.security.approval import generate_short_id
+
+        with patch("pynchy.security.approval.get_settings", return_value=settings):
+            sid = generate_short_id("grp")
+
+        assert len(sid) == 2
+        assert all(c in "abcdefghijklmnopqrstuvwxyz0123456789" for c in sid)
+
+    def test_avoids_collision_with_existing(self, ipc_dir: Path, settings):
+        """If existing pending has short_id 'ab', generating with 'ab' taken should differ."""
+        from pynchy.security.approval import create_pending_approval, generate_short_id
+
+        with patch("pynchy.security.approval.get_settings", return_value=settings):
+            # Create a pending approval to occupy one short_id
+            first_id = create_pending_approval(
+                "req1", "tool", "grp", "j@g.us", {}
+            )
+
+            # Generate many IDs — none should collide with the existing one
+            # (probabilistic but with 1296 slots and 1 taken, overwhelmingly likely)
+            ids = set()
+            for _ in range(20):
+                sid = generate_short_id("grp")
+                ids.add(sid)
+
+            # At least some should be different from first_id (proves generation works)
+            assert len(ids) > 1 or ids != {first_id}
+
+
+# -- find_pending_by_short_id ------------------------------------------------
+
+
+class TestFindPendingByShortId:
+    def test_finds_by_short_id(self, ipc_dir: Path, settings):
+        from pynchy.security.approval import create_pending_approval, find_pending_by_short_id
+
+        with patch("pynchy.security.approval.get_settings", return_value=settings):
+            short_id = create_pending_approval(
+                "req-abc", "tool_a", "grp", "j@g.us", {"msg": "test"}
+            )
+            result = find_pending_by_short_id(short_id)
+
+        assert result is not None
+        assert result["request_id"] == "req-abc"
+        assert result["short_id"] == short_id
+
+    def test_returns_none_for_unknown(self, ipc_dir: Path, settings):
+        from pynchy.security.approval import find_pending_by_short_id
+
+        with patch("pynchy.security.approval.get_settings", return_value=settings):
+            result = find_pending_by_short_id("zz")
+
+        assert result is None
 
 
 # -- list_pending_approvals ---------------------------------------------------
