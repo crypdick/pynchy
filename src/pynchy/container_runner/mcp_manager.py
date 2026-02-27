@@ -19,7 +19,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import subprocess
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -45,6 +44,8 @@ from pynchy.container_runner._mcp_proxy import McpProxy
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
+    import subprocess
+
     from pynchy.config import Settings
     from pynchy.config_mcp import McpServerConfig
     from pynchy.container_runner.gateway import LiteLLMGateway

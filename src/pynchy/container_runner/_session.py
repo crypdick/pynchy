@@ -50,8 +50,8 @@ class ContainerSession:
         self.group_folder = group_folder
         self.container_name = container_name
         self.proc: asyncio.subprocess.Process | None = None
-        self._proc_monitor_task: asyncio.Task | None = None  # type: ignore[type-arg]
-        self._stderr_task: asyncio.Task | None = None  # type: ignore[type-arg]
+        self._proc_monitor_task: asyncio.Task[None] | None = None
+        self._stderr_task: asyncio.Task[None] | None = None
         self._on_output: OnOutput | None = None
         self._query_done = asyncio.Event()
         self._dead = False
@@ -74,7 +74,8 @@ class ContainerSession:
         """
         self.proc = proc
         self._dead = False
-        assert proc.stderr is not None
+        if proc.stderr is None:
+            raise RuntimeError(f"Container {self.container_name} spawned without stderr pipe")
         self._stderr_task = asyncio.ensure_future(self._read_stderr(proc.stderr))
         self._proc_monitor_task = asyncio.ensure_future(self._monitor_proc(proc))
         self._reset_idle_timer()
