@@ -16,10 +16,14 @@ import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pynchy.git_ops.repo import RepoContext
 from pynchy.git_ops.utils import detect_main_branch, git_env_with_token, push_local_commits, run_git
 from pynchy.logger import logger
+
+if TYPE_CHECKING:
+    from pynchy.types import WorkspaceProfile
 
 
 class WorktreeError(Exception):
@@ -491,20 +495,16 @@ async def merge_worktree_with_policy(group_folder: str) -> None:
         await asyncio.to_thread(merge_and_push_worktree, group_folder, repo_ctx)
 
 
-def background_merge_worktree(group: object) -> None:
+def background_merge_worktree(group: WorkspaceProfile) -> None:
     """Fire-and-forget worktree merge for groups with repo access.
 
     Thin wrapper around merge_worktree_with_policy() that runs the merge
     in a background task.  This is the preferred entry point for
     post-session merges where the caller doesn't need to wait.
-
-    Args:
-        group: A WorkspaceProfile (or any object with a .folder attribute).
     """
     from pynchy.utils import create_background_task
 
-    folder: str = group.folder  # type: ignore[union-attr]
     create_background_task(
-        merge_worktree_with_policy(folder),
-        name=f"worktree-merge-{folder}",
+        merge_worktree_with_policy(group.folder),
+        name=f"worktree-merge-{group.folder}",
     )

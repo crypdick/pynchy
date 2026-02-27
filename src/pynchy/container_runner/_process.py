@@ -1,8 +1,7 @@
-"""Process management — graceful stop, stderr reading, container removal.
+"""Process management — graceful stop, container removal.
 
 Provides:
   - is_query_done_pulse() — detects query-done events in the IPC output stream
-  - read_stderr() — reads container stderr, logs lines, accumulates with truncation
   - _graceful_stop() — stops a container gracefully with fallback to kill
   - _docker_rm_force() — async force-remove a container by name
   - OnOutput type alias — callback for output events
@@ -35,44 +34,6 @@ def is_query_done_pulse(output: ContainerOutput) -> bool:
         and output.new_session_id is not None
         and output.error is None
     )
-
-
-async def read_stderr(
-    stream: asyncio.StreamReader,
-    max_output_size: int,
-    group_name: str,
-) -> str:
-    """Read container stderr, log lines, and accumulate with truncation.
-
-    Returns the accumulated stderr buffer (possibly truncated).
-    """
-    buf = ""
-    truncated = False
-    while True:
-        chunk = await stream.read(8192)
-        if not chunk:
-            break
-        text = chunk.decode(errors="replace")
-
-        lines = text.strip().splitlines()
-        for line in lines:
-            if line:
-                logger.debug(line, container=group_name)
-
-        if not truncated:
-            remaining = max_output_size - len(buf)
-            if len(text) > remaining:
-                buf += text[:remaining]
-                truncated = True
-                logger.warning(
-                    "Container stderr truncated",
-                    group=group_name,
-                    size=len(buf),
-                )
-            else:
-                buf += text
-
-    return buf
 
 
 async def _graceful_stop(proc: asyncio.subprocess.Process, container_name: str) -> None:

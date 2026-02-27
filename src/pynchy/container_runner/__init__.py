@@ -9,7 +9,7 @@ This package is split into focused submodules:
   _credentials    — Credential discovery and env file writing
   _session_prep   — Session directory file preparation (skills, settings)
   _mounts         — Volume mount list and container arg construction
-  _process        — Process management, stderr reading, graceful stop, container removal
+  _process        — Process management, graceful stop, container removal
   _snapshots      — IPC snapshot file helpers
   _session        — Persistent container sessions and registry
   _orchestrator   — Container spawning and agent core resolution
