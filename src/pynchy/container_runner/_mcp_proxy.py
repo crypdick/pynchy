@@ -35,6 +35,7 @@ class _ProxyState:
 
     instance_urls: dict[str, str] = field(default_factory=dict)
     trust_map: dict[str, dict[str, Any]] = field(default_factory=dict)
+    http_session: aiohttp.ClientSession | None = None
 
 
 # Typed app key -- set once at construction, never reassigned.
@@ -63,7 +64,20 @@ def create_proxy_app(
         "/mcp/{group_folder}/{invocation_ts}/{instance_id}{tail:.*}",
         _proxy_handler,
     )
+    app.on_startup.append(_start_http_session)
+    app.on_cleanup.append(_cleanup_http_session)
     return app
+
+
+async def _start_http_session(app: web.Application) -> None:
+    app[_STATE_KEY].http_session = aiohttp.ClientSession()
+
+
+async def _cleanup_http_session(app: web.Application) -> None:
+    session = app[_STATE_KEY].http_session
+    if session:
+        await session.close()
+        app[_STATE_KEY].http_session = None
 
 
 async def _proxy_handler(request: web.Request) -> web.Response:
@@ -109,40 +123,43 @@ async def _proxy_handler(request: web.Request) -> web.Response:
         if k.lower() not in ("host", "content-length")
     }
 
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.request(
-                request.method,
-                target_url,
-                data=body,
-                headers=forwarded_headers,
-            ) as backend_resp:
-                response_body = await backend_resp.read()
-                response_headers = {
-                    k: v
-                    for k, v in backend_resp.headers.items()
-                    if k.lower() not in ("content-length", "transfer-encoding")
-                }
+    # Use the shared session (created by on_startup hook).
+    session = state.http_session
+    assert session is not None, "Proxy ClientSession not initialized"
 
-                # Apply fencing to responses from public_source servers
-                trust = state.trust_map.get(instance_id, {})
-                if trust.get("public_source"):
-                    response_body = await _apply_fencing(
-                        response_body, instance_id, gate, group_folder
-                    )
+    try:
+        async with session.request(
+            request.method,
+            target_url,
+            data=body,
+            headers=forwarded_headers,
+        ) as backend_resp:
+            response_body = await backend_resp.read()
+            response_headers = {
+                k: v
+                for k, v in backend_resp.headers.items()
+                if k.lower() not in ("content-length", "transfer-encoding")
+            }
 
-                return web.Response(
-                    status=backend_resp.status,
-                    body=response_body,
-                    headers=response_headers,
+            # Apply fencing to responses from public_source servers
+            trust = state.trust_map.get(instance_id, {})
+            if trust.get("public_source"):
+                response_body = await _apply_fencing(
+                    response_body, instance_id, gate, group_folder
                 )
-        except aiohttp.ClientError as exc:
-            logger.error(
-                "MCP proxy backend error", instance=instance_id, error=str(exc)
+
+            return web.Response(
+                status=backend_resp.status,
+                body=response_body,
+                headers=response_headers,
             )
-            return web.json_response(
-                {"error": "MCP backend unavailable"}, status=502
-            )
+    except aiohttp.ClientError as exc:
+        logger.error(
+            "MCP proxy backend error", instance=instance_id, error=str(exc)
+        )
+        return web.json_response(
+            {"error": "MCP backend unavailable"}, status=502
+        )
 
 
 async def _apply_fencing(
