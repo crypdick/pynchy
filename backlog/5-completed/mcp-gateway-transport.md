@@ -56,7 +56,21 @@ not bare `x-litellm-api-key: <key>`. This is already fixed in the codebase.
 `type: "sse"` in `container/agent_runner/src/agent_runner/main.py:267`.
 Agent starts fine but remote MCP tools are unavailable.
 
-## Investigation paths
+## Resolution
+
+**Resolved by MCP proxy (2026-02-26).** Instead of fixing LiteLLM transport,
+we bypass LiteLLM entirely for MCP. The new MCP proxy in McpManager routes
+container MCP traffic through `SecurityGate` with path-based routing
+(`/mcp/{group_folder}/{invocation_ts}/{instance_id}`). Containers connect to
+the proxy via `host.docker.internal`, which forwards to backend MCP servers.
+
+This eliminates the LiteLLM transport incompatibility and adds security
+enforcement (taint tracking, fencing, Cop inspection) that LiteLLM couldn't
+provide.
+
+See: `docs/plans/2026-02-26-mcp-proxy-security-gate-design.md`
+
+## Investigation paths (historical)
 
 1. **Claude SDK bug** — test with newer SDK versions as they release. The HTTP
    transport might have a bug with SSE-encoded responses (LiteLLM returns

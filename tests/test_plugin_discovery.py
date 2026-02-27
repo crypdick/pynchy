@@ -204,16 +204,17 @@ class TestHookCalling:
         assert "core2" in names
         assert "claude" in names
 
-    def test_empty_hook_returns_empty_list(self):
-        """Hook with no implementations returns empty list."""
+    def test_skill_hook_returns_browser_control(self):
+        """Skill hook includes the built-in browser-control skill from PlaywrightBrowserPlugin."""
         pm = get_plugin_manager()
 
-        # Skill hook has no built-in implementations
         skill_paths = pm.hook.pynchy_skill_paths()
 
         assert isinstance(skill_paths, list)
-        # Should be empty if no plugins provide them
-        assert len(skill_paths) == 0
+        # PlaywrightBrowserPlugin contributes browser-control
+        assert len(skill_paths) >= 1
+        flat = [p for sublist in skill_paths for p in sublist]
+        assert any("browser-control" in p for p in flat)
 
     def test_plugin_blocking(self):
         """Plugins can be blocked from calling."""
@@ -269,15 +270,16 @@ class TestPluginErrors:
             pm.hook.pynchy_agent_core_info()
 
     def test_hook_with_no_plugins_still_callable(self):
-        """Hooks with no implementations are still callable."""
+        """Hooks with no or few implementations are still callable."""
         pm = get_plugin_manager()
 
-        # These hooks have no built-in implementations
-        # but should still be callable without errors
+        # These hooks should be callable without errors.
+        # pynchy_skill_paths now has a built-in implementation (PlaywrightBrowserPlugin),
+        # so it may return results.  The other two still have no built-in implementations.
         skill_paths = pm.hook.pynchy_skill_paths()
         channels = pm.hook.pynchy_create_channel(context=None)
         workspace_specs = pm.hook.pynchy_workspace_spec()
 
-        assert skill_paths == []
+        assert isinstance(skill_paths, list)
         assert channels == []
         assert workspace_specs == []

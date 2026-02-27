@@ -42,7 +42,7 @@ def _write_pending(
     pending_dir.mkdir(parents=True, exist_ok=True)
     data = {
         "request_id": request_id,
-        "short_id": request_id[:8],
+        "short_id": "ab",  # 2-char short_id (test fixture, not used by handler)
         "tool_name": tool_name,
         "source_group": group,
         "chat_jid": "j@g.us",

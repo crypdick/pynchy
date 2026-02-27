@@ -66,6 +66,11 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
         "google-setup",
     ),
     (
+        "pynchy.integrations.plugins.playwright_browser",
+        "PlaywrightBrowserPlugin",
+        "playwright-browser",
+    ),
+    (
         "pynchy.integrations.plugins.notebook_server",
         "NotebookServerPlugin",
         "notebook",
