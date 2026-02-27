@@ -283,6 +283,49 @@ async def _await_query(
 
 
 # ---------------------------------------------------------------------------
+# Shared: spawn container → create session → register → await
+# ---------------------------------------------------------------------------
+
+
+async def _spawn_and_await(
+    deps: AgentRunnerDeps,
+    group: WorkspaceProfile,
+    chat_jid: str,
+    input_data: ContainerInput,
+    container_name: str,
+    ctx: _PreContainerResult,
+    *,
+    idle_timeout: float,
+    label: str,
+) -> str:
+    """Spawn a container, create a session, and wait for the query to complete.
+
+    Shared by _cold_start and _run_scheduled_task to avoid duplicating the
+    spawn → register → create_session → set_handler → await_query sequence.
+    """
+    try:
+        proc, container_name, _mounts = await _spawn_container(
+            group, input_data, container_name, deps.plugin_manager
+        )
+    except OSError as exc:
+        logger.error("Failed to spawn container", error=str(exc), container=container_name)
+        return "error"
+
+    session = await create_session(
+        group.folder,
+        container_name,
+        proc,
+        idle_timeout_override=idle_timeout,
+    )
+    deps.queue.register_process(
+        chat_jid, proc, container_name, group.folder, input_data.invocation_ts
+    )
+    session.set_output_handler(ctx.wrapped_on_output)
+
+    return await _await_query(session, group, ctx.config_timeout, label)
+
+
+# ---------------------------------------------------------------------------
 # Warm path — reuse existing session
 # ---------------------------------------------------------------------------
 
@@ -340,14 +383,6 @@ async def _cold_start(
 
     await _docker_rm_force(container_name)
 
-    try:
-        proc, container_name, _mounts = await _spawn_container(
-            group, input_data, container_name, deps.plugin_manager
-        )
-    except OSError as exc:
-        logger.error("Failed to spawn container", error=str(exc), container=container_name)
-        return "error"
-
     # Determine idle timeout from workspace config
     from pynchy.workspace_config import load_workspace_config
 
@@ -355,22 +390,16 @@ async def _cold_start(
     idle_enabled = ws_config.idle_terminate if ws_config else True
     idle_timeout = get_settings().idle_timeout if idle_enabled else 0.0
 
-    session = await create_session(
-        group.folder,
+    return await _spawn_and_await(
+        deps,
+        group,
+        chat_jid,
+        input_data,
         container_name,
-        proc,
-        idle_timeout_override=idle_timeout,
+        ctx,
+        idle_timeout=idle_timeout,
+        label="cold start",
     )
-
-    # Register process so send_message() works for follow-ups during this query
-    deps.queue.register_process(
-        chat_jid, proc, container_name, group.folder, input_data.invocation_ts
-    )
-
-    # Set output handler and wait
-    session.set_output_handler(ctx.wrapped_on_output)
-
-    return await _await_query(session, group, ctx.config_timeout, "cold start")
 
 
 # ---------------------------------------------------------------------------
@@ -405,20 +434,11 @@ async def run_agent(
     """
     run_agent_start = time.monotonic()
 
-    # --- Scheduled tasks: one-shot container, no persistent session ---
+    # Scheduled tasks need a clean slate — destroy any persistent session first.
     if is_scheduled_task:
-        return await _run_scheduled_task(
-            deps,
-            group,
-            chat_jid,
-            messages,
-            on_output,
-            extra_system_notices,
-            repo_access_override,
-            input_source,
-        )
+        await destroy_session(group.folder)
 
-    # --- Interactive messages: warm/cold session path ---
+    # Pre-container setup is shared by all paths (warm, cold, scheduled).
     ctx = await _pre_container_setup(
         deps,
         group,
@@ -427,10 +447,20 @@ async def run_agent(
         on_output,
         extra_system_notices,
         input_source,
-        False,
+        is_scheduled_task,
         repo_access_override,
     )
 
+    # --- Scheduled tasks: one-shot container, no persistent session ---
+    if is_scheduled_task:
+        logger.info(
+            "run_agent scheduled task (one-shot)",
+            group=group.name,
+            snapshot_ms=round(ctx.snapshot_ms),
+        )
+        return await _run_scheduled_task(deps, group, chat_jid, messages, ctx)
+
+    # --- Interactive messages: warm/cold session path ---
     session = get_session(group.folder)
 
     pre_container_ms = (time.monotonic() - run_agent_start) * 1000
@@ -465,64 +495,27 @@ async def _run_scheduled_task(
     group: WorkspaceProfile,
     chat_jid: str,
     messages: list[dict],
-    on_output: OnOutput | None,
-    extra_system_notices: list[str] | None,
-    repo_access_override: str | None,
-    input_source: str,
+    ctx: _PreContainerResult,
 ) -> str:
     """Run a scheduled task in a one-shot container with real-time output streaming.
 
-    Uses the same session-based pattern as _cold_start so that the IPC watcher
-    dispatches output events to the session handler in real-time.  Events are
-    stored to DB and broadcast immediately, making them resilient to service
-    restarts (unlike the old batch-collect-after-exit approach).
+    Pre-container setup and session teardown are handled by run_agent before
+    this is called.  Uses _spawn_and_await for the spawn/session/wait sequence.
     """
-    # Destroy any persistent session for this group — tasks need a clean slate
-    await destroy_session(group.folder)
-
-    ctx = await _pre_container_setup(
-        deps,
-        group,
-        chat_jid,
-        messages,
-        on_output,
-        extra_system_notices,
-        input_source,
-        True,
-        repo_access_override,
-    )
-
-    logger.info(
-        "run_agent scheduled task (one-shot)",
-        group=group.name,
-        snapshot_ms=round(ctx.snapshot_ms),
-    )
-
     input_data = _build_container_input(messages, ctx, chat_jid, group, is_scheduled_task=True)
     container_name = oneshot_container_name(group.folder)
 
     try:
-        proc, container_name, _mounts = await _spawn_container(
-            group, input_data, container_name, deps.plugin_manager
+        return await _spawn_and_await(
+            deps,
+            group,
+            chat_jid,
+            input_data,
+            container_name,
+            ctx,
+            idle_timeout=0.0,
+            label="scheduled task",
         )
-    except OSError as exc:
-        logger.error("Failed to spawn container", error=str(exc), container=container_name)
-        return "error"
-
-    deps.queue.register_process(
-        chat_jid, proc, container_name, group.folder, input_data.invocation_ts
-    )
-
-    session = await create_session(
-        group.folder,
-        container_name,
-        proc,
-        idle_timeout_override=0.0,
-    )
-    session.set_output_handler(ctx.wrapped_on_output)
-
-    try:
-        return await _await_query(session, group, ctx.config_timeout, "scheduled task")
     except Exception:
         logger.exception("Scheduled task error", group=group.name)
         return "error"

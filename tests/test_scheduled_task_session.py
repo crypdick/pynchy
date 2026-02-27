@@ -92,7 +92,6 @@ def _make_fake_session() -> MagicMock:
 
 
 # Patch targets — at the call site (pynchy.agent_runner).
-_P_SETUP = "pynchy.agent_runner._pre_container_setup"
 _P_BUILD = "pynchy.agent_runner._build_container_input"
 _P_SPAWN = "pynchy.agent_runner._spawn_container"
 _P_CREATE = "pynchy.agent_runner.create_session"
@@ -124,10 +123,7 @@ class TestScheduledTaskUsesSession:
             self.group,
             "test@g.us",
             [{"content": "do stuff", "sender": "task"}],
-            None,  # on_output
-            None,  # extra_system_notices
-            None,  # repo_access_override
-            "scheduled_task",
+            self.ctx,
         )
 
     @pytest.mark.asyncio
@@ -135,7 +131,6 @@ class TestScheduledTaskUsesSession:
         """One-shot tasks should create session with idle_timeout_override=0.0
         so the container isn't killed by idle timeout during a long run."""
         with (
-            patch(_P_SETUP, new_callable=AsyncMock, return_value=self.ctx),
             patch(_P_BUILD, return_value=MagicMock(spec=ContainerInput)),
             patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session) as mock_cs,
@@ -154,7 +149,6 @@ class TestScheduledTaskUsesSession:
         """Session should have the wrapped_on_output handler set, enabling
         real-time streaming through the IPC watcher."""
         with (
-            patch(_P_SETUP, new_callable=AsyncMock, return_value=self.ctx),
             patch(_P_BUILD, return_value=MagicMock(spec=ContainerInput)),
             patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
@@ -168,7 +162,6 @@ class TestScheduledTaskUsesSession:
     async def test_waits_for_query_done_with_config_timeout(self):
         """Should wait for session query completion, not process exit."""
         with (
-            patch(_P_SETUP, new_callable=AsyncMock, return_value=self.ctx),
             patch(_P_BUILD, return_value=MagicMock(spec=ContainerInput)),
             patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
@@ -192,7 +185,6 @@ class TestScheduledTaskUsesSession:
         self.fake_session.wait_for_query_done.side_effect = TimeoutError()
 
         with (
-            patch(_P_SETUP, new_callable=AsyncMock, return_value=self.ctx),
             patch(_P_BUILD, return_value=MagicMock(spec=ContainerInput)),
             patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
@@ -201,7 +193,7 @@ class TestScheduledTaskUsesSession:
             result = await self._call()
 
         assert result == "error"
-        # destroy_session: once at top (clean slate), once for timeout, once in finally
+        # destroy_session: once for timeout (in _await_query), once in finally
         assert mock_destroy.await_count >= 2, (
             "destroy_session should be called for timeout cleanup and in finally"
         )
@@ -212,7 +204,6 @@ class TestScheduledTaskUsesSession:
         self.fake_session.wait_for_query_done.side_effect = SessionDiedError("container died")
 
         with (
-            patch(_P_SETUP, new_callable=AsyncMock, return_value=self.ctx),
             patch(_P_BUILD, return_value=MagicMock(spec=ContainerInput)),
             patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
@@ -228,7 +219,6 @@ class TestScheduledTaskUsesSession:
         self.deps.sessions["test-group"] = "some-session-id"
 
         with (
-            patch(_P_SETUP, new_callable=AsyncMock, return_value=self.ctx),
             patch(_P_BUILD, return_value=MagicMock(spec=ContainerInput)),
             patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
@@ -252,7 +242,6 @@ class TestScheduledTaskUsesSession:
         self.deps.queue.register_process = track_register
 
         with (
-            patch(_P_SETUP, new_callable=AsyncMock, return_value=self.ctx),
             patch(_P_BUILD, return_value=MagicMock(spec=ContainerInput)),
             patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
@@ -267,7 +256,6 @@ class TestScheduledTaskUsesSession:
     async def test_spawn_failure_returns_error(self):
         """If _spawn_container raises OSError, should return 'error' gracefully."""
         with (
-            patch(_P_SETUP, new_callable=AsyncMock, return_value=self.ctx),
             patch(_P_BUILD, return_value=MagicMock(spec=ContainerInput)),
             patch(_P_SPAWN, new_callable=AsyncMock, side_effect=OSError("docker not found")),
             patch(_P_DESTROY, new_callable=AsyncMock),
