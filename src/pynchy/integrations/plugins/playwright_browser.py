@@ -27,7 +27,14 @@ class PlaywrightBrowserPlugin:
         return {
             "name": "browser",
             "command": "npx",
-            "args": ["@playwright/mcp@latest"],
+            "args": [
+                "@playwright/mcp@latest",
+                "--headless",
+                "--port",
+                str(_BROWSER_MCP_PORT),
+                "--host",
+                "0.0.0.0",
+            ],
             "port": _BROWSER_MCP_PORT,
             "transport": "streamable_http",
             "idle_timeout": 300,
