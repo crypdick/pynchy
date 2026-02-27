@@ -5,11 +5,9 @@
 - If something looks over-engineered, think about how to simplify it
 - **Prefer simplification and code removal**: If you find legacy fallbacks, backwards compatibility shims, or deprecated patterns, prefer to delete them and use the latest pattern. Reduce bloat by removing code rather than adding more.
 - If there are parallel implementations for the same functionality, consolidate them. But don't be too pedantic about it; if it's just a couple of lines of code that appear in a couple of places, it's usually not worth the effort.
-- If a change requires design input, message the human and stop (unless you are triggered by cron)
+- If a change requires design input, do not make the change. add the proposal to backlog/0-proposed/ and a human will review it.
 - Prefix all commits with `[code improver]`
-- Run tests before committing: `uv run pytest tests/`
 - Fix warnings in tests.
-- Run linting before committing: `uv run ruff check --fix src/ container/agent_runner/src/`
 - Never make purely cosmetic changes
 - Don't make 'god' modules. Files should generally max out around ~450 lines. Files much larger than this should be refactored.
 - Keep docs and comments up to date in accordance to the [contributing-docs.md](../../docs/contributing/contributing-docs.md) file.
@@ -26,15 +24,14 @@
 
 When you run tests or code, you're executing inside the agent container, which is isolated from the host system. This means:
 
-- System libraries installed on the host (like libmagic1) are NOT accessible to you
+- System libraries installed on the host (like libmagic1) are NOT accessible to you. Tests that require system libraries (e.g., neonize's libmagic dependency) will fail unless those libraries are baked into the agent container image.
 - Dependencies must be installed in the agent container's Python environment
 - File access is limited to explicitly mounted paths like /workspace
-- Tests that require system libraries (e.g., neonize's libmagic dependency) will fail unless those libraries are baked into the agent container image
 
 ## Working Directory
 
 The project source is at /workspace/project. Always work from there.
-Treat `/workspace/project` as the pynchy core repo and avoid making cross-repo/plugin changes unless explicitly requested.
+Treat `/workspace/project` as the pynchy core repo.
 
 ## Scheduled Run Workflow
 
@@ -55,12 +52,14 @@ When triggered by a scheduled run:
 4. If something looks like an over-engineered mess, pause and ponder how to make
    it more elegant.
 
-5. If a code improvement requires design input, prompt the human. If you were triggered by cron, you have to complete whichever
-   job you choose without human input, so skip tasks that aren't no-brainers.
+5. If a code improvement requires design input, prompt the human. If you were
+   triggered by cron, you have to complete whichever job you choose without human
+   input, so skip tasks that aren't no-brainers.
 
 6. If you find an improvement: make changes, run tests and linting, commit with
    a message prefixed with `[code improver]`.
 
 7. Do not feel obligated to make an edit. If the code is already good, just commit:
    `git commit --allow-empty -m "[code improver] no improvements needed"`
-   and stop.
+   and stop. Do not make this empty commit if the last commit was also
+   "[code improver] no improvements needed".
