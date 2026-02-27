@@ -25,7 +25,9 @@ from claude_agent_sdk import (
 )
 
 from ..core import AgentCoreConfig, AgentEvent
-from ..hooks import AGNOSTIC_TO_CLAUDE, load_hooks
+from ..hooks import AGNOSTIC_TO_CLAUDE, HookEvent, load_hooks
+from ..security.bash_gate import bash_security_hook
+from ..security.guard_git import guard_git_hook
 
 
 def _log(message: str) -> None:
@@ -180,6 +182,39 @@ def _create_pre_compact_hook():
 
 
 # ---------------------------------------------------------------------------
+# PreToolUse security hook adapter
+# ---------------------------------------------------------------------------
+
+
+def _wrap_before_tool_use(hook_fn):
+    """Wrap a BEFORE_TOOL_USE hook as a Claude SDK PreToolUse hook.
+
+    Our agnostic hooks have signature (tool_name, tool_input) -> HookDecision.
+    Claude SDK PreToolUse hooks expect (input_data, tool_use_id, context) -> dict.
+    """
+
+    async def wrapper(
+        input_data: dict[str, Any],
+        tool_use_id: str | None,
+        context: HookContext,
+    ) -> dict[str, Any]:
+        tool_name = input_data.get("tool_name", "")
+        tool_input = input_data.get("tool_input", {})
+        decision = await hook_fn(tool_name, tool_input)
+        if not decision.allowed:
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": decision.reason or "Blocked by security policy",
+                }
+            }
+        return {}
+
+    return wrapper
+
+
+# ---------------------------------------------------------------------------
 # ClaudeAgentCore
 # ---------------------------------------------------------------------------
 
@@ -208,6 +243,10 @@ class ClaudeAgentCore:
         claude_hooks: dict[str, list] = {}
 
         for event, funcs in agnostic_hooks.items():
+            # BEFORE_TOOL_USE is handled separately below (needs _wrap_before_tool_use
+            # adapter to translate between agnostic and Claude SDK signatures).
+            if event == HookEvent.BEFORE_TOOL_USE:
+                continue
             if event in AGNOSTIC_TO_CLAUDE:
                 claude_hook_name = AGNOSTIC_TO_CLAUDE[event]
                 if funcs:
@@ -217,6 +256,30 @@ class ClaudeAgentCore:
         if "PreCompact" not in claude_hooks:
             claude_hooks["PreCompact"] = []
         claude_hooks["PreCompact"].append(HookMatcher(hooks=[_create_pre_compact_hook()]))
+
+        # Register built-in BEFORE_TOOL_USE hooks as PreToolUse matchers.
+        # Built-in hooks run first (security), then plugin hooks.
+        builtin_pre_tool_hooks = [
+            _wrap_before_tool_use(bash_security_hook),
+            _wrap_before_tool_use(guard_git_hook),
+        ]
+
+        # Plugin BEFORE_TOOL_USE hooks from agnostic hook system
+        plugin_pre_tool_hooks = [
+            _wrap_before_tool_use(fn)
+            for fn in agnostic_hooks.get(HookEvent.BEFORE_TOOL_USE, [])
+        ]
+
+        all_pre_tool_hooks = builtin_pre_tool_hooks + plugin_pre_tool_hooks
+
+        if all_pre_tool_hooks:
+            if "PreToolUse" not in claude_hooks:
+                claude_hooks["PreToolUse"] = []
+            # Single HookMatcher that matches all tools — hooks run in order,
+            # first deny wins.
+            claude_hooks["PreToolUse"].append(
+                HookMatcher(hooks=all_pre_tool_hooks)
+            )
 
         # Build allowed tools list
         allowed_tools = [
@@ -229,7 +292,6 @@ class ClaudeAgentCore:
             "Glob",
             "Grep",
             "WebSearch",
-            "WebFetch",
             "Task",
             "TaskOutput",
             "TaskStop",

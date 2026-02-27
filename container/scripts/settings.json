@@ -1,15 +1,1 @@
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash /workspace/scripts/guard_git.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
+{}
