@@ -42,6 +42,7 @@ from pynchy.container_runner._mcp_litellm import (
 )
 from pynchy.container_runner._mcp_proxy import McpProxy
 from pynchy.logger import logger
+from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
     import subprocess
@@ -142,6 +143,7 @@ class McpManager:
         self._workspace_teams: dict[str, WorkspaceTeam] = {}
         self._teams_cache_path = settings.data_dir / "litellm" / "mcp_teams.json"
         self._idle_task: asyncio.Task[None] | None = None
+        self._warm_task: asyncio.Task[None] | None = None
         self._proxy = McpProxy()
         self._proxy_port: int = 0
 
@@ -241,7 +243,9 @@ class McpManager:
 
         # 7. Pre-pull Docker images in the background to warm the cache.
         #    Doesn't block boot — first on-demand start is just faster.
-        asyncio.create_task(warm_image_cache(self._instances))
+        self._warm_task = create_background_task(
+            warm_image_cache(self._instances), name="mcp-warm-images"
+        )
 
         logger.info(
             "MCP sync complete",
@@ -335,6 +339,9 @@ class McpManager:
         if self._idle_task is not None:
             self._idle_task.cancel()
             self._idle_task = None
+        if self._warm_task is not None:
+            self._warm_task.cancel()
+            self._warm_task = None
 
         for instance in self._instances.values():
             if instance.server_config.type == "script":
