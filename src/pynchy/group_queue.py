@@ -1,9 +1,8 @@
 """Per-group concurrency queue with global limits.
 
-asyncio.ensure_future doesn't run the coroutine
-synchronously up to the first await (unlike JS promises). So we must eagerly
-set state.active and bump active_count in the synchronous caller, then clean
-up in the async finally block.
+State (``active``, ``_active_count``) is set eagerly in the synchronous
+enqueue methods so that a second synchronous call sees the correct state.
+The async ``_run_*`` methods clean up in their ``finally`` blocks.
 """
 
 from __future__ import annotations
@@ -17,6 +16,7 @@ from pynchy.config import get_settings
 from pynchy.ipc._write import clean_ipc_input_dir, write_ipc_close_sentinel, write_ipc_message
 from pynchy.logger import logger
 from pynchy.security.middleware import PolicyDeniedError
+from pynchy.utils import create_background_task
 
 
 @dataclass
@@ -108,7 +108,10 @@ class GroupQueue:
         state.active = True
         state.pending_messages = False
         self._active_count += 1
-        asyncio.ensure_future(self._run_for_group(group_jid, "messages"))
+        create_background_task(
+            self._run_for_group(group_jid, "messages"),
+            name=f"process-messages-{group_jid[:20]}",
+        )
 
     def enqueue_task(self, group_jid: str, task_id: str, fn: Callable[[], Awaitable[None]]) -> None:
         """Queue a scheduled task for *group_jid*.
@@ -156,8 +159,9 @@ class GroupQueue:
         state.active = True
         state.active_is_task = True
         self._active_count += 1
-        asyncio.ensure_future(
-            self._run_task(group_jid, QueuedTask(id=task_id, group_jid=group_jid, fn=fn))
+        create_background_task(
+            self._run_task(group_jid, QueuedTask(id=task_id, group_jid=group_jid, fn=fn)),
+            name=f"run-task-{task_id[:20]}",
         )
 
     def register_process(
@@ -368,7 +372,7 @@ class GroupQueue:
             if not self._shutting_down:
                 self.enqueue_message_check(group_jid)
 
-        asyncio.ensure_future(_retry())
+        create_background_task(_retry(), name=f"retry-{group_jid[:20]}")
 
     def _start_next_pending(self, group_jid: str) -> bool:
         """Try to start the next pending item for *group_jid*.
@@ -383,7 +387,10 @@ class GroupQueue:
             state.active_is_task = False
             state.pending_messages = False
             self._active_count += 1
-            asyncio.ensure_future(self._run_for_group(group_jid, "drain"))
+            create_background_task(
+                self._run_for_group(group_jid, "drain"),
+                name=f"drain-messages-{group_jid[:20]}",
+            )
             return True
 
         if state.pending_tasks:
@@ -391,7 +398,10 @@ class GroupQueue:
             state.active = True
             state.active_is_task = True
             self._active_count += 1
-            asyncio.ensure_future(self._run_task(group_jid, task))
+            create_background_task(
+                self._run_task(group_jid, task),
+                name=f"drain-task-{task.id[:20]}",
+            )
             return True
 
         return False
