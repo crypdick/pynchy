@@ -848,43 +848,37 @@ class TestDrainGroupTaskOrdering:
 
 
 class TestCleanupIpcInput:
-    """Tests for _cleanup_ipc_input: stale IPC file removal after task exit."""
+    """Tests for clean_ipc_input_dir: stale IPC file removal after task exit.
 
-    def test_removes_json_files(self, tmp_path):
-        """Should remove all .json files from the IPC input dir."""
+    clean_ipc_input_dir lives in ipc._write but is tested here alongside
+    the queue behaviour that calls it.
+    """
+
+    def test_removes_all_files(self, tmp_path):
+        """Should remove all files (json, sentinel, etc.) from the IPC input dir."""
+        from pynchy.ipc._write import clean_ipc_input_dir
+
         input_dir = tmp_path / "ipc" / "test-group" / "input"
         input_dir.mkdir(parents=True)
         (input_dir / "001.json").write_text('{"type": "message", "text": "stale"}')
         (input_dir / "002.json").write_text('{"type": "message", "text": "also stale"}')
-
-        with _patch_settings(max_concurrent=2, data_dir=tmp_path):
-            GroupQueue._cleanup_ipc_input("test-group")
-
-        assert list(input_dir.glob("*.json")) == []
-
-    def test_preserves_non_json_files(self, tmp_path):
-        """Should NOT remove non-.json files (like _close sentinel)."""
-        input_dir = tmp_path / "ipc" / "test-group" / "input"
-        input_dir.mkdir(parents=True)
         (input_dir / "_close").write_text("")
-        (input_dir / "readme.txt").write_text("notes")
-        (input_dir / "001.json").write_text('{"stale": true}')
 
         with _patch_settings(max_concurrent=2, data_dir=tmp_path):
-            GroupQueue._cleanup_ipc_input("test-group")
+            clean_ipc_input_dir("test-group")
 
-        assert (input_dir / "_close").exists()
-        assert (input_dir / "readme.txt").exists()
-        assert not (input_dir / "001.json").exists()
+        assert list(input_dir.iterdir()) == []
 
-    def test_noop_when_no_group_folder(self, tmp_path):
+    def test_noop_when_no_group_folder(self):
         """Should silently do nothing when group_folder is None."""
-        with _patch_settings(max_concurrent=2, data_dir=tmp_path):
-            GroupQueue._cleanup_ipc_input(None)  # type: ignore[arg-type]
-        # No error raised
+        from pynchy.ipc._write import clean_ipc_input_dir
+
+        clean_ipc_input_dir(None)  # No error raised
 
     def test_noop_when_dir_doesnt_exist(self, tmp_path):
         """Should silently do nothing when IPC input dir doesn't exist."""
+        from pynchy.ipc._write import clean_ipc_input_dir
+
         with _patch_settings(max_concurrent=2, data_dir=tmp_path):
-            GroupQueue._cleanup_ipc_input("nonexistent-group")
+            clean_ipc_input_dir("nonexistent-group")
         # No error raised

@@ -27,7 +27,6 @@ from pynchy.container_runner._orchestrator import (
     resolve_agent_core,
 )
 from pynchy.container_runner._serialization import _input_to_dict, _parse_container_output
-from pynchy.container_runner._session import _clean_ipc_input
 from pynchy.container_runner._session_prep import (
     _is_skill_selected,
     _parse_skill_tier,
@@ -36,6 +35,7 @@ from pynchy.container_runner._session_prep import (
 )
 from pynchy.container_runner._snapshots import write_groups_snapshot, write_tasks_snapshot
 from pynchy.git_ops.repo import RepoContext
+from pynchy.ipc._write import clean_ipc_input_dir
 from pynchy.types import (
     ContainerInput,
     VolumeMount,
@@ -313,8 +313,8 @@ class TestWriteInitialInput:
         assert data["system_notices"] == ["notice1"]
 
 
-class TestCleanIpcInputPreservesInitialJson:
-    """_clean_ipc_input should not delete initial.json (race with container startup)."""
+class TestCleanIpcInputDir:
+    """clean_ipc_input_dir should respect preserve_initial flag."""
 
     def test_preserves_initial_json(self, tmp_path: Path) -> None:
         settings = make_settings(data_dir=tmp_path)
@@ -324,12 +324,31 @@ class TestCleanIpcInputPreservesInitialJson:
         (input_dir / "stale-msg.json").write_text('{"type": "message"}')
         (input_dir / "_close").write_text("")
 
-        with patch("pynchy.container_runner._session.get_settings", return_value=settings):
-            _clean_ipc_input("test-group")
+        with patch("pynchy.ipc._write.get_settings", return_value=settings):
+            clean_ipc_input_dir("test-group", preserve_initial=True)
 
         assert (input_dir / "initial.json").exists()
         assert not (input_dir / "stale-msg.json").exists()
         assert not (input_dir / "_close").exists()
+
+    def test_deletes_everything_when_not_preserving(self, tmp_path: Path) -> None:
+        settings = make_settings(data_dir=tmp_path)
+        input_dir = tmp_path / "ipc" / "test-group" / "input"
+        input_dir.mkdir(parents=True)
+        (input_dir / "initial.json").write_text('{"messages": []}')
+        (input_dir / "stale-msg.json").write_text('{"type": "message"}')
+        (input_dir / "_close").write_text("")
+
+        with patch("pynchy.ipc._write.get_settings", return_value=settings):
+            clean_ipc_input_dir("test-group", preserve_initial=False)
+
+        assert not (input_dir / "initial.json").exists()
+        assert not (input_dir / "stale-msg.json").exists()
+        assert not (input_dir / "_close").exists()
+
+    def test_noop_for_none_group(self) -> None:
+        """Should not raise when group_folder is None."""
+        clean_ipc_input_dir(None)
 
 
 class TestOutputParsing:

@@ -14,7 +14,7 @@ from pynchy.ipc._handlers_service import (
     clear_plugin_handler_cache,
 )
 from pynchy.security.gate import _gates, create_gate
-from pynchy.types import ServiceTrustConfig, WorkspaceSecurity, WorkspaceProfile
+from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
 
 
 @pytest.fixture(autouse=True)

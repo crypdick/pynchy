@@ -27,7 +27,7 @@ from pynchy.container_runner._process import (
     OnOutput,
     _docker_rm_force,
 )
-from pynchy.ipc._write import write_ipc_close_sentinel, write_ipc_message
+from pynchy.ipc._write import clean_ipc_input_dir, write_ipc_close_sentinel, write_ipc_message
 from pynchy.logger import logger
 
 
@@ -290,8 +290,10 @@ async def create_session(
     if old is not None:
         await old.stop()
 
-    # Clean stale IPC files from the previous session
-    _clean_ipc_input(group_folder)
+    # Clean stale IPC files from the previous session.
+    # preserve_initial=True because the container is still starting and
+    # reads initial.json on boot.
+    clean_ipc_input_dir(group_folder, preserve_initial=True)
     _clean_ipc_output(group_folder)
 
     session = ContainerSession(group_folder, container_name)
@@ -331,25 +333,6 @@ async def destroy_all_sessions() -> None:
         *(destroy_session(f) for f in folders),
         return_exceptions=True,
     )
-
-
-def _clean_ipc_input(group_folder: str) -> None:
-    """Remove stale IPC input files for a group.
-
-    Preserves ``initial.json`` because this runs *after* the container has
-    already been spawned (see ``agent_runner._cold_start``).  The container
-    reads ``initial.json`` on startup, so deleting it here would race with
-    the container's ``read_initial_input()`` call.
-    """
-    s = get_settings()
-    input_dir = s.data_dir / "ipc" / group_folder / "input"
-    if not input_dir.is_dir():
-        return
-    for f in input_dir.iterdir():
-        if f.name == "initial.json":
-            continue
-        with contextlib.suppress(OSError):
-            f.unlink()
 
 
 def _clean_ipc_output(group_folder: str) -> None:

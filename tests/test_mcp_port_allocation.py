@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pytest
+from conftest import make_settings
 
 from pynchy.config_mcp import McpServerConfig
 from pynchy.container_runner._mcp_lifecycle import (
@@ -12,9 +12,6 @@ from pynchy.container_runner._mcp_lifecycle import (
     expand_arg_placeholders,
 )
 from pynchy.container_runner.mcp_manager import McpInstance, McpManager
-
-from conftest import make_settings
-
 
 # ---------------------------------------------------------------------------
 # expand_arg_placeholders
@@ -29,9 +26,7 @@ class TestExpandArgPlaceholders:
 
     def test_multiple_placeholders(self):
         args = ["--dir", "data/{workspace}/profiles", "--port", "{port}"]
-        result = expand_arg_placeholders(
-            args, {"workspace": "research", "port": "9101"}
-        )
+        result = expand_arg_placeholders(args, {"workspace": "research", "port": "9101"})
         assert result == ["--dir", "data/research/profiles", "--port", "9101"]
 
     def test_no_op_passthrough(self):
@@ -108,9 +103,7 @@ class TestResolveAllInstancesPortOffset:
 
         settings = make_settings(
             workspaces=ws_configs,
-            mcp_servers={
-                name: McpServerConfig(**spec) for name, spec in mcp_servers.items()
-            },
+            mcp_servers={name: McpServerConfig(**spec) for name, spec in mcp_servers.items()},
         )
         gateway = MagicMock()
         return McpManager(settings, gateway)
@@ -172,14 +165,10 @@ class TestResolveAllInstancesPortOffset:
         )
         state = mgr._resolve_all_instances()
         browser_ports = sorted(
-            inst.port
-            for inst in state.instances.values()
-            if inst.server_name == "browser"
+            inst.port for inst in state.instances.values() if inst.server_name == "browser"
         )
         notebook_ports = sorted(
-            inst.port
-            for inst in state.instances.values()
-            if inst.server_name == "notebook"
+            inst.port for inst in state.instances.values() if inst.server_name == "notebook"
         )
         assert browser_ports == [9100, 9101]
         assert notebook_ports == [8888, 8889]

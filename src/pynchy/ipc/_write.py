@@ -10,6 +10,7 @@ never sees a partially-written file.
 
 from __future__ import annotations
 
+import contextlib
 import random
 import time
 from pathlib import Path
@@ -59,3 +60,28 @@ def write_ipc_response(path: Path, data: dict[str, Any]) -> None:
     (e.g. merge results, service request responses).
     """
     write_json_atomic(path, data)
+
+
+def clean_ipc_input_dir(group_folder: str | None, *, preserve_initial: bool = False) -> None:
+    """Remove stale IPC input files for a group.
+
+    Cleans up message files and the ``_close`` sentinel from previous
+    sessions. Used by session creation (preserve initial.json since the
+    container is still reading it) and post-task cleanup (delete
+    everything since the container has exited).
+
+    Args:
+        group_folder: Group folder name. No-op if None.
+        preserve_initial: When True, keep ``initial.json`` — safe to
+            call while the container is still starting up.
+    """
+    if not group_folder:
+        return
+    input_dir = get_settings().data_dir / "ipc" / group_folder / "input"
+    if not input_dir.is_dir():
+        return
+    for f in input_dir.iterdir():
+        if preserve_initial and f.name == "initial.json":
+            continue
+        with contextlib.suppress(OSError):
+            f.unlink()
