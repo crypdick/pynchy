@@ -276,10 +276,9 @@ async def _collect_gateway(info: dict[str, Any]) -> dict[str, Any]:
     if info.get("mode") != "litellm":
         return result
 
-    # Container state checks (blocking → run in thread)
     litellm_state, pg_state = await asyncio.gather(
-        asyncio.to_thread(_container_state, "pynchy-litellm"),
-        asyncio.to_thread(_container_state, "pynchy-litellm-db"),
+        _container_state("pynchy-litellm"),
+        _container_state("pynchy-litellm-db"),
     )
     result["litellm_container"] = litellm_state
     result["postgres_container"] = pg_state
@@ -308,10 +307,10 @@ async def _collect_gateway(info: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _container_state(name: str) -> str:
+async def _container_state(name: str) -> str:
     """Return 'running', 'stopped', or 'not_found' for a Docker container."""
     try:
-        result = run_docker("inspect", "-f", "{{.State.Status}}", name, check=False)
+        result = await run_docker("inspect", "-f", "{{.State.Status}}", name, check=False)
         if result.returncode != 0:
             return "not_found"
         return result.stdout.strip()  # "running", "exited", "created", etc.

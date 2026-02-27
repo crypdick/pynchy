@@ -8,7 +8,6 @@ to the manager class itself.
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import os
 import signal
@@ -41,7 +40,7 @@ _NETWORK_NAME = "pynchy-litellm-net"
 
 async def ensure_docker_running(instance: McpInstance) -> None:
     """Start a Docker MCP container if not already running."""
-    if is_container_running(instance.container_name):
+    if await is_container_running(instance.container_name):
         return
 
     logger.info(
@@ -51,11 +50,11 @@ async def ensure_docker_running(instance: McpInstance) -> None:
         image=instance.server_config.image,
     )
 
-    _ensure_mcp_image(instance.server_config)
-    ensure_network(_NETWORK_NAME)
+    await _ensure_mcp_image(instance.server_config)
+    await ensure_network(_NETWORK_NAME)
 
     # Remove stale container
-    remove_container(instance.container_name)
+    await remove_container(instance.container_name)
 
     # Build container args — expand {key} placeholders (e.g. {workspace}, {port})
     placeholders = _build_placeholders(instance)
@@ -100,7 +99,7 @@ async def ensure_docker_running(instance: McpInstance) -> None:
                 _ensure_mount_parent(host_path)
             volume_args.extend(["-v", vol])
 
-    run_docker(
+    await run_docker(
         "run", "-d",
         "--name", instance.container_name,
         "--network", _NETWORK_NAME,
@@ -128,7 +127,7 @@ async def ensure_docker_running(instance: McpInstance) -> None:
         )
         # Clean up the failed container (matches script path which
         # calls terminate_process before re-raising).
-        stop_container(instance.container_name)
+        await stop_container(instance.container_name)
         raise
 
     logger.info("MCP container ready", instance_id=instance.instance_id)
@@ -208,7 +207,7 @@ async def warm_image_cache(instances: dict[str, McpInstance]) -> None:
             continue
         seen.add(cfg.image)
         try:
-            await asyncio.to_thread(_ensure_mcp_image, cfg)
+            await _ensure_mcp_image(cfg)
             logger.info("Warmed MCP image cache", image=cfg.image)
         except Exception:
             logger.exception("Failed to warm MCP image", image=cfg.image)
@@ -311,7 +310,7 @@ def build_env_args(config: McpServerConfig) -> list[str]:
     return args
 
 
-def _ensure_mcp_image(config: McpServerConfig) -> None:
+async def _ensure_mcp_image(config: McpServerConfig) -> None:
     """Ensure the MCP Docker image exists — build from local Dockerfile or pull.
 
     When ``config.dockerfile`` is set and the image isn't already local,
@@ -323,7 +322,7 @@ def _ensure_mcp_image(config: McpServerConfig) -> None:
     image = config.image or ""
     if config.dockerfile:
         # Check if image already exists locally
-        result = run_docker("image", "inspect", image, check=False)
+        result = await run_docker("image", "inspect", image, check=False)
         if result.returncode == 0:
             return
         # Build from local Dockerfile
@@ -334,7 +333,7 @@ def _ensure_mcp_image(config: McpServerConfig) -> None:
             image=image,
             dockerfile=config.dockerfile,
         )
-        run_docker(
+        await run_docker(
             "build", "-t", image,
             "-f", dockerfile_path,
             project_root,
@@ -342,7 +341,7 @@ def _ensure_mcp_image(config: McpServerConfig) -> None:
         )  # fmt: skip
         logger.info("MCP image built", image=image)
     else:
-        ensure_image(image)
+        await ensure_image(image)
 
 
 def _ensure_mount_parent(host_path: str) -> None:

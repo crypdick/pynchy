@@ -291,9 +291,9 @@ class LiteLLMGateway:
     async def _start_postgres(self) -> None:
         """Start the PostgreSQL sidecar and wait for it to accept connections."""
         self._pg_data_dir.mkdir(parents=True, exist_ok=True)
-        ensure_image(self._postgres_image)
+        await ensure_image(self._postgres_image)
 
-        remove_container(_POSTGRES_CONTAINER)
+        await remove_container(_POSTGRES_CONTAINER)
 
         logger.info(
             "Starting PostgreSQL sidecar",
@@ -301,7 +301,7 @@ class LiteLLMGateway:
             data_dir=str(self._pg_data_dir),
         )
 
-        run_docker(
+        await run_docker(
             "run", "-d",
             "--name", _POSTGRES_CONTAINER,
             "--network", _NETWORK_NAME,
@@ -321,7 +321,7 @@ class LiteLLMGateway:
         deadline = loop.time() + _POSTGRES_HEALTH_TIMEOUT
 
         while loop.time() < deadline:
-            result = run_docker(
+            result = await run_docker(
                 "exec",
                 _POSTGRES_CONTAINER,
                 "pg_isready",
@@ -334,7 +334,7 @@ class LiteLLMGateway:
                 return
 
             # Ensure the container is still running
-            inspect = run_docker(
+            inspect = await run_docker(
                 "inspect",
                 "-f",
                 "{{.State.Running}}",
@@ -342,7 +342,7 @@ class LiteLLMGateway:
                 check=False,
             )
             if inspect.stdout.strip() != "true":
-                logs = run_docker(
+                logs = await run_docker(
                     "logs",
                     "--tail",
                     "30",
@@ -373,13 +373,13 @@ class LiteLLMGateway:
 
         self._data_dir.mkdir(parents=True, exist_ok=True)
 
-        ensure_network(_NETWORK_NAME)
+        await ensure_network(_NETWORK_NAME)
         await self._start_postgres()
 
-        ensure_image(self._image)
+        await ensure_image(self._image)
 
         # Remove stale LiteLLM container from previous run
-        remove_container(_LITELLM_CONTAINER)
+        await remove_container(_LITELLM_CONTAINER)
 
         # Resolve env vars once — shared by config filtering and env-var forwarding.
         env = self._resolve_env(self._config_path)
@@ -416,7 +416,7 @@ class LiteLLMGateway:
         if s.gateway.ui_password:
             env_vars.extend(["-e", f"UI_PASSWORD={s.gateway.ui_password.get_secret_value()}"])
 
-        run_docker(
+        await run_docker(
             "run", "-d",
             "--init",
             "--name", _LITELLM_CONTAINER,
@@ -449,8 +449,8 @@ class LiteLLMGateway:
     async def stop(self) -> None:
         logger.info("Stopping LiteLLM gateway containers")
         await asyncio.gather(
-            asyncio.to_thread(stop_container, _LITELLM_CONTAINER),
-            asyncio.to_thread(stop_container, _POSTGRES_CONTAINER),
+            stop_container(_LITELLM_CONTAINER),
+            stop_container(_POSTGRES_CONTAINER),
         )
-        await asyncio.to_thread(run_docker, "network", "rm", _NETWORK_NAME, check=False)
+        await run_docker("network", "rm", _NETWORK_NAME, check=False)
         logger.info("LiteLLM gateway stopped")

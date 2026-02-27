@@ -2,6 +2,9 @@
 
 Extracted from :mod:`pynchy.container_runner.gateway` so that both
 :class:`LiteLLMGateway` and :class:`McpManager` can share them.
+
+All public functions are async so they don't block the event loop.
+The underlying subprocess calls run in a thread via ``asyncio.to_thread``.
 """
 
 from __future__ import annotations
@@ -21,12 +24,12 @@ def docker_available() -> bool:
     return shutil.which("docker") is not None
 
 
-def run_docker(
+def _run_docker_sync(
     *args: str,
     check: bool = True,
     timeout: int = 30,
 ) -> subprocess.CompletedProcess[str]:
-    """Run a ``docker`` CLI command."""
+    """Run a ``docker`` CLI command (blocking — internal only)."""
     return subprocess.run(
         ["docker", *args],
         capture_output=True,
@@ -36,57 +39,66 @@ def run_docker(
     )
 
 
-def ensure_image(image: str) -> None:
+async def run_docker(
+    *args: str,
+    check: bool = True,
+    timeout: int = 30,
+) -> subprocess.CompletedProcess[str]:
+    """Run a ``docker`` CLI command without blocking the event loop."""
+    return await asyncio.to_thread(_run_docker_sync, *args, check=check, timeout=timeout)
+
+
+async def ensure_image(image: str) -> None:
     """Pull a Docker image if not already present locally."""
-    result = run_docker("image", "inspect", image, check=False)
+    result = await run_docker("image", "inspect", image, check=False)
     if result.returncode == 0:
         return
 
     logger.info("Pulling Docker image (first run may take a minute)", image=image)
-    run_docker("pull", image, timeout=300)
+    await run_docker("pull", image, timeout=300)
     logger.info("Docker image pulled", image=image)
 
 
-def ensure_network(name: str) -> None:
+async def ensure_network(name: str) -> None:
     """Create a Docker network if it doesn't already exist."""
-    result = run_docker("network", "inspect", name, check=False)
+    result = await run_docker("network", "inspect", name, check=False)
     if result.returncode == 0:
         return
-    run_docker("network", "create", name)
+    await run_docker("network", "create", name)
     logger.info("Created Docker network", network=name)
 
 
-def is_container_running(name: str) -> bool:
+async def is_container_running(name: str) -> bool:
     """Check if a Docker container is currently running."""
     start = time.monotonic()
-    result = run_docker("inspect", "-f", "{{.State.Running}}", name, check=False)
+    result = await run_docker("inspect", "-f", "{{.State.Running}}", name, check=False)
     elapsed_ms = (time.monotonic() - start) * 1000
     if elapsed_ms > 500:
         logger.warning(
-            "Slow docker inspect (blocks event loop)",
+            "Slow docker inspect",
             container=name,
             elapsed_ms=round(elapsed_ms),
         )
     return result.stdout.strip() == "true"
 
 
-def remove_container(name: str) -> None:
+async def remove_container(name: str) -> None:
     """Force-remove a container (idempotent, no error if absent).
 
     Use before starting a container to clear stale state.
     """
-    run_docker("rm", "-f", name, check=False)
+    await run_docker("rm", "-f", name, check=False)
 
 
-def stop_container(name: str, *, timeout: int = 5) -> None:
+async def stop_container(name: str, *, timeout: int = 5) -> None:
     """Gracefully stop a container then force-remove it.
 
     Sends SIGTERM (docker stop) with a grace period, then removes
     the container so it doesn't linger as "exited".  Idempotent —
     safe to call even if the container is already stopped or absent.
     """
-    run_docker("stop", "-t", str(timeout), name, check=False)
-    run_docker("rm", "-f", name, check=False)
+    await run_docker("stop", "-t", str(timeout), name, check=False)
+    await run_docker("rm", "-f", name, check=False)
 
 
 async def wait_healthy(
@@ -131,8 +143,8 @@ async def wait_healthy(
                 if process.poll() is not None:
                     msg = f"Script {container_name} exited unexpectedly"
                     raise RuntimeError(msg)
-            elif not is_container_running(container_name):
-                logs = run_docker("logs", "--tail", "30", container_name, check=False)
+            elif not await is_container_running(container_name):
+                logs = await run_docker("logs", "--tail", "30", container_name, check=False)
                 logger.error("Container exited", container=container_name, logs=logs.stdout[-2000:])
                 msg = f"Container {container_name} failed to start — check logs above"
                 raise RuntimeError(msg)

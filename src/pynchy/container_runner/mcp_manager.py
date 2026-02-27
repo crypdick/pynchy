@@ -323,14 +323,14 @@ class McpManager:
                 )
                 terminate_process(instance)
             else:
-                if not is_container_running(instance.container_name):
+                if not await is_container_running(instance.container_name):
                     continue
                 logger.info(
                     "Stopping idle MCP container",
                     instance_id=instance.instance_id,
                     idle_seconds=int(elapsed),
                 )
-                stop_container(instance.container_name)
+                await stop_container(instance.container_name)
 
     async def stop_all(self) -> None:
         """Shutdown: stop all managed Docker containers and script subprocesses."""
@@ -347,7 +347,7 @@ class McpManager:
             if instance.server_config.type == "script":
                 terminate_process(instance)
             elif instance.server_config.type == "docker":
-                stop_container(instance.container_name)
+                await stop_container(instance.container_name)
 
         logger.info("All MCP instances stopped")
 

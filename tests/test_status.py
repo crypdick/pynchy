@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from aiohttp import web
@@ -394,9 +394,11 @@ class TestCollectGateway:
 
     @pytest.mark.asyncio
     async def test_litellm_container_status(self):
-        from unittest.mock import AsyncMock
-
-        with patch("pynchy.status._container_state", side_effect=["running", "running"]):
+        with patch(
+            "pynchy.status._container_state",
+            new_callable=AsyncMock,
+            side_effect=["running", "running"],
+        ):
             mock_resp = AsyncMock()
             mock_resp.json.return_value = {"healthy_count": 2, "unhealthy_count": 0}
 
@@ -417,7 +419,11 @@ class TestCollectGateway:
     async def test_gateway_health_failure_returns_none(self):
         """When gateway HTTP check fails, model counts are None."""
         with (
-            patch("pynchy.status._container_state", side_effect=["running", "running"]),
+            patch(
+                "pynchy.status._container_state",
+                new_callable=AsyncMock,
+                side_effect=["running", "running"],
+            ),
             patch("aiohttp.ClientSession", side_effect=Exception("connection refused")),
         ):
             result = await _collect_gateway({"mode": "litellm", "port": 4000, "key": "sk-test"})
@@ -428,7 +434,11 @@ class TestCollectGateway:
     @pytest.mark.asyncio
     async def test_missing_port_skips_health_check(self):
         """When port or key is missing, health check is skipped."""
-        with patch("pynchy.status._container_state", side_effect=["running", "stopped"]):
+        with patch(
+            "pynchy.status._container_state",
+            new_callable=AsyncMock,
+            side_effect=["running", "stopped"],
+        ):
             result = await _collect_gateway({"mode": "litellm"})
             assert result["litellm_container"] == "running"
             assert result["postgres_container"] == "stopped"
@@ -441,30 +451,41 @@ class TestCollectGateway:
 
 
 class TestContainerState:
-    def test_running_container(self):
-        with patch("pynchy.status.run_docker") as mock:
+    @pytest.mark.asyncio
+    async def test_running_container(self):
+        with patch("pynchy.status.run_docker", new_callable=AsyncMock) as mock:
             mock.return_value = Mock(returncode=0, stdout="running\n")
-            assert _container_state("pynchy-litellm") == "running"
+            assert await _container_state("pynchy-litellm") == "running"
 
-    def test_stopped_container(self):
-        with patch("pynchy.status.run_docker") as mock:
+    @pytest.mark.asyncio
+    async def test_stopped_container(self):
+        with patch("pynchy.status.run_docker", new_callable=AsyncMock) as mock:
             mock.return_value = Mock(returncode=0, stdout="exited\n")
-            assert _container_state("pynchy-litellm") == "exited"
+            assert await _container_state("pynchy-litellm") == "exited"
 
-    def test_not_found(self):
-        with patch("pynchy.status.run_docker") as mock:
+    @pytest.mark.asyncio
+    async def test_not_found(self):
+        with patch("pynchy.status.run_docker", new_callable=AsyncMock) as mock:
             mock.return_value = Mock(returncode=1, stdout="")
-            assert _container_state("missing") == "not_found"
+            assert await _container_state("missing") == "not_found"
 
-    def test_docker_not_installed(self):
-        with patch("pynchy.status.run_docker", side_effect=FileNotFoundError):
-            assert _container_state("any") == "not_found"
+    @pytest.mark.asyncio
+    async def test_docker_not_installed(self):
+        with patch(
+            "pynchy.status.run_docker", new_callable=AsyncMock, side_effect=FileNotFoundError
+        ):
+            assert await _container_state("any") == "not_found"
 
-    def test_docker_timeout(self):
+    @pytest.mark.asyncio
+    async def test_docker_timeout(self):
         import subprocess
 
-        with patch("pynchy.status.run_docker", side_effect=subprocess.TimeoutExpired("docker", 5)):
-            assert _container_state("any") == "not_found"
+        with patch(
+            "pynchy.status.run_docker",
+            new_callable=AsyncMock,
+            side_effect=subprocess.TimeoutExpired("docker", 5),
+        ):
+            assert await _container_state("any") == "not_found"
 
 
 # ---------------------------------------------------------------------------
@@ -508,7 +529,7 @@ class TestCollectStatus:
             # Host jobs
             patch("pynchy.status.get_all_host_jobs", return_value=[]),
             # Gateway
-            patch("pynchy.status._container_state", return_value="running"),
+            patch("pynchy.status._container_state", new_callable=AsyncMock, return_value="running"),
             patch("aiohttp.ClientSession", side_effect=Exception("skip")),
         ):
             result = await collect_status(deps, time.monotonic() - 120)
@@ -580,7 +601,9 @@ class TestStatusEndpoint(AioHTTPTestCase):
             ),
             patch("pynchy.status.get_all_tasks", return_value=[]),
             patch("pynchy.status.get_all_host_jobs", return_value=[]),
-            patch("pynchy.status._container_state", return_value="not_found"),
+            patch(
+                "pynchy.status._container_state", new_callable=AsyncMock, return_value="not_found"
+            ),
             patch("aiohttp.ClientSession", side_effect=Exception("skip")),
         ):
             resp = await self.client.get("/status")
