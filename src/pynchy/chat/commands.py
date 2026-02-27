@@ -11,8 +11,8 @@ import re
 
 from pynchy.config import get_settings
 
-# Matches 4-32 hex chars (short_id is 8, full request_id is 32)
-_HEX_ID_RE = re.compile(r"^[0-9a-f]{4,32}$")
+# Matches 2-36 lowercase alphanumeric chars (short_id is 2, full UUID is 32-36)
+_APPROVAL_ID_RE = re.compile(r"^[0-9a-z]{2,36}$")
 
 
 def _strip_trigger(text: str) -> str:
@@ -92,7 +92,7 @@ def is_approval_command(text: str) -> tuple[str, str] | None:
     action, short_id = words
     if action not in ("approve", "deny"):
         return None
-    if not _HEX_ID_RE.match(short_id):
+    if not _APPROVAL_ID_RE.match(short_id):
         return None
     return (action, short_id)
 

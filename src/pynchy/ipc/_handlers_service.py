@@ -132,8 +132,7 @@ async def _handle_service_request(
         # Lazy import to avoid circular: security.approval → ipc._write → ipc.__init__ → here
         from pynchy.security.approval import create_pending_approval, format_approval_notification
 
-        short_id = request_id[:8]
-        create_pending_approval(
+        short_id = create_pending_approval(
             request_id=request_id,
             tool_name=tool_name,
             source_group=source_group,

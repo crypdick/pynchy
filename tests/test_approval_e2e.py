@@ -146,11 +146,15 @@ class TestApprovalE2E:
         assert "Approval required" in deps.broadcast_messages[0][1]
         assert "x_post" in deps.broadcast_messages[0][1]
 
-        # Step 2: User sends "approve aabb0011" via chat
+        # Read the actual short_id from the pending file (now random 2-char)
+        pending_data = json.loads(pending_path.read_text())
+        short_id = pending_data["short_id"]
+
+        # Step 2: User sends "approve <short_id>" via chat
         from pynchy.chat.approval_handler import handle_approval_command
 
         with patch("pynchy.security.approval.get_settings", return_value=approval_settings):
-            await handle_approval_command(deps, "chat@g.us", "approve", "aabb0011", "testuser")
+            await handle_approval_command(deps, "chat@g.us", "approve", short_id, "testuser")
 
         # Verify: decision file created
         decisions_dir = tmp_path / "ipc" / "mygroup" / "approval_decisions"
@@ -221,11 +225,16 @@ class TestApprovalE2E:
             }
             await _handle_service_request(data, "mygroup", False, deps)
 
+        # Read the actual short_id from the pending file
+        pending_path = tmp_path / "ipc" / "mygroup" / "pending_approvals" / "ccdd556677889900.json"
+        pending_data = json.loads(pending_path.read_text())
+        short_id = pending_data["short_id"]
+
         # Step 2: User denies
         from pynchy.chat.approval_handler import handle_approval_command
 
         with patch("pynchy.security.approval.get_settings", return_value=approval_settings):
-            await handle_approval_command(deps, "chat@g.us", "deny", "ccdd5566", "testuser")
+            await handle_approval_command(deps, "chat@g.us", "deny", short_id, "testuser")
 
         # Step 3: IPC handler processes denial
         from pynchy.ipc._handlers_approval import process_approval_decision
