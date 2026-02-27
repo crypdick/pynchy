@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     from pynchy.config import Settings
     from pynchy.config_mcp import McpServerConfig
     from pynchy.container_runner.gateway import LiteLLMGateway
+    from pynchy.types import ServiceTrustConfig
 
 _MCP_CONTAINER_PREFIX = "pynchy-mcp"
 
@@ -123,12 +124,16 @@ class McpManager:
         gateway: LiteLLMGateway,
         *,
         plugin_mcp_servers: dict[str, McpServerConfig] | None = None,
+        plugin_trust_defaults: dict[str, ServiceTrustConfig] | None = None,
     ) -> None:
         self._settings = settings
         self._gateway = gateway
         # Plugin-provided MCP servers — merged with config.toml in _merged_mcp_servers.
         # Config.toml always wins on name collision (same semantics as workspace specs).
         self._plugin_mcp_servers: dict[str, McpServerConfig] = plugin_mcp_servers or {}
+        # Plugin-declared trust metadata — used by _build_trust_map to populate
+        # the proxy's trust map with real values instead of safe defaults.
+        self._plugin_trust_defaults: dict[str, ServiceTrustConfig] = plugin_trust_defaults or {}
         self._instances: dict[str, McpInstance] = {}
         self._workspace_instances: dict[str, list[str]] = {}
         self._workspace_teams: dict[str, WorkspaceTeam] = {}
@@ -442,12 +447,20 @@ class McpManager:
     def _build_trust_map(self) -> dict[str, dict[str, Any]]:
         """Build trust metadata for each instance (used by proxy for fencing decisions).
 
-        Returns a mapping of instance_id -> trust properties. Safe defaults for
-        now (public_source=False); Task 7 populates real values from plugin config.
+        Priority: plugin defaults > safe fallback.
         """
         trust_map: dict[str, dict[str, Any]] = {}
-        for iid in self._instances:
-            trust_map[iid] = {"public_source": False}
+        for iid, instance in self._instances.items():
+            plugin_trust = self._plugin_trust_defaults.get(instance.server_name)
+            if plugin_trust:
+                trust_map[iid] = {
+                    "public_source": plugin_trust.public_source,
+                    "secret_data": plugin_trust.secret_data,
+                    "public_sink": plugin_trust.public_sink,
+                    "dangerous_writes": plugin_trust.dangerous_writes,
+                }
+            else:
+                trust_map[iid] = {"public_source": False}
         return trust_map
 
     # ------------------------------------------------------------------
