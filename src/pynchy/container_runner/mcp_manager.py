@@ -68,6 +68,7 @@ class McpInstance:
     kwargs: dict[str, str]
     instance_id: str  # server_name + short hash of kwargs
     container_name: str  # Docker container name (for type=docker)
+    port: int | None = None  # host-side port (auto-assigned for inject_workspace scripts)
     last_activity: float = 0.0  # monotonic timestamp
     process: subprocess.Popen | None = None  # tracked subprocess (for type=script)
 
@@ -78,11 +79,12 @@ class McpInstance:
             return self.server_config.url or ""
         if self.server_config.type == "script":
             # Script runs on host — LiteLLM reaches it via localhost.
-            base = f"http://localhost:{self.server_config.port}"
+            # Uses instance port (unique per workspace) over config port.
+            base = f"http://localhost:{self.port}"
             if self.server_config.transport in ("http", "streamable_http"):
                 return f"{base}/mcp"
             return base
-        # Docker: internal Docker network URL.
+        # Docker: internal Docker network URL (no host port conflict).
         # Streamable HTTP uses /mcp path; SSE uses bare host:port.
         base = f"http://{self.container_name}:{self.server_config.port}"
         if self.server_config.transport in ("http", "streamable_http"):
@@ -209,8 +211,8 @@ class McpManager:
             cfg = inst.server_config
             if cfg.type == "url":
                 instance_urls[iid] = cfg.url or ""
-            elif cfg.port is not None:
-                instance_urls[iid] = f"http://localhost:{cfg.port}"
+            elif inst.port is not None:
+                instance_urls[iid] = f"http://localhost:{inst.port}"
         trust_map = self._build_trust_map()
         if instance_urls:
             self._proxy_port = await self._proxy.start(instance_urls, trust_map=trust_map)
@@ -468,9 +470,18 @@ class McpManager:
     # ------------------------------------------------------------------
 
     def _resolve_all_instances(self) -> _SyncState:
-        """Resolve all (server, kwargs) instances needed across all workspaces."""
+        """Resolve all (server, kwargs) instances needed across all workspaces.
+
+        Auto-assigns host-side ports: first instance of a server gets
+        ``cfg.port``, second gets ``cfg.port + 1``, etc.  This prevents port
+        conflicts when ``inject_workspace`` creates multiple host-side
+        instances of the same script-type server.
+        """
         state = _SyncState()
         merged_servers = self._merged_mcp_servers
+        # Track how many instances we've created per server_name so we can
+        # offset the host port for each additional instance.
+        port_counters: dict[str, int] = {}
 
         for folder, ws_config in self._settings.workspaces.items():
             if not ws_config.mcp_servers:
@@ -496,12 +507,17 @@ class McpManager:
 
                 if iid not in state.instances:
                     container_name = f"{_MCP_CONTAINER_PREFIX}-{iid}"
+                    offset = port_counters.get(server_name, 0)
+                    port_counters[server_name] = offset + 1
+                    base_port = server_config.port
+                    instance_port = (base_port + offset) if base_port is not None else None
                     state.instances[iid] = McpInstance(
                         server_name=server_name,
                         server_config=server_config,
                         kwargs=kwargs,
                         instance_id=iid,
                         container_name=container_name,
+                        port=instance_port,
                     )
 
                 instance_ids.append(iid)

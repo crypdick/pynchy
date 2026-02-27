@@ -57,15 +57,19 @@ async def ensure_docker_running(instance: McpInstance) -> None:
     # Remove stale container
     remove_container(instance.container_name)
 
-    # Build container args
-    cmd_args = list(instance.server_config.args)
+    # Build container args — expand {key} placeholders (e.g. {workspace}, {port})
+    placeholders = _build_placeholders(instance)
+    cmd_args = expand_arg_placeholders(list(instance.server_config.args), placeholders)
     cmd_args.extend(kwargs_to_args(instance.kwargs))
 
     # Publish port so the host can health-check the container.
     # endpoint_url uses the Docker-internal container name (for LiteLLM),
     # but the health check runs from the host which can't resolve those.
-    port = instance.server_config.port
-    publish_args = ["-p", f"{port}:{port}"] if port else []
+    # Host-side port comes from instance.port (unique per workspace);
+    # container-internal port stays at cfg.port (no conflict inside container).
+    host_port = instance.port
+    container_port = instance.server_config.port
+    publish_args = ["-p", f"{host_port}:{container_port}"] if host_port else []
     for extra_port in instance.server_config.extra_ports:
         publish_args.extend(["-p", f"{extra_port}:{extra_port}"])
 
@@ -79,7 +83,7 @@ async def ensure_docker_running(instance: McpInstance) -> None:
     # "groups/{workspace}:/workspace" → "groups/research:/workspace").
     volume_args: list[str] = []
     for vol in instance.server_config.volumes:
-        for key, value in instance.kwargs.items():
+        for key, value in placeholders.items():
             vol = vol.replace(f"{{{key}}}", value)
         host_path, sep, container_path = vol.partition(":")
         if sep and "/" not in host_path and not host_path.startswith("."):
@@ -109,7 +113,7 @@ async def ensure_docker_running(instance: McpInstance) -> None:
     )  # fmt: skip
 
     # Health-check via localhost (host-side), not the Docker-internal name
-    health_url = f"http://localhost:{port}" if port else instance.endpoint_url
+    health_url = f"http://localhost:{host_port}" if host_port else instance.endpoint_url
     try:
         await wait_healthy(
             instance.container_name,
@@ -141,7 +145,10 @@ async def ensure_script_running(instance: McpInstance) -> None:
         return  # still alive
 
     cfg = instance.server_config
-    cmd = [cfg.command or "", *cfg.args]
+    # Expand {key} placeholders (e.g. {port}, {workspace}) in args
+    placeholders = _build_placeholders(instance)
+    expanded_args = expand_arg_placeholders(list(cfg.args), placeholders)
+    cmd = [cfg.command or "", *expanded_args]
     cmd.extend(kwargs_to_args(instance.kwargs))
 
     # Merge env: inherit host env + static env + env_forward
@@ -162,8 +169,8 @@ async def ensure_script_running(instance: McpInstance) -> None:
         start_new_session=True,  # own process group for clean shutdown
     )
 
-    # Health-check via localhost
-    health_url = f"http://localhost:{cfg.port}"
+    # Health-check via localhost using instance port (unique per workspace)
+    health_url = f"http://localhost:{instance.port}"
     try:
         await wait_healthy(
             instance.instance_id,
@@ -234,6 +241,32 @@ def terminate_process(instance: McpInstance) -> None:
 # ---------------------------------------------------------------------------
 # Arg / env helpers
 # ---------------------------------------------------------------------------
+
+
+def expand_arg_placeholders(args: list[str], placeholders: dict[str, str]) -> list[str]:
+    """Replace ``{key}`` placeholders in *args* with values from *placeholders*.
+
+    Same pattern used for volume mounts — extends it to command args so
+    plugins can use ``{port}``, ``{workspace}``, etc.
+    Unrecognised placeholders are left as-is.
+    """
+    expanded: list[str] = []
+    for arg in args:
+        for key, value in placeholders.items():
+            arg = arg.replace(f"{{{key}}}", value)
+        expanded.append(arg)
+    return expanded
+
+
+def _build_placeholders(instance: McpInstance) -> dict[str, str]:
+    """Build the placeholder dict for arg/volume expansion.
+
+    Includes instance kwargs (e.g. ``workspace``) plus ``port``.
+    """
+    placeholders = dict(instance.kwargs)
+    if instance.port is not None:
+        placeholders["port"] = str(instance.port)
+    return placeholders
 
 
 def kwargs_to_args(kwargs: dict[str, str]) -> list[str]:

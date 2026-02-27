@@ -14,9 +14,17 @@ class TestMcpServerSpec:
         assert isinstance(spec, dict)
         assert spec["name"] == "browser"
         assert spec["command"] == "npx"
-        assert "@playwright/mcp" in spec["args"][0]
+        assert "@playwright/mcp@latest" in spec["args"][0]
         assert spec["port"] == 9100
         assert spec["transport"] == "streamable_http"
+
+    def test_port_uses_placeholder(self):
+        """Port arg uses {port} placeholder — expanded at launch to each instance's port."""
+        plugin = PlaywrightBrowserPlugin()
+        spec = plugin.pynchy_mcp_server_spec()
+        args = spec["args"]
+        port_idx = args.index("--port")
+        assert args[port_idx + 1] == "{port}"
 
     def test_trust_defaults_set(self):
         plugin = PlaywrightBrowserPlugin()
