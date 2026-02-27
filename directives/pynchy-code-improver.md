@@ -40,9 +40,9 @@ Treat `/workspace/project` as the pynchy core repo and avoid making cross-repo/p
 
 When triggered by a scheduled run:
 
-1. Check `git log --oneline -1`. If the last commit message starts with
-   "[code improver] no improvements needed", exit immediately - nothing has
-   changed since your last run.
+1. **STOP CHECK** — Run `git log --oneline -1`. If the last commit message
+   starts with "[code improver] no improvements needed", exit immediately.
+   Do not proceed to step 2. Do not make another empty commit.
 
 2. Run `git log --oneline -20` to see recent history and your past work.
 
