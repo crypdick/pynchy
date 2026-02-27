@@ -136,17 +136,19 @@ async def _initialize_core(app: PynchyApp) -> None:
 async def _setup_channels(app: PynchyApp) -> None:
     """Create channel context, load channels, validate, connect."""
     context = ChannelPluginContext(
-        on_message_callback=lambda jid, msg: asyncio.ensure_future(app._on_inbound(jid, msg)),
-        on_chat_metadata_callback=lambda jid, ts, name=None: asyncio.ensure_future(
-            store_chat_metadata(jid, ts, name)
+        on_message_callback=lambda jid, msg: create_background_task(
+            app._on_inbound(jid, msg), name="on-inbound"
+        ),
+        on_chat_metadata_callback=lambda jid, ts, name=None: create_background_task(
+            store_chat_metadata(jid, ts, name), name="store-metadata"
         ),
         workspaces=lambda: app.workspaces,
         send_message=app.broadcast_to_channels,
-        on_reaction_callback=lambda jid, ts, user, emoji: asyncio.ensure_future(
-            app._on_reaction(jid, ts, user, emoji)
+        on_reaction_callback=lambda jid, ts, user, emoji: create_background_task(
+            app._on_reaction(jid, ts, user, emoji), name="on-reaction"
         ),
-        on_ask_user_answer_callback=lambda request_id, answer: asyncio.ensure_future(
-            app._on_ask_user_answer(request_id, answer)
+        on_ask_user_answer_callback=lambda request_id, answer: create_background_task(
+            app._on_ask_user_answer(request_id, answer), name="on-ask-user-answer"
         ),
     )
     app.channels = load_channels(app.plugin_manager, context)

@@ -450,7 +450,11 @@ class TestBroadcastConsistency:
 
         with _patch_test_settings(tmp_path):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
-            await app._execute_direct_command("group@g.us", group, msg, "echo hello world")
+            from pynchy.chat import message_handler
+
+            await message_handler.execute_direct_command(
+                app, "group@g.us", group, msg, "echo hello world"
+            )
 
         await capture.drain()
 
