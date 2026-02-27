@@ -157,7 +157,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
     if has_new_code and files_changed_between(old_sha, new_sha, "container/"):
         from pynchy.deploy import build_container_image
 
-        build = build_container_image()
+        build = await asyncio.to_thread(build_container_image)
         if not build.success:
             chat_jid = deps.admin_chat_jid()
             if chat_jid:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from pynchy.deploy import build_container_image, finalize_deploy
@@ -52,7 +53,7 @@ async def _handle_deploy(
         )
 
     if rebuild_container:
-        build = build_container_image()
+        build = await asyncio.to_thread(build_container_image)
         if not build.success and not build.skipped:
             await _deploy_error(
                 deps,
