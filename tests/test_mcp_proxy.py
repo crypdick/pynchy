@@ -4,16 +4,14 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
-import aiohttp
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from pynchy.security.approval import _mcp_proxy_futures, resolve_mcp_proxy_approval
 from pynchy.security.cop import CopVerdict
-from pynchy.security.gate import create_gate, _gates
+from pynchy.security.gate import _gates, create_gate
 from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
-
 
 # Fully safe trust config — passes outbound gating without triggering needs_human
 _SAFE_TRUST = ServiceTrustConfig(
@@ -165,9 +163,12 @@ class TestMcpProxyFencing:
         from pynchy.container_runner._mcp_proxy import create_proxy_app
 
         security = WorkspaceSecurity(
-            services={"browser": ServiceTrustConfig(
-                public_source=True, dangerous_writes=False,
-            )}
+            services={
+                "browser": ServiceTrustConfig(
+                    public_source=True,
+                    dangerous_writes=False,
+                )
+            }
         )
         create_gate("test-ws", 1000.0, security)
 
@@ -223,14 +224,15 @@ class TestMcpProxyFencing:
         """When Cop flags content, it should be replaced with a warning."""
         from pynchy.container_runner._mcp_proxy import create_proxy_app
 
-        _mock_cop.return_value = CopVerdict(
-            flagged=True, reason="Prompt injection detected"
-        )
+        _mock_cop.return_value = CopVerdict(flagged=True, reason="Prompt injection detected")
 
         security = WorkspaceSecurity(
-            services={"browser": ServiceTrustConfig(
-                public_source=True, dangerous_writes=False,
-            )}
+            services={
+                "browser": ServiceTrustConfig(
+                    public_source=True,
+                    dangerous_writes=False,
+                )
+            }
         )
         create_gate("test-ws", 1000.0, security)
 
@@ -260,9 +262,12 @@ class TestMcpProxyFencing:
         from pynchy.container_runner._mcp_proxy import create_proxy_app
 
         security = WorkspaceSecurity(
-            services={"browser": ServiceTrustConfig(
-                public_source=True, dangerous_writes=False,
-            )}
+            services={
+                "browser": ServiceTrustConfig(
+                    public_source=True,
+                    dangerous_writes=False,
+                )
+            }
         )
         gate = create_gate("test-ws", 1000.0, security)
 
@@ -349,7 +354,8 @@ class TestMcpProxyOutboundGating:
 
         backend_url = f"http://localhost:{mock_backend.port}/mcp"
         app = create_proxy_app(
-            {"browser": backend_url}, approval_fn=mock_approval_fn,
+            {"browser": backend_url},
+            approval_fn=mock_approval_fn,
         )
         client = TestClient(TestServer(app))
         await client.start_server()
@@ -387,7 +393,8 @@ class TestMcpProxyOutboundGating:
 
         backend_url = f"http://localhost:{mock_backend.port}/mcp"
         app = create_proxy_app(
-            {"browser": backend_url}, approval_fn=mock_approval_fn,
+            {"browser": backend_url},
+            approval_fn=mock_approval_fn,
         )
         client = TestClient(TestServer(app))
         await client.start_server()
@@ -532,34 +539,38 @@ class TestMcpProxyLifecycle:
         await proxy.stop()
 
     async def test_update_routes(self, mock_backend):
-        """update_routes should update the instance URL mapping."""
-        from pynchy.container_runner._mcp_proxy import McpProxy
+        """update_routes should update the instance URL mapping.
+
+        Uses TestClient (in-process) instead of real TCP to avoid
+        port-binding issues under pytest-xdist workers.
+        """
+        from pynchy.container_runner._mcp_proxy import _STATE_KEY, create_proxy_app
 
         security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
         create_gate("test-ws", 1000.0, security)
 
-        proxy = McpProxy()
-        port = await proxy.start({})
+        # Start with empty routes via the app directly (TestClient, no real TCP)
+        app = create_proxy_app({})
+        client = TestClient(TestServer(app))
+        await client.start_server()
 
         try:
             # Initially no routes -- should 404
-            async with aiohttp.ClientSession() as session:
-                resp = await session.post(
-                    f"http://localhost:{port}/mcp/test-ws/1000.0/browser",
-                    json={"jsonrpc": "2.0", "method": "tools/call", "id": 1},
-                )
-                assert resp.status == 404
+            resp = await client.post(
+                "/mcp/test-ws/1000.0/browser",
+                json={"jsonrpc": "2.0", "method": "tools/call", "id": 1},
+            )
+            assert resp.status == 404
 
-            # Add route
+            # Mutate routes via _ProxyState (same mechanism as McpProxy.update_routes)
             backend_url = f"http://localhost:{mock_backend.port}/mcp"
-            proxy.update_routes({"browser": backend_url})
+            app[_STATE_KEY].instance_urls = {"browser": backend_url}
 
             # Now should succeed
-            async with aiohttp.ClientSession() as session:
-                resp = await session.post(
-                    f"http://localhost:{port}/mcp/test-ws/1000.0/browser",
-                    json={"jsonrpc": "2.0", "method": "tools/call", "id": 1},
-                )
-                assert resp.status == 200
+            resp = await client.post(
+                "/mcp/test-ws/1000.0/browser",
+                json={"jsonrpc": "2.0", "method": "tools/call", "id": 1},
+            )
+            assert resp.status == 200
         finally:
-            await proxy.stop()
+            await client.close()

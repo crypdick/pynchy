@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from pynchy.integrations.plugins.playwright_browser import PlaywrightBrowserPlugin
 
 
@@ -16,7 +14,7 @@ class TestMcpServerSpec:
         assert isinstance(spec, dict)
         assert spec["name"] == "browser"
         assert spec["command"] == "npx"
-        assert "@anthropic-ai/playwright-mcp" in spec["args"][0]
+        assert "@playwright/mcp" in spec["args"][0]
         assert spec["port"] == 9100
         assert spec["transport"] == "streamable_http"
 
@@ -42,7 +40,13 @@ class TestSkillPaths:
 
 class TestSkillContent:
     def test_skill_md_has_frontmatter(self):
-        skill_md = Path(__file__).resolve().parent.parent / "container" / "skills" / "browser-control" / "SKILL.md"
+        skill_md = (
+            Path(__file__).resolve().parent.parent
+            / "container"
+            / "skills"
+            / "browser-control"
+            / "SKILL.md"
+        )
         assert skill_md.exists(), f"Expected skill at {skill_md}"
         content = skill_md.read_text()
         assert content.startswith("---")
@@ -55,8 +59,11 @@ class TestPluginRegistration:
         """Verify the plugin is registered in _BUILTIN_PLUGIN_SPECS."""
         from pynchy.plugin import _BUILTIN_PLUGIN_SPECS
 
-        entries = [(mod, cls, key) for mod, cls, key in _BUILTIN_PLUGIN_SPECS
-                   if key == "playwright-browser"]
+        entries = [
+            (mod, cls, key)
+            for mod, cls, key in _BUILTIN_PLUGIN_SPECS
+            if key == "playwright-browser"
+        ]
         assert len(entries) == 1
         mod_path, cls_name, _ = entries[0]
         assert mod_path == "pynchy.integrations.plugins.playwright_browser"
