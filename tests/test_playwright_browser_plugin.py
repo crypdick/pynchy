@@ -42,7 +42,7 @@ class TestSkillPaths:
 
 class TestSkillContent:
     def test_skill_md_has_frontmatter(self):
-        skill_md = Path("/Users/rdecal/src/PERSONAL/pynchy/.worktrees/mcp-security-gate/container/skills/browser-control/SKILL.md")
+        skill_md = Path(__file__).resolve().parent.parent / "container" / "skills" / "browser-control" / "SKILL.md"
         assert skill_md.exists(), f"Expected skill at {skill_md}"
         content = skill_md.read_text()
         assert content.startswith("---")

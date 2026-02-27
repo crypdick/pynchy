@@ -50,6 +50,8 @@ _SECURITY_WARNING = (
 
 def sanitize_markers(content: str) -> str:
     """Remove spoofed fence markers from content, including Unicode homoglyph bypasses."""
+    # translate() is a 1:1 character mapping, so offsets in normalized
+    # correspond exactly to offsets in the original content.
     normalized = content.translate(_HOMOGLYPH_MAP)
     result = content
     for match in reversed(list(_MARKER_PATTERN.finditer(normalized))):
