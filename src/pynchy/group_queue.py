@@ -9,13 +9,12 @@ up in the async finally block.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from pynchy.config import get_settings
-from pynchy.ipc._write import write_ipc_close_sentinel, write_ipc_message
+from pynchy.ipc._write import clean_ipc_input_dir, write_ipc_close_sentinel, write_ipc_message
 from pynchy.logger import logger
 from pynchy.security.middleware import PolicyDeniedError
 
@@ -271,24 +270,6 @@ class GroupQueue:
         state = self._get_group(group_jid)
         state.pending_tasks.clear()
 
-    @staticmethod
-    def _cleanup_ipc_input(group_folder: str | None) -> None:
-        """Remove stale IPC input files left by best-effort "btw " delivery.
-
-        Called after a task container exits so the next container (started
-        by _drain_group) doesn't ingest duplicates from both the SDK
-        message list and leftover IPC files.
-        """
-        if not group_folder:
-            return
-        input_dir = get_settings().data_dir / "ipc" / group_folder / "input"
-        if not input_dir.is_dir():
-            return
-        for f in input_dir.iterdir():
-            if f.suffix == ".json":
-                with contextlib.suppress(OSError):
-                    f.unlink()
-
     async def _run_for_group(self, group_jid: str, reason: str) -> None:
         """Run the process_messages_fn for a group.
 
@@ -356,7 +337,7 @@ class GroupQueue:
             # new container — prevents the next container from seeing
             # duplicates of "btw " messages that were best-effort
             # forwarded but never read by the now-dead task container.
-            self._cleanup_ipc_input(state.group_folder)
+            clean_ipc_input_dir(state.group_folder)
             state.release()
             self._active_count -= 1
             self._drain_group(group_jid)

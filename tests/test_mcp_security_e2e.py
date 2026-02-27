@@ -15,7 +15,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from pynchy.security.cop import CopVerdict
-from pynchy.security.gate import create_gate, destroy_gate, get_gate, _gates
+from pynchy.security.gate import _gates, create_gate, destroy_gate, get_gate
 from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
 
 
@@ -43,13 +43,15 @@ async def test_full_mcp_security_flow():
 
     # 1. Set up mock MCP backend
     async def backend_handler(request: web.Request) -> web.Response:
-        return web.json_response({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": {
-                "content": [{"type": "text", "text": "Hello from the web!"}],
-            },
-        })
+        return web.json_response(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "content": [{"type": "text", "text": "Hello from the web!"}],
+                },
+            }
+        )
 
     backend_app = web.Application()
     backend_app.router.add_route("*", "/mcp", backend_handler)
@@ -58,14 +60,16 @@ async def test_full_mcp_security_flow():
 
     try:
         # 2. Create SecurityGate with browser as public_source
-        security = WorkspaceSecurity(services={
-            "browser": ServiceTrustConfig(
-                public_source=True,
-                secret_data=False,
-                public_sink=False,
-                dangerous_writes=False,
-            ),
-        })
+        security = WorkspaceSecurity(
+            services={
+                "browser": ServiceTrustConfig(
+                    public_source=True,
+                    secret_data=False,
+                    public_sink=False,
+                    dangerous_writes=False,
+                ),
+            }
+        )
         gate = create_gate("e2e-ws", 42.0, security)
         assert not gate.policy.corruption_tainted
 
@@ -110,13 +114,15 @@ async def test_no_fencing_without_public_source():
     from pynchy.container_runner._mcp_proxy import create_proxy_app
 
     async def backend_handler(request: web.Request) -> web.Response:
-        return web.json_response({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": {
-                "content": [{"type": "text", "text": "Private data"}],
-            },
-        })
+        return web.json_response(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "content": [{"type": "text", "text": "Private data"}],
+                },
+            }
+        )
 
     backend_app = web.Application()
     backend_app.router.add_route("*", "/mcp", backend_handler)
@@ -124,11 +130,14 @@ async def test_no_fencing_without_public_source():
     await backend_server.start_server()
 
     try:
-        security = WorkspaceSecurity(services={
-            "notebook": ServiceTrustConfig(
-                public_source=False, dangerous_writes=False,
-            ),
-        })
+        security = WorkspaceSecurity(
+            services={
+                "notebook": ServiceTrustConfig(
+                    public_source=False,
+                    dangerous_writes=False,
+                ),
+            }
+        )
         gate = create_gate("e2e-ws", 42.0, security)
 
         proxy_app = create_proxy_app(
@@ -157,9 +166,11 @@ async def test_no_fencing_without_public_source():
 
 async def test_gate_isolation_between_sessions():
     """Taint from one session shouldn't affect another."""
-    security = WorkspaceSecurity(services={
-        "browser": ServiceTrustConfig(public_source=True),
-    })
+    security = WorkspaceSecurity(
+        services={
+            "browser": ServiceTrustConfig(public_source=True),
+        }
+    )
     gate1 = create_gate("ws1", 1.0, security)
     gate2 = create_gate("ws2", 2.0, security)
 
