@@ -271,12 +271,23 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
             # tool_result, system, metadata, result — all broadcast).
             await deps.handle_streamed_output(task.chat_jid, group, streamed)
 
+            # Reset idle timer on every output event so the timeout only
+            # fires after a period of complete silence.  Previously this
+            # only reset on streamed.result (the final event), which meant
+            # the timer never caught agents that hung mid-task.
+            if idle_timer:
+                idle_timer.reset()
             if streamed.result:
                 result = streamed.result
-                if idle_timer:
-                    idle_timer.reset()
             if streamed.status == "error":
                 error = streamed.error or "Unknown error"
+
+        # Start the idle timer before launching the agent so that a
+        # container that never produces any output still gets terminated.
+        # The session's own idle timer is disabled for scheduled tasks
+        # (idle_timeout_override=0.0), so this is the only idle protection.
+        if idle_timer:
+            idle_timer.reset()
 
         agent_result = await deps.run_agent(
             group,
