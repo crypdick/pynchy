@@ -303,12 +303,6 @@ class PynchyApp:
         """Delegates group processing to the message handler module."""
         return await message_handler.process_group_messages(self, chat_jid)
 
-    async def _execute_direct_command(
-        self, chat_jid: str, group: WorkspaceProfile, message: NewMessage, command: str
-    ) -> None:
-        """Delegates direct command execution to the message handler module."""
-        await message_handler.execute_direct_command(self, chat_jid, group, message, command)
-
     # ------------------------------------------------------------------
     # Internal delegation for session_handler (used by dep_factory adapters)
     async def _ingest_user_message(

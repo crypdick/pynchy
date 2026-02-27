@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from pynchy.chat.bus import resolve_target_jid
 from pynchy.logger import logger
+from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
     from pynchy.types import Channel
@@ -169,7 +170,7 @@ class TraceBatcher:
         loop = asyncio.get_running_loop()
         self._timers[chat_jid] = loop.call_later(
             self._cooldown,
-            lambda jid=chat_jid: asyncio.ensure_future(self.flush(jid)),
+            lambda jid=chat_jid: create_background_task(self.flush(jid), name="trace-flush"),
         )
 
     def _cancel_timer(self, chat_jid: str) -> None:
