@@ -21,6 +21,31 @@ from pynchy.ipc._write import write_ipc_response
 from pynchy.logger import logger
 
 
+def _sync_merge_and_check_deploy(
+    source_group: str, repo_ctx: Any
+) -> tuple[dict[str, Any], str, bool | None]:
+    """Synchronous git merge + deploy check — runs on a thread.
+
+    Returns (merge_result, pre_merge_sha, deploy_info) where deploy_info
+    is None if no deploy is needed, or a bool indicating whether a
+    container rebuild is required.
+    """
+    pre_merge_sha = get_head_sha(cwd=repo_ctx.root)
+    result = host_sync_worktree(source_group, repo_ctx)
+
+    deploy_info: bool | None = None
+    if result.get("success"):
+        post_merge_sha = get_head_sha(cwd=repo_ctx.root)
+        if (
+            pre_merge_sha != "unknown"
+            and pre_merge_sha != post_merge_sha
+            and needs_deploy(pre_merge_sha, post_merge_sha)
+        ):
+            deploy_info = needs_container_rebuild(pre_merge_sha, post_merge_sha)
+
+    return result, pre_merge_sha, deploy_info
+
+
 async def _handle_reset_context(
     data: dict[str, Any],
     source_group: str,
@@ -138,23 +163,19 @@ async def _handle_sync_worktree_to_main(
         write_ipc_response(result_dir / f"{request_id}.json", result)
         # PR policy doesn't change main — no worktree notifications or deploy needed
     else:
-        pre_merge_sha = get_head_sha(cwd=repo_ctx.root)
-        result = host_sync_worktree(source_group, repo_ctx)
+        # Run blocking git operations (fetch, merge, push, diff) on a thread
+        # to avoid blocking the event loop — same pattern as the PR path above.
+        result, pre_merge_sha, deploy_info = await asyncio.to_thread(
+            _sync_merge_and_check_deploy, source_group, repo_ctx
+        )
         write_ipc_response(result_dir / f"{request_id}.json", result)
 
         if result.get("success"):
-            post_merge_sha = get_head_sha(cwd=repo_ctx.root)
-
             # IpcDeps satisfies WorktreeNotifyDeps directly — no adapter needed.
             await host_notify_worktree_updates(source_group, deps, repo_ctx)
 
-            if (
-                pre_merge_sha != "unknown"
-                and pre_merge_sha != post_merge_sha
-                and needs_deploy(pre_merge_sha, post_merge_sha)
-            ):
-                rebuild = needs_container_rebuild(pre_merge_sha, post_merge_sha)
-                await deps.trigger_deploy(pre_merge_sha, rebuild=rebuild)
+            if deploy_info is not None:
+                await deps.trigger_deploy(pre_merge_sha, rebuild=deploy_info)
 
     logger.info(
         "sync_worktree_to_main handled",
