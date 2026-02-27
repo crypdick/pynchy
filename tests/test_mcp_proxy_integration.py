@@ -39,6 +39,7 @@ class TestBuildTrustMap:
             "browser_abc": MagicMock(server_name="browser"),
             "notebook_def": MagicMock(server_name="notebook"),
         }
+        mgr._plugin_trust_defaults = {}
 
         trust_map = mgr._build_trust_map()
         assert trust_map["browser_abc"]["public_source"] is False
@@ -50,10 +51,11 @@ class TestBuildTrustMap:
 
         mgr = McpManager.__new__(McpManager)
         mgr._instances = {
-            "a": MagicMock(),
-            "b": MagicMock(),
-            "c": MagicMock(),
+            "a": MagicMock(server_name="a"),
+            "b": MagicMock(server_name="b"),
+            "c": MagicMock(server_name="c"),
         }
+        mgr._plugin_trust_defaults = {}
 
         trust_map = mgr._build_trust_map()
         assert set(trust_map.keys()) == {"a", "b", "c"}
