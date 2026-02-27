@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from pynchy.container_runner._mcp_proxy import McpProxy
+from pynchy.container_runner._mcp_resolution import build_trust_map
 
 
 class TestMcpManagerHasProxy:
@@ -31,32 +32,24 @@ class TestBuildTrustMap:
 
     def test_defaults_to_not_public(self):
         """Default trust map should mark all instances as not public_source."""
-        from pynchy.container_runner.mcp_manager import McpManager
-
-        mgr = McpManager.__new__(McpManager)
-        mgr._instances = {
+        instances = {
             "browser_abc": MagicMock(server_name="browser"),
             "notebook_def": MagicMock(server_name="notebook"),
         }
-        mgr._plugin_trust_defaults = {}
 
-        trust_map = mgr._build_trust_map()
+        trust_map = build_trust_map(instances, {})
         assert trust_map["browser_abc"]["public_source"] is False
         assert trust_map["notebook_def"]["public_source"] is False
 
     def test_keys_match_instances(self):
         """Trust map keys should exactly match instance IDs."""
-        from pynchy.container_runner.mcp_manager import McpManager
-
-        mgr = McpManager.__new__(McpManager)
-        mgr._instances = {
+        instances = {
             "a": MagicMock(server_name="a"),
             "b": MagicMock(server_name="b"),
             "c": MagicMock(server_name="c"),
         }
-        mgr._plugin_trust_defaults = {}
 
-        trust_map = mgr._build_trust_map()
+        trust_map = build_trust_map(instances, {})
         assert set(trust_map.keys()) == {"a", "b", "c"}
 
 

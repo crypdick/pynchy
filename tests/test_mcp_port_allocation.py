@@ -11,7 +11,8 @@ from pynchy.container_runner._mcp_lifecycle import (
     _build_placeholders,
     expand_arg_placeholders,
 )
-from pynchy.container_runner.mcp_manager import McpInstance, McpManager
+from pynchy.container_runner._mcp_resolution import McpInstance, resolve_all_instances
+from pynchy.container_runner.mcp_manager import McpManager
 
 # ---------------------------------------------------------------------------
 # expand_arg_placeholders
@@ -123,7 +124,7 @@ class TestResolveAllInstancesPortOffset:
                 },
             },
         )
-        state = mgr._resolve_all_instances()
+        state = resolve_all_instances(mgr._settings, mgr._merged_mcp_servers)
         ports = sorted(inst.port for inst in state.instances.values())
         assert ports == [9100, 9101]
 
@@ -138,7 +139,7 @@ class TestResolveAllInstancesPortOffset:
                 },
             },
         )
-        state = mgr._resolve_all_instances()
+        state = resolve_all_instances(mgr._settings, mgr._merged_mcp_servers)
         inst = list(state.instances.values())[0]
         assert inst.port == 9100
 
@@ -163,7 +164,7 @@ class TestResolveAllInstancesPortOffset:
                 },
             },
         )
-        state = mgr._resolve_all_instances()
+        state = resolve_all_instances(mgr._settings, mgr._merged_mcp_servers)
         browser_ports = sorted(
             inst.port for inst in state.instances.values() if inst.server_name == "browser"
         )
@@ -188,7 +189,7 @@ class TestResolveAllInstancesPortOffset:
                 },
             },
         )
-        state = mgr._resolve_all_instances()
+        state = resolve_all_instances(mgr._settings, mgr._merged_mcp_servers)
         # Same instance ID (no kwargs → no hash), so only one instance
         assert len(state.instances) == 1
         inst = list(state.instances.values())[0]
@@ -204,6 +205,6 @@ class TestResolveAllInstancesPortOffset:
                 },
             },
         )
-        state = mgr._resolve_all_instances()
+        state = resolve_all_instances(mgr._settings, mgr._merged_mcp_servers)
         inst = list(state.instances.values())[0]
         assert inst.port is None

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+from pynchy.container_runner._mcp_resolution import build_trust_map
 from pynchy.types import ServiceTrustConfig
 
 
@@ -106,43 +107,33 @@ class TestPluginTrustExtraction:
 
 class TestBuildTrustMapWithPluginDefaults:
     def test_uses_plugin_trust_defaults(self):
-        """_build_trust_map should use plugin trust defaults for matching servers."""
-        from pynchy.container_runner.mcp_manager import McpManager
-
-        mgr = McpManager.__new__(McpManager)
-        mgr._instances = {
+        """build_trust_map should use plugin trust defaults for matching servers."""
+        instances = {
             "browser_abc": MagicMock(server_name="browser"),
         }
-        mgr._plugin_trust_defaults = {
+        plugin_trust_defaults = {
             "browser": ServiceTrustConfig(public_source=True, secret_data=False),
         }
 
-        trust_map = mgr._build_trust_map()
+        trust_map = build_trust_map(instances, plugin_trust_defaults)
         assert trust_map["browser_abc"]["public_source"] is True
         assert trust_map["browser_abc"]["secret_data"] is False
 
     def test_falls_back_to_safe_default(self):
         """Instances without plugin trust should get safe defaults."""
-        from pynchy.container_runner.mcp_manager import McpManager
-
-        mgr = McpManager.__new__(McpManager)
-        mgr._instances = {
+        instances = {
             "unknown_xyz": MagicMock(server_name="unknown"),
         }
-        mgr._plugin_trust_defaults = {}
 
-        trust_map = mgr._build_trust_map()
+        trust_map = build_trust_map(instances, {})
         assert trust_map["unknown_xyz"]["public_source"] is False
 
     def test_trust_map_includes_all_fields(self):
         """When plugin trust is present, all four trust fields should be in the map."""
-        from pynchy.container_runner.mcp_manager import McpManager
-
-        mgr = McpManager.__new__(McpManager)
-        mgr._instances = {
+        instances = {
             "email_srv": MagicMock(server_name="email"),
         }
-        mgr._plugin_trust_defaults = {
+        plugin_trust_defaults = {
             "email": ServiceTrustConfig(
                 public_source=True,
                 secret_data=True,
@@ -151,7 +142,7 @@ class TestBuildTrustMapWithPluginDefaults:
             ),
         }
 
-        trust_map = mgr._build_trust_map()
+        trust_map = build_trust_map(instances, plugin_trust_defaults)
         entry = trust_map["email_srv"]
         assert entry["public_source"] is True
         assert entry["secret_data"] is True
@@ -160,17 +151,14 @@ class TestBuildTrustMapWithPluginDefaults:
 
     def test_multiple_instances_same_server(self):
         """Multiple instances of the same server should all get the same plugin trust."""
-        from pynchy.container_runner.mcp_manager import McpManager
-
-        mgr = McpManager.__new__(McpManager)
-        mgr._instances = {
+        instances = {
             "browser_ws1": MagicMock(server_name="browser"),
             "browser_ws2": MagicMock(server_name="browser"),
         }
-        mgr._plugin_trust_defaults = {
+        plugin_trust_defaults = {
             "browser": ServiceTrustConfig(public_source=True, secret_data=False),
         }
 
-        trust_map = mgr._build_trust_map()
+        trust_map = build_trust_map(instances, plugin_trust_defaults)
         assert trust_map["browser_ws1"]["public_source"] is True
         assert trust_map["browser_ws2"]["public_source"] is True
