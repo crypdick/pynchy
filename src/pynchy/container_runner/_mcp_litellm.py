@@ -22,8 +22,9 @@ import aiohttp
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
+    from pynchy.container_runner._mcp_resolution import McpInstance
     from pynchy.container_runner.gateway import LiteLLMGateway
-    from pynchy.container_runner.mcp_manager import McpInstance, WorkspaceTeam
+    from pynchy.container_runner.mcp_manager import WorkspaceTeam
 
 
 # ---------------------------------------------------------------------------

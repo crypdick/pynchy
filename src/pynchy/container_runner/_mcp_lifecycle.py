@@ -1,9 +1,9 @@
 """MCP instance lifecycle — Docker container and script subprocess management.
 
 Standalone functions extracted from :class:`McpManager` so the manager
-module stays focused on resolution, sync, and workspace mapping.  Each
-function operates on a single :class:`McpInstance` and has no reference
-to the manager class itself.
+module stays focused on sync and workspace mapping.  Each function
+operates on a single :class:`McpInstance` and has no reference to the
+manager class itself.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from pynchy.logger import logger
 
 if TYPE_CHECKING:
     from pynchy.config_mcp import McpServerConfig
-    from pynchy.container_runner.mcp_manager import McpInstance
+    from pynchy.container_runner._mcp_resolution import McpInstance
 
 _NETWORK_NAME = "pynchy-litellm-net"
 

@@ -13,6 +13,7 @@ This package is split into focused submodules:
   _snapshots      — IPC snapshot file helpers
   _session        — Persistent container sessions and registry
   _orchestrator   — Container spawning and agent core resolution
+  _mcp_resolution — MCP instance resolution (config expansion, kwargs, trust map)
 """
 
 # Re-export public API so that `from pynchy.container_runner import X` keeps working.
