@@ -189,10 +189,10 @@ class TestCollectYamlEnvRefs:
         with (
             patch("pynchy.container_runner._docker.docker_available", return_value=True),
             patch(f"{_LITELLM_MOD}.docker_available", return_value=True),
-            patch(f"{_LITELLM_MOD}.run_docker", side_effect=fake_docker),
-            patch(f"{_DOCKER_MOD}.run_docker", side_effect=fake_docker),
-            patch(f"{_LITELLM_MOD}.ensure_image"),
-            patch(f"{_LITELLM_MOD}.ensure_network"),
+            patch(f"{_LITELLM_MOD}.run_docker", new_callable=AsyncMock, side_effect=fake_docker),
+            patch(f"{_DOCKER_MOD}.run_docker", new_callable=AsyncMock, side_effect=fake_docker),
+            patch(f"{_LITELLM_MOD}.ensure_image", new_callable=AsyncMock),
+            patch(f"{_LITELLM_MOD}.ensure_network", new_callable=AsyncMock),
             patch.object(gw, "_wait_postgres_healthy", new_callable=AsyncMock),
             patch(f"{_LITELLM_MOD}.wait_healthy", new_callable=AsyncMock),
         ):
@@ -255,10 +255,10 @@ class TestLiteLLMGatewayStart:
 
         with (
             patch(f"{_LITELLM_MOD}.docker_available", return_value=True),
-            patch(f"{_LITELLM_MOD}.run_docker", side_effect=fake_docker),
-            patch(f"{_DOCKER_MOD}.run_docker", side_effect=fake_docker),
-            patch(f"{_LITELLM_MOD}.ensure_image"),
-            patch(f"{_LITELLM_MOD}.ensure_network"),
+            patch(f"{_LITELLM_MOD}.run_docker", new_callable=AsyncMock, side_effect=fake_docker),
+            patch(f"{_DOCKER_MOD}.run_docker", new_callable=AsyncMock, side_effect=fake_docker),
+            patch(f"{_LITELLM_MOD}.ensure_image", new_callable=AsyncMock),
+            patch(f"{_LITELLM_MOD}.ensure_network", new_callable=AsyncMock),
             patch.object(gw, "_wait_postgres_healthy", new_callable=AsyncMock),
             patch(f"{_LITELLM_MOD}.wait_healthy", new_callable=AsyncMock),
         ):
@@ -287,8 +287,8 @@ class TestLiteLLMGatewayStart:
             return result
 
         with (
-            patch(f"{_LITELLM_MOD}.run_docker", side_effect=fake_docker),
-            patch(f"{_DOCKER_MOD}.run_docker", side_effect=fake_docker),
+            patch(f"{_LITELLM_MOD}.run_docker", new_callable=AsyncMock, side_effect=fake_docker),
+            patch(f"{_DOCKER_MOD}.run_docker", new_callable=AsyncMock, side_effect=fake_docker),
         ):
             await gw.stop()
 
