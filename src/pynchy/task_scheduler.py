@@ -307,7 +307,7 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
 
         # Merge worktree commits respecting the workspace's git_policy
         if not error and task.repo_access:
-            from pynchy.git_ops.worktree import merge_worktree_with_policy
+            from pynchy.git_ops._worktree_merge import merge_worktree_with_policy
 
             await merge_worktree_with_policy(task.group_folder)
     except Exception as exc:

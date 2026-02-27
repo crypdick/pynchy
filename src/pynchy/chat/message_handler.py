@@ -483,7 +483,7 @@ async def process_group_messages(
     await _advance_cursor(deps, chat_jid, final_cursor, previous_cursor)
 
     # Merge worktree commits into main and push for groups with repo_access
-    from pynchy.git_ops.worktree import background_merge_worktree
+    from pynchy.git_ops._worktree_merge import background_merge_worktree
 
     background_merge_worktree(group)
 

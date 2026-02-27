@@ -871,7 +871,9 @@ class TestResetContextExecution:
                 "pynchy.ipc._handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
-            patch("pynchy.git_ops.worktree.merge_worktree_with_policy", new_callable=AsyncMock),
+            patch(
+                "pynchy.git_ops._worktree_merge.merge_worktree_with_policy", new_callable=AsyncMock
+            ),
         ):
             (tmp_path / "data" / "ipc" / "admin-1").mkdir(parents=True)
             await dispatch(
@@ -896,7 +898,9 @@ class TestResetContextExecution:
                 "pynchy.ipc._handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
-            patch("pynchy.git_ops.worktree.merge_worktree_with_policy", new_callable=AsyncMock),
+            patch(
+                "pynchy.git_ops._worktree_merge.merge_worktree_with_policy", new_callable=AsyncMock
+            ),
         ):
             (tmp_path / "data" / "ipc" / "admin-1").mkdir(parents=True)
             await dispatch(
@@ -943,7 +947,9 @@ class TestResetContextExecution:
                 "pynchy.ipc._handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
-            patch("pynchy.git_ops.worktree.merge_worktree_with_policy", new_callable=AsyncMock),
+            patch(
+                "pynchy.git_ops._worktree_merge.merge_worktree_with_policy", new_callable=AsyncMock
+            ),
         ):
             (tmp_path / "data" / "ipc" / "admin-1").mkdir(parents=True)
             await dispatch(
@@ -970,7 +976,7 @@ class TestResetContextExecution:
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.git_ops.worktree.merge_worktree_with_policy",
+                "pynchy.git_ops._worktree_merge.merge_worktree_with_policy",
                 new_callable=AsyncMock,
                 side_effect=Exception("merge failed"),
             ),
@@ -1014,7 +1020,7 @@ class TestFinishedWorkExecution:
         assert "finished" in deps.host_messages[0][1].lower()
 
     async def test_finished_work_merges_worktree_for_pynchy_repo_access(self, deps):
-        with patch("pynchy.git_ops.worktree.background_merge_worktree") as mock_merge:
+        with patch("pynchy.git_ops._worktree_merge.background_merge_worktree") as mock_merge:
             await dispatch(
                 {
                     "type": "finished_work",
@@ -1031,7 +1037,7 @@ class TestFinishedWorkExecution:
 
     async def test_finished_work_skips_merge_for_non_pynchy_repo_access(self, deps):
         """When no matching group is found, background_merge_worktree is not called."""
-        with patch("pynchy.git_ops.worktree.background_merge_worktree") as mock_merge:
+        with patch("pynchy.git_ops._worktree_merge.background_merge_worktree") as mock_merge:
             await dispatch(
                 {
                     "type": "finished_work",
@@ -1059,7 +1065,7 @@ class TestFinishedWorkExecution:
 
     async def test_finished_work_host_message_sent_regardless_of_merge(self, deps):
         """finished_work always sends the host message; background merge is fire-and-forget."""
-        with patch("pynchy.git_ops.worktree.background_merge_worktree"):
+        with patch("pynchy.git_ops._worktree_merge.background_merge_worktree"):
             await dispatch(
                 {
                     "type": "finished_work",

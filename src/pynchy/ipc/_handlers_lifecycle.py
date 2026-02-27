@@ -63,7 +63,7 @@ async def _handle_reset_context(
         )
         return
 
-    from pynchy.git_ops.worktree import merge_worktree_with_policy
+    from pynchy.git_ops._worktree_merge import merge_worktree_with_policy
 
     try:
         await merge_worktree_with_policy(group_folder)
@@ -105,7 +105,7 @@ async def _handle_finished_work(
         logger.warning("finished_work missing chatJid", source_group=source_group)
         return
 
-    from pynchy.git_ops.worktree import background_merge_worktree
+    from pynchy.git_ops._worktree_merge import background_merge_worktree
 
     group = resolve_workspace_by_folder(source_group, deps)
     if group:
