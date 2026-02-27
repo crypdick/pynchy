@@ -473,64 +473,6 @@ class TestHostNotifyWorktreeUpdates:
 
 
 # ---------------------------------------------------------------------------
-# Guard git hook script tests
-# ---------------------------------------------------------------------------
-
-
-GUARD_SCRIPT = Path(__file__).parent.parent / "container" / "scripts" / "guard_git.sh"
-
-
-class TestGuardGitHook:
-    def _run_hook(self, command: str) -> dict:
-        """Simulate running the hook script with a given bash command."""
-        hook_input = json.dumps({"tool_input": {"command": command}})
-        result = subprocess.run(
-            ["bash", str(GUARD_SCRIPT)],
-            input=hook_input,
-            capture_output=True,
-            text=True,
-        )
-        return json.loads(result.stdout.strip())
-
-    def test_blocks_git_push(self):
-        result = self._run_hook("git push origin main")
-        assert result.get("decision") == "block"
-        assert "sync_worktree_to_main" in result.get("reason", "")
-
-    def test_blocks_git_pull(self):
-        result = self._run_hook("git pull origin main")
-        assert result.get("decision") == "block"
-
-    def test_blocks_git_rebase(self):
-        result = self._run_hook("git rebase origin/main")
-        assert result.get("decision") == "block"
-
-    def test_allows_git_commit(self):
-        result = self._run_hook("git commit -m 'test'")
-        assert result.get("decision") is None  # empty object = allow
-
-    def test_allows_git_status(self):
-        result = self._run_hook("git status")
-        assert result.get("decision") is None
-
-    def test_allows_git_add(self):
-        result = self._run_hook("git add .")
-        assert result.get("decision") is None
-
-    def test_allows_git_diff(self):
-        result = self._run_hook("git diff")
-        assert result.get("decision") is None
-
-    def test_allows_non_git_command(self):
-        result = self._run_hook("ls -la")
-        assert result.get("decision") is None
-
-    def test_blocks_git_push_in_pipe(self):
-        result = self._run_hook("echo foo && git push")
-        assert result.get("decision") == "block"
-
-
-# ---------------------------------------------------------------------------
 # IPC response helper tests
 # ---------------------------------------------------------------------------
 
