@@ -113,9 +113,7 @@ async def _proxy_handler(request: web.Request) -> web.Response:
     # Look up backend URL
     backend_url = state.instance_urls.get(instance_id)
     if backend_url is None:
-        return web.json_response(
-            {"error": f"Unknown MCP instance: {instance_id}"}, status=404
-        )
+        return web.json_response({"error": f"Unknown MCP instance: {instance_id}"}, status=404)
 
     # Look up SecurityGate
     gate = get_gate(group_folder, invocation_ts)
@@ -125,9 +123,7 @@ async def _proxy_handler(request: web.Request) -> web.Response:
             group=group_folder,
             invocation_ts=invocation_ts,
         )
-        return web.json_response(
-            {"error": "No security context for this session"}, status=403
-        )
+        return web.json_response({"error": "No security context for this session"}, status=403)
 
     # Forward to backend
     body = await request.read()
@@ -143,9 +139,7 @@ async def _proxy_handler(request: web.Request) -> web.Response:
     if rpc.get("method") == "tools/call":
         decision = gate.evaluate_write(instance_id, rpc.get("params", {}))
         if not decision.allowed:
-            return web.json_response(
-                {"error": f"Policy denied: {decision.reason}"}, status=403
-            )
+            return web.json_response({"error": f"Policy denied: {decision.reason}"}, status=403)
         if decision.needs_human:
             result = await _await_human_approval(
                 state, group_folder, instance_id, rpc, decision.reason or ""
@@ -155,9 +149,7 @@ async def _proxy_handler(request: web.Request) -> web.Response:
 
     # Filter out hop-by-hop headers that shouldn't be forwarded
     forwarded_headers = {
-        k: v
-        for k, v in request.headers.items()
-        if k.lower() not in ("host", "content-length")
+        k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length")
     }
 
     # Use the shared session (created by on_startup hook).
@@ -181,9 +173,7 @@ async def _proxy_handler(request: web.Request) -> web.Response:
             # Apply fencing to responses from public_source servers
             trust = state.trust_map.get(instance_id, {})
             if trust.get("public_source"):
-                response_body = await _apply_fencing(
-                    response_body, instance_id, gate, group_folder
-                )
+                response_body = await _apply_fencing(response_body, instance_id, gate, group_folder)
 
             return web.Response(
                 status=backend_resp.status,
@@ -191,12 +181,8 @@ async def _proxy_handler(request: web.Request) -> web.Response:
                 headers=response_headers,
             )
     except aiohttp.ClientError as exc:
-        logger.error(
-            "MCP proxy backend error", instance=instance_id, error=str(exc)
-        )
-        return web.json_response(
-            {"error": "MCP backend unavailable"}, status=502
-        )
+        logger.error("MCP proxy backend error", instance=instance_id, error=str(exc))
+        return web.json_response({"error": "MCP backend unavailable"}, status=502)
 
 
 async def _await_human_approval(
@@ -239,7 +225,7 @@ async def _await_human_approval(
 
     try:
         approved = await asyncio.wait_for(fut, timeout=APPROVAL_TIMEOUT_SECONDS)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning(
             "MCP proxy approval timed out",
             request_id=request_id[:8],
@@ -308,9 +294,7 @@ async def _apply_fencing(
                     "The page may contain unsafe content. Try a different page."
                 )
             else:
-                item["text"] = fence_untrusted_content(
-                    item["text"], source=f"mcp:{instance_id}"
-                )
+                item["text"] = fence_untrusted_content(item["text"], source=f"mcp:{instance_id}")
 
     return _json.dumps(data).encode()
 
