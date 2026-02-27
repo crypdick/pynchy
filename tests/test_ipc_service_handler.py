@@ -7,23 +7,38 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.config_models import (
-    ServiceTrustTomlConfig,
-    WorkspaceConfig,
-    WorkspaceSecurityTomlConfig,
-)
+from pynchy.config_models import WorkspaceConfig
 from pynchy.db import _init_test_database
 from pynchy.ipc._handlers_service import (
     _handle_service_request,
     clear_plugin_handler_cache,
 )
-from pynchy.types import WorkspaceProfile
+from pynchy.security.gate import _gates, create_gate
+from pynchy.types import ServiceTrustConfig, WorkspaceSecurity, WorkspaceProfile
 
 
 @pytest.fixture(autouse=True)
 async def _setup():
     await _init_test_database()
     clear_plugin_handler_cache()
+    yield
+    _gates.clear()
+
+
+@pytest.fixture
+def register_gate():
+    """Register a SecurityGate for a test workspace.
+
+    Returns a factory that creates and registers a gate with the given
+    service trust configs. The gate is cleaned up after each test by
+    the autouse _setup fixture which clears _gates.
+    """
+
+    def _make(source_group: str = "test-ws", **service_overrides: ServiceTrustConfig):
+        security = WorkspaceSecurity(services=dict(service_overrides))
+        return create_gate(source_group, 1000.0, security)
+
+    return _make
 
 
 class FakeDeps:
@@ -57,13 +72,18 @@ def _make_request(tool_name: str, request_id: str = "test-req-1", **kwargs) -> d
     }
 
 
-def _make_settings(ws_security: WorkspaceSecurityTomlConfig | None = None, **kwargs):
-    """Create a fake Settings with workspace security configured."""
+def _make_settings(**kwargs):
+    """Create a fake Settings with a basic workspace entry.
+
+    Security is now resolved via SecurityGate (registered in tests via
+    the register_gate fixture), so this only needs to provide a
+    WorkspaceConfig shell for non-security handler logic (cop gate, etc.).
+    """
 
     class FakeSettings:
         def __init__(self):
             self.workspaces = {
-                "test-ws": WorkspaceConfig(name="test", security=ws_security, **kwargs),
+                "test-ws": WorkspaceConfig(name="test", **kwargs),
             }
             self.services = {}
 
@@ -85,24 +105,22 @@ def _make_fake_plugin_manager(*tool_names: str, handler_fn=None):
 
 
 @pytest.mark.asyncio
-async def test_plugin_dispatch_calls_handler(tmp_path):
+async def test_plugin_dispatch_calls_handler(tmp_path, register_gate):
     """Test that a plugin-provided handler is called after policy allows."""
     mock_handler = AsyncMock(return_value={"result": {"status": "ok"}})
     fake_pm = _make_fake_plugin_manager("my_tool", handler_fn=mock_handler)
 
-    # All-safe service: no gating
-    settings = _make_settings(
-        ws_security=WorkspaceSecurityTomlConfig(
-            services={
-                "my_tool": ServiceTrustTomlConfig(
-                    public_source=False,
-                    secret_data=False,
-                    public_sink=False,
-                    dangerous_writes=False,
-                ),
-            },
+    # Register a gate with all-safe service: no gating
+    register_gate(
+        my_tool=ServiceTrustConfig(
+            public_source=False,
+            secret_data=False,
+            public_sink=False,
+            dangerous_writes=False,
         ),
     )
+
+    settings = _make_settings()
     settings.data_dir = tmp_path
 
     deps = FakeDeps({"test@g.us": TEST_GROUP})
@@ -123,18 +141,16 @@ async def test_plugin_dispatch_calls_handler(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_forbidden_tool_denied(tmp_path):
+async def test_forbidden_tool_denied(tmp_path, register_gate):
     """Test that a forbidden tool is denied."""
     fake_pm = _make_fake_plugin_manager("forbidden_tool")
-    settings = _make_settings(
-        ws_security=WorkspaceSecurityTomlConfig(
-            services={
-                "forbidden_tool": ServiceTrustTomlConfig(
-                    dangerous_writes="forbidden",
-                ),
-            },
-        ),
+
+    # Register a gate with forbidden dangerous_writes
+    register_gate(
+        forbidden_tool=ServiceTrustConfig(dangerous_writes="forbidden"),
     )
+
+    settings = _make_settings()
     settings.data_dir = tmp_path
 
     deps = FakeDeps({"test@g.us": TEST_GROUP})
@@ -155,21 +171,21 @@ async def test_forbidden_tool_denied(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_dangerous_writes_requires_human(tmp_path):
+async def test_dangerous_writes_requires_human(tmp_path, register_gate):
     """Test that dangerous_writes=True triggers human approval gate."""
     fake_pm = _make_fake_plugin_manager("sensitive_tool")
-    settings = _make_settings(
-        ws_security=WorkspaceSecurityTomlConfig(
-            services={
-                "sensitive_tool": ServiceTrustTomlConfig(
-                    public_source=False,
-                    secret_data=False,
-                    public_sink=False,
-                    dangerous_writes=True,
-                ),
-            },
+
+    # Register a gate with dangerous_writes=True
+    register_gate(
+        sensitive_tool=ServiceTrustConfig(
+            public_source=False,
+            secret_data=False,
+            public_sink=False,
+            dangerous_writes=True,
         ),
     )
+
+    settings = _make_settings()
     settings.data_dir = tmp_path
 
     deps = FakeDeps({"test@g.us": TEST_GROUP})
@@ -237,7 +253,12 @@ async def test_missing_request_id():
 
 @pytest.mark.asyncio
 async def test_fallback_security_for_unconfigured_workspace(tmp_path):
-    """Workspaces with no security config get maximally cautious defaults."""
+    """Workspaces with no gate and no security config get maximally cautious defaults.
+
+    This exercises the ephemeral gate fallback path: no gate registered,
+    resolve_security creates a default WorkspaceSecurity, and an ephemeral
+    SecurityGate is created for the request.
+    """
     fake_pm = _make_fake_plugin_manager("some_tool")
 
     class FakeSettings:
@@ -252,6 +273,7 @@ async def test_fallback_security_for_unconfigured_workspace(tmp_path):
 
     with (
         patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
+        patch("pynchy.config.get_settings", return_value=settings),
         patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
         patch("pynchy.security.approval.get_settings", return_value=settings),
     ):
@@ -269,22 +291,22 @@ async def test_fallback_security_for_unconfigured_workspace(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_safe_service_allowed(tmp_path):
+async def test_safe_service_allowed(tmp_path, register_gate):
     """A fully safe service (all False) passes without gating."""
     mock_handler = AsyncMock(return_value={"result": "ok"})
     fake_pm = _make_fake_plugin_manager("safe_tool", handler_fn=mock_handler)
-    settings = _make_settings(
-        ws_security=WorkspaceSecurityTomlConfig(
-            services={
-                "safe_tool": ServiceTrustTomlConfig(
-                    public_source=False,
-                    secret_data=False,
-                    public_sink=False,
-                    dangerous_writes=False,
-                ),
-            },
+
+    # Register a gate with all-safe service
+    register_gate(
+        safe_tool=ServiceTrustConfig(
+            public_source=False,
+            secret_data=False,
+            public_sink=False,
+            dangerous_writes=False,
         ),
     )
+
+    settings = _make_settings()
     settings.data_dir = tmp_path
 
     deps = FakeDeps({"test@g.us": TEST_GROUP})

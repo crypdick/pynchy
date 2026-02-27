@@ -120,6 +120,16 @@ async def _spawn_container(
     Raises OSError if the subprocess fails to start.
     """
     start_time = time.monotonic()
+
+    # Create session-scoped SecurityGate keyed by (group_folder, invocation_ts).
+    # Must exist before the container starts so IPC/MCP handlers can look it up.
+    from pynchy.security.gate import create_gate, resolve_security
+
+    security = resolve_security(group.folder, is_admin=input_data.is_admin)
+    invocation_ts = start_time
+    create_gate(group.folder, invocation_ts, security)
+    input_data.invocation_ts = invocation_ts
+
     s = get_settings()
     group_dir = s.groups_dir / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
@@ -159,9 +169,11 @@ async def _spawn_container(
         mcp_instance_count = len(mcp_mgr.get_workspace_instance_ids(group.folder))
         await mcp_mgr.ensure_workspace_running(group.folder)
 
-        # Provide direct MCP server URLs (bypasses LiteLLM MCP proxy which
-        # doesn't work with Claude SDK — see backlog/3-ready/mcp-gateway-transport.md).
-        direct_configs = mcp_mgr.get_direct_server_configs(group.folder)
+        # Route MCP traffic through the security proxy so SecurityGate can
+        # enforce policy and apply fencing on responses from untrusted sources.
+        direct_configs = mcp_mgr.get_direct_server_configs(
+            group.folder, invocation_ts=input_data.invocation_ts
+        )
         if direct_configs:
             input_data.mcp_direct_servers = direct_configs
     mcp_ms = (time.monotonic() - phase_start) * 1000

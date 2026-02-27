@@ -15,16 +15,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.config_models import ServiceTrustTomlConfig, WorkspaceSecurityTomlConfig
 from pynchy.db import _init_test_database
 from pynchy.ipc._handlers_service import _handle_service_request, clear_plugin_handler_cache
-from pynchy.types import WorkspaceProfile
+from pynchy.security.gate import _gates, create_gate
+from pynchy.types import ServiceTrustConfig, WorkspaceSecurity, WorkspaceProfile
 
 
 @pytest.fixture(autouse=True)
 async def _setup():
     await _init_test_database()
     clear_plugin_handler_cache()
+    yield
+    _gates.clear()
 
 
 @pytest.fixture
@@ -58,21 +60,22 @@ class FakeDeps:
         self.broadcast_messages.append((jid, text))
 
 
-def _make_ws_settings(tmp_path: Path, tool_name: str, trust: ServiceTrustTomlConfig):
-    """Build a Settings object with a workspace that has a specific tool trust config."""
+def _register_gate(
+    source_group: str,
+    tool_name: str,
+    trust: ServiceTrustConfig,
+) -> None:
+    """Register a SecurityGate with the given trust config for a tool."""
+    security = WorkspaceSecurity(services={tool_name: trust})
+    create_gate(source_group, 1000.0, security)
+
+
+def _make_ws_settings(tmp_path: Path):
+    """Build a minimal Settings object (security is now via SecurityGate)."""
 
     class FakeSettings:
         def __init__(self):
-            from pynchy.config_models import WorkspaceConfig
-
-            self.workspaces = {
-                "mygroup": WorkspaceConfig(
-                    name="Test",
-                    security=WorkspaceSecurityTomlConfig(
-                        services={tool_name: trust},
-                    ),
-                ),
-            }
+            self.workspaces = {}
             self.services = {}
             self.data_dir = tmp_path
 
@@ -102,16 +105,17 @@ class TestApprovalE2E:
         mock_handler = AsyncMock(return_value={"result": {"status": "posted"}})
         pm = _make_pm("x_post", handler_fn=mock_handler)
 
-        ws_settings = _make_ws_settings(
-            tmp_path,
+        _register_gate(
+            "mygroup",
             "x_post",
-            ServiceTrustTomlConfig(
+            ServiceTrustConfig(
                 public_source=False,
                 secret_data=False,
                 public_sink=False,
                 dangerous_writes=True,  # triggers needs_human
             ),
         )
+        ws_settings = _make_ws_settings(tmp_path)
         approval_settings = make_settings(data_dir=tmp_path)
 
         deps = FakeDeps({"chat@g.us": TEST_GROUP})
@@ -142,11 +146,15 @@ class TestApprovalE2E:
         assert "Approval required" in deps.broadcast_messages[0][1]
         assert "x_post" in deps.broadcast_messages[0][1]
 
-        # Step 2: User sends "approve aabb0011" via chat
+        # Read the actual short_id from the pending file (now random 2-char)
+        pending_data = json.loads(pending_path.read_text())
+        short_id = pending_data["short_id"]
+
+        # Step 2: User sends "approve <short_id>" via chat
         from pynchy.chat.approval_handler import handle_approval_command
 
         with patch("pynchy.security.approval.get_settings", return_value=approval_settings):
-            await handle_approval_command(deps, "chat@g.us", "approve", "aabb0011", "testuser")
+            await handle_approval_command(deps, "chat@g.us", "approve", short_id, "testuser")
 
         # Verify: decision file created
         decisions_dir = tmp_path / "ipc" / "mygroup" / "approval_decisions"
@@ -194,11 +202,12 @@ class TestApprovalE2E:
         """Service request with needs_human → deny → error response → container unblocked."""
         pm = _make_pm("x_post")
 
-        ws_settings = _make_ws_settings(
-            tmp_path,
+        _register_gate(
+            "mygroup",
             "x_post",
-            ServiceTrustTomlConfig(dangerous_writes=True),
+            ServiceTrustConfig(dangerous_writes=True),
         )
+        ws_settings = _make_ws_settings(tmp_path)
         approval_settings = make_settings(data_dir=tmp_path)
 
         deps = FakeDeps({"chat@g.us": TEST_GROUP})
@@ -216,11 +225,16 @@ class TestApprovalE2E:
             }
             await _handle_service_request(data, "mygroup", False, deps)
 
+        # Read the actual short_id from the pending file
+        pending_path = tmp_path / "ipc" / "mygroup" / "pending_approvals" / "ccdd556677889900.json"
+        pending_data = json.loads(pending_path.read_text())
+        short_id = pending_data["short_id"]
+
         # Step 2: User denies
         from pynchy.chat.approval_handler import handle_approval_command
 
         with patch("pynchy.security.approval.get_settings", return_value=approval_settings):
-            await handle_approval_command(deps, "chat@g.us", "deny", "ccdd5566", "testuser")
+            await handle_approval_command(deps, "chat@g.us", "deny", short_id, "testuser")
 
         # Step 3: IPC handler processes denial
         from pynchy.ipc._handlers_approval import process_approval_decision
@@ -247,16 +261,17 @@ class TestApprovalE2E:
         mock_handler = AsyncMock(return_value={"result": "ok"})
         pm = _make_pm("safe_tool", handler_fn=mock_handler)
 
-        ws_settings = _make_ws_settings(
-            tmp_path,
+        _register_gate(
+            "mygroup",
             "safe_tool",
-            ServiceTrustTomlConfig(
+            ServiceTrustConfig(
                 public_source=False,
                 secret_data=False,
                 public_sink=False,
                 dangerous_writes=False,
             ),
         )
+        ws_settings = _make_ws_settings(tmp_path)
 
         deps = FakeDeps({"chat@g.us": TEST_GROUP})
 

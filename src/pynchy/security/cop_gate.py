@@ -86,7 +86,7 @@ async def cop_gate(
 
     if request_id:
         # Request-reply: create a pending approval so the user can approve/deny
-        create_pending_approval(
+        short_id = create_pending_approval(
             request_id=request_id,
             tool_name=operation,
             source_group=source_group,
@@ -94,8 +94,6 @@ async def cop_gate(
             request_data=data,
             handler_type="ipc",
         )
-
-        short_id = request_id[:8]
         notification = format_approval_notification(operation, data, short_id)
         notification = f"[Cop flagged: {verdict.reason}]\n\n{notification}"
         await deps.broadcast_to_channels(chat_jid, notification)

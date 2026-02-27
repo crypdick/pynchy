@@ -1,7 +1,7 @@
 # MCP Proxy & Security Gate Design
 
 **Date:** 2026-02-26
-**Status:** Proposed
+**Status:** Implemented
 **Supersedes:** Portions of the Playwright browser plugin design (security middleware section)
 
 ## Summary

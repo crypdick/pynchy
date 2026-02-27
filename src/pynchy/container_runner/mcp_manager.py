@@ -41,12 +41,14 @@ from pynchy.container_runner._mcp_litellm import (
     sync_mcp_endpoints,
     sync_teams,
 )
+from pynchy.container_runner._mcp_proxy import McpProxy
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
     from pynchy.config import Settings
     from pynchy.config_mcp import McpServerConfig
     from pynchy.container_runner.gateway import LiteLLMGateway
+    from pynchy.types import ServiceTrustConfig
 
 _MCP_CONTAINER_PREFIX = "pynchy-mcp"
 
@@ -122,17 +124,23 @@ class McpManager:
         gateway: LiteLLMGateway,
         *,
         plugin_mcp_servers: dict[str, McpServerConfig] | None = None,
+        plugin_trust_defaults: dict[str, ServiceTrustConfig] | None = None,
     ) -> None:
         self._settings = settings
         self._gateway = gateway
         # Plugin-provided MCP servers — merged with config.toml in _merged_mcp_servers.
         # Config.toml always wins on name collision (same semantics as workspace specs).
         self._plugin_mcp_servers: dict[str, McpServerConfig] = plugin_mcp_servers or {}
+        # Plugin-declared trust metadata — used by _build_trust_map to populate
+        # the proxy's trust map with real values instead of safe defaults.
+        self._plugin_trust_defaults: dict[str, ServiceTrustConfig] = plugin_trust_defaults or {}
         self._instances: dict[str, McpInstance] = {}
         self._workspace_instances: dict[str, list[str]] = {}
         self._workspace_teams: dict[str, WorkspaceTeam] = {}
         self._teams_cache_path = settings.data_dir / "litellm" / "mcp_teams.json"
         self._idle_task: asyncio.Task[None] | None = None
+        self._proxy = McpProxy()
+        self._proxy_port: int = 0
 
     @property
     def _merged_mcp_servers(self) -> dict[str, McpServerConfig]:
@@ -194,6 +202,18 @@ class McpManager:
         if not self._instances:
             logger.info("No workspaces reference MCP servers — skipping MCP sync")
             return
+
+        # Start MCP proxy — all MCP traffic routes through it for security enforcement
+        instance_urls: dict[str, str] = {}
+        for iid, inst in self._instances.items():
+            cfg = inst.server_config
+            if cfg.type == "url":
+                instance_urls[iid] = cfg.url or ""
+            elif cfg.port is not None:
+                instance_urls[iid] = f"http://localhost:{cfg.port}"
+        trust_map = self._build_trust_map()
+        if instance_urls:
+            self._proxy_port = await self._proxy.start(instance_urls, trust_map=trust_map)
 
         logger.info(
             "Syncing MCP state to LiteLLM",
@@ -307,6 +327,8 @@ class McpManager:
 
     async def stop_all(self) -> None:
         """Shutdown: stop all managed Docker containers and script subprocesses."""
+        await self._proxy.stop()
+
         if self._idle_task is not None:
             self._idle_task.cancel()
             self._idle_task = None
@@ -391,39 +413,55 @@ class McpManager:
         """Get the list of MCP instance IDs for a workspace."""
         return self._workspace_instances.get(group_folder, [])
 
-    def get_direct_server_configs(self, group_folder: str) -> list[dict]:
-        """Get direct MCP connection configs for a workspace (bypasses LiteLLM).
+    def get_direct_server_configs(
+        self, group_folder: str, invocation_ts: float = 0.0
+    ) -> list[dict]:
+        """Get MCP connection configs for a workspace (routes through proxy).
 
-        Returns a list of dicts suitable for the agent runner's MCP config:
-        ``[{"name": "gdrive", "url": "http://host.docker.internal:3000", "transport": "sse"}, ...]``
+        Returns a list of dicts suitable for the agent runner's MCP config.
+        All traffic is routed through the MCP proxy for SecurityGate enforcement.
         """
         instance_ids = self.get_workspace_instance_ids(group_folder)
+        if not instance_ids or not self._proxy.port:
+            return []
+
+        host = get_settings().gateway.container_host
         configs: list[dict] = []
         for iid in instance_ids:
             instance = self._instances.get(iid)
             if instance is None:
                 continue
-            cfg = instance.server_config
-            if cfg.type == "url":
-                configs.append(
-                    {
-                        "name": iid,
-                        "url": cfg.url or "",
-                        "transport": cfg.transport,
-                    }
-                )
-            elif cfg.port is not None:
-                # Docker/script containers publish ports to localhost.
-                # Agent containers reach the host via host.docker.internal.
-                host = get_settings().gateway.container_host
-                configs.append(
-                    {
-                        "name": iid,
-                        "url": f"http://{host}:{cfg.port}",
-                        "transport": cfg.transport,
-                    }
-                )
+            configs.append(
+                {
+                    "name": iid,
+                    "url": f"http://{host}:{self._proxy.port}/mcp/{group_folder}/{invocation_ts}/{iid}",
+                    "transport": instance.server_config.transport,
+                }
+            )
         return configs
+
+    # ------------------------------------------------------------------
+    # Internal: trust
+    # ------------------------------------------------------------------
+
+    def _build_trust_map(self) -> dict[str, dict[str, Any]]:
+        """Build trust metadata for each instance (used by proxy for fencing decisions).
+
+        Priority: plugin defaults > safe fallback.
+        """
+        trust_map: dict[str, dict[str, Any]] = {}
+        for iid, instance in self._instances.items():
+            plugin_trust = self._plugin_trust_defaults.get(instance.server_name)
+            if plugin_trust:
+                trust_map[iid] = {
+                    "public_source": plugin_trust.public_source,
+                    "secret_data": plugin_trust.secret_data,
+                    "public_sink": plugin_trust.public_sink,
+                    "dangerous_writes": plugin_trust.dangerous_writes,
+                }
+            else:
+                trust_map[iid] = {"public_source": False}
+        return trust_map
 
     # ------------------------------------------------------------------
     # Internal: resolution

@@ -39,6 +39,7 @@ from pynchy.container_runner._gateway_litellm import (
     _load_or_create_persistent_key,
 )
 from pynchy.logger import logger
+from pynchy.types import ServiceTrustConfig
 
 # Re-export for backwards compatibility with existing imports
 __all__ = [
@@ -82,18 +83,23 @@ def get_gateway() -> LiteLLMGateway | BuiltinGateway | None:
 
 def _collect_plugin_mcp_servers(
     plugin_manager: pluggy.PluginManager | None,
-) -> dict[str, Any]:
-    """Collect MCP server specs from plugins and return as {name: spec_dict}.
+) -> tuple[dict[str, Any], dict[str, ServiceTrustConfig]]:
+    """Collect MCP server specs from plugins.
 
-    Each spec dict is the raw return value from ``pynchy_mcp_server_spec()`` —
-    conversion to ``McpServerConfig`` happens in ``McpManager``.
+    Returns ``(server_configs, trust_defaults)``.
+
+    The ``trust`` key is popped from each spec *before* ``McpServerConfig``
+    validation because that model uses ``extra="forbid"``.  Trust metadata
+    is returned separately so callers can flow it into the proxy's trust map.
     """
     if plugin_manager is None:
-        return {}
+        return {}, {}
 
     from pynchy.config_mcp import McpServerConfig
 
     result: dict[str, McpServerConfig] = {}
+    trust_defaults: dict[str, ServiceTrustConfig] = {}
+
     for raw in plugin_manager.hook.pynchy_mcp_server_spec():
         # Plugins can return a single dict or a list of dicts
         specs = raw if isinstance(raw, list) else [raw]
@@ -110,6 +116,9 @@ def _collect_plugin_mcp_servers(
                 logger.warning("Ignoring MCP server plugin spec without name", spec=spec)
                 continue
 
+            # Extract trust before McpServerConfig validation (extra="forbid")
+            trust = spec.pop("trust", None)
+
             try:
                 config = McpServerConfig.model_validate({"type": "script", **spec})
             except (ValueError, TypeError) as exc:
@@ -117,9 +126,13 @@ def _collect_plugin_mcp_servers(
                 continue
 
             result[name] = config
+
+            if trust and isinstance(trust, dict):
+                trust_defaults[name] = ServiceTrustConfig(**trust)
+
             logger.info("Collected plugin MCP server spec", name=name)
 
-    return result
+    return result, trust_defaults
 
 
 async def start_gateway(
@@ -160,12 +173,17 @@ async def start_gateway(
 
     # Sync MCP state to LiteLLM after gateway is ready (LiteLLM mode only).
     # Collect plugin-provided MCP server specs and merge with config.toml.
-    plugin_mcp_servers = _collect_plugin_mcp_servers(plugin_manager)
+    plugin_mcp_servers, plugin_trust_defaults = _collect_plugin_mcp_servers(plugin_manager)
     has_servers = s.mcp_servers or s.mcp_server_instances or plugin_mcp_servers
     if isinstance(_gateway, LiteLLMGateway) and has_servers:
         from pynchy.container_runner.mcp_manager import McpManager, set_mcp_manager
 
-        mcp_mgr = McpManager(s, _gateway, plugin_mcp_servers=plugin_mcp_servers)
+        mcp_mgr = McpManager(
+            s,
+            _gateway,
+            plugin_mcp_servers=plugin_mcp_servers,
+            plugin_trust_defaults=plugin_trust_defaults,
+        )
         set_mcp_manager(mcp_mgr)
         await mcp_mgr.sync()
 

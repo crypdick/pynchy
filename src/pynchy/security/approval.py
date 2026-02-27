@@ -19,7 +19,10 @@ See docs/plans/2026-02-24-human-approval-gate-design.md
 
 from __future__ import annotations
 
+import asyncio
 import json
+import random
+import string
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -28,9 +31,50 @@ from pynchy.ipc._write import ipc_response_path, write_ipc_response, write_json_
 from pynchy.logger import logger
 from pynchy.security.audit import record_security_event
 
+# Alphabet for short approval IDs: lowercase + digits = 36 chars.
+# 2-char IDs give 1296 combinations — more than enough for the handful
+# of concurrent pending approvals in a personal assistant.
+_SHORT_ID_ALPHABET = string.ascii_lowercase + string.digits
+
 # How long before a pending approval expires (seconds).
 # Matches the container-side IPC response poll timeout (300s).
 APPROVAL_TIMEOUT_SECONDS = 300
+
+
+# ---------------------------------------------------------------------------
+# MCP proxy approval futures -- awaited by the proxy HTTP handler
+# ---------------------------------------------------------------------------
+
+# Registry of in-flight MCP proxy approvals.  The proxy handler registers a
+# Future before broadcasting the approval request; the IPC approval handler
+# resolves it when the human responds.
+_mcp_proxy_futures: dict[str, asyncio.Future[bool]] = {}
+
+
+def register_mcp_proxy_approval(request_id: str) -> asyncio.Future[bool]:
+    """Register a Future for an MCP proxy approval request.
+
+    The proxy handler awaits this Future while the HTTP connection is held
+    open.  When the human approves/denies, resolve_mcp_proxy_approval()
+    completes the Future and the proxy returns the response.
+    """
+    loop = asyncio.get_running_loop()
+    fut = loop.create_future()
+    _mcp_proxy_futures[request_id] = fut
+    return fut
+
+
+def resolve_mcp_proxy_approval(request_id: str, approved: bool) -> bool:
+    """Resolve a pending MCP proxy approval Future.
+
+    Returns True if a matching Future was found and resolved, False otherwise.
+    Called by process_approval_decision() when handler_type="mcp_proxy".
+    """
+    fut = _mcp_proxy_futures.pop(request_id, None)
+    if fut is not None and not fut.done():
+        fut.set_result(approved)
+        return True
+    return False
 
 # Fields to omit from user-facing notification details
 _INTERNAL_FIELDS = frozenset({"type", "request_id", "source_group"})
@@ -56,6 +100,36 @@ def _approval_decisions_dir(source_group: str) -> Path:
     return d
 
 
+# -- Short ID generation -------------------------------------------------------
+
+
+def generate_short_id(source_group: str) -> str:
+    """Generate a unique 2-char [a-z0-9] short ID for an approval request.
+
+    Checks for collisions against existing pending approvals in the group.
+    With 1296 possible IDs and typically 0-3 concurrent approvals, collisions
+    are rare but handled gracefully.
+    """
+    pending_dir = _pending_approvals_dir(source_group)
+    existing: set[str] = set()
+    for filepath in pending_dir.glob("*.json"):
+        try:
+            data = json.loads(filepath.read_text())
+            if "short_id" in data:
+                existing.add(data["short_id"])
+        except (json.JSONDecodeError, OSError):
+            continue
+
+    for _ in range(100):
+        candidate = "".join(random.choices(_SHORT_ID_ALPHABET, k=2))
+        if candidate not in existing:
+            return candidate
+
+    # Extremely unlikely — 1296 pending approvals in one group.
+    # Fall back to 3-char ID.
+    return "".join(random.choices(_SHORT_ID_ALPHABET, k=3))
+
+
 # -- State operations ----------------------------------------------------------
 
 
@@ -66,7 +140,7 @@ def create_pending_approval(
     chat_jid: str,
     request_data: dict,
     handler_type: str = "service",
-) -> None:
+) -> str:
     """Write a pending approval file (PENDING state).
 
     The file contains everything needed to execute the request later,
@@ -76,12 +150,16 @@ def create_pending_approval(
         handler_type: How to dispatch on approval — "service" routes through
             plugin handlers (existing MCP flow), "ipc" routes through
             ipc._registry.dispatch() (host-mutating cop_gate flow).
+
+    Returns:
+        The generated 2-char short_id for this approval request.
     """
     pending_dir = _pending_approvals_dir(source_group)
+    short_id = generate_short_id(source_group)
 
     data = {
         "request_id": request_id,
-        "short_id": request_id[:8],
+        "short_id": short_id,
         "tool_name": tool_name,
         "source_group": source_group,
         "chat_jid": chat_jid,
@@ -95,10 +173,12 @@ def create_pending_approval(
     logger.info(
         "Pending approval created",
         request_id=request_id,
-        short_id=request_id[:8],
+        short_id=short_id,
         tool_name=tool_name,
         source_group=source_group,
     )
+
+    return short_id
 
 
 def list_pending_approvals(group: str | None = None) -> list[dict]:
@@ -140,7 +220,11 @@ def list_pending_approvals(group: str | None = None) -> list[dict]:
 
 
 def find_pending_by_short_id(short_id: str) -> dict | None:
-    """Find a pending approval matching the given short ID prefix."""
+    """Find a pending approval matching the given short ID.
+
+    Scans file contents for the ``short_id`` field. With typically 0-3
+    pending approvals across all groups, this is fast enough.
+    """
     s = get_settings()
     ipc_dir = s.data_dir / "ipc"
     if not ipc_dir.exists():
@@ -152,9 +236,11 @@ def find_pending_by_short_id(short_id: str) -> dict | None:
         pending_dir = group_dir / "pending_approvals"
         if not pending_dir.exists():
             continue
-        for filepath in pending_dir.glob(f"{short_id}*.json"):
+        for filepath in pending_dir.glob("*.json"):
             try:
-                return json.loads(filepath.read_text())
+                data = json.loads(filepath.read_text())
+                if data.get("short_id") == short_id:
+                    return data
             except (json.JSONDecodeError, OSError):
                 continue
     return None

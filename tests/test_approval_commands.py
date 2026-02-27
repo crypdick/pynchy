@@ -34,7 +34,7 @@ class TestIsApprovalCommand:
         result = is_approval_command("Approve A7F3B2C1")
         assert result == ("approve", "a7f3b2c1")
 
-    def test_rejects_non_hex_id(self):
+    def test_rejects_non_alnum_id(self):
         from pynchy.chat.commands import is_approval_command
 
         assert is_approval_command("approve not-hex!") is None
@@ -54,10 +54,23 @@ class TestIsApprovalCommand:
 
         assert is_approval_command("approve") is None
 
-    def test_rejects_short_id(self):
+    def test_accepts_2_char_id(self):
         from pynchy.chat.commands import is_approval_command
 
-        assert is_approval_command("approve ab") is None
+        result = is_approval_command("approve a7")
+        assert result == ("approve", "a7")
+
+    def test_rejects_1_char_id(self):
+        from pynchy.chat.commands import is_approval_command
+
+        assert is_approval_command("approve a") is None
+
+    def test_accepts_non_hex_alphanumeric(self):
+        from pynchy.chat.commands import is_approval_command
+
+        # 'z' and 'q' are not hex digits but should be accepted
+        result = is_approval_command("approve zq")
+        assert result == ("approve", "zq")
 
     def test_accepts_full_request_id(self):
         from pynchy.chat.commands import is_approval_command
