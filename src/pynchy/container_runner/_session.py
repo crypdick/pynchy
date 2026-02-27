@@ -179,8 +179,6 @@ class ContainerSession:
             group=self.group_folder,
             container=self.container_name,
         )
-        from pynchy.utils import create_background_task
-
         create_background_task(
             destroy_session(self.group_folder),
             name=f"idle-destroy-{self.group_folder}",

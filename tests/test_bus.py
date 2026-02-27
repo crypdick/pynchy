@@ -269,3 +269,40 @@ class TestFinalizeStreamOrBroadcast:
         await finalize_stream_or_broadcast(deps, "group@g.us", "text", {"other": "x"})
 
         ch.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_suppress_errors_lets_unexpected_errors_propagate_non_streaming(self):
+        """suppress_errors=True should let non-network errors propagate (matches broadcast)."""
+        ch = _make_channel(name="wa")
+        ch.send_message.side_effect = RuntimeError("bug in channel code")
+        deps = _make_deps([ch])
+
+        with pytest.raises(RuntimeError, match="bug in channel code"):
+            await finalize_stream_or_broadcast(
+                deps, "group@g.us", "text", {"other": "x"}, suppress_errors=True
+            )
+
+    @pytest.mark.asyncio
+    async def test_suppress_errors_lets_unexpected_errors_propagate_stream_fallback(self):
+        """suppress_errors=True should let non-network errors propagate from stream fallback."""
+        ch = _make_channel(name="slack", has_update=True)
+        ch.update_message.side_effect = OSError("stream update failed")
+        ch.send_message.side_effect = RuntimeError("bug in channel code")
+        deps = _make_deps([ch])
+
+        with pytest.raises(RuntimeError, match="bug in channel code"):
+            await finalize_stream_or_broadcast(
+                deps, "group@g.us", "text", {"slack": "msg-1"}, suppress_errors=True
+            )
+
+    @pytest.mark.asyncio
+    async def test_no_suppress_catches_all_in_finalize(self):
+        """suppress_errors=False should catch all exceptions (matches broadcast)."""
+        ch = _make_channel(name="wa")
+        ch.send_message.side_effect = RuntimeError("unexpected")
+        deps = _make_deps([ch])
+
+        # Should NOT raise — suppress_errors=False catches Exception
+        await finalize_stream_or_broadcast(
+            deps, "group@g.us", "text", {"other": "x"}, suppress_errors=False
+        )

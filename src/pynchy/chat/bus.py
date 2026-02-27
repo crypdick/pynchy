@@ -277,6 +277,12 @@ async def finalize_stream_or_broadcast(
         await broadcast(deps, chat_jid, text, suppress_errors=suppress_errors, source="agent")
         return
 
+    # Match broadcast()'s error handling: suppress_errors=True catches only
+    # network errors (letting programming bugs propagate); False catches all.
+    caught: tuple[type[BaseException], ...] = (
+        (OSError, TimeoutError, ConnectionError) if suppress_errors else (Exception,)
+    )
+
     # Resolve non-streaming targets via the shared helper
     send_targets = _resolve_send_targets(deps, chat_jid)
     send_target_names = {ch.name for ch, _ in send_targets}
@@ -305,7 +311,9 @@ async def finalize_stream_or_broadcast(
     all_target_names = sorted(stream_target_names | send_target_names)
     ledger_id = await _record_to_ledger(chat_jid, text, "agent", all_target_names)
 
-    # Deliver: update streamed messages in-place, falling back to send_message
+    # Deliver: update streamed messages in-place, falling back to send_message.
+    # update_message failures always trigger fallback (catch Exception);
+    # send_message failures respect suppress_errors via `caught`.
     for ch, msg_id, target_jid in stream_targets:
         try:
             await ch.update_message(target_jid, msg_id, text)
@@ -315,7 +323,7 @@ async def finalize_stream_or_broadcast(
             try:
                 await ch.send_message(target_jid, text)
                 await _mark_success(ledger_id, ch.name)
-            except Exception as exc:
+            except caught as exc:
                 logger.warning("Fallback send_message also failed", channel=ch.name, err=str(exc))
                 await _mark_error(ledger_id, ch.name, str(exc))
 
@@ -324,6 +332,6 @@ async def finalize_stream_or_broadcast(
         try:
             await ch.send_message(target_jid, text)
             await _mark_success(ledger_id, ch.name)
-        except Exception as exc:
+        except caught as exc:
             logger.warning("Channel send failed", channel=ch.name, err=str(exc))
             await _mark_error(ledger_id, ch.name, str(exc))
