@@ -532,5 +532,3 @@ async def _run_scheduled_task(
         # deploy resume messages that trigger unnecessary agent runs.
         await destroy_session(group.folder)
         deps.sessions.pop(group.folder, None)
-
-    return "success"
