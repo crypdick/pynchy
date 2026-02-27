@@ -53,8 +53,16 @@ def _is_model_not_found(exc: Exception) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _make_shell_executor(cwd: str):
-    """Create a shell executor bound to a specific working directory."""
+def _make_shell_executor(cwd: str, before_tool_hooks: list | None = None):
+    """Create a shell executor bound to a specific working directory.
+
+    Args:
+        cwd: Working directory for shell commands.
+        before_tool_hooks: Optional list of async hook functions with signature
+            ``async (tool_name: str, tool_input: dict) -> HookDecision``.
+            Each hook is called before the subprocess runs; if any returns
+            ``allowed=False`` the command is blocked without execution.
+    """
 
     async def executor(request: Any) -> str:
         """Execute a shell command inside the container."""
@@ -89,6 +97,15 @@ def _make_shell_executor(cwd: str):
         timeout_s = timeout_ms / 1000
 
         _log(f"Shell ({cwd}): {command[:200]}")
+
+        # Run BEFORE_TOOL_USE hooks before subprocess execution.
+        # Same hook signature as the Claude core: (tool_name, tool_input) -> HookDecision.
+        if before_tool_hooks:
+            for hook_fn in before_tool_hooks:
+                decision = await hook_fn("Bash", {"command": command})
+                if not decision.allowed:
+                    _log(f"Command blocked by hook: {decision.reason}")
+                    return f"Command blocked by security policy: {decision.reason}"
 
         try:
             proc = await asyncio.create_subprocess_shell(
@@ -168,6 +185,7 @@ class OpenAIAgentCore:
         self._instructions: str | None = None
         self._model_primary: str | None = None
         self._model_fallback: str | None = None
+        self._before_tool_hooks: list = []
         self._mcp_servers: list[MCPServerStdio | MCPServerSse | MCPServerStreamableHttp] = []
         self._mcp_contexts: list[Any] = []
         previous = _normalize_response_id(config.session_id)
@@ -213,7 +231,10 @@ class OpenAIAgentCore:
             instructions=self._instructions,
             model=model,
             tools=[
-                ShellTool(executor=_make_shell_executor(self.config.cwd)),
+                ShellTool(executor=_make_shell_executor(
+                    self.config.cwd,
+                    before_tool_hooks=self._before_tool_hooks,
+                )),
                 ApplyPatchTool(editor=_ContainerPatchEditor()),
                 WebSearchTool(),
             ],
@@ -246,10 +267,22 @@ class OpenAIAgentCore:
         self._model_primary = model
         self._model_fallback = self.config.extra.get("fallback_model", "openai/gpt-5.2-codex")
         self._instructions = instructions
+
+        # Build security hooks list (same hooks used by the Claude core)
+        from agent_runner.hooks import HookEvent, load_hooks
+        from agent_runner.security.bash_gate import bash_security_hook
+        from agent_runner.security.guard_git import guard_git_hook
+
+        self._before_tool_hooks = [bash_security_hook, guard_git_hook]
+        # Add plugin-provided BEFORE_TOOL_USE hooks
+        agnostic = load_hooks(self.config.plugin_hooks)
+        self._before_tool_hooks.extend(agnostic.get(HookEvent.BEFORE_TOOL_USE, []))
+
         _log(
             f"Creating agent with model={self._model_primary}, "
             f"fallback={self._model_fallback}, "
-            f"mcp_servers={len(self._mcp_servers)}"
+            f"mcp_servers={len(self._mcp_servers)}, "
+            f"security_hooks={len(self._before_tool_hooks)}"
         )
         self._agent = self._make_agent(self._model_primary)
 
