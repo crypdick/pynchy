@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -167,6 +166,7 @@ class TestStopAllStopsProxy:
         mgr._proxy = McpProxy()
         mgr._instances = {}
         mgr._idle_task = None
+        mgr._warm_task = None
 
         # Spy on the proxy stop method
         original_stop = mgr._proxy.stop
@@ -193,10 +193,13 @@ class TestOrchestratorPassesInvocationTs:
         ``get_direct_server_configs(..., invocation_ts=...)`` exists in the source.
         """
         import inspect
+
         from pynchy.container_runner import _orchestrator
 
         source = inspect.getsource(_orchestrator._spawn_container)
         assert "get_direct_server_configs" in source
         # The invocation_ts kwarg must appear in the get_direct_server_configs call
-        assert "invocation_ts=input_data.invocation_ts" in source or \
-               "invocation_ts=" in source.split("get_direct_server_configs")[1]
+        assert (
+            "invocation_ts=input_data.invocation_ts" in source
+            or "invocation_ts=" in source.split("get_direct_server_configs")[1]
+        )

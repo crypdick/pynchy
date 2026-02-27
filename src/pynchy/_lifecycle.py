@@ -27,6 +27,7 @@ from pynchy.chat.channel_runtime import (
 from pynchy.config import get_settings
 from pynchy.db import init_database, store_chat_metadata
 from pynchy.logger import logger
+from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
     from pynchy.app import PynchyApp
@@ -59,6 +60,12 @@ async def shutdown_app(app: PynchyApp, sig_name: str) -> None:
             await app.broadcast_host_message(admin_jid, f"Shutting down ({sig_name})")
     except Exception:
         logger.debug("Shutdown notification failed", exc_info=True)
+
+    # Cancel subsystem tasks first — prevents scheduler/IPC from creating
+    # new work while we're shutting down.
+    for task in app._subsystem_tasks:
+        task.cancel()
+    app._subsystem_tasks.clear()
 
     # Suppress reconnect attempts before cleanup.
     for ch in app.channels:
@@ -217,14 +224,25 @@ async def _start_subsystems(app: PynchyApp, repo_groups: dict[str, list[str]]) -
 
     s = get_settings()
 
-    asyncio.create_task(start_scheduler_loop(make_scheduler_deps(app)))
-    asyncio.create_task(start_ipc_watcher(make_ipc_deps(app)))
-    asyncio.create_task(start_host_git_sync_loop(make_git_sync_deps(app)))
+    app._subsystem_tasks.append(
+        create_background_task(start_scheduler_loop(make_scheduler_deps(app)), name="scheduler")
+    )
+    app._subsystem_tasks.append(
+        create_background_task(start_ipc_watcher(make_ipc_deps(app)), name="ipc-watcher")
+    )
+    app._subsystem_tasks.append(
+        create_background_task(start_host_git_sync_loop(make_git_sync_deps(app)), name="git-sync")
+    )
 
     for slug, _folders in repo_groups.items():
         repo_ctx = get_repo_context(slug)
         if repo_ctx and repo_ctx.root.resolve() != s.project_root.resolve():
-            asyncio.create_task(start_external_repo_sync_loop(repo_ctx, make_git_sync_deps(app)))
+            app._subsystem_tasks.append(
+                create_background_task(
+                    start_external_repo_sync_loop(repo_ctx, make_git_sync_deps(app)),
+                    name=f"git-sync-{slug}",
+                )
+            )
     app.queue.set_process_messages_fn(app._process_group_messages)
 
     check_tunnels(app.plugin_manager)

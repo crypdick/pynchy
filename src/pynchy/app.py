@@ -5,6 +5,7 @@ Lifecycle (startup phases, shutdown) lives in :mod:`_lifecycle`.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import TYPE_CHECKING, Any
 
@@ -65,6 +66,7 @@ class PynchyApp:
         self._http_runner: Any | None = None
         self._observers: list[Any] = []
         self._memory: Any | None = None
+        self._subsystem_tasks: list[asyncio.Task[None]] = []
         self.plugin_manager: pluggy.PluginManager | None = None
 
         # Shared broadcast infrastructure — single code path for all channel sends.
