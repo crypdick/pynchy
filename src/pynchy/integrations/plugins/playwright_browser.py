@@ -27,7 +27,7 @@ class PlaywrightBrowserPlugin:
         return {
             "name": "browser",
             "command": "npx",
-            "args": ["@anthropic-ai/playwright-mcp"],
+            "args": ["@playwright/mcp@latest"],
             "port": _BROWSER_MCP_PORT,
             "transport": "streamable_http",
             "idle_timeout": 300,
