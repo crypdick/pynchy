@@ -145,6 +145,22 @@ Admin workspaces cannot have public_source MCPs (clean room policy).
 
 For web browsing, email, or other untrusted-input tasks, use a non-admin workspace.
 
+## Bash Command Gating
+
+Agents have access to a general-purpose Bash tool. The bash security gate inspects every command before it runs, using the same taint tracking as the service trust policy above.
+
+**Safe commands always execute.** Common development tools — `ls`, `cat`, `grep`, `sed`, `jq`, `find`, `git`, `wc`, and dozens more — are on a local whitelist. These cannot reach the network and run without any delay or IPC.
+
+**Network commands are gated when tainted.** Commands like `curl`, `wget`, `python`, `ssh`, `pip install`, and similar network-capable tools are evaluated against the session's taint state:
+
+- **No taint** — the command runs. There is no sensitive data to exfiltrate.
+- **Corruption tainted only** — the Cop (LLM-based inspector) reviews the command. If the Cop flags it, the command is denied.
+- **Both corruption and secret tainted** — the command requires human approval before executing, just like the lethal trifecta gate for service writes.
+
+**Unknown commands get Cop review.** Commands not on either the safe or network list are sent to the Cop for inspection. If the Cop flags the command and both taint flags are set, the decision escalates to human approval.
+
+No configuration is needed — the bash security gate is always active. For technical details, see [Bash Security Gate](../architecture/security.md#5a-bash-security-gate).
+
 ## Host-Mutating Operations
 
 Certain IPC operations can change what code runs on the host: merging code, registering new workspaces, scheduling tasks, and running host commands. These are automatically inspected by the **Cop** — an LLM-based security reviewer.

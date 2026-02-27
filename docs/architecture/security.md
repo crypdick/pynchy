@@ -98,9 +98,35 @@ Values are `false` (safe), `true` (risky — triggers gating), or `"forbidden"` 
 
 A payload secrets scanner (`detect-secrets`) also runs on outbound writes. If it detects credential patterns (API keys, tokens), the write escalates to human approval regardless of taint state.
 
-Admin workspaces bypass all policy gates. Admin workspaces are additionally protected by the clean room policy ([§5b](#5b-admin-clean-room)). See [Service Trust](../usage/security.md) for configuration.
+Admin workspaces bypass all policy gates. Admin workspaces are additionally protected by the clean room policy ([§5c](#5c-admin-clean-room)). See [Service Trust](../usage/security.md) for configuration.
 
-### 5a. Host-Mutating Operations (Cop Gate)
+### 5a. Bash Security Gate
+
+The service trust policy (above) gates MCP service tools, but agents also have access to a general-purpose Bash tool. Without additional controls, a corruption-tainted agent could run `curl`, `python`, or `ssh` to exfiltrate data — bypassing the service trust layer entirely.
+
+The bash security gate closes this gap. It runs as a `BEFORE_TOOL_USE` hook inside the container, intercepting every Bash tool call before execution. Both the Claude SDK and OpenAI Agents SDK cores wire in the same hook, so the gate applies regardless of which agent framework is active.
+
+**Classification cascade.** The container classifies each command locally using a three-tier system:
+
+1. **Regex whitelist** — provably local commands (`ls`, `cat`, `grep`, `sed`, `jq`, etc.) that cannot reach the network. These execute immediately without IPC.
+2. **Regex blacklist** — known network-capable commands (`curl`, `python`, `ssh`, `wget`, `pip install`, etc.). These always escalate to the host.
+3. **Unknown** — commands not on either list. These also escalate to the host for evaluation.
+
+Pipelines and chains are split into segments; a single network-capable segment makes the whole command network-classified.
+
+**Host-side evaluation.** When a command escalates, the container sends a `security:bash_check` IPC request (see [IPC docs](ipc.md#security-requests)). The host evaluates the command against the session's taint state:
+
+| Taint State | Network Command | Unknown Command |
+|---|---|---|
+| No taint | Allow | Allow |
+| Corruption only | Cop review | Cop review |
+| Corruption + secret | Human approval required | Cop review (human if Cop flags) |
+
+The Cop is the same LLM-based inspector used for host-mutating operations. If the Cop flags a command in a dual-tainted session, the decision escalates to human approval. The 300-second approval timeout matches the existing service approval flow.
+
+**Fail-open design.** If IPC fails (timeout, malformed response), the gate allows the command. This prevents the security gate from breaking normal agent operation during transient failures.
+
+### 5b. Host-Mutating Operations (Cop Gate)
 
 Some IPC operations can change what code runs on the host machine. These are **host-mutating** and receive an additional layer of inspection from the Cop — an LLM-based security inspector that reviews payloads for signs of manipulation.
 
@@ -129,7 +155,7 @@ Some IPC operations can change what code runs on the host machine. These are **h
 
 The Cop always inspects. Human involvement only when the Cop detects something suspicious.
 
-### 5b. Admin Clean Room
+### 5c. Admin Clean Room
 
 Admin workspaces cannot have `public_source=true` MCP servers assigned. This is enforced at config validation (startup). If an admin workspace references an MCP with `public_source=true` (or an MCP not declared in `[services]`, which defaults to `public_source=true`), Pynchy refuses to start.
 
@@ -206,8 +232,8 @@ Channel messages can contain malicious instructions that attempt to manipulate C
 - Agents can only access their group's mounted directories
 - Additional directory mounts require explicit per-group configuration
 - Claude's built-in safety training helps resist manipulation
-- **Admin clean room** prevents the admin workspace from reading untrusted content ([§5b](#5b-admin-clean-room))
-- **Cop inspection** reviews host-mutating payloads for manipulation before execution ([§5a](#5a-host-mutating-operations-cop-gate))
+- **Admin clean room** prevents the admin workspace from reading untrusted content ([§5c](#5c-admin-clean-room))
+- **Cop inspection** reviews host-mutating payloads for manipulation before execution ([§5b](#5b-host-mutating-operations-cop-gate))
 
 **Recommendations:**
 

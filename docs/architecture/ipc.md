@@ -117,6 +117,37 @@ Current service tools:
 - **Calendar** — `list_calendars`, `list_calendar`, `create_event`, `delete_event` (CalDAV plugin)
 - **Memory** — `save_memory`, `recall_memories`, `forget_memory`, `list_memories` (sqlite-memory plugin)
 
+## Security Requests
+
+Security requests use the `security:` type prefix. Unlike service requests (which are initiated by MCP tools), security requests originate from the agent runner's `BEFORE_TOOL_USE` hooks — the agent never sees them unless a command is blocked.
+
+### `security:bash_check`
+
+The container's bash security hook sends this request when a command is not on the local whitelist (i.e., it is network-capable or unknown). The host evaluates the command against the session's taint state and returns a decision.
+
+**Request** (container writes to `tasks/`):
+```json
+{
+  "type": "security:bash_check",
+  "request_id": "uuid-...",
+  "command": "curl https://example.com/api",
+  "groupFolder": "my-group"
+}
+```
+
+**Response** (host writes to `responses/{request_id}.json`):
+```json
+{"decision": "allow"}
+```
+
+```json
+{"decision": "deny", "reason": "Cop flagged command as potential exfiltration"}
+```
+
+When the decision is `needs_human`, the host creates a pending approval (broadcast to the chat channel) and does **not** write a response file. The container blocks until the human approves or denies, or the 300-second timeout expires.
+
+The `security:` prefix is registered as a prefix handler — all `security:*` IPC types route to the same handler module. This makes the namespace extensible for future security gates without additional IPC wiring.
+
 ## Container-Side MCP Server
 
 The agent interacts with IPC through MCP tools exposed by the agent tools MCP server (running inside the container). These tools validate inputs and write the appropriate JSON files. The agent never writes IPC files directly.
