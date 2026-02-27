@@ -558,9 +558,9 @@ class TestMergeWorktreeWithPolicy:
                 "pynchy.git_ops.sync.resolve_git_policy",
                 return_value=GIT_POLICY_MERGE,
             ),
-            patch("pynchy.git_ops.worktree.merge_and_push_worktree") as mock_merge,
+            patch("pynchy.git_ops._worktree_merge.merge_and_push_worktree") as mock_merge,
         ):
-            from pynchy.git_ops.worktree import merge_worktree_with_policy
+            from pynchy.git_ops._worktree_merge import merge_worktree_with_policy
 
             await merge_worktree_with_policy("agent-1")
 
@@ -580,7 +580,7 @@ class TestMergeWorktreeWithPolicy:
             ),
             patch("pynchy.git_ops.sync.host_create_pr_from_worktree") as mock_pr,
         ):
-            from pynchy.git_ops.worktree import merge_worktree_with_policy
+            from pynchy.git_ops._worktree_merge import merge_worktree_with_policy
 
             await merge_worktree_with_policy("agent-1")
 
@@ -595,7 +595,7 @@ class TestMergeWorktreeWithPolicy:
             ),
             patch("pynchy.git_ops.sync.resolve_git_policy") as mock_policy,
         ):
-            from pynchy.git_ops.worktree import merge_worktree_with_policy
+            from pynchy.git_ops._worktree_merge import merge_worktree_with_policy
 
             await merge_worktree_with_policy("no-repo")
 
@@ -609,7 +609,7 @@ class TestBackgroundMergePolicy:
         group.folder = "agent-1"
 
         with patch("pynchy.utils.create_background_task") as mock_task:
-            from pynchy.git_ops.worktree import background_merge_worktree
+            from pynchy.git_ops._worktree_merge import background_merge_worktree
 
             background_merge_worktree(group)
 
@@ -624,7 +624,7 @@ class TestBackgroundMergePolicy:
         group.folder = "no-repo"
 
         with patch("pynchy.utils.create_background_task") as mock_task:
-            from pynchy.git_ops.worktree import background_merge_worktree
+            from pynchy.git_ops._worktree_merge import background_merge_worktree
 
             background_merge_worktree(group)
 

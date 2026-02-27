@@ -1,5 +1,10 @@
 """Git operations — sync, worktrees, and shared helpers."""
 
+from pynchy.git_ops._worktree_merge import (
+    merge_and_push_worktree,
+    merge_worktree,
+    merge_worktree_with_policy,
+)
 from pynchy.git_ops._worktree_notify import WorktreeNotifyDeps, host_notify_worktree_updates
 from pynchy.git_ops.sync import (
     GitSyncDeps,
@@ -27,9 +32,6 @@ from pynchy.git_ops.worktree import (
     WorktreeResult,
     ensure_worktree,
     install_pre_commit_hooks,
-    merge_and_push_worktree,
-    merge_worktree,
-    merge_worktree_with_policy,
     reconcile_worktrees_at_startup,
 )
 
