@@ -19,6 +19,7 @@ See docs/plans/2026-02-24-human-approval-gate-design.md
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -31,6 +32,42 @@ from pynchy.security.audit import record_security_event
 # How long before a pending approval expires (seconds).
 # Matches the container-side IPC response poll timeout (300s).
 APPROVAL_TIMEOUT_SECONDS = 300
+
+
+# ---------------------------------------------------------------------------
+# MCP proxy approval futures -- awaited by the proxy HTTP handler
+# ---------------------------------------------------------------------------
+
+# Registry of in-flight MCP proxy approvals.  The proxy handler registers a
+# Future before broadcasting the approval request; the IPC approval handler
+# resolves it when the human responds.
+_mcp_proxy_futures: dict[str, asyncio.Future[bool]] = {}
+
+
+def register_mcp_proxy_approval(request_id: str) -> asyncio.Future[bool]:
+    """Register a Future for an MCP proxy approval request.
+
+    The proxy handler awaits this Future while the HTTP connection is held
+    open.  When the human approves/denies, resolve_mcp_proxy_approval()
+    completes the Future and the proxy returns the response.
+    """
+    loop = asyncio.get_running_loop()
+    fut = loop.create_future()
+    _mcp_proxy_futures[request_id] = fut
+    return fut
+
+
+def resolve_mcp_proxy_approval(request_id: str, approved: bool) -> bool:
+    """Resolve a pending MCP proxy approval Future.
+
+    Returns True if a matching Future was found and resolved, False otherwise.
+    Called by process_approval_decision() when handler_type="mcp_proxy".
+    """
+    fut = _mcp_proxy_futures.pop(request_id, None)
+    if fut is not None and not fut.done():
+        fut.set_result(approved)
+        return True
+    return False
 
 # Fields to omit from user-facing notification details
 _INTERNAL_FIELDS = frozenset({"type", "request_id", "source_group"})

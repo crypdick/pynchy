@@ -125,7 +125,9 @@ async def test_no_fencing_without_public_source():
 
     try:
         security = WorkspaceSecurity(services={
-            "notebook": ServiceTrustConfig(public_source=False),
+            "notebook": ServiceTrustConfig(
+                public_source=False, dangerous_writes=False,
+            ),
         })
         gate = create_gate("e2e-ws", 42.0, security)
 

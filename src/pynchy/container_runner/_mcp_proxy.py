@@ -4,14 +4,18 @@ Lightweight aiohttp server managed by McpManager. Single port, path-based
 routing: POST /mcp/<group_folder>/<invocation_ts>/<instance_id>
 
 Applies:
-- SecurityGate policy evaluation on every request
-- Untrusted content fencing on responses from public_source=true servers
+- Outbound gating: evaluate_write() on tools/call before forwarding
+  (forbidden → 403, needs_human → block until human approves/denies)
+- Inbound fencing: untrusted content fencing on responses from public_source servers
 - Cop inspection on responses from public_source=true servers
 """
 
 from __future__ import annotations
 
+import asyncio
 import json as _json
+import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -19,9 +23,16 @@ import aiohttp
 from aiohttp import web
 
 from pynchy.logger import logger
+from pynchy.security.approval import APPROVAL_TIMEOUT_SECONDS, register_mcp_proxy_approval
 from pynchy.security.cop import inspect_inbound
 from pynchy.security.fencing import fence_untrusted_content
 from pynchy.security.gate import SecurityGate, get_gate
+
+# Callback to request human approval.  Provided by the orchestrator at
+# construction time.  Signature: (group_folder, tool_name, request_data,
+# request_id) -> None.  The implementation writes the pending file and
+# broadcasts the notification to chat channels.
+ApprovalRequestFn = Callable[[str, str, dict, str], Awaitable[None]]
 
 
 @dataclass
@@ -36,6 +47,7 @@ class _ProxyState:
     instance_urls: dict[str, str] = field(default_factory=dict)
     trust_map: dict[str, dict[str, Any]] = field(default_factory=dict)
     http_session: aiohttp.ClientSession | None = None
+    approval_fn: ApprovalRequestFn | None = None
 
 
 # Typed app key -- set once at construction, never reassigned.
@@ -46,6 +58,7 @@ def create_proxy_app(
     instance_urls: dict[str, str],
     *,
     trust_map: dict[str, dict[str, Any]] | None = None,
+    approval_fn: ApprovalRequestFn | None = None,
 ) -> web.Application:
     """Create the aiohttp proxy application.
 
@@ -53,11 +66,15 @@ def create_proxy_app(
         instance_urls: Mapping of instance_id -> backend URL.
         trust_map: Mapping of instance_id -> trust properties dict.
             Used to decide whether to apply fencing (public_source=True).
+        approval_fn: Callback for human approval requests.  When a tools/call
+            triggers needs_human, the proxy calls this to write the pending
+            file and broadcast to chat, then blocks until the human responds.
     """
     app = web.Application()
     app[_STATE_KEY] = _ProxyState(
         instance_urls=instance_urls,
         trust_map=trust_map or {},
+        approval_fn=approval_fn,
     )
     app.router.add_route(
         "*",
@@ -116,6 +133,26 @@ async def _proxy_handler(request: web.Request) -> web.Response:
     body = await request.read()
     target_url = backend_url + tail
 
+    # Outbound gating: evaluate_write() on tools/call requests before forwarding.
+    # Non-JSON or non-tools/call requests pass through ungated.
+    try:
+        rpc = _json.loads(body) if body else {}
+    except (ValueError, UnicodeDecodeError):
+        rpc = {}
+
+    if rpc.get("method") == "tools/call":
+        decision = gate.evaluate_write(instance_id, rpc.get("params", {}))
+        if not decision.allowed:
+            return web.json_response(
+                {"error": f"Policy denied: {decision.reason}"}, status=403
+            )
+        if decision.needs_human:
+            result = await _await_human_approval(
+                state, group_folder, instance_id, rpc, decision.reason or ""
+            )
+            if result is not None:
+                return result
+
     # Filter out hop-by-hop headers that shouldn't be forwarded
     forwarded_headers = {
         k: v
@@ -160,6 +197,72 @@ async def _proxy_handler(request: web.Request) -> web.Response:
         return web.json_response(
             {"error": "MCP backend unavailable"}, status=502
         )
+
+
+async def _await_human_approval(
+    state: _ProxyState,
+    group_folder: str,
+    instance_id: str,
+    rpc: dict,
+    reason: str,
+) -> web.Response | None:
+    """Block the HTTP connection until the human approves or denies.
+
+    Returns a web.Response to send back to the client if denied/timed out,
+    or None if approved (caller should proceed to forward the request).
+    """
+    if state.approval_fn is None:
+        return web.json_response(
+            {
+                "error": (
+                    "This action requires human approval but no approval "
+                    "handler is configured. Ask the user to perform this "
+                    f"action directly. Reason: {reason}"
+                ),
+            },
+            status=403,
+        )
+
+    request_id = str(uuid.uuid4())
+    fut = register_mcp_proxy_approval(request_id)
+
+    tool_name = rpc.get("params", {}).get("name", instance_id)
+    await state.approval_fn(group_folder, tool_name, rpc, request_id)
+
+    logger.info(
+        "MCP proxy awaiting human approval",
+        tool_name=tool_name,
+        group=group_folder,
+        request_id=request_id[:8],
+        reason=reason,
+    )
+
+    try:
+        approved = await asyncio.wait_for(fut, timeout=APPROVAL_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        logger.warning(
+            "MCP proxy approval timed out",
+            request_id=request_id[:8],
+            group=group_folder,
+        )
+        return web.json_response(
+            {"error": "Human approval timed out"},
+            status=408,
+        )
+
+    if not approved:
+        return web.json_response(
+            {"error": "Action denied by human"},
+            status=403,
+        )
+
+    # Approved — return None to let the caller forward the request
+    logger.info(
+        "MCP proxy approval granted",
+        request_id=request_id[:8],
+        group=group_folder,
+    )
+    return None
 
 
 async def _apply_fencing(
@@ -233,6 +336,7 @@ class McpProxy:
         instance_urls: dict[str, str],
         *,
         trust_map: dict[str, dict[str, Any]] | None = None,
+        approval_fn: ApprovalRequestFn | None = None,
         port: int = 0,
     ) -> int:
         """Start the proxy server. Returns the assigned port.
@@ -240,9 +344,10 @@ class McpProxy:
         Args:
             instance_urls: Mapping of instance_id -> backend URL.
             trust_map: Mapping of instance_id -> trust properties.
+            approval_fn: Callback for human approval requests.
             port: Port to bind to. 0 = OS-assigned dynamic port.
         """
-        app = create_proxy_app(instance_urls, trust_map=trust_map)
+        app = create_proxy_app(instance_urls, trust_map=trust_map, approval_fn=approval_fn)
         self._runner = web.AppRunner(app)
         await self._runner.setup()
         site = web.TCPSite(self._runner, "localhost", port)
