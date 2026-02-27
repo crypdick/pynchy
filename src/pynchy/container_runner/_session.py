@@ -29,6 +29,7 @@ from pynchy.container_runner._process import (
 )
 from pynchy.ipc._write import clean_ipc_input_dir, write_ipc_close_sentinel, write_ipc_message
 from pynchy.logger import logger
+from pynchy.utils import create_background_task
 
 
 class SessionDiedError(Exception):
@@ -76,8 +77,14 @@ class ContainerSession:
         self._dead = False
         if proc.stderr is None:
             raise RuntimeError(f"Container {self.container_name} spawned without stderr pipe")
-        self._stderr_task = asyncio.ensure_future(self._read_stderr(proc.stderr))
-        self._proc_monitor_task = asyncio.ensure_future(self._monitor_proc(proc))
+        self._stderr_task = create_background_task(
+            self._read_stderr(proc.stderr),
+            name=f"stderr-{self.container_name}",
+        )
+        self._proc_monitor_task = create_background_task(
+            self._monitor_proc(proc),
+            name=f"proc-monitor-{self.container_name}",
+        )
         self._reset_idle_timer()
 
     def set_output_handler(self, on_output: OnOutput | None) -> None:
