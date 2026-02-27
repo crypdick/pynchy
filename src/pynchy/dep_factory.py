@@ -7,6 +7,7 @@ the composite dependency objects that subsystems require.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from pynchy.adapters import (
@@ -93,7 +94,7 @@ async def _rebuild_and_deploy(
     if rebuild:
         from pynchy.deploy import build_container_image
 
-        build_container_image()
+        await asyncio.to_thread(build_container_image)
 
     active_sessions = session_manager.get_active_sessions(workspaces)
 
