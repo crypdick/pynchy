@@ -239,7 +239,7 @@ class McpManager:
         save_teams_cache(self._teams_cache_path, self._workspace_teams)
 
         # 6. Start idle-timeout checker
-        self._idle_task = asyncio.create_task(self._idle_checker_loop())
+        self._idle_task = create_background_task(self._idle_checker_loop(), name="mcp-idle-checker")
 
         # 7. Pre-pull Docker images in the background to warm the cache.
         #    Doesn't block boot — first on-demand start is just faster.
