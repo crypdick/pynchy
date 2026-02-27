@@ -313,6 +313,21 @@ def _check_dirty_repo(group_name: str, dirty_check_file: Path) -> list[str]:
     return notices
 
 
+async def _advance_cursor(
+    deps: MessageHandlerDeps,
+    chat_jid: str,
+    new_cursor: str,
+    previous_cursor: str,
+) -> None:
+    """Advance the agent timestamp cursor, rolling back on save failure."""
+    deps.last_agent_timestamp[chat_jid] = new_cursor
+    try:
+        await deps.save_state()
+    except Exception:
+        deps.last_agent_timestamp[chat_jid] = previous_cursor
+        raise
+
+
 def _mark_dispatched(deps: MessageHandlerDeps, chat_jid: str, new_timestamp: str) -> None:
     """Record the furthest message timestamp dispatched to the active container.
 
@@ -449,12 +464,7 @@ async def process_group_messages(
         if output_sent_to_user:
             # Partial output already sent — advance cursor to prevent a duplicate
             # response if the same messages are re-processed on the next trigger.
-            deps.last_agent_timestamp[chat_jid] = final_cursor
-            try:
-                await deps.save_state()
-            except Exception:
-                deps.last_agent_timestamp[chat_jid] = previous_cursor
-                raise
+            await _advance_cursor(deps, chat_jid, final_cursor, previous_cursor)
             logger.warning(
                 "Agent error after output was sent, advanced cursor to prevent retry duplicate",
                 group=group.name,
@@ -470,12 +480,7 @@ async def process_group_messages(
         return False
 
     # Success: advance the true processed cursor now that the container finished.
-    deps.last_agent_timestamp[chat_jid] = final_cursor
-    try:
-        await deps.save_state()
-    except Exception:
-        deps.last_agent_timestamp[chat_jid] = previous_cursor
-        raise
+    await _advance_cursor(deps, chat_jid, final_cursor, previous_cursor)
 
     # Merge worktree commits into main and push for groups with repo_access
     from pynchy.git_ops.worktree import background_merge_worktree

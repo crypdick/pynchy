@@ -254,6 +254,35 @@ async def _pre_container_setup(
 
 
 # ---------------------------------------------------------------------------
+# Shared: wait for query completion with timeout/death handling
+# ---------------------------------------------------------------------------
+
+
+async def _await_query(
+    session: ContainerSession,
+    group: WorkspaceProfile,
+    timeout: float,
+    label: str,
+) -> str:
+    """Wait for a session's query to complete. Returns 'success' or 'error'.
+
+    Handles the two expected failure modes:
+    - TimeoutError: container unresponsive — destroy the session.
+    - SessionDiedError: container exited mid-query — leave cleanup to caller.
+    """
+    try:
+        await session.wait_for_query_done(timeout=timeout)
+    except TimeoutError:
+        logger.error(f"{label} timed out, destroying session", group=group.name)
+        await destroy_session(group.folder)
+        return "error"
+    except SessionDiedError:
+        logger.error(f"Container died during {label}", group=group.name)
+        return "error"
+    return "success"
+
+
+# ---------------------------------------------------------------------------
 # Warm path — reuse existing session
 # ---------------------------------------------------------------------------
 
@@ -284,18 +313,7 @@ async def _warm_query(
     # Send via IPC
     await session.send_ipc_message(formatted)
 
-    # Wait for query completion
-    try:
-        await session.wait_for_query_done(timeout=ctx.config_timeout)
-    except TimeoutError:
-        logger.error("Warm query timed out, destroying session", group=group.name)
-        await destroy_session(group.folder)
-        return "error"
-    except SessionDiedError:
-        logger.error("Container died during warm query", group=group.name)
-        return "error"
-
-    return "success"
+    return await _await_query(session, group, ctx.config_timeout, "warm query")
 
 
 # ---------------------------------------------------------------------------
@@ -352,17 +370,7 @@ async def _cold_start(
     # Set output handler and wait
     session.set_output_handler(ctx.wrapped_on_output)
 
-    try:
-        await session.wait_for_query_done(timeout=ctx.config_timeout)
-    except TimeoutError:
-        logger.error("Cold start query timed out, destroying session", group=group.name)
-        await destroy_session(group.folder)
-        return "error"
-    except SessionDiedError:
-        logger.error("Container died during cold start", group=group.name)
-        return "error"
-
-    return "success"
+    return await _await_query(session, group, ctx.config_timeout, "cold start")
 
 
 # ---------------------------------------------------------------------------
@@ -514,14 +522,7 @@ async def _run_scheduled_task(
     session.set_output_handler(ctx.wrapped_on_output)
 
     try:
-        await session.wait_for_query_done(timeout=ctx.config_timeout)
-    except TimeoutError:
-        logger.error("Scheduled task timed out, destroying session", group=group.name)
-        await destroy_session(group.folder)
-        return "error"
-    except SessionDiedError:
-        logger.error("Container died during scheduled task", group=group.name)
-        return "error"
+        return await _await_query(session, group, ctx.config_timeout, "scheduled task")
     except Exception:
         logger.exception("Scheduled task error", group=group.name)
         return "error"
