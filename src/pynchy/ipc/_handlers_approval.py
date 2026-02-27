@@ -65,6 +65,36 @@ async def process_approval_decision(
     chat_jid = pending.get("chat_jid", "unknown")
     request_data = pending.get("request_data", {})
     approved = decision.get("approved", False)
+    handler_type = pending.get("handler_type", "service")
+
+    # MCP proxy approvals: resolve the awaiting Future, don't execute here.
+    # The proxy handler holds the HTTP connection open and handles execution.
+    if handler_type == "mcp_proxy":
+        from pynchy.security.approval import resolve_mcp_proxy_approval
+
+        resolved = resolve_mcp_proxy_approval(request_id, approved)
+        if not resolved:
+            logger.warning(
+                "MCP proxy approval Future not found (timed out?)",
+                request_id=request_id,
+            )
+
+        await record_security_event(
+            chat_jid=chat_jid,
+            workspace=source_group,
+            tool_name=tool_name,
+            decision="approved_by_user" if approved else "denied_by_user",
+            request_id=request_id,
+        )
+        logger.info(
+            "MCP proxy approval resolved",
+            request_id=request_id,
+            approved=approved,
+        )
+
+        pending_file.unlink(missing_ok=True)
+        decision_file.unlink(missing_ok=True)
+        return
 
     if approved:
         handler_type = pending.get("handler_type", "service")
