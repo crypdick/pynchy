@@ -39,10 +39,6 @@ class StartupDeps(Protocol):
 
     async def _register_workspace(self, profile: WorkspaceProfile) -> None: ...
 
-    async def register_jid_alias(
-        self, alias_jid: str, canonical_jid: str, channel_name: str
-    ) -> None: ...
-
 
 async def send_boot_notification(deps: StartupDeps) -> None:
     """Send a system message to the admin channel on startup."""

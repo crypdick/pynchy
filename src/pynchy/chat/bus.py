@@ -23,13 +23,7 @@ if TYPE_CHECKING:
     from pynchy.types import Channel
 
 
-class JidResolverDeps(Protocol):
-    """Deps for JID resolution — shared by bus, channel_handler, and streaming."""
-
-    def get_channel_jid(self, canonical_jid: str, channel_name: str) -> str | None: ...
-
-
-class BusDeps(JidResolverDeps, Protocol):
+class BusDeps(Protocol):
     """Minimal dependencies for the message bus."""
 
     @property
@@ -121,7 +115,7 @@ def _find_workspace_by_jid(deps: BusDeps, chat_jid: str) -> object | None:
 
 
 # ---------------------------------------------------------------------------
-# Target resolution — single implementation for channel filtering + JID alias
+# Target resolution — single implementation for channel filtering
 # ---------------------------------------------------------------------------
 
 
@@ -134,8 +128,7 @@ def _resolve_send_targets(
     """Resolve which channels should receive a ``send_message`` call.
 
     Returns ``(channel, target_jid)`` pairs for channels that are connected,
-    allowed outbound by access rules, and have a valid JID (alias or direct
-    ownership).
+    allowed outbound by access rules, and own the JID.
     """
     targets: list[tuple[Channel, str]] = []
     for ch in deps.channels:
@@ -145,21 +138,18 @@ def _resolve_send_targets(
             continue
         if not _channel_allows_outbound(deps, chat_jid, ch.name):
             continue
-        target_jid = resolve_target_jid(deps, chat_jid, ch)
+        target_jid = resolve_target_jid(chat_jid, ch)
         if not target_jid:
             continue
         targets.append((ch, target_jid))
     return targets
 
 
-def resolve_target_jid(deps: JidResolverDeps, chat_jid: str, channel: Channel) -> str | None:
-    """Return the channel-owned JID for *chat_jid*, or None if unreachable.
+def resolve_target_jid(chat_jid: str, channel: Channel) -> str | None:
+    """Return *chat_jid* if the channel owns it, otherwise None.
 
     Public within the chat package — used by bus, channel_handler, and streaming.
     """
-    alias = deps.get_channel_jid(chat_jid, channel.name)
-    if alias:
-        return alias
     if channel.owns_jid(chat_jid):
         return chat_jid
     return None
@@ -183,10 +173,10 @@ async def broadcast(
 
     This is the single broadcast path for all outbound messages. Callers
     format their text before calling — the bus handles channel iteration,
-    JID aliasing, error handling, and optional source-channel skipping.
+    error handling, and optional source-channel skipping.
 
     Args:
-        deps: Provides ``channels`` and ``get_channel_jid``.
+        deps: Provides ``channels`` and ``workspaces``.
         chat_jid: Canonical chat JID (the one in registered_groups).
         text: Pre-formatted message text to send.
         suppress_errors: If True, catch network errors silently. If False,
@@ -266,7 +256,7 @@ async def finalize_stream_or_broadcast(
     final text. For all other connected channels, send a new message.
 
     Args:
-        deps: Provides ``channels`` and ``get_channel_jid``.
+        deps: Provides ``channels`` and ``workspaces``.
         chat_jid: Canonical chat JID.
         text: Final formatted text.
         stream_message_ids: Mapping of channel_name → message_id from
@@ -288,8 +278,6 @@ async def finalize_stream_or_broadcast(
     send_target_names = {ch.name for ch, _ in send_targets}
 
     # Identify streaming targets (channels with a message_id and update_message).
-    # Resolve alias JIDs so update_message uses the correct channel-owned JID,
-    # and so we have a target_jid ready for send_message fallback.
     stream_targets: list[tuple[Channel, str, str]] = []  # (ch, msg_id, target_jid)
     for ch in deps.channels:
         ch_name = ch.name
@@ -298,7 +286,7 @@ async def finalize_stream_or_broadcast(
             continue
         if not _channel_allows_outbound(deps, chat_jid, ch_name):
             continue
-        target_jid = resolve_target_jid(deps, chat_jid, ch)
+        target_jid = resolve_target_jid(chat_jid, ch)
         if not target_jid:
             continue
         stream_targets.append((ch, msg_id, target_jid))

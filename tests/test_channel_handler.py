@@ -46,7 +46,6 @@ def _make_deps(channels: list | None = None) -> MagicMock:
     deps = MagicMock()
     deps.channels = channels or []
     deps.event_bus = MagicMock()
-    deps.get_channel_jid = MagicMock(return_value=None)
     return deps
 
 

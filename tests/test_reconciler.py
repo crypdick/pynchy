@@ -57,12 +57,10 @@ def _make_channel(
 def _make_deps(
     channels: list | None = None,
     workspaces: dict | None = None,
-    get_channel_jid_fn=None,
 ) -> MagicMock:
     deps = MagicMock()
     deps.channels = channels or []
     deps.workspaces = workspaces or {}
-    deps.get_channel_jid = MagicMock(side_effect=get_channel_jid_fn or (lambda *a: None))
     deps.queue = MagicMock()
     deps._ingest_user_message = AsyncMock()
     return deps

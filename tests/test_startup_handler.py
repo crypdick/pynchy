@@ -187,7 +187,6 @@ class FakeDeps:
         self.broadcast_host_message = AsyncMock()
         self.broadcast_system_notice = AsyncMock()
         self._register_workspace = AsyncMock()
-        self.register_jid_alias = AsyncMock()
 
     @property
     def workspaces(self) -> dict[str, WorkspaceProfile]:

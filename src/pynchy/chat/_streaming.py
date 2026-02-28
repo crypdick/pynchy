@@ -31,8 +31,6 @@ class OutputDeps(Protocol):
     @property
     def channels(self) -> list[Channel]: ...
 
-    def get_channel_jid(self, canonical_jid: str, channel_name: str) -> str | None: ...
-
     async def broadcast_to_channels(
         self, chat_jid: str, text: str, *, suppress_errors: bool = True
     ) -> None: ...
@@ -74,8 +72,7 @@ async def stream_text_to_channels(
     On first call, posts a new message. Subsequent calls update it in-place.
     Throttled to _STREAM_THROTTLE unless ``final`` is True.
 
-    Uses JID alias resolution so channels that don't own the canonical JID
-    (e.g. Slack when the primary JID belongs to another channel) can still stream.
+    Only sends to channels that own the canonical JID.
     """
     now = time.monotonic()
     if not final and (now - state.last_update) < _STREAM_THROTTLE:
@@ -90,7 +87,7 @@ async def stream_text_to_channels(
         if not hasattr(ch, "update_message") or not hasattr(ch, "post_message"):
             continue
 
-        target_jid = resolve_target_jid(deps, chat_jid, ch)
+        target_jid = resolve_target_jid(chat_jid, ch)
         if not target_jid:
             continue
 
