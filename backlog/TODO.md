@@ -19,6 +19,7 @@ Single source of truth for all pynchy work items.
 - convert setup into pyinfra deployments for repeatable deployments.
 - **Deputy agent for worktree contributions** — Ephemeral agent that inspects commits from worktrees before they enter main. Reviews for malicious code, security issues, and project conventions. Spawned by `host_sync_worktree()` before the merge step.
 - **Automated repo token refresh via GitHub App** — Replace manually-created fine-grained PATs with a GitHub App that auto-generates short-lived, repo-scoped installation tokens. Eliminates manual rotation. Builds on [repo-scoped tokens](5-completed/repo-scoped-tokens.md) (Phase 1 complete).
+- [Sandbox profiles and universal config](0-proposed/sandbox-profiles.md) — Replace top-level `[directives.*]` with a three-tier union model: `sandbox_universal` ∪ `sandbox_profile` ∪ per-sandbox. Makes directive assignment consistent with skills and mcp_servers.
 
 ### 1 - Approved
 *Approved ideas. No plan yet.*

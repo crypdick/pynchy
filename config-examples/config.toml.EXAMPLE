@@ -189,12 +189,14 @@
 # is_admin = true
 # trigger = "always"
 # repo_access = "owner/repo"  # GitHub slug from [repos.*]; grants /workspace/project mount
+# skills = ["core", "ops"]    # tier names and/or skill names; omit for core-only (safe default)
 
 # [sandbox.admin-2]
 # chat = "connection.slack.synapse.chat.admin-2"
 # is_admin = true
 # trigger = "always"
 # repo_access = "owner/repo"
+# skills = ["core", "ops"]
 
 # CLEAN ROOM POLICY: Admin workspaces cannot have MCP servers with public_source = true.
 # Any MCP not declared in [services] defaults to public_source = true.
@@ -231,8 +233,7 @@
 # mcp_servers = ["caldav"]   # only MCPs declared with public_source = false are allowed
 # # mcp_servers = ["all"] would fail if any server has public_source = true (the default)
 
-# Plugins can provide additional managed sandboxes automatically
-# (for example, the `code-improver` periodic agent for pynchy core).
+# Plugins can provide additional managed sandboxes automatically.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Command Words (magic commands)
