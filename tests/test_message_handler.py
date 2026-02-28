@@ -73,6 +73,7 @@ def _make_deps(
     deps.broadcast_to_channels = AsyncMock()
     deps.broadcast_host_message = AsyncMock()
     deps.send_reaction_to_channels = AsyncMock()
+    deps.send_reaction_to_outbound = AsyncMock()
     deps.set_typing_on_channels = AsyncMock()
     deps.emit = MagicMock()
     deps.run_agent = AsyncMock(return_value="success")
@@ -752,6 +753,49 @@ class TestProcessGroupMessages:
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is True
+
+    @pytest.mark.asyncio
+    async def test_zzz_reaction_after_successful_run(self, tmp_path):
+        """After a successful agent run that produced output, a :zzz:
+        reaction should be sent on the agent's final response."""
+        jid = "g@g.us"
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={jid: group}, last_agent_ts={jid: "old-ts"})
+
+        msg = _make_message("hello", id="msg-42", timestamp="new-ts")
+
+        # run_agent must invoke the on_output callback so output_sent_to_user
+        # is set to True inside process_group_messages.
+        fake_result = MagicMock(status="success")
+
+        async def _run_agent_with_callback(_group, _jid, _msgs, on_output=None, *a, **kw):
+            if on_output:
+                await on_output(fake_result)
+            return "success"
+
+        deps.run_agent = AsyncMock(side_effect=_run_agent_with_callback)
+        deps.handle_streamed_output = AsyncMock(return_value=True)
+        deps.send_reaction_to_outbound = AsyncMock()
+
+        fake_ids = {"slack": "1234567890.000001"}
+
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([msg]),
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+            patch(
+                "pynchy.host.orchestrator.messaging.pipeline.pop_last_result_ids",
+                return_value=fake_ids,
+            ),
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            result = await process_group_messages(deps, jid)
+
+        assert result is True
+        deps.send_reaction_to_outbound.assert_awaited_once_with(
+            jid, fake_ids, "zzz"
+        )
 
 
 # ---------------------------------------------------------------------------
