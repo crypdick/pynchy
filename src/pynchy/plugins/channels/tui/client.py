@@ -217,7 +217,9 @@ class PynchyTUI(App):
             chat_log = self.query_one(ChatLog)
             trace_type = event.get("trace_type", "")
             if trace_type == "thinking":
-                chat_log.write("[dim italic]\U0001f4ad thinking...[/dim italic]")
+                thinking = event.get("thinking", "")
+                display = thinking[:200] if thinking else "thinking..."
+                chat_log.write(f"[dim italic]\U0001f4ad {display}[/dim italic]")
             elif trace_type == "tool_use":
                 name = event.get("tool_name", "tool")
                 tool_input = event.get("tool_input", {})
