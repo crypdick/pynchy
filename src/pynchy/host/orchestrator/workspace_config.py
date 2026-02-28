@@ -167,7 +167,7 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
     logger.debug(
         "Loaded workspace config",
         folder=group_folder,
-        is_admin=config.is_admin,
+        is_admin=config.is_admin or False,
         repo_access=config.repo_access,
         is_periodic=config.is_periodic,
     )
@@ -283,7 +283,7 @@ async def reconcile_workspaces(
                 folder=folder,
                 trigger=f"@{s.agent.name}",
                 added_at=datetime.now(UTC).isoformat(),
-                is_admin=config.is_admin,
+                is_admin=config.is_admin or False,
             )
             await register_fn(profile)
             folder_to_jid[folder] = jid
@@ -291,7 +291,7 @@ async def reconcile_workspaces(
                 "Registered workspace for configured chat",
                 name=display_name,
                 folder=folder,
-                is_admin=config.is_admin,
+                is_admin=config.is_admin or False,
             )
         elif expected_jid and jid != expected_jid:
             logger.warning(

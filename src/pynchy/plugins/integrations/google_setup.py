@@ -736,7 +736,7 @@ async def _handle_setup_google(data: dict) -> dict:
         from pynchy.config import get_settings
 
         ws = get_settings().workspaces.get(source_group)
-        is_admin = ws.is_admin if ws else False
+        is_admin = bool(ws.is_admin) if ws else False
         if not is_admin:
             allowed = _workspace_chrome_profiles(source_group)
             if profile_name not in allowed:

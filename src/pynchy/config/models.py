@@ -257,7 +257,7 @@ class WorkspaceConfig(_StrictModel):
     directives: list[str] | None = None  # directive names; convention: directives/<name>.md
     # TODO: Allow binding to a whole connection (not just a chat).
     chat: str | None = None  # connection.<platform>.<name>.chat.<chat>
-    is_admin: bool = False
+    is_admin: bool | None = None  # None → not admin
     repo_access: str | None = None  # GitHub slug (owner/repo) from [repos.*]; None = no worktree
     schedule: str | None = None  # cron expression
     prompt: str | None = None  # prompt for scheduled tasks
@@ -273,7 +273,7 @@ class WorkspaceConfig(_StrictModel):
     trigger: Literal["mention", "always"] | None = None
     allowed_users: list[str] | None = None
     git_policy: Literal["merge-to-main", "pull-request"] | None = None  # None → merge-to-main
-    idle_terminate: bool = True  # False → container stays alive until hard timeout
+    idle_terminate: bool | None = None  # None → inherit from profile/universal (default: True)
 
     @field_validator("chat")
     @classmethod

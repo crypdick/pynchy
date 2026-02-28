@@ -392,7 +392,9 @@ async def _cold_start(
     from pynchy.host.orchestrator.workspace_config import load_workspace_config
 
     ws_config = load_workspace_config(group.folder)
-    idle_enabled = ws_config.idle_terminate if ws_config else True
+    idle_enabled = (
+        ws_config.idle_terminate if ws_config and ws_config.idle_terminate is not None else True
+    )
     idle_timeout = get_settings().idle_timeout if idle_enabled else 0.0
 
     return await _spawn_and_await(
