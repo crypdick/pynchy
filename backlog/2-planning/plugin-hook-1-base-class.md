@@ -16,7 +16,7 @@ This step establishes the plugin interface without any container integration. It
 
 ### 1. Create HookPlugin Base Class
 
-**File:** `src/pynchy/plugin/hook.py`
+**File:** `src/pynchy/plugins/hook.py`
 
 ```python
 """Hook plugin system for agent lifecycle events.
@@ -30,7 +30,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from pathlib import Path
 
-from pynchy.plugin.base import PluginBase
+from pynchy.plugins.base import PluginBase
 
 
 class HookPlugin(PluginBase):
@@ -86,11 +86,11 @@ class HookPlugin(PluginBase):
 
 ### 2. Export HookPlugin from plugin module
 
-**File:** `src/pynchy/plugin/__init__.py`
+**File:** `src/pynchy/plugins/__init__.py`
 
 Add to imports:
 ```python
-from pynchy.plugin.hook import HookPlugin
+from pynchy.plugins.hook import HookPlugin
 ```
 
 Add to `__all__`:
@@ -117,7 +117,7 @@ from pathlib import Path
 
 import pytest
 
-from pynchy.plugin import HookPlugin, discover_plugins
+from pynchy.plugins import HookPlugin, discover_plugins
 
 
 class TestHookPlugin(HookPlugin):
@@ -172,8 +172,8 @@ def test_hook_plugin_invalid_category():
 
 ## Success Criteria
 
-- [ ] `HookPlugin` base class created in `src/pynchy/plugin/hook.py`
-- [ ] Exported from `src/pynchy/plugin/__init__.py`
+- [ ] `HookPlugin` base class created in `src/pynchy/plugins/hook.py`
+- [ ] Exported from `src/pynchy/plugins/__init__.py`
 - [ ] Tests pass (basic instantiation, validation, discovery)
 - [ ] No changes to container integration yet (comes in later steps)
 

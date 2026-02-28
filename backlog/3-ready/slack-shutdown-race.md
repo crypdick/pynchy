@@ -28,7 +28,7 @@ The fundamental issue: **cancelling `_reconnect_task` doesn't propagate to the S
 
 ## File to investigate
 
-`src/pynchy/chat/plugins/slack.py` — focus on:
+`src/pynchy/plugins/channels/slack.py` — focus on:
 - `disconnect()` (line 121)
 - `_on_handler_done()` (line 150)
 - `_reconnect_with_backoff()` (line 164)

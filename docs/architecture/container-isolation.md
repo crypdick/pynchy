@@ -27,8 +27,8 @@ The preferred runtime on macOS. Uses Apple's native container framework for lowe
 |-----------|---------------|---------|--------|
 | `groups/{name}/` | `/workspace/group` | Read-write | All |
 | `data/sessions/{group}/.claude/` | `/home/agent/.claude` | Read-write | All (isolated per-group) |
-| `container/scripts/` | `/workspace/scripts` | Readonly | All |
-| `container/agent_runner/src` | `/app/src` | Readonly | All (agent runner source) |
+| `src/pynchy/agent/scripts/` | `/workspace/scripts` | Readonly | All |
+| `src/pynchy/agent/agent_runner/src` | `/app/src` | Readonly | All (agent runner source) |
 | `data/ipc/{group}/` | `/workspace/ipc` | Read-write | All (IPC channel) |
 | `data/env/{group}/` | `/workspace/env-dir` | Readonly | All (per-group credentials) |
 | `config.toml` | `/workspace/project/config.toml` | Read-write | Admin only |

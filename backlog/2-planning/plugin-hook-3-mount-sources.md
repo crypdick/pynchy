@@ -17,7 +17,7 @@ This step handles the host-side preparation: discovering hook plugins, extractin
 
 ### 1. Collect Hook Configs in container_runner.py
 
-**File:** `src/pynchy/container_runner.py`
+**File:** `src/pynchy/host/container_manager/container_runner.py`
 
 Add a helper function to collect hook configurations:
 
@@ -57,7 +57,7 @@ def _collect_hook_configs(registry: Any) -> list[dict[str, str]]:
 
 ### 2. Add Hook Plugin Mounts
 
-**File:** `src/pynchy/container_runner.py`
+**File:** `src/pynchy/host/container_manager/container_runner.py`
 
 Update `run_container_agent()` to mount hook plugin sources:
 
@@ -132,8 +132,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from pynchy.plugin import HookPlugin, PluginRegistry
-from pynchy.container_runner import _collect_hook_configs
+from pynchy.plugins import HookPlugin, PluginRegistry
+from pynchy.host.container_manager import _collect_hook_configs
 from pynchy.types import ContainerInput
 
 
