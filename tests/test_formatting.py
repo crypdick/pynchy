@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from conftest import make_settings
 
 from pynchy.host.orchestrator.messaging.formatter import (
+    format_internal_tags,
     format_outbound,
     format_tool_preview,
     parse_host_tag,
@@ -77,6 +78,32 @@ class TestStripInternalTags:
         assert strip_internal_tags("<internal>only this</internal>") == ""
 
 
+# --- formatInternalTags ---
+
+
+class TestFormatInternalTags:
+    def test_transforms_single_block(self):
+        assert format_internal_tags("<internal>thinking</internal>") == "🧠 *thinking*"
+
+    def test_transforms_with_surrounding_text(self):
+        result = format_internal_tags("hello <internal>thought</internal> world")
+        assert result == "hello 🧠 *thought*\n world"
+
+    def test_transforms_multiple_blocks(self):
+        result = format_internal_tags("<internal>a</internal>text<internal>b</internal>")
+        assert result == "🧠 *a*\ntext🧠 *b*"
+
+    def test_transforms_multiline_content(self):
+        result = format_internal_tags("<internal>line1\nline2</internal>")
+        assert result == "🧠 *line1\nline2*"
+
+    def test_empty_internal_block_removed(self):
+        assert format_internal_tags("<internal></internal>text") == "text"
+
+    def test_whitespace_only_internal_block_removed(self):
+        assert format_internal_tags("<internal>  \n  </internal>text") == "text"
+
+
 # --- formatOutbound ---
 
 
@@ -99,14 +126,14 @@ class TestFormatOutbound:
         ch = self._FakeChannel(prefix_assistant_name=None)
         assert format_outbound(ch, "hello world") == "🦞 hello world"
 
-    def test_returns_empty_when_all_internal(self):
+    def test_formats_internal_as_brain_italic(self):
         ch = self._FakeChannel(prefix_assistant_name=True)
-        assert format_outbound(ch, "<internal>hidden</internal>") == ""
+        assert format_outbound(ch, "<internal>hidden</internal>") == "🦞 🧠 *hidden*"
 
-    def test_strips_internal_and_prefixes_remaining(self):
+    def test_formats_internal_and_prefixes_remaining(self):
         ch = self._FakeChannel(prefix_assistant_name=True)
         result = format_outbound(ch, "<internal>thinking</internal>The answer is 42")
-        assert result == "🦞 The answer is 42"
+        assert result == "🦞 🧠 *thinking*\nThe answer is 42"
 
 
 # --- Trigger gating with trigger mode ---

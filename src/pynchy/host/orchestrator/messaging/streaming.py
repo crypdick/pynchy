@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
+from pynchy.host.orchestrator.messaging.formatter import format_internal_tags
 from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
 from pynchy.logger import logger
 from pynchy.utils import create_background_task
@@ -78,7 +79,15 @@ async def stream_text_to_channels(
     if not final and (now - state.last_update) < _STREAM_THROTTLE:
         return
 
-    display = state.buffer + (" \u258c" if not final else "")
+    # Transform completed <internal>...</internal> blocks into 🧠 *thought*.
+    # Hide any unclosed <internal> tag (closing tag hasn't streamed yet).
+    filtered = format_internal_tags(state.buffer)
+    unclosed = filtered.rfind("<internal>")
+    if unclosed != -1:
+        filtered = filtered[:unclosed].rstrip()
+    if not filtered and not final:
+        return  # nothing visible to show yet
+    display = filtered + (" \u258c" if not final else "")
     state.last_update = now
 
     for ch in deps.channels:

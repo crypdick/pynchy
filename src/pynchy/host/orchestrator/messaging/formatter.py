@@ -8,8 +8,16 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from pynchy.types import Channel, NewMessage
 
-_INTERNAL_TAG_RE = re.compile(r"<internal>[\s\S]*?</internal>")
+_INTERNAL_TAG_RE = re.compile(r"<internal>([\s\S]*?)</internal>")
 _HOST_TAG_RE = re.compile(r"^\s*<host>([\s\S]*?)</host>\s*$")
+
+
+def _format_internal_match(m: re.Match) -> str:
+    """Replace <internal>...</internal> with 🧠 *thought* (bold)."""
+    thought = m.group(1).strip()
+    if not thought:
+        return ""
+    return f"\U0001f9e0 *{thought}*\n"
 
 
 def format_messages_for_sdk(messages: list[NewMessage]) -> list[dict]:
@@ -47,8 +55,17 @@ def format_messages_for_sdk(messages: list[NewMessage]) -> list[dict]:
 
 
 def strip_internal_tags(text: str) -> str:
-    """Remove <internal>...</internal> blocks and trim whitespace."""
+    """Remove <internal>...</internal> blocks completely and trim whitespace.
+
+    Used during streaming to strip *completed* internal blocks before checking
+    for unclosed tags. The final display uses format_internal_tags instead.
+    """
     return _INTERNAL_TAG_RE.sub("", text).strip()
+
+
+def format_internal_tags(text: str) -> str:
+    """Transform <internal>...</internal> into 🧠 *thought* (bold) and trim whitespace."""
+    return _INTERNAL_TAG_RE.sub(_format_internal_match, text).strip()
 
 
 def parse_host_tag(text: str) -> tuple[bool, str]:
@@ -60,8 +77,8 @@ def parse_host_tag(text: str) -> tuple[bool, str]:
 
 
 def format_outbound(channel: Channel, raw_text: str) -> str:
-    """Strip internal tags and optionally prefix with assistant name."""
-    text = strip_internal_tags(raw_text)
+    """Format internal tags and optionally prefix with assistant name."""
+    text = format_internal_tags(raw_text)
     if not text:
         return ""
     prefix_name = getattr(channel, "prefix_assistant_name", None)
