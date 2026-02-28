@@ -10,8 +10,8 @@ import pytest
 from pydantic import ValidationError
 
 from pynchy.config import Settings
-from pynchy.config_mcp import McpServerConfig
-from pynchy.config_models import (
+from pynchy.config.mcp import McpServerConfig
+from pynchy.config.models import (
     ConnectionChatConfig,
     ConnectionsConfig,
     ServiceTrustTomlConfig,

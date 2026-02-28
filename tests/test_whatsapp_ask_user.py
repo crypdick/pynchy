@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.chat.pending_questions import find_pending_for_jid
+from pynchy.host.orchestrator.messaging.pending_questions import find_pending_for_jid
 
 # ---------------------------------------------------------------------------
 # Neonize mock setup — must happen before importing WhatsAppChannel
@@ -37,7 +37,7 @@ for _mod_name in _NEONIZE_MODULES:
         sys.modules[_mod_name] = _neonize_mocks[_mod_name]
 
 # Now it's safe to import
-from pynchy.chat.plugins.whatsapp.channel import WhatsAppChannel  # noqa: E402
+from pynchy.plugins.channels.whatsapp.channel import WhatsAppChannel  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -324,7 +324,7 @@ class TestFindPendingForJid:
         data = _pending_data()
         (pq_dir / f"{REQUEST_ID}.json").write_text(json.dumps(data))
 
-        with patch("pynchy.chat.pending_questions.get_settings") as mock_settings:
+        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings") as mock_settings:
             mock_settings.return_value.data_dir = tmp_path
             result = find_pending_for_jid(CHAT_JID)
 
@@ -340,7 +340,7 @@ class TestFindPendingForJid:
         data = _pending_data(chat_jid="different@g.us")
         (pq_dir / "other-req.json").write_text(json.dumps(data))
 
-        with patch("pynchy.chat.pending_questions.get_settings") as mock_settings:
+        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings") as mock_settings:
             mock_settings.return_value.data_dir = tmp_path
             result = find_pending_for_jid(CHAT_JID)
 
@@ -348,7 +348,7 @@ class TestFindPendingForJid:
 
     def test_returns_none_when_ipc_dir_missing(self, tmp_path: Path) -> None:
         """Returns None when ipc directory doesn't exist."""
-        with patch("pynchy.chat.pending_questions.get_settings") as mock_settings:
+        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings") as mock_settings:
             mock_settings.return_value.data_dir = tmp_path
             result = find_pending_for_jid(CHAT_JID)
 
@@ -362,7 +362,7 @@ class TestFindPendingForJid:
         data = _pending_data()
         (errors_dir / f"{REQUEST_ID}.json").write_text(json.dumps(data))
 
-        with patch("pynchy.chat.pending_questions.get_settings") as mock_settings:
+        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings") as mock_settings:
             mock_settings.return_value.data_dir = tmp_path
             result = find_pending_for_jid(CHAT_JID)
 
@@ -379,7 +379,7 @@ class TestFindPendingForJid:
         data = _pending_data()
         (pq_dir / f"{REQUEST_ID}.json").write_text(json.dumps(data))
 
-        with patch("pynchy.chat.pending_questions.get_settings") as mock_settings:
+        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings") as mock_settings:
             mock_settings.return_value.data_dir = tmp_path
             result = find_pending_for_jid(CHAT_JID)
 
@@ -402,7 +402,7 @@ class TestFindPendingForJid:
         data_b = _pending_data(chat_jid=CHAT_JID, request_id="req-b")
         (pq_dir_b / "req-b.json").write_text(json.dumps(data_b))
 
-        with patch("pynchy.chat.pending_questions.get_settings") as mock_settings:
+        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings") as mock_settings:
             mock_settings.return_value.data_dir = tmp_path
             result = find_pending_for_jid(CHAT_JID)
 
@@ -471,7 +471,7 @@ class TestHandleMessageIntercept:
         ch._translate_jid = MagicMock(return_value=CHAT_JID)
 
         with patch(
-            "pynchy.chat.plugins.whatsapp.channel.find_pending_for_jid",
+            "pynchy.plugins.channels.whatsapp.channel.find_pending_for_jid",
             return_value=pending,
         ):
             await ch._handle_message(message)
@@ -502,7 +502,7 @@ class TestHandleMessageIntercept:
         ch._translate_jid = MagicMock(return_value=CHAT_JID)
 
         with patch(
-            "pynchy.chat.plugins.whatsapp.channel.find_pending_for_jid",
+            "pynchy.plugins.channels.whatsapp.channel.find_pending_for_jid",
             return_value=stale_pending,
         ):
             await ch._handle_message(message)

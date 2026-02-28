@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.chat.plugins.slack import (
+from pynchy.plugins.channels.slack import (
     SlackChannel,
     SlackChannelPlugin,
     _channel_id_from_jid,
@@ -447,7 +447,7 @@ class TestSlackChannelPlugin:
         plugin = SlackChannelPlugin()
         context = MagicMock()
 
-        with patch("pynchy.chat.plugins.slack.get_settings") as mock_settings:
+        with patch("pynchy.plugins.channels.slack.get_settings") as mock_settings:
             cfg = MagicMock()
             cfg.connection.slack = {}
             mock_settings.return_value = cfg
@@ -461,7 +461,7 @@ class TestSlackChannelPlugin:
         context = MagicMock()
 
         with (
-            patch("pynchy.chat.plugins.slack.get_settings") as mock_settings,
+            patch("pynchy.plugins.channels.slack.get_settings") as mock_settings,
             patch.dict(os.environ, {"BOT": "xoxb-test", "APP": "xapp-test"}, clear=False),
         ):
             cfg = MagicMock()

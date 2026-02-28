@@ -15,8 +15,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.db import _init_test_database
-from pynchy.ipc._watcher import (
+from pynchy.state import _init_test_database
+from pynchy.host.container_manager.ipc.watcher import (
     _handle_signal,
     _IpcEventHandler,
     _process_message_file,
@@ -146,7 +146,7 @@ class TestStartupSweep:
         )
 
         with patch(
-            "pynchy.ipc._watcher.get_settings",
+            "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
             processed = await _sweep_directory(ipc_dir, deps)
@@ -172,7 +172,7 @@ class TestStartupSweep:
         )
 
         with patch(
-            "pynchy.ipc._watcher.get_settings",
+            "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
             processed = await _sweep_directory(ipc_dir, deps)
@@ -191,7 +191,7 @@ class TestStartupSweep:
         )
 
         with patch(
-            "pynchy.ipc._watcher.get_settings",
+            "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
             deps.sync_group_metadata = AsyncMock()
@@ -230,7 +230,7 @@ class TestStartupSweep:
         )
 
         with patch(
-            "pynchy.ipc._watcher.get_settings",
+            "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
             await _sweep_directory(ipc_dir, deps)
@@ -256,10 +256,10 @@ class TestStartupSweep:
         )
 
         with patch(
-            "pynchy.ipc._watcher.get_settings",
+            "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ), patch(
-            "pynchy.ipc._watcher._process_output_file",
+            "pynchy.host.container_manager.ipc.watcher._process_output_file",
             new_callable=AsyncMock,
         ) as mock_process:
             handled = await _sweep_directory(ipc_dir, deps)
@@ -278,7 +278,7 @@ class TestStartupSweep:
         initial_file.write_text(json.dumps({"type": "initial", "text": "stale prompt"}))
 
         with patch(
-            "pynchy.ipc._watcher.get_settings",
+            "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
             handled = await _sweep_directory(ipc_dir, deps)
@@ -308,7 +308,7 @@ class TestStartupSweep:
         (input_dir / "initial.json").write_text(json.dumps({"type": "initial"}))
 
         with patch(
-            "pynchy.ipc._watcher.get_settings",
+            "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
             handled = await _sweep_directory(ipc_dir, deps)
@@ -328,7 +328,7 @@ class TestStartupSweep:
         bad_file.write_text("not json {{{")
 
         with patch(
-            "pynchy.ipc._watcher.get_settings",
+            "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
             await _sweep_directory(ipc_dir, deps)
@@ -386,7 +386,7 @@ class TestTaskFileProcessing:
         deps.get_available_groups = AsyncMock(return_value=[])
 
         with patch(
-            "pynchy.ipc._watcher.get_settings",
+            "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
             await _process_task_file(file_path, "admin-1", True, ipc_dir, deps)
@@ -451,7 +451,7 @@ class TestMessageFileProcessing:
         )
 
         with patch(
-            "pynchy.ipc._watcher.get_settings",
+            "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
             await _process_message_file(file_path, "admin-1", True, ipc_dir, deps)
@@ -471,7 +471,7 @@ class TestMessageFileProcessing:
         )
 
         with patch(
-            "pynchy.ipc._watcher.get_settings",
+            "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
             await _process_message_file(file_path, "other-group", False, ipc_dir, deps)
@@ -496,7 +496,7 @@ class TestMessageFileProcessing:
         )
 
         with patch(
-            "pynchy.ipc._watcher.get_settings",
+            "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
             await _process_message_file(file_path, "admin-1", True, ipc_dir, deps)
@@ -512,7 +512,7 @@ class TestMessageFileProcessing:
         file_path.write_text("not valid json")
 
         with patch(
-            "pynchy.ipc._watcher.get_settings",
+            "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
             await _process_message_file(file_path, "admin-1", True, ipc_dir, deps)

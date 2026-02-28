@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from pynchy.container_runner._mcp_resolution import build_trust_map
+from pynchy.host.container_manager.mcp.resolution import build_trust_map
 from pynchy.types import ServiceTrustConfig
 
 
 class TestPluginTrustExtraction:
     def test_extract_trust_from_plugin_spec(self):
         """Plugin specs with 'trust' should have it extracted before McpServerConfig validation."""
-        from pynchy.container_runner.gateway import _collect_plugin_mcp_servers
+        from pynchy.host.container_manager.gateway import _collect_plugin_mcp_servers
 
         fake_pm = MagicMock()
         fake_pm.hook.pynchy_mcp_server_spec.return_value = [
@@ -38,7 +38,7 @@ class TestPluginTrustExtraction:
 
     def test_spec_without_trust_has_no_default(self):
         """Specs without a trust key should not appear in trust_defaults."""
-        from pynchy.container_runner.gateway import _collect_plugin_mcp_servers
+        from pynchy.host.container_manager.gateway import _collect_plugin_mcp_servers
 
         fake_pm = MagicMock()
         fake_pm.hook.pynchy_mcp_server_spec.return_value = [
@@ -57,7 +57,7 @@ class TestPluginTrustExtraction:
 
     def test_trust_not_passed_to_model_validate(self):
         """The trust key must be popped before McpServerConfig.model_validate (extra=forbid)."""
-        from pynchy.container_runner.gateway import _collect_plugin_mcp_servers
+        from pynchy.host.container_manager.gateway import _collect_plugin_mcp_servers
 
         fake_pm = MagicMock()
         fake_pm.hook.pynchy_mcp_server_spec.return_value = [
@@ -77,7 +77,7 @@ class TestPluginTrustExtraction:
 
     def test_multiple_specs_with_mixed_trust(self):
         """Multiple specs: some with trust, some without."""
-        from pynchy.container_runner.gateway import _collect_plugin_mcp_servers
+        from pynchy.host.container_manager.gateway import _collect_plugin_mcp_servers
 
         fake_pm = MagicMock()
         fake_pm.hook.pynchy_mcp_server_spec.return_value = [

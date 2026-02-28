@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
-from pynchy.db import _init_test_database
+from pynchy.state import _init_test_database
 
 
 @pytest.fixture
@@ -36,9 +36,9 @@ def settings(tmp_path: Path):
 
 class TestCreatePendingApproval:
     def test_creates_pending_file(self, ipc_dir: Path, settings):
-        from pynchy.security.approval import create_pending_approval
+        from pynchy.host.container_manager.security.approval import create_pending_approval
 
-        with patch("pynchy.security.approval.get_settings", return_value=settings):
+        with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings):
             create_pending_approval(
                 request_id="aabb001122334455",
                 tool_name="x_post",
@@ -64,9 +64,9 @@ class TestCreatePendingApproval:
         assert "timestamp" in data
 
     def test_atomic_write_no_tmp_left(self, ipc_dir: Path, settings):
-        from pynchy.security.approval import create_pending_approval
+        from pynchy.host.container_manager.security.approval import create_pending_approval
 
-        with patch("pynchy.security.approval.get_settings", return_value=settings):
+        with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings):
             create_pending_approval(
                 request_id="abc123",
                 tool_name="test",
@@ -79,9 +79,9 @@ class TestCreatePendingApproval:
         assert not list(pending_dir.glob("*.tmp"))
 
     def test_returns_short_id(self, ipc_dir: Path, settings):
-        from pynchy.security.approval import create_pending_approval
+        from pynchy.host.container_manager.security.approval import create_pending_approval
 
-        with patch("pynchy.security.approval.get_settings", return_value=settings):
+        with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings):
             short_id = create_pending_approval(
                 request_id="aabb001122334455",
                 tool_name="x_post",
@@ -100,9 +100,9 @@ class TestCreatePendingApproval:
 
 class TestGenerateShortId:
     def test_returns_2_char_alphanumeric(self, ipc_dir: Path, settings):
-        from pynchy.security.approval import generate_short_id
+        from pynchy.host.container_manager.security.approval import generate_short_id
 
-        with patch("pynchy.security.approval.get_settings", return_value=settings):
+        with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings):
             sid = generate_short_id("grp")
 
         assert len(sid) == 2
@@ -110,9 +110,9 @@ class TestGenerateShortId:
 
     def test_avoids_collision_with_existing(self, ipc_dir: Path, settings):
         """If existing pending has short_id 'ab', generating with 'ab' taken should differ."""
-        from pynchy.security.approval import create_pending_approval, generate_short_id
+        from pynchy.host.container_manager.security.approval import create_pending_approval, generate_short_id
 
-        with patch("pynchy.security.approval.get_settings", return_value=settings):
+        with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings):
             # Create a pending approval to occupy one short_id
             first_id = create_pending_approval(
                 "req1", "tool", "grp", "j@g.us", {}
@@ -134,9 +134,9 @@ class TestGenerateShortId:
 
 class TestFindPendingByShortId:
     def test_finds_by_short_id(self, ipc_dir: Path, settings):
-        from pynchy.security.approval import create_pending_approval, find_pending_by_short_id
+        from pynchy.host.container_manager.security.approval import create_pending_approval, find_pending_by_short_id
 
-        with patch("pynchy.security.approval.get_settings", return_value=settings):
+        with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings):
             short_id = create_pending_approval(
                 "req-abc", "tool_a", "grp", "j@g.us", {"msg": "test"}
             )
@@ -147,9 +147,9 @@ class TestFindPendingByShortId:
         assert result["short_id"] == short_id
 
     def test_returns_none_for_unknown(self, ipc_dir: Path, settings):
-        from pynchy.security.approval import find_pending_by_short_id
+        from pynchy.host.container_manager.security.approval import find_pending_by_short_id
 
-        with patch("pynchy.security.approval.get_settings", return_value=settings):
+        with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings):
             result = find_pending_by_short_id("zz")
 
         assert result is None
@@ -160,12 +160,12 @@ class TestFindPendingByShortId:
 
 class TestListPendingApprovals:
     def test_lists_all_pending(self, ipc_dir: Path, settings):
-        from pynchy.security.approval import (
+        from pynchy.host.container_manager.security.approval import (
             create_pending_approval,
             list_pending_approvals,
         )
 
-        with patch("pynchy.security.approval.get_settings", return_value=settings):
+        with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings):
             create_pending_approval("req1", "tool_a", "grp1", "j1@g.us", {})
             create_pending_approval("req2", "tool_b", "grp2", "j2@g.us", {})
             result = list_pending_approvals()
@@ -175,12 +175,12 @@ class TestListPendingApprovals:
         assert tool_names == {"tool_a", "tool_b"}
 
     def test_filters_by_group(self, ipc_dir: Path, settings):
-        from pynchy.security.approval import (
+        from pynchy.host.container_manager.security.approval import (
             create_pending_approval,
             list_pending_approvals,
         )
 
-        with patch("pynchy.security.approval.get_settings", return_value=settings):
+        with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings):
             create_pending_approval("req1", "tool_a", "grp1", "j1@g.us", {})
             create_pending_approval("req2", "tool_b", "grp2", "j2@g.us", {})
             result = list_pending_approvals(group="grp1")
@@ -189,9 +189,9 @@ class TestListPendingApprovals:
         assert result[0]["tool_name"] == "tool_a"
 
     def test_empty_when_no_pending(self, ipc_dir: Path, settings):
-        from pynchy.security.approval import list_pending_approvals
+        from pynchy.host.container_manager.security.approval import list_pending_approvals
 
-        with patch("pynchy.security.approval.get_settings", return_value=settings):
+        with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings):
             result = list_pending_approvals()
 
         assert result == []
@@ -203,14 +203,14 @@ class TestListPendingApprovals:
 class TestSweepExpiredApprovals:
     @pytest.mark.asyncio
     async def test_expires_old_pending(self, _setup_db, ipc_dir: Path, settings):
-        from pynchy.security.approval import (
+        from pynchy.host.container_manager.security.approval import (
             create_pending_approval,
             sweep_expired_approvals,
         )
 
         with (
-            patch("pynchy.security.approval.get_settings", return_value=settings),
-            patch("pynchy.ipc._write.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             create_pending_approval("req-old", "tool_a", "grp", "j@g.us", {})
 
@@ -235,12 +235,12 @@ class TestSweepExpiredApprovals:
 
     @pytest.mark.asyncio
     async def test_keeps_fresh_pending(self, ipc_dir: Path, settings):
-        from pynchy.security.approval import (
+        from pynchy.host.container_manager.security.approval import (
             create_pending_approval,
             sweep_expired_approvals,
         )
 
-        with patch("pynchy.security.approval.get_settings", return_value=settings):
+        with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings):
             create_pending_approval("req-fresh", "tool_b", "grp", "j@g.us", {})
             expired = await sweep_expired_approvals()
 
@@ -249,7 +249,7 @@ class TestSweepExpiredApprovals:
 
     @pytest.mark.asyncio
     async def test_cleans_orphaned_decisions(self, ipc_dir: Path, settings):
-        from pynchy.security.approval import sweep_expired_approvals
+        from pynchy.host.container_manager.security.approval import sweep_expired_approvals
 
         # Create decision with no matching pending
         decisions_dir = ipc_dir / "grp" / "approval_decisions"
@@ -257,7 +257,7 @@ class TestSweepExpiredApprovals:
         orphan = decisions_dir / "orphan-req.json"
         orphan.write_text(json.dumps({"request_id": "orphan-req", "approved": True}))
 
-        with patch("pynchy.security.approval.get_settings", return_value=settings):
+        with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings):
             await sweep_expired_approvals()
 
         assert not orphan.exists()
@@ -268,7 +268,7 @@ class TestSweepExpiredApprovals:
 
 class TestFormatApprovalNotification:
     def test_basic_format(self):
-        from pynchy.security.approval import format_approval_notification
+        from pynchy.host.container_manager.security.approval import format_approval_notification
 
         msg = format_approval_notification(
             tool_name="x_post",
@@ -282,7 +282,7 @@ class TestFormatApprovalNotification:
         assert "Hello world" in msg
 
     def test_omits_internal_fields(self):
-        from pynchy.security.approval import format_approval_notification
+        from pynchy.host.container_manager.security.approval import format_approval_notification
 
         msg = format_approval_notification(
             tool_name="x_post",
@@ -300,7 +300,7 @@ class TestFormatApprovalNotification:
         assert "visible" in msg
 
     def test_truncates_long_values(self):
-        from pynchy.security.approval import format_approval_notification
+        from pynchy.host.container_manager.security.approval import format_approval_notification
 
         long_text = "x" * 200
         msg = format_approval_notification(
@@ -312,7 +312,7 @@ class TestFormatApprovalNotification:
         assert long_text not in msg
 
     def test_empty_request_data(self):
-        from pynchy.security.approval import format_approval_notification
+        from pynchy.host.container_manager.security.approval import format_approval_notification
 
         msg = format_approval_notification(
             tool_name="tool",

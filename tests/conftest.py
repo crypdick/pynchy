@@ -161,7 +161,7 @@ def reset_settings(monkeypatch):
     mock takes precedence over the cached singleton.
     """
     safe = make_settings()
-    monkeypatch.setattr("pynchy.config._settings", safe)
+    monkeypatch.setattr("pynchy.config.settings._settings", safe)
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -178,7 +178,7 @@ def _close_test_database():
     close the loop before an async session fixture can tear down.
     """
     yield
-    import pynchy.db._connection as db_conn
+    import pynchy.state.connection as db_conn
 
     if db_conn._db is not None:
         db_conn._db.stop()

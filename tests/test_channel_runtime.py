@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 from unittest.mock import patch
 
-from pynchy.chat import channel_runtime
+from pynchy.plugins import channel_runtime
 
 
 @dataclass
@@ -60,7 +60,7 @@ def test_resolve_default_channel_uses_explicit_configured_channel() -> None:
             )()
         },
     )()
-    with patch("pynchy.chat.channel_runtime.get_settings", return_value=settings):
+    with patch("pynchy.plugins.channel_runtime.get_settings", return_value=settings):
         selected = channel_runtime.resolve_default_channel(
             [_FakeChannel("connection.whatsapp.primary")]
         )

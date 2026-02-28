@@ -21,10 +21,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.db import _init_test_database
-from pynchy.git_ops.repo import RepoContext
-from pynchy.ipc import dispatch
-from pynchy.ipc._handlers_deploy import _handle_deploy
+from pynchy.state import _init_test_database
+from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.container_manager.ipc import dispatch
+from pynchy.host.container_manager.ipc.handlers_deploy import _handle_deploy
 from pynchy.types import WorkspaceProfile
 
 ADMIN_GROUP = WorkspaceProfile(
@@ -145,19 +145,19 @@ class TestSyncWorktreeToMain:
 
         with (
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.git_ops.repo.resolve_repo_for_group",
+                "pynchy.host.git_ops.repo.resolve_repo_for_group",
                 return_value=fake_repo_ctx,
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
                 return_value={"success": True, "message": "Merged 1 commit(s)"},
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
                 new_callable=AsyncMock,
             ),
         ):
@@ -184,15 +184,15 @@ class TestSyncWorktreeToMain:
 
         with (
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
                 return_value={"success": False, "message": "uncommitted changes"},
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
                 new_callable=AsyncMock,
             ),
         ):
@@ -221,19 +221,19 @@ class TestSyncWorktreeToMain:
 
         with (
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.git_ops.repo.resolve_repo_for_group",
+                "pynchy.host.git_ops.repo.resolve_repo_for_group",
                 return_value=fake_repo_ctx,
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
                 return_value={"success": True, "message": "done"},
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
                 new_callable=AsyncMock,
             ) as mock_notify,
         ):
@@ -258,15 +258,15 @@ class TestSyncWorktreeToMain:
 
         with (
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
                 return_value={"success": False, "message": "conflict"},
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
                 new_callable=AsyncMock,
             ) as mock_notify,
         ):
@@ -294,31 +294,31 @@ class TestSyncWorktreeToMain:
 
         with (
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.git_ops.repo.resolve_repo_for_group",
+                "pynchy.host.git_ops.repo.resolve_repo_for_group",
                 return_value=fake_repo_ctx,
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
                 return_value={"success": True, "message": "Merged 1 commit(s)"},
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
                 new_callable=AsyncMock,
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_head_sha",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_head_sha",
                 side_effect=["pre-sha-111", "post-sha-222"],
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.needs_deploy",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.needs_deploy",
                 return_value=True,
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.needs_container_rebuild",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.needs_container_rebuild",
                 return_value=False,
             ),
         ):
@@ -346,23 +346,23 @@ class TestSyncWorktreeToMain:
 
         with (
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
                 return_value={"success": True, "message": "Merged 1 commit(s)"},
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
                 new_callable=AsyncMock,
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_head_sha",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_head_sha",
                 side_effect=["pre-sha-111", "post-sha-222"],
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.needs_deploy",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.needs_deploy",
                 return_value=False,
             ),
         ):
@@ -390,7 +390,7 @@ class TestDeployEdgeCases:
     async def test_deploy_without_chat_jid_uses_admin_group(self, deps: MockDeps):
         """Deploy request missing chatJid should fall back to admin group's JID."""
         with patch(
-            "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
+            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy", new_callable=AsyncMock
         ) as mock_finalize:
             await _handle_deploy(
                 {
@@ -414,7 +414,7 @@ class TestDeployEdgeCases:
         no_admin_deps = MockDeps({"other@g.us": OTHER_GROUP})
 
         with patch(
-            "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
+            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy", new_callable=AsyncMock
         ) as mock_finalize:
             await _handle_deploy(
                 {
@@ -429,15 +429,15 @@ class TestDeployEdgeCases:
 
     async def test_deploy_with_rebuild_but_no_build_script(self, deps: MockDeps, tmp_path: Path):
         """Deploy requesting rebuild when build.sh doesn't exist should still finalize."""
-        from pynchy.deploy import BuildResult
+        from pynchy.host.orchestrator.deploy import BuildResult
 
         with (
             patch(
-                "pynchy.ipc._handlers_deploy.build_container_image",
+                "pynchy.host.container_manager.ipc.handlers_deploy.build_container_image",
                 return_value=BuildResult(success=True, skipped=True),
             ),
             patch(
-                "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
+                "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy", new_callable=AsyncMock
             ) as mock_finalize,
         ):
             await _handle_deploy(
@@ -457,7 +457,7 @@ class TestDeployEdgeCases:
     async def test_deploy_uses_default_resume_prompt(self, deps: MockDeps):
         """Deploy with no resumePrompt should use the default."""
         with patch(
-            "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
+            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy", new_callable=AsyncMock
         ) as mock_finalize:
             await _handle_deploy(
                 {

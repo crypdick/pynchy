@@ -38,7 +38,7 @@ notebook = [
 
 [project.scripts]
 pynchy = "pynchy.__main__:main"
-pynchy-whatsapp-auth = "pynchy.chat.plugins.whatsapp.auth:main"
+pynchy-whatsapp-auth = "pynchy.plugins.channels.whatsapp.auth:main"
 
 [dependency-groups]
 dev = [
@@ -80,7 +80,7 @@ markers = [
     "parity: channel parity tests — verify output consistency across TUI, WhatsApp, and Slack",
 ]
 
-# Mirrored in: container/agent_runner/pyproject.toml
+# Mirrored in: src/pynchy/agent/agent_runner/pyproject.toml
 [tool.ruff]
 target-version = "py313"
 line-length = 100

@@ -16,8 +16,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.chat._message_routing import start_message_loop
-from pynchy.chat.message_handler import (
+from pynchy.host.orchestrator.messaging.inbound import start_message_loop
+from pynchy.host.orchestrator.messaging.pipeline import (
     _check_dirty_repo,
     _handle_reset_handoff,
     _mark_dispatched,
@@ -29,17 +29,17 @@ from pynchy.types import NewMessage
 
 # Commonly patched module paths — avoids repeating long strings and keeps
 # line lengths under 100 chars.
-_P_SETTINGS = "pynchy.chat.message_handler.get_settings"
-_P_MSGS_SINCE = "pynchy.chat.message_handler.get_messages_since"
-_P_INTERCEPT = "pynchy.chat.message_handler.intercept_special_command"
-_P_FMT_SDK = "pynchy.chat.router.format_messages_for_sdk"
-_P_STORE = "pynchy.chat.message_handler.store_message_direct"
-_P_DIRTY = "pynchy.chat.message_handler.is_repo_dirty"
-_P_GET_RA = "pynchy.workspace_config.get_repo_access"
-_P_MERGE = "pynchy.git_ops._worktree_merge.merge_and_push_worktree"
+_P_SETTINGS = "pynchy.host.orchestrator.messaging.pipeline.get_settings"
+_P_MSGS_SINCE = "pynchy.host.orchestrator.messaging.pipeline.get_messages_since"
+_P_INTERCEPT = "pynchy.host.orchestrator.messaging.pipeline.intercept_special_command"
+_P_FMT_SDK = "pynchy.host.orchestrator.messaging.formatter.format_messages_for_sdk"
+_P_STORE = "pynchy.host.orchestrator.messaging.pipeline.store_message_direct"
+_P_DIRTY = "pynchy.host.orchestrator.messaging.pipeline.is_repo_dirty"
+_P_GET_RA = "pynchy.host.orchestrator.workspace_config.get_repo_access"
+_P_MERGE = "pynchy.host.git_ops._worktree_merge.merge_and_push_worktree"
 
 # Patch paths for names imported in _message_routing (routing/loop tests).
-_PR = "pynchy.chat._message_routing"
+_PR = "pynchy.host.orchestrator.messaging.inbound"
 _PR_SETTINGS = f"{_PR}.get_settings"
 _PR_NEW_MSGS = f"{_PR}.get_new_messages"
 _PR_MSGS_SINCE = f"{_PR}.get_messages_since"
@@ -159,7 +159,7 @@ class TestInterceptSpecialCommand:
         deps = _make_deps(groups={"g@g.us": group})
         msg = _make_message("reset context")
 
-        with patch("pynchy.chat.message_handler.is_context_reset", return_value=True):
+        with patch("pynchy.host.orchestrator.messaging.pipeline.is_context_reset", return_value=True):
             result = await intercept_special_command(deps, "g@g.us", group, msg)
 
         assert result is True
@@ -173,11 +173,11 @@ class TestInterceptSpecialCommand:
 
         with (
             patch(
-                "pynchy.chat.message_handler.is_context_reset",
+                "pynchy.host.orchestrator.messaging.pipeline.is_context_reset",
                 return_value=False,
             ),
             patch(
-                "pynchy.chat.message_handler.is_end_session",
+                "pynchy.host.orchestrator.messaging.pipeline.is_end_session",
                 return_value=True,
             ),
         ):
@@ -194,15 +194,15 @@ class TestInterceptSpecialCommand:
 
         with (
             patch(
-                "pynchy.chat.message_handler.is_context_reset",
+                "pynchy.host.orchestrator.messaging.pipeline.is_context_reset",
                 return_value=False,
             ),
             patch(
-                "pynchy.chat.message_handler.is_end_session",
+                "pynchy.host.orchestrator.messaging.pipeline.is_end_session",
                 return_value=False,
             ),
             patch(
-                "pynchy.chat.message_handler.is_redeploy",
+                "pynchy.host.orchestrator.messaging.pipeline.is_redeploy",
                 return_value=True,
             ),
         ):
@@ -222,19 +222,19 @@ class TestInterceptSpecialCommand:
 
         with (
             patch(
-                "pynchy.chat.message_handler.is_context_reset",
+                "pynchy.host.orchestrator.messaging.pipeline.is_context_reset",
                 return_value=False,
             ),
             patch(
-                "pynchy.chat.message_handler.is_end_session",
+                "pynchy.host.orchestrator.messaging.pipeline.is_end_session",
                 return_value=False,
             ),
             patch(
-                "pynchy.chat.message_handler.is_redeploy",
+                "pynchy.host.orchestrator.messaging.pipeline.is_redeploy",
                 return_value=False,
             ),
             patch(
-                "pynchy.chat.message_handler.execute_direct_command",
+                "pynchy.host.orchestrator.messaging.pipeline.execute_direct_command",
                 new_callable=AsyncMock,
             ) as mock_exec,
         ):
@@ -252,15 +252,15 @@ class TestInterceptSpecialCommand:
 
         with (
             patch(
-                "pynchy.chat.message_handler.is_context_reset",
+                "pynchy.host.orchestrator.messaging.pipeline.is_context_reset",
                 return_value=False,
             ),
             patch(
-                "pynchy.chat.message_handler.is_end_session",
+                "pynchy.host.orchestrator.messaging.pipeline.is_end_session",
                 return_value=False,
             ),
             patch(
-                "pynchy.chat.message_handler.is_redeploy",
+                "pynchy.host.orchestrator.messaging.pipeline.is_redeploy",
                 return_value=False,
             ),
         ):
@@ -276,15 +276,15 @@ class TestInterceptSpecialCommand:
 
         with (
             patch(
-                "pynchy.chat.message_handler.is_context_reset",
+                "pynchy.host.orchestrator.messaging.pipeline.is_context_reset",
                 return_value=False,
             ),
             patch(
-                "pynchy.chat.message_handler.is_end_session",
+                "pynchy.host.orchestrator.messaging.pipeline.is_end_session",
                 return_value=False,
             ),
             patch(
-                "pynchy.chat.message_handler.is_redeploy",
+                "pynchy.host.orchestrator.messaging.pipeline.is_redeploy",
                 return_value=False,
             ),
         ):
@@ -299,7 +299,7 @@ class TestInterceptSpecialCommand:
         deps = _make_deps()
         msg = _make_message("  reset context  ")
 
-        with patch("pynchy.chat.message_handler.is_context_reset", return_value=True):
+        with patch("pynchy.host.orchestrator.messaging.pipeline.is_context_reset", return_value=True):
             result = await intercept_special_command(deps, "g@g.us", group, msg)
 
         assert result is True
@@ -311,7 +311,7 @@ class TestInterceptSpecialCommand:
 
 
 class TestExecuteDirectCommand:
-    _P_SHELL = "pynchy.chat.message_handler.run_shell_command"
+    _P_SHELL = "pynchy.host.orchestrator.messaging.pipeline.run_shell_command"
 
     @pytest.mark.asyncio
     async def test_successful_command_broadcasts_output(self):
@@ -610,7 +610,7 @@ class TestProcessGroupMessages:
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch("pynchy.git_ops._worktree_merge.background_merge_worktree") as mock_bg_merge,
+            patch("pynchy.host.git_ops._worktree_merge.background_merge_worktree") as mock_bg_merge,
         ):
             ms.return_value = _settings_mock(tmp_path)
             ms.return_value.trigger_pattern.search.return_value = True
@@ -952,7 +952,7 @@ class TestBtwNonInterruptingMessages:
         mock_settings = MagicMock()
         mock_settings.workspace_defaults.allowed_users = ["*"]
         mock_settings.workspaces = {}
-        monkeypatch.setattr("pynchy.config_access.get_settings", lambda: mock_settings)
+        monkeypatch.setattr("pynchy.config.access.get_settings", lambda: mock_settings)
 
     @pytest.mark.asyncio
     async def test_btw_message_does_not_interrupt_active_task(self):

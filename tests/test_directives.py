@@ -8,9 +8,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from pynchy.config import DirectiveConfig
-from pynchy.directives import _scope_matches, resolve_directives
+from pynchy.config.directives import _scope_matches, resolve_directives
 
-_PATCH_TARGET = "pynchy.directives.get_settings"
+_PATCH_TARGET = "pynchy.config.directives.get_settings"
 
 
 class TestScopeMatches:

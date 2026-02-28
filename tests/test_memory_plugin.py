@@ -6,15 +6,15 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from pynchy.memory import _is_valid_provider, get_memory_provider
-from pynchy.memory.plugins.sqlite_memory import (
+from pynchy.plugins.memory import _is_valid_provider, get_memory_provider
+from pynchy.plugins.memory.sqlite_memory import (
     SqliteMemoryPlugin,
     _handle_forget_memory,
     _handle_list_memories,
     _handle_recall_memories,
     _handle_save_memory,
 )
-from pynchy.memory.plugins.sqlite_memory.backend import SqliteMemoryBackend
+from pynchy.plugins.memory.sqlite_memory.backend import SqliteMemoryBackend
 
 
 class TestMemoryProvider:
@@ -54,7 +54,7 @@ class TestMcpHandlers:
         """Replace the module-level backend singleton with a mock."""
         mock = AsyncMock(spec=SqliteMemoryBackend)
         mock.name = "sqlite"
-        with patch("pynchy.memory.plugins.sqlite_memory._backend", mock):
+        with patch("pynchy.plugins.memory.sqlite_memory._backend", mock):
             self.mock_backend = mock
             yield
 

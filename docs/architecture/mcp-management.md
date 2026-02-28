@@ -4,34 +4,13 @@ This page covers the internal architecture of pynchy's MCP server management. Fo
 
 ## Architecture
 
-```
-config.toml
-  ├── [mcp_servers]     → what exists (Docker or URL)
-  ├── [mcp_groups]      → named sets for convenience
-  ├── [mcp_presets]     → reusable kwarg bundles
-  └── [workspaces.X]
-        ├── mcp_servers → which MCPs this workspace can access
-        └── [mcp.Y]    → per-MCP kwargs (become Docker flags)
-              │
-              ▼
-┌─ McpManager ──────────────────────────────────────────┐
-│  Boot:                                                │
-│    1. Resolve workspace mcp_servers (expand groups)   │
-│    2. Resolve presets into kwargs                     │
-│    3. Compute unique (server, kwargs) instances       │
-│    4. Register instances with LiteLLM via HTTP API    │
-│    5. Create LiteLLM teams per workspace              │
-│    6. Cache team IDs + keys                           │
-│                                                       │
-│  On-demand:                                           │
-│    • Start Docker container when first agent needs it │
-│    • Stop after idle_timeout                          │
-└───────────────────────────────────────────────────────┘
-        │                           │
-        ▼                           ▼
-  LiteLLM (:4000)           Docker MCP instances
-  - /mcp endpoint            - pynchy-mcp-playwright-a3f2b1
-  - Team → allowed_servers   - pynchy-mcp-playwright-7c1d4e
+```mermaid
+graph TB
+    Config["config.toml"] --> MCP["MCP Manager"]
+    LCFG["litellm_config.yaml"] --> LiteLLM["LiteLLM"]
+    MCP --> LiteLLM
+    MCP -. "on-demand start/stop" .-> MCPCont["MCP Containers"]
+    MCPCont -. "stdio" .-> LiteLLM
 ```
 
 ## Key concepts
@@ -46,6 +25,6 @@ config.toml
 
 | File | Purpose |
 |------|---------|
-| `src/pynchy/config_mcp.py` | MCP config models (`McpServerConfig`) |
-| `src/pynchy/container_runner/mcp_manager.py` | MCP lifecycle, LiteLLM sync, team provisioning |
-| `src/pynchy/container_runner/_docker.py` | Shared Docker helpers |
+| `src/pynchy/config/mcp.py` | MCP config models (`McpServerConfig`) |
+| `src/pynchy/host/container_manager/mcp/` | MCP lifecycle, LiteLLM sync, team provisioning |
+| `src/pynchy/host/container_manager/_docker.py` | Shared Docker helpers |

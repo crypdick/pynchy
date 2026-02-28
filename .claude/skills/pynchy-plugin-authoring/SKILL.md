@@ -21,7 +21,7 @@ Use this skill when the user asks to:
 3. For host runtime/channel code, treat plugin code as high trust and avoid risky side effects in import-time code.
 4. For plugin docs, cross-link to `pynchy/docs/plugins/*` instead of duplicating long explanations.
 5. Refer to the [quickstart guide](https://pynchy.ricardodecal.com/plugins/quickstart/) for the recommended plugin directory structure.
-6. **Plugin config models belong in the plugin.** Define Pydantic config models inside the plugin's own source file, not in `pynchy/src/pynchy/config_models.py`. The core `config_models.py` is for pynchy core settings only.
+6. **Plugin config models belong in the plugin.** Define Pydantic config models inside the plugin's own source file, not in `pynchy/src/pynchy/config/models.py`. The core `config/models.py` is for pynchy core settings only.
 
 ## File Scope Conventions
 

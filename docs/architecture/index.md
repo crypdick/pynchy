@@ -2,6 +2,37 @@
 
 This section explains how Pynchy works under the hood. Understanding these concepts helps you troubleshoot issues, reason about security boundaries, and extend the system through plugins.
 
+## System Overview
+
+```mermaid
+graph TB
+    subgraph plugins ["Plugins"]
+        CH["Channels"] ~~~ AC["Agent Cores"] ~~~ INT["Integrations"] ~~~ OBS["Observers"]
+        MEM["Memory"] ~~~ TUN["Tunnels"] ~~~ RT["Runtimes"]
+    end
+
+    subgraph host ["Host"]
+        Registry["Plugin Registry"] ~~~ Messaging
+        Orchestrator ~~~ ContainerMgr["Container Manager"]
+        MCP["MCP Manager"] ~~~ Security["Security Gate + Cop"]
+        Gateway["LLM Gateway"]
+    end
+
+    Agent["Agent Containers"]
+    MCPCont["MCP Containers"]
+
+    plugins -. "hooks" .-> Registry
+    Registry --> Orchestrator
+    Registry --> MCP
+    Messaging <--> Orchestrator
+    Orchestrator <--> ContainerMgr
+    ContainerMgr <--> Security
+    MCP --> MCPCont
+    Security <--> Agent
+    Security <--> MCPCont
+    Gateway <--> Agent
+```
+
 ## Core Systems
 
 | Topic | What it covers |

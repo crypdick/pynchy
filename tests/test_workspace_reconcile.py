@@ -15,9 +15,9 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config import CommandCenterConfig, WorkspaceConfig
-from pynchy.db import _init_test_database, create_task, get_active_task_for_group, get_all_tasks
+from pynchy.state import _init_test_database, create_task, get_active_task_for_group, get_all_tasks
 from pynchy.types import WorkspaceProfile
-from pynchy.workspace_config import (
+from pynchy.host.orchestrator.workspace_config import (
     configure_plugin_workspaces,
     reconcile_workspaces,
 )
@@ -41,7 +41,7 @@ class TestReconcileWorkspaces:
     def groups_dir(self, monkeypatch, tmp_path):
         workspaces: dict[str, WorkspaceConfig] = {}
         s = make_settings(workspaces=workspaces, groups_dir=tmp_path / "groups")
-        monkeypatch.setattr("pynchy.workspace_config.get_settings", lambda: s)
+        monkeypatch.setattr("pynchy.host.orchestrator.workspace_config.get_settings", lambda: s)
         return workspaces
 
     @pytest.fixture(autouse=True)
@@ -253,7 +253,7 @@ class TestReconcileWorkspaces:
             groups_dir=tmp_path / "groups",
             command_center=CommandCenterConfig(connection=conn_ref),
         )
-        monkeypatch.setattr("pynchy.workspace_config.get_settings", lambda: s)
+        monkeypatch.setattr("pynchy.host.orchestrator.workspace_config.get_settings", lambda: s)
 
         _write_workspace_yaml(
             workspaces,
@@ -297,7 +297,7 @@ class TestReconcileWorkspaces:
             groups_dir=tmp_path / "groups",
             command_center=CommandCenterConfig(connection=conn_ref),
         )
-        monkeypatch.setattr("pynchy.workspace_config.get_settings", lambda: s)
+        monkeypatch.setattr("pynchy.host.orchestrator.workspace_config.get_settings", lambda: s)
 
         _write_workspace_yaml(
             workspaces,

@@ -12,13 +12,13 @@ from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
 from conftest import make_settings
 
-from pynchy.git_ops.utils import (
+from pynchy.host.git_ops.utils import (
     get_head_commit_message,
     get_head_sha,
     is_repo_dirty,
     push_local_commits,
 )
-from pynchy.http_server import (
+from pynchy.host.orchestrator.http_server import (
     _write_boot_warning,
     deps_key,
 )
@@ -28,7 +28,7 @@ from pynchy.types import NewMessage
 @contextlib.contextmanager
 def _patch_settings(*, data_dir: Path):
     s = make_settings(data_dir=data_dir)
-    with patch("pynchy.http_server.get_settings", return_value=s):
+    with patch("pynchy.host.orchestrator.http_server.get_settings", return_value=s):
         yield
 
 
@@ -39,7 +39,7 @@ def _patch_settings(*, data_dir: Path):
 
 def test_get_head_sha_success():
     """get_head_sha returns SHA when git succeeds."""
-    with patch("pynchy.git_ops.utils.run_git") as mock_run:
+    with patch("pynchy.host.git_ops.utils.run_git") as mock_run:
         mock_run.return_value = Mock(
             returncode=0,
             stdout="head-sha-001\n",
@@ -49,21 +49,21 @@ def test_get_head_sha_success():
 
 def test_get_head_sha_failure():
     """get_head_sha returns 'unknown' when git fails."""
-    with patch("pynchy.git_ops.utils.run_git") as mock_run:
+    with patch("pynchy.host.git_ops.utils.run_git") as mock_run:
         mock_run.return_value = Mock(returncode=1, stdout="")
         assert get_head_sha() == "unknown"
 
 
 def test_is_repo_dirty_clean():
     """is_repo_dirty returns False when no uncommitted changes."""
-    with patch("pynchy.git_ops.utils.run_git") as mock_run:
+    with patch("pynchy.host.git_ops.utils.run_git") as mock_run:
         mock_run.return_value = Mock(returncode=0, stdout="")
         assert is_repo_dirty() is False
 
 
 def test_is_repo_dirty_has_changes():
     """is_repo_dirty returns True when uncommitted changes exist."""
-    with patch("pynchy.git_ops.utils.run_git") as mock_run:
+    with patch("pynchy.host.git_ops.utils.run_git") as mock_run:
         mock_run.return_value = Mock(
             returncode=0,
             stdout=" M src/pynchy/app.py\n?? newfile.txt\n",
@@ -73,7 +73,7 @@ def test_is_repo_dirty_has_changes():
 
 def test_is_repo_dirty_failure():
     """is_repo_dirty returns False when git fails."""
-    with patch("pynchy.git_ops.utils.run_git") as mock_run:
+    with patch("pynchy.host.git_ops.utils.run_git") as mock_run:
         mock_run.return_value = Mock(returncode=1, stdout="")
         assert is_repo_dirty() is False
 
@@ -300,7 +300,7 @@ class TestHealthEndpoint(AioHTTPTestCase):
     """Tests for /health endpoint."""
 
     async def get_application(self) -> web.Application:
-        from pynchy.http_server import _handle_health
+        from pynchy.host.orchestrator.http_server import _handle_health
 
         app = web.Application()
         self.deps = MockHttpDeps()
@@ -311,12 +311,12 @@ class TestHealthEndpoint(AioHTTPTestCase):
     async def test_health_returns_status_ok(self):
         """Health endpoint returns ok status."""
         with (
-            patch("pynchy.http_server.get_head_sha", return_value="abc123"),
+            patch("pynchy.host.orchestrator.http_server.get_head_sha", return_value="abc123"),
             patch(
-                "pynchy.http_server.get_head_commit_message",
+                "pynchy.host.orchestrator.http_server.get_head_commit_message",
                 return_value="Test commit",
             ),
-            patch("pynchy.http_server.is_repo_dirty", return_value=False),
+            patch("pynchy.host.orchestrator.http_server.is_repo_dirty", return_value=False),
         ):
             resp = await self.client.get("/health")
             assert resp.status == 200
@@ -331,9 +331,9 @@ class TestHealthEndpoint(AioHTTPTestCase):
     async def test_health_includes_uptime(self):
         """Health endpoint includes uptime_seconds."""
         with (
-            patch("pynchy.http_server.get_head_sha", return_value="abc123"),
-            patch("pynchy.http_server.get_head_commit_message", return_value="Test"),
-            patch("pynchy.http_server.is_repo_dirty", return_value=False),
+            patch("pynchy.host.orchestrator.http_server.get_head_sha", return_value="abc123"),
+            patch("pynchy.host.orchestrator.http_server.get_head_commit_message", return_value="Test"),
+            patch("pynchy.host.orchestrator.http_server.is_repo_dirty", return_value=False),
         ):
             resp = await self.client.get("/health")
             data = await resp.json()
@@ -345,7 +345,7 @@ class TestTUIAPIEndpoints(AioHTTPTestCase):
     """Tests for TUI API endpoints."""
 
     async def get_application(self) -> web.Application:
-        from pynchy.http_server import (
+        from pynchy.host.orchestrator.http_server import (
             _handle_api_groups,
             _handle_api_messages,
             _handle_api_periodic,

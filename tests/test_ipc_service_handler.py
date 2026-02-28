@@ -7,13 +7,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.config_models import WorkspaceConfig
-from pynchy.db import _init_test_database
-from pynchy.ipc._handlers_service import (
+from pynchy.config.models import WorkspaceConfig
+from pynchy.state import _init_test_database
+from pynchy.host.container_manager.ipc.handlers_service import (
     _handle_service_request,
     clear_plugin_handler_cache,
 )
-from pynchy.security.gate import _gates, create_gate
+from pynchy.host.container_manager.security.gate import _gates, create_gate
 from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
 
 
@@ -126,9 +126,9 @@ async def test_plugin_dispatch_calls_handler(tmp_path, register_gate):
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
     with (
-        patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
-        patch("pynchy.ipc._write.get_settings", return_value=settings),
-        patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
+        patch("pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager", return_value=fake_pm),
     ):
         data = _make_request("my_tool", some_param="value")
         await _handle_service_request(data, "test-ws", False, deps)
@@ -156,9 +156,9 @@ async def test_forbidden_tool_denied(tmp_path, register_gate):
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
     with (
-        patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
-        patch("pynchy.ipc._write.get_settings", return_value=settings),
-        patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
+        patch("pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager", return_value=fake_pm),
     ):
         data = _make_request("forbidden_tool", param="value")
         await _handle_service_request(data, "test-ws", False, deps)
@@ -191,9 +191,9 @@ async def test_dangerous_writes_requires_human(tmp_path, register_gate):
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
     with (
-        patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
-        patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
-        patch("pynchy.security.approval.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager", return_value=fake_pm),
+        patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings),
     ):
         data = _make_request("sensitive_tool", item_id="123")
         await _handle_service_request(data, "test-ws", False, deps)
@@ -225,9 +225,9 @@ async def test_unknown_tool_type(tmp_path):
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
     with (
-        patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
-        patch("pynchy.ipc._write.get_settings", return_value=settings),
-        patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
+        patch("pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager", return_value=fake_pm),
     ):
         data = {
             "type": "service:nonexistent_tool",
@@ -272,10 +272,10 @@ async def test_fallback_security_for_unconfigured_workspace(tmp_path):
     deps = FakeDeps({})
 
     with (
-        patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings),
         patch("pynchy.config.get_settings", return_value=settings),
-        patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
-        patch("pynchy.security.approval.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager", return_value=fake_pm),
+        patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings),
     ):
         data = _make_request("some_tool")
         await _handle_service_request(data, "unknown-ws", False, deps)
@@ -312,9 +312,9 @@ async def test_safe_service_allowed(tmp_path, register_gate):
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
     with (
-        patch("pynchy.ipc._handlers_service.get_settings", return_value=settings),
-        patch("pynchy.ipc._write.get_settings", return_value=settings),
-        patch("pynchy.ipc._handlers_service.get_plugin_manager", return_value=fake_pm),
+        patch("pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager", return_value=fake_pm),
     ):
         data = _make_request("safe_tool")
         await _handle_service_request(data, "test-ws", False, deps)

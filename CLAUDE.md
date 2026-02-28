@@ -14,26 +14,27 @@ Python process that connects to messaging channels (WhatsApp, Slack, etc. via pl
 
 | File | Purpose |
 |------|---------|
-| `src/pynchy/db/` | SQLite operations (async, aiosqlite) — package with domain submodules |
-| `src/pynchy/ipc/` | IPC watcher, registry-based dispatch, service handlers — package |
-| `src/pynchy/git_ops/` | Git sync, worktrees, and shared helpers — package |
-| `src/pynchy/chat/` | Message pipeline — channels, commands, routing, output handling |
-| `src/pynchy/runtime/` | Runtime detection, platform providers, system checks |
-| `src/pynchy/plugin/` | Plugin system, sync, verification, built-in plugins |
-| `src/pynchy/container_runner/` | Container orchestration — mounts, credentials, process management |
-| `src/pynchy/container_runner/mcp_manager.py` | MCP lifecycle — LiteLLM sync, Docker on-demand, team provisioning |
-| `src/pynchy/container_runner/_docker.py` | Shared Docker helpers (run, pull, network, health check) |
-| `src/pynchy/security/` | Security policy middleware and audit logging |
-| `src/pynchy/config.py` | Pydantic BaseSettings config (TOML + env overrides) |
-| `src/pynchy/config_mcp.py` | MCP server config models (`McpServerConfig`) |
-| `src/pynchy/group_queue.py` | Per-group queue with global concurrency limit |
-| `src/pynchy/task_scheduler.py` | Runs scheduled tasks |
-| `src/pynchy/directives.py` | Scoped system prompt directive resolution |
+| `src/pynchy/state/` | SQLite operations (async, aiosqlite) — package with domain submodules |
+| `src/pynchy/host/container_manager/ipc/` | IPC watcher, registry-based dispatch, service handlers |
+| `src/pynchy/host/git_ops/` | Git sync, worktrees, and shared helpers |
+| `src/pynchy/host/orchestrator/messaging/` | Message pipeline — inbound routing, processing, outbound delivery |
+| `src/pynchy/host/orchestrator/` | App lifecycle, agent execution, scheduling, workspace config |
+| `src/pynchy/plugins/runtimes/` | Runtime detection, platform providers, system checks |
+| `src/pynchy/plugins/` | Plugin system — registry, hookspecs, channels, agent cores, integrations |
+| `src/pynchy/host/container_manager/` | Container orchestration — mounts, credentials, process management |
+| `src/pynchy/host/container_manager/mcp/` | MCP lifecycle — LiteLLM sync, Docker on-demand, team provisioning |
+| `src/pynchy/host/container_manager/security/` | Security policy middleware and audit logging |
+| `src/pynchy/config/` | Pydantic BaseSettings config (TOML + env overrides), MCP config, directives |
+| `src/pynchy/config/mcp.py` | MCP server config models (`McpServerConfig`) |
+| `src/pynchy/host/orchestrator/concurrency.py` | Per-group queue with global concurrency limit |
+| `src/pynchy/host/orchestrator/task_scheduler.py` | Runs scheduled tasks |
+| `src/pynchy/config/directives.py` | Scoped system prompt directive resolution |
 | `src/pynchy/types.py` | Data models (dataclasses) |
 | `src/pynchy/logger.py` | Structured logging (structlog) |
+| `src/pynchy/agent/` | Container-side code — skills, agent runner, build scripts |
 | `directives/` | System prompt directive markdown files |
 | `groups/{name}/` | Per-group workspace files (isolated) |
-| `container/skills/` | Agent skills with YAML frontmatter (tier, name, description) |
+| `src/pynchy/agent/skills/` | Agent skills with YAML frontmatter (tier, name, description) |
 | `backlog/TODO.md` | Work item index — one-line items linking to plan files in status folders |
 
 ## Detailed Guides
