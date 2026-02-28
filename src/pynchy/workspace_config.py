@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 from pynchy.config import get_settings, reset_settings
 from pynchy.config_models import WorkspaceConfig
 from pynchy.config_refs import connection_ref_from_parts, parse_chat_ref
-from pynchy.db import create_task, get_active_task_for_group, update_task
+from pynchy.db import create_task, get_active_task_for_group, get_all_tasks, update_task
 from pynchy.logger import logger
 from pynchy.utils import compute_next_run
 
@@ -374,6 +374,18 @@ async def reconcile_workspaces(
 
     if reconciled:
         logger.info("Workspaces reconciled", count=reconciled)
+
+    # 3. Pause orphaned tasks — workspace removed from config or no longer periodic
+    periodic_folders = {f for f, sp in specs.items() if sp.config.is_periodic}
+    all_tasks = await get_all_tasks()
+    for task in all_tasks:
+        if task.status == "active" and task.group_folder not in periodic_folders:
+            await update_task(task.id, {"status": "paused"})
+            logger.info(
+                "Paused orphaned scheduled task",
+                task_id=task.id,
+                folder=task.group_folder,
+            )
 
 
 # ---------------------------------------------------------------------------
