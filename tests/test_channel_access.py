@@ -23,24 +23,26 @@ from pynchy.config.models import (
     ConnectionChatConfig,
     ConnectionsConfig,
     OwnerConfig,
+    SandboxProfileConfig,
     SlackConnectionConfig,
     WhatsAppConnectionConfig,
     WorkspaceConfig,
-    WorkspaceDefaultsConfig,
 )
 
 
 def _settings_with(
     *,
-    defaults: WorkspaceDefaultsConfig | None = None,
+    defaults: SandboxProfileConfig | None = None,
     workspaces: dict[str, WorkspaceConfig] | None = None,
     owner: OwnerConfig | None = None,
     user_groups: dict[str, list[str]] | None = None,
     connections: ConnectionsConfig | None = None,
+    sandbox_profiles: dict[str, SandboxProfileConfig] | None = None,
 ) -> MagicMock:
     """Create a Settings mock for resolve_channel_config tests."""
     s = MagicMock(spec=Settings)
-    s.workspace_defaults = defaults or WorkspaceDefaultsConfig()
+    s.sandbox_universal = defaults or SandboxProfileConfig()
+    s.sandbox_profiles = sandbox_profiles or {}
     s.workspaces = workspaces or {}
     s.owner = owner or OwnerConfig()
     s.user_groups = user_groups or {}
@@ -68,8 +70,8 @@ class TestResolveChannelConfig:
         assert result.allowed_users == ["owner"]
 
     def test_custom_defaults(self):
-        """Custom workspace_defaults propagate."""
-        defaults = WorkspaceDefaultsConfig(
+        """Custom sandbox_universal propagate."""
+        defaults = SandboxProfileConfig(
             access="read",
             mode="chat",
             trust=False,
@@ -170,8 +172,8 @@ class TestResolveChannelConfig:
         assert result.access == "readwrite"
         assert result.mode == "chat"
 
-    def test_workspace_overrides_chat_security(self):
-        """Workspace overrides win over connection/chat security."""
+    def test_chat_security_overrides_workspace(self):
+        """Chat-level security overrides win over workspace settings."""
         ws = WorkspaceConfig(
             name="test",
             chat="connection.slack.main.chat.general",
@@ -196,7 +198,8 @@ class TestResolveChannelConfig:
         ):
             result = resolve_channel_config("ws")
 
-        assert result.access == "write"
+        # Chat security is more specific than workspace in the new cascade
+        assert result.access == "read"
 
 
 # ---------------------------------------------------------------------------

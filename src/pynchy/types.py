@@ -121,7 +121,7 @@ class ResolvedChannelConfig:
     """Fully-resolved channel access configuration — no None fields.
 
     Produced by resolve_channel_config() after walking the cascade:
-    workspace_defaults → workspace → per-channel override.
+    sandbox_universal → profile → workspace → connection.security → chat.security.
     """
 
     access: Literal["read", "write", "readwrite"]
