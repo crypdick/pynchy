@@ -231,7 +231,7 @@ class TestCheckDeployContinuation:
         )
 
         # Patch load_workspace_config: periodic for code-improver, non-periodic for others
-        from pynchy.config_models import WorkspaceConfig
+        from pynchy.config.models import WorkspaceConfig
 
         def mock_load(folder):
             if folder == "code-improver":
@@ -280,7 +280,7 @@ class TestCheckDeployContinuation:
             lambda: type("S", (), {"data_dir": tmp_path})(),
         )
 
-        from pynchy.config_models import WorkspaceConfig
+        from pynchy.config.models import WorkspaceConfig
 
         monkeypatch.setattr(
             "pynchy.workspace_config.load_workspace_config",

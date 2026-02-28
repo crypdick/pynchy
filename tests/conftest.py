@@ -161,7 +161,7 @@ def reset_settings(monkeypatch):
     mock takes precedence over the cached singleton.
     """
     safe = make_settings()
-    monkeypatch.setattr("pynchy.config._settings", safe)
+    monkeypatch.setattr("pynchy.config.settings._settings", safe)
 
 
 @pytest.fixture(autouse=True, scope="session")

@@ -53,7 +53,7 @@ from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
     from pynchy.config import Settings
-    from pynchy.config_mcp import McpServerConfig
+    from pynchy.config.mcp import McpServerConfig
     from pynchy.container_runner.gateway import LiteLLMGateway
     from pynchy.types import ServiceTrustConfig
 

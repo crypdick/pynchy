@@ -15,9 +15,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pynchy.config import get_settings
-from pynchy.config_models import OwnerConfig
-from pynchy.config_refs import (
+from pynchy.config.settings import get_settings
+from pynchy.config.models import OwnerConfig
+from pynchy.config.refs import (
     channel_platform_from_name,
     connection_ref_from_parts,
     parse_chat_ref,

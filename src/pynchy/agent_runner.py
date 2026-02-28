@@ -165,7 +165,7 @@ async def _pre_container_setup(
     repo_access_override: str | None,
 ) -> _PreContainerResult:
     """Common pre-container setup for both warm and cold paths."""
-    from pynchy.directives import resolve_directives
+    from pynchy.config.directives import resolve_directives
     from pynchy.workspace_config import get_repo_access
 
     is_admin = group.is_admin

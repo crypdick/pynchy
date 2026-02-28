@@ -952,7 +952,7 @@ class TestBtwNonInterruptingMessages:
         mock_settings = MagicMock()
         mock_settings.workspace_defaults.allowed_users = ["*"]
         mock_settings.workspaces = {}
-        monkeypatch.setattr("pynchy.config_access.get_settings", lambda: mock_settings)
+        monkeypatch.setattr("pynchy.config.access.get_settings", lambda: mock_settings)
 
     @pytest.mark.asyncio
     async def test_btw_message_does_not_interrupt_active_task(self):
