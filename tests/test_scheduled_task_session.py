@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.container_runner._session import ContainerSession, SessionDiedError
+from pynchy.host.container_manager.session import ContainerSession, SessionDiedError
 from pynchy.group_queue import GroupQueue
 from pynchy.types import ContainerInput, WorkspaceProfile
 
@@ -173,7 +173,7 @@ class TestScheduledTaskUsesSession:
 
     def test_run_container_agent_fully_removed(self):
         """run_container_agent was removed — ensure it doesn't reappear."""
-        import pynchy.container_runner._orchestrator as orch
+        import pynchy.host.container_manager.orchestrator as orch
 
         assert not hasattr(orch, "run_container_agent"), (
             "run_container_agent was removed — scheduled tasks use session-based streaming"

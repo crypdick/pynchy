@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pynchy.security.fencing import fence_untrusted_content, sanitize_markers
+from pynchy.host.container_manager.security.fencing import fence_untrusted_content, sanitize_markers
 
 
 class TestMarkerSanitization:

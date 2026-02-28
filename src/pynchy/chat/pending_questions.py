@@ -206,7 +206,7 @@ async def sweep_expired_questions() -> list[dict]:
     """
     # Deferred import to avoid circular dependency:
     # pending_questions -> ipc._write -> ipc.__init__ -> ipc._handlers_ask_user -> pending_questions
-    from pynchy.ipc._write import ipc_response_path, write_ipc_response
+    from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 
     s = get_settings()
     ipc_dir = s.data_dir / "ipc"

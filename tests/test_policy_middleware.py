@@ -1,6 +1,6 @@
 """Tests for SecurityPolicy — the trust-based gating engine."""
 
-from pynchy.security.middleware import PolicyDecision, SecurityPolicy
+from pynchy.host.container_manager.security.middleware import PolicyDecision, SecurityPolicy
 from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
 
 # --- Helpers ---

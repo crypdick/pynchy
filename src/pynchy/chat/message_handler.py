@@ -31,7 +31,7 @@ from pynchy.logger import logger
 from pynchy.utils import generate_message_id, run_shell_command
 
 if TYPE_CHECKING:
-    from pynchy.container_runner import OnOutput
+    from pynchy.host.container_manager import OnOutput
     from pynchy.group_queue import GroupQueue
     from pynchy.types import Channel, ContainerOutput, NewMessage, WorkspaceProfile
 

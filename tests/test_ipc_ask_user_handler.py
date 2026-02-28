@@ -61,7 +61,7 @@ class TestHandleAskUserRequest:
     @pytest.mark.asyncio
     async def test_stores_pending_question_with_correct_fields(self):
         """Handler should call create_pending_question with the right arguments."""
-        from pynchy.ipc._handlers_ask_user import _handle_ask_user_request
+        from pynchy.host.container_manager.ipc.handlers_ask_user import _handle_ask_user_request
 
         ws = _make_workspace(jid="group@g.us", folder="my-group")
         channel = _make_channel(name="slack")
@@ -78,8 +78,8 @@ class TestHandleAskUserRequest:
         }
 
         with (
-            patch("pynchy.ipc._handlers_ask_user.create_pending_question") as mock_create,
-            patch("pynchy.ipc._handlers_ask_user.update_message_id"),
+            patch("pynchy.host.container_manager.ipc.handlers_ask_user.create_pending_question") as mock_create,
+            patch("pynchy.host.container_manager.ipc.handlers_ask_user.update_message_id"),
         ):
             await _handle_ask_user_request(data, "my-group", False, deps)
 
@@ -95,7 +95,7 @@ class TestHandleAskUserRequest:
     @pytest.mark.asyncio
     async def test_calls_send_ask_user_on_channel(self):
         """Handler should call channel.send_ask_user with the right arguments."""
-        from pynchy.ipc._handlers_ask_user import _handle_ask_user_request
+        from pynchy.host.container_manager.ipc.handlers_ask_user import _handle_ask_user_request
 
         ws = _make_workspace(jid="group@g.us", folder="my-group")
         channel = _make_channel(name="slack", send_ask_user_return="msg-42")
@@ -113,8 +113,8 @@ class TestHandleAskUserRequest:
         }
 
         with (
-            patch("pynchy.ipc._handlers_ask_user.create_pending_question"),
-            patch("pynchy.ipc._handlers_ask_user.update_message_id"),
+            patch("pynchy.host.container_manager.ipc.handlers_ask_user.create_pending_question"),
+            patch("pynchy.host.container_manager.ipc.handlers_ask_user.update_message_id"),
         ):
             await _handle_ask_user_request(data, "my-group", False, deps)
 
@@ -123,7 +123,7 @@ class TestHandleAskUserRequest:
     @pytest.mark.asyncio
     async def test_updates_message_id_when_channel_returns_one(self):
         """Handler should call update_message_id when send_ask_user returns a value."""
-        from pynchy.ipc._handlers_ask_user import _handle_ask_user_request
+        from pynchy.host.container_manager.ipc.handlers_ask_user import _handle_ask_user_request
 
         ws = _make_workspace(jid="group@g.us", folder="my-group")
         channel = _make_channel(name="slack", send_ask_user_return="msg-42")
@@ -140,8 +140,8 @@ class TestHandleAskUserRequest:
         }
 
         with (
-            patch("pynchy.ipc._handlers_ask_user.create_pending_question"),
-            patch("pynchy.ipc._handlers_ask_user.update_message_id") as mock_update,
+            patch("pynchy.host.container_manager.ipc.handlers_ask_user.create_pending_question"),
+            patch("pynchy.host.container_manager.ipc.handlers_ask_user.update_message_id") as mock_update,
         ):
             await _handle_ask_user_request(data, "my-group", False, deps)
 
@@ -150,7 +150,7 @@ class TestHandleAskUserRequest:
     @pytest.mark.asyncio
     async def test_skips_message_id_update_when_channel_returns_none(self):
         """Handler should NOT call update_message_id when send_ask_user returns None."""
-        from pynchy.ipc._handlers_ask_user import _handle_ask_user_request
+        from pynchy.host.container_manager.ipc.handlers_ask_user import _handle_ask_user_request
 
         ws = _make_workspace(jid="group@g.us", folder="my-group")
         channel = _make_channel(name="slack", send_ask_user_return=None)
@@ -167,8 +167,8 @@ class TestHandleAskUserRequest:
         }
 
         with (
-            patch("pynchy.ipc._handlers_ask_user.create_pending_question"),
-            patch("pynchy.ipc._handlers_ask_user.update_message_id") as mock_update,
+            patch("pynchy.host.container_manager.ipc.handlers_ask_user.create_pending_question"),
+            patch("pynchy.host.container_manager.ipc.handlers_ask_user.update_message_id") as mock_update,
         ):
             await _handle_ask_user_request(data, "my-group", False, deps)
 
@@ -177,7 +177,7 @@ class TestHandleAskUserRequest:
     @pytest.mark.asyncio
     async def test_writes_error_response_when_channel_lacks_send_ask_user(self, settings):
         """Handler should write an IPC error if the channel has no send_ask_user."""
-        from pynchy.ipc._handlers_ask_user import _handle_ask_user_request
+        from pynchy.host.container_manager.ipc.handlers_ask_user import _handle_ask_user_request
 
         ws = _make_workspace(jid="group@g.us", folder="my-group")
         channel = _make_channel(name="whatsapp", has_send_ask_user=False)
@@ -194,10 +194,10 @@ class TestHandleAskUserRequest:
         }
 
         with (
-            patch("pynchy.ipc._write.get_settings", return_value=settings),
-            patch("pynchy.ipc._handlers_ask_user.create_pending_question"),
-            patch("pynchy.ipc._handlers_ask_user.update_message_id"),
-            patch("pynchy.ipc._handlers_ask_user.resolve_pending_question") as mock_resolve,
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.handlers_ask_user.create_pending_question"),
+            patch("pynchy.host.container_manager.ipc.handlers_ask_user.update_message_id"),
+            patch("pynchy.host.container_manager.ipc.handlers_ask_user.resolve_pending_question") as mock_resolve,
         ):
             await _handle_ask_user_request(data, "my-group", False, deps)
 
@@ -214,7 +214,7 @@ class TestHandleAskUserRequest:
     @pytest.mark.asyncio
     async def test_handles_missing_request_id_gracefully(self):
         """Handler should return early without crashing when request_id is missing."""
-        from pynchy.ipc._handlers_ask_user import _handle_ask_user_request
+        from pynchy.host.container_manager.ipc.handlers_ask_user import _handle_ask_user_request
 
         deps = _make_deps()
 
@@ -224,7 +224,7 @@ class TestHandleAskUserRequest:
             # No request_id
         }
 
-        with patch("pynchy.ipc._handlers_ask_user.create_pending_question") as mock_create:
+        with patch("pynchy.host.container_manager.ipc.handlers_ask_user.create_pending_question") as mock_create:
             # Should not raise
             await _handle_ask_user_request(data, "my-group", False, deps)
 
@@ -234,7 +234,7 @@ class TestHandleAskUserRequest:
     @pytest.mark.asyncio
     async def test_writes_error_when_no_workspace_matches_group(self, settings):
         """Handler should write an IPC error if no workspace maps to source_group."""
-        from pynchy.ipc._handlers_ask_user import _handle_ask_user_request
+        from pynchy.host.container_manager.ipc.handlers_ask_user import _handle_ask_user_request
 
         # Workspace folder doesn't match source_group
         ws = _make_workspace(jid="other@g.us", folder="other-group")
@@ -247,8 +247,8 @@ class TestHandleAskUserRequest:
         }
 
         with (
-            patch("pynchy.ipc._write.get_settings", return_value=settings),
-            patch("pynchy.ipc._handlers_ask_user.create_pending_question") as mock_create,
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.handlers_ask_user.create_pending_question") as mock_create,
         ):
             await _handle_ask_user_request(data, "my-group", False, deps)
 
@@ -262,7 +262,7 @@ class TestHandleAskUserRequest:
     @pytest.mark.asyncio
     async def test_writes_error_when_no_channel_owns_jid(self, settings):
         """Handler should write an IPC error if no channel owns the group's JID."""
-        from pynchy.ipc._handlers_ask_user import _handle_ask_user_request
+        from pynchy.host.container_manager.ipc.handlers_ask_user import _handle_ask_user_request
 
         ws = _make_workspace(jid="group@g.us", folder="my-group")
         # Channel does NOT own this JID
@@ -279,8 +279,8 @@ class TestHandleAskUserRequest:
         }
 
         with (
-            patch("pynchy.ipc._write.get_settings", return_value=settings),
-            patch("pynchy.ipc._handlers_ask_user.create_pending_question") as mock_create,
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.handlers_ask_user.create_pending_question") as mock_create,
         ):
             await _handle_ask_user_request(data, "my-group", False, deps)
 
@@ -293,8 +293,8 @@ class TestHandleAskUserRequest:
 
     def test_handler_registered_with_ask_user_prefix(self):
         """The handler should be registered for the 'ask_user:' prefix."""
-        from pynchy.ipc._handlers_ask_user import _handle_ask_user_request
-        from pynchy.ipc._registry import PREFIX_HANDLERS
+        from pynchy.host.container_manager.ipc.handlers_ask_user import _handle_ask_user_request
+        from pynchy.host.container_manager.ipc.registry import PREFIX_HANDLERS
 
         assert "ask_user:" in PREFIX_HANDLERS
         assert PREFIX_HANDLERS["ask_user:"] is _handle_ask_user_request

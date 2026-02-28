@@ -8,7 +8,7 @@ import pytest
 
 from pynchy.state import _init_test_database, store_message_direct
 from pynchy.state.connection import _get_db
-from pynchy.security.audit import prune_security_audit, record_security_event
+from pynchy.host.container_manager.security.audit import prune_security_audit, record_security_event
 
 
 @pytest.fixture(autouse=True)

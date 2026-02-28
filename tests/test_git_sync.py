@@ -26,7 +26,7 @@ from pynchy.git_ops.sync_poll import (
     needs_deploy,
 )
 from pynchy.git_ops.worktree import ensure_worktree
-from pynchy.ipc._write import write_ipc_response
+from pynchy.host.container_manager.ipc.write import write_ipc_response
 
 # ---------------------------------------------------------------------------
 # Helpers

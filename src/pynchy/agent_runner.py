@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
 from pynchy.config import get_settings
-from pynchy.container_runner import (
+from pynchy.host.container_manager import (
     ContainerSession,
     OnOutput,
     SessionDiedError,
@@ -24,7 +24,7 @@ from pynchy.container_runner import (
     write_groups_snapshot,
     write_tasks_snapshot,
 )
-from pynchy.container_runner._orchestrator import (
+from pynchy.host.container_manager.orchestrator import (
     _spawn_container,
     oneshot_container_name,
     resolve_container_timeout,
@@ -340,7 +340,7 @@ async def _warm_query(
 ) -> str:
     """Send messages to an existing session via IPC and wait for completion."""
     # Ensure MCP servers are running (they may have stopped since last query)
-    from pynchy.container_runner.mcp_manager import get_mcp_manager
+    from pynchy.host.container_manager.mcp.manager import get_mcp_manager
 
     mcp_mgr = get_mcp_manager()
     if mcp_mgr is not None:
@@ -379,7 +379,7 @@ async def _cold_start(
     # After a service restart or container crash, a dead Docker container may
     # still exist with this stable name, causing `docker run` to fail with
     # exit code 125 (name conflict).
-    from pynchy.container_runner._process import _docker_rm_force
+    from pynchy.host.container_manager.process import _docker_rm_force
 
     await _docker_rm_force(container_name)
 

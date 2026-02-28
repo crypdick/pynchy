@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from pynchy.config import get_settings
-from pynchy.container_runner._docker import run_docker
+from pynchy.host.container_manager.docker import run_docker
 from pynchy.state import (
     get_all_host_jobs,
     get_all_tasks,

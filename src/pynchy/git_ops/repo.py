@@ -74,7 +74,7 @@ def get_repo_token(slug: str) -> str | None:
     3. gh auth token — auto-discovered from gh CLI (lowest priority)
     """
     from pynchy.config import get_settings
-    from pynchy.container_runner._credentials import _read_gh_token
+    from pynchy.host.container_manager.credentials import _read_gh_token
 
     s = get_settings()
     repo_cfg = s.repos.get(slug)

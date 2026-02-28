@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from pynchy.security.gate import (
+from pynchy.host.container_manager.security.gate import (
     SecurityGate,
     create_gate,
     destroy_gate,
@@ -19,7 +19,7 @@ def _cleanup():
     """Ensure no gates leak between tests."""
     yield
     # Import the registry and clear it
-    from pynchy.security import gate as _mod
+    from pynchy.host.container_manager.security import gate as _mod
 
     _mod._gates.clear()
 

@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 from pynchy.chat.bus import broadcast
-from pynchy.container_runner._session import destroy_session
+from pynchy.host.container_manager.session import destroy_session
 from pynchy.state import clear_session, set_chat_cleared_at, store_message
 from pynchy.event_bus import ChatClearedEvent, MessageEvent
 from pynchy.git_ops._worktree_merge import background_merge_worktree

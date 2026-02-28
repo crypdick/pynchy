@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from pynchy.container_runner import OnOutput
+    from pynchy.host.container_manager import OnOutput
 
 from pynchy.config import get_settings
 from pynchy.state import (
