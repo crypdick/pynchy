@@ -115,8 +115,8 @@ class TestFormatToolPreview:
             },
         )
         assert "Edit: /src/config.py" in result
-        assert "- return None" in result
-        assert "+ return 42" in result
+        assert "> - return None" in result
+        assert "> + return 42" in result
 
     def test_edit_multiline_diff(self):
         result = format_tool_preview(
@@ -127,10 +127,10 @@ class TestFormatToolPreview:
                 "new_string": "def foo():\n    return 1",
             },
         )
-        assert "- def foo():" in result
-        assert "-     pass" in result
-        assert "+ def foo():" in result
-        assert "+     return 1" in result
+        assert "> - def foo():" in result
+        assert "> -     pass" in result
+        assert "> + def foo():" in result
+        assert "> +     return 1" in result
 
     def test_edit_truncates_long_diff(self):
         old = "\n".join(f"old_line_{i}" for i in range(10))
@@ -167,8 +167,8 @@ class TestFormatToolPreview:
             },
         )
         assert "Write: /tmp/out.txt" in result
-        assert "+ hello world" in result
-        assert "+ second line" in result
+        assert "> + hello world" in result
+        assert "> + second line" in result
 
     def test_write_truncates_long_content(self):
         content = "\n".join(f"line_{i}" for i in range(20))
