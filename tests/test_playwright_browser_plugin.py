@@ -65,7 +65,7 @@ class TestSkillContent:
 class TestPluginRegistration:
     def test_plugin_in_builtin_specs(self):
         """Verify the plugin is registered in _BUILTIN_PLUGIN_SPECS."""
-        from pynchy.plugin import _BUILTIN_PLUGIN_SPECS
+        from pynchy.plugins import _BUILTIN_PLUGIN_SPECS
 
         entries = [
             (mod, cls, key)

@@ -15,7 +15,7 @@ from pynchy.ipc._deps import IpcDeps, resolve_chat_jid
 from pynchy.ipc._registry import register_prefix
 from pynchy.ipc._write import ipc_response_path, write_ipc_response
 from pynchy.logger import logger
-from pynchy.plugin import get_plugin_manager
+from pynchy.plugins import get_plugin_manager
 from pynchy.security.audit import record_security_event
 from pynchy.security.gate import SecurityGate, get_gate_for_group, resolve_security
 

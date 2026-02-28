@@ -46,7 +46,7 @@ def check_tunnels(pm: pluggy.PluginManager) -> None:
 
     Non-fatal: logs warnings but never raises.
     """
-    from pynchy.plugin import collect_hook_results
+    from pynchy.plugins import collect_hook_results
 
     tunnels = collect_hook_results("pynchy_tunnel", _is_valid_tunnel_provider, "tunnel", pm=pm)
 

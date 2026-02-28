@@ -40,7 +40,7 @@ def attach_observers(event_bus: EventBus) -> list[ObserverProvider]:
 
     Returns the list of attached observers (for later teardown via close()).
     """
-    from pynchy.plugin import collect_hook_results
+    from pynchy.plugins import collect_hook_results
 
     candidates = collect_hook_results("pynchy_observer", _is_valid_observer, "observer")
 

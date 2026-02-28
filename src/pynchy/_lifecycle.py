@@ -98,7 +98,7 @@ async def shutdown_app(app: PynchyApp, sig_name: str) -> None:
 
 async def _initialize_core(app: PynchyApp) -> None:
     """Plugins, gateway, database, observers, memory, state."""
-    from pynchy.plugin import get_plugin_manager
+    from pynchy.plugins import get_plugin_manager
     from pynchy.runtime.system_checks import ensure_container_system_running
     from pynchy.service_installer import install_service
     from pynchy.workspace_config import configure_plugin_workspaces

@@ -45,7 +45,7 @@ class TestOpenAIPluginInfo:
 
     def test_plugin_registered_via_auto_discovery(self):
         """OpenAI plugin is auto-discovered alongside Claude plugin."""
-        from pynchy.plugin import get_plugin_manager
+        from pynchy.plugins import get_plugin_manager
 
         with patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0):
             pm = get_plugin_manager()
@@ -57,7 +57,7 @@ class TestOpenAIPluginInfo:
 
     def test_core_selection_by_name(self):
         """Selecting a core by name returns the correct info."""
-        from pynchy.plugin import get_plugin_manager
+        from pynchy.plugins import get_plugin_manager
 
         with patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0):
             pm = get_plugin_manager()
