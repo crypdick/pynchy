@@ -22,7 +22,7 @@ from pynchy.chat import (
     output_handler,
 )
 from pynchy.config import get_settings
-from pynchy.db import (
+from pynchy.state import (
     get_aliases_for_jid,
     get_all_aliases,
     get_all_chats,
@@ -108,7 +108,7 @@ class PynchyApp:
         Both rows are written in a single transaction so a crash can never
         leave them inconsistent.
         """
-        from pynchy.db import save_router_state_batch
+        from pynchy.state import save_router_state_batch
 
         await save_router_state_batch(
             {
@@ -232,7 +232,7 @@ class PynchyApp:
 
     def _make_host_broadcaster(self) -> HostMessageBroadcaster:
         """Create a HostMessageBroadcaster wired to this app's store and event bus."""
-        from pynchy.db import store_message_direct
+        from pynchy.state import store_message_direct
 
         async def store_host_message(**kwargs: Any) -> None:
             await store_message_direct(**kwargs, message_type="host")
@@ -342,7 +342,7 @@ class PynchyApp:
         import uuid
         from datetime import UTC, datetime
 
-        from pynchy.db import store_message
+        from pynchy.state import store_message
 
         msg = NewMessage(
             id=f"ask-user-answer-{uuid.uuid4().hex[:8]}",

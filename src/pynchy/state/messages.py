@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from pynchy.db._connection import _get_db
+from pynchy.state.connection import _get_db
 from pynchy.types import NewMessage
 
 

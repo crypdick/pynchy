@@ -80,7 +80,7 @@ class SqliteEventObserver:
 
     async def _store(self, event_type: str, chat_jid: str | None, payload: dict) -> None:
         try:
-            from pynchy.db import store_event
+            from pynchy.state import store_event
 
             await store_event(event_type, chat_jid, payload)
         except Exception as exc:

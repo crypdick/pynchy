@@ -19,7 +19,7 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config import WorkspaceConfig
-from pynchy.db import _init_test_database
+from pynchy.state import _init_test_database
 from pynchy.git_ops.repo import RepoContext
 from pynchy.git_ops.sync import (
     GIT_POLICY_MERGE,

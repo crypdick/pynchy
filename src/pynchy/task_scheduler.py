@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from pynchy.container_runner import OnOutput
 
 from pynchy.config import get_settings
-from pynchy.db import (
+from pynchy.state import (
     get_due_host_jobs,
     get_due_tasks,
     get_task_by_id,

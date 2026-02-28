@@ -4,8 +4,8 @@ All functions are async using aiosqlite.
 Module-level connection, initialized by init_database().
 
 This package is split into domain-specific submodules:
-  _schema      — DDL, column migrations, data migrations
-  _connection  — connection lifecycle, write utilities
+  schema       — DDL, column migrations, data migrations
+  connection   — connection lifecycle, write utilities
   chats        — chat metadata
   events       — EventBus event persistence
   messages     — message storage and retrieval
@@ -15,22 +15,22 @@ This package is split into domain-specific submodules:
   groups       — registered groups and workspace profiles
 """
 
-# Re-export every public symbol so that `from pynchy.db import X` keeps working.
+# Re-export every public symbol so that `from pynchy.state import X` keeps working.
 
-from pynchy.db._connection import _get_db, _init_test_database, init_database
-from pynchy.db.aliases import (
+from pynchy.state.connection import _get_db, _init_test_database, init_database
+from pynchy.state.aliases import (
     get_aliases_for_jid,
     get_all_aliases,
     get_canonical_jid,
     set_jid_alias,
 )
-from pynchy.db.channel_cursors import (
+from pynchy.state.channel_cursors import (
     advance_cursors_atomic,
     get_channel_cursor,
     prune_stale_cursors,
     set_channel_cursor,
 )
-from pynchy.db.chats import (
+from pynchy.state.chats import (
     get_all_chats,
     get_chat_cleared_at,
     get_chat_jids_by_name,
@@ -40,13 +40,13 @@ from pynchy.db.chats import (
     store_chat_metadata,
     update_chat_name,
 )
-from pynchy.db.events import store_event
-from pynchy.db.groups import (
+from pynchy.state.events import store_event
+from pynchy.state.groups import (
     get_all_workspace_profiles,
     get_workspace_profile,
     set_workspace_profile,
 )
-from pynchy.db.host_jobs import (
+from pynchy.state.host_jobs import (
     create_host_job,
     delete_host_job,
     get_all_host_jobs,
@@ -56,7 +56,7 @@ from pynchy.db.host_jobs import (
     update_host_job,
     update_host_job_after_run,
 )
-from pynchy.db.messages import (
+from pynchy.state.messages import (
     get_chat_history,
     get_messages_since,
     get_messaging_stats,
@@ -66,14 +66,14 @@ from pynchy.db.messages import (
     store_message,
     store_message_direct,
 )
-from pynchy.db.outbound import (
+from pynchy.state.outbound import (
     gc_delivered,
     get_pending_outbound,
     mark_delivered,
     mark_delivery_error,
     record_outbound,
 )
-from pynchy.db.sessions import (
+from pynchy.state.sessions import (
     clear_session,
     get_all_sessions,
     get_router_state,
@@ -82,7 +82,7 @@ from pynchy.db.sessions import (
     set_router_state,
     set_session,
 )
-from pynchy.db.tasks import (
+from pynchy.state.tasks import (
     create_task,
     delete_task,
     get_active_task_for_group,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from pynchy.db._connection import _get_db
+from pynchy.state.connection import _get_db
 
 
 async def set_chat_cleared_at(chat_jid: str, timestamp: str) -> None:

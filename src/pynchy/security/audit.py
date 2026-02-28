@@ -14,7 +14,7 @@ import json
 import time
 from datetime import UTC, datetime
 
-from pynchy.db import prune_messages_by_sender, store_message_direct
+from pynchy.state import prune_messages_by_sender, store_message_direct
 
 
 async def record_security_event(

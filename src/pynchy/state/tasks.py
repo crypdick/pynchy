@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from pynchy.db._connection import _get_db, _update_by_id, atomic_write
+from pynchy.state.connection import _get_db, _update_by_id, atomic_write
 from pynchy.types import ScheduledTask, TaskRunLog
 
 

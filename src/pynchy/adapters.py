@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from pynchy.db import clear_session, get_active_task_for_group, get_chat_history
+from pynchy.state import clear_session, get_active_task_for_group, get_chat_history
 from pynchy.utils import create_background_task, generate_message_id
 
 if TYPE_CHECKING:

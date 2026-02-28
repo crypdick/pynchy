@@ -19,7 +19,7 @@ from conftest import make_settings
 
 from pynchy.app import PynchyApp
 from pynchy.chat.router import format_tool_preview
-from pynchy.db import _init_test_database, store_message
+from pynchy.state import _init_test_database, store_message
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.types import NewMessage, WorkspaceProfile
 

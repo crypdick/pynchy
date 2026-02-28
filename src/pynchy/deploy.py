@@ -78,7 +78,7 @@ async def finalize_deploy(
             active groups. Merged with the single session_id/chat_jid pair.
     """
     # 0. Persist deploy metadata in router_state for /status endpoint
-    from pynchy.db import set_router_state
+    from pynchy.state import set_router_state
 
     await set_router_state("last_deploy_at", datetime.now(UTC).isoformat())
     await set_router_state("last_deploy_sha", commit_sha)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 
-from pynchy.db._connection import _get_db
+from pynchy.state.connection import _get_db
 from pynchy.logger import logger
 from pynchy.types import (
     ContainerConfig,

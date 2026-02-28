@@ -261,12 +261,12 @@ class TestCollectMessages:
     @pytest.mark.asyncio
     async def test_returns_message_stats(self):
         """_collect_messages returns counts and timestamps from the DB."""
-        from pynchy.db._connection import _init_test_database
+        from pynchy.state.connection import _init_test_database
         from pynchy.status import _collect_messages
 
         await _init_test_database()
 
-        from pynchy.db._connection import _get_db
+        from pynchy.state.connection import _get_db
 
         db = _get_db()
         # FK requires a chat row first
@@ -297,7 +297,7 @@ class TestCollectMessages:
     @pytest.mark.asyncio
     async def test_empty_db_returns_zeros(self):
         """_collect_messages handles empty tables gracefully."""
-        from pynchy.db._connection import _init_test_database
+        from pynchy.state.connection import _init_test_database
         from pynchy.status import _collect_messages
 
         await _init_test_database()

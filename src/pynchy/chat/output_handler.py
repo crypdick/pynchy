@@ -28,7 +28,7 @@ from pynchy.chat._streaming import (
 from pynchy.chat.bus import finalize_stream_or_broadcast
 from pynchy.chat.router import format_tool_preview, parse_host_tag
 from pynchy.config import get_settings
-from pynchy.db import store_message_direct
+from pynchy.state import store_message_direct
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.logger import logger
 from pynchy.utils import generate_message_id

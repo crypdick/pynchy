@@ -8,14 +8,14 @@ import pytest
 
 from pynchy.chat.reconciler import reconcile_all_channels, reset_cooldowns
 from pynchy.config.models import OwnerConfig, WorkspaceConfig, WorkspaceDefaultsConfig
-from pynchy.db import (
+from pynchy.state import (
     _init_test_database,
     get_channel_cursor,
     get_pending_outbound,
     record_outbound,
     set_channel_cursor,
 )
-from pynchy.db._connection import _get_db
+from pynchy.state.connection import _get_db
 from pynchy.types import InboundFetchResult, NewMessage, WorkspaceProfile
 from tests.conftest import make_settings
 

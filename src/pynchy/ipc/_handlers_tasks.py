@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pynchy.config import get_settings
-from pynchy.db import (
+from pynchy.state import (
     delete_host_job,
     delete_task,
     get_host_job_by_id,
@@ -105,7 +105,7 @@ async def _handle_schedule_task(
     if context_mode not in ("group", "isolated"):
         context_mode = "isolated"
 
-    from pynchy.db import create_task
+    from pynchy.state import create_task
 
     await create_task(
         {
@@ -172,7 +172,7 @@ async def _handle_schedule_host_job(
         )
         return
 
-    from pynchy.db import create_host_job
+    from pynchy.state import create_host_job
 
     job_id = f"host-{int(datetime.now(UTC).timestamp() * 1000)}-{uuid.uuid4().hex[:8]}"
     await create_host_job(

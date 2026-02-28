@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from pynchy.db import (
+from pynchy.state import (
     _init_test_database,
     clear_session,
     create_host_job,
@@ -1050,13 +1050,13 @@ class TestGetTaskById:
 
 class TestGroupSync:
     async def test_get_returns_none_initially(self):
-        from pynchy.db import get_last_group_sync
+        from pynchy.state import get_last_group_sync
 
         result = await get_last_group_sync()
         assert result is None
 
     async def test_set_and_get_group_sync(self):
-        from pynchy.db import get_last_group_sync, set_last_group_sync
+        from pynchy.state import get_last_group_sync, set_last_group_sync
 
         await set_last_group_sync()
         result = await get_last_group_sync()
@@ -1193,7 +1193,7 @@ class TestEnsureColumns:
         """Simulate an old DB missing a column, then run _ensure_columns."""
         import aiosqlite
 
-        from pynchy.db._schema import _ensure_columns
+        from pynchy.state.schema import _ensure_columns
 
         db = await aiosqlite.connect(":memory:")
         # Create registered_groups WITHOUT is_admin column (old schema)
@@ -1227,7 +1227,7 @@ class TestEnsureColumns:
         """_ensure_columns is a no-op when schema is already up to date."""
         import aiosqlite
 
-        from pynchy.db._schema import _SCHEMA, _ensure_columns
+        from pynchy.state.schema import _SCHEMA, _ensure_columns
 
         db = await aiosqlite.connect(":memory:")
         await db.executescript(_SCHEMA)
@@ -1272,7 +1272,7 @@ class TestMessagingStats:
             )
         )
 
-        from pynchy.db import record_outbound
+        from pynchy.state import record_outbound
 
         await record_outbound("g@g.us", "hi back", "test", ["whatsapp"])
 
@@ -1286,7 +1286,7 @@ class TestMessagingStats:
     async def test_pending_deliveries_excludes_delivered(self):
         await store_chat_metadata("g@g.us", "2026-01-01T00:00:00", "Test")
 
-        from pynchy.db import mark_delivered, record_outbound
+        from pynchy.state import mark_delivered, record_outbound
 
         ledger_id = await record_outbound("g@g.us", "msg", "test", ["whatsapp", "slack"])
 

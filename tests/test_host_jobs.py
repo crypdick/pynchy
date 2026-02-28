@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.db import (
+from pynchy.state import (
     _init_test_database,
     create_host_job,
     get_due_host_jobs,

@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Protocol
 
-from pynchy.db import (
+from pynchy.state import (
     advance_cursors_atomic,
     get_channel_cursor,
     get_pending_outbound,

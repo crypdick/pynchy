@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.db import _init_test_database
+from pynchy.state import _init_test_database
 from pynchy.git_ops.repo import RepoContext
 from pynchy.ipc._watcher import _move_to_error_dir
 from pynchy.types import WorkspaceProfile
