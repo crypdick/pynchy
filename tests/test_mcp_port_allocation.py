@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 from conftest import make_settings
 
-from pynchy.config_mcp import McpServerConfig
+from pynchy.config.mcp import McpServerConfig
 from pynchy.container_runner._mcp_lifecycle import (
     _build_placeholders,
     expand_arg_placeholders,
@@ -96,7 +96,7 @@ class TestResolveAllInstancesPortOffset:
     """
 
     def _make_manager(self, workspaces: dict, mcp_servers: dict):
-        from pynchy.config_models import WorkspaceConfig
+        from pynchy.config.models import WorkspaceConfig
 
         ws_configs = {}
         for name, servers in workspaces.items():

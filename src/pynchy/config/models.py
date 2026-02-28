@@ -2,7 +2,7 @@
 
 Extracted from :mod:`pynchy.config` to keep the root Settings class
 focused on composition and validation.  Follows the same pattern as
-:mod:`pynchy.config_mcp`.
+:mod:`pynchy.config.mcp`.
 
 ARCHITECTURE NOTE: Plugin-specific config models belong in the plugin's own
 source file, not here. This file should only contain models for pynchy core
@@ -19,7 +19,7 @@ from typing import Any, Literal
 from croniter import croniter
 from pydantic import BaseModel, SecretStr, field_validator
 
-from pynchy.config_refs import parse_chat_ref, parse_connection_ref
+from pynchy.config.refs import parse_chat_ref, parse_connection_ref
 
 
 class _StrictModel(BaseModel):

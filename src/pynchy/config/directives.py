@@ -12,7 +12,7 @@ Scope resolution:
 
 Usage::
 
-    from pynchy.directives import resolve_directives
+    from pynchy.config.directives import resolve_directives
 
     text = resolve_directives("admin-1", repo_access="crypdick/pynchy")
 """
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pynchy.config import get_settings
+from pynchy.config.settings import get_settings
 from pynchy.logger import logger
 
 

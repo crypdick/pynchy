@@ -358,7 +358,7 @@ class TestCreatePeriodicAgentCopGate:
 
     async def test_cop_approved_skips_gate(self, deps, tmp_path):
         """When _cop_approved is set, cop_gate is not called."""
-        from pynchy.config_models import CommandCenterConfig
+        from pynchy.config.models import CommandCenterConfig
 
         mock_channel = AsyncMock()
         mock_channel.create_group = AsyncMock(return_value="agent@g.us")

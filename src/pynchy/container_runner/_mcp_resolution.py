@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     import subprocess
 
     from pynchy.config import Settings
-    from pynchy.config_mcp import McpServerConfig
+    from pynchy.config.mcp import McpServerConfig
     from pynchy.types import ServiceTrustConfig
 
 _MCP_CONTAINER_PREFIX = "pynchy-mcp"

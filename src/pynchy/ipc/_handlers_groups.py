@@ -101,7 +101,7 @@ async def _handle_create_periodic_agent(
         if not allowed:
             return
 
-    from pynchy.config_models import WorkspaceConfig
+    from pynchy.config.models import WorkspaceConfig
     from pynchy.workspace_config import add_workspace_to_toml
 
     s = get_settings()

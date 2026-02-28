@@ -8,7 +8,8 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from pynchy.chat.commands import is_context_reset, is_end_session, is_redeploy
-from pynchy.config import CronJobConfig, _detect_timezone
+from pynchy.config import CronJobConfig
+from pynchy.config.settings import _detect_timezone
 
 
 class TestIsContextReset:
@@ -333,7 +334,7 @@ class TestDetectTimezone:
         """Empty TZ env var is falsy, should fall through to readlink."""
         with (
             patch.dict("os.environ", {"TZ": ""}, clear=False),
-            patch("pynchy.config.os.readlink", side_effect=OSError("not a link")),
+            patch("pynchy.config.settings.os.readlink", side_effect=OSError("not a link")),
         ):
             assert _detect_timezone() == "UTC"
 
@@ -341,7 +342,7 @@ class TestDetectTimezone:
         with (
             patch.dict("os.environ", {}, clear=True),
             patch(
-                "pynchy.config.os.readlink",
+                "pynchy.config.settings.os.readlink",
                 return_value="/usr/share/zoneinfo/Europe/London",
             ),
         ):
@@ -352,7 +353,7 @@ class TestDetectTimezone:
         with (
             patch.dict("os.environ", {}, clear=True),
             patch(
-                "pynchy.config.os.readlink",
+                "pynchy.config.settings.os.readlink",
                 return_value="/usr/share/zoneinfo/America/Argentina/Buenos_Aires",
             ),
         ):
@@ -361,7 +362,7 @@ class TestDetectTimezone:
     def test_localtime_not_a_symlink(self):
         with (
             patch.dict("os.environ", {}, clear=True),
-            patch("pynchy.config.os.readlink", side_effect=OSError("not a symlink")),
+            patch("pynchy.config.settings.os.readlink", side_effect=OSError("not a symlink")),
         ):
             assert _detect_timezone() == "UTC"
 
@@ -370,7 +371,7 @@ class TestDetectTimezone:
         with (
             patch.dict("os.environ", {}, clear=True),
             patch(
-                "pynchy.config.os.readlink",
+                "pynchy.config.settings.os.readlink",
                 return_value="/some/other/path/timezone",
             ),
         ):
@@ -380,7 +381,7 @@ class TestDetectTimezone:
         """No TZ and no /etc/localtime → defaults to UTC."""
         with (
             patch.dict("os.environ", {}, clear=True),
-            patch("pynchy.config.os.readlink", side_effect=FileNotFoundError),
+            patch("pynchy.config.settings.os.readlink", side_effect=FileNotFoundError),
         ):
             assert _detect_timezone() == "UTC"
 

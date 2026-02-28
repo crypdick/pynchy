@@ -95,7 +95,7 @@ def _collect_plugin_mcp_servers(
     if plugin_manager is None:
         return {}, {}
 
-    from pynchy.config_mcp import McpServerConfig
+    from pynchy.config.mcp import McpServerConfig
 
     result: dict[str, McpServerConfig] = {}
     trust_defaults: dict[str, ServiceTrustConfig] = {}

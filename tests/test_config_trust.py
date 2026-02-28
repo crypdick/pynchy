@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from pynchy.config_models import (
+from pynchy.config.models import (
     ServiceTrustTomlConfig,
     WorkspaceConfig,
     WorkspaceSecurityTomlConfig,

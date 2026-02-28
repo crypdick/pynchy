@@ -32,8 +32,8 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
-from pynchy.config_mcp import McpServerConfig
-from pynchy.config_models import (
+from pynchy.config.mcp import McpServerConfig
+from pynchy.config.models import (
     AgentConfig,
     CalDAVConfig,
     CommandCenterConfig,
@@ -58,7 +58,7 @@ from pynchy.config_models import (
     WorkspaceDefaultsConfig,
     _StrictModel,
 )
-from pynchy.config_refs import connection_ref_from_parts, parse_chat_ref, parse_connection_ref
+from pynchy.config.refs import connection_ref_from_parts, parse_chat_ref, parse_connection_ref
 
 # ---------------------------------------------------------------------------
 # Explicit-fields validation

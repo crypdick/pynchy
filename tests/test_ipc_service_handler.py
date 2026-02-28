@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.config_models import WorkspaceConfig
+from pynchy.config.models import WorkspaceConfig
 from pynchy.db import _init_test_database
 from pynchy.ipc._handlers_service import (
     _handle_service_request,

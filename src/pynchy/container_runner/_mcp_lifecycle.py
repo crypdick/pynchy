@@ -27,7 +27,7 @@ from pynchy.container_runner._docker import (
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
-    from pynchy.config_mcp import McpServerConfig
+    from pynchy.config.mcp import McpServerConfig
     from pynchy.container_runner._mcp_resolution import McpInstance
 
 _NETWORK_NAME = "pynchy-litellm-net"

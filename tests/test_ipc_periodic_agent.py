@@ -97,7 +97,7 @@ class TestCreatePeriodicAgent:
 
     @staticmethod
     def _settings(tmp_path):
-        from pynchy.config_models import CommandCenterConfig
+        from pynchy.config.models import CommandCenterConfig
 
         return make_settings(
             groups_dir=tmp_path,

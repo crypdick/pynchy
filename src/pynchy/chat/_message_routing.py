@@ -45,7 +45,7 @@ async def _route_incoming_group(
     filtering, special commands).
     """
     s = get_settings()
-    from pynchy.config_access import filter_allowed_messages, resolve_channel_config
+    from pynchy.config.access import filter_allowed_messages, resolve_channel_config
 
     channel_plugin_name = next(
         (ch.name for ch in deps.channels if ch.owns_jid(group_jid)),
