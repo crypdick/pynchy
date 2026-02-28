@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, Protocol, runtime_checkable
+from enum import Enum
+from typing import Any, Literal, Protocol, runtime_checkable
 
 
 @dataclass
@@ -278,6 +279,31 @@ class ContainerOutput:
     tool_result_content: str | None = None
     tool_result_is_error: bool | None = None
     result_metadata: dict | None = None
+
+
+class OutboundEventType(Enum):
+    """Types of events flowing from the agent to the channel."""
+
+    TEXT = "text"
+    TOOL_TRACE = "tool_trace"
+    TOOL_RESULT = "tool_result"
+    THINKING = "thinking"
+    SYSTEM = "system"
+    HOST = "host"
+    RESULT = "result"
+
+
+@dataclass
+class OutboundEvent:
+    """A structured event flowing from the agent/host toward the channel.
+
+    Replaces raw text strings in the outbound pipeline, carrying both the
+    content and metadata needed for rich formatting (e.g. Slack blocks).
+    """
+
+    type: OutboundEventType
+    content: str
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
