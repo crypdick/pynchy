@@ -69,6 +69,37 @@ def format_outbound(channel: Channel, raw_text: str) -> str:
     return f"{prefix}{text}"
 
 
+def _format_lines(
+    lines: list[str],
+    *,
+    prefix: str,
+    max_lines: int = 5,
+    max_chars: int = 120,
+) -> str:
+    """Format lines with a prefix, truncating long lines and excess line count.
+
+    Used by Edit/Write previews to show content snippets in channel messages.
+    """
+    if not lines:
+        return ""
+    shown = lines[:max_lines]
+    remainder = len(lines) - max_lines
+    result_lines = []
+    for line in shown:
+        if len(line) > max_chars:
+            line = line[:max_chars] + "..."
+        result_lines.append(f"{prefix} {line}")
+    if remainder > 0:
+        result_lines.append(f"(+{remainder} more lines)")
+    return "\n".join(result_lines)
+
+
+def _truncate_path(path: str, max_len: int = 150) -> str:
+    if len(path) > max_len:
+        return "..." + path[-(max_len - 3) :]
+    return path
+
+
 def format_tool_preview(tool_name: str, tool_input: dict) -> str:
     """Format a one-line preview of a tool invocation for channel messages.
 
@@ -83,13 +114,37 @@ def format_tool_preview(tool_name: str, tool_input: dict) -> str:
             return f"Bash: {cmd}"
         return "Bash"
 
-    if tool_name in ("Read", "Edit", "Write"):
+    if tool_name == "Read":
         path = tool_input.get("file_path", "")
         if path:
-            if len(path) > 150:
-                path = "..." + path[-147:]
-            return f"{tool_name}: {path}"
-        return tool_name
+            return f"Read: {_truncate_path(path)}"
+        return "Read"
+
+    if tool_name == "Edit":
+        path = tool_input.get("file_path", "")
+        if not path:
+            return "Edit"
+        header = f"Edit: {_truncate_path(path)}"
+        old = tool_input.get("old_string", "")
+        new = tool_input.get("new_string", "")
+        if not old and not new:
+            return header
+        parts = [header]
+        if old:
+            parts.append(_format_lines(old.splitlines(), prefix="-"))
+        if new:
+            parts.append(_format_lines(new.splitlines(), prefix="+"))
+        return "\n".join(parts)
+
+    if tool_name == "Write":
+        path = tool_input.get("file_path", "")
+        if not path:
+            return "Write"
+        header = f"Write: {_truncate_path(path)}"
+        content = tool_input.get("content", "")
+        if not content:
+            return header
+        return header + "\n" + _format_lines(content.splitlines(), prefix="+")
 
     if tool_name == "Grep":
         pattern = tool_input.get("pattern", "")

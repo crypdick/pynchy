@@ -9,12 +9,51 @@ means host messages leak into prompts or user messages get dropped.
 from __future__ import annotations
 
 from pynchy.host.orchestrator.messaging.formatter import (
+    _format_lines,
     format_messages_for_sdk,
     format_tool_preview,
     parse_host_tag,
     strip_internal_tags,
 )
 from pynchy.types import NewMessage
+
+# ---------------------------------------------------------------------------
+# _format_lines — helper for Edit/Write previews
+# ---------------------------------------------------------------------------
+
+
+class TestFormatLines:
+    """Test the line-formatting helper used by Edit/Write previews."""
+
+    def test_single_line(self):
+        assert _format_lines(["hello"], prefix="-") == "- hello"
+
+    def test_multiple_lines(self):
+        assert _format_lines(["a", "b", "c"], prefix="+") == "+ a\n+ b\n+ c"
+
+    def test_truncates_at_max_lines(self):
+        lines = [f"line{i}" for i in range(10)]
+        result = _format_lines(lines, prefix="-", max_lines=5)
+        assert result.count("\n") == 5  # 5 prefixed lines + 1 summary line
+        assert "(+5 more lines)" in result
+
+    def test_truncates_long_individual_lines(self):
+        long_line = "x" * 200
+        result = _format_lines([long_line], prefix="+", max_chars=120)
+        first_line = result.split("\n")[0]
+        assert first_line.endswith("...")
+
+    def test_empty_lines_preserved(self):
+        assert _format_lines(["a", "", "b"], prefix="+") == "+ a\n+ \n+ b"
+
+    def test_empty_input(self):
+        assert _format_lines([], prefix="-") == ""
+
+    def test_exactly_max_lines_no_summary(self):
+        lines = ["a", "b", "c", "d", "e"]
+        result = _format_lines(lines, prefix="-", max_lines=5)
+        assert "more lines" not in result
+
 
 # ---------------------------------------------------------------------------
 # format_tool_preview — one branch per tool type
@@ -47,28 +86,108 @@ class TestFormatToolPreview:
         result = format_tool_preview("Bash", {})
         assert result == "Bash"
 
-    # --- Read / Edit / Write ---
+    # --- Read ---
     def test_read_shows_path(self):
         result = format_tool_preview("Read", {"file_path": "/src/main.py"})
         assert result == "Read: /src/main.py"
 
-    def test_edit_shows_path(self):
-        result = format_tool_preview("Edit", {"file_path": "/src/config.py"})
-        assert result == "Edit: /src/config.py"
-
-    def test_write_shows_path(self):
-        result = format_tool_preview("Write", {"file_path": "/tmp/out.txt"})
-        assert result == "Write: /tmp/out.txt"
-
     def test_read_truncates_long_path(self):
         long_path = "/very/long/" + "a" * 200
         result = format_tool_preview("Read", {"file_path": long_path})
-        assert len(result) <= 200
         assert result.startswith("Read: ...")
 
     def test_read_missing_path(self):
         result = format_tool_preview("Read", {})
         assert result == "Read"
+
+    # --- Edit (with diff) ---
+    def test_edit_path_only(self):
+        result = format_tool_preview("Edit", {"file_path": "/src/config.py"})
+        assert result == "Edit: /src/config.py"
+
+    def test_edit_shows_diff(self):
+        result = format_tool_preview(
+            "Edit",
+            {
+                "file_path": "/src/config.py",
+                "old_string": "return None",
+                "new_string": "return 42",
+            },
+        )
+        assert "Edit: /src/config.py" in result
+        assert "- return None" in result
+        assert "+ return 42" in result
+
+    def test_edit_multiline_diff(self):
+        result = format_tool_preview(
+            "Edit",
+            {
+                "file_path": "/src/app.py",
+                "old_string": "def foo():\n    pass",
+                "new_string": "def foo():\n    return 1",
+            },
+        )
+        assert "- def foo():" in result
+        assert "-     pass" in result
+        assert "+ def foo():" in result
+        assert "+     return 1" in result
+
+    def test_edit_truncates_long_diff(self):
+        old = "\n".join(f"old_line_{i}" for i in range(10))
+        new = "\n".join(f"new_line_{i}" for i in range(10))
+        result = format_tool_preview(
+            "Edit",
+            {
+                "file_path": "/src/big.py",
+                "old_string": old,
+                "new_string": new,
+            },
+        )
+        assert "(+5 more lines)" in result
+
+    def test_edit_without_old_new_falls_back_to_path(self):
+        result = format_tool_preview("Edit", {"file_path": "/src/config.py"})
+        assert result == "Edit: /src/config.py"
+
+    def test_edit_missing_path(self):
+        result = format_tool_preview("Edit", {})
+        assert result == "Edit"
+
+    # --- Write (with content preview) ---
+    def test_write_path_only(self):
+        result = format_tool_preview("Write", {"file_path": "/tmp/out.txt"})
+        assert result == "Write: /tmp/out.txt"
+
+    def test_write_shows_content(self):
+        result = format_tool_preview(
+            "Write",
+            {
+                "file_path": "/tmp/out.txt",
+                "content": "hello world\nsecond line",
+            },
+        )
+        assert "Write: /tmp/out.txt" in result
+        assert "+ hello world" in result
+        assert "+ second line" in result
+
+    def test_write_truncates_long_content(self):
+        content = "\n".join(f"line_{i}" for i in range(20))
+        result = format_tool_preview(
+            "Write",
+            {
+                "file_path": "/tmp/big.txt",
+                "content": content,
+            },
+        )
+        assert "(+15 more lines)" in result
+
+    def test_write_without_content_shows_path_only(self):
+        result = format_tool_preview("Write", {"file_path": "/tmp/out.txt"})
+        assert result == "Write: /tmp/out.txt"
+
+    def test_write_missing_path(self):
+        result = format_tool_preview("Write", {})
+        assert result == "Write"
 
     # --- Grep ---
     def test_grep_shows_pattern(self):
