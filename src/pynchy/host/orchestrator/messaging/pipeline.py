@@ -27,6 +27,7 @@ from pynchy.config import get_settings
 from pynchy.state import get_messages_since, store_message_direct
 from pynchy.event_bus import AgentActivityEvent, MessageEvent
 from pynchy.host.git_ops.utils import is_repo_dirty
+from pynchy.host.orchestrator.messaging.router import pop_last_result_ids
 from pynchy.logger import logger
 from pynchy.utils import generate_message_id, run_shell_command
 
@@ -81,6 +82,10 @@ class MessageHandlerDeps(Protocol):
 
     async def send_reaction_to_channels(
         self, chat_jid: str, message_id: str, sender: str, emoji: str
+    ) -> None: ...
+
+    async def send_reaction_to_outbound(
+        self, chat_jid: str, per_channel_ids: dict[str, str], emoji: str
     ) -> None: ...
 
     async def set_typing_on_channels(self, chat_jid: str, is_typing: bool) -> None: ...
@@ -446,6 +451,11 @@ async def process_group_messages(
     process_ms = (time.monotonic() - process_start) * 1000
     await deps.set_typing_on_channels(chat_jid, False)
     deps.emit(AgentActivityEvent(chat_jid=chat_jid, active=False))
+
+    # Send zzz reaction on the agent's final response to indicate sleep
+    outbound_ids = pop_last_result_ids(chat_jid)
+    if outbound_ids and output_sent_to_user:
+        await deps.send_reaction_to_outbound(chat_jid, outbound_ids, "zzz")
 
     logger.info(
         "Message processing complete",
