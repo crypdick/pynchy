@@ -1396,3 +1396,42 @@ class TestBtwNonInterruptingMessages:
 
         # Falls through to normal enqueue_message_check
         deps.queue.enqueue_message_check.assert_called_once_with(jid)
+
+    @pytest.mark.asyncio
+    async def test_sunrise_reaction_on_wake(self):
+        """When a message wakes a sleeping workspace, the first message
+        in the batch should get a :sunrise: reaction."""
+        jid = "group@g.us"
+        group = _make_group(is_admin=True)
+        deps = _make_deps(
+            groups={jid: group},
+            last_agent_ts={jid: "old-ts"},
+        )
+        deps.queue.is_active_task.return_value = False
+        deps.queue.send_message.return_value = False
+
+        msg1 = _make_message("hello", id="msg-1", timestamp="ts-1")
+        msg2 = _make_message("world", id="msg-2", timestamp="ts-2")
+
+        with (
+            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
+            patch(
+                _PR_NEW_MSGS,
+                new_callable=AsyncMock,
+                return_value=([msg1, msg2], "poll-ts"),
+            ),
+            patch(
+                _PR_MSGS_SINCE,
+                new_callable=AsyncMock,
+                return_value=[msg1, msg2],
+            ),
+            patch(_PR_INTERCEPT, new_callable=AsyncMock, return_value=False),
+        ):
+            await _run_loop_once(deps)
+
+        # Only the first message gets sunrise
+        deps.send_reaction_to_channels.assert_awaited_once_with(
+            jid, "msg-1", msg1.sender, "sunrise"
+        )
+        # Still enqueues the run
+        deps.queue.enqueue_message_check.assert_called_once_with(jid)
