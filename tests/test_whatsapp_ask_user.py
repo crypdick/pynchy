@@ -37,7 +37,7 @@ for _mod_name in _NEONIZE_MODULES:
         sys.modules[_mod_name] = _neonize_mocks[_mod_name]
 
 # Now it's safe to import
-from pynchy.chat.plugins.whatsapp.channel import WhatsAppChannel  # noqa: E402
+from pynchy.plugins.channels.whatsapp.channel import WhatsAppChannel  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -471,7 +471,7 @@ class TestHandleMessageIntercept:
         ch._translate_jid = MagicMock(return_value=CHAT_JID)
 
         with patch(
-            "pynchy.chat.plugins.whatsapp.channel.find_pending_for_jid",
+            "pynchy.plugins.channels.whatsapp.channel.find_pending_for_jid",
             return_value=pending,
         ):
             await ch._handle_message(message)
@@ -502,7 +502,7 @@ class TestHandleMessageIntercept:
         ch._translate_jid = MagicMock(return_value=CHAT_JID)
 
         with patch(
-            "pynchy.chat.plugins.whatsapp.channel.find_pending_for_jid",
+            "pynchy.plugins.channels.whatsapp.channel.find_pending_for_jid",
             return_value=stale_pending,
         ):
             await ch._handle_message(message)

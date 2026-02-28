@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 from pynchy import startup_handler
 from pynchy.chat import output_handler
 from pynchy.chat._message_routing import start_message_loop
-from pynchy.chat.channel_runtime import (
+from pynchy.plugins.channel_runtime import (
     ChannelPluginContext,
     load_channels,
     resolve_default_channel,

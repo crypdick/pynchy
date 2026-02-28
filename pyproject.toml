@@ -38,7 +38,7 @@ notebook = [
 
 [project.scripts]
 pynchy = "pynchy.__main__:main"
-pynchy-whatsapp-auth = "pynchy.chat.plugins.whatsapp.auth:main"
+pynchy-whatsapp-auth = "pynchy.plugins.channels.whatsapp.auth:main"
 
 [dependency-groups]
 dev = [

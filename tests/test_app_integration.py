@@ -288,7 +288,7 @@ class TestAppImports:
 
     def test_channel_runtime_import(self):
         """Channel runtime helper import in app.run() must resolve."""
-        from pynchy.chat.channel_runtime import ChannelPluginContext  # noqa: F401
+        from pynchy.plugins.channel_runtime import ChannelPluginContext  # noqa: F401
 
 
 class TestFirstRunBootstrap:
