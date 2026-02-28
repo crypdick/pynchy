@@ -63,7 +63,7 @@ def _is_valid_provider(candidate: Any) -> bool:
 
 def get_memory_provider() -> MemoryProvider | None:
     """Discover memory plugin and return provider (first valid one wins)."""
-    from pynchy.plugin import collect_hook_results
+    from pynchy.plugins import collect_hook_results
 
     providers = collect_hook_results("pynchy_memory", _is_valid_provider, "memory")
     if providers:

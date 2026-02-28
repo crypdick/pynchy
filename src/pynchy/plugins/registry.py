@@ -6,7 +6,7 @@ communication channels, MCP tools, skills, and managed workspaces.
 Built on pluggy (pytest's plugin framework) for robust, type-safe plugin management.
 
 Usage:
-    from pynchy.plugin import get_plugin_manager
+    from pynchy.plugins import get_plugin_manager
 
     pm = get_plugin_manager()
     cores = pm.hook.pynchy_agent_core_info()  # List of agent core dicts
@@ -25,7 +25,7 @@ import pluggy
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
-from pynchy.plugin.hookspecs import PynchySpec
+from pynchy.plugins.hookspecs import PynchySpec
 
 __all__ = [
     "collect_hook_results",

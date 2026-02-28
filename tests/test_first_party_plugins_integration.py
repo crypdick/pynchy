@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from pynchy.plugin import get_plugin_manager
+from pynchy.plugins import get_plugin_manager
 
 
 class TestInRepoPluginDiscovery:
@@ -62,7 +62,7 @@ class TestInRepoPluginDiscovery:
         )
 
         with (
-            patch("pynchy.plugin.get_settings", return_value=settings),
+            patch("pynchy.plugins.registry.get_settings", return_value=settings),
             patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0),
         ):
             pm = get_plugin_manager()

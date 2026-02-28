@@ -228,7 +228,7 @@ class TestTailscalePluginIntegration:
 
     @staticmethod
     def _get_pm():
-        from pynchy.plugin import get_plugin_manager
+        from pynchy.plugins import get_plugin_manager
 
         with patch(
             "pluggy.PluginManager.load_setuptools_entrypoints",

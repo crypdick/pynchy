@@ -38,7 +38,7 @@ def _is_valid_plugin_runtime(candidate: Any) -> bool:
 
 
 def _iter_plugin_runtimes() -> list[RuntimeProvider]:
-    from pynchy.plugin import collect_hook_results
+    from pynchy.plugins import collect_hook_results
 
     return collect_hook_results("pynchy_container_runtime", _is_valid_plugin_runtime, "runtime")
 
