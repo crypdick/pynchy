@@ -55,14 +55,6 @@ RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
-# Create non-root user for security
-# NOTE: Update docs/security.md § Container Isolation if you change the username.
-RUN useradd -m -s /bin/bash agent
-RUN chown -R agent:agent /workspace
-
-# Switch to non-root user
-USER agent
-
 # Delegate git authentication to gh CLI (uses GH_TOKEN from environment at runtime)
 # Rewrite SSH remote URLs to HTTPS so the credential helper works (no SSH keys in container)
 RUN git config --global credential.helper '!gh auth git-credential' \

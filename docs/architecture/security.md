@@ -19,7 +19,7 @@ Agents execute in Apple Container (macOS) or Docker (Linux), providing:
 
 - **Process isolation** — container processes cannot affect the host
 - **Filesystem isolation** — only explicitly mounted directories appear inside the container
-- **Non-root execution** — runs as unprivileged `agent` user
+- **Full container privileges** — runs as root inside the container; container isolation is the security boundary
 - **Ephemeral containers** — fresh environment per invocation (`--rm`)
 
 The container boundary limits the attack surface to what gets mounted, rather than relying on application-level permission checks.
