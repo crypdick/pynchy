@@ -1018,7 +1018,7 @@ class TestSyncSkills:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(session_dir, workspace_skills=["all"])
+            _sync_skills(session_dir, workspace_skills=["*"])
 
         skills_dst = session_dir / "skills" / "my-skill"
         assert skills_dst.exists()
@@ -1053,7 +1053,7 @@ class TestSyncSkills:
             hook = FakeHook()
 
         with _patch_settings(tmp_path):
-            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["all"])
+            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
 
         ext_dst = session_dir / "skills" / "ext-skill"
         assert ext_dst.exists()
@@ -1085,7 +1085,7 @@ class TestSyncSkills:
             _patch_settings(tmp_path),
             pytest.raises(ValueError, match="collision"),
         ):
-            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["all"])
+            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
 
     def test_skips_nonexistent_plugin_skill_path(self, tmp_path: Path):
         """Plugin skill paths that don't exist are skipped with a warning."""
@@ -1186,8 +1186,8 @@ class TestIsSkillSelected:
         assert _is_skill_selected("any-skill", "community", None) is False
         assert _is_skill_selected("browser", "core", None) is True
 
-    def test_all_includes_everything(self):
-        assert _is_skill_selected("any-skill", "community", ["all"]) is True
+    def test_star_includes_everything(self):
+        assert _is_skill_selected("any-skill", "community", ["*"]) is True
 
     def test_tier_match(self):
         assert _is_skill_selected("my-skill", "dev", ["dev"]) is True
@@ -1290,8 +1290,8 @@ class TestSyncSkillsFiltering:
         copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
         assert copied == {"browser", "extra"}
 
-    def test_all_copies_everything(self, tmp_path: Path):
-        """workspace_skills=["all"] is equivalent to None."""
+    def test_star_copies_everything(self, tmp_path: Path):
+        """workspace_skills=["*"] includes all skills."""
         skills_src = tmp_path / "src" / "pynchy" / "agent" / "skills"
         self._create_skill(skills_src, "browser", "core")
         self._create_skill(skills_src, "improver", "dev")
@@ -1300,7 +1300,7 @@ class TestSyncSkillsFiltering:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(session_dir, workspace_skills=["all"])
+            _sync_skills(session_dir, workspace_skills=["*"])
 
         copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
         assert copied == {"browser", "improver"}
