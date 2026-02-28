@@ -6,7 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from pynchy.plugins.channels.slack import SlackChannel, _jid
+slack_bolt = pytest.importorskip("slack_bolt", reason="slack optional extra not installed")
+
+from pynchy.plugins.channels.slack import SlackChannel, _jid  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixtures
