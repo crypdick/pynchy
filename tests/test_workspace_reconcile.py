@@ -397,6 +397,77 @@ class TestReconcileWorkspaces:
         assert len(tasks) == 1
         assert tasks[0].context_mode == "isolated"
 
+    async def test_updates_workspace_name_from_config(self, db, groups_dir):
+        """Changed name in config.toml should update existing workspace profile."""
+        _write_workspace_yaml(
+            groups_dir,
+            "my-agent",
+            {"name": "New Name"},
+        )
+
+        registered = {
+            "agent@g.us": WorkspaceProfile(
+                jid="agent@g.us",
+                name="Old Name",
+                folder="my-agent",
+                trigger="@Pynchy",
+                added_at=datetime.now(UTC).isoformat(),
+            ),
+        }
+
+        register_fn = AsyncMock()
+        await reconcile_workspaces(registered, [], register_fn)
+
+        assert registered["agent@g.us"].name == "New Name"
+
+    async def test_updates_is_admin_from_config(self, db, groups_dir):
+        """Changed is_admin in config.toml should update existing workspace profile."""
+        _write_workspace_yaml(
+            groups_dir,
+            "promoted",
+            {"is_admin": True},
+        )
+
+        registered = {
+            "promoted@g.us": WorkspaceProfile(
+                jid="promoted@g.us",
+                name="Promoted",
+                folder="promoted",
+                trigger="@Pynchy",
+                added_at=datetime.now(UTC).isoformat(),
+                is_admin=False,
+            ),
+        }
+
+        register_fn = AsyncMock()
+        await reconcile_workspaces(registered, [], register_fn)
+
+        assert registered["promoted@g.us"].is_admin is True
+
+    async def test_no_update_when_profile_matches_config(self, db, groups_dir):
+        """No DB write when workspace profile already matches config."""
+        _write_workspace_yaml(
+            groups_dir,
+            "stable",
+            {"name": "Stable Agent"},
+        )
+
+        registered = {
+            "stable@g.us": WorkspaceProfile(
+                jid="stable@g.us",
+                name="Stable Agent",
+                folder="stable",
+                trigger="@Pynchy",
+                added_at=datetime.now(UTC).isoformat(),
+            ),
+        }
+
+        register_fn = AsyncMock()
+        await reconcile_workspaces(registered, [], register_fn)
+
+        # register_fn should NOT be called — no creation or update needed
+        register_fn.assert_not_called()
+
     async def test_pauses_orphaned_task_when_workspace_removed(self, db, groups_dir):
         """Task for a removed workspace should be paused on reconciliation."""
         # Pre-seed a task for a workspace that no longer exists in config
