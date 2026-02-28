@@ -339,7 +339,7 @@ async def _sweep_directory(
         logger.info("Expired approvals auto-denied during sweep", count=len(expired))
 
     # Sweep expired pending questions (crash recovery: auto-expire stale questions)
-    from pynchy.chat.pending_questions import sweep_expired_questions
+    from pynchy.host.orchestrator.messaging.pending_questions import sweep_expired_questions
 
     expired_qs = await sweep_expired_questions()
     if expired_qs:

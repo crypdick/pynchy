@@ -8,7 +8,7 @@ means host messages leak into prompts or user messages get dropped.
 
 from __future__ import annotations
 
-from pynchy.chat.router import (
+from pynchy.host.orchestrator.messaging.formatter import (
     format_messages_for_sdk,
     format_tool_preview,
     parse_host_tag,

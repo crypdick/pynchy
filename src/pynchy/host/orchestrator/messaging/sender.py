@@ -215,7 +215,7 @@ async def broadcast_formatted(
     the text per channel (e.g. Markdown for Slack, plain text for others).
     Used by the scheduler for periodic task output.
     """
-    from pynchy.chat.router import format_outbound
+    from pynchy.host.orchestrator.messaging.formatter import format_outbound
 
     targets = _resolve_send_targets(deps, chat_jid)
 

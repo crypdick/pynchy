@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
-from pynchy.chat.bus import broadcast
+from pynchy.host.orchestrator.messaging.sender import broadcast
 from pynchy.host.container_manager.session import destroy_session
 from pynchy.state import clear_session, set_chat_cleared_at, store_message
 from pynchy.event_bus import ChatClearedEvent, MessageEvent
@@ -229,7 +229,7 @@ async def on_inbound(deps: SessionDeps, _jid: str, msg: NewMessage) -> None:
         # Read receipt: react with 👀 so the sender knows pynchy received
         # the message.  Only on channels with write access (readwrite).
         if resolved.access == "readwrite":
-            from pynchy.chat.channel_handler import send_reaction_to_channels
+            from pynchy.host.orchestrator.messaging.channel_handler import send_reaction_to_channels
 
             create_background_task(
                 send_reaction_to_channels(deps, msg.chat_jid, msg.id, msg.sender, "eyes"),

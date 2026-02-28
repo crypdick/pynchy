@@ -15,8 +15,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
-from pynchy.chat.approval_handler import handle_approval_command, handle_pending_query
-from pynchy.chat.commands import (
+from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command, handle_pending_query
+from pynchy.host.orchestrator.messaging.commands import (
     is_approval_command,
     is_context_reset,
     is_end_session,
@@ -394,7 +394,7 @@ async def process_group_messages(
     if resolved.access == "read":
         return True
 
-    from pynchy.chat.router import format_messages_for_sdk
+    from pynchy.host.orchestrator.messaging.formatter import format_messages_for_sdk
 
     messages = format_messages_for_sdk(missed_messages)
 

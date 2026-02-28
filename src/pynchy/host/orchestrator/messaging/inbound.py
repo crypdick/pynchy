@@ -14,8 +14,8 @@ import asyncio
 import time as _time
 from typing import TYPE_CHECKING
 
-from pynchy.chat.commands import is_any_magic_command
-from pynchy.chat.message_handler import (
+from pynchy.host.orchestrator.messaging.commands import is_any_magic_command
+from pynchy.host.orchestrator.messaging.pipeline import (
     MessageHandlerDeps,
     _mark_dispatched,
     intercept_special_command,

@@ -151,7 +151,7 @@ class TestApprovalE2E:
         short_id = pending_data["short_id"]
 
         # Step 2: User sends "approve <short_id>" via chat
-        from pynchy.chat.approval_handler import handle_approval_command
+        from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command
 
         with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=approval_settings):
             await handle_approval_command(deps, "chat@g.us", "approve", short_id, "testuser")
@@ -231,7 +231,7 @@ class TestApprovalE2E:
         short_id = pending_data["short_id"]
 
         # Step 2: User denies
-        from pynchy.chat.approval_handler import handle_approval_command
+        from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command
 
         with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=approval_settings):
             await handle_approval_command(deps, "chat@g.us", "deny", short_id, "testuser")

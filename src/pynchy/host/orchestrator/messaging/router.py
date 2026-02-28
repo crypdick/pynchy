@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from itertools import count
 from typing import TYPE_CHECKING, Any
 
-from pynchy.chat._streaming import (
+from pynchy.host.orchestrator.messaging.streaming import (
     OutputDeps,
     StreamState,
     TraceBatcher,
@@ -25,8 +25,8 @@ from pynchy.chat._streaming import (
     stream_states,
     stream_text_to_channels,
 )
-from pynchy.chat.bus import finalize_stream_or_broadcast
-from pynchy.chat.router import format_tool_preview, parse_host_tag
+from pynchy.host.orchestrator.messaging.sender import finalize_stream_or_broadcast
+from pynchy.host.orchestrator.messaging.formatter import format_tool_preview, parse_host_tag
 from pynchy.config import get_settings
 from pynchy.state import store_message_direct
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
@@ -348,7 +348,7 @@ async def _handle_final_result(
 
     Returns True if a user-visible result was sent.
     """
-    from pynchy.chat.router import strip_internal_tags
+    from pynchy.host.orchestrator.messaging.formatter import strip_internal_tags
 
     if not result.result:
         return False

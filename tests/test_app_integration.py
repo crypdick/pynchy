@@ -70,8 +70,8 @@ def _patch_test_settings(tmp_path: Path):
             "pynchy.host.container_manager.orchestrator",
             "pynchy.host.container_manager.session",
             "pynchy.host.container_manager.snapshots",
-            "pynchy.chat.message_handler",
-            "pynchy.chat.output_handler",
+            "pynchy.host.orchestrator.messaging.pipeline",
+            "pynchy.host.orchestrator.messaging.router",
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         # Patch _docker_rm_force which spawns a real subprocess to remove

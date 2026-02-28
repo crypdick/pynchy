@@ -55,7 +55,7 @@ class TestPathAContainerAlive:
     @pytest.mark.asyncio
     async def test_writes_ipc_response_when_alive(self, settings, pending_question):
         """When the container is alive, write the answer as an IPC response file."""
-        from pynchy.chat.ask_user_handler import handle_ask_user_answer
+        from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
 
         alive_session = MagicMock()
         alive_session.is_alive = True
@@ -66,19 +66,19 @@ class TestPathAContainerAlive:
 
         with (
             patch(
-                "pynchy.chat.ask_user_handler.find_pending_question",
+                "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",
                 return_value=pending_question,
             ),
             patch(
-                "pynchy.chat.ask_user_handler.get_session",
+                "pynchy.host.orchestrator.messaging.ask_user_handler.get_session",
                 return_value=alive_session,
             ),
-            patch("pynchy.chat.ask_user_handler.write_ipc_response") as mock_write,
+            patch("pynchy.host.orchestrator.messaging.ask_user_handler.write_ipc_response") as mock_write,
             patch(
-                "pynchy.chat.ask_user_handler.ipc_response_path",
+                "pynchy.host.orchestrator.messaging.ask_user_handler.ipc_response_path",
                 return_value=Path("/tmp/fake/responses/req-abc123.json"),
             ) as mock_path,
-            patch("pynchy.chat.ask_user_handler.resolve_pending_question"),
+            patch("pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question"),
         ):
             await handle_ask_user_answer("req-abc123", answer, deps)
 
@@ -93,7 +93,7 @@ class TestPathAContainerAlive:
     @pytest.mark.asyncio
     async def test_resolves_pending_question_when_alive(self, settings, pending_question):
         """After writing IPC response, the pending question file should be resolved."""
-        from pynchy.chat.ask_user_handler import handle_ask_user_answer
+        from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
 
         alive_session = MagicMock()
         alive_session.is_alive = True
@@ -102,16 +102,16 @@ class TestPathAContainerAlive:
 
         with (
             patch(
-                "pynchy.chat.ask_user_handler.find_pending_question",
+                "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",
                 return_value=pending_question,
             ),
             patch(
-                "pynchy.chat.ask_user_handler.get_session",
+                "pynchy.host.orchestrator.messaging.ask_user_handler.get_session",
                 return_value=alive_session,
             ),
-            patch("pynchy.chat.ask_user_handler.write_ipc_response"),
-            patch("pynchy.chat.ask_user_handler.ipc_response_path", return_value=Path("/tmp/x")),
-            patch("pynchy.chat.ask_user_handler.resolve_pending_question") as mock_resolve,
+            patch("pynchy.host.orchestrator.messaging.ask_user_handler.write_ipc_response"),
+            patch("pynchy.host.orchestrator.messaging.ask_user_handler.ipc_response_path", return_value=Path("/tmp/x")),
+            patch("pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question") as mock_resolve,
         ):
             await handle_ask_user_answer("req-abc123", {"choice": "A"}, deps)
 
@@ -127,21 +127,21 @@ class TestPathBContainerDead:
     @pytest.mark.asyncio
     async def test_enqueues_message_when_dead(self, settings, pending_question):
         """When the container is dead, enqueue the answer as a synthetic message."""
-        from pynchy.chat.ask_user_handler import handle_ask_user_answer
+        from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
 
         deps = MagicMock()
         deps.enqueue_message = AsyncMock()
 
         with (
             patch(
-                "pynchy.chat.ask_user_handler.find_pending_question",
+                "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",
                 return_value=pending_question,
             ),
             patch(
-                "pynchy.chat.ask_user_handler.get_session",
+                "pynchy.host.orchestrator.messaging.ask_user_handler.get_session",
                 return_value=None,  # container dead
             ),
-            patch("pynchy.chat.ask_user_handler.resolve_pending_question"),
+            patch("pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question"),
         ):
             await handle_ask_user_answer("req-abc123", {"auth_strategy": "JWT tokens"}, deps)
 
@@ -157,7 +157,7 @@ class TestPathBContainerDead:
     @pytest.mark.asyncio
     async def test_enqueues_message_when_session_not_alive(self, settings, pending_question):
         """A session that exists but is_alive=False should trigger cold-start path."""
-        from pynchy.chat.ask_user_handler import handle_ask_user_answer
+        from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
 
         dead_session = MagicMock()
         dead_session.is_alive = False
@@ -166,14 +166,14 @@ class TestPathBContainerDead:
 
         with (
             patch(
-                "pynchy.chat.ask_user_handler.find_pending_question",
+                "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",
                 return_value=pending_question,
             ),
             patch(
-                "pynchy.chat.ask_user_handler.get_session",
+                "pynchy.host.orchestrator.messaging.ask_user_handler.get_session",
                 return_value=dead_session,
             ),
-            patch("pynchy.chat.ask_user_handler.resolve_pending_question"),
+            patch("pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question"),
         ):
             await handle_ask_user_answer("req-abc123", {"choice": "X"}, deps)
 
@@ -182,21 +182,21 @@ class TestPathBContainerDead:
     @pytest.mark.asyncio
     async def test_resolves_pending_question_when_dead(self, settings, pending_question):
         """The pending question should be resolved even in the cold-start path."""
-        from pynchy.chat.ask_user_handler import handle_ask_user_answer
+        from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
 
         deps = MagicMock()
         deps.enqueue_message = AsyncMock()
 
         with (
             patch(
-                "pynchy.chat.ask_user_handler.find_pending_question",
+                "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",
                 return_value=pending_question,
             ),
             patch(
-                "pynchy.chat.ask_user_handler.get_session",
+                "pynchy.host.orchestrator.messaging.ask_user_handler.get_session",
                 return_value=None,
             ),
-            patch("pynchy.chat.ask_user_handler.resolve_pending_question") as mock_resolve,
+            patch("pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question") as mock_resolve,
         ):
             await handle_ask_user_answer("req-abc123", {"a": "b"}, deps)
 
@@ -212,17 +212,17 @@ class TestUnknownQuestion:
     @pytest.mark.asyncio
     async def test_unknown_question_returns_early(self, settings):
         """If the question doesn't exist, log a warning and don't crash."""
-        from pynchy.chat.ask_user_handler import handle_ask_user_answer
+        from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
 
         deps = MagicMock()
         deps.enqueue_message = AsyncMock()
 
         with (
             patch(
-                "pynchy.chat.ask_user_handler.find_pending_question",
+                "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",
                 return_value=None,
             ),
-            patch("pynchy.chat.ask_user_handler.resolve_pending_question") as mock_resolve,
+            patch("pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question") as mock_resolve,
         ):
             # Should not raise
             await handle_ask_user_answer("nonexistent-id", {"x": "y"}, deps)
@@ -240,7 +240,7 @@ class TestUnknownQuestion:
 class TestFormatAnswerContext:
     def test_format_with_options(self, pending_question):
         """Format context text with question and options."""
-        from pynchy.chat.ask_user_handler import _format_answer_context
+        from pynchy.host.orchestrator.messaging.ask_user_handler import _format_answer_context
 
         text = _format_answer_context(pending_question, {"auth_strategy": "JWT tokens"})
 
@@ -252,7 +252,7 @@ class TestFormatAnswerContext:
 
     def test_format_with_dict_options(self):
         """Dict options with label/description should render labels, not raw dicts."""
-        from pynchy.chat.ask_user_handler import _format_answer_context
+        from pynchy.host.orchestrator.messaging.ask_user_handler import _format_answer_context
 
         pending = {
             "questions": [
@@ -275,7 +275,7 @@ class TestFormatAnswerContext:
 
     def test_format_without_options(self):
         """Format context text when the question has no options."""
-        from pynchy.chat.ask_user_handler import _format_answer_context
+        from pynchy.host.orchestrator.messaging.ask_user_handler import _format_answer_context
 
         pending = {
             "questions": [{"question": "What should the timeout be?"}],
@@ -287,7 +287,7 @@ class TestFormatAnswerContext:
 
     def test_format_multiple_questions(self):
         """Format context text with multiple questions."""
-        from pynchy.chat.ask_user_handler import _format_answer_context
+        from pynchy.host.orchestrator.messaging.ask_user_handler import _format_answer_context
 
         pending = {
             "questions": [
