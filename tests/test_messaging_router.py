@@ -213,7 +213,7 @@ class TestHandleStreamedOutput:
         deps._test_channel.send_message.assert_awaited()
 
     @pytest.mark.asyncio
-    async def test_result_empty_text_returns_false(self):
+    async def test_result_internal_only_still_sends(self):
         deps = _make_deps()
         group = _make_group()
         output = _make_output(type="result", result="<internal>hidden</internal>")
@@ -223,8 +223,8 @@ class TestHandleStreamedOutput:
         ):
             result = await handle_streamed_output(deps, "g@g.us", group, output)
 
-        # After stripping internal tags, text is empty — no visible result
-        assert result is False
+        # Internal-only text is formatted (not stripped), so it's still visible
+        assert result is True
 
     @pytest.mark.asyncio
     async def test_host_tagged_result_stored_as_host(self):
@@ -297,10 +297,10 @@ class TestHandleStreamedOutput:
 
     @pytest.mark.asyncio
     async def test_result_with_mixed_internal_and_visible_text(self):
-        """Internal tags stripped, visible text remains."""
+        """Internal tags formatted as brain emoji, visible text remains."""
         deps = _make_deps()
         group = _make_group()
-        output = _make_output(type="result", result="<internal>secret</internal>Hello visible!")
+        output = _make_output(type="result", result="<internal>thinking</internal>Hello visible!")
 
         with patch(
             "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
@@ -310,7 +310,7 @@ class TestHandleStreamedOutput:
         assert result is True
         channel_text = deps._test_channel.send_message.call_args[0][1]
         assert "visible" in channel_text
-        assert "secret" not in channel_text
+        assert "🧠" in channel_text
 
     @pytest.mark.asyncio
     async def test_result_metadata_partial_fields(self):

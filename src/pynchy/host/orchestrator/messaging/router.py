@@ -362,13 +362,13 @@ async def _handle_final_result(
 
     Returns True if a user-visible result was sent.
     """
-    from pynchy.host.orchestrator.messaging.formatter import strip_internal_tags
+    from pynchy.host.orchestrator.messaging.formatter import format_internal_tags
 
     if not result.result:
         return False
 
     raw = result.result if isinstance(result.result, str) else json.dumps(result.result)
-    text = strip_internal_tags(raw)
+    text = format_internal_tags(raw)
     if not text:
         return False
 
