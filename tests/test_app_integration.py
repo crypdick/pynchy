@@ -492,7 +492,7 @@ class TestProcessGroupMessages:
         with (
             patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", fake_create),
             _patch_test_settings(tmp_path),
-            patch("pynchy.git_ops.worktree.ensure_worktree", return_value=fake_wt),
+            patch("pynchy.host.git_ops.worktree.ensure_worktree", return_value=fake_wt),
         ):
             (tmp_path / "groups" / "main").mkdir(parents=True)
             result = await app._process_group_messages("main@g.us")

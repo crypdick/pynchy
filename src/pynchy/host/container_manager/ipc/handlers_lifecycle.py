@@ -6,15 +6,15 @@ import json
 from typing import Any
 
 from pynchy.config import get_settings
-from pynchy.git_ops._worktree_notify import host_notify_worktree_updates
-from pynchy.git_ops.sync import (
+from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates
+from pynchy.host.git_ops.sync import (
     GIT_POLICY_PR,
     host_create_pr_from_worktree,
     host_sync_worktree,
     resolve_git_policy,
 )
-from pynchy.git_ops.sync_poll import needs_container_rebuild, needs_deploy
-from pynchy.git_ops.utils import get_head_sha
+from pynchy.host.git_ops.sync_poll import needs_container_rebuild, needs_deploy
+from pynchy.host.git_ops.utils import get_head_sha
 from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_workspace_by_folder
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.ipc.write import write_ipc_response
@@ -63,7 +63,7 @@ async def _handle_reset_context(
         )
         return
 
-    from pynchy.git_ops._worktree_merge import merge_worktree_with_policy
+    from pynchy.host.git_ops._worktree_merge import merge_worktree_with_policy
 
     try:
         await merge_worktree_with_policy(group_folder)
@@ -105,7 +105,7 @@ async def _handle_finished_work(
         logger.warning("finished_work missing chatJid", source_group=source_group)
         return
 
-    from pynchy.git_ops._worktree_merge import background_merge_worktree
+    from pynchy.host.git_ops._worktree_merge import background_merge_worktree
 
     group = resolve_workspace_by_folder(source_group, deps)
     if group:
@@ -126,7 +126,7 @@ async def _handle_sync_worktree_to_main(
 ) -> None:
     import asyncio
 
-    from pynchy.git_ops.repo import resolve_repo_for_group
+    from pynchy.host.git_ops.repo import resolve_repo_for_group
 
     request_id = data.get("requestId", "")
 

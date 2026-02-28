@@ -15,17 +15,17 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.git_ops._worktree_notify import host_notify_worktree_updates
-from pynchy.git_ops.repo import RepoContext
-from pynchy.git_ops.sync import host_sync_worktree
-from pynchy.git_ops.sync_poll import (
+from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates
+from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.git_ops.sync import host_sync_worktree
+from pynchy.host.git_ops.sync_poll import (
     _hash_config_files,
     _host_container_files_changed,
     _host_get_origin_main_sha,
     needs_container_rebuild,
     needs_deploy,
 )
-from pynchy.git_ops.worktree import ensure_worktree
+from pynchy.host.git_ops.worktree import ensure_worktree
 from pynchy.host.container_manager.ipc.write import write_ipc_response
 
 # ---------------------------------------------------------------------------
@@ -80,9 +80,9 @@ def git_env(tmp_path: Path):
     repo_ctx = RepoContext(slug="owner/pynchy", root=project, worktrees_dir=worktrees_dir)
 
     with ExitStack() as stack:
-        stack.enter_context(patch("pynchy.git_ops.utils.get_settings", return_value=s))
-        stack.enter_context(patch("pynchy.git_ops.sync.get_settings", return_value=s))
-        stack.enter_context(patch("pynchy.git_ops.sync_poll.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.host.git_ops.utils.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.host.git_ops.sync.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.host.git_ops.sync_poll.get_settings", return_value=s))
         yield {
             "origin": origin,
             "project": project,

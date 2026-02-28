@@ -23,11 +23,11 @@ from pynchy.host.orchestrator.adapters import (
 )
 from pynchy.config import get_settings
 from pynchy.host.container_manager import write_groups_snapshot as _write_groups_snapshot
-from pynchy.git_ops.utils import get_head_sha
+from pynchy.host.git_ops.utils import get_head_sha
 
 if TYPE_CHECKING:
     from pynchy.host.orchestrator.app import PynchyApp
-    from pynchy.git_ops.sync import GitSyncDeps
+    from pynchy.host.git_ops.sync import GitSyncDeps
     from pynchy.host.orchestrator.http_server import HttpDeps
     from pynchy.host.container_manager.ipc import IpcDeps
     from pynchy.host.orchestrator.status import StatusDeps

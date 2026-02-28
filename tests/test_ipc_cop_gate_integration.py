@@ -195,7 +195,7 @@ class TestSyncWorktreeCopGate:
                 return_value=make_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.git_ops.repo.resolve_repo_for_group",
+                "pynchy.host.git_ops.repo.resolve_repo_for_group",
                 return_value=None,
             ),
             patch("pynchy.host.container_manager.ipc.handlers_lifecycle.write_ipc_response"),

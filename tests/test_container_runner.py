@@ -34,7 +34,7 @@ from pynchy.host.container_manager.session_prep import (
     _write_settings_json,
 )
 from pynchy.host.container_manager.snapshots import write_groups_snapshot, write_tasks_snapshot
-from pynchy.git_ops.repo import RepoContext
+from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 from pynchy.types import (
     ContainerInput,

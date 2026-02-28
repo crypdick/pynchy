@@ -26,7 +26,7 @@ from pynchy.host.orchestrator.messaging.commands import (
 from pynchy.config import get_settings
 from pynchy.state import get_messages_since, store_message_direct
 from pynchy.event_bus import AgentActivityEvent, MessageEvent
-from pynchy.git_ops.utils import is_repo_dirty
+from pynchy.host.git_ops.utils import is_repo_dirty
 from pynchy.logger import logger
 from pynchy.utils import generate_message_id, run_shell_command
 
@@ -483,7 +483,7 @@ async def process_group_messages(
     await _advance_cursor(deps, chat_jid, final_cursor, previous_cursor)
 
     # Merge worktree commits into main and push for groups with repo_access
-    from pynchy.git_ops._worktree_merge import background_merge_worktree
+    from pynchy.host.git_ops._worktree_merge import background_merge_worktree
 
     background_merge_worktree(group)
 

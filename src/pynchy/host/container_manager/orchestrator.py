@@ -139,8 +139,8 @@ async def _spawn_container(
     worktree_path: Path | None = None
     repo_ctx = None
     if input_data.repo_access:
-        from pynchy.git_ops.repo import resolve_repo_for_group
-        from pynchy.git_ops.worktree import ensure_worktree
+        from pynchy.host.git_ops.repo import resolve_repo_for_group
+        from pynchy.host.git_ops.worktree import ensure_worktree
 
         repo_ctx = resolve_repo_for_group(group.folder)
         if repo_ctx is not None:

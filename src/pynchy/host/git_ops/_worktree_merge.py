@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pynchy.git_ops.repo import RepoContext
-from pynchy.git_ops.utils import detect_main_branch, git_env_with_token, push_local_commits, run_git
-from pynchy.git_ops.worktree import _safe_rebase
+from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.git_ops.utils import detect_main_branch, git_env_with_token, push_local_commits, run_git
+from pynchy.host.git_ops.worktree import _safe_rebase
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
@@ -109,8 +109,8 @@ async def merge_worktree_with_policy(group_folder: str) -> None:
     """
     import asyncio
 
-    from pynchy.git_ops.repo import resolve_repo_for_group
-    from pynchy.git_ops.sync import (
+    from pynchy.host.git_ops.repo import resolve_repo_for_group
+    from pynchy.host.git_ops.sync import (
         GIT_POLICY_PR,
         host_create_pr_from_worktree,
         resolve_git_policy,

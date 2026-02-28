@@ -20,8 +20,8 @@ from conftest import make_settings
 
 from pynchy.config import WorkspaceConfig
 from pynchy.state import _init_test_database
-from pynchy.git_ops.repo import RepoContext
-from pynchy.git_ops.sync import (
+from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.git_ops.sync import (
     GIT_POLICY_MERGE,
     GIT_POLICY_PR,
     host_create_pr_from_worktree,
@@ -82,8 +82,8 @@ def git_env(tmp_path: Path):
     repo_ctx = RepoContext(slug="owner/repo", root=project, worktrees_dir=worktrees_dir)
 
     with ExitStack() as stack:
-        stack.enter_context(patch("pynchy.git_ops.utils.get_settings", return_value=s))
-        stack.enter_context(patch("pynchy.git_ops.sync.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.host.git_ops.utils.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.host.git_ops.sync.get_settings", return_value=s))
         yield {
             "origin": origin,
             "project": project,
@@ -102,7 +102,7 @@ class TestResolveGitPolicy:
     def test_default_is_merge_to_main(self):
         """No git_policy configured → merge-to-main."""
         s = make_settings(workspaces={})
-        with patch("pynchy.git_ops.sync.get_settings", return_value=s):
+        with patch("pynchy.host.git_ops.sync.get_settings", return_value=s):
             assert resolve_git_policy("nonexistent") == GIT_POLICY_MERGE
 
     def test_none_resolves_to_merge(self):
@@ -116,7 +116,7 @@ class TestResolveGitPolicy:
                 ),
             }
         )
-        with patch("pynchy.git_ops.sync.get_settings", return_value=s):
+        with patch("pynchy.host.git_ops.sync.get_settings", return_value=s):
             assert resolve_git_policy("agent-1") == GIT_POLICY_MERGE
 
     def test_merge_to_main_explicit(self):
@@ -130,7 +130,7 @@ class TestResolveGitPolicy:
                 ),
             }
         )
-        with patch("pynchy.git_ops.sync.get_settings", return_value=s):
+        with patch("pynchy.host.git_ops.sync.get_settings", return_value=s):
             assert resolve_git_policy("agent-1") == GIT_POLICY_MERGE
 
     def test_pull_request_policy(self):
@@ -144,7 +144,7 @@ class TestResolveGitPolicy:
                 ),
             }
         )
-        with patch("pynchy.git_ops.sync.get_settings", return_value=s):
+        with patch("pynchy.host.git_ops.sync.get_settings", return_value=s):
             assert resolve_git_policy("experimental") == GIT_POLICY_PR
 
 
@@ -163,7 +163,7 @@ class TestHostCreatePrFromWorktree:
 
     def test_uncommitted_changes(self, git_env: dict):
         """Returns error when worktree has uncommitted changes."""
-        from pynchy.git_ops.worktree import ensure_worktree
+        from pynchy.host.git_ops.worktree import ensure_worktree
 
         repo_ctx = git_env["repo_ctx"]
         wt_result = ensure_worktree("agent-1", repo_ctx)
@@ -175,7 +175,7 @@ class TestHostCreatePrFromWorktree:
 
     def test_nothing_to_push(self, git_env: dict):
         """Returns success when already up to date."""
-        from pynchy.git_ops.worktree import ensure_worktree
+        from pynchy.host.git_ops.worktree import ensure_worktree
 
         repo_ctx = git_env["repo_ctx"]
         ensure_worktree("agent-1", repo_ctx)
@@ -186,7 +186,7 @@ class TestHostCreatePrFromWorktree:
 
     def test_push_success_and_pr_created(self, git_env: dict):
         """Commits are pushed and a PR is opened."""
-        from pynchy.git_ops.worktree import ensure_worktree
+        from pynchy.host.git_ops.worktree import ensure_worktree
 
         repo_ctx = git_env["repo_ctx"]
         wt_result = ensure_worktree("agent-1", repo_ctx)
@@ -215,8 +215,8 @@ class TestHostCreatePrFromWorktree:
         ]
 
         with (
-            patch("pynchy.git_ops.sync.git_env_with_token", return_value=None),
-            patch("pynchy.git_ops.sync.subprocess.run", side_effect=_mock_run),
+            patch("pynchy.host.git_ops.sync.git_env_with_token", return_value=None),
+            patch("pynchy.host.git_ops.sync.subprocess.run", side_effect=_mock_run),
         ):
             result = host_create_pr_from_worktree("agent-1", repo_ctx)
 
@@ -231,7 +231,7 @@ class TestHostCreatePrFromWorktree:
 
     def test_push_updates_existing_pr(self, git_env: dict):
         """When a PR already exists, just push (PR auto-updates)."""
-        from pynchy.git_ops.worktree import ensure_worktree
+        from pynchy.host.git_ops.worktree import ensure_worktree
 
         repo_ctx = git_env["repo_ctx"]
         wt_result = ensure_worktree("agent-1", repo_ctx)
@@ -254,8 +254,8 @@ class TestHostCreatePrFromWorktree:
             return _real_run(args, **kwargs)
 
         with (
-            patch("pynchy.git_ops.sync.git_env_with_token", return_value=None),
-            patch("pynchy.git_ops.sync.subprocess.run", side_effect=_mock_run),
+            patch("pynchy.host.git_ops.sync.git_env_with_token", return_value=None),
+            patch("pynchy.host.git_ops.sync.subprocess.run", side_effect=_mock_run),
         ):
             result = host_create_pr_from_worktree("agent-1", repo_ctx)
 
@@ -265,7 +265,7 @@ class TestHostCreatePrFromWorktree:
 
     def test_push_failure(self, git_env: dict):
         """Push failure returns an error."""
-        from pynchy.git_ops.worktree import ensure_worktree
+        from pynchy.host.git_ops.worktree import ensure_worktree
 
         repo_ctx = git_env["repo_ctx"]
         wt_result = ensure_worktree("agent-1", repo_ctx)
@@ -285,7 +285,7 @@ class TestHostCreatePrFromWorktree:
 
     def test_pr_creation_failure(self, git_env: dict):
         """PR creation failure still reports that push succeeded."""
-        from pynchy.git_ops.worktree import ensure_worktree
+        from pynchy.host.git_ops.worktree import ensure_worktree
 
         repo_ctx = git_env["repo_ctx"]
         wt_result = ensure_worktree("agent-1", repo_ctx)
@@ -311,8 +311,8 @@ class TestHostCreatePrFromWorktree:
         ]
 
         with (
-            patch("pynchy.git_ops.sync.git_env_with_token", return_value=None),
-            patch("pynchy.git_ops.sync.subprocess.run", side_effect=_mock_run),
+            patch("pynchy.host.git_ops.sync.git_env_with_token", return_value=None),
+            patch("pynchy.host.git_ops.sync.subprocess.run", side_effect=_mock_run),
         ):
             result = host_create_pr_from_worktree("agent-1", repo_ctx)
 
@@ -395,7 +395,7 @@ class TestIpcPolicyRouting:
                 return_value=GIT_POLICY_MERGE,
             ),
             patch(
-                "pynchy.git_ops.repo.resolve_repo_for_group",
+                "pynchy.host.git_ops.repo.resolve_repo_for_group",
                 return_value=fake_repo_ctx,
             ),
             patch(
@@ -441,7 +441,7 @@ class TestIpcPolicyRouting:
                 return_value=GIT_POLICY_PR,
             ),
             patch(
-                "pynchy.git_ops.repo.resolve_repo_for_group",
+                "pynchy.host.git_ops.repo.resolve_repo_for_group",
                 return_value=fake_repo_ctx,
             ),
             patch(
@@ -483,7 +483,7 @@ class TestIpcPolicyRouting:
                 return_value=GIT_POLICY_PR,
             ),
             patch(
-                "pynchy.git_ops.repo.resolve_repo_for_group",
+                "pynchy.host.git_ops.repo.resolve_repo_for_group",
                 return_value=fake_repo_ctx,
             ),
             patch(
@@ -520,7 +520,7 @@ class TestIpcPolicyRouting:
                 return_value=GIT_POLICY_PR,
             ),
             patch(
-                "pynchy.git_ops.repo.resolve_repo_for_group",
+                "pynchy.host.git_ops.repo.resolve_repo_for_group",
                 return_value=fake_repo_ctx,
             ),
             patch(
@@ -551,16 +551,16 @@ class TestMergeWorktreeWithPolicy:
         mock_repo = MagicMock()
         with (
             patch(
-                "pynchy.git_ops.repo.resolve_repo_for_group",
+                "pynchy.host.git_ops.repo.resolve_repo_for_group",
                 return_value=mock_repo,
             ),
             patch(
-                "pynchy.git_ops.sync.resolve_git_policy",
+                "pynchy.host.git_ops.sync.resolve_git_policy",
                 return_value=GIT_POLICY_MERGE,
             ),
-            patch("pynchy.git_ops._worktree_merge.merge_and_push_worktree") as mock_merge,
+            patch("pynchy.host.git_ops._worktree_merge.merge_and_push_worktree") as mock_merge,
         ):
-            from pynchy.git_ops._worktree_merge import merge_worktree_with_policy
+            from pynchy.host.git_ops._worktree_merge import merge_worktree_with_policy
 
             await merge_worktree_with_policy("agent-1")
 
@@ -571,16 +571,16 @@ class TestMergeWorktreeWithPolicy:
         mock_repo = MagicMock()
         with (
             patch(
-                "pynchy.git_ops.repo.resolve_repo_for_group",
+                "pynchy.host.git_ops.repo.resolve_repo_for_group",
                 return_value=mock_repo,
             ),
             patch(
-                "pynchy.git_ops.sync.resolve_git_policy",
+                "pynchy.host.git_ops.sync.resolve_git_policy",
                 return_value=GIT_POLICY_PR,
             ),
-            patch("pynchy.git_ops.sync.host_create_pr_from_worktree") as mock_pr,
+            patch("pynchy.host.git_ops.sync.host_create_pr_from_worktree") as mock_pr,
         ):
-            from pynchy.git_ops._worktree_merge import merge_worktree_with_policy
+            from pynchy.host.git_ops._worktree_merge import merge_worktree_with_policy
 
             await merge_worktree_with_policy("agent-1")
 
@@ -590,12 +590,12 @@ class TestMergeWorktreeWithPolicy:
         """Groups without repo_access skip entirely."""
         with (
             patch(
-                "pynchy.git_ops.repo.resolve_repo_for_group",
+                "pynchy.host.git_ops.repo.resolve_repo_for_group",
                 return_value=None,
             ),
-            patch("pynchy.git_ops.sync.resolve_git_policy") as mock_policy,
+            patch("pynchy.host.git_ops.sync.resolve_git_policy") as mock_policy,
         ):
-            from pynchy.git_ops._worktree_merge import merge_worktree_with_policy
+            from pynchy.host.git_ops._worktree_merge import merge_worktree_with_policy
 
             await merge_worktree_with_policy("no-repo")
 
@@ -609,7 +609,7 @@ class TestBackgroundMergePolicy:
         group.folder = "agent-1"
 
         with patch("pynchy.utils.create_background_task") as mock_task:
-            from pynchy.git_ops._worktree_merge import background_merge_worktree
+            from pynchy.host.git_ops._worktree_merge import background_merge_worktree
 
             background_merge_worktree(group)
 
@@ -624,7 +624,7 @@ class TestBackgroundMergePolicy:
         group.folder = "no-repo"
 
         with patch("pynchy.utils.create_background_task") as mock_task:
-            from pynchy.git_ops._worktree_merge import background_merge_worktree
+            from pynchy.host.git_ops._worktree_merge import background_merge_worktree
 
             background_merge_worktree(group)
 

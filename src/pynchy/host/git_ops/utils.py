@@ -43,7 +43,7 @@ def git_env_with_token(slug: str) -> dict[str, str] | None:
     token — safer than embedding tokens in URLs since the token never appears
     in .git/config or ``git remote -v`` output.
     """
-    from pynchy.git_ops.repo import get_repo_token
+    from pynchy.host.git_ops.repo import get_repo_token
 
     token = get_repo_token(slug)
     if not token:

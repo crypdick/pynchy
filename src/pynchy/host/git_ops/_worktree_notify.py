@@ -12,8 +12,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
-from pynchy.git_ops.repo import RepoContext
-from pynchy.git_ops.utils import detect_main_branch, get_head_sha, run_git
+from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.git_ops.utils import detect_main_branch, get_head_sha, run_git
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
