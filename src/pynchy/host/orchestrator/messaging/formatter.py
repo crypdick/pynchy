@@ -131,9 +131,9 @@ def format_tool_preview(tool_name: str, tool_input: dict) -> str:
             return header
         parts = [header]
         if old:
-            parts.append(_format_lines(old.splitlines(), prefix="-"))
+            parts.append(_format_lines(old.splitlines(), prefix="> -"))
         if new:
-            parts.append(_format_lines(new.splitlines(), prefix="+"))
+            parts.append(_format_lines(new.splitlines(), prefix="> +"))
         return "\n".join(parts)
 
     if tool_name == "Write":
@@ -144,7 +144,7 @@ def format_tool_preview(tool_name: str, tool_input: dict) -> str:
         content = tool_input.get("content", "")
         if not content:
             return header
-        return header + "\n" + _format_lines(content.splitlines(), prefix="+")
+        return header + "\n" + _format_lines(content.splitlines(), prefix="> +")
 
     if tool_name == "Grep":
         pattern = tool_input.get("pattern", "")
