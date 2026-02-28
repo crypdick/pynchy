@@ -166,11 +166,14 @@
 # enabled = false
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Workspace Defaults
+# Sandbox Universal (defaults for all sandboxes)
 # ─────────────────────────────────────────────────────────────────────────────
-# Defaults applied to sandboxes that don't override these fields.
+# These values apply to every sandbox. Per-sandbox and profile values override.
+# List fields (directives, skills, mcp_servers) are unioned across tiers.
+# Scalar fields use most-specific-wins semantics.
 
-[workspace_defaults]
+# [sandbox_universal]
+# directives = ["base", "idle-escape"]
 # context_mode = "group"
 # access = "readwrite"   # "read", "write", "readwrite"
 # mode = "agent"         # "agent" or "chat"
@@ -185,18 +188,14 @@
 # the directory under groups/.
 
 # [sandbox.admin-1]
+# profile = "pynchy-dev"
 # chat = "connection.slack.synapse.chat.admin-1"
 # is_admin = true
-# trigger = "always"
-# repo_access = "owner/repo"  # GitHub slug from [repos.*]; grants /workspace/project mount
-# skills = ["core", "ops"]    # tier names and/or skill names; omit for core-only (safe default)
 
 # [sandbox.admin-2]
+# profile = "pynchy-dev"
 # chat = "connection.slack.synapse.chat.admin-2"
 # is_admin = true
-# trigger = "always"
-# repo_access = "owner/repo"
-# skills = ["core", "ops"]
 
 # CLEAN ROOM POLICY: Admin workspaces cannot have MCP servers with public_source = true.
 # Any MCP not declared in [services] defaults to public_source = true.
@@ -231,7 +230,7 @@
 # chat = "connection.slack.synapse.chat.admin"
 # is_admin = true
 # mcp_servers = ["caldav"]   # only MCPs declared with public_source = false are allowed
-# # mcp_servers = ["all"] would fail if any server has public_source = true (the default)
+# # mcp_servers = ["*"] would fail if any server has public_source = true (the default)
 
 # Plugins can provide additional managed sandboxes automatically.
 
@@ -375,7 +374,7 @@
 # dev-tools = ["playwright", "github-mcp"]
 # social = ["twitter-mcp", "linkedin-mcp"]
 # google_mycompany = ["gdrive.mycompany", "gcal.mycompany"]
-# "all" is built-in — refers to every defined mcp_server
+# "*" is built-in — refers to every defined mcp_server
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MCP Presets — reusable kwarg bundles (resolved at config load time)
@@ -442,33 +441,25 @@
 # blocked_patterns = [".ssh", ".gnupg", ".gpg", ".aws", ...]
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Directives (System Prompt Extensions)
+# Sandbox Profiles (reusable config bundles)
 # ─────────────────────────────────────────────────────────────────────────────
-# Directives inject markdown content into agent system prompts. Each directive
-# has a file (relative to project root) and a scope that controls which
-# sandboxes receive it.
+# Profiles bundle directives, skills, MCP servers, and other config.
+# Sandboxes reference a profile via `profile = "<name>"`.
+# Effective config = sandbox_universal ∪ profile ∪ per-sandbox.
 #
-# Scope values:
-#   "all"              → matches every sandbox
-#   "folder-name"      → matches a specific sandbox folder
-#   "owner/repo"       → matches sandboxes whose repo_access equals this slug
-#   ["a", "b"]         → union of multiple scopes
+# List fields (directives, skills, mcp_servers) are unioned across tiers.
+# Scalar fields use most-specific-wins semantics.
 #
-# Directives are sorted by key name and concatenated with "---" separators.
-# Files ending in .EXAMPLE are automatically ignored.
+# Directives use convention-based resolution: name "base" → directives/base.md.
 
-# [directives.base]
-# file = "directives/base.md"
-# scope = "all"
+# [sandbox_profiles.pynchy-dev]
+# directives = ["pynchy-admin-ops", "pynchy-code-improver"]
+# skills = ["core", "ops"]
+# repo_access = "owner/repo"
+# idle_terminate = false
+# trigger = "always"
 
-# [directives.idle-escape]
-# file = "directives/idle-escape.md"
-# scope = "all"
-
-# [directives.admin-ops]
-# file = "directives/admin-ops.md"
-# scope = ["admin-1", "admin-2"]
-
-# [directives.pynchy-dev]
-# file = "directives/pynchy-dev.md"
-# scope = "crypdick/pynchy"
+# [sandbox_profiles.ray-bench]
+# directives = ["ray-bench"]
+# repo_access = "owner/ray-bench"
+# mcp_servers = ["notebook"]
