@@ -8,7 +8,7 @@ try:
     from pathlib import Path
 
     # Add container agent_runner to path for testing
-    container_path = Path(__file__).parent.parent / "container" / "agent_runner" / "src"
+    container_path = Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src"
     if container_path.exists():
         sys.path.insert(0, str(container_path))
 
@@ -210,7 +210,7 @@ class TestAgentCorePlugin:
 
     def test_plugin_manager_initialization(self):
         """Test plugin manager initializes with built-in Claude plugin."""
-        from pynchy.plugin import get_plugin_manager
+        from pynchy.plugins import get_plugin_manager
 
         pm = get_plugin_manager()
         assert pm is not None
@@ -231,7 +231,7 @@ class TestAgentCorePlugin:
         """Test registering a custom agent core plugin."""
         import pluggy
 
-        from pynchy.plugin import get_plugin_manager
+        from pynchy.plugins import get_plugin_manager
 
         hookimpl = pluggy.HookimplMarker("pynchy")
 
@@ -260,7 +260,7 @@ class TestAgentCorePlugin:
         """Test plugin returning container packages."""
         import pluggy
 
-        from pynchy.plugin import get_plugin_manager
+        from pynchy.plugins import get_plugin_manager
 
         hookimpl = pluggy.HookimplMarker("pynchy")
 

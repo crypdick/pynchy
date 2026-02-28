@@ -22,25 +22,25 @@ def _run() -> None:
 
     load_dotenv()  # Make .env vars available in os.environ for env_forward, etc.
 
-    from pynchy.app import PynchyApp
+    from pynchy.host.orchestrator.app import PynchyApp
 
     app = PynchyApp()
     asyncio.run(app.run())
 
 
 def _tui(host: str) -> None:
-    from pynchy.chat.plugins.tui.client import run_tui
+    from pynchy.plugins.channels.tui.client import run_tui
 
     run_tui(host)
 
 
 def _build() -> None:
     from pynchy.config import get_settings
-    from pynchy.runtime.runtime import get_runtime
+    from pynchy.plugins.runtimes.detection import get_runtime
 
     s = get_settings()
     runtime = get_runtime()
-    container_dir = s.project_root / "container"
+    container_dir = s.project_root / "src" / "pynchy" / "agent"
 
     if not (container_dir / "Dockerfile").exists():
         print(f"Error: No Dockerfile at {container_dir / 'Dockerfile'}", file=sys.stderr)

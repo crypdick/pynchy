@@ -17,19 +17,19 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.deploy import finalize_deploy
+from pynchy.host.orchestrator.deploy import finalize_deploy
 
 
 @contextlib.contextmanager
 def _patch_settings(*, data_dir: Path):
     s = make_settings(data_dir=data_dir)
     with (
-        patch("pynchy.deploy.get_settings", return_value=s),
+        patch("pynchy.host.orchestrator.deploy.get_settings", return_value=s),
         # finalize_deploy() persists deploy metadata via set_router_state(),
         # which requires an initialized DB.  Mock it out for unit tests.
-        # Patch on pynchy.db (the re-export) so the local import inside
+        # Patch on pynchy.state (the re-export) so the local import inside
         # finalize_deploy picks up the mock.
-        patch("pynchy.db.set_router_state", new_callable=AsyncMock),
+        patch("pynchy.state.set_router_state", new_callable=AsyncMock),
     ):
         yield
 
@@ -47,7 +47,7 @@ class TestFinalizeDeploy:
     async def test_writes_continuation_file(self, deploy_dir: Path):
         broadcast = AsyncMock()
 
-        with patch("pynchy.deploy.os.kill"):
+        with patch("pynchy.host.orchestrator.deploy.os.kill"):
             await finalize_deploy(
                 broadcast_host_message=broadcast,
                 chat_jid="group@g.us",
@@ -69,7 +69,7 @@ class TestFinalizeDeploy:
     async def test_broadcasts_notification_with_short_sha(self, deploy_dir: Path):
         broadcast = AsyncMock()
 
-        with patch("pynchy.deploy.os.kill"):
+        with patch("pynchy.host.orchestrator.deploy.os.kill"):
             await finalize_deploy(
                 broadcast_host_message=broadcast,
                 chat_jid="group@g.us",
@@ -85,7 +85,7 @@ class TestFinalizeDeploy:
     async def test_skips_broadcast_when_no_chat_jid(self, deploy_dir: Path):
         broadcast = AsyncMock()
 
-        with patch("pynchy.deploy.os.kill"):
+        with patch("pynchy.host.orchestrator.deploy.os.kill"):
             await finalize_deploy(
                 broadcast_host_message=broadcast,
                 chat_jid="",
@@ -98,7 +98,7 @@ class TestFinalizeDeploy:
     async def test_sends_sigterm_immediately_by_default(self, deploy_dir: Path):
         broadcast = AsyncMock()
 
-        with patch("pynchy.deploy.os.kill") as mock_kill:
+        with patch("pynchy.host.orchestrator.deploy.os.kill") as mock_kill:
             await finalize_deploy(
                 broadcast_host_message=broadcast,
                 chat_jid="group@g.us",
@@ -112,8 +112,8 @@ class TestFinalizeDeploy:
         broadcast = AsyncMock()
 
         with (
-            patch("pynchy.deploy.os.kill") as mock_kill,
-            patch("pynchy.deploy.asyncio.get_running_loop") as mock_loop,
+            patch("pynchy.host.orchestrator.deploy.os.kill") as mock_kill,
+            patch("pynchy.host.orchestrator.deploy.asyncio.get_running_loop") as mock_loop,
         ):
             mock_loop_instance = mock_loop.return_value
             await finalize_deploy(
@@ -139,7 +139,7 @@ class TestFinalizeDeploy:
 
         shutil.rmtree(deploy_dir)
 
-        with patch("pynchy.deploy.os.kill"):
+        with patch("pynchy.host.orchestrator.deploy.os.kill"):
             await finalize_deploy(
                 broadcast_host_message=broadcast,
                 chat_jid="group@g.us",
@@ -152,7 +152,7 @@ class TestFinalizeDeploy:
     async def test_handles_unknown_commit_sha(self, deploy_dir: Path):
         broadcast = AsyncMock()
 
-        with patch("pynchy.deploy.os.kill"):
+        with patch("pynchy.host.orchestrator.deploy.os.kill"):
             await finalize_deploy(
                 broadcast_host_message=broadcast,
                 chat_jid="group@g.us",
@@ -167,7 +167,7 @@ class TestFinalizeDeploy:
     async def test_default_resume_prompt(self, deploy_dir: Path):
         broadcast = AsyncMock()
 
-        with patch("pynchy.deploy.os.kill"):
+        with patch("pynchy.host.orchestrator.deploy.os.kill"):
             await finalize_deploy(
                 broadcast_host_message=broadcast,
                 chat_jid="group@g.us",
@@ -187,7 +187,7 @@ class TestFinalizeDeploy:
             "project@g.us": "sess-project",
         }
 
-        with patch("pynchy.deploy.os.kill"):
+        with patch("pynchy.host.orchestrator.deploy.os.kill"):
             await finalize_deploy(
                 broadcast_host_message=broadcast,
                 chat_jid="admin-1@g.us",
@@ -204,7 +204,7 @@ class TestFinalizeDeploy:
         broadcast = AsyncMock()
         sessions = {"team@g.us": "sess-team"}
 
-        with patch("pynchy.deploy.os.kill"):
+        with patch("pynchy.host.orchestrator.deploy.os.kill"):
             await finalize_deploy(
                 broadcast_host_message=broadcast,
                 chat_jid="admin-1@g.us",
@@ -224,7 +224,7 @@ class TestFinalizeDeploy:
         """active_sessions should be empty dict when no sessions exist."""
         broadcast = AsyncMock()
 
-        with patch("pynchy.deploy.os.kill"):
+        with patch("pynchy.host.orchestrator.deploy.os.kill"):
             await finalize_deploy(
                 broadcast_host_message=broadcast,
                 chat_jid="admin-1@g.us",

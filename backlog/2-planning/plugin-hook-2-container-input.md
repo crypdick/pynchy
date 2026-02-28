@@ -45,7 +45,7 @@ Where each dict in `plugin_hooks` contains:
 
 ### 2. Update Serialization in container_runner.py
 
-**File:** `src/pynchy/container_runner.py`
+**File:** `src/pynchy/host/container_manager/container_runner.py`
 
 Update `_input_to_dict()` to include plugin_hooks:
 
@@ -71,7 +71,7 @@ def _input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
 
 ### 3. Update ContainerInput in agent_runner
 
-**File:** `container/agent_runner/src/agent_runner/main.py`
+**File:** `src/pynchy/agent/agent_runner/src/agent_runner/main.py`
 
 Update the `ContainerInput` class to accept plugin_hooks:
 
@@ -95,7 +95,7 @@ class ContainerInput:
 """Tests for hook plugin container input handling."""
 
 from pynchy.types import ContainerInput
-from pynchy.container_runner import _input_to_dict
+from pynchy.host.container_manager import _input_to_dict
 
 
 def test_container_input_with_hooks():

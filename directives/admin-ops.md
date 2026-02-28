@@ -194,7 +194,7 @@ You can edit your own source code at `/workspace/project/` and deploy changes to
 `deploy_changes` — optionally rebuilds the container image, restarts the service, and resumes your conversation automatically. You handle git yourself before calling this.
 
 Parameters:
-- `rebuild_container` (default: false): Set true if you changed files under `container/`
+- `rebuild_container` (default: false): Set true if you changed files under `src/pynchy/agent/`
 - `resume_prompt` (default: "Deploy complete. Verifying service health."): Prompt injected after restart to resume your session
 
 ### Workflow
@@ -211,6 +211,6 @@ Parameters:
 - *Always* push before deploying — local-only commits cause divergence on restart
 - Make small, focused changes — one logical change per deploy
 - Write descriptive commit messages
-- If you changed anything under `container/`, set `rebuild_container: true`
+- If you changed anything under `src/pynchy/agent/`, set `rebuild_container: true`
 - After restart, verify the service is healthy before reporting success
 - If the deploy causes a startup crash, the service auto-rolls back to the previous commit and resumes your session with rollback info

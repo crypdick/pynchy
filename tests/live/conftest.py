@@ -17,8 +17,8 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
-from pynchy.app import PynchyApp
-from pynchy.db import _init_test_database
+from pynchy.host.orchestrator.app import PynchyApp
+from pynchy.state import _init_test_database
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.types import NewMessage, WorkspaceProfile
 
@@ -231,13 +231,13 @@ def patch_test_settings(tmp_path: Path):
     )
     with contextlib.ExitStack() as stack:
         for mod in (
-            "pynchy.container_runner._credentials",
-            "pynchy.container_runner._mounts",
-            "pynchy.container_runner._session_prep",
-            "pynchy.container_runner._orchestrator",
-            "pynchy.container_runner._snapshots",
-            "pynchy.chat.message_handler",
-            "pynchy.chat.output_handler",
+            "pynchy.host.container_manager.credentials",
+            "pynchy.host.container_manager.mounts",
+            "pynchy.host.container_manager.session_prep",
+            "pynchy.host.container_manager.orchestrator",
+            "pynchy.host.container_manager.snapshots",
+            "pynchy.host.orchestrator.messaging.pipeline",
+            "pynchy.host.orchestrator.messaging.router",
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         yield s

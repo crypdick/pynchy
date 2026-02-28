@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.chat.reaction_handler import _REACTION_ACTIONS, handle_reaction
+from pynchy.host.orchestrator.messaging.reaction_handler import _REACTION_ACTIONS, handle_reaction
 from pynchy.types import WorkspaceProfile
 
 # ---------------------------------------------------------------------------

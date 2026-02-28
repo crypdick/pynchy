@@ -35,7 +35,7 @@ App starts
   → Ready: pm.hook.pynchy_agent_core_info(), etc.
 ```
 
-Built-in plugins are part of the monorepo and loaded from a static registry in `src/pynchy/plugin/__init__.py`. Plugins with optional dependencies (WhatsApp, Slack, CalDAV) are gracefully skipped if their packages aren't installed.
+Built-in plugins are part of the monorepo and loaded from a static registry in `src/pynchy/plugins/__init__.py`. Plugins with optional dependencies (WhatsApp, Slack, CalDAV) are gracefully skipped if their packages aren't installed.
 
 Third-party plugins register via `pyproject.toml` entry points in the `"pynchy"` group. Installation activates them. Uninstalling removes them. No config files needed.
 

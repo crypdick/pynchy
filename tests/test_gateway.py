@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import pynchy.container_runner.gateway as _gw_mod
-from pynchy.container_runner.gateway import (
+import pynchy.host.container_manager.gateway as _gw_mod
+from pynchy.host.container_manager.gateway import (
     BuiltinGateway,
     LiteLLMGateway,
     _load_or_create_persistent_key,
@@ -19,9 +19,9 @@ from pynchy.container_runner.gateway import (
 # LiteLLMGateway — unit tests (Docker calls mocked)
 # ---------------------------------------------------------------------------
 
-_GATEWAY_MOD = "pynchy.container_runner.gateway"
-_LITELLM_MOD = "pynchy.container_runner._gateway_litellm"
-_DOCKER_MOD = "pynchy.container_runner._docker"
+_GATEWAY_MOD = "pynchy.host.container_manager.gateway"
+_LITELLM_MOD = "pynchy.host.container_manager.gateway_litellm"
+_DOCKER_MOD = "pynchy.host.container_manager.docker"
 
 _LITELLM_KWARGS = dict(
     port=4000,
@@ -187,7 +187,7 @@ class TestCollectYamlEnvRefs:
             return result
 
         with (
-            patch("pynchy.container_runner._docker.docker_available", return_value=True),
+            patch("pynchy.host.container_manager.docker.docker_available", return_value=True),
             patch(f"{_LITELLM_MOD}.docker_available", return_value=True),
             patch(f"{_LITELLM_MOD}.run_docker", new_callable=AsyncMock, side_effect=fake_docker),
             patch(f"{_DOCKER_MOD}.run_docker", new_callable=AsyncMock, side_effect=fake_docker),

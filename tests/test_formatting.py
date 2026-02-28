@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from conftest import make_settings
 
-from pynchy.chat.router import (
+from pynchy.host.orchestrator.messaging.formatter import (
     format_outbound,
     format_tool_preview,
     parse_host_tag,

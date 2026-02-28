@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.db import _init_test_database
+from pynchy.state import _init_test_database
 
 
 @pytest.fixture
@@ -77,7 +77,7 @@ def _write_decision(ipc_dir: Path, group: str, request_id: str, *, approved: boo
 class TestProcessApprovalDecision:
     @pytest.mark.asyncio
     async def test_approved_executes_and_writes_response(self, _setup_db, ipc_dir: Path, settings):
-        from pynchy.ipc._handlers_approval import process_approval_decision
+        from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 
         _write_pending(ipc_dir, "grp", "req123", "my_tool", {"arg": "val"})
         decision_file = _write_decision(ipc_dir, "grp", "req123", approved=True)
@@ -85,10 +85,10 @@ class TestProcessApprovalDecision:
         mock_handler = AsyncMock(return_value={"result": {"status": "posted"}})
 
         with (
-            patch("pynchy.ipc._handlers_approval.get_settings", return_value=settings),
-            patch("pynchy.ipc._write.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.handlers_approval.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
             patch(
-                "pynchy.ipc._handlers_approval._get_plugin_handlers",
+                "pynchy.host.container_manager.ipc.handlers_approval._get_plugin_handlers",
                 return_value={"my_tool": mock_handler},
             ),
         ):
@@ -111,14 +111,14 @@ class TestProcessApprovalDecision:
 
     @pytest.mark.asyncio
     async def test_denied_writes_error_response(self, _setup_db, ipc_dir: Path, settings):
-        from pynchy.ipc._handlers_approval import process_approval_decision
+        from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 
         _write_pending(ipc_dir, "grp", "req456", "my_tool", {})
         decision_file = _write_decision(ipc_dir, "grp", "req456", approved=False)
 
         with (
-            patch("pynchy.ipc._handlers_approval.get_settings", return_value=settings),
-            patch("pynchy.ipc._write.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.handlers_approval.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             await process_approval_decision(decision_file, "grp")
 
@@ -134,11 +134,11 @@ class TestProcessApprovalDecision:
     @pytest.mark.asyncio
     async def test_missing_pending_cleans_decision(self, _setup_db, ipc_dir: Path, settings):
         """Decision with no matching pending file should be cleaned up."""
-        from pynchy.ipc._handlers_approval import process_approval_decision
+        from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 
         decision_file = _write_decision(ipc_dir, "grp", "orphan", approved=True)
 
-        with patch("pynchy.ipc._handlers_approval.get_settings", return_value=settings):
+        with patch("pynchy.host.container_manager.ipc.handlers_approval.get_settings", return_value=settings):
             await process_approval_decision(decision_file, "grp")
 
         assert not decision_file.exists()
@@ -146,16 +146,16 @@ class TestProcessApprovalDecision:
     @pytest.mark.asyncio
     async def test_unknown_tool_writes_error(self, _setup_db, ipc_dir: Path, settings):
         """Approved request for unknown tool should write error response."""
-        from pynchy.ipc._handlers_approval import process_approval_decision
+        from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 
         _write_pending(ipc_dir, "grp", "req789", "nonexistent_tool", {})
         decision_file = _write_decision(ipc_dir, "grp", "req789", approved=True)
 
         with (
-            patch("pynchy.ipc._handlers_approval.get_settings", return_value=settings),
-            patch("pynchy.ipc._write.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.handlers_approval.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
             patch(
-                "pynchy.ipc._handlers_approval._get_plugin_handlers",
+                "pynchy.host.container_manager.ipc.handlers_approval._get_plugin_handlers",
                 return_value={},
             ),
         ):
@@ -168,7 +168,7 @@ class TestProcessApprovalDecision:
     @pytest.mark.asyncio
     async def test_handler_exception_writes_error(self, _setup_db, ipc_dir: Path, settings):
         """If the handler raises, write an error response instead of crashing."""
-        from pynchy.ipc._handlers_approval import process_approval_decision
+        from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 
         _write_pending(ipc_dir, "grp", "reqfail", "bad_tool", {})
         decision_file = _write_decision(ipc_dir, "grp", "reqfail", approved=True)
@@ -176,10 +176,10 @@ class TestProcessApprovalDecision:
         mock_handler = AsyncMock(side_effect=RuntimeError("boom"))
 
         with (
-            patch("pynchy.ipc._handlers_approval.get_settings", return_value=settings),
-            patch("pynchy.ipc._write.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.handlers_approval.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
             patch(
-                "pynchy.ipc._handlers_approval._get_plugin_handlers",
+                "pynchy.host.container_manager.ipc.handlers_approval._get_plugin_handlers",
                 return_value={"bad_tool": mock_handler},
             ),
         ):
@@ -199,7 +199,7 @@ class TestIpcApprovalDispatch:
         self, _setup_db, ipc_dir: Path, settings
     ):
         """Approved IPC request dispatches through ipc._registry.dispatch()."""
-        from pynchy.ipc._handlers_approval import process_approval_decision
+        from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 
         _write_pending(
             ipc_dir,
@@ -215,9 +215,9 @@ class TestIpcApprovalDispatch:
         mock_dispatch = AsyncMock()
 
         with (
-            patch("pynchy.ipc._handlers_approval.get_settings", return_value=settings),
-            patch("pynchy.ipc._write.get_settings", return_value=settings),
-            patch("pynchy.ipc._registry.dispatch", mock_dispatch),
+            patch("pynchy.host.container_manager.ipc.handlers_approval.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.registry.dispatch", mock_dispatch),
         ):
             await process_approval_decision(decision_file, "grp", deps=mock_deps)
 
@@ -236,7 +236,7 @@ class TestIpcApprovalDispatch:
     @pytest.mark.asyncio
     async def test_ipc_approved_without_deps_writes_error(self, _setup_db, ipc_dir: Path, settings):
         """IPC approval without deps writes an error response."""
-        from pynchy.ipc._handlers_approval import process_approval_decision
+        from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 
         _write_pending(
             ipc_dir,
@@ -249,8 +249,8 @@ class TestIpcApprovalDispatch:
         decision_file = _write_decision(ipc_dir, "grp", "ipc-req2", approved=True)
 
         with (
-            patch("pynchy.ipc._handlers_approval.get_settings", return_value=settings),
-            patch("pynchy.ipc._write.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.handlers_approval.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             await process_approval_decision(decision_file, "grp")  # No deps!
 
@@ -262,7 +262,7 @@ class TestIpcApprovalDispatch:
     @pytest.mark.asyncio
     async def test_ipc_dispatch_failure_writes_error(self, _setup_db, ipc_dir: Path, settings):
         """If IPC dispatch raises, write an error response."""
-        from pynchy.ipc._handlers_approval import process_approval_decision
+        from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 
         _write_pending(
             ipc_dir,
@@ -278,9 +278,9 @@ class TestIpcApprovalDispatch:
         mock_dispatch = AsyncMock(side_effect=RuntimeError("dispatch failed"))
 
         with (
-            patch("pynchy.ipc._handlers_approval.get_settings", return_value=settings),
-            patch("pynchy.ipc._write.get_settings", return_value=settings),
-            patch("pynchy.ipc._registry.dispatch", mock_dispatch),
+            patch("pynchy.host.container_manager.ipc.handlers_approval.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.registry.dispatch", mock_dispatch),
         ):
             await process_approval_decision(decision_file, "grp", deps=mock_deps)
 

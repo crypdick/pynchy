@@ -12,7 +12,7 @@ import asyncio
 from typing import Any
 from unittest.mock import AsyncMock
 
-from pynchy.adapters import (
+from pynchy.host.orchestrator.adapters import (
     EventBusAdapter,
     GroupMetadataManager,
     HostMessageBroadcaster,
@@ -260,7 +260,7 @@ class TestMessageBroadcaster:
         # format_outbound strips internal tags and may adjust text
         from unittest.mock import patch as _patch
 
-        with _patch("pynchy.chat.router.format_outbound", return_value="formatted text"):
+        with _patch("pynchy.host.orchestrator.messaging.formatter.format_outbound", return_value="formatted text"):
             await broadcaster._broadcast_formatted("group@g.us", "raw text")
 
         assert len(ch.sent) == 1
@@ -273,7 +273,7 @@ class TestMessageBroadcaster:
 
         from unittest.mock import patch as _patch
 
-        with _patch("pynchy.chat.router.format_outbound", return_value=""):
+        with _patch("pynchy.host.orchestrator.messaging.formatter.format_outbound", return_value=""):
             await broadcaster._broadcast_formatted("group@g.us", "raw text")
 
         assert len(ch.sent) == 0
@@ -291,7 +291,7 @@ class TestMessageBroadcaster:
 
         from unittest.mock import patch as _patch
 
-        with _patch("pynchy.chat.router.format_outbound", return_value="ok"):
+        with _patch("pynchy.host.orchestrator.messaging.formatter.format_outbound", return_value="ok"):
             await broadcaster._broadcast_formatted("group@g.us", "raw")
 
         assert len(working.sent) == 1
@@ -442,7 +442,7 @@ class TestSessionManager:
 
         from unittest.mock import patch as _patch
 
-        with _patch("pynchy.adapters.clear_session", new_callable=AsyncMock):
+        with _patch("pynchy.host.orchestrator.adapters.clear_session", new_callable=AsyncMock):
             await manager.clear_session("test-group")
 
         assert "test-group" not in sessions
@@ -455,7 +455,7 @@ class TestSessionManager:
 
         from unittest.mock import patch as _patch
 
-        with _patch("pynchy.adapters.clear_session", new_callable=AsyncMock):
+        with _patch("pynchy.host.orchestrator.adapters.clear_session", new_callable=AsyncMock):
             # Clearing a non-existent session should not raise
             await manager.clear_session("nonexistent")
 

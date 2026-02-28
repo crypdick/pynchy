@@ -13,9 +13,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.db import _init_test_database, get_all_tasks
-from pynchy.ipc import dispatch
-from pynchy.ipc._watcher import _move_to_error_dir
+from pynchy.state import _init_test_database, get_all_tasks
+from pynchy.host.container_manager.ipc import dispatch
+from pynchy.host.container_manager.ipc.watcher import _move_to_error_dir
 from pynchy.types import WorkspaceProfile
 
 
@@ -97,7 +97,7 @@ class TestCreatePeriodicAgent:
 
     @staticmethod
     def _settings(tmp_path):
-        from pynchy.config_models import CommandCenterConfig
+        from pynchy.config.models import CommandCenterConfig
 
         return make_settings(
             groups_dir=tmp_path,
@@ -115,9 +115,9 @@ class TestCreatePeriodicAgent:
         with (
             pytest.MonkeyPatch.context() as mp,
             patch(
-                "pynchy.ipc._handlers_groups.get_settings", return_value=self._settings(tmp_path)
+                "pynchy.host.container_manager.ipc.handlers_groups.get_settings", return_value=self._settings(tmp_path)
             ),
-            patch("pynchy.workspace_config.add_workspace_to_toml") as add_ws,
+            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml") as add_ws,
         ):
             mp.setenv("TZ", "UTC")
             await dispatch(
@@ -167,9 +167,9 @@ class TestCreatePeriodicAgent:
 
         with (
             patch(
-                "pynchy.ipc._handlers_groups.get_settings", return_value=self._settings(tmp_path)
+                "pynchy.host.container_manager.ipc.handlers_groups.get_settings", return_value=self._settings(tmp_path)
             ),
-            patch("pynchy.workspace_config.add_workspace_to_toml"),
+            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
         ):
             await dispatch(
                 {
@@ -202,9 +202,9 @@ class TestCreatePeriodicAgent:
 
         with (
             patch(
-                "pynchy.ipc._handlers_groups.get_settings", return_value=self._settings(tmp_path)
+                "pynchy.host.container_manager.ipc.handlers_groups.get_settings", return_value=self._settings(tmp_path)
             ),
-            patch("pynchy.workspace_config.add_workspace_to_toml"),
+            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
         ):
             await dispatch(
                 {
@@ -230,9 +230,9 @@ class TestCreatePeriodicAgent:
 
         with (
             patch(
-                "pynchy.ipc._handlers_groups.get_settings", return_value=self._settings(tmp_path)
+                "pynchy.host.container_manager.ipc.handlers_groups.get_settings", return_value=self._settings(tmp_path)
             ),
-            patch("pynchy.workspace_config.add_workspace_to_toml"),
+            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
         ):
             await dispatch(
                 {
@@ -260,9 +260,9 @@ class TestCreatePeriodicAgent:
 
         with (
             patch(
-                "pynchy.ipc._handlers_groups.get_settings", return_value=self._settings(tmp_path)
+                "pynchy.host.container_manager.ipc.handlers_groups.get_settings", return_value=self._settings(tmp_path)
             ),
-            patch("pynchy.workspace_config.add_workspace_to_toml"),
+            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
         ):
             await dispatch(
                 {
@@ -288,9 +288,9 @@ class TestCreatePeriodicAgent:
 
         with (
             patch(
-                "pynchy.ipc._handlers_groups.get_settings", return_value=self._settings(tmp_path)
+                "pynchy.host.container_manager.ipc.handlers_groups.get_settings", return_value=self._settings(tmp_path)
             ),
-            patch("pynchy.workspace_config.add_workspace_to_toml"),
+            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
         ):
             await dispatch(
                 {

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from pynchy.app import PynchyApp
-from pynchy.chat.router import format_messages_for_sdk
-from pynchy.db import _init_test_database, store_chat_metadata
+from pynchy.host.orchestrator.app import PynchyApp
+from pynchy.host.orchestrator.messaging.formatter import format_messages_for_sdk
+from pynchy.state import _init_test_database, store_chat_metadata
 from pynchy.types import NewMessage, WorkspaceProfile
 
 

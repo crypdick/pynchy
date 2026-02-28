@@ -16,11 +16,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.app import PynchyApp
-from pynchy.db import _init_test_database, get_chat_history, store_message
+from pynchy.host.orchestrator.app import PynchyApp
+from pynchy.state import _init_test_database, get_chat_history, store_message
 from pynchy.types import NewMessage, WorkspaceProfile
 
-_CR_ORCH = "pynchy.container_runner._orchestrator"
+_CR_ORCH = "pynchy.host.container_manager.orchestrator"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -64,14 +64,14 @@ def _patch_test_settings(tmp_path: Path):
     )
     with contextlib.ExitStack() as stack:
         for mod in (
-            "pynchy.container_runner._credentials",
-            "pynchy.container_runner._mounts",
-            "pynchy.container_runner._session_prep",
-            "pynchy.container_runner._orchestrator",
-            "pynchy.container_runner._session",
-            "pynchy.container_runner._snapshots",
-            "pynchy.chat.message_handler",
-            "pynchy.chat.output_handler",
+            "pynchy.host.container_manager.credentials",
+            "pynchy.host.container_manager.mounts",
+            "pynchy.host.container_manager.session_prep",
+            "pynchy.host.container_manager.orchestrator",
+            "pynchy.host.container_manager.session",
+            "pynchy.host.container_manager.snapshots",
+            "pynchy.host.orchestrator.messaging.pipeline",
+            "pynchy.host.orchestrator.messaging.router",
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         # Patch _docker_rm_force which spawns a real subprocess to remove
@@ -79,10 +79,10 @@ def _patch_test_settings(tmp_path: Path):
         # the canonical location (_process) and the import site (_session)
         # because Python's from-import creates a separate reference.
         stack.enter_context(
-            patch("pynchy.container_runner._process._docker_rm_force", _noop_docker_rm)
+            patch("pynchy.host.container_manager.process._docker_rm_force", _noop_docker_rm)
         )
         stack.enter_context(
-            patch("pynchy.container_runner._session._docker_rm_force", _noop_docker_rm)
+            patch("pynchy.host.container_manager.session._docker_rm_force", _noop_docker_rm)
         )
         yield
 
@@ -140,8 +140,8 @@ class FakeProcess:
         and query-done pulse through the session API (mirroring the IPC
         watcher's behavior), then simulates a clean process exit.
         """
-        from pynchy.container_runner._serialization import _parse_container_output
-        from pynchy.container_runner._session import get_session
+        from pynchy.host.container_manager.serialization import _parse_container_output
+        from pynchy.host.container_manager.session import get_session
 
         # Wait for the session to be created and have an output handler
         session = None
@@ -216,9 +216,9 @@ async def _schedule_outputs_via_session(
     that triggers query completion.  If no output has new_session_id, a
     query-done pulse is appended automatically.
     """
-    from pynchy.container_runner._process import is_query_done_pulse
-    from pynchy.container_runner._serialization import _parse_container_output
-    from pynchy.container_runner._session import get_session
+    from pynchy.host.container_manager.process import is_query_done_pulse
+    from pynchy.host.container_manager.serialization import _parse_container_output
+    from pynchy.host.container_manager.session import get_session
 
     # Wait for session to have an output handler
     for _ in range(100):
@@ -273,7 +273,7 @@ async def app(tmp_path: Path):
     }
     yield a
     # Clean up any persistent sessions created during the test
-    from pynchy.container_runner._session import destroy_all_sessions
+    from pynchy.host.container_manager.session import destroy_all_sessions
 
     await destroy_all_sessions()
 
@@ -288,7 +288,7 @@ class TestAppImports:
 
     def test_channel_runtime_import(self):
         """Channel runtime helper import in app.run() must resolve."""
-        from pynchy.chat.channel_runtime import ChannelPluginContext  # noqa: F401
+        from pynchy.plugins.channel_runtime import ChannelPluginContext  # noqa: F401
 
 
 class TestFirstRunBootstrap:
@@ -297,7 +297,7 @@ class TestFirstRunBootstrap:
     async def test_creates_tui_admin_workspace_without_channel(self, app: PynchyApp):
         app.workspaces = {}
 
-        from pynchy import startup_handler
+        from pynchy.host.orchestrator import startup_handler
 
         await startup_handler.setup_admin_group(app, default_channel=None)
 
@@ -492,7 +492,7 @@ class TestProcessGroupMessages:
         with (
             patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", fake_create),
             _patch_test_settings(tmp_path),
-            patch("pynchy.git_ops.worktree.ensure_worktree", return_value=fake_wt),
+            patch("pynchy.host.git_ops.worktree.ensure_worktree", return_value=fake_wt),
         ):
             (tmp_path / "groups" / "main").mkdir(parents=True)
             result = await app._process_group_messages("main@g.us")
@@ -550,7 +550,7 @@ class TestRecoverPendingMessages:
     """Test startup crash recovery."""
 
     async def test_enqueues_groups_with_pending_messages(self, app: PynchyApp):
-        from pynchy import startup_handler
+        from pynchy.host.orchestrator import startup_handler
 
         # Store a message but don't advance the cursor
         msg = _make_message(content="missed message")
@@ -563,7 +563,7 @@ class TestRecoverPendingMessages:
         assert "group@g.us" in enqueued
 
     async def test_skips_groups_with_no_pending_messages(self, app: PynchyApp):
-        from pynchy import startup_handler
+        from pynchy.host.orchestrator import startup_handler
 
         # No messages stored at all
         enqueued = []
@@ -588,7 +588,7 @@ class TestStatePersistence:
         assert app2.last_agent_timestamp == {"group@g.us": "2024-06-01T11:00:00Z"}
 
     async def test_load_state_handles_corrupted_json(self, app: PynchyApp):
-        from pynchy.db import set_router_state
+        from pynchy.state import set_router_state
 
         await set_router_state("last_agent_timestamp", "not valid json")
 
@@ -795,13 +795,13 @@ class TestDeployContinuationResume:
         app.queue.enqueue_message_check = lambda jid: enqueued.append(jid)  # type: ignore[assignment]
 
         with (
-            patch("pynchy.startup_handler.get_settings") as mock_settings,
-            patch("pynchy.startup_handler.get_head_commit_message", return_value="test commit"),
+            patch("pynchy.host.orchestrator.startup_handler.get_settings") as mock_settings,
+            patch("pynchy.host.orchestrator.startup_handler.get_head_commit_message", return_value="test commit"),
         ):
             s = MagicMock()
             s.data_dir = data_dir
             mock_settings.return_value = s
-            from pynchy.startup_handler import check_deploy_continuation
+            from pynchy.host.orchestrator.startup_handler import check_deploy_continuation
 
             await check_deploy_continuation(app)
 
@@ -837,11 +837,11 @@ class TestDeployContinuationResume:
         enqueued: list[str] = []
         app.queue.enqueue_message_check = lambda jid: enqueued.append(jid)  # type: ignore[assignment]
 
-        with patch("pynchy.startup_handler.get_settings") as mock_settings:
+        with patch("pynchy.host.orchestrator.startup_handler.get_settings") as mock_settings:
             s = MagicMock()
             s.data_dir = data_dir
             mock_settings.return_value = s
-            from pynchy.startup_handler import check_deploy_continuation
+            from pynchy.host.orchestrator.startup_handler import check_deploy_continuation
 
             await check_deploy_continuation(app)
 

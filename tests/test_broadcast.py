@@ -17,13 +17,13 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
-from pynchy.app import PynchyApp
-from pynchy.chat.router import format_tool_preview
-from pynchy.db import _init_test_database, store_message
+from pynchy.host.orchestrator.app import PynchyApp
+from pynchy.host.orchestrator.messaging.formatter import format_tool_preview
+from pynchy.state import _init_test_database, store_message
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.types import NewMessage, WorkspaceProfile
 
-_CR_ORCH = "pynchy.container_runner._orchestrator"
+_CR_ORCH = "pynchy.host.container_manager.orchestrator"
 
 # ---------------------------------------------------------------------------
 # Helpers (shared patterns from test_app_integration.py)
@@ -63,21 +63,21 @@ def _patch_test_settings(tmp_path: Path):
     )
     with contextlib.ExitStack() as stack:
         for mod in (
-            "pynchy.container_runner._credentials",
-            "pynchy.container_runner._mounts",
-            "pynchy.container_runner._session_prep",
-            "pynchy.container_runner._orchestrator",
-            "pynchy.container_runner._session",
-            "pynchy.container_runner._snapshots",
-            "pynchy.chat.message_handler",
-            "pynchy.chat.output_handler",
+            "pynchy.host.container_manager.credentials",
+            "pynchy.host.container_manager.mounts",
+            "pynchy.host.container_manager.session_prep",
+            "pynchy.host.container_manager.orchestrator",
+            "pynchy.host.container_manager.session",
+            "pynchy.host.container_manager.snapshots",
+            "pynchy.host.orchestrator.messaging.pipeline",
+            "pynchy.host.orchestrator.messaging.router",
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         stack.enter_context(
-            patch("pynchy.container_runner._process._docker_rm_force", _noop_docker_rm)
+            patch("pynchy.host.container_manager.process._docker_rm_force", _noop_docker_rm)
         )
         stack.enter_context(
-            patch("pynchy.container_runner._session._docker_rm_force", _noop_docker_rm)
+            patch("pynchy.host.container_manager.session._docker_rm_force", _noop_docker_rm)
         )
         yield
 
@@ -190,7 +190,7 @@ async def app(tmp_path: Path):
     }
     yield a
     # Clean up any persistent sessions created during the test
-    from pynchy.container_runner._session import destroy_all_sessions
+    from pynchy.host.container_manager.session import destroy_all_sessions
 
     await destroy_all_sessions()
 
@@ -203,9 +203,9 @@ async def _run_with_trace_sequence(
     Delivers output via the session's public API (simulating the IPC watcher).
     Returns (channel, event_capture) for assertions.
     """
-    from pynchy.container_runner._process import is_query_done_pulse
-    from pynchy.container_runner._serialization import _parse_container_output
-    from pynchy.container_runner._session import get_session
+    from pynchy.host.container_manager.process import is_query_done_pulse
+    from pynchy.host.container_manager.serialization import _parse_container_output
+    from pynchy.host.container_manager.session import get_session
 
     msg = _make_message(content="@pynchy do something")
     await store_message(msg)
@@ -450,7 +450,7 @@ class TestBroadcastConsistency:
 
         with _patch_test_settings(tmp_path):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
-            from pynchy.chat import message_handler
+            from pynchy.host.orchestrator.messaging import pipeline as message_handler
 
             await message_handler.execute_direct_command(
                 app, "group@g.us", group, msg, "echo hello world"
@@ -476,7 +476,7 @@ class TestBroadcastConsistency:
             received.append(data)
 
         # Wire up the SSE bridge like the HTTP server does
-        from pynchy.dep_factory import make_http_deps
+        from pynchy.host.orchestrator.dep_factory import make_http_deps
 
         http_deps = make_http_deps(app)
         unsub = http_deps.subscribe_events(sse_callback)
@@ -530,7 +530,7 @@ class TestUserMessageBroadcast:
         capture = EventCapture(app.event_bus)
 
         # Get the HTTP deps (which includes send_user_message)
-        from pynchy.dep_factory import make_http_deps
+        from pynchy.host.orchestrator.dep_factory import make_http_deps
 
         http_deps = make_http_deps(app)
 

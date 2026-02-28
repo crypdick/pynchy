@@ -1,4 +1,4 @@
-"""Tests for container/agent_runner/src/agent_runner/agent_tools/.
+"""Tests for src/pynchy/agent/agent_runner/src/agent_runner/agent_tools/.
 
 Tests IPC file writing, schedule validation, tool authorization, and
 task listing logic.
@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "container" / "agent_runner" / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src"))
 
 from agent_runner.agent_tools._ipc import write_ipc_file
 

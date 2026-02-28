@@ -14,8 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.container_runner._session import ContainerSession, SessionDiedError
-from pynchy.group_queue import GroupQueue
+from pynchy.host.container_manager.session import ContainerSession, SessionDiedError
+from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.types import ContainerInput, WorkspaceProfile
 
 # ---------------------------------------------------------------------------
@@ -55,7 +55,7 @@ class _FakeDeps:
 
 def _make_pre_container_result():
     """Build a fake _PreContainerResult with all required fields."""
-    from pynchy.agent_runner import _PreContainerResult
+    from pynchy.host.orchestrator.agent_runner import _PreContainerResult
 
     return _PreContainerResult(
         is_admin=False,
@@ -91,11 +91,11 @@ def _make_fake_session() -> MagicMock:
     return session
 
 
-# Patch targets — at the call site (pynchy.agent_runner).
-_P_BUILD = "pynchy.agent_runner._build_container_input"
-_P_SPAWN = "pynchy.agent_runner._spawn_container"
-_P_CREATE = "pynchy.agent_runner.create_session"
-_P_DESTROY = "pynchy.agent_runner.destroy_session"
+# Patch targets — at the call site (pynchy.host.orchestrator.agent_runner).
+_P_BUILD = "pynchy.host.orchestrator.agent_runner._build_container_input"
+_P_SPAWN = "pynchy.host.orchestrator.agent_runner._spawn_container"
+_P_CREATE = "pynchy.host.orchestrator.agent_runner.create_session"
+_P_DESTROY = "pynchy.host.orchestrator.agent_runner.destroy_session"
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +116,7 @@ class TestScheduledTaskUsesSession:
 
     async def _call(self):
         """Call _run_scheduled_task with standard mocks."""
-        from pynchy.agent_runner import _run_scheduled_task
+        from pynchy.host.orchestrator.agent_runner import _run_scheduled_task
 
         return await _run_scheduled_task(
             self.deps,
@@ -173,7 +173,7 @@ class TestScheduledTaskUsesSession:
 
     def test_run_container_agent_fully_removed(self):
         """run_container_agent was removed — ensure it doesn't reappear."""
-        import pynchy.container_runner._orchestrator as orch
+        import pynchy.host.container_manager.orchestrator as orch
 
         assert not hasattr(orch, "run_container_agent"), (
             "run_container_agent was removed — scheduled tasks use session-based streaming"

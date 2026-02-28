@@ -10,7 +10,7 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config import ContainerConfig, QueueConfig
-from pynchy.group_queue import GroupQueue
+from pynchy.host.orchestrator.concurrency import GroupQueue
 
 
 @contextlib.contextmanager
@@ -28,8 +28,8 @@ def _patch_settings(
         overrides["data_dir"] = data_dir
     s = make_settings(**overrides)
     with (
-        patch("pynchy.group_queue.get_settings", return_value=s),
-        patch("pynchy.ipc._write.get_settings", return_value=s),
+        patch("pynchy.host.orchestrator.concurrency.get_settings", return_value=s),
+        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=s),
     ):
         yield
 
@@ -727,7 +727,7 @@ class TestStopActiveProcess:
         with (
             _patch_settings(max_concurrent=2, data_dir=tmp_path),
             patch(
-                "pynchy.container_runner._process._graceful_stop",
+                "pynchy.host.container_manager.process._graceful_stop",
                 new_callable=AsyncMock,
             ) as mock_stop,
         ):
@@ -760,7 +760,7 @@ class TestStopActiveProcess:
         with (
             _patch_settings(max_concurrent=2, data_dir=tmp_path),
             patch(
-                "pynchy.container_runner._process._graceful_stop",
+                "pynchy.host.container_manager.process._graceful_stop",
                 new_callable=AsyncMock,
             ) as mock_stop,
         ):
@@ -856,7 +856,7 @@ class TestCleanupIpcInput:
 
     def test_removes_all_files(self, tmp_path):
         """Should remove all files (json, sentinel, etc.) from the IPC input dir."""
-        from pynchy.ipc._write import clean_ipc_input_dir
+        from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 
         input_dir = tmp_path / "ipc" / "test-group" / "input"
         input_dir.mkdir(parents=True)
@@ -871,13 +871,13 @@ class TestCleanupIpcInput:
 
     def test_noop_when_no_group_folder(self):
         """Should silently do nothing when group_folder is None."""
-        from pynchy.ipc._write import clean_ipc_input_dir
+        from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 
         clean_ipc_input_dir(None)  # No error raised
 
     def test_noop_when_dir_doesnt_exist(self, tmp_path):
         """Should silently do nothing when IPC input dir doesn't exist."""
-        from pynchy.ipc._write import clean_ipc_input_dir
+        from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 
         with _patch_settings(max_concurrent=2, data_dir=tmp_path):
             clean_ipc_input_dir("nonexistent-group")

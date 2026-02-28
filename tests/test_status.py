@@ -12,8 +12,8 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
 
-from pynchy.http_server import status_deps_key
-from pynchy.status import (
+from pynchy.host.orchestrator.http_server import status_deps_key
+from pynchy.host.orchestrator.status import (
     _collect_deploy,
     _collect_gateway,
     _collect_service,
@@ -106,11 +106,11 @@ class TestCollectDeploy:
     @pytest.mark.asyncio
     async def test_assembles_deploy_info(self):
         with (
-            patch("pynchy.status.get_head_sha", return_value="abc123"),
-            patch("pynchy.status.is_repo_dirty", return_value=False),
-            patch("pynchy.status.count_unpushed_commits", return_value=0),
-            patch("pynchy.status.get_head_commit_message", return_value="test commit"),
-            patch("pynchy.status.get_router_state", side_effect=["2026-02-20T09:00:00", "abc123"]),
+            patch("pynchy.host.orchestrator.status.get_head_sha", return_value="abc123"),
+            patch("pynchy.host.orchestrator.status.is_repo_dirty", return_value=False),
+            patch("pynchy.host.orchestrator.status.count_unpushed_commits", return_value=0),
+            patch("pynchy.host.orchestrator.status.get_head_commit_message", return_value="test commit"),
+            patch("pynchy.host.orchestrator.status.get_router_state", side_effect=["2026-02-20T09:00:00", "abc123"]),
         ):
             result = await _collect_deploy()
             assert result["head_sha"] == "abc123"
@@ -129,7 +129,7 @@ class TestCollectDeploy:
 class TestCollectRepos:
     def test_repo_status(self, tmp_path: Path):
         """_collect_repos returns per-repo status."""
-        from pynchy.status import _repo_status
+        from pynchy.host.orchestrator.status import _repo_status
 
         @dataclass
         class FakeRepoCtx:
@@ -140,9 +140,9 @@ class TestCollectRepos:
         ctx = FakeRepoCtx()
 
         with (
-            patch("pynchy.status.get_head_sha", return_value="def456"),
-            patch("pynchy.status.is_repo_dirty", return_value=True),
-            patch("pynchy.status.count_unpushed_commits", return_value=2),
+            patch("pynchy.host.orchestrator.status.get_head_sha", return_value="def456"),
+            patch("pynchy.host.orchestrator.status.is_repo_dirty", return_value=True),
+            patch("pynchy.host.orchestrator.status.count_unpushed_commits", return_value=2),
         ):
             result = _repo_status(ctx)
             assert result["head_sha"] == "def456"
@@ -152,7 +152,7 @@ class TestCollectRepos:
 
     def test_repo_with_worktrees(self, tmp_path: Path):
         """_repo_status includes worktree data when worktrees exist."""
-        from pynchy.status import _repo_status
+        from pynchy.host.orchestrator.status import _repo_status
 
         wt_dir = tmp_path / "worktrees"
         wt_dir.mkdir()
@@ -170,11 +170,11 @@ class TestCollectRepos:
         mock_git_dir = Mock(returncode=0, stdout=str(tmp_path / ".git/worktrees/code-improver"))
 
         with (
-            patch("pynchy.status.get_head_sha", return_value="aaa111"),
-            patch("pynchy.status.is_repo_dirty", return_value=False),
-            patch("pynchy.status.count_unpushed_commits", return_value=0),
-            patch("pynchy.status.detect_main_branch", return_value="main"),
-            patch("pynchy.status.run_git", side_effect=[mock_git, mock_git, mock_git_dir]),
+            patch("pynchy.host.orchestrator.status.get_head_sha", return_value="aaa111"),
+            patch("pynchy.host.orchestrator.status.is_repo_dirty", return_value=False),
+            patch("pynchy.host.orchestrator.status.count_unpushed_commits", return_value=0),
+            patch("pynchy.host.orchestrator.status.detect_main_branch", return_value="main"),
+            patch("pynchy.host.orchestrator.status.run_git", side_effect=[mock_git, mock_git, mock_git_dir]),
         ):
             result = _repo_status(ctx)
             assert "worktrees" in result
@@ -193,7 +193,7 @@ class TestCollectRepos:
 class TestWorktreeStatus:
     def test_conflict_detection(self, tmp_path: Path):
         """Detects merge conflicts via MERGE_HEAD in git dir."""
-        from pynchy.status import _worktree_status
+        from pynchy.host.orchestrator.status import _worktree_status
 
         # Create a fake git dir with MERGE_HEAD
         git_dir = tmp_path / "fake_git_dir"
@@ -205,9 +205,9 @@ class TestWorktreeStatus:
         mock_git_dir = Mock(returncode=0, stdout=str(git_dir))
 
         with (
-            patch("pynchy.status.get_head_sha", return_value="bbb222"),
-            patch("pynchy.status.is_repo_dirty", return_value=True),
-            patch("pynchy.status.run_git", side_effect=[mock_ahead, mock_behind, mock_git_dir]),
+            patch("pynchy.host.orchestrator.status.get_head_sha", return_value="bbb222"),
+            patch("pynchy.host.orchestrator.status.is_repo_dirty", return_value=True),
+            patch("pynchy.host.orchestrator.status.run_git", side_effect=[mock_ahead, mock_behind, mock_git_dir]),
         ):
             result = _worktree_status(tmp_path, "main", tmp_path.parent)
             assert result["conflict"] is True
@@ -218,7 +218,7 @@ class TestWorktreeStatus:
 
     def test_no_conflict(self, tmp_path: Path):
         """No conflict when neither MERGE_HEAD nor REBASE_HEAD exists."""
-        from pynchy.status import _worktree_status
+        from pynchy.host.orchestrator.status import _worktree_status
 
         git_dir = tmp_path / "clean_git_dir"
         git_dir.mkdir()
@@ -228,25 +228,25 @@ class TestWorktreeStatus:
         mock_git_dir = Mock(returncode=0, stdout=str(git_dir))
 
         with (
-            patch("pynchy.status.get_head_sha", return_value="ccc333"),
-            patch("pynchy.status.is_repo_dirty", return_value=False),
-            patch("pynchy.status.run_git", side_effect=[mock_ahead, mock_behind, mock_git_dir]),
+            patch("pynchy.host.orchestrator.status.get_head_sha", return_value="ccc333"),
+            patch("pynchy.host.orchestrator.status.is_repo_dirty", return_value=False),
+            patch("pynchy.host.orchestrator.status.run_git", side_effect=[mock_ahead, mock_behind, mock_git_dir]),
         ):
             result = _worktree_status(tmp_path, "main", tmp_path.parent)
             assert result["conflict"] is False
 
     def test_git_dir_failure_returns_no_conflict(self, tmp_path: Path):
         """If rev-parse --git-dir fails, conflict defaults to False."""
-        from pynchy.status import _worktree_status
+        from pynchy.host.orchestrator.status import _worktree_status
 
         mock_ahead = Mock(returncode=0, stdout="0\n")
         mock_behind = Mock(returncode=0, stdout="0\n")
         mock_git_dir = Mock(returncode=1, stdout="")
 
         with (
-            patch("pynchy.status.get_head_sha", return_value="ddd444"),
-            patch("pynchy.status.is_repo_dirty", return_value=False),
-            patch("pynchy.status.run_git", side_effect=[mock_ahead, mock_behind, mock_git_dir]),
+            patch("pynchy.host.orchestrator.status.get_head_sha", return_value="ddd444"),
+            patch("pynchy.host.orchestrator.status.is_repo_dirty", return_value=False),
+            patch("pynchy.host.orchestrator.status.run_git", side_effect=[mock_ahead, mock_behind, mock_git_dir]),
         ):
             result = _worktree_status(tmp_path, "main", tmp_path.parent)
             assert result["conflict"] is False
@@ -261,12 +261,12 @@ class TestCollectMessages:
     @pytest.mark.asyncio
     async def test_returns_message_stats(self):
         """_collect_messages returns counts and timestamps from the DB."""
-        from pynchy.db._connection import _init_test_database
-        from pynchy.status import _collect_messages
+        from pynchy.state.connection import _init_test_database
+        from pynchy.host.orchestrator.status import _collect_messages
 
         await _init_test_database()
 
-        from pynchy.db._connection import _get_db
+        from pynchy.state.connection import _get_db
 
         db = _get_db()
         # FK requires a chat row first
@@ -297,8 +297,8 @@ class TestCollectMessages:
     @pytest.mark.asyncio
     async def test_empty_db_returns_zeros(self):
         """_collect_messages handles empty tables gracefully."""
-        from pynchy.db._connection import _init_test_database
-        from pynchy.status import _collect_messages
+        from pynchy.state.connection import _init_test_database
+        from pynchy.host.orchestrator.status import _collect_messages
 
         await _init_test_database()
 
@@ -318,7 +318,7 @@ class TestCollectMessages:
 class TestCollectTasks:
     @pytest.mark.asyncio
     async def test_returns_task_list(self):
-        from pynchy.status import _collect_tasks
+        from pynchy.host.orchestrator.status import _collect_tasks
         from pynchy.types import ScheduledTask
 
         fake_tasks = [
@@ -337,7 +337,7 @@ class TestCollectTasks:
             ),
         ]
 
-        with patch("pynchy.status.get_all_tasks", return_value=fake_tasks):
+        with patch("pynchy.host.orchestrator.status.get_all_tasks", return_value=fake_tasks):
             result = await _collect_tasks()
             assert len(result) == 1
             assert result[0]["id"] == "t1"
@@ -355,7 +355,7 @@ class TestCollectTasks:
 class TestCollectHostJobs:
     @pytest.mark.asyncio
     async def test_returns_job_list(self):
-        from pynchy.status import _collect_host_jobs
+        from pynchy.host.orchestrator.status import _collect_host_jobs
         from pynchy.types import HostJob
 
         fake_jobs = [
@@ -373,7 +373,7 @@ class TestCollectHostJobs:
             ),
         ]
 
-        with patch("pynchy.status.get_all_host_jobs", return_value=fake_jobs):
+        with patch("pynchy.host.orchestrator.status.get_all_host_jobs", return_value=fake_jobs):
             result = await _collect_host_jobs()
             assert len(result) == 1
             assert result[0]["id"] == "j1"
@@ -395,7 +395,7 @@ class TestCollectGateway:
     @pytest.mark.asyncio
     async def test_litellm_container_status(self):
         with patch(
-            "pynchy.status._container_state",
+            "pynchy.host.orchestrator.status._container_state",
             new_callable=AsyncMock,
             side_effect=["running", "running"],
         ):
@@ -420,7 +420,7 @@ class TestCollectGateway:
         """When gateway HTTP check fails, model counts are None."""
         with (
             patch(
-                "pynchy.status._container_state",
+                "pynchy.host.orchestrator.status._container_state",
                 new_callable=AsyncMock,
                 side_effect=["running", "running"],
             ),
@@ -435,7 +435,7 @@ class TestCollectGateway:
     async def test_missing_port_skips_health_check(self):
         """When port or key is missing, health check is skipped."""
         with patch(
-            "pynchy.status._container_state",
+            "pynchy.host.orchestrator.status._container_state",
             new_callable=AsyncMock,
             side_effect=["running", "stopped"],
         ):
@@ -453,26 +453,26 @@ class TestCollectGateway:
 class TestContainerState:
     @pytest.mark.asyncio
     async def test_running_container(self):
-        with patch("pynchy.status.run_docker", new_callable=AsyncMock) as mock:
+        with patch("pynchy.host.orchestrator.status.run_docker", new_callable=AsyncMock) as mock:
             mock.return_value = Mock(returncode=0, stdout="running\n")
             assert await _container_state("pynchy-litellm") == "running"
 
     @pytest.mark.asyncio
     async def test_stopped_container(self):
-        with patch("pynchy.status.run_docker", new_callable=AsyncMock) as mock:
+        with patch("pynchy.host.orchestrator.status.run_docker", new_callable=AsyncMock) as mock:
             mock.return_value = Mock(returncode=0, stdout="exited\n")
             assert await _container_state("pynchy-litellm") == "exited"
 
     @pytest.mark.asyncio
     async def test_not_found(self):
-        with patch("pynchy.status.run_docker", new_callable=AsyncMock) as mock:
+        with patch("pynchy.host.orchestrator.status.run_docker", new_callable=AsyncMock) as mock:
             mock.return_value = Mock(returncode=1, stdout="")
             assert await _container_state("missing") == "not_found"
 
     @pytest.mark.asyncio
     async def test_docker_not_installed(self):
         with patch(
-            "pynchy.status.run_docker", new_callable=AsyncMock, side_effect=FileNotFoundError
+            "pynchy.host.orchestrator.status.run_docker", new_callable=AsyncMock, side_effect=FileNotFoundError
         ):
             assert await _container_state("any") == "not_found"
 
@@ -481,7 +481,7 @@ class TestContainerState:
         import subprocess
 
         with patch(
-            "pynchy.status.run_docker",
+            "pynchy.host.orchestrator.status.run_docker",
             new_callable=AsyncMock,
             side_effect=subprocess.TimeoutExpired("docker", 5),
         ):
@@ -506,16 +506,16 @@ class TestCollectStatus:
 
         with (
             # Deploy
-            patch("pynchy.status.get_head_sha", return_value="abc123"),
-            patch("pynchy.status.is_repo_dirty", return_value=False),
-            patch("pynchy.status.count_unpushed_commits", return_value=0),
-            patch("pynchy.status.get_head_commit_message", return_value="test"),
-            patch("pynchy.status.get_router_state", return_value=None),
+            patch("pynchy.host.orchestrator.status.get_head_sha", return_value="abc123"),
+            patch("pynchy.host.orchestrator.status.is_repo_dirty", return_value=False),
+            patch("pynchy.host.orchestrator.status.count_unpushed_commits", return_value=0),
+            patch("pynchy.host.orchestrator.status.get_head_commit_message", return_value="test"),
+            patch("pynchy.host.orchestrator.status.get_router_state", return_value=None),
             # Repos
-            patch("pynchy.status._collect_repos", return_value={}),
+            patch("pynchy.host.orchestrator.status._collect_repos", return_value={}),
             # Messages
             patch(
-                "pynchy.status._collect_messages",
+                "pynchy.host.orchestrator.status._collect_messages",
                 return_value={
                     "total_inbound": 100,
                     "total_outbound": 50,
@@ -525,11 +525,11 @@ class TestCollectStatus:
                 },
             ),
             # Tasks
-            patch("pynchy.status.get_all_tasks", return_value=[]),
+            patch("pynchy.host.orchestrator.status.get_all_tasks", return_value=[]),
             # Host jobs
-            patch("pynchy.status.get_all_host_jobs", return_value=[]),
+            patch("pynchy.host.orchestrator.status.get_all_host_jobs", return_value=[]),
             # Gateway
-            patch("pynchy.status._container_state", new_callable=AsyncMock, return_value="running"),
+            patch("pynchy.host.orchestrator.status._container_state", new_callable=AsyncMock, return_value="running"),
             patch("aiohttp.ClientSession", side_effect=Exception("skip")),
         ):
             result = await collect_status(deps, time.monotonic() - 120)
@@ -566,7 +566,7 @@ class TestStatusEndpoint(AioHTTPTestCase):
     """Tests for GET /status endpoint."""
 
     async def get_application(self) -> web.Application:
-        from pynchy.http_server import _handle_status
+        from pynchy.host.orchestrator.http_server import _handle_status
 
         app = web.Application()
         self.mock_deps = MockStatusDeps(
@@ -583,14 +583,14 @@ class TestStatusEndpoint(AioHTTPTestCase):
         record_start_time()
 
         with (
-            patch("pynchy.status.get_head_sha", return_value="abc123"),
-            patch("pynchy.status.is_repo_dirty", return_value=False),
-            patch("pynchy.status.count_unpushed_commits", return_value=0),
-            patch("pynchy.status.get_head_commit_message", return_value="test"),
-            patch("pynchy.status.get_router_state", return_value=None),
-            patch("pynchy.status._collect_repos", return_value={}),
+            patch("pynchy.host.orchestrator.status.get_head_sha", return_value="abc123"),
+            patch("pynchy.host.orchestrator.status.is_repo_dirty", return_value=False),
+            patch("pynchy.host.orchestrator.status.count_unpushed_commits", return_value=0),
+            patch("pynchy.host.orchestrator.status.get_head_commit_message", return_value="test"),
+            patch("pynchy.host.orchestrator.status.get_router_state", return_value=None),
+            patch("pynchy.host.orchestrator.status._collect_repos", return_value={}),
             patch(
-                "pynchy.status._collect_messages",
+                "pynchy.host.orchestrator.status._collect_messages",
                 return_value={
                     "total_inbound": 0,
                     "total_outbound": 0,
@@ -599,10 +599,10 @@ class TestStatusEndpoint(AioHTTPTestCase):
                     "pending_deliveries": 0,
                 },
             ),
-            patch("pynchy.status.get_all_tasks", return_value=[]),
-            patch("pynchy.status.get_all_host_jobs", return_value=[]),
+            patch("pynchy.host.orchestrator.status.get_all_tasks", return_value=[]),
+            patch("pynchy.host.orchestrator.status.get_all_host_jobs", return_value=[]),
             patch(
-                "pynchy.status._container_state", new_callable=AsyncMock, return_value="not_found"
+                "pynchy.host.orchestrator.status._container_state", new_callable=AsyncMock, return_value="not_found"
             ),
             patch("aiohttp.ClientSession", side_effect=Exception("skip")),
         ):

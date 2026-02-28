@@ -4,10 +4,10 @@ The built-in notebook MCP server lets agents create, execute, and manage Jupyter
 
 ## Installation
 
-The notebook server runs as a Docker container. The image is built automatically on deploy (`container/build.sh`) or on first use by the MCP manager. To build manually:
+The notebook server runs as a Docker container. The image is built automatically on deploy (`src/pynchy/agent/build.sh`) or on first use by the MCP manager. To build manually:
 
 ```bash
-docker build -t pynchy-mcp-notebook:latest -f container/mcp/notebook.Dockerfile .
+docker build -t pynchy-mcp-notebook:latest -f src/pynchy/agent/mcp/notebook.Dockerfile .
 ```
 
 ## How it works
@@ -144,7 +144,7 @@ import subprocess
 subprocess.run(["uv", "pip", "install", "--system", "seaborn"], check=True)
 ```
 
-Use `--system` because the container runs without a virtual environment. Installed packages persist for the lifetime of the container but are lost when it restarts (idle timeout, deploy, manual stop). Add frequently needed packages to `container/mcp/notebook.Dockerfile` instead.
+Use `--system` because the container runs without a virtual environment. Installed packages persist for the lifetime of the container but are lost when it restarts (idle timeout, deploy, manual stop). Add frequently needed packages to `src/pynchy/agent/mcp/notebook.Dockerfile` instead.
 
 ## Direct file access
 

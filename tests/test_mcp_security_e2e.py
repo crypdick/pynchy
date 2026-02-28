@@ -14,8 +14,8 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-from pynchy.security.cop import CopVerdict
-from pynchy.security.gate import _gates, create_gate, destroy_gate, get_gate
+from pynchy.host.container_manager.security.cop import CopVerdict
+from pynchy.host.container_manager.security.gate import _gates, create_gate, destroy_gate, get_gate
 from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
 
 
@@ -30,7 +30,7 @@ def _cleanup_gates():
 def _mock_cop():
     """Mock the Cop inspector to avoid real LLM API calls."""
     with patch(
-        "pynchy.container_runner._mcp_proxy.inspect_inbound",
+        "pynchy.host.container_manager.mcp.proxy.inspect_inbound",
         new_callable=AsyncMock,
     ) as m:
         m.return_value = CopVerdict(flagged=False)
@@ -39,7 +39,7 @@ def _mock_cop():
 
 async def test_full_mcp_security_flow():
     """End-to-end: gate -> proxy -> fencing -> taint tracking -> cleanup."""
-    from pynchy.container_runner._mcp_proxy import create_proxy_app
+    from pynchy.host.container_manager.mcp.proxy import create_proxy_app
 
     # 1. Set up mock MCP backend
     async def backend_handler(request: web.Request) -> web.Response:
@@ -111,7 +111,7 @@ async def test_full_mcp_security_flow():
 
 async def test_no_fencing_without_public_source():
     """Non-public-source servers should pass through unfenced."""
-    from pynchy.container_runner._mcp_proxy import create_proxy_app
+    from pynchy.host.container_manager.mcp.proxy import create_proxy_app
 
     async def backend_handler(request: web.Request) -> web.Response:
         return web.json_response(

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from pynchy.db import (
+from pynchy.state import (
     _init_test_database,
     advance_cursors_atomic,
     get_channel_cursor,

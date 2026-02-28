@@ -13,8 +13,8 @@ from unittest.mock import patch
 
 from conftest import make_settings
 
-from pynchy.git_ops._worktree_notify import _build_rebase_notice
-from pynchy.git_ops.sync_poll import (
+from pynchy.host.git_ops._worktree_notify import _build_rebase_notice
+from pynchy.host.git_ops.sync_poll import (
     _get_local_head_sha,
     _host_source_files_changed,
     _host_update_main,
@@ -118,13 +118,13 @@ class TestGetLocalHeadSha:
         expected = _git(repo, "rev-parse", "HEAD").stdout.strip()
 
         s = make_settings(project_root=repo)
-        with patch("pynchy.git_ops.utils.get_settings", return_value=s):
+        with patch("pynchy.host.git_ops.utils.get_settings", return_value=s):
             result = _get_local_head_sha()
             assert result == expected
 
     def test_returns_empty_string_on_failure(self):
         """Should return empty string when get_head_sha returns 'unknown'."""
-        with patch("pynchy.git_ops.sync_poll.get_head_sha", return_value="unknown"):
+        with patch("pynchy.host.git_ops.sync_poll.get_head_sha", return_value="unknown"):
             result = _get_local_head_sha()
             assert result == ""
 
@@ -166,7 +166,7 @@ class TestHostUpdateMain:
 
         with (
             patch("subprocess.run", side_effect=mock_run),
-            patch("pynchy.git_ops.sync_poll.detect_main_branch", return_value="main"),
+            patch("pynchy.host.git_ops.sync_poll.detect_main_branch", return_value="main"),
         ):
             result = _host_update_main(tmp_path)
             assert result is False
@@ -185,7 +185,7 @@ class TestHostUpdateMain:
 
         with (
             patch("subprocess.run", side_effect=mock_run),
-            patch("pynchy.git_ops.sync_poll.detect_main_branch", return_value="main"),
+            patch("pynchy.host.git_ops.sync_poll.detect_main_branch", return_value="main"),
         ):
             result = _host_update_main(tmp_path)
 
@@ -211,8 +211,8 @@ class TestHostUpdateMain:
 
         with (
             patch("subprocess.run", side_effect=mock_run),
-            patch("pynchy.git_ops.sync_poll.detect_main_branch", return_value="main"),
-            patch("pynchy.git_ops.sync_poll.push_local_commits", return_value=True),
+            patch("pynchy.host.git_ops.sync_poll.detect_main_branch", return_value="main"),
+            patch("pynchy.host.git_ops.sync_poll.push_local_commits", return_value=True),
         ):
             result = _host_update_main(tmp_path)
 
@@ -242,7 +242,7 @@ class TestHostUpdateMain:
 
         with (
             patch("subprocess.run", side_effect=mock_run),
-            patch("pynchy.git_ops.sync_poll.detect_main_branch", return_value="main"),
+            patch("pynchy.host.git_ops.sync_poll.detect_main_branch", return_value="main"),
         ):
             result = _host_update_main(tmp_path)
 

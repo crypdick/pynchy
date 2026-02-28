@@ -1,6 +1,6 @@
 # Hook Reference
 
-Pynchy plugins implement hooks defined in `src/pynchy/plugin/hookspecs.py`. Each hook corresponds to a plugin category, and a plugin can implement any combination of hooks.
+Pynchy plugins implement hooks defined in `src/pynchy/plugins/hookspecs.py`. Each hook corresponds to a plugin category, and a plugin can implement any combination of hooks.
 
 All hooks use pluggy's `@hookimpl` decorator:
 
@@ -327,7 +327,7 @@ def pynchy_mcp_server_spec(self) -> list[dict[str, Any]]:
             "name": "gdrive",
             "type": "docker",
             "image": "pynchy-mcp-gdrive:latest",
-            "dockerfile": "container/mcp/gdrive.Dockerfile",
+            "dockerfile": "src/pynchy/agent/mcp/gdrive.Dockerfile",
             "port": 3100,
             "transport": "streamable_http",
             "env": {"GDRIVE_OAUTH_PATH": "/home/chrome/gcp-oauth.keys.json"},

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pynchy.integrations.plugins.playwright_browser import PlaywrightBrowserPlugin
+from pynchy.plugins.integrations.playwright_browser import PlaywrightBrowserPlugin
 
 
 class TestMcpServerSpec:
@@ -50,7 +50,9 @@ class TestSkillContent:
     def test_skill_md_has_frontmatter(self):
         skill_md = (
             Path(__file__).resolve().parent.parent
-            / "container"
+            / "src"
+            / "pynchy"
+            / "agent"
             / "skills"
             / "browser-control"
             / "SKILL.md"
@@ -65,7 +67,7 @@ class TestSkillContent:
 class TestPluginRegistration:
     def test_plugin_in_builtin_specs(self):
         """Verify the plugin is registered in _BUILTIN_PLUGIN_SPECS."""
-        from pynchy.plugin import _BUILTIN_PLUGIN_SPECS
+        from pynchy.plugins import _BUILTIN_PLUGIN_SPECS
 
         entries = [
             (mod, cls, key)
@@ -74,5 +76,5 @@ class TestPluginRegistration:
         ]
         assert len(entries) == 1
         mod_path, cls_name, _ = entries[0]
-        assert mod_path == "pynchy.integrations.plugins.playwright_browser"
+        assert mod_path == "pynchy.plugins.integrations.playwright_browser"
         assert cls_name == "PlaywrightBrowserPlugin"

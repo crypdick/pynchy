@@ -9,8 +9,8 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
-from pynchy.tunnels import TunnelProvider, _is_valid_tunnel_provider, check_tunnels
-from pynchy.tunnels.plugins.tailscale import _TailscaleTunnel
+from pynchy.plugins.tunnels import TunnelProvider, _is_valid_tunnel_provider, check_tunnels
+from pynchy.plugins.tunnels.tailscale import _TailscaleTunnel
 
 # ---------------------------------------------------------------------------
 # TunnelProvider validation
@@ -61,13 +61,13 @@ class TestTailscaleTunnel:
 
     def test_is_available_found(self):
         with patch(
-            "pynchy.tunnels.plugins.tailscale.shutil.which",
+            "pynchy.plugins.tunnels.tailscale.shutil.which",
             return_value="/usr/bin/tailscale",
         ):
             assert _TailscaleTunnel().is_available()
 
     def test_is_available_not_found(self):
-        with patch("pynchy.tunnels.plugins.tailscale.shutil.which", return_value=None):
+        with patch("pynchy.plugins.tunnels.tailscale.shutil.which", return_value=None):
             assert not _TailscaleTunnel().is_available()
 
     def test_is_connected_running(self):
@@ -75,7 +75,7 @@ class TestTailscaleTunnel:
         mock_result.returncode = 0
         mock_result.stdout = json.dumps({"BackendState": "Running"})
 
-        with patch("pynchy.tunnels.plugins.tailscale.subprocess.run", return_value=mock_result):
+        with patch("pynchy.plugins.tunnels.tailscale.subprocess.run", return_value=mock_result):
             t = _TailscaleTunnel()
             assert t.is_connected()
             assert t.status_summary() == "BackendState=Running"
@@ -85,7 +85,7 @@ class TestTailscaleTunnel:
         mock_result.returncode = 0
         mock_result.stdout = json.dumps({"BackendState": "Stopped"})
 
-        with patch("pynchy.tunnels.plugins.tailscale.subprocess.run", return_value=mock_result):
+        with patch("pynchy.plugins.tunnels.tailscale.subprocess.run", return_value=mock_result):
             t = _TailscaleTunnel()
             assert not t.is_connected()
             assert t.status_summary() == "BackendState=Stopped"
@@ -95,14 +95,14 @@ class TestTailscaleTunnel:
         mock_result.returncode = 1
         mock_result.stdout = ""
 
-        with patch("pynchy.tunnels.plugins.tailscale.subprocess.run", return_value=mock_result):
+        with patch("pynchy.plugins.tunnels.tailscale.subprocess.run", return_value=mock_result):
             t = _TailscaleTunnel()
             assert not t.is_connected()
             assert "exit code" in t.status_summary()
 
     def test_is_connected_not_installed(self):
         with patch(
-            "pynchy.tunnels.plugins.tailscale.subprocess.run",
+            "pynchy.plugins.tunnels.tailscale.subprocess.run",
             side_effect=FileNotFoundError("No such file"),
         ):
             t = _TailscaleTunnel()
@@ -113,7 +113,7 @@ class TestTailscaleTunnel:
         import subprocess
 
         with patch(
-            "pynchy.tunnels.plugins.tailscale.subprocess.run",
+            "pynchy.plugins.tunnels.tailscale.subprocess.run",
             side_effect=subprocess.TimeoutExpired(cmd="tailscale", timeout=5),
         ):
             t = _TailscaleTunnel()
@@ -125,7 +125,7 @@ class TestTailscaleTunnel:
         mock_result.returncode = 0
         mock_result.stdout = json.dumps({"Health": "ok"})
 
-        with patch("pynchy.tunnels.plugins.tailscale.subprocess.run", return_value=mock_result):
+        with patch("pynchy.plugins.tunnels.tailscale.subprocess.run", return_value=mock_result):
             t = _TailscaleTunnel()
             assert not t.is_connected()
             assert "unknown" in t.status_summary()
@@ -137,7 +137,7 @@ class TestTailscaleTunnel:
         mock_result.stdout = json.dumps({"BackendState": "Running"})
 
         with patch(
-            "pynchy.tunnels.plugins.tailscale.subprocess.run",
+            "pynchy.plugins.tunnels.tailscale.subprocess.run",
             return_value=mock_result,
         ) as mock_run:
             t = _TailscaleTunnel()
@@ -228,7 +228,7 @@ class TestTailscalePluginIntegration:
 
     @staticmethod
     def _get_pm():
-        from pynchy.plugin import get_plugin_manager
+        from pynchy.plugins import get_plugin_manager
 
         with patch(
             "pluggy.PluginManager.load_setuptools_entrypoints",
@@ -265,11 +265,11 @@ class TestTailscalePluginIntegration:
 
         with (
             patch(
-                "pynchy.tunnels.plugins.tailscale.subprocess.run",
+                "pynchy.plugins.tunnels.tailscale.subprocess.run",
                 return_value=mock_result,
             ),
             patch(
-                "pynchy.tunnels.plugins.tailscale.shutil.which",
+                "pynchy.plugins.tunnels.tailscale.shutil.which",
                 return_value="/usr/bin/tailscale",
             ),
         ):
