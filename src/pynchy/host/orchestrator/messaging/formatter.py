@@ -73,20 +73,21 @@ def _format_lines(
     lines: list[str],
     *,
     prefix: str,
-    max_lines: int = 5,
-    max_chars: int = 120,
+    max_lines: int = 0,
+    max_chars: int = 0,
 ) -> str:
-    """Format lines with a prefix, truncating long lines and excess line count.
+    """Format lines with a prefix, optionally truncating.
 
     Used by Edit/Write previews to show content snippets in channel messages.
+    max_lines=0 and max_chars=0 mean no limit (default).
     """
     if not lines:
         return ""
-    shown = lines[:max_lines]
-    remainder = len(lines) - max_lines
+    shown = lines[:max_lines] if max_lines > 0 else lines
+    remainder = len(lines) - len(shown)
     result_lines = []
     for line in shown:
-        if len(line) > max_chars:
+        if max_chars > 0 and len(line) > max_chars:
             line = line[:max_chars] + "..."
         result_lines.append(f"{prefix} {line}")
     if remainder > 0:
@@ -109,8 +110,6 @@ def format_tool_preview(tool_name: str, tool_input: dict) -> str:
     if tool_name == "Bash":
         cmd = tool_input.get("command", "")
         if cmd:
-            if len(cmd) > 180:
-                cmd = cmd[:177] + "..."
             return f"Bash: {cmd}"
         return "Bash"
 

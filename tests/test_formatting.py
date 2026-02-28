@@ -229,14 +229,10 @@ class TestFormatToolPreview:
         result = format_tool_preview("Bash", {"command": "ls -la"})
         assert result == "Bash: ls -la"
 
-    def test_bash_truncates_long_commands(self):
+    def test_bash_shows_full_long_command(self):
         long_cmd = "echo " + "x" * 200
         result = format_tool_preview("Bash", {"command": long_cmd})
-        assert result.startswith("Bash: echo ")
-        assert result.endswith("...")
-        # Check that truncation happened (original was >180 chars)
-        assert len(result) < len(f"Bash: {long_cmd}")
-        assert len(result) <= 189  # "Bash: " (6) + 180 chars = 186 max
+        assert result == f"Bash: {long_cmd}"
 
     def test_bash_preserves_medium_commands(self):
         """Commands under 180 chars should not be truncated."""

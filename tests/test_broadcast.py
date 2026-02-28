@@ -275,11 +275,10 @@ class TestFormatToolPreview:
         assert "ls -la /tmp" in result
         assert "Bash" in result
 
-    def test_bash_truncates_long_command(self):
+    def test_bash_shows_full_long_command(self):
         long_cmd = "find / -name '*.py' -exec grep -l 'import asyncio' {} + | " + "x" * 200
         result = format_tool_preview("Bash", {"command": long_cmd})
-        assert len(result) < len(long_cmd) + 20  # name + truncated command
-        assert "..." in result
+        assert result == f"Bash: {long_cmd}"
 
     def test_bash_preserves_medium_command(self):
         """Commands under 180 chars should not be truncated."""

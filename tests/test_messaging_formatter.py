@@ -72,11 +72,10 @@ class TestFormatToolPreview:
         result = format_tool_preview("Bash", {"command": "git status"})
         assert result == "Bash: git status"
 
-    def test_bash_truncates_long_command(self):
+    def test_bash_shows_full_long_command(self):
         long_cmd = "a" * 200
         result = format_tool_preview("Bash", {"command": long_cmd})
-        assert len(result) <= 200
-        assert result.endswith("...")
+        assert result == f"Bash: {long_cmd}"
 
     def test_bash_empty_command(self):
         result = format_tool_preview("Bash", {"command": ""})
@@ -132,7 +131,7 @@ class TestFormatToolPreview:
         assert "> + def foo():" in result
         assert "> +     return 1" in result
 
-    def test_edit_truncates_long_diff(self):
+    def test_edit_shows_all_diff_lines(self):
         old = "\n".join(f"old_line_{i}" for i in range(10))
         new = "\n".join(f"new_line_{i}" for i in range(10))
         result = format_tool_preview(
@@ -143,7 +142,9 @@ class TestFormatToolPreview:
                 "new_string": new,
             },
         )
-        assert "(+5 more lines)" in result
+        assert "old_line_9" in result
+        assert "new_line_9" in result
+        assert "more lines" not in result
 
     def test_edit_without_old_new_falls_back_to_path(self):
         result = format_tool_preview("Edit", {"file_path": "/src/config.py"})
@@ -170,7 +171,7 @@ class TestFormatToolPreview:
         assert "> + hello world" in result
         assert "> + second line" in result
 
-    def test_write_truncates_long_content(self):
+    def test_write_shows_all_content_lines(self):
         content = "\n".join(f"line_{i}" for i in range(20))
         result = format_tool_preview(
             "Write",
@@ -179,7 +180,8 @@ class TestFormatToolPreview:
                 "content": content,
             },
         )
-        assert "(+15 more lines)" in result
+        assert "line_19" in result
+        assert "more lines" not in result
 
     def test_write_without_content_shows_path_only(self):
         result = format_tool_preview("Write", {"file_path": "/tmp/out.txt"})
