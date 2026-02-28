@@ -219,7 +219,7 @@ def merge_sandbox_config(
         repo_access=override_results["repo_access"],
         # Pass-through
         chat=sandbox.chat,
-        is_admin=sandbox.is_admin,
+        is_admin=sandbox.is_admin if sandbox.is_admin is not None else False,
         schedule=sandbox.schedule,
         prompt=sandbox.prompt,
         name=sandbox.name,

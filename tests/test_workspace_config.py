@@ -105,7 +105,7 @@ class TestLoadWorkspaceConfig:
 class TestWorkspaceConfigModel:
     def test_defaults(self):
         cfg = WorkspaceConfig(name="test")
-        assert cfg.is_admin is False
+        assert cfg.is_admin is None
         assert cfg.trigger is None
         assert cfg.repo_access is None
         assert cfg.context_mode is None
