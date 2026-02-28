@@ -39,7 +39,7 @@ class TestGateCreatedAtSpawn:
 class TestGateDestroyedOnRelease:
     def test_group_state_release_destroys_gate(self):
         """GroupState.release() should call destroy_gate."""
-        from pynchy.group_queue import GroupState
+        from pynchy.host.orchestrator.concurrency import GroupState
         from pynchy.host.container_manager.security.gate import create_gate
         from pynchy.types import WorkspaceSecurity
 
@@ -57,7 +57,7 @@ class TestGateDestroyedOnRelease:
 
     def test_release_without_gate_is_noop(self):
         """Release when no gate exists should not raise."""
-        from pynchy.group_queue import GroupState
+        from pynchy.host.orchestrator.concurrency import GroupState
 
         state = GroupState()
         state.group_folder = "some-group"
@@ -87,7 +87,7 @@ class TestInvocationTsOnContainerInput:
 class TestRegisterProcessAcceptsInvocationTs:
     def test_register_process_stores_invocation_ts(self):
         """register_process() should accept and store invocation_ts."""
-        from pynchy.group_queue import GroupQueue
+        from pynchy.host.orchestrator.concurrency import GroupQueue
 
         queue = GroupQueue()
         queue.register_process(
@@ -102,7 +102,7 @@ class TestRegisterProcessAcceptsInvocationTs:
 
     def test_register_process_defaults_invocation_ts_to_zero(self):
         """register_process() without invocation_ts should default to 0.0."""
-        from pynchy.group_queue import GroupQueue
+        from pynchy.host.orchestrator.concurrency import GroupQueue
 
         queue = GroupQueue()
         queue.register_process("test@g.us", None, "pynchy-test", group_folder="test-ws")

@@ -378,7 +378,7 @@ class TestCreatePeriodicAgentCopGate:
                     command_center=CommandCenterConfig(connection="connection.slack.main"),
                 ),
             ),
-            patch("pynchy.workspace_config.add_workspace_to_toml"),
+            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
         ):
             await _handle_create_periodic_agent(
                 {

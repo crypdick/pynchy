@@ -35,7 +35,7 @@ _P_INTERCEPT = "pynchy.chat.message_handler.intercept_special_command"
 _P_FMT_SDK = "pynchy.chat.router.format_messages_for_sdk"
 _P_STORE = "pynchy.chat.message_handler.store_message_direct"
 _P_DIRTY = "pynchy.chat.message_handler.is_repo_dirty"
-_P_GET_RA = "pynchy.workspace_config.get_repo_access"
+_P_GET_RA = "pynchy.host.orchestrator.workspace_config.get_repo_access"
 _P_MERGE = "pynchy.git_ops._worktree_merge.merge_and_push_worktree"
 
 # Patch paths for names imported in _message_routing (routing/loop tests).

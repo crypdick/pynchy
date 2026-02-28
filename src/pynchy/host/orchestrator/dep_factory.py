@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
-from pynchy.adapters import (
+from pynchy.host.orchestrator.adapters import (
     EventBusAdapter,
     GroupMetadataManager,
     GroupRegistrationManager,
@@ -26,12 +26,12 @@ from pynchy.host.container_manager import write_groups_snapshot as _write_groups
 from pynchy.git_ops.utils import get_head_sha
 
 if TYPE_CHECKING:
-    from pynchy.app import PynchyApp
+    from pynchy.host.orchestrator.app import PynchyApp
     from pynchy.git_ops.sync import GitSyncDeps
-    from pynchy.http_server import HttpDeps
+    from pynchy.host.orchestrator.http_server import HttpDeps
     from pynchy.host.container_manager.ipc import IpcDeps
-    from pynchy.status import StatusDeps
-    from pynchy.task_scheduler import SchedulerDependencies
+    from pynchy.host.orchestrator.status import StatusDeps
+    from pynchy.host.orchestrator.task_scheduler import SchedulerDependencies
 
 
 def _get_broadcasters(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBroadcaster]:
@@ -80,7 +80,7 @@ async def _rebuild_and_deploy(
     Optionally rebuilds the container image, then calls ``finalize_deploy``
     with all active sessions so every group gets resume continuity.
     """
-    from pynchy.deploy import finalize_deploy
+    from pynchy.host.orchestrator.deploy import finalize_deploy
 
     chat_jid = find_admin_jid(workspaces)
     if chat_jid:
@@ -92,7 +92,7 @@ async def _rebuild_and_deploy(
         await host_broadcaster.broadcast_host_message(chat_jid, msg)
 
     if rebuild:
-        from pynchy.deploy import build_container_image
+        from pynchy.host.orchestrator.deploy import build_container_image
 
         await asyncio.to_thread(build_container_image)
 

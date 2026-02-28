@@ -32,7 +32,7 @@ from pynchy.utils import generate_message_id, run_shell_command
 
 if TYPE_CHECKING:
     from pynchy.host.container_manager import OnOutput
-    from pynchy.group_queue import GroupQueue
+    from pynchy.host.orchestrator.concurrency import GroupQueue
     from pynchy.types import Channel, ContainerOutput, NewMessage, WorkspaceProfile
 
 

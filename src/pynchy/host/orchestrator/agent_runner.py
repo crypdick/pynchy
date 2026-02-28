@@ -39,7 +39,7 @@ from pynchy.types import ContainerInput, ContainerOutput
 if TYPE_CHECKING:
     import pluggy
 
-    from pynchy.group_queue import GroupQueue
+    from pynchy.host.orchestrator.concurrency import GroupQueue
     from pynchy.types import WorkspaceProfile
 
 
@@ -166,7 +166,7 @@ async def _pre_container_setup(
 ) -> _PreContainerResult:
     """Common pre-container setup for both warm and cold paths."""
     from pynchy.config.directives import resolve_directives
-    from pynchy.workspace_config import get_repo_access
+    from pynchy.host.orchestrator.workspace_config import get_repo_access
 
     is_admin = group.is_admin
     if repo_access_override is not None:
@@ -384,7 +384,7 @@ async def _cold_start(
     await _docker_rm_force(container_name)
 
     # Determine idle timeout from workspace config
-    from pynchy.workspace_config import load_workspace_config
+    from pynchy.host.orchestrator.workspace_config import load_workspace_config
 
     ws_config = load_workspace_config(group.folder)
     idle_enabled = ws_config.idle_terminate if ws_config else True

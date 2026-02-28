@@ -14,7 +14,7 @@ from pynchy.state import (
     get_host_job_by_name,
 )
 from pynchy.host.container_manager.ipc import dispatch
-from pynchy.task_scheduler import _poll_database_host_jobs
+from pynchy.host.orchestrator.task_scheduler import _poll_database_host_jobs
 
 
 @pytest.fixture(autouse=True)
@@ -163,7 +163,7 @@ class TestHostJobScheduling:
         due_jobs = await get_due_host_jobs()
         assert len(due_jobs) == 0
 
-    @patch("pynchy.task_scheduler.asyncio.create_subprocess_shell")
+    @patch("pynchy.host.orchestrator.task_scheduler.asyncio.create_subprocess_shell")
     async def test_poll_database_host_jobs_executes_command(self, mock_subprocess):
         """_poll_database_host_jobs executes due job commands."""
         mock_process = AsyncMock()

@@ -17,7 +17,7 @@ from pynchy.types import WorkspaceProfile, WorkspaceSecurity
 from pynchy.utils import write_json_atomic
 
 if TYPE_CHECKING:
-    from pynchy.group_queue import GroupQueue
+    from pynchy.host.orchestrator.concurrency import GroupQueue
 
 
 class StartupDeps(Protocol):
@@ -43,7 +43,7 @@ class StartupDeps(Protocol):
 async def send_boot_notification(deps: StartupDeps) -> None:
     """Send a system message to the admin channel on startup."""
     s = get_settings()
-    from pynchy.adapters import find_admin_jid
+    from pynchy.host.orchestrator.adapters import find_admin_jid
 
     admin_jid = find_admin_jid(deps.workspaces) or None
     if not admin_jid:
@@ -83,7 +83,7 @@ async def send_boot_notification(deps: StartupDeps) -> None:
 
 async def recover_pending_messages(deps: StartupDeps) -> None:
     """Startup recovery: check for unprocessed messages in registered groups."""
-    from pynchy.workspace_config import load_workspace_config
+    from pynchy.host.orchestrator.workspace_config import load_workspace_config
 
     for chat_jid, group in deps.workspaces.items():
         # Skip periodic (scheduled) workspaces — they run on their own
@@ -198,7 +198,7 @@ async def check_deploy_continuation(deps: StartupDeps) -> None:
     commit_msg = get_head_commit_message(50)
     label = f"{sha_short} {commit_msg}".strip() if commit_msg else sha_short
 
-    from pynchy.workspace_config import load_workspace_config
+    from pynchy.host.orchestrator.workspace_config import load_workspace_config
 
     for jid, _session_id in active_sessions.items():
         # Skip periodic (scheduled) workspaces — they don't need deploy

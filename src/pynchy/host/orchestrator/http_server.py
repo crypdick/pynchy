@@ -18,7 +18,7 @@ from typing import Any, Protocol
 from aiohttp import web
 
 from pynchy.config import get_settings
-from pynchy.deploy import finalize_deploy
+from pynchy.host.orchestrator.deploy import finalize_deploy
 from pynchy.git_ops.utils import (
     files_changed_between,
     get_head_commit_message,
@@ -28,7 +28,7 @@ from pynchy.git_ops.utils import (
     run_git,
 )
 from pynchy.logger import logger
-from pynchy.status import StatusDeps, collect_status
+from pynchy.host.orchestrator.status import StatusDeps, collect_status
 from pynchy.types import NewMessage
 
 _start_time = time.monotonic()
@@ -155,7 +155,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
 
     # 5. Rebuild container image if container/ files changed
     if has_new_code and files_changed_between(old_sha, new_sha, "container/"):
-        from pynchy.deploy import build_container_image
+        from pynchy.host.orchestrator.deploy import build_container_image
 
         build = await asyncio.to_thread(build_container_image)
         if not build.success:

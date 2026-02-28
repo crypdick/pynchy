@@ -429,7 +429,7 @@ class TestDeployEdgeCases:
 
     async def test_deploy_with_rebuild_but_no_build_script(self, deps: MockDeps, tmp_path: Path):
         """Deploy requesting rebuild when build.sh doesn't exist should still finalize."""
-        from pynchy.deploy import BuildResult
+        from pynchy.host.orchestrator.deploy import BuildResult
 
         with (
             patch(

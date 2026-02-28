@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from pynchy.deploy import build_container_image, finalize_deploy
+from pynchy.host.orchestrator.deploy import build_container_image, finalize_deploy
 from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.logger import logger
@@ -41,7 +41,7 @@ async def _handle_deploy(
 
     if not chat_jid:
         groups = deps.workspaces()
-        from pynchy.adapters import find_admin_jid
+        from pynchy.host.orchestrator.adapters import find_admin_jid
 
         chat_jid = find_admin_jid(groups)
         if not chat_jid:

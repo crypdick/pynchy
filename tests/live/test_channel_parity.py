@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from pynchy.adapters import HostMessageBroadcaster, MessageBroadcaster
+from pynchy.host.orchestrator.adapters import HostMessageBroadcaster, MessageBroadcaster
 from pynchy.chat.bus import broadcast as broadcast_to_channels
 from pynchy.chat.channel_handler import (
     send_reaction_to_channels,

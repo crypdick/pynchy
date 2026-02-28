@@ -16,7 +16,7 @@ import socket
 import threading
 from typing import TYPE_CHECKING
 
-from pynchy import startup_handler
+from pynchy.host.orchestrator import startup_handler
 from pynchy.chat import output_handler
 from pynchy.chat._message_routing import start_message_loop
 from pynchy.plugins.channel_runtime import (
@@ -30,7 +30,7 @@ from pynchy.logger import logger
 from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
-    from pynchy.app import PynchyApp
+    from pynchy.host.orchestrator.app import PynchyApp
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +53,7 @@ async def shutdown_app(app: PynchyApp, sig_name: str) -> None:
 
     # Notify the admin group that the service is going down.
     try:
-        from pynchy.adapters import find_admin_jid
+        from pynchy.host.orchestrator.adapters import find_admin_jid
 
         admin_jid = find_admin_jid(app.workspaces) or None
         if admin_jid and app.channels:
@@ -100,8 +100,8 @@ async def _initialize_core(app: PynchyApp) -> None:
     """Plugins, gateway, database, observers, memory, state."""
     from pynchy.plugins import get_plugin_manager
     from pynchy.plugins.runtimes.system_checks import ensure_container_system_running
-    from pynchy.service_installer import install_service
-    from pynchy.workspace_config import configure_plugin_workspaces
+    from pynchy.host.orchestrator.service_installer import install_service
+    from pynchy.host.orchestrator.workspace_config import configure_plugin_workspaces
 
     install_service()
 
@@ -174,7 +174,7 @@ async def _setup_channels(app: PynchyApp) -> None:
 async def _reconcile_state(app: PynchyApp) -> dict[str, list[str]]:
     """Worktree + workspace reconciliation.  Returns repo_groups."""
     from pynchy.git_ops.worktree import reconcile_worktrees_at_startup
-    from pynchy.workspace_config import reconcile_workspaces
+    from pynchy.host.orchestrator.workspace_config import reconcile_workspaces
 
     s = get_settings()
 
@@ -205,7 +205,7 @@ async def _reconcile_state(app: PynchyApp) -> dict[str, list[str]]:
 
 async def _start_subsystems(app: PynchyApp, repo_groups: dict[str, list[str]]) -> None:
     """Scheduler, IPC, git sync, HTTP server."""
-    from pynchy.dep_factory import (
+    from pynchy.host.orchestrator.dep_factory import (
         make_git_sync_deps,
         make_http_deps,
         make_ipc_deps,
@@ -217,10 +217,10 @@ async def _start_subsystems(app: PynchyApp, repo_groups: dict[str, list[str]]) -
         start_external_repo_sync_loop,
         start_host_git_sync_loop,
     )
-    from pynchy.http_server import start_http_server
+    from pynchy.host.orchestrator.http_server import start_http_server
     from pynchy.host.container_manager.ipc import start_ipc_watcher
-    from pynchy.status import record_start_time
-    from pynchy.task_scheduler import start_scheduler_loop
+    from pynchy.host.orchestrator.status import record_start_time
+    from pynchy.host.orchestrator.task_scheduler import start_scheduler_loop
     from pynchy.plugins.tunnels import check_tunnels
 
     s = get_settings()

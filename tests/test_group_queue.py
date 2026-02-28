@@ -10,7 +10,7 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config import ContainerConfig, QueueConfig
-from pynchy.group_queue import GroupQueue
+from pynchy.host.orchestrator.concurrency import GroupQueue
 
 
 @contextlib.contextmanager
@@ -28,7 +28,7 @@ def _patch_settings(
         overrides["data_dir"] = data_dir
     s = make_settings(**overrides)
     with (
-        patch("pynchy.group_queue.get_settings", return_value=s),
+        patch("pynchy.host.orchestrator.concurrency.get_settings", return_value=s),
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=s),
     ):
         yield
