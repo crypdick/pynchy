@@ -394,7 +394,7 @@ class TestProcessGroupMessages:
         texts = [text for _, text in channel.sent_messages]
 
         # Trace events should have been sent BEFORE the final result
-        assert any("thinking" in t.lower() for t in texts), (
+        assert any("Let me figure this out" in t for t in texts), (
             f"Expected a thinking trace message, got: {texts}"
         )
         assert any("Bash" in t for t in texts), (
@@ -403,7 +403,7 @@ class TestProcessGroupMessages:
         # Final result should also be present
         assert any("Done!" in t for t in texts), f"Expected final result 'Done!', got: {texts}"
         # Thinking and tool traces should come before the result
-        thinking_idx = next(i for i, t in enumerate(texts) if "thinking" in t.lower())
+        thinking_idx = next(i for i, t in enumerate(texts) if "Let me figure this out" in t)
         tool_idx = next(i for i, t in enumerate(texts) if "Bash" in t)
         result_idx = next(i for i, t in enumerate(texts) if "Done!" in t)
         assert thinking_idx < result_idx, "Thinking trace should come before result"

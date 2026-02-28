@@ -180,12 +180,19 @@ async def _handle_thinking(deps: OutputDeps, chat_jid: str, result: ContainerOut
     # before the thinking trace appears.
     await finalize_active_stream(deps, chat_jid)
 
+    thinking = result.thinking or ""
+    if thinking:
+        display = _truncate_output(thinking) if len(thinking) > _MAX_TOOL_OUTPUT else thinking
+        channel_text = f"\U0001f4ad {display}"
+    else:
+        channel_text = "\U0001f4ad thinking..."
+
     await broadcast_trace(
         deps,
         chat_jid,
         "thinking",
-        {"thinking": result.thinking or ""},
-        "\U0001f4ad thinking...",
+        {"thinking": thinking},
+        channel_text,
         db_id_prefix="think",
         db_sender="thinking",
         message_type="assistant",
