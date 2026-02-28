@@ -1,8 +1,8 @@
 """Unified channel reconciliation — replaces _catch_up_channel_history().
 
 Single code path for all channels.  Per-(channel, group) cooldown prevents
-excessive API calls during rapid polling cycles.  Uses the alias table as
-an implicit whitelist — no alias and no JID ownership = skipped.
+excessive API calls during rapid polling cycles.  Channels that don't own
+the canonical JID are skipped.
 """
 
 from __future__ import annotations
@@ -41,8 +41,6 @@ class ReconcilerDeps(Protocol):
     @property
     def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
-    def get_channel_jid(self, canonical_jid: str, channel_name: str) -> str | None: ...
-
     @property
     def queue(self) -> Any: ...
 
@@ -80,8 +78,7 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                     )
                     continue
 
-            channel_jid = deps.get_channel_jid(canonical_jid, ch.name)
-            if not channel_jid and not ch.owns_jid(canonical_jid):
+            if not ch.owns_jid(canonical_jid):
                 logger.debug(
                     "jid_ownership_skip",
                     channel=ch.name,
@@ -89,7 +86,7 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                 )
                 continue
 
-            target_jid = channel_jid or canonical_jid
+            target_jid = canonical_jid
 
             # --- Cooldown ---
             key = (ch.name, canonical_jid)
@@ -107,7 +104,7 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
             inbound_cursor = await get_channel_cursor(ch.name, canonical_jid, "inbound")
             if not inbound_cursor:
                 # No cursor yet — channel was never reconciled (e.g. a
-                # Slack-native workspace with no cross-channel aliases).
+                # Slack-native workspace that was never reconciled).
                 # Seed with a lookback so Socket Mode drops are recoverable
                 # from the first cycle onward.  The cursor advances
                 # naturally as messages are walked.

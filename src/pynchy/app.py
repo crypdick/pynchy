@@ -24,13 +24,10 @@ from pynchy.chat import (
 from pynchy.config import get_settings
 from pynchy.db import (
     delete_workspace_profile,
-    get_aliases_for_jid,
-    get_all_aliases,
     get_all_chats,
     get_all_sessions,
     get_all_workspace_profiles,
     get_router_state,
-    set_jid_alias,
     set_workspace_profile,
 )
 from pynchy.event_bus import EventBus
@@ -60,8 +57,6 @@ class PynchyApp:
         self.message_loop_running: bool = False
         self.queue: GroupQueue = GroupQueue()
         self.channels: list[Channel] = []
-        self._alias_to_canonical: dict[str, str] = {}
-        self._canonical_to_aliases: dict[str, dict[str, str]] = {}
         self.event_bus: EventBus = EventBus()
         self._shutting_down: bool = False
         self._http_runner: Any | None = None
@@ -73,7 +68,7 @@ class PynchyApp:
         # Shared broadcast infrastructure — single code path for all channel sends.
         # Uses lambda so broadcaster always reads current self.channels reference.
         self._broadcaster = MessageBroadcaster(
-            lambda: self.channels, self.get_channel_jid, lambda: self.workspaces
+            lambda: self.channels, workspaces=lambda: self.workspaces
         )
         self._host_broadcaster = self._make_host_broadcaster()
 
@@ -94,13 +89,9 @@ class PynchyApp:
 
         self.workspaces = await get_all_workspace_profiles()
 
-        # Load JID alias cache
-        await self._load_aliases()
-
         logger.info(
             "State loaded",
             workspace_count=len(self.workspaces),
-            alias_count=len(self._alias_to_canonical),
         )
 
     async def _save_state(self) -> None:
@@ -116,41 +107,6 @@ class PynchyApp:
                 "last_timestamp": self.last_timestamp,
                 "last_agent_timestamp": json.dumps(self.last_agent_timestamp),
             }
-        )
-
-    # ------------------------------------------------------------------
-    # JID alias cache
-    # ------------------------------------------------------------------
-
-    async def _load_aliases(self) -> None:
-        """Populate the in-memory alias caches from the database."""
-        all_aliases = await get_all_aliases()
-        self._alias_to_canonical = dict(all_aliases)
-        self._canonical_to_aliases = {}
-        for cjid in set(all_aliases.values()):
-            self._canonical_to_aliases[cjid] = await get_aliases_for_jid(cjid)
-
-    def resolve_canonical_jid(self, jid: str) -> str:
-        """Resolve an alias JID to its canonical JID. Returns jid itself if not an alias."""
-        return self._alias_to_canonical.get(jid, jid)
-
-    def get_channel_jid(self, canonical_jid: str, channel_name: str) -> str | None:
-        """Get the alias JID for a specific channel. Returns None if no alias exists."""
-        aliases = self._canonical_to_aliases.get(canonical_jid, {})
-        return aliases.get(channel_name)
-
-    async def register_jid_alias(
-        self, alias_jid: str, canonical_jid: str, channel_name: str
-    ) -> None:
-        """Persist a new alias and update the in-memory cache."""
-        await set_jid_alias(alias_jid, canonical_jid, channel_name)
-        self._alias_to_canonical[alias_jid] = canonical_jid
-        self._canonical_to_aliases.setdefault(canonical_jid, {})[channel_name] = alias_jid
-        logger.info(
-            "JID alias registered",
-            alias=alias_jid,
-            canonical=canonical_jid,
-            channel=channel_name,
         )
 
     # ------------------------------------------------------------------

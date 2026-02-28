@@ -201,58 +201,10 @@ def get_repo_access_groups(workspaces: dict[str, Any]) -> dict[str, list[str]]:
     return result
 
 
-async def create_channel_aliases(
-    jid: str,
-    name: str,
-    channels: list[Channel],
-    register_alias_fn: Callable[[str, str, str], Awaitable[None]],
-    get_channel_jid_fn: Callable[[str, str], str | None] | None = None,
-) -> int:
-    """Create aliases for a single JID across channels that support it.
-
-    This is the single code path for all channel alias creation — used by
-    workspace reconciliation, admin group setup, and batch alias backfill.
-
-    For each channel that supports ``create_group``, skips if the channel
-    already owns the JID or an alias already exists, then creates and registers
-    a new alias.
-
-    Returns the number of aliases created.
-    """
-    created = 0
-    for ch in channels:
-        if not hasattr(ch, "create_group"):
-            continue
-        if ch.owns_jid(jid):
-            continue
-        if get_channel_jid_fn and get_channel_jid_fn(jid, ch.name):
-            continue
-        try:
-            alias_jid = await ch.create_group(name)
-            await register_alias_fn(alias_jid, jid, ch.name)
-            created += 1
-            logger.info(
-                "Created channel alias",
-                channel=ch.name,
-                alias_jid=alias_jid,
-                canonical_jid=jid,
-            )
-        except Exception as exc:
-            logger.warning(
-                "Failed to create channel alias",
-                channel=ch.name,
-                canonical_jid=jid,
-                err=str(exc),
-            )
-    return created
-
-
 async def reconcile_workspaces(
     workspaces: dict[str, WorkspaceProfile],
     channels: list[Channel],
     register_fn: Callable[[WorkspaceProfile], Awaitable[None]],
-    register_alias_fn: Callable[[str, str, str], Awaitable[None]] | None = None,
-    get_channel_jid_fn: Callable[[str, str], str | None] | None = None,
     unregister_fn: Callable[[str], Awaitable[None]] | None = None,
 ) -> None:
     """Ensure workspace state matches config.toml — create, update, AND clean up.
@@ -260,7 +212,6 @@ async def reconcile_workspaces(
     Idempotent — safe to run on every startup. For each config-driven resource:
       1. Workspace registrations — create missing, remove orphaned
       2. Scheduled tasks — create missing, update changed, pause orphaned
-      3. Channel aliases — create missing (TODO: clean up orphaned)
     """
     from pynchy.types import WorkspaceProfile
 

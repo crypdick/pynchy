@@ -79,7 +79,6 @@ def _make_deps(channels: list[RecordingChannel]) -> Any:
     deps = MagicMock()
     deps.channels = channels
     deps.event_bus = MagicMock()
-    deps.get_channel_jid = MagicMock(return_value=None)
     return deps
 
 
