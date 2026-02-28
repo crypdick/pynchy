@@ -38,6 +38,35 @@ async def send_reaction_to_channels(
                 logger.debug("Reaction send failed", channel=ch.name, err=str(exc))
 
 
+async def send_reaction_to_outbound(
+    deps: ChannelDeps,
+    chat_jid: str,
+    per_channel_ids: dict[str, str],
+    emoji: str,
+) -> None:
+    """Send a reaction to an outbound message using per-channel message IDs.
+
+    Unlike ``send_reaction_to_channels`` (which takes a single canonical
+    inbound message ID), this accepts a mapping of channel_name -> raw_ts
+    from the streaming pipeline.  Each channel's raw ts is wrapped as
+    ``slack-{ts}`` so ``send_reaction`` can extract it.
+    """
+    for ch in deps.channels:
+        ch_name = getattr(ch, "name", "?")
+        raw_ts = per_channel_ids.get(ch_name)
+        if not raw_ts:
+            continue
+        if not ch.is_connected() or not hasattr(ch, "send_reaction"):
+            continue
+        target_jid = resolve_target_jid(chat_jid, ch)
+        if not target_jid:
+            continue
+        try:
+            await ch.send_reaction(target_jid, f"slack-{raw_ts}", "", emoji)
+        except (OSError, TimeoutError, ConnectionError) as exc:
+            logger.debug("Outbound reaction send failed", channel=ch_name, err=str(exc))
+
+
 async def set_typing_on_channels(deps: ChannelDeps, chat_jid: str, is_typing: bool) -> None:
     """Set typing indicator on all channels that support it."""
     for ch in deps.channels:

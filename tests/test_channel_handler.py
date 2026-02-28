@@ -9,6 +9,7 @@ import pytest
 from pynchy.host.orchestrator.messaging.sender import broadcast as broadcast_to_channels
 from pynchy.host.orchestrator.messaging.channel_handler import (
     send_reaction_to_channels,
+    send_reaction_to_outbound,
     set_typing_on_channels,
 )
 
@@ -174,3 +175,41 @@ class TestSetTypingOnChannels:
         deps = _make_deps([ch])
 
         await set_typing_on_channels(deps, "group@g.us", True)
+
+
+# ---------------------------------------------------------------------------
+# send_reaction_to_outbound
+# ---------------------------------------------------------------------------
+
+
+class TestSendReactionToOutbound:
+    @pytest.mark.asyncio
+    async def test_sends_reaction_with_per_channel_ids(self):
+        ch = _make_channel(name="slack", connected=True, has_reaction=True)
+        deps = _make_deps([ch])
+        per_channel_ids = {"slack": "1234567890.000001"}
+
+        await send_reaction_to_outbound(deps, "group@g.us", per_channel_ids, "zzz")
+
+        ch.send_reaction.assert_awaited_once_with(
+            "group@g.us", "slack-1234567890.000001", "", "zzz"
+        )
+
+    @pytest.mark.asyncio
+    async def test_skips_channels_without_ids(self):
+        ch = _make_channel(name="slack", connected=True, has_reaction=True)
+        deps = _make_deps([ch])
+        per_channel_ids = {"other-channel": "1234567890.000001"}
+
+        await send_reaction_to_outbound(deps, "group@g.us", per_channel_ids, "zzz")
+
+        ch.send_reaction.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skips_channels_without_send_reaction(self):
+        ch = _make_channel(name="tui", connected=True, has_reaction=False)
+        deps = _make_deps([ch])
+        per_channel_ids = {"tui": "some-id"}
+
+        await send_reaction_to_outbound(deps, "group@g.us", per_channel_ids, "zzz")
+        # No error, no call
