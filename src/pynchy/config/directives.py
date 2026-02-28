@@ -58,16 +58,3 @@ def _read_file(path: Path) -> str | None:
     except OSError:
         logger.warning("Failed to read directive file", path=str(path))
         return None
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat shim — keeps agent_runner.py working until Task 7 rewires
-# the callsite to use read_directives() + sandbox profiles.
-# TODO(sandbox-profiles): remove once agent_runner.py is updated (Task 7).
-# ---------------------------------------------------------------------------
-def resolve_directives(
-    workspace_folder: str,  # noqa: ARG001
-    repo_access: str | None,  # noqa: ARG001
-) -> str | None:
-    """Legacy shim — returns None (no-op) until callsite is migrated."""
-    return None

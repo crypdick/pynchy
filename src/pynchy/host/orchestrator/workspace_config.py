@@ -30,6 +30,7 @@ from pynchy.utils import compute_next_run
 if TYPE_CHECKING:
     import pluggy
 
+    from pynchy.config.merge import ResolvedSandboxConfig
     from pynchy.types import Channel, WorkspaceProfile
 
 
@@ -171,6 +172,25 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
         is_periodic=config.is_periodic,
     )
     return config
+
+
+def load_resolved_config(group_folder: str) -> ResolvedSandboxConfig | None:
+    """Load and merge the full config cascade for a sandbox.
+
+    Returns None if the group has no config.
+    """
+    from pynchy.config.merge import merge_sandbox_config
+
+    ws = load_workspace_config(group_folder)
+    if ws is None:
+        return None
+
+    s = get_settings()
+    profile = None
+    if ws.profile:
+        profile = s.sandbox_profiles.get(ws.profile)
+
+    return merge_sandbox_config(s.sandbox_universal, profile, ws)
 
 
 def get_repo_access(group: WorkspaceProfile) -> str | None:
