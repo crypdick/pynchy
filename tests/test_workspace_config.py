@@ -9,7 +9,7 @@ from unittest.mock import patch
 from conftest import make_settings
 
 from pynchy.config import WorkspaceConfig, WorkspaceDefaultsConfig
-from pynchy.workspace_config import (
+from pynchy.host.orchestrator.workspace_config import (
     configure_plugin_workspaces,
     get_repo_access,
     get_repo_access_groups,
@@ -34,7 +34,7 @@ class TestLoadWorkspaceConfig:
 
     def test_returns_none_when_missing(self):
         s = _settings_with_workspaces(workspaces={})
-        with patch("pynchy.workspace_config.get_settings", return_value=s):
+        with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
             assert load_workspace_config("missing") is None
 
     def test_applies_workspace_defaults(self):
@@ -42,7 +42,7 @@ class TestLoadWorkspaceConfig:
             workspaces={"team": WorkspaceConfig(name="test", is_admin=False)},
             defaults=WorkspaceDefaultsConfig(trigger="always", context_mode="isolated"),
         )
-        with patch("pynchy.workspace_config.get_settings", return_value=s):
+        with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
             cfg = load_workspace_config("team")
 
         assert cfg is not None
@@ -64,7 +64,7 @@ class TestLoadWorkspaceConfig:
                 )
             }
         )
-        with patch("pynchy.workspace_config.get_settings", return_value=s):
+        with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
             cfg = load_workspace_config("daily")
 
         assert cfg is not None
@@ -93,7 +93,7 @@ class TestLoadWorkspaceConfig:
         )
         configure_plugin_workspaces(fake_pm)
 
-        with patch("pynchy.workspace_config.get_settings", return_value=s):
+        with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
             cfg = load_workspace_config("code-improver")
 
         assert cfg is not None
@@ -123,7 +123,7 @@ class TestGetRepoAccess:
             folder: str = "dev"
 
         s = _settings_with_workspaces(workspaces={})
-        with patch("pynchy.workspace_config.get_settings", return_value=s):
+        with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
             assert get_repo_access(FakeGroup()) is None
 
     def test_returns_slug_from_config(self):
@@ -135,7 +135,7 @@ class TestGetRepoAccess:
         s = _settings_with_workspaces(
             workspaces={"dev": WorkspaceConfig(name="test", repo_access="owner/myrepo")}
         )
-        with patch("pynchy.workspace_config.get_settings", return_value=s):
+        with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
             assert get_repo_access(FakeGroup()) == "owner/myrepo"
 
     def test_admin_without_explicit_repo_access_returns_none(self):
@@ -149,7 +149,7 @@ class TestGetRepoAccess:
         s = _settings_with_workspaces(
             workspaces={"admin-1": WorkspaceConfig(name="test", is_admin=True)}
         )
-        with patch("pynchy.workspace_config.get_settings", return_value=s):
+        with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
             assert get_repo_access(FakeGroup()) is None
 
 
@@ -172,7 +172,7 @@ class TestGetRepoAccessGroups:
                 "other-project": WorkspaceConfig(name="test", repo_access="owner/pynchy"),
             }
         )
-        with patch("pynchy.workspace_config.get_settings", return_value=s):
+        with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
             result = get_repo_access_groups(workspaces)
 
         assert "owner/pynchy" in result

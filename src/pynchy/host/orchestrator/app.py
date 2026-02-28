@@ -1,6 +1,6 @@
 """Main orchestrator — owns runtime state and wires subsystems together.
 
-Lifecycle (startup phases, shutdown) lives in :mod:`_lifecycle`.
+Lifecycle (startup phases, shutdown) lives in :mod:`lifecycle`.
 """
 
 from __future__ import annotations
@@ -14,8 +14,8 @@ if TYPE_CHECKING:
 
     from pynchy.host.container_manager import OnOutput
 
-from pynchy import session_handler
-from pynchy.adapters import HostMessageBroadcaster, MessageBroadcaster
+from pynchy.host.orchestrator import session_handler
+from pynchy.host.orchestrator.adapters import HostMessageBroadcaster, MessageBroadcaster
 from pynchy.chat import (
     channel_handler,
     message_handler,
@@ -31,7 +31,7 @@ from pynchy.state import (
     set_workspace_profile,
 )
 from pynchy.event_bus import EventBus
-from pynchy.group_queue import GroupQueue
+from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.logger import logger
 from pynchy.types import (
     Channel,
@@ -149,7 +149,7 @@ class PynchyApp:
         repo_access_override: str | None = None,
         input_source: str = "user",
     ) -> str:
-        from pynchy import agent_runner
+        from pynchy.host.orchestrator import agent_runner
 
         return await agent_runner.run_agent(
             self,
@@ -344,7 +344,7 @@ class PynchyApp:
     # ------------------------------------------------------------------
 
     async def run(self) -> None:
-        """Main entry point — see :func:`pynchy._lifecycle.run_app`."""
-        from pynchy._lifecycle import run_app
+        """Main entry point — see :func:`pynchy.host.orchestrator.lifecycle.run_app`."""
+        from pynchy.host.orchestrator.lifecycle import run_app
 
         await run_app(self)

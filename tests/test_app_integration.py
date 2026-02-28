@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.app import PynchyApp
+from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.state import _init_test_database, get_chat_history, store_message
 from pynchy.types import NewMessage, WorkspaceProfile
 
@@ -297,7 +297,7 @@ class TestFirstRunBootstrap:
     async def test_creates_tui_admin_workspace_without_channel(self, app: PynchyApp):
         app.workspaces = {}
 
-        from pynchy import startup_handler
+        from pynchy.host.orchestrator import startup_handler
 
         await startup_handler.setup_admin_group(app, default_channel=None)
 
@@ -550,7 +550,7 @@ class TestRecoverPendingMessages:
     """Test startup crash recovery."""
 
     async def test_enqueues_groups_with_pending_messages(self, app: PynchyApp):
-        from pynchy import startup_handler
+        from pynchy.host.orchestrator import startup_handler
 
         # Store a message but don't advance the cursor
         msg = _make_message(content="missed message")
@@ -563,7 +563,7 @@ class TestRecoverPendingMessages:
         assert "group@g.us" in enqueued
 
     async def test_skips_groups_with_no_pending_messages(self, app: PynchyApp):
-        from pynchy import startup_handler
+        from pynchy.host.orchestrator import startup_handler
 
         # No messages stored at all
         enqueued = []
@@ -795,13 +795,13 @@ class TestDeployContinuationResume:
         app.queue.enqueue_message_check = lambda jid: enqueued.append(jid)  # type: ignore[assignment]
 
         with (
-            patch("pynchy.startup_handler.get_settings") as mock_settings,
-            patch("pynchy.startup_handler.get_head_commit_message", return_value="test commit"),
+            patch("pynchy.host.orchestrator.startup_handler.get_settings") as mock_settings,
+            patch("pynchy.host.orchestrator.startup_handler.get_head_commit_message", return_value="test commit"),
         ):
             s = MagicMock()
             s.data_dir = data_dir
             mock_settings.return_value = s
-            from pynchy.startup_handler import check_deploy_continuation
+            from pynchy.host.orchestrator.startup_handler import check_deploy_continuation
 
             await check_deploy_continuation(app)
 
@@ -837,11 +837,11 @@ class TestDeployContinuationResume:
         enqueued: list[str] = []
         app.queue.enqueue_message_check = lambda jid: enqueued.append(jid)  # type: ignore[assignment]
 
-        with patch("pynchy.startup_handler.get_settings") as mock_settings:
+        with patch("pynchy.host.orchestrator.startup_handler.get_settings") as mock_settings:
             s = MagicMock()
             s.data_dir = data_dir
             mock_settings.return_value = s
-            from pynchy.startup_handler import check_deploy_continuation
+            from pynchy.host.orchestrator.startup_handler import check_deploy_continuation
 
             await check_deploy_continuation(app)
 

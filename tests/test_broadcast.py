@@ -17,7 +17,7 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
-from pynchy.app import PynchyApp
+from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.chat.router import format_tool_preview
 from pynchy.state import _init_test_database, store_message
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
@@ -476,7 +476,7 @@ class TestBroadcastConsistency:
             received.append(data)
 
         # Wire up the SSE bridge like the HTTP server does
-        from pynchy.dep_factory import make_http_deps
+        from pynchy.host.orchestrator.dep_factory import make_http_deps
 
         http_deps = make_http_deps(app)
         unsub = http_deps.subscribe_events(sse_callback)
@@ -530,7 +530,7 @@ class TestUserMessageBroadcast:
         capture = EventCapture(app.event_bus)
 
         # Get the HTTP deps (which includes send_user_message)
-        from pynchy.dep_factory import make_http_deps
+        from pynchy.host.orchestrator.dep_factory import make_http_deps
 
         http_deps = make_http_deps(app)
 

@@ -12,7 +12,7 @@ import asyncio
 from typing import Any
 from unittest.mock import AsyncMock
 
-from pynchy.adapters import (
+from pynchy.host.orchestrator.adapters import (
     EventBusAdapter,
     GroupMetadataManager,
     HostMessageBroadcaster,
@@ -442,7 +442,7 @@ class TestSessionManager:
 
         from unittest.mock import patch as _patch
 
-        with _patch("pynchy.adapters.clear_session", new_callable=AsyncMock):
+        with _patch("pynchy.host.orchestrator.adapters.clear_session", new_callable=AsyncMock):
             await manager.clear_session("test-group")
 
         assert "test-group" not in sessions
@@ -455,7 +455,7 @@ class TestSessionManager:
 
         from unittest.mock import patch as _patch
 
-        with _patch("pynchy.adapters.clear_session", new_callable=AsyncMock):
+        with _patch("pynchy.host.orchestrator.adapters.clear_session", new_callable=AsyncMock):
             # Clearing a non-existent session should not raise
             await manager.clear_session("nonexistent")
 

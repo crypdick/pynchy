@@ -117,7 +117,7 @@ class TestCreatePeriodicAgent:
             patch(
                 "pynchy.host.container_manager.ipc.handlers_groups.get_settings", return_value=self._settings(tmp_path)
             ),
-            patch("pynchy.workspace_config.add_workspace_to_toml") as add_ws,
+            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml") as add_ws,
         ):
             mp.setenv("TZ", "UTC")
             await dispatch(
@@ -169,7 +169,7 @@ class TestCreatePeriodicAgent:
             patch(
                 "pynchy.host.container_manager.ipc.handlers_groups.get_settings", return_value=self._settings(tmp_path)
             ),
-            patch("pynchy.workspace_config.add_workspace_to_toml"),
+            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
         ):
             await dispatch(
                 {
@@ -204,7 +204,7 @@ class TestCreatePeriodicAgent:
             patch(
                 "pynchy.host.container_manager.ipc.handlers_groups.get_settings", return_value=self._settings(tmp_path)
             ),
-            patch("pynchy.workspace_config.add_workspace_to_toml"),
+            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
         ):
             await dispatch(
                 {
@@ -232,7 +232,7 @@ class TestCreatePeriodicAgent:
             patch(
                 "pynchy.host.container_manager.ipc.handlers_groups.get_settings", return_value=self._settings(tmp_path)
             ),
-            patch("pynchy.workspace_config.add_workspace_to_toml"),
+            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
         ):
             await dispatch(
                 {
@@ -262,7 +262,7 @@ class TestCreatePeriodicAgent:
             patch(
                 "pynchy.host.container_manager.ipc.handlers_groups.get_settings", return_value=self._settings(tmp_path)
             ),
-            patch("pynchy.workspace_config.add_workspace_to_toml"),
+            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
         ):
             await dispatch(
                 {
@@ -290,7 +290,7 @@ class TestCreatePeriodicAgent:
             patch(
                 "pynchy.host.container_manager.ipc.handlers_groups.get_settings", return_value=self._settings(tmp_path)
             ),
-            patch("pynchy.workspace_config.add_workspace_to_toml"),
+            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
         ):
             await dispatch(
                 {

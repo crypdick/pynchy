@@ -17,7 +17,7 @@ from pynchy.logger import logger
 from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
-    from pynchy.group_queue import GroupQueue
+    from pynchy.host.orchestrator.concurrency import GroupQueue
     from pynchy.types import Channel, NewMessage, WorkspaceProfile
 
 
@@ -126,8 +126,8 @@ async def send_clear_confirmation(deps: SessionDeps, chat_jid: str) -> None:
 
 async def trigger_manual_redeploy(deps: SessionDeps, chat_jid: str) -> None:
     """Handle a manual redeploy command — restart the service in-place."""
-    from pynchy.adapters import SessionManager
-    from pynchy.deploy import finalize_deploy
+    from pynchy.host.orchestrator.adapters import SessionManager
+    from pynchy.host.orchestrator.deploy import finalize_deploy
     from pynchy.git_ops.utils import get_head_sha
 
     sha = get_head_sha()

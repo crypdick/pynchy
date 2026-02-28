@@ -368,7 +368,7 @@ class PeriodicAgentManager:
 
     async def get_periodic_agents(self) -> list[dict[str, Any]]:
         """Get status of all periodic agents."""
-        from pynchy.workspace_config import load_workspace_config
+        from pynchy.host.orchestrator.workspace_config import load_workspace_config
 
         results = []
         for group in self._groups.values():

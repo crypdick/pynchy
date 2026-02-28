@@ -14,7 +14,7 @@ from pynchy.host.container_manager.session_prep import _sync_skills, _write_sett
 from pynchy.git_ops.repo import RepoContext
 from pynchy.host.container_manager.security.mount_security import validate_additional_mounts
 from pynchy.types import VolumeMount, WorkspaceProfile
-from pynchy.workspace_config import load_workspace_config
+from pynchy.host.orchestrator.workspace_config import load_workspace_config
 
 
 def _build_volume_mounts(

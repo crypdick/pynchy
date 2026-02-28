@@ -190,7 +190,7 @@ async def _handle_message_during_task(
         # notification so the agent treats it as informational rather
         # than a user request.  If the SDK adds external tool invocation
         # or system message injection, this workaround can be replaced.
-        from pynchy.todos import add_todo
+        from pynchy.host.orchestrator.todos import add_todo
 
         item = last_content[5:]  # strip "todo " prefix
         add_todo(group.folder, item)

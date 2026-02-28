@@ -17,7 +17,7 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
-from pynchy.app import PynchyApp
+from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.state import _init_test_database
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.types import NewMessage, WorkspaceProfile

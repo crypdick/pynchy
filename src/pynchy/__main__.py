@@ -22,7 +22,7 @@ def _run() -> None:
 
     load_dotenv()  # Make .env vars available in os.environ for env_forward, etc.
 
-    from pynchy.app import PynchyApp
+    from pynchy.host.orchestrator.app import PynchyApp
 
     app = PynchyApp()
     asyncio.run(app.run())

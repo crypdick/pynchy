@@ -1,4 +1,4 @@
-"""Tests for pynchy.startup_handler — startup helpers and plugin credential validation."""
+"""Tests for pynchy.host.orchestrator.startup_handler — startup helpers and plugin credential validation."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from pynchy.startup_handler import (
+from pynchy.host.orchestrator.startup_handler import (
     auto_rollback,
     check_deploy_continuation,
     validate_plugin_credentials,
@@ -119,7 +119,7 @@ class TestAutoRollback:
             stderr = ""
 
         with (
-            patch("pynchy.startup_handler.run_git", return_value=FakeResult()) as mock_git,
+            patch("pynchy.host.orchestrator.startup_handler.run_git", return_value=FakeResult()) as mock_git,
             pytest.raises(SystemExit) as exc_info,
         ):
             await auto_rollback(cont_path, RuntimeError("startup failed"))
@@ -142,7 +142,7 @@ class TestAutoRollback:
             returncode = 1
             stderr = "fatal: not a git repo"
 
-        with patch("pynchy.startup_handler.run_git", return_value=FailResult()):
+        with patch("pynchy.host.orchestrator.startup_handler.run_git", return_value=FailResult()):
             await auto_rollback(cont_path, RuntimeError("startup failed"))
         # Should not raise — git reset failure is logged and returned
 
@@ -225,7 +225,7 @@ class TestCheckDeployContinuation:
 
         # Patch settings to point data_dir at tmp_path
         monkeypatch.setattr(
-            "pynchy.startup_handler.get_settings",
+            "pynchy.host.orchestrator.startup_handler.get_settings",
             lambda: type("S", (), {"data_dir": tmp_path})(),
         )
 
@@ -238,12 +238,12 @@ class TestCheckDeployContinuation:
             return WorkspaceConfig()
 
         monkeypatch.setattr(
-            "pynchy.workspace_config.load_workspace_config",
+            "pynchy.host.orchestrator.workspace_config.load_workspace_config",
             mock_load,
         )
         # Stub get_head_commit_message so it doesn't touch the real repo
         monkeypatch.setattr(
-            "pynchy.startup_handler.get_head_commit_message",
+            "pynchy.host.orchestrator.startup_handler.get_head_commit_message",
             lambda *a: "test commit",
         )
 
@@ -275,18 +275,18 @@ class TestCheckDeployContinuation:
         )
 
         monkeypatch.setattr(
-            "pynchy.startup_handler.get_settings",
+            "pynchy.host.orchestrator.startup_handler.get_settings",
             lambda: type("S", (), {"data_dir": tmp_path})(),
         )
 
         from pynchy.config.models import WorkspaceConfig
 
         monkeypatch.setattr(
-            "pynchy.workspace_config.load_workspace_config",
+            "pynchy.host.orchestrator.workspace_config.load_workspace_config",
             lambda folder: WorkspaceConfig(),
         )
         monkeypatch.setattr(
-            "pynchy.startup_handler.get_head_commit_message",
+            "pynchy.host.orchestrator.startup_handler.get_head_commit_message",
             lambda *a: "test commit",
         )
 
