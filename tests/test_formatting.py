@@ -227,19 +227,19 @@ class TestFormatToolPreview:
     # Bash tool
     def test_bash_with_command(self):
         result = format_tool_preview("Bash", {"command": "ls -la"})
-        assert result == "Bash: ls -la"
+        assert result == "Bash:\n```\nls -la\n```"
 
     def test_bash_shows_full_long_command(self):
         long_cmd = "echo " + "x" * 200
         result = format_tool_preview("Bash", {"command": long_cmd})
-        assert result == f"Bash: {long_cmd}"
+        assert long_cmd in result
+        assert "```" in result
 
     def test_bash_preserves_medium_commands(self):
-        """Commands under 180 chars should not be truncated."""
         cmd = "echo " + "x" * 100
         result = format_tool_preview("Bash", {"command": cmd})
-        assert result == f"Bash: {cmd}"
-        assert "..." not in result
+        assert cmd in result
+        assert "```" in result
 
     def test_bash_without_command(self):
         result = format_tool_preview("Bash", {})
@@ -324,11 +324,13 @@ class TestFormatToolPreview:
 
     def test_special_characters_in_command(self):
         result = format_tool_preview("Bash", {"command": 'echo "hello & goodbye"'})
-        assert result == 'Bash: echo "hello & goodbye"'
+        assert 'echo "hello & goodbye"' in result
+        assert "```" in result
 
     def test_multiline_command(self):
         result = format_tool_preview("Bash", {"command": "echo foo\necho bar"})
-        assert result == "Bash: echo foo\necho bar"
+        assert "echo foo\necho bar" in result
+        assert "```" in result
 
     # WebFetch tool
     def test_webfetch_with_url(self):

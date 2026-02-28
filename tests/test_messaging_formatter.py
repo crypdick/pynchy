@@ -68,14 +68,16 @@ class TestFormatToolPreview:
     """
 
     # --- Bash ---
-    def test_bash_shows_command(self):
+    def test_bash_shows_command_in_code_fence(self):
         result = format_tool_preview("Bash", {"command": "git status"})
-        assert result == "Bash: git status"
+        assert result == "Bash:\n```\ngit status\n```"
 
     def test_bash_shows_full_long_command(self):
         long_cmd = "a" * 200
         result = format_tool_preview("Bash", {"command": long_cmd})
-        assert result == f"Bash: {long_cmd}"
+        assert long_cmd in result
+        assert result.startswith("Bash:\n```")
+        assert result.endswith("```")
 
     def test_bash_empty_command(self):
         result = format_tool_preview("Bash", {"command": ""})
@@ -114,8 +116,9 @@ class TestFormatToolPreview:
             },
         )
         assert "Edit: /src/config.py" in result
-        assert "> - return None" in result
-        assert "> + return 42" in result
+        assert "- return None" in result
+        assert "+ return 42" in result
+        assert "```" in result
 
     def test_edit_multiline_diff(self):
         result = format_tool_preview(
@@ -126,10 +129,11 @@ class TestFormatToolPreview:
                 "new_string": "def foo():\n    return 1",
             },
         )
-        assert "> - def foo():" in result
-        assert "> -     pass" in result
-        assert "> + def foo():" in result
-        assert "> +     return 1" in result
+        assert "- def foo():" in result
+        assert "-     pass" in result
+        assert "+ def foo():" in result
+        assert "+     return 1" in result
+        assert "```" in result
 
     def test_edit_shows_all_diff_lines(self):
         old = "\n".join(f"old_line_{i}" for i in range(10))
@@ -168,8 +172,9 @@ class TestFormatToolPreview:
             },
         )
         assert "Write: /tmp/out.txt" in result
-        assert "> + hello world" in result
-        assert "> + second line" in result
+        assert "+ hello world" in result
+        assert "+ second line" in result
+        assert "```" in result
 
     def test_write_shows_all_content_lines(self):
         content = "\n".join(f"line_{i}" for i in range(20))
