@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.write import (
@@ -63,6 +65,7 @@ class ContainerSession:
         self._died_before_pulse = False
         self._idle_handle: asyncio.TimerHandle | None = None
         self._idle_timeout: float = get_settings().idle_timeout
+        self._on_idle_expire: Callable[[], Coroutine[Any, Any, None]] | None = None
 
     @property
     def is_alive(self) -> bool:
@@ -176,6 +179,14 @@ class ContainerSession:
             self._idle_handle.cancel()
             self._idle_handle = None
 
+    def set_idle_callback(self, callback: Callable[[], Coroutine[Any, Any, None]] | None) -> None:
+        """Register a callback to run when the idle timer expires.
+
+        Used by the pipeline to send the zzz reaction when the container
+        actually hibernates, rather than when the query finishes.
+        """
+        self._on_idle_expire = callback
+
     def _on_idle_expired(self) -> None:
         """Called when the session has been idle for too long."""
         logger.info(
@@ -183,8 +194,20 @@ class ContainerSession:
             group=self.group_folder,
             container=self.container_name,
         )
+
+        async def _idle_teardown() -> None:
+            if self._on_idle_expire is not None:
+                try:
+                    await self._on_idle_expire()
+                except Exception:
+                    logger.exception(
+                        "Idle callback failed",
+                        group=self.group_folder,
+                    )
+            await destroy_session(self.group_folder)
+
         create_background_task(
-            destroy_session(self.group_folder),
+            _idle_teardown(),
             name=f"idle-destroy-{self.group_folder}",
         )
 

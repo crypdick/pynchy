@@ -1668,6 +1668,31 @@ class TestContainerSessionSignalQueryDone:
         # does not schedule a new one
         assert session._idle_handle is None
 
+    async def test_idle_callback_called_on_expiry(self):
+        """When the idle timer expires, the on_idle_expire callback should
+        be called before the session is destroyed."""
+        from pynchy.host.container_manager.session import ContainerSession, _sessions
+
+        session = ContainerSession("idle-cb-test", "pynchy-idle-cb-test")
+        callback = AsyncMock()
+        session.set_idle_callback(callback)
+
+        # Register in the session registry so destroy_session can find it
+        mock_proc = MagicMock()
+        mock_proc.returncode = None
+        session.proc = mock_proc
+        _sessions["idle-cb-test"] = session
+
+        with patch(
+            "pynchy.host.container_manager.session.destroy_session", new_callable=AsyncMock
+        ) as mock_destroy:
+            session._on_idle_expired()
+            # Let the background task run
+            await asyncio.sleep(0.05)
+
+        callback.assert_awaited_once()
+        mock_destroy.assert_awaited_once_with("idle-cb-test")
+
     async def test_signal_query_done_after_set_output_handler(self):
         """Full cycle: set handler, signal done, verify state reset."""
         from pynchy.host.container_manager.session import ContainerSession
