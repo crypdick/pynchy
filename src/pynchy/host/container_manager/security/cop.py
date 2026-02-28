@@ -4,6 +4,10 @@ Inspects at two points in the pipeline:
 - Inbound: content from public_source services, scanned for injection patterns
 - Outbound: host-mutating payloads (diffs, configs, prompts), scanned for manipulation
 
+Calls are routed through the LLM gateway (LiteLLM or builtin proxy) so the
+cop doesn't need its own API credentials and all usage shows up in the
+gateway's spend tracking.
+
 See docs/plans/2026-02-24-host-mutating-cop-design.md
 """
 
@@ -12,10 +16,7 @@ from __future__ import annotations
 import json as _json
 from dataclasses import dataclass
 
-try:
-    from anthropic import AsyncAnthropic
-except ModuleNotFoundError:  # pragma: no cover — only in envs without anthropic
-    AsyncAnthropic = None  # type: ignore[assignment,misc]
+import aiohttp
 
 from pynchy.logger import logger
 
@@ -172,17 +173,34 @@ async def _inspect(
     context: str,
 ) -> CopVerdict:
     """Run an LLM inspection and return a CopVerdict."""
-    try:
-        client = AsyncAnthropic()
-        response = await client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=200,
-            temperature=0.0,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_content}],
-        )
+    from pynchy.host.container_manager.gateway import get_gateway
 
-        text = response.content[0].text.strip()
+    try:
+        gateway = get_gateway()
+        if gateway is None:
+            logger.warning("Cop: no gateway available, allowing operation", context=context)
+            return CopVerdict(flagged=False, reason="No gateway available")
+
+        url = f"http://localhost:{gateway.port}/v1/messages"
+        headers = {
+            "x-api-key": gateway.key,
+            "content-type": "application/json",
+            "anthropic-version": "2023-06-01",
+        }
+        body = {
+            "model": "claude-haiku-4-5-20251001",
+            "max_tokens": 200,
+            "temperature": 0.0,
+            "system": system_prompt,
+            "messages": [{"role": "user", "content": user_content}],
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json=body) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+
+        text = data["content"][0]["text"].strip()
 
         # Strip markdown fences if present
         if text.startswith("```"):
