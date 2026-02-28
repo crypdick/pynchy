@@ -22,8 +22,8 @@ from pynchy.state import (
     get_messaging_stats,
     get_router_state,
 )
-from pynchy.git_ops.repo import RepoContext, get_repo_context
-from pynchy.git_ops.utils import (
+from pynchy.host.git_ops.repo import RepoContext, get_repo_context
+from pynchy.host.git_ops.utils import (
     count_unpushed_commits,
     detect_main_branch,
     get_head_commit_message,

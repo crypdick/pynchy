@@ -12,7 +12,7 @@ from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
 from conftest import make_settings
 
-from pynchy.git_ops.utils import (
+from pynchy.host.git_ops.utils import (
     get_head_commit_message,
     get_head_sha,
     is_repo_dirty,
@@ -39,7 +39,7 @@ def _patch_settings(*, data_dir: Path):
 
 def test_get_head_sha_success():
     """get_head_sha returns SHA when git succeeds."""
-    with patch("pynchy.git_ops.utils.run_git") as mock_run:
+    with patch("pynchy.host.git_ops.utils.run_git") as mock_run:
         mock_run.return_value = Mock(
             returncode=0,
             stdout="head-sha-001\n",
@@ -49,21 +49,21 @@ def test_get_head_sha_success():
 
 def test_get_head_sha_failure():
     """get_head_sha returns 'unknown' when git fails."""
-    with patch("pynchy.git_ops.utils.run_git") as mock_run:
+    with patch("pynchy.host.git_ops.utils.run_git") as mock_run:
         mock_run.return_value = Mock(returncode=1, stdout="")
         assert get_head_sha() == "unknown"
 
 
 def test_is_repo_dirty_clean():
     """is_repo_dirty returns False when no uncommitted changes."""
-    with patch("pynchy.git_ops.utils.run_git") as mock_run:
+    with patch("pynchy.host.git_ops.utils.run_git") as mock_run:
         mock_run.return_value = Mock(returncode=0, stdout="")
         assert is_repo_dirty() is False
 
 
 def test_is_repo_dirty_has_changes():
     """is_repo_dirty returns True when uncommitted changes exist."""
-    with patch("pynchy.git_ops.utils.run_git") as mock_run:
+    with patch("pynchy.host.git_ops.utils.run_git") as mock_run:
         mock_run.return_value = Mock(
             returncode=0,
             stdout=" M src/pynchy/app.py\n?? newfile.txt\n",
@@ -73,7 +73,7 @@ def test_is_repo_dirty_has_changes():
 
 def test_is_repo_dirty_failure():
     """is_repo_dirty returns False when git fails."""
-    with patch("pynchy.git_ops.utils.run_git") as mock_run:
+    with patch("pynchy.host.git_ops.utils.run_git") as mock_run:
         mock_run.return_value = Mock(returncode=1, stdout="")
         assert is_repo_dirty() is False
 

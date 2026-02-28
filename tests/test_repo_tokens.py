@@ -19,13 +19,13 @@ from conftest import make_settings
 from pydantic import SecretStr
 
 from pynchy.config import RepoConfig, WorkspaceConfig
-from pynchy.git_ops.repo import (
+from pynchy.host.git_ops.repo import (
     RepoContext,
     _sanitize_token,
     check_token_expiry,
     get_repo_token,
 )
-from pynchy.git_ops.utils import git_env_with_token
+from pynchy.host.git_ops.utils import git_env_with_token
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -144,14 +144,14 @@ class TestSanitizeToken:
 class TestEnsureRepoCloned:
     def test_existing_repo_returns_true(self, tmp_path: Path):
         """Existing repo directory short-circuits without cloning."""
-        from pynchy.git_ops.repo import ensure_repo_cloned
+        from pynchy.host.git_ops.repo import ensure_repo_cloned
 
         repo_ctx = RepoContext(slug=REPO_SLUG, root=tmp_path, worktrees_dir=tmp_path / "wt")
         assert ensure_repo_cloned(repo_ctx) is True
 
     def test_clone_with_token(self, tmp_path: Path):
         """Clones with token in URL, then resets remote URL."""
-        from pynchy.git_ops.repo import ensure_repo_cloned
+        from pynchy.host.git_ops.repo import ensure_repo_cloned
 
         repo_root = tmp_path / "repo"
         repo_ctx = RepoContext(slug=REPO_SLUG, root=repo_root, worktrees_dir=tmp_path / "wt")
@@ -163,7 +163,7 @@ class TestEnsureRepoCloned:
             return _ok()
 
         with (
-            patch("pynchy.git_ops.repo.get_repo_token", return_value=SCOPED_TOKEN),
+            patch("pynchy.host.git_ops.repo.get_repo_token", return_value=SCOPED_TOKEN),
             patch("subprocess.run", side_effect=mock_run),
         ):
             assert ensure_repo_cloned(repo_ctx) is True
@@ -180,7 +180,7 @@ class TestEnsureRepoCloned:
 
     def test_clone_without_token(self, tmp_path: Path):
         """Clones with bare URL when no token available."""
-        from pynchy.git_ops.repo import ensure_repo_cloned
+        from pynchy.host.git_ops.repo import ensure_repo_cloned
 
         repo_root = tmp_path / "repo"
         repo_ctx = RepoContext(slug=REPO_SLUG, root=repo_root, worktrees_dir=tmp_path / "wt")
@@ -192,7 +192,7 @@ class TestEnsureRepoCloned:
             return _ok()
 
         with (
-            patch("pynchy.git_ops.repo.get_repo_token", return_value=None),
+            patch("pynchy.host.git_ops.repo.get_repo_token", return_value=None),
             patch("subprocess.run", side_effect=mock_run),
         ):
             assert ensure_repo_cloned(repo_ctx) is True
@@ -203,7 +203,7 @@ class TestEnsureRepoCloned:
 
     def test_clone_failure_sanitizes_stderr(self, tmp_path: Path):
         """Failed clone logs sanitized stderr (no token leak)."""
-        from pynchy.git_ops.repo import ensure_repo_cloned
+        from pynchy.host.git_ops.repo import ensure_repo_cloned
 
         repo_root = tmp_path / "repo"
         repo_ctx = RepoContext(slug=REPO_SLUG, root=repo_root, worktrees_dir=tmp_path / "wt")
@@ -215,9 +215,9 @@ class TestEnsureRepoCloned:
             )
 
         with (
-            patch("pynchy.git_ops.repo.get_repo_token", return_value=SCOPED_TOKEN),
+            patch("pynchy.host.git_ops.repo.get_repo_token", return_value=SCOPED_TOKEN),
             patch("subprocess.run", side_effect=mock_run),
-            patch("pynchy.git_ops.repo.logger") as mock_logger,
+            patch("pynchy.host.git_ops.repo.logger") as mock_logger,
         ):
             assert ensure_repo_cloned(repo_ctx) is False
 
@@ -352,12 +352,12 @@ class TestContainerCredentialInjection:
 class TestGitEnvWithToken:
     def test_returns_none_without_token(self):
         """No token -> returns None (callers use ambient credentials)."""
-        with patch("pynchy.git_ops.repo.get_repo_token", return_value=None):
+        with patch("pynchy.host.git_ops.repo.get_repo_token", return_value=None):
             assert git_env_with_token(REPO_SLUG) is None
 
     def test_returns_env_with_credential_helper(self):
         """Token -> env dict includes GH_TOKEN and credential helper config."""
-        with patch("pynchy.git_ops.repo.get_repo_token", return_value=SCOPED_TOKEN):
+        with patch("pynchy.host.git_ops.repo.get_repo_token", return_value=SCOPED_TOKEN):
             env = git_env_with_token(REPO_SLUG)
             assert env is not None
             assert env["GH_TOKEN"] == SCOPED_TOKEN
@@ -386,7 +386,7 @@ class TestCheckTokenExpiry:
         )
         with (
             patch("subprocess.run", return_value=_ok(headers)),
-            patch("pynchy.git_ops.repo.logger") as mock_logger,
+            patch("pynchy.host.git_ops.repo.logger") as mock_logger,
         ):
             check_token_expiry(REPO_SLUG, SCOPED_TOKEN)
             mock_logger.warning.assert_called_once()
@@ -401,7 +401,7 @@ class TestCheckTokenExpiry:
         )
         with (
             patch("subprocess.run", return_value=_ok(headers)),
-            patch("pynchy.git_ops.repo.logger") as mock_logger,
+            patch("pynchy.host.git_ops.repo.logger") as mock_logger,
         ):
             check_token_expiry(REPO_SLUG, SCOPED_TOKEN)
             mock_logger.error.assert_called_once()
@@ -420,7 +420,7 @@ class TestCheckTokenExpiry:
         )
         with (
             patch("subprocess.run", return_value=_ok(headers)),
-            patch("pynchy.git_ops.repo.logger") as mock_logger,
+            patch("pynchy.host.git_ops.repo.logger") as mock_logger,
         ):
             check_token_expiry(REPO_SLUG, SCOPED_TOKEN)
             mock_logger.warning.assert_not_called()
@@ -431,7 +431,7 @@ class TestCheckTokenExpiry:
         """Silently continues if the API call fails."""
         with (
             patch("subprocess.run", return_value=_fail()),
-            patch("pynchy.git_ops.repo.logger") as mock_logger,
+            patch("pynchy.host.git_ops.repo.logger") as mock_logger,
         ):
             check_token_expiry(REPO_SLUG, SCOPED_TOKEN)
             mock_logger.warning.assert_not_called()
@@ -442,7 +442,7 @@ class TestCheckTokenExpiry:
         headers = 'HTTP/2 200\n{"resources": {}}'
         with (
             patch("subprocess.run", return_value=_ok(headers)),
-            patch("pynchy.git_ops.repo.logger") as mock_logger,
+            patch("pynchy.host.git_ops.repo.logger") as mock_logger,
         ):
             check_token_expiry(REPO_SLUG, SCOPED_TOKEN)
             mock_logger.warning.assert_not_called()
@@ -452,7 +452,7 @@ class TestCheckTokenExpiry:
         """Silently continues on subprocess timeout."""
         with (
             patch("subprocess.run", side_effect=subprocess.TimeoutExpired("gh", 10)),
-            patch("pynchy.git_ops.repo.logger") as mock_logger,
+            patch("pynchy.host.git_ops.repo.logger") as mock_logger,
         ):
             check_token_expiry(REPO_SLUG, SCOPED_TOKEN)
             mock_logger.warning.assert_not_called()

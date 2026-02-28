@@ -12,7 +12,7 @@ from pynchy.host.orchestrator.messaging.sender import broadcast
 from pynchy.host.container_manager.session import destroy_session
 from pynchy.state import clear_session, set_chat_cleared_at, store_message
 from pynchy.event_bus import ChatClearedEvent, MessageEvent
-from pynchy.git_ops._worktree_merge import background_merge_worktree
+from pynchy.host.git_ops._worktree_merge import background_merge_worktree
 from pynchy.logger import logger
 from pynchy.utils import create_background_task
 
@@ -128,7 +128,7 @@ async def trigger_manual_redeploy(deps: SessionDeps, chat_jid: str) -> None:
     """Handle a manual redeploy command — restart the service in-place."""
     from pynchy.host.orchestrator.adapters import SessionManager
     from pynchy.host.orchestrator.deploy import finalize_deploy
-    from pynchy.git_ops.utils import get_head_sha
+    from pynchy.host.git_ops.utils import get_head_sha
 
     sha = get_head_sha()
     logger.info("Manual redeploy triggered via magic word", chat_jid=chat_jid)

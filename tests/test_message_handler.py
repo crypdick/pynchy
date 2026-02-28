@@ -36,7 +36,7 @@ _P_FMT_SDK = "pynchy.host.orchestrator.messaging.formatter.format_messages_for_s
 _P_STORE = "pynchy.host.orchestrator.messaging.pipeline.store_message_direct"
 _P_DIRTY = "pynchy.host.orchestrator.messaging.pipeline.is_repo_dirty"
 _P_GET_RA = "pynchy.host.orchestrator.workspace_config.get_repo_access"
-_P_MERGE = "pynchy.git_ops._worktree_merge.merge_and_push_worktree"
+_P_MERGE = "pynchy.host.git_ops._worktree_merge.merge_and_push_worktree"
 
 # Patch paths for names imported in _message_routing (routing/loop tests).
 _PR = "pynchy.host.orchestrator.messaging.inbound"
@@ -610,7 +610,7 @@ class TestProcessGroupMessages:
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch("pynchy.git_ops._worktree_merge.background_merge_worktree") as mock_bg_merge,
+            patch("pynchy.host.git_ops._worktree_merge.background_merge_worktree") as mock_bg_merge,
         ):
             ms.return_value = _settings_mock(tmp_path)
             ms.return_value.trigger_pattern.search.return_value = True

@@ -13,9 +13,9 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
-from pynchy.git_ops._worktree_merge import merge_and_push_worktree, merge_worktree
-from pynchy.git_ops.repo import RepoContext
-from pynchy.git_ops.worktree import (
+from pynchy.host.git_ops._worktree_merge import merge_and_push_worktree, merge_worktree
+from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.git_ops.worktree import (
     WorktreeError,
     ensure_worktree,
     reconcile_worktrees_at_startup,
@@ -74,7 +74,7 @@ def git_env(tmp_path: Path):
     repo_ctx = RepoContext(slug="owner/pynchy", root=project, worktrees_dir=worktrees_dir)
 
     with ExitStack() as stack:
-        stack.enter_context(patch("pynchy.git_ops.utils.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.host.git_ops.utils.get_settings", return_value=s))
         stack.enter_context(patch("pynchy.config.get_settings", return_value=s))
         yield {
             "origin": origin,
@@ -326,7 +326,7 @@ class TestReconcileWorktreesAtStartup:
         assert int(ahead.stdout.strip()) > 0
         assert int(behind.stdout.strip()) > 0
 
-        with patch("pynchy.git_ops.repo.get_repo_context", return_value=repo_ctx):
+        with patch("pynchy.host.git_ops.repo.get_repo_context", return_value=repo_ctx):
             reconcile_worktrees_at_startup(repo_groups={"owner/pynchy": []})
 
         # After reconcile, worktree branch should be ahead of main (rebased), not diverged
@@ -348,7 +348,7 @@ class TestReconcileWorktreesAtStartup:
 
         head_before = _git(wt_path, "rev-parse", "HEAD").stdout.strip()
 
-        with patch("pynchy.git_ops.repo.get_repo_context", return_value=repo_ctx):
+        with patch("pynchy.host.git_ops.repo.get_repo_context", return_value=repo_ctx):
             reconcile_worktrees_at_startup(repo_groups={"owner/pynchy": []})
 
         # HEAD unchanged — no rebase needed
@@ -359,13 +359,13 @@ class TestReconcileWorktreesAtStartup:
         """Runs cleanly when worktrees dir doesn't exist."""
         repo_ctx = git_env["repo_ctx"]
         # worktrees_dir doesn't exist yet — should not raise
-        with patch("pynchy.git_ops.repo.get_repo_context", return_value=repo_ctx):
+        with patch("pynchy.host.git_ops.repo.get_repo_context", return_value=repo_ctx):
             reconcile_worktrees_at_startup(repo_groups={"owner/pynchy": []})
 
     def test_creates_missing_worktrees_at_startup(self, git_env: dict):
         """Worktrees for repo_access folders are created if missing."""
         repo_ctx = git_env["repo_ctx"]
-        with patch("pynchy.git_ops.repo.get_repo_context", return_value=repo_ctx):
+        with patch("pynchy.host.git_ops.repo.get_repo_context", return_value=repo_ctx):
             reconcile_worktrees_at_startup(
                 repo_groups={"owner/pynchy": ["admin-1", "code-improver"]}
             )
@@ -382,7 +382,7 @@ class TestReconcileWorktreesAtStartup:
         """Calling twice with same folders doesn't break anything."""
         repo_ctx = git_env["repo_ctx"]
         folders = ["admin-1", "code-improver"]
-        with patch("pynchy.git_ops.repo.get_repo_context", return_value=repo_ctx):
+        with patch("pynchy.host.git_ops.repo.get_repo_context", return_value=repo_ctx):
             reconcile_worktrees_at_startup(repo_groups={"owner/pynchy": folders})
 
         # Record state
@@ -391,7 +391,7 @@ class TestReconcileWorktreesAtStartup:
         head_ci = _git(worktrees_dir / "code-improver", "rev-parse", "HEAD").stdout.strip()
 
         # Second call — should be a no-op
-        with patch("pynchy.git_ops.repo.get_repo_context", return_value=repo_ctx):
+        with patch("pynchy.host.git_ops.repo.get_repo_context", return_value=repo_ctx):
             reconcile_worktrees_at_startup(repo_groups={"owner/pynchy": folders})
 
         assert _git(worktrees_dir / "admin-1", "rev-parse", "HEAD").stdout.strip() == head_admin

@@ -19,8 +19,8 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from pynchy.git_ops.repo import RepoContext
-from pynchy.git_ops.utils import detect_main_branch, git_env_with_token, run_git
+from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.git_ops.utils import detect_main_branch, git_env_with_token, run_git
 from pynchy.logger import logger
 
 
@@ -275,7 +275,7 @@ def reconcile_worktrees_at_startup(
         repo_groups: Dict mapping slug → list of group folder names.
     """
     from pynchy.config import get_settings
-    from pynchy.git_ops.repo import (
+    from pynchy.host.git_ops.repo import (
         check_token_expiry,
         ensure_repo_cloned,
         get_repo_context,

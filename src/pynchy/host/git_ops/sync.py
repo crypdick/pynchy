@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from pynchy.config import get_settings
-from pynchy.git_ops.repo import RepoContext
-from pynchy.git_ops.utils import (
+from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.git_ops.utils import (
     detect_main_branch,
     git_env_with_token,
     push_local_commits,

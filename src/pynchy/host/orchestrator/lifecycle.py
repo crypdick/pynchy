@@ -173,7 +173,7 @@ async def _setup_channels(app: PynchyApp) -> None:
 
 async def _reconcile_state(app: PynchyApp) -> dict[str, list[str]]:
     """Worktree + workspace reconciliation.  Returns repo_groups."""
-    from pynchy.git_ops.worktree import reconcile_worktrees_at_startup
+    from pynchy.host.git_ops.worktree import reconcile_worktrees_at_startup
     from pynchy.host.orchestrator.workspace_config import reconcile_workspaces
 
     s = get_settings()
@@ -212,8 +212,8 @@ async def _start_subsystems(app: PynchyApp, repo_groups: dict[str, list[str]]) -
         make_scheduler_deps,
         make_status_deps,
     )
-    from pynchy.git_ops.repo import get_repo_context
-    from pynchy.git_ops.sync_poll import (
+    from pynchy.host.git_ops.repo import get_repo_context
+    from pynchy.host.git_ops.sync_poll import (
         start_external_repo_sync_loop,
         start_host_git_sync_loop,
     )

@@ -22,7 +22,7 @@ import pytest
 from conftest import make_settings
 
 from pynchy.state import _init_test_database
-from pynchy.git_ops.repo import RepoContext
+from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.handlers_deploy import _handle_deploy
 from pynchy.types import WorkspaceProfile
@@ -149,7 +149,7 @@ class TestSyncWorktreeToMain:
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.git_ops.repo.resolve_repo_for_group",
+                "pynchy.host.git_ops.repo.resolve_repo_for_group",
                 return_value=fake_repo_ctx,
             ),
             patch(
@@ -225,7 +225,7 @@ class TestSyncWorktreeToMain:
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.git_ops.repo.resolve_repo_for_group",
+                "pynchy.host.git_ops.repo.resolve_repo_for_group",
                 return_value=fake_repo_ctx,
             ),
             patch(
@@ -298,7 +298,7 @@ class TestSyncWorktreeToMain:
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.git_ops.repo.resolve_repo_for_group",
+                "pynchy.host.git_ops.repo.resolve_repo_for_group",
                 return_value=fake_repo_ctx,
             ),
             patch(

@@ -12,10 +12,10 @@ import hashlib
 from pathlib import Path
 
 from pynchy.config import get_settings
-from pynchy.git_ops._worktree_notify import host_notify_worktree_updates, last_notified_sha
-from pynchy.git_ops.repo import RepoContext
-from pynchy.git_ops.sync import GitSyncDeps
-from pynchy.git_ops.utils import (
+from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates, last_notified_sha
+from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.git_ops.sync import GitSyncDeps
+from pynchy.host.git_ops.utils import (
     detect_main_branch,
     files_changed_between,
     get_head_sha,
@@ -173,7 +173,7 @@ async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
     Detects origin drift, local drift, and config drift. Deploy logic only
     fires for pynchy — external repos use start_external_repo_sync_loop.
     """
-    from pynchy.git_ops.repo import get_repo_context
+    from pynchy.host.git_ops.repo import get_repo_context
 
     s = get_settings()
     pynchy_root = s.project_root
