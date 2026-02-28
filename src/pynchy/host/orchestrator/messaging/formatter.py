@@ -110,7 +110,7 @@ def format_tool_preview(tool_name: str, tool_input: dict) -> str:
     if tool_name == "Bash":
         cmd = tool_input.get("command", "")
         if cmd:
-            return f"Bash: {cmd}"
+            return f"Bash:\n```\n{cmd}\n```"
         return "Bash"
 
     if tool_name == "Read":
@@ -128,12 +128,12 @@ def format_tool_preview(tool_name: str, tool_input: dict) -> str:
         new = tool_input.get("new_string", "")
         if not old and not new:
             return header
-        parts = [header]
+        diff_lines = []
         if old:
-            parts.append(_format_lines(old.splitlines(), prefix="> -"))
+            diff_lines.append(_format_lines(old.splitlines(), prefix="-"))
         if new:
-            parts.append(_format_lines(new.splitlines(), prefix="> +"))
-        return "\n".join(parts)
+            diff_lines.append(_format_lines(new.splitlines(), prefix="+"))
+        return header + "\n```\n" + "\n".join(diff_lines) + "\n```"
 
     if tool_name == "Write":
         path = tool_input.get("file_path", "")
@@ -143,7 +143,7 @@ def format_tool_preview(tool_name: str, tool_input: dict) -> str:
         content = tool_input.get("content", "")
         if not content:
             return header
-        return header + "\n" + _format_lines(content.splitlines(), prefix="> +")
+        return header + "\n```\n" + _format_lines(content.splitlines(), prefix="+") + "\n```"
 
     if tool_name == "Grep":
         pattern = tool_input.get("pattern", "")
