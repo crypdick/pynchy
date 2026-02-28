@@ -83,19 +83,19 @@ class TestStripInternalTags:
 
 class TestFormatInternalTags:
     def test_transforms_single_block(self):
-        assert format_internal_tags("<internal>thinking</internal>") == "🧠 *thinking*"
+        assert format_internal_tags("<internal>thinking</internal>") == "🧠 _thinking_"
 
     def test_transforms_with_surrounding_text(self):
         result = format_internal_tags("hello <internal>thought</internal> world")
-        assert result == "hello 🧠 *thought*\n world"
+        assert result == "hello 🧠 _thought_\n world"
 
     def test_transforms_multiple_blocks(self):
         result = format_internal_tags("<internal>a</internal>text<internal>b</internal>")
-        assert result == "🧠 *a*\ntext🧠 *b*"
+        assert result == "🧠 _a_\ntext🧠 _b_"
 
     def test_transforms_multiline_content(self):
         result = format_internal_tags("<internal>line1\nline2</internal>")
-        assert result == "🧠 *line1\nline2*"
+        assert result == "🧠 _line1\nline2_"
 
     def test_empty_internal_block_removed(self):
         assert format_internal_tags("<internal></internal>text") == "text"
@@ -128,12 +128,12 @@ class TestFormatOutbound:
 
     def test_formats_internal_as_brain_italic(self):
         ch = self._FakeChannel(prefix_assistant_name=True)
-        assert format_outbound(ch, "<internal>hidden</internal>") == "🦞 🧠 *hidden*"
+        assert format_outbound(ch, "<internal>hidden</internal>") == "🦞 🧠 _hidden_"
 
     def test_formats_internal_and_prefixes_remaining(self):
         ch = self._FakeChannel(prefix_assistant_name=True)
         result = format_outbound(ch, "<internal>thinking</internal>The answer is 42")
-        assert result == "🦞 🧠 *thinking*\nThe answer is 42"
+        assert result == "🦞 🧠 _thinking_\nThe answer is 42"
 
 
 # --- Trigger gating with trigger mode ---
