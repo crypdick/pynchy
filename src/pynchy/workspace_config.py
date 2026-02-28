@@ -10,14 +10,20 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from pynchy.config import get_settings, reset_settings
 from pynchy.config_models import WorkspaceConfig
 from pynchy.config_refs import connection_ref_from_parts, parse_chat_ref
-from pynchy.db import create_task, get_active_task_for_group, get_all_tasks, update_task
+from pynchy.db import (
+    create_task,
+    get_active_task_for_group,
+    get_all_tasks,
+    set_workspace_profile,
+    update_task,
+)
 from pynchy.logger import logger
 from pynchy.utils import compute_next_run
 
@@ -322,6 +328,24 @@ async def reconcile_workspaces(
                 registered_jid=jid,
                 expected_jid=expected_jid,
             )
+
+        # 1b. Update existing workspace profile if config fields changed
+        if jid is not None and jid in workspaces:
+            profile = workspaces[jid]
+            changed: dict[str, Any] = {}
+            if profile.name != display_name:
+                changed["name"] = display_name
+            if profile.is_admin != config.is_admin:
+                changed["is_admin"] = config.is_admin
+            if changed:
+                updated = replace(profile, **changed)
+                workspaces[jid] = updated
+                await set_workspace_profile(updated)
+                logger.info(
+                    "Updated workspace profile",
+                    folder=folder,
+                    changed=list(changed.keys()),
+                )
 
         # 2. For periodic agents, ensure scheduled task exists and is up to date
         if not config.is_periodic:
