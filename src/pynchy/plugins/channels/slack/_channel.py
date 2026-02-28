@@ -11,8 +11,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pynchy.config import get_settings
+from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
 from pynchy.logger import logger
-from pynchy.types import InboundFetchResult, NewMessage
+from pynchy.types import InboundFetchResult, NewMessage, OutboundEvent
 
 from ._ui import (
     ASK_USER_ACTION_RE,
@@ -89,6 +90,7 @@ class SlackChannel:
         on_ask_user_answer: Callable[[str, dict], None] | None = None,
     ) -> None:
         self.name = connection_name
+        self.formatter = TextFormatter()
         self._connection_name = connection_name
         self._bot_token = bot_token
         self._app_token = app_token
@@ -149,6 +151,44 @@ class SlackChannel:
             connection=self._connection_name,
             bot_user_id=self._bot_user_id,
         )
+
+    async def send_event(self, jid: str, event: OutboundEvent) -> None:
+        """Render an outbound event and send it to the Slack channel."""
+        if not self._app or not self.owns_jid(jid):
+            return
+        rendered = self.formatter.render(event)
+        channel_id = _channel_id_from_jid(jid)
+        if rendered.blocks:
+            await self._app.client.chat_postMessage(
+                channel=channel_id, text=rendered.text, blocks=rendered.blocks
+            )
+        else:
+            chunks = split_text(rendered.text, max_len=3000)
+            for chunk in chunks:
+                await self._app.client.chat_postMessage(channel=channel_id, text=chunk)
+
+    async def post_event(self, jid: str, event: OutboundEvent) -> str | None:
+        """Post a rendered event and return its ``ts`` (message ID) for later updates."""
+        if not self._app or not self.owns_jid(jid):
+            return None
+        rendered = self.formatter.render(event)
+        channel_id = _channel_id_from_jid(jid)
+        kwargs: dict[str, Any] = {"channel": channel_id, "text": rendered.text}
+        if rendered.blocks:
+            kwargs["blocks"] = rendered.blocks
+        resp = await self._app.client.chat_postMessage(**kwargs)
+        return resp.get("ts")
+
+    async def update_event(self, jid: str, message_id: str, event: OutboundEvent) -> None:
+        """Update an existing Slack message in-place with a rendered event."""
+        if not self._app or not self.owns_jid(jid):
+            return
+        rendered = self.formatter.render(event)
+        channel_id = _channel_id_from_jid(jid)
+        kwargs: dict[str, Any] = {"channel": channel_id, "ts": message_id, "text": rendered.text}
+        if rendered.blocks:
+            kwargs["blocks"] = rendered.blocks
+        await self._app.client.chat_update(**kwargs)
 
     async def send_message(self, jid: str, text: str) -> None:
         if not self._app or not self.owns_jid(jid):
