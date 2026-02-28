@@ -183,6 +183,34 @@ class WorkspaceDefaultsConfig(_StrictModel):
     allowed_users: list[str] | None = None
 
 
+class SandboxProfileConfig(_StrictModel):
+    """Overridable sandbox config — used for sandbox_universal and sandbox_profiles.
+
+    All fields default to None ("no opinion at this tier, inherit from next").
+    Use model_fields_set to distinguish "explicitly set" from "defaulted to None".
+
+    List fields (directives, skills, mcp_servers): unioned across tiers.
+    Override fields (all others): most-specific explicitly-set value wins.
+    """
+
+    # Union fields (merged across tiers, deduplicated)
+    directives: list[str] | None = None
+    skills: list[str] | None = None
+    mcp_servers: list[str] | None = None
+
+    # Override fields (most-specific wins)
+    context_mode: Literal["group", "isolated"] | None = None
+    access: Literal["read", "write", "readwrite"] | None = None
+    mode: Literal["agent", "chat"] | None = None
+    trust: bool | None = None
+    trigger: Literal["mention", "always"] | None = None
+    allowed_users: list[str] | None = None  # override semantics, not union
+    idle_terminate: bool | None = None
+    git_policy: Literal["merge-to-main", "pull-request"] | None = None
+    security: WorkspaceSecurityTomlConfig | None = None
+    repo_access: str | None = None
+
+
 class ServiceTrustTomlConfig(_StrictModel):
     """Per-service trust config in config.toml [services.<name>]."""
 
@@ -234,6 +262,8 @@ class RepoConfig(_StrictModel):
 class WorkspaceConfig(_StrictModel):
     # FIXME: Rename "workspace" -> "sandbox" across config + codebase.
     name: str | None = None  # display name — optional, derived when omitted
+    profile: str | None = None  # sandbox_profiles.<name> reference
+    directives: list[str] | None = None  # directive names; convention: directives/<name>.md
     # TODO: Allow binding to a whole connection (not just a chat).
     chat: str | None = None  # connection.<platform>.<name>.chat.<chat>
     is_admin: bool = False
