@@ -397,6 +397,102 @@ class TestReconcileWorkspaces:
         assert len(tasks) == 1
         assert tasks[0].context_mode == "isolated"
 
+    async def test_pauses_orphaned_task_when_workspace_removed(self, db, groups_dir):
+        """Task for a removed workspace should be paused on reconciliation."""
+        # Pre-seed a task for a workspace that no longer exists in config
+        await create_task(
+            {
+                "id": "periodic-old-agent-abc123",
+                "group_folder": "old-agent",
+                "chat_jid": "old@g.us",
+                "prompt": "Do old things",
+                "schedule_type": "cron",
+                "schedule_value": "0 4 * * *",
+                "context_mode": "isolated",
+                "next_run": "2025-01-01T04:00:00",
+                "status": "active",
+                "created_at": datetime.now(UTC).isoformat(),
+            }
+        )
+
+        # Config has no workspaces — the old-agent workspace was removed
+        registered: dict[str, WorkspaceProfile] = {}
+        register_fn = AsyncMock()
+        await reconcile_workspaces(registered, [], register_fn)
+
+        tasks = await get_all_tasks()
+        assert len(tasks) == 1
+        assert tasks[0].status == "paused"
+
+    async def test_pauses_task_when_workspace_becomes_non_periodic(self, db, groups_dir):
+        """Task should be paused when workspace loses its schedule."""
+        # Workspace exists but is no longer periodic (no schedule)
+        _write_workspace_yaml(
+            groups_dir,
+            "was-periodic",
+            {
+                "is_admin": False,
+                # No schedule or prompt — not periodic anymore
+            },
+        )
+
+        await create_task(
+            {
+                "id": "periodic-was-periodic-abc123",
+                "group_folder": "was-periodic",
+                "chat_jid": "was@g.us",
+                "prompt": "Old prompt",
+                "schedule_type": "cron",
+                "schedule_value": "0 9 * * *",
+                "context_mode": "isolated",
+                "next_run": "2025-01-01T09:00:00",
+                "status": "active",
+                "created_at": datetime.now(UTC).isoformat(),
+            }
+        )
+
+        registered = {
+            "was@g.us": WorkspaceProfile(
+                jid="was@g.us",
+                name="Was Periodic",
+                folder="was-periodic",
+                trigger="@Pynchy",
+                added_at=datetime.now(UTC).isoformat(),
+            ),
+        }
+
+        register_fn = AsyncMock()
+        await reconcile_workspaces(registered, [], register_fn)
+
+        tasks = await get_all_tasks()
+        assert len(tasks) == 1
+        assert tasks[0].status == "paused"
+
+    async def test_does_not_pause_already_paused_tasks(self, db, groups_dir):
+        """Already-paused tasks should not be touched."""
+        await create_task(
+            {
+                "id": "periodic-gone-abc123",
+                "group_folder": "gone-agent",
+                "chat_jid": "gone@g.us",
+                "prompt": "Gone",
+                "schedule_type": "cron",
+                "schedule_value": "0 4 * * *",
+                "context_mode": "isolated",
+                "next_run": "2025-01-01T04:00:00",
+                "status": "paused",  # already paused
+                "created_at": datetime.now(UTC).isoformat(),
+            }
+        )
+
+        registered: dict[str, WorkspaceProfile] = {}
+        register_fn = AsyncMock()
+        await reconcile_workspaces(registered, [], register_fn)
+
+        tasks = await get_all_tasks()
+        assert len(tasks) == 1
+        assert tasks[0].status == "paused"
+
     async def test_plugin_workspace_creates_task(self, db, groups_dir, tmp_path):
         fake_pm = SimpleNamespace(
             hook=SimpleNamespace(
