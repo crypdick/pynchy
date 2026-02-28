@@ -128,7 +128,7 @@ tier: community
 | Tier | Purpose | Filtering behavior |
 |------|---------|-------------------|
 | `core` | Essential skills useful in all workspaces | Always included when any filtering is active |
-| `community` | General-purpose skills (default) | Included only when explicitly listed or no filtering is set |
+| `community` | General-purpose skills (default) | Included only when explicitly listed |
 | `dev` | Skills for developing pynchy itself | Included only when explicitly listed |
 
 Workspaces opt into skills via the `skills` config field:
@@ -138,7 +138,7 @@ Workspaces opt into skills via the `skills` config field:
 skills = ["core", "dev"]           # tier names and/or individual skill names
 ```
 
-When `skills` is not set, all skills are included (backwards compatible). When set, entries are unioned — `["core", "my-skill"]` means all core-tier skills plus `my-skill` specifically. Core is always implicit when any filtering is active.
+When `skills` is not set, only core-tier skills are included (safe default). When set, entries are unioned — `["core", "my-skill"]` means all core-tier skills plus `my-skill` specifically. Core is always implicit when any filtering is active. Use `["all"]` to include every available skill.
 
 ## pynchy_create_channel
 

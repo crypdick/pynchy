@@ -52,6 +52,7 @@ This means editing `config.toml` and restarting the service is all that's needed
 | `context_mode` | `str` | `"group"` (shared session) or `"isolated"` (fresh each time) |
 | `trigger` | `str` | `"mention"` (default) or `"always"` — whether @mention is required |
 | `name` | `str` | Display name (defaults to folder titlecased) |
+| `skills` | `list[str]` | Skill tier names and/or skill names to include; omit for core-only |
 | `security` | `dict` | MCP tool access control and rate limiting |
 
 ---
