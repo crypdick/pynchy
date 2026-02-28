@@ -40,14 +40,21 @@ if TYPE_CHECKING:
 __all__ = [
     "OutputDeps",
     "TraceBatcher",
+    "_last_result_ids",
     "broadcast_agent_input",
     "broadcast_trace",
     "get_trace_batcher",
     "handle_streamed_output",
     "init_trace_batcher",
+    "pop_last_result_ids",
 ]
 
 _trace_counter = count(1)
+
+# Per-chat outbound message IDs from the last final result.
+# Populated by _handle_final_result(), consumed by pop_last_result_ids().
+# Keyed by chat_jid -> {channel_name: raw_message_ts}.
+_last_result_ids: dict[str, dict[str, str]] = {}
 
 # Tool names whose tool_result content should be broadcast in full
 # instead of the generic "📋 tool result" placeholder.
@@ -391,6 +398,11 @@ async def _handle_final_result(
     await finalize_stream_or_broadcast(
         deps, chat_jid, channel_text, stream_ids, suppress_errors=False
     )
+
+    # Stash per-channel message IDs for post-run reactions (e.g. zzz).
+    if stream_ids:
+        _last_result_ids[chat_jid] = dict(stream_ids)
+
     deps.emit(
         MessageEvent(
             chat_jid=chat_jid,
@@ -401,6 +413,14 @@ async def _handle_final_result(
         )
     )
     return True
+
+
+def pop_last_result_ids(chat_jid: str) -> dict[str, str] | None:
+    """Pop and return per-channel outbound message IDs for the last result.
+
+    Returns None if no IDs were stashed (no text result was sent).
+    """
+    return _last_result_ids.pop(chat_jid, None)
 
 
 async def handle_streamed_output(
