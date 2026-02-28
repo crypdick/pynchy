@@ -23,6 +23,7 @@ from pynchy.chat import (
 )
 from pynchy.config import get_settings
 from pynchy.state import (
+    delete_workspace_profile,
     get_aliases_for_jid,
     get_all_aliases,
     get_all_chats,
@@ -267,6 +268,11 @@ class PynchyApp:
             name=profile.name,
             folder=profile.folder,
         )
+
+    async def _unregister_workspace(self, jid: str) -> None:
+        """Remove an orphaned workspace registration."""
+        self.workspaces.pop(jid, None)
+        await delete_workspace_profile(jid)
 
     async def get_available_groups(self) -> list[dict[str, Any]]:
         """Get available groups list for the agent, ordered by most recent activity."""

@@ -10,14 +10,20 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from pynchy.config import get_settings, reset_settings
 from pynchy.config.models import WorkspaceConfig
 from pynchy.config.refs import connection_ref_from_parts, parse_chat_ref
-from pynchy.state import create_task, get_active_task_for_group, update_task
+from pynchy.state import (
+    create_task,
+    get_active_task_for_group,
+    get_all_tasks,
+    set_workspace_profile,
+    update_task,
+)
 from pynchy.logger import logger
 from pynchy.utils import compute_next_run
 
@@ -247,11 +253,14 @@ async def reconcile_workspaces(
     register_fn: Callable[[WorkspaceProfile], Awaitable[None]],
     register_alias_fn: Callable[[str, str, str], Awaitable[None]] | None = None,
     get_channel_jid_fn: Callable[[str, str], str | None] | None = None,
+    unregister_fn: Callable[[str], Awaitable[None]] | None = None,
 ) -> None:
-    """Ensure tasks + chat groups exist for workspaces defined in config.toml.
+    """Ensure workspace state matches config.toml — create, update, AND clean up.
 
-    Idempotent — safe to run on every startup. Creates chat groups for
-    any workspace with no DB entry, and manages scheduled tasks for periodic agents.
+    Idempotent — safe to run on every startup. For each config-driven resource:
+      1. Workspace registrations — create missing, remove orphaned
+      2. Scheduled tasks — create missing, update changed, pause orphaned
+      3. Channel aliases — create missing (TODO: clean up orphaned)
     """
     from pynchy.types import WorkspaceProfile
 
@@ -320,6 +329,24 @@ async def reconcile_workspaces(
                 expected_jid=expected_jid,
             )
 
+        # 1b. Update existing workspace profile if config fields changed
+        if jid is not None and jid in workspaces:
+            profile = workspaces[jid]
+            changed: dict[str, Any] = {}
+            if profile.name != display_name:
+                changed["name"] = display_name
+            if profile.is_admin != config.is_admin:
+                changed["is_admin"] = config.is_admin
+            if changed:
+                updated = replace(profile, **changed)
+                workspaces[jid] = updated
+                await set_workspace_profile(updated)
+                logger.info(
+                    "Updated workspace profile",
+                    folder=folder,
+                    changed=list(changed.keys()),
+                )
+
         # 2. For periodic agents, ensure scheduled task exists and is up to date
         if not config.is_periodic:
             reconciled += 1
@@ -374,6 +401,32 @@ async def reconcile_workspaces(
 
     if reconciled:
         logger.info("Workspaces reconciled", count=reconciled)
+
+    # 3. Pause orphaned tasks — workspace removed from config or no longer periodic
+    periodic_folders = {f for f, sp in specs.items() if sp.config.is_periodic}
+    all_tasks = await get_all_tasks()
+    for task in all_tasks:
+        if task.status == "active" and task.group_folder not in periodic_folders:
+            await update_task(task.id, {"status": "paused"})
+            logger.info(
+                "Paused orphaned scheduled task",
+                task_id=task.id,
+                folder=task.group_folder,
+            )
+
+    # 4. Remove orphaned workspace registrations — in DB but not in config.
+    #    Admin workspaces are exempt: created dynamically at first boot without
+    #    a config entry.
+    if unregister_fn is not None:
+        config_folders = set(specs.keys())
+        for jid, profile in list(workspaces.items()):
+            if profile.folder not in config_folders and not profile.is_admin:
+                await unregister_fn(jid)
+                logger.info(
+                    "Removed orphaned workspace registration",
+                    folder=profile.folder,
+                    jid=jid,
+                )
 
 
 # ---------------------------------------------------------------------------
