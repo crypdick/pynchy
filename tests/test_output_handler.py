@@ -30,7 +30,6 @@ def _make_deps() -> MagicMock:
     ch.is_connected.return_value = True
     ch.send_message = AsyncMock()
     deps.channels = [ch]
-    deps.get_channel_jid = MagicMock(return_value=None)
     deps._test_channel = ch  # Expose for test assertions
     return deps
 
@@ -553,8 +552,7 @@ class TestHandleStreamedOutput:
         ch.send_message = AsyncMock()
         ch.owns_jid = MagicMock(return_value=True)
         deps.channels = [ch]
-        deps.get_channel_jid = MagicMock(return_value=None)
-
+    
         # Initialize the trace batcher so it captures tool traces
         init_trace_batcher(deps, cooldown=30)
 
@@ -597,8 +595,7 @@ class TestHandleStreamedOutput:
         ch.send_message = AsyncMock()
         ch.owns_jid = MagicMock(return_value=True)
         deps.channels = [ch]
-        deps.get_channel_jid = MagicMock(return_value=None)
-
+    
         # Initialize the trace batcher with a long cooldown so it doesn't
         # auto-flush during the test.
         init_trace_batcher(deps, cooldown=999)
@@ -670,8 +667,7 @@ class TestHandleStreamedOutput:
         ch.send_message = AsyncMock(side_effect=_send)
         ch.owns_jid = MagicMock(return_value=True)
         deps.channels = [ch]
-        deps.get_channel_jid = MagicMock(return_value=None)
-
+    
         # Use a long cooldown so the batcher only flushes when we force it
         init_trace_batcher(deps, cooldown=999)
 

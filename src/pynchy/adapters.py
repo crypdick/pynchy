@@ -39,7 +39,6 @@ class MessageBroadcaster:
     def __init__(
         self,
         channels: Callable[[], list[Channel]] | list[Channel],
-        get_channel_jid_fn: Callable[[str, str], str | None] | None = None,
         workspaces: Callable[[], dict] | dict | None = None,
     ) -> None:
         # Accept either a list or a callable returning a list.
@@ -48,7 +47,6 @@ class MessageBroadcaster:
         self._get_channels: Callable[[], list[Channel]] = (
             channels if callable(channels) else lambda: channels
         )
-        self._get_channel_jid_fn = get_channel_jid_fn
         self._get_workspaces: Callable[[], dict] = (
             workspaces if callable(workspaces) else lambda: workspaces or {}
         )
@@ -64,12 +62,6 @@ class MessageBroadcaster:
     def workspaces(self) -> dict:
         """Return current workspaces dict (satisfies BusDeps protocol)."""
         return self._get_workspaces()
-
-    def get_channel_jid(self, canonical_jid: str, channel_name: str) -> str | None:
-        """Resolve canonical JID to channel-specific alias (satisfies BusDeps protocol)."""
-        if self._get_channel_jid_fn is not None:
-            return self._get_channel_jid_fn(canonical_jid, channel_name)
-        return None
 
     # -- Broadcast methods --
 

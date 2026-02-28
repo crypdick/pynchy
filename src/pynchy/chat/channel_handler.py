@@ -22,8 +22,6 @@ class ChannelDeps(Protocol):
     @property
     def channels(self) -> list[Channel]: ...
 
-    def get_channel_jid(self, canonical_jid: str, channel_name: str) -> str | None: ...
-
 
 async def send_reaction_to_channels(
     deps: ChannelDeps, chat_jid: str, message_id: str, sender: str, emoji: str
@@ -31,7 +29,7 @@ async def send_reaction_to_channels(
     """Send a reaction emoji to a message on all channels that support it."""
     for ch in deps.channels:
         if ch.is_connected() and hasattr(ch, "send_reaction"):
-            target_jid = resolve_target_jid(deps, chat_jid, ch)
+            target_jid = resolve_target_jid(chat_jid, ch)
             if not target_jid:
                 continue
             try:
@@ -44,7 +42,7 @@ async def set_typing_on_channels(deps: ChannelDeps, chat_jid: str, is_typing: bo
     """Set typing indicator on all channels that support it."""
     for ch in deps.channels:
         if ch.is_connected() and hasattr(ch, "set_typing"):
-            target_jid = resolve_target_jid(deps, chat_jid, ch)
+            target_jid = resolve_target_jid(chat_jid, ch)
             if not target_jid:
                 continue
             try:
