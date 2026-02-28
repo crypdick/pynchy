@@ -185,7 +185,7 @@ Note: use `args`, not `cmd` — `cmd` can appear empty for zombie processes.
 
 MCP tool servers (e.g., Playwright) run as separate Docker containers managed by `McpManager`. They start on-demand when an agent needs them and stop after the configured `idle_timeout`.
 
-See `src/pynchy/container_runner/mcp_manager.py` and [MCP management](../docs/architecture/mcp-management.md).
+See `src/pynchy/host/container_manager/mcp/` and [MCP management](../docs/architecture/mcp-management.md).
 
 ## Database Files
 

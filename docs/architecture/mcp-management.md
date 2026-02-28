@@ -46,6 +46,6 @@ config.toml
 
 | File | Purpose |
 |------|---------|
-| `src/pynchy/config_mcp.py` | MCP config models (`McpServerConfig`) |
-| `src/pynchy/container_runner/mcp_manager.py` | MCP lifecycle, LiteLLM sync, team provisioning |
-| `src/pynchy/container_runner/_docker.py` | Shared Docker helpers |
+| `src/pynchy/config/mcp.py` | MCP config models (`McpServerConfig`) |
+| `src/pynchy/host/container_manager/mcp/` | MCP lifecycle, LiteLLM sync, team provisioning |
+| `src/pynchy/host/container_manager/_docker.py` | Shared Docker helpers |
