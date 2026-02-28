@@ -516,7 +516,7 @@ class TestPollingHelpers:
     def test_host_container_files_changed_true(self):
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
-                args=[], returncode=0, stdout="container/Dockerfile\n"
+                args=[], returncode=0, stdout="src/pynchy/agent/Dockerfile\n"
             )
             assert _host_container_files_changed("abc", "def") is True
 
@@ -536,7 +536,7 @@ class TestNeedsDeploy:
         """src/ changes require a deploy."""
         with patch("subprocess.run") as mock_run:
             # files_changed_between calls git diff --name-only with path filter.
-            # First call (container/) returns empty, second (src/) returns a file.
+            # First call (src/pynchy/agent/) returns empty, second (src/) returns a file.
             mock_run.side_effect = [
                 subprocess.CompletedProcess(args=[], returncode=0, stdout=""),
                 subprocess.CompletedProcess(args=[], returncode=0, stdout="src/pynchy/app.py\n"),
@@ -544,15 +544,15 @@ class TestNeedsDeploy:
             assert needs_deploy("aaa", "bbb") is True
 
     def test_needs_deploy_container_changes(self):
-        """container/ changes require a deploy."""
+        """src/pynchy/agent/ changes require a deploy."""
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
-                args=[], returncode=0, stdout="container/Dockerfile\n"
+                args=[], returncode=0, stdout="src/pynchy/agent/Dockerfile\n"
             )
             assert needs_deploy("aaa", "bbb") is True
 
     def test_needs_deploy_no_relevant_changes(self):
-        """Changes outside src/ and container/ don't need a deploy."""
+        """Changes outside src/ don't need a deploy."""
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
             assert needs_deploy("aaa", "bbb") is False
@@ -564,10 +564,10 @@ class TestNeedsDeploy:
             assert needs_container_rebuild("aaa", "bbb") is False
 
     def test_needs_container_rebuild_container_changes(self):
-        """container/ changes need a container rebuild."""
+        """src/pynchy/agent/ changes need a container rebuild."""
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
-                args=[], returncode=0, stdout="container/Dockerfile\n"
+                args=[], returncode=0, stdout="src/pynchy/agent/Dockerfile\n"
             )
             assert needs_container_rebuild("aaa", "bbb") is True
 

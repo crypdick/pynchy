@@ -388,9 +388,9 @@ class TestDetectTimezone:
 
 class TestCronJobConfig:
     def test_valid_cron_job(self):
-        cfg = CronJobConfig(schedule="0 5 * * *", command="./container/build.sh")
+        cfg = CronJobConfig(schedule="0 5 * * *", command="./src/pynchy/agent/build.sh")
         assert cfg.schedule == "0 5 * * *"
-        assert cfg.command == "./container/build.sh"
+        assert cfg.command == "./src/pynchy/agent/build.sh"
         assert cfg.timeout_seconds == 600
         assert cfg.enabled is True
 

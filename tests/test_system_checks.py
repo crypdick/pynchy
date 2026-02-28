@@ -51,8 +51,8 @@ class TestEnsureContainerSystemRunning:
         build_ok = MagicMock(returncode=0)
 
         # Create a fake Dockerfile
-        container_dir = tmp_path / "container"
-        container_dir.mkdir()
+        container_dir = tmp_path / "src" / "pynchy" / "agent"
+        container_dir.mkdir(parents=True)
         (container_dir / "Dockerfile").touch()
 
         with (
@@ -73,8 +73,8 @@ class TestEnsureContainerSystemRunning:
         inspect_fail = MagicMock(returncode=1)
 
         # No Dockerfile exists
-        container_dir = tmp_path / "container"
-        container_dir.mkdir()
+        container_dir = tmp_path / "src" / "pynchy" / "agent"
+        container_dir.mkdir(parents=True)
 
         with (
             patch("pynchy.plugins.runtimes.system_checks.get_runtime", return_value=mock_runtime),
@@ -92,8 +92,8 @@ class TestEnsureContainerSystemRunning:
         inspect_fail = MagicMock(returncode=1)
         build_fail = MagicMock(returncode=1)
 
-        container_dir = tmp_path / "container"
-        container_dir.mkdir()
+        container_dir = tmp_path / "src" / "pynchy" / "agent"
+        container_dir.mkdir(parents=True)
         (container_dir / "Dockerfile").touch()
 
         with (

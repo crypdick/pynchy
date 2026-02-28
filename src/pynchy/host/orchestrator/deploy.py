@@ -25,12 +25,12 @@ class BuildResult:
 
 
 def build_container_image(*, timeout: int = 600) -> BuildResult:
-    """Run container/build.sh to rebuild the container image.
+    """Run src/pynchy/agent/build.sh to rebuild the container image.
 
     Returns a BuildResult so callers can decide how to handle success/failure.
     This is the single code path for all container image rebuilds.
     """
-    build_script = get_settings().project_root / "container" / "build.sh"
+    build_script = get_settings().project_root / "src" / "pynchy" / "agent" / "build.sh"
     if not build_script.exists():
         logger.warning("Container rebuild requested but build.sh not found")
         return BuildResult(success=True, skipped=True)
@@ -38,7 +38,7 @@ def build_container_image(*, timeout: int = 600) -> BuildResult:
     logger.info("Rebuilding container image...")
     result = subprocess.run(
         [str(build_script)],
-        cwd=str(get_settings().project_root / "container"),
+        cwd=str(get_settings().project_root / "src" / "pynchy" / "agent"),
         capture_output=True,
         text=True,
         timeout=timeout,

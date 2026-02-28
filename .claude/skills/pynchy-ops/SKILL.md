@@ -150,7 +150,7 @@ Apple Container's buildkit caches the build context aggressively. `--no-cache` a
 
 ```bash
 container builder stop && container builder rm && container builder start
-./container/build.sh
+./src/pynchy/agent/build.sh
 ```
 
 Verify: `container run -i --rm --entrypoint python pynchy-agent:latest -c "import agent_runner; print('OK')"`

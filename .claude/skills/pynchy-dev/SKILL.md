@@ -16,10 +16,10 @@ Check `hostname`. If it returns `pynchy-server`, you're on the server and can ac
 ```bash
 uv run pynchy            # Run the app
 uv run pytest tests/     # Run tests
-uv run ruff check --fix src/ container/agent_runner/src/  # Lint + autofix
-uv run ruff format src/ container/agent_runner/src/       # Format
+uv run ruff check --fix src/  # Lint + autofix
+uv run ruff format src/       # Format
 uvx pre-commit run --all-files  # Run all pre-commit hooks
-./container/build.sh     # Rebuild agent container
+./src/pynchy/agent/build.sh     # Rebuild agent container
 ```
 
 ## Documentation Lookup
@@ -68,7 +68,7 @@ sqlite3 data/messages.db "
 
 ## OpenAI Shell Tool Pitfall
 
-If the OpenAI backend shows `/bin/sh: Syntax error: word unexpected (expecting ")")` for shell tool calls, the shell executor is likely receiving a `ShellCommandRequest(...)` object and trying to run its repr. Ensure `_make_shell_executor` in `container/agent_runner/src/agent_runner/cores/openai.py` extracts `command` from object/mapping shapes (including parsing repr when needed).
+If the OpenAI backend shows `/bin/sh: Syntax error: word unexpected (expecting ")")` for shell tool calls, the shell executor is likely receiving a `ShellCommandRequest(...)` object and trying to run its repr. Ensure `_make_shell_executor` in `src/pynchy/agent/agent_runner/src/agent_runner/cores/openai.py` extracts `command` from object/mapping shapes (including parsing repr when needed).
 
 If OpenAI tool calls show up with empty `tool_input` in `events`, the `tool_call_item.raw_item` usually carries the data. Common `raw_item.type` values:
 `shell_call` (uses `action.commands`), `local_shell_call` (uses `action.command` list), `apply_patch_call` (uses `operation`), and `function_call`/`mcp_call` (uses JSON `arguments`). Parse those fields before falling back to generic mappings.

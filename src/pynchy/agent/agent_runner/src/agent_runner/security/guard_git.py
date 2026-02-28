@@ -1,6 +1,6 @@
 """BEFORE_TOOL_USE hook: block git push/pull/rebase inside containers.
 
-Port of container/scripts/guard_git.sh. Agents must use the
+Port of src/pynchy/agent/scripts/guard_git.sh. Agents must use the
 sync_worktree_to_main MCP tool instead.
 """
 

@@ -15,7 +15,7 @@ class ClaudeAgentCorePlugin:
     """Built-in plugin for Claude SDK agent core.
 
     This is the default agent core that uses Anthropic's Claude Agent SDK.
-    The implementation lives in container/agent_runner/src/agent_runner/cores/claude.py
+    The implementation lives in src/pynchy/agent/agent_runner/src/agent_runner/cores/claude.py
     and is already baked into the container image.
     """
 

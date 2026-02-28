@@ -1,5 +1,5 @@
 # Notebook MCP server — Jupyter kernel execution in a sandboxed container.
-# Build: docker build -t pynchy-mcp-notebook -f container/mcp/notebook.Dockerfile .
+# Build: docker build -t pynchy-mcp-notebook -f src/pynchy/agent/mcp/notebook.Dockerfile .
 FROM python:3.13-slim
 
 # Install uv so agents can `uv pip install --system <pkg>` from notebook cells.
@@ -22,7 +22,7 @@ RUN uv pip install --system \
     "numpy>=1.26"
 
 # Copy only the notebook_server package — no pynchy imports needed.
-COPY src/pynchy/integrations/plugins/notebook_server /app/notebook_server
+COPY src/pynchy/plugins/integrations/notebook_server /app/notebook_server
 
 WORKDIR /app
 EXPOSE 8460 8888

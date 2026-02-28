@@ -121,8 +121,8 @@ def _host_update_main(repo_root: Path, env: dict[str, str] | None = None) -> boo
 
 
 def _host_container_files_changed(old_sha: str, new_sha: str) -> bool:
-    """Check if container/ files changed between two commits."""
-    return files_changed_between(old_sha, new_sha, "container/")
+    """Check if agent-side files changed between two commits."""
+    return files_changed_between(old_sha, new_sha, "src/pynchy/agent/")
 
 
 def _host_source_files_changed(old_sha: str, new_sha: str) -> bool:
@@ -142,7 +142,7 @@ def needs_deploy(old_sha: str, new_sha: str) -> bool:
 
 
 def needs_container_rebuild(old_sha: str, new_sha: str) -> bool:
-    """Check if container image needs rebuilding. Only container/ changes require this."""
+    """Check if container image needs rebuilding. Only src/pynchy/agent/ changes require this."""
     return _host_container_files_changed(old_sha, new_sha)
 
 
