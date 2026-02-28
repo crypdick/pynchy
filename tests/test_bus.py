@@ -35,7 +35,6 @@ def _make_channel(
 def _make_deps(channels: list | None = None) -> MagicMock:
     deps = MagicMock()
     deps.channels = channels or []
-    deps.get_channel_jid = MagicMock(return_value=None)
     deps.workspaces = {}
     return deps
 
@@ -78,27 +77,6 @@ class TestBroadcast:
         ch2.send_message.assert_awaited_once_with("group@g.us", "hello")
 
     @pytest.mark.asyncio
-    async def test_uses_jid_alias_when_available(self):
-        ch = _make_channel(name="slack")
-        deps = _make_deps([ch])
-        deps.get_channel_jid.return_value = "slack-alias-jid"
-
-        await broadcast(deps, "group@g.us", "hello")
-
-        ch.send_message.assert_awaited_once_with("slack-alias-jid", "hello")
-        deps.get_channel_jid.assert_called_with("group@g.us", "slack")
-
-    @pytest.mark.asyncio
-    async def test_falls_back_to_canonical_jid_when_no_alias(self):
-        ch = _make_channel(name="wa")
-        deps = _make_deps([ch])
-        deps.get_channel_jid.return_value = None
-
-        await broadcast(deps, "group@g.us", "hello")
-
-        ch.send_message.assert_awaited_once_with("group@g.us", "hello")
-
-    @pytest.mark.asyncio
     async def test_suppress_errors_catches_network_errors(self):
         ch = _make_channel()
         ch.send_message.side_effect = OSError("network down")
@@ -138,24 +116,22 @@ class TestBroadcast:
         ch2.send_message.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_skips_channel_without_alias_that_doesnt_own_jid(self):
-        """Channels that don't own the canonical JID and have no alias should be skipped."""
+    async def test_skips_channel_that_doesnt_own_jid(self):
+        """Channels that don't own the canonical JID should be skipped."""
         ch = _make_channel(name="slack")
         ch.owns_jid = MagicMock(return_value=False)
         deps = _make_deps([ch])
-        deps.get_channel_jid.return_value = None  # no alias
 
         await broadcast(deps, "group@g.us", "hello")
 
         ch.send_message.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_sends_when_channel_owns_jid_without_alias(self):
-        """Channel that owns the canonical JID directly should still receive messages."""
+    async def test_sends_when_channel_owns_jid(self):
+        """Channel that owns the canonical JID should receive messages."""
         ch = _make_channel(name="whatsapp")
         ch.owns_jid = MagicMock(return_value=True)
         deps = _make_deps([ch])
-        deps.get_channel_jid.return_value = None  # no alias needed
 
         await broadcast(deps, "group@g.us", "hello")
 
@@ -220,17 +196,6 @@ class TestFinalizeStreamOrBroadcast:
         ch_normal.send_message.assert_awaited_once_with("group@g.us", "final text")
 
     @pytest.mark.asyncio
-    async def test_uses_jid_alias_for_non_streaming_fallback(self):
-        """Non-streaming fallback within finalize should resolve JID aliases."""
-        ch = _make_channel(name="slack")
-        deps = _make_deps([ch])
-        deps.get_channel_jid.return_value = "slack-alias"
-
-        await finalize_stream_or_broadcast(deps, "group@g.us", "final text", {"other": "x"})
-
-        ch.send_message.assert_awaited_once_with("slack-alias", "final text")
-
-    @pytest.mark.asyncio
     async def test_skips_disconnected_channels_in_fallback(self):
         ch = _make_channel(name="wa", connected=False)
         deps = _make_deps([ch])
@@ -259,12 +224,11 @@ class TestFinalizeStreamOrBroadcast:
         await finalize_stream_or_broadcast(deps, "group@g.us", "final text", {"other": "x"})
 
     @pytest.mark.asyncio
-    async def test_finalize_skips_channel_without_alias(self):
-        """Non-streaming channel without alias or JID ownership should be skipped."""
+    async def test_finalize_skips_channel_without_ownership(self):
+        """Non-streaming channel without JID ownership should be skipped."""
         ch = _make_channel(name="slack")
         ch.owns_jid = MagicMock(return_value=False)
         deps = _make_deps([ch])
-        deps.get_channel_jid.return_value = None
 
         await finalize_stream_or_broadcast(deps, "group@g.us", "text", {"other": "x"})
 

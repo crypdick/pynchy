@@ -89,13 +89,6 @@ CREATE TABLE IF NOT EXISTS host_jobs (
 CREATE INDEX IF NOT EXISTS idx_host_jobs_next_run ON host_jobs(next_run);
 CREATE INDEX IF NOT EXISTS idx_host_jobs_status ON host_jobs(status);
 
-CREATE TABLE IF NOT EXISTS jid_aliases (
-    alias_jid TEXT PRIMARY KEY,
-    canonical_jid TEXT NOT NULL,
-    channel_name TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_jid_aliases_canonical ON jid_aliases(canonical_jid);
-
 CREATE TABLE IF NOT EXISTS channel_cursors (
     channel_name  TEXT NOT NULL,
     chat_jid      TEXT NOT NULL,
@@ -296,30 +289,10 @@ async def _seed_channel_cursors(database: aiosqlite.Connection) -> None:
         return
 
     now = datetime.now(UTC).isoformat()
-    # Seed an inbound cursor for every channel that has an alias for each group.
-    # We also seed from the canonical JID itself if it looks channel-native.
-    alias_cursor = await database.execute(
-        "SELECT alias_jid, canonical_jid, channel_name FROM jid_aliases"
-    )
-    alias_rows = await alias_cursor.fetchall()
     seen: set[tuple[str, str]] = set()
-    for _alias_jid, canonical_jid, channel_name in alias_rows:
-        ts = agent_timestamps.get(canonical_jid)
-        if not ts:
-            continue
-        key = (channel_name, canonical_jid)
-        if key in seen:
-            continue
-        seen.add(key)
-        await database.execute(
-            "INSERT OR IGNORE INTO channel_cursors"
-            " (channel_name, chat_jid, direction, cursor_value, updated_at)"
-            " VALUES (?, ?, 'inbound', ?, ?)",
-            (channel_name, canonical_jid, ts, now),
-        )
 
-    # Also seed for canonical JIDs that are themselves channel-native
-    # (e.g. slack:C123 workspaces with no alias).
+    # Seed for canonical JIDs that are themselves channel-native
+    # (e.g. slack:C123 workspaces with channel-native JIDs).
     groups_cursor = await database.execute("SELECT jid FROM registered_groups")
     group_rows = await groups_cursor.fetchall()
     for (jid,) in group_rows:

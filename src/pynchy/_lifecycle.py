@@ -192,8 +192,6 @@ async def _reconcile_state(app: PynchyApp) -> dict[str, list[str]]:
         workspaces=app.workspaces,
         channels=app.channels,
         register_fn=app._register_workspace,
-        register_alias_fn=app.register_jid_alias,
-        get_channel_jid_fn=app.get_channel_jid,
         unregister_fn=app._unregister_workspace,
     )
 
