@@ -31,6 +31,9 @@ ENV PYTHONUNBUFFERED=1
 # Install claude-code globally
 RUN npm install -g @anthropic-ai/claude-code && npm cache clean --force
 
+# Install Claude Code plugins (loaded via Agent SDK's plugins option at runtime)
+RUN git clone --depth 1 https://github.com/obra/superpowers.git /opt/plugins/superpowers
+
 # Create app directory
 WORKDIR /app
 
