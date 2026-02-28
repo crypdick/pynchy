@@ -2,7 +2,7 @@
 
 Registers a Docker-based MCP server that provides Jupyter notebook creation,
 execution, and management. Kernel execution runs inside a sandboxed container
-built from ``container/mcp/notebook.Dockerfile``.
+built from ``src/pynchy/agent/mcp/notebook.Dockerfile``.
 
 Heavy dependencies (JupyterLab, ipykernel, FastMCP) are baked into the Docker
 image — they never load in the main pynchy process.
@@ -28,7 +28,7 @@ class NotebookServerPlugin:
             "name": "notebook",
             "type": "docker",
             "image": "pynchy-mcp-notebook:latest",
-            "dockerfile": "container/mcp/notebook.Dockerfile",
+            "dockerfile": "src/pynchy/agent/mcp/notebook.Dockerfile",
             "args": ["--workspace-dir", "/workspace"],
             "port": 8460,
             "extra_ports": [8888],

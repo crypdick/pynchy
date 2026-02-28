@@ -89,7 +89,7 @@ def _sync_skills(
     *,
     workspace_skills: list[str] | None = None,
 ) -> None:
-    """Copy container/skills/ and plugin skills into the session's .claude/skills/ directory.
+    """Copy agent/skills/ and plugin skills into the session's .claude/skills/ directory.
 
     Args:
         session_dir: Path to the .claude directory for this session
@@ -101,7 +101,7 @@ def _sync_skills(
     skills_dst.mkdir(parents=True, exist_ok=True)
 
     # Copy built-in skills
-    skills_src = s.project_root / "container" / "skills"
+    skills_src = s.project_root / "src" / "pynchy" / "agent" / "skills"
     if skills_src.exists():
         for skill_dir in skills_src.iterdir():
             if not skill_dir.is_dir():
@@ -171,8 +171,8 @@ def _write_settings_json(session_dir: Path) -> None:
         },
     }
 
-    # Merge hook config from container/scripts/settings.json
-    hook_settings_file = get_settings().project_root / "container" / "scripts" / "settings.json"
+    # Merge hook config from agent/scripts/settings.json
+    hook_settings_file = get_settings().project_root / "src" / "pynchy" / "agent" / "scripts" / "settings.json"
     if hook_settings_file.exists():
         try:
             hook_settings = json.loads(hook_settings_file.read_text())

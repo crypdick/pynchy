@@ -1,4 +1,4 @@
-"""Tests for container/agent_runner/src/agent_runner/main.py.
+"""Tests for src/pynchy/agent/agent_runner/src/agent_runner/main.py.
 
 Tests core functions: build_sdk_messages, event_to_output, ContainerOutput,
 ContainerInput, should_close, drain_ipc_input, build_core_config.
@@ -8,14 +8,14 @@ from __future__ import annotations
 
 import json
 
-# We need to adjust the import path since agent_runner lives in container/
+# We need to adjust the import path since agent_runner lives in src/pynchy/agent/
 import sys
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "container" / "agent_runner" / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src"))
 
 from agent_runner.core import AgentEvent
 from agent_runner.ipc import drain_ipc_input, should_close

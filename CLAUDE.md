@@ -33,7 +33,7 @@ Python process that connects to messaging channels (WhatsApp, Slack, etc. via pl
 | `src/pynchy/logger.py` | Structured logging (structlog) |
 | `directives/` | System prompt directive markdown files |
 | `groups/{name}/` | Per-group workspace files (isolated) |
-| `container/skills/` | Agent skills with YAML frontmatter (tier, name, description) |
+| `src/pynchy/agent/skills/` | Agent skills with YAML frontmatter (tier, name, description) |
 | `backlog/TODO.md` | Work item index — one-line items linking to plan files in status folders |
 
 ## Detailed Guides

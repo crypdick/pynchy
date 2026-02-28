@@ -54,7 +54,7 @@ class McpServerConfig(BaseModel):
     # Docker fields
     image: str | None = None
     # Relative path from project root to a local Dockerfile (e.g.,
-    # "container/mcp/notebook.Dockerfile"). When set, the MCP manager builds
+    # "src/pynchy/agent/mcp/notebook.Dockerfile"). When set, the MCP manager builds
     # the image locally instead of pulling from a registry.
     dockerfile: str | None = None
     # Additional ports to publish beyond the primary MCP port (e.g., JupyterLab on 8888).

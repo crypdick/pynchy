@@ -8,7 +8,7 @@ try:
     from pathlib import Path
 
     # Add container agent_runner to path for testing
-    container_path = Path(__file__).parent.parent / "container" / "agent_runner" / "src"
+    container_path = Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src"
     if container_path.exists():
         sys.path.insert(0, str(container_path))
 

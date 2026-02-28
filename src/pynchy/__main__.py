@@ -40,7 +40,7 @@ def _build() -> None:
 
     s = get_settings()
     runtime = get_runtime()
-    container_dir = s.project_root / "container"
+    container_dir = s.project_root / "src" / "pynchy" / "agent"
 
     if not (container_dir / "Dockerfile").exists():
         print(f"Error: No Dockerfile at {container_dir / 'Dockerfile'}", file=sys.stderr)

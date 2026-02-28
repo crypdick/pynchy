@@ -17,7 +17,7 @@ hookimpl = pluggy.HookimplMarker("pynchy")
 class OpenAIAgentCorePlugin:
     """Built-in plugin for OpenAI Agents SDK agent core.
 
-    The implementation lives in container/agent_runner/src/agent_runner/cores/openai.py
+    The implementation lives in src/pynchy/agent/agent_runner/src/agent_runner/cores/openai.py
     and is baked into the container image alongside the Claude core.
     """
 

@@ -153,8 +153,8 @@ async def _handle_deploy(request: web.Request) -> web.Response:
                 status=422,
             )
 
-    # 5. Rebuild container image if container/ files changed
-    if has_new_code and files_changed_between(old_sha, new_sha, "container/"):
+    # 5. Rebuild container image if src/pynchy/agent/ files changed
+    if has_new_code and files_changed_between(old_sha, new_sha, "src/pynchy/agent/"):
         from pynchy.host.orchestrator.deploy import build_container_image
 
         build = await asyncio.to_thread(build_container_image)

@@ -1,4 +1,4 @@
-# container/agent_runner/tests/test_guard_git_hook.py
+# src/pynchy/agent/agent_runner/tests/test_guard_git_hook.py
 
 import pytest
 

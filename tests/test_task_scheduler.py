@@ -734,7 +734,7 @@ class TestHostCronJobs:
                 cron_jobs={
                     "rebuild_container": CronJobConfig(
                         schedule="0 5 * * *",
-                        command="./container/build.sh",
+                        command="./src/pynchy/agent/build.sh",
                     )
                 },
             ),
@@ -750,7 +750,7 @@ class TestHostCronJobs:
 
         mock_spawn.assert_awaited_once()
         args = mock_spawn.await_args
-        assert args.args[0] == "./container/build.sh"
+        assert args.args[0] == "./src/pynchy/agent/build.sh"
 
     @pytest.mark.asyncio
     async def test_skips_disabled_host_cron_job(self):

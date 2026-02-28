@@ -71,7 +71,7 @@ def _build_volume_mounts(
     mounts.append(VolumeMount(str(group_ipc_dir), "/workspace/ipc", readonly=False))
 
     # Guard scripts (read-only: hook script + settings overlay)
-    scripts_dir = s.project_root / "container" / "scripts"
+    scripts_dir = s.project_root / "src" / "pynchy" / "agent" / "scripts"
     if scripts_dir.exists():
         mounts.append(VolumeMount(str(scripts_dir), "/workspace/scripts", readonly=True))
 
@@ -81,7 +81,7 @@ def _build_volume_mounts(
         mounts.append(VolumeMount(str(env_dir), "/workspace/env-dir", readonly=True))
 
     # Agent-runner source (read-only, Python source for container)
-    agent_runner_src = s.project_root / "container" / "agent_runner" / "src"
+    agent_runner_src = s.project_root / "src" / "pynchy" / "agent" / "agent_runner" / "src"
     mounts.append(VolumeMount(str(agent_runner_src), "/app/src", readonly=True))
 
     # Admin groups get a read-write mount of the actual host repo root.

@@ -97,8 +97,8 @@ def _deploy_changes_definition() -> Tool | None:
                     "type": "boolean",
                     "default": False,
                     "description": (
-                        "Set true only if container/Dockerfile or "
-                        "container/entrypoint.sh changed. "
+                        "Set true only if src/pynchy/agent/Dockerfile or "
+                        "src/pynchy/agent/entrypoint.sh changed. "
                         "Code/dependency changes use false (default)."
                     ),
                 },

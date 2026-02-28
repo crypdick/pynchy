@@ -80,7 +80,7 @@ markers = [
     "parity: channel parity tests — verify output consistency across TUI, WhatsApp, and Slack",
 ]
 
-# Mirrored in: container/agent_runner/pyproject.toml
+# Mirrored in: src/pynchy/agent/agent_runner/pyproject.toml
 [tool.ruff]
 target-version = "py313"
 line-length = 100

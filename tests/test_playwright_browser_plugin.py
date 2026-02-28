@@ -50,7 +50,9 @@ class TestSkillContent:
     def test_skill_md_has_frontmatter(self):
         skill_md = (
             Path(__file__).resolve().parent.parent
-            / "container"
+            / "src"
+            / "pynchy"
+            / "agent"
             / "skills"
             / "browser-control"
             / "SKILL.md"

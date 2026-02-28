@@ -1009,7 +1009,7 @@ class TestSyncSkills:
     def test_copies_builtin_skills(self, tmp_path: Path):
         """Built-in skills are copied to the session .claude/skills/ dir."""
         # Create a built-in skill
-        builtin_skill = tmp_path / "container" / "skills" / "my-skill"
+        builtin_skill = tmp_path / "src" / "pynchy" / "agent" / "skills" / "my-skill"
         builtin_skill.mkdir(parents=True)
         (builtin_skill / "skill.md").write_text("# My Skill\nDo stuff.")
         (builtin_skill / "config.json").write_text('{"name": "my-skill"}')
@@ -1026,7 +1026,7 @@ class TestSyncSkills:
         assert (skills_dst / "config.json").exists()
 
     def test_no_skills_dir_is_safe(self, tmp_path: Path):
-        """Missing container/skills/ dir should not crash."""
+        """Missing agent/skills/ dir should not crash."""
         session_dir = tmp_path / "session" / ".claude"
         session_dir.mkdir(parents=True)
 
@@ -1062,7 +1062,7 @@ class TestSyncSkills:
     def test_plugin_skill_name_collision_raises(self, tmp_path: Path):
         """Plugin skill that shadows a built-in skill raises ValueError."""
         # Create built-in skill
-        builtin_skill = tmp_path / "container" / "skills" / "my-skill"
+        builtin_skill = tmp_path / "src" / "pynchy" / "agent" / "skills" / "my-skill"
         builtin_skill.mkdir(parents=True)
         (builtin_skill / "skill.md").write_text("built-in")
 
@@ -1104,8 +1104,8 @@ class TestSyncSkills:
             _sync_skills(session_dir, plugin_manager=FakePM())
 
     def test_ignores_files_in_skills_dir(self, tmp_path: Path):
-        """Files (not directories) in container/skills/ are ignored."""
-        skills_dir = tmp_path / "container" / "skills"
+        """Files (not directories) in agent/skills/ are ignored."""
+        skills_dir = tmp_path / "src" / "pynchy" / "agent" / "skills"
         skills_dir.mkdir(parents=True)
         (skills_dir / "README.md").write_text("not a skill dir")
 
@@ -1228,7 +1228,7 @@ class TestSyncSkillsFiltering:
 
     def test_none_copies_core_only(self, tmp_path: Path):
         """workspace_skills=None copies only core-tier skills (safe default)."""
-        skills_src = tmp_path / "container" / "skills"
+        skills_src = tmp_path / "src" / "pynchy" / "agent" / "skills"
         self._create_skill(skills_src, "browser", "core")
         self._create_skill(skills_src, "improver", "dev")
         self._create_skill(skills_src, "extra", "community")
@@ -1244,7 +1244,7 @@ class TestSyncSkillsFiltering:
 
     def test_core_only_filters_correctly(self, tmp_path: Path):
         """workspace_skills=["core"] copies only core-tier skills."""
-        skills_src = tmp_path / "container" / "skills"
+        skills_src = tmp_path / "src" / "pynchy" / "agent" / "skills"
         self._create_skill(skills_src, "browser", "core")
         self._create_skill(skills_src, "improver", "dev")
         self._create_skill(skills_src, "extra", "community")
@@ -1260,7 +1260,7 @@ class TestSyncSkillsFiltering:
 
     def test_core_plus_dev(self, tmp_path: Path):
         """workspace_skills=["core", "dev"] copies core + dev skills."""
-        skills_src = tmp_path / "container" / "skills"
+        skills_src = tmp_path / "src" / "pynchy" / "agent" / "skills"
         self._create_skill(skills_src, "browser", "core")
         self._create_skill(skills_src, "improver", "dev")
         self._create_skill(skills_src, "extra", "community")
@@ -1276,7 +1276,7 @@ class TestSyncSkillsFiltering:
 
     def test_core_plus_specific_name(self, tmp_path: Path):
         """workspace_skills=["core", "extra"] includes core tier + named skill."""
-        skills_src = tmp_path / "container" / "skills"
+        skills_src = tmp_path / "src" / "pynchy" / "agent" / "skills"
         self._create_skill(skills_src, "browser", "core")
         self._create_skill(skills_src, "improver", "dev")
         self._create_skill(skills_src, "extra", "community")
@@ -1292,7 +1292,7 @@ class TestSyncSkillsFiltering:
 
     def test_all_copies_everything(self, tmp_path: Path):
         """workspace_skills=["all"] is equivalent to None."""
-        skills_src = tmp_path / "container" / "skills"
+        skills_src = tmp_path / "src" / "pynchy" / "agent" / "skills"
         self._create_skill(skills_src, "browser", "core")
         self._create_skill(skills_src, "improver", "dev")
 
@@ -1377,8 +1377,8 @@ class TestWriteSettingsJson:
         assert settings["env"]["CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"] == "1"
 
     def test_merges_hook_config(self, tmp_path: Path):
-        """Hook settings from container/scripts/settings.json are merged."""
-        scripts_dir = tmp_path / "container" / "scripts"
+        """Hook settings from agent/scripts/settings.json are merged."""
+        scripts_dir = tmp_path / "src" / "pynchy" / "agent" / "scripts"
         scripts_dir.mkdir(parents=True)
         (scripts_dir / "settings.json").write_text(
             json.dumps(
@@ -1408,7 +1408,7 @@ class TestWriteSettingsJson:
 
     def test_survives_malformed_hook_config(self, tmp_path: Path):
         """Invalid JSON in hook settings doesn't crash — falls back gracefully."""
-        scripts_dir = tmp_path / "container" / "scripts"
+        scripts_dir = tmp_path / "src" / "pynchy" / "agent" / "scripts"
         scripts_dir.mkdir(parents=True)
         (scripts_dir / "settings.json").write_text("not valid json {{{")
 

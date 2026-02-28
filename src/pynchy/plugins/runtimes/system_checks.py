@@ -23,7 +23,7 @@ def ensure_container_system_running() -> None:
         capture_output=True,
     )
     if result.returncode != 0:
-        container_dir = s.project_root / "container"
+        container_dir = s.project_root / "src" / "pynchy" / "agent"
         if not (container_dir / "Dockerfile").exists():
             raise RuntimeError(
                 f"Container image '{image}' not found and "
