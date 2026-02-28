@@ -96,6 +96,7 @@ _P_BUILD = "pynchy.host.orchestrator.agent_runner._build_container_input"
 _P_SPAWN = "pynchy.host.orchestrator.agent_runner._spawn_container"
 _P_CREATE = "pynchy.host.orchestrator.agent_runner.create_session"
 _P_DESTROY = "pynchy.host.orchestrator.agent_runner.destroy_session"
+_P_CLEAR_SESSION = "pynchy.host.orchestrator.agent_runner.clear_session"
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +136,7 @@ class TestScheduledTaskUsesSession:
             patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session) as mock_cs,
             patch(_P_DESTROY, new_callable=AsyncMock),
+            patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
         ):
             await self._call()
 
@@ -153,6 +155,7 @@ class TestScheduledTaskUsesSession:
             patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
             patch(_P_DESTROY, new_callable=AsyncMock),
+            patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
         ):
             await self._call()
 
@@ -166,6 +169,7 @@ class TestScheduledTaskUsesSession:
             patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
             patch(_P_DESTROY, new_callable=AsyncMock),
+            patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
         ):
             await self._call()
 
@@ -189,6 +193,7 @@ class TestScheduledTaskUsesSession:
             patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
             patch(_P_DESTROY, new_callable=AsyncMock) as mock_destroy,
+            patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
         ):
             result = await self._call()
 
@@ -208,6 +213,7 @@ class TestScheduledTaskUsesSession:
             patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
             patch(_P_DESTROY, new_callable=AsyncMock),
+            patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
         ):
             result = await self._call()
 
@@ -223,6 +229,7 @@ class TestScheduledTaskUsesSession:
             patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
             patch(_P_DESTROY, new_callable=AsyncMock) as mock_destroy,
+            patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
         ):
             await self._call()
 
@@ -246,6 +253,7 @@ class TestScheduledTaskUsesSession:
             patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
             patch(_P_DESTROY, new_callable=AsyncMock),
+            patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
         ):
             await self._call()
 
@@ -259,7 +267,62 @@ class TestScheduledTaskUsesSession:
             patch(_P_BUILD, return_value=MagicMock(spec=ContainerInput)),
             patch(_P_SPAWN, new_callable=AsyncMock, side_effect=OSError("docker not found")),
             patch(_P_DESTROY, new_callable=AsyncMock),
+            patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
         ):
             result = await self._call()
 
         assert result == "error"
+
+    # ------------------------------------------------------------------
+    # Phase 2: Deploy resume — CancelledError preserves session
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_cancelled_error_does_not_destroy_session(self):
+        """On CancelledError (deploy SIGTERM), session should NOT be destroyed
+        so deploy continuation can resume the task on restart."""
+        self.fake_session.wait_for_query_done.side_effect = asyncio.CancelledError()
+
+        with (
+            patch(_P_BUILD, return_value=MagicMock(spec=ContainerInput)),
+            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
+            patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
+            patch(_P_DESTROY, new_callable=AsyncMock) as mock_destroy,
+            pytest.raises(asyncio.CancelledError),
+        ):
+            await self._call()
+
+        mock_destroy.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_cancelled_error_preserves_deps_sessions(self):
+        """On CancelledError, deps.sessions should NOT be popped so the
+        session_id is captured in deploy_continuation.json."""
+        self.deps.sessions["test-group"] = "some-session-id"
+        self.fake_session.wait_for_query_done.side_effect = asyncio.CancelledError()
+
+        with (
+            patch(_P_BUILD, return_value=MagicMock(spec=ContainerInput)),
+            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
+            patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
+            patch(_P_DESTROY, new_callable=AsyncMock),
+            pytest.raises(asyncio.CancelledError),
+        ):
+            await self._call()
+
+        assert "test-group" in self.deps.sessions
+
+    @pytest.mark.asyncio
+    async def test_normal_completion_clears_db_session(self):
+        """On normal completion, clear_session should be called to prevent
+        stale session_ids from accumulating in the DB."""
+        with (
+            patch(_P_BUILD, return_value=MagicMock(spec=ContainerInput)),
+            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
+            patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
+            patch(_P_DESTROY, new_callable=AsyncMock),
+            patch(_P_CLEAR_SESSION, new_callable=AsyncMock) as mock_clear,
+        ):
+            await self._call()
+
+        mock_clear.assert_awaited_once_with("test-group")

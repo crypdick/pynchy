@@ -8,6 +8,7 @@ Supports two execution paths:
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
@@ -33,7 +34,7 @@ from pynchy.host.container_manager.orchestrator import (
 from pynchy.host.git_ops.repo import get_repo_context
 from pynchy.host.git_ops.utils import count_unpushed_commits, is_repo_dirty
 from pynchy.logger import logger
-from pynchy.state import get_all_host_jobs, get_all_tasks, set_session
+from pynchy.state import clear_session, get_all_host_jobs, get_all_tasks, set_session
 from pynchy.types import ContainerInput, ContainerOutput
 
 if TYPE_CHECKING:
@@ -501,9 +502,13 @@ async def _run_scheduled_task(
 
     Pre-container setup and session teardown are handled by run_agent before
     this is called.  Uses _spawn_and_await for the spawn/session/wait sequence.
+
+    On CancelledError (deploy SIGTERM), the session is preserved so
+    deploy_continuation can resume the task on restart.
     """
     input_data = _build_container_input(messages, ctx, chat_jid, group, is_scheduled_task=True)
     container_name = oneshot_container_name(group.folder)
+    _interrupted = False
 
     try:
         return await _spawn_and_await(
@@ -516,12 +521,20 @@ async def _run_scheduled_task(
             idle_timeout=0.0,
             label="scheduled task",
         )
+    except asyncio.CancelledError:
+        # Deploy SIGTERM — preserve session for resume on restart.
+        # finalize_deploy captures active_sessions BEFORE sending SIGTERM,
+        # so the session_id is already in deploy_continuation.json.
+        _interrupted = True
+        raise
     except Exception:
         logger.exception("Scheduled task error", group=group.name)
         return "error"
     finally:
-        # Clean up the session created by the one-shot container.
-        # Without this, the workspace appears "active" and receives
-        # deploy resume messages that trigger unnecessary agent runs.
-        await destroy_session(group.folder)
-        deps.sessions.pop(group.folder, None)
+        if not _interrupted:
+            # Clean up the session created by the one-shot container.
+            # Without this, the workspace appears "active" and receives
+            # deploy resume messages that trigger unnecessary agent runs.
+            await destroy_session(group.folder)
+            await clear_session(group.folder)
+            deps.sessions.pop(group.folder, None)

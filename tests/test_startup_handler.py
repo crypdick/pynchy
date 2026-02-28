@@ -199,8 +199,11 @@ class TestCheckDeployContinuation:
     """Tests for check_deploy_continuation — inject resume messages on deploy."""
 
     @pytest.mark.asyncio
-    async def test_skips_periodic_workspace(self, tmp_path, monkeypatch):
-        """Periodic workspaces should NOT receive deploy resume messages."""
+    async def test_resumes_both_periodic_and_interactive(self, tmp_path, monkeypatch):
+        """Both periodic and interactive workspaces with active sessions should
+        receive deploy resume messages.  The active_sessions dict already
+        filters to workspaces that were running at deploy time — idle periodic
+        workspaces have no session (cleared on completion)."""
         periodic_jid = "slack:PERIODIC"
         interactive_jid = "slack:INTERACTIVE"
 
@@ -251,12 +254,11 @@ class TestCheckDeployContinuation:
 
         await check_deploy_continuation(deps)
 
-        # Only the interactive workspace should get a resume notice
-        deps.broadcast_system_notice.assert_awaited_once()
-        call_jid = deps.broadcast_system_notice.call_args[0][0]
-        assert call_jid == interactive_jid
-        assert len(deps.queue.enqueued) == 1
-        assert deps.queue.enqueued[0] == interactive_jid
+        # BOTH workspaces should get resume notices
+        assert deps.broadcast_system_notice.await_count == 2
+        notified_jids = {call[0][0] for call in deps.broadcast_system_notice.call_args_list}
+        assert notified_jids == {periodic_jid, interactive_jid}
+        assert set(deps.queue.enqueued) == {periodic_jid, interactive_jid}
 
     @pytest.mark.asyncio
     async def test_resumes_interactive_workspace(self, tmp_path, monkeypatch):

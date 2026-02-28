@@ -198,27 +198,15 @@ async def check_deploy_continuation(deps: StartupDeps) -> None:
     commit_msg = get_head_commit_message(50)
     label = f"{sha_short} {commit_msg}".strip() if commit_msg else sha_short
 
-    from pynchy.host.orchestrator.workspace_config import load_workspace_config
-
     for jid, _session_id in active_sessions.items():
-        # Skip periodic (scheduled) workspaces — they don't need deploy
-        # resumption since they'll run at their next scheduled time.
-        # Without this guard, every deploy injects a user-visible message
-        # that triggers a full agent run (burning tokens for no reason).
-        group = deps.workspaces.get(jid)
-        if group:
-            ws_config = load_workspace_config(group.folder)
-            if ws_config and ws_config.is_periodic:
-                logger.debug(
-                    "Skipping deploy resume for periodic workspace",
-                    chat_jid=jid,
-                    group=group.folder,
-                )
-                continue
-
         # Active session existed before deploy → send as system notice
         # (visible to both user and LLM). broadcast_system_notice stores
         # the message, broadcasts to channels, and enqueues a message check.
+        #
+        # Note: periodic workspaces are NOT skipped here. The active_sessions
+        # dict already filters to workspaces that were running at deploy time.
+        # Idle periodic workspaces have no session (cleared on completion),
+        # so they won't appear here. Only interrupted tasks need resuming.
         notice = f"Deploy complete -- {label}. {resume_prompt}"
         await deps.broadcast_system_notice(jid, notice)
         deps.queue.enqueue_message_check(jid)
