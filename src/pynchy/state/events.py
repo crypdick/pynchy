@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
-from pynchy.db._connection import _get_db
+from pynchy.state.connection import _get_db
 
 
 async def store_event(

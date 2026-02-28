@@ -20,7 +20,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.db import _init_test_database, get_all_host_jobs, get_all_tasks
+from pynchy.state import _init_test_database, get_all_host_jobs, get_all_tasks
 from pynchy.ipc._handlers_groups import (
     _handle_create_periodic_agent,
     _handle_register_group,

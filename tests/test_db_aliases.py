@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from pynchy.db import (
+from pynchy.state import (
     _init_test_database,
     get_aliases_for_jid,
     get_all_aliases,

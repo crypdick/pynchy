@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from pynchy.db._connection import _get_db, atomic_write
+from pynchy.state.connection import _get_db, atomic_write
 
 
 async def get_channel_cursor(channel_name: str, chat_jid: str, direction: str) -> str:

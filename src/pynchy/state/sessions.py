@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pynchy.db._connection import _get_db, atomic_write
+from pynchy.state.connection import _get_db, atomic_write
 
 # --- Router state ---
 

@@ -17,7 +17,7 @@ import pytest
 from conftest import make_settings
 
 from pynchy.app import PynchyApp
-from pynchy.db import _init_test_database, get_chat_history, store_message
+from pynchy.state import _init_test_database, get_chat_history, store_message
 from pynchy.types import NewMessage, WorkspaceProfile
 
 _CR_ORCH = "pynchy.container_runner._orchestrator"
@@ -588,7 +588,7 @@ class TestStatePersistence:
         assert app2.last_agent_timestamp == {"group@g.us": "2024-06-01T11:00:00Z"}
 
     async def test_load_state_handles_corrupted_json(self, app: PynchyApp):
-        from pynchy.db import set_router_state
+        from pynchy.state import set_router_state
 
         await set_router_state("last_agent_timestamp", "not valid json")
 

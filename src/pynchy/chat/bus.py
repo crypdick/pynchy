@@ -54,7 +54,7 @@ async def _record_to_ledger(
     if not channel_names:
         return None
     try:
-        from pynchy.db import record_outbound
+        from pynchy.state import record_outbound
 
         return await record_outbound(chat_jid, text, source, channel_names)
     except Exception:
@@ -66,7 +66,7 @@ async def _mark_success(ledger_id: int | None, channel_name: str) -> None:
     if ledger_id is None:
         return
     try:
-        from pynchy.db import mark_delivered
+        from pynchy.state import mark_delivered
 
         await mark_delivered(ledger_id, channel_name)
     except Exception:
@@ -77,7 +77,7 @@ async def _mark_error(ledger_id: int | None, channel_name: str, error: str) -> N
     if ledger_id is None:
         return
     try:
-        from pynchy.db import mark_delivery_error
+        from pynchy.state import mark_delivery_error
 
         await mark_delivery_error(ledger_id, channel_name, error)
     except Exception:

@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.db import (
+from pynchy.state import (
     _init_test_database,
     create_host_job,
     create_task,
@@ -1281,7 +1281,7 @@ class TestScheduleHostJobMissingFields:
             True,
             deps,
         )
-        from pynchy.db import get_all_host_jobs
+        from pynchy.state import get_all_host_jobs
 
         assert len(await get_all_host_jobs()) == 0
 
@@ -1297,6 +1297,6 @@ class TestScheduleHostJobMissingFields:
             True,
             deps,
         )
-        from pynchy.db import get_all_host_jobs
+        from pynchy.state import get_all_host_jobs
 
         assert len(await get_all_host_jobs()) == 0

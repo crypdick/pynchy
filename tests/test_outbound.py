@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from pynchy.db import (
+from pynchy.state import (
     _init_test_database,
     gc_delivered,
     get_pending_outbound,
@@ -12,7 +12,7 @@ from pynchy.db import (
     mark_delivery_error,
     record_outbound,
 )
-from pynchy.db._connection import _get_db
+from pynchy.state.connection import _get_db
 
 
 @pytest.fixture()

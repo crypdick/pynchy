@@ -27,9 +27,9 @@ def _patch_settings(*, data_dir: Path):
         patch("pynchy.deploy.get_settings", return_value=s),
         # finalize_deploy() persists deploy metadata via set_router_state(),
         # which requires an initialized DB.  Mock it out for unit tests.
-        # Patch on pynchy.db (the re-export) so the local import inside
+        # Patch on pynchy.state (the re-export) so the local import inside
         # finalize_deploy picks up the mock.
-        patch("pynchy.db.set_router_state", new_callable=AsyncMock),
+        patch("pynchy.state.set_router_state", new_callable=AsyncMock),
     ):
         yield
 

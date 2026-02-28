@@ -15,7 +15,7 @@ from pynchy.config.models import (
     WorkspaceConfig,
     WorkspaceSecurityTomlConfig,
 )
-from pynchy.db import _init_test_database
+from pynchy.state import _init_test_database
 from pynchy.integrations.plugins.caldav import (
     _handle_create_event,
     _handle_delete_event,

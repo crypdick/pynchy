@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pynchy.db._connection import _get_db
+from pynchy.state.connection import _get_db
 
 
 async def set_jid_alias(alias_jid: str, canonical_jid: str, channel_name: str) -> None:

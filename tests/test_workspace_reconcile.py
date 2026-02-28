@@ -15,7 +15,7 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config import CommandCenterConfig, WorkspaceConfig
-from pynchy.db import _init_test_database, create_task, get_active_task_for_group, get_all_tasks
+from pynchy.state import _init_test_database, create_task, get_active_task_for_group, get_all_tasks
 from pynchy.types import WorkspaceProfile
 from pynchy.workspace_config import (
     configure_plugin_workspaces,

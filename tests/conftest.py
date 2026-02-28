@@ -178,7 +178,7 @@ def _close_test_database():
     close the loop before an async session fixture can tear down.
     """
     yield
-    import pynchy.db._connection as db_conn
+    import pynchy.state.connection as db_conn
 
     if db_conn._db is not None:
         db_conn._db.stop()

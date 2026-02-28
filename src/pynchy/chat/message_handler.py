@@ -24,7 +24,7 @@ from pynchy.chat.commands import (
     is_redeploy,
 )
 from pynchy.config import get_settings
-from pynchy.db import get_messages_since, store_message_direct
+from pynchy.state import get_messages_since, store_message_direct
 from pynchy.event_bus import AgentActivityEvent, MessageEvent
 from pynchy.git_ops.utils import is_repo_dirty
 from pynchy.logger import logger

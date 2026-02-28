@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from pynchy.db import _init_test_database
+from pynchy.state import _init_test_database
 from pynchy.ipc._watcher import _process_output_file
 from pynchy.types import ContainerOutput
 

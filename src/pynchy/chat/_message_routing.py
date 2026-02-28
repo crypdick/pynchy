@@ -21,7 +21,7 @@ from pynchy.chat.message_handler import (
     intercept_special_command,
 )
 from pynchy.config import get_settings
-from pynchy.db import get_messages_since, get_new_messages
+from pynchy.state import get_messages_since, get_new_messages
 from pynchy.logger import logger
 from pynchy.utils import create_background_task
 

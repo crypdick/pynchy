@@ -28,7 +28,7 @@ from neonize.utils.jid import Jid2String
 
 from pynchy.chat.pending_questions import find_pending_for_jid
 from pynchy.config import get_settings
-from pynchy.db import (
+from pynchy.state import (
     get_chat_jids_by_name,
     get_last_group_sync,
     set_last_group_sync,

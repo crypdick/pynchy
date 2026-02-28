@@ -25,7 +25,7 @@ from pynchy.chat.channel_runtime import (
     resolve_default_channel,
 )
 from pynchy.config import get_settings
-from pynchy.db import init_database, store_chat_metadata
+from pynchy.state import init_database, store_chat_metadata
 from pynchy.logger import logger
 from pynchy.utils import create_background_task
 

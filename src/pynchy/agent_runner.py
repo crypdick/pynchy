@@ -30,7 +30,7 @@ from pynchy.container_runner._orchestrator import (
     resolve_container_timeout,
     stable_container_name,
 )
-from pynchy.db import get_all_host_jobs, get_all_tasks, set_session
+from pynchy.state import get_all_host_jobs, get_all_tasks, set_session
 from pynchy.git_ops.repo import get_repo_context
 from pynchy.git_ops.utils import count_unpushed_commits, is_repo_dirty
 from pynchy.logger import logger

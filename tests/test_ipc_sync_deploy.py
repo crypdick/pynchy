@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.db import _init_test_database
+from pynchy.state import _init_test_database
 from pynchy.git_ops.repo import RepoContext
 from pynchy.ipc import dispatch
 from pynchy.ipc._handlers_deploy import _handle_deploy

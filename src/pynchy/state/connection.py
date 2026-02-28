@@ -1,7 +1,7 @@
 """Database connection and write utilities.
 
 Single module-level connection, initialized by init_database().
-Schema definition and migrations live in :mod:`_schema`.
+Schema definition and migrations live in :mod:`schema`.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from typing import Any
 import aiosqlite
 
 from pynchy.config import get_settings
-from pynchy.db._schema import create_schema
+from pynchy.state.schema import create_schema
 
 _db: aiosqlite.Connection | None = None
 

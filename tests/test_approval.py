@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
-from pynchy.db import _init_test_database
+from pynchy.state import _init_test_database
 
 
 @pytest.fixture

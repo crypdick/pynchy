@@ -9,7 +9,7 @@ from typing import Any
 from croniter import croniter
 
 from pynchy.config import get_settings
-from pynchy.db import create_task
+from pynchy.state import create_task
 from pynchy.ipc._deps import IpcDeps
 from pynchy.ipc._registry import register
 from pynchy.logger import logger
