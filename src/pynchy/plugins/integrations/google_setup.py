@@ -39,7 +39,7 @@ from typing import Any
 
 import pluggy
 
-from pynchy.integrations.browser import (
+from pynchy.plugins.integrations.browser import (
     chrome_path,
     has_display,
     profile_dir,

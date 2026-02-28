@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pynchy.integrations.plugins.playwright_browser import PlaywrightBrowserPlugin
+from pynchy.plugins.integrations.playwright_browser import PlaywrightBrowserPlugin
 
 
 class TestMcpServerSpec:
@@ -74,5 +74,5 @@ class TestPluginRegistration:
         ]
         assert len(entries) == 1
         mod_path, cls_name, _ = entries[0]
-        assert mod_path == "pynchy.integrations.plugins.playwright_browser"
+        assert mod_path == "pynchy.plugins.integrations.playwright_browser"
         assert cls_name == "PlaywrightBrowserPlugin"

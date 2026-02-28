@@ -99,7 +99,7 @@ async def shutdown_app(app: PynchyApp, sig_name: str) -> None:
 async def _initialize_core(app: PynchyApp) -> None:
     """Plugins, gateway, database, observers, memory, state."""
     from pynchy.plugins import get_plugin_manager
-    from pynchy.runtime.system_checks import ensure_container_system_running
+    from pynchy.plugins.runtimes.system_checks import ensure_container_system_running
     from pynchy.service_installer import install_service
     from pynchy.workspace_config import configure_plugin_workspaces
 
@@ -116,8 +116,8 @@ async def _initialize_core(app: PynchyApp) -> None:
     await init_database()
     logger.info("Database initialized")
 
-    from pynchy.memory import get_memory_provider
-    from pynchy.observers import attach_observers
+    from pynchy.plugins.memory import get_memory_provider
+    from pynchy.plugins.observers import attach_observers
 
     app._observers = attach_observers(app.event_bus)
 
@@ -222,7 +222,7 @@ async def _start_subsystems(app: PynchyApp, repo_groups: dict[str, list[str]]) -
     from pynchy.ipc import start_ipc_watcher
     from pynchy.status import record_start_time
     from pynchy.task_scheduler import start_scheduler_loop
-    from pynchy.tunnels import check_tunnels
+    from pynchy.plugins.tunnels import check_tunnels
 
     s = get_settings()
 

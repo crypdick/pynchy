@@ -1,7 +1,7 @@
 """Observer system for pynchy event capture.
 
 Observers subscribe to the EventBus and persist or process events.
-Built-in observers live under ``observers/plugins/``.
+Built-in observers live under ``plugins/observers/``.
 """
 
 from __future__ import annotations

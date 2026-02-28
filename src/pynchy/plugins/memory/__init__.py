@@ -1,7 +1,7 @@
 """Memory subsystem for pynchy.
 
 Provides persistent, searchable memory storage per workspace.
-Built-in backends live under ``memory/plugins/``.
+Built-in backends live under ``plugins/memory/``.
 """
 
 from __future__ import annotations

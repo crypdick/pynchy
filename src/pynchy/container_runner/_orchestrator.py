@@ -18,7 +18,7 @@ from pynchy.config import get_settings
 from pynchy.container_runner._mounts import _build_container_args, _build_volume_mounts
 from pynchy.container_runner._serialization import _input_to_dict
 from pynchy.logger import logger
-from pynchy.runtime.runtime import get_runtime
+from pynchy.plugins.runtimes.detection import get_runtime
 from pynchy.types import ContainerInput, VolumeMount, WorkspaceProfile
 
 # ---------------------------------------------------------------------------
