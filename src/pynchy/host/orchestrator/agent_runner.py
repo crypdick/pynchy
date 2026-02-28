@@ -30,10 +30,10 @@ from pynchy.host.container_manager.orchestrator import (
     resolve_container_timeout,
     stable_container_name,
 )
-from pynchy.state import get_all_host_jobs, get_all_tasks, set_session
 from pynchy.host.git_ops.repo import get_repo_context
 from pynchy.host.git_ops.utils import count_unpushed_commits, is_repo_dirty
 from pynchy.logger import logger
+from pynchy.state import get_all_host_jobs, get_all_tasks, set_session
 from pynchy.types import ContainerInput, ContainerOutput
 
 if TYPE_CHECKING:

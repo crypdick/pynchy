@@ -17,7 +17,6 @@ This package is split into domain-specific submodules:
 
 # Re-export every public symbol so that `from pynchy.state import X` keeps working.
 
-from pynchy.state.connection import _get_db, _init_test_database, init_database
 from pynchy.state.channel_cursors import (
     advance_cursors_atomic,
     get_channel_cursor,
@@ -34,6 +33,7 @@ from pynchy.state.chats import (
     store_chat_metadata,
     update_chat_name,
 )
+from pynchy.state.connection import _get_db, _init_test_database, init_database
 from pynchy.state.events import store_event
 from pynchy.state.groups import (
     delete_workspace_profile,

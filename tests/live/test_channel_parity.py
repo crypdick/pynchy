@@ -22,16 +22,16 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from pynchy.host.orchestrator.adapters import HostMessageBroadcaster, MessageBroadcaster
-from pynchy.host.orchestrator.messaging.sender import broadcast as broadcast_to_channels
 from pynchy.host.orchestrator.messaging.channel_handler import (
     send_reaction_to_channels,
     set_typing_on_channels,
 )
+from pynchy.host.orchestrator.messaging.formatter import format_outbound
 from pynchy.host.orchestrator.messaging.router import (
     broadcast_agent_input,
     handle_streamed_output,
 )
-from pynchy.host.orchestrator.messaging.formatter import format_outbound
+from pynchy.host.orchestrator.messaging.sender import broadcast as broadcast_to_channels
 from pynchy.types import ContainerOutput, WorkspaceProfile
 
 from .conftest import (
@@ -346,7 +346,9 @@ class TestAgentOutputParity:
             new_session_id="s1",
         )
 
-        with patch("pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock):
+        with patch(
+            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
+        ):
             sent = await handle_streamed_output(deps, CHAT_JID, group, result)
 
         assert sent is True, "handle_streamed_output should return True for text result"
@@ -379,7 +381,9 @@ class TestAgentOutputParity:
             new_session_id="s1",
         )
 
-        with patch("pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock):
+        with patch(
+            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
+        ):
             sent = await handle_streamed_output(deps, CHAT_JID, group, result)
 
         assert sent is True
@@ -415,7 +419,9 @@ class TestAgentOutputParity:
             thinking="Let me consider this carefully...",
         )
 
-        with patch("pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock):
+        with patch(
+            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
+        ):
             sent = await handle_streamed_output(deps, CHAT_JID, group, result)
 
         assert sent is False  # Thinking traces don't count as user-visible results
@@ -502,7 +508,9 @@ class TestAgentOutputParity:
             tool_result_is_error=False,
         )
 
-        with patch("pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock):
+        with patch(
+            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
+        ):
             await handle_streamed_output(deps, CHAT_JID, group, result)
 
         # All channels should get the tool result indicator
@@ -534,7 +542,9 @@ class TestAgentOutputParity:
             system_data={"reason": "manual"},
         )
 
-        with patch("pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock):
+        with patch(
+            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
+        ):
             await handle_streamed_output(deps, CHAT_JID, group, result)
 
         # Non-init system events should reach channels
@@ -564,7 +574,9 @@ class TestAgentOutputParity:
             system_data={"session_id": "abc123"},
         )
 
-        with patch("pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock):
+        with patch(
+            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
+        ):
             await handle_streamed_output(deps, CHAT_JID, group, result)
 
         # Init should be suppressed from ALL channels

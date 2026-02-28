@@ -20,10 +20,13 @@ from __future__ import annotations
 from typing import Any
 
 from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_chat_jid
-from pynchy.logger import logger
-from pynchy.host.container_manager.security.approval import create_pending_approval, format_approval_notification
+from pynchy.host.container_manager.security.approval import (
+    create_pending_approval,
+    format_approval_notification,
+)
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.host.container_manager.security.cop import inspect_outbound
+from pynchy.logger import logger
 
 
 async def cop_gate(
@@ -70,9 +73,7 @@ async def cop_gate(
             f"\U0001f46e FAIL {operation}: {verdict.reason}",
         )
     else:
-        await deps.broadcast_host_message(
-            chat_jid, f"\U0001f46e pass {operation}"
-        )
+        await deps.broadcast_host_message(chat_jid, f"\U0001f46e pass {operation}")
 
     if not verdict.flagged:
         return True

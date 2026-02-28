@@ -18,7 +18,6 @@ from typing import Any, Protocol
 from aiohttp import web
 
 from pynchy.config import get_settings
-from pynchy.host.orchestrator.deploy import finalize_deploy
 from pynchy.host.git_ops.utils import (
     files_changed_between,
     get_head_commit_message,
@@ -27,8 +26,9 @@ from pynchy.host.git_ops.utils import (
     push_local_commits,
     run_git,
 )
-from pynchy.logger import logger
+from pynchy.host.orchestrator.deploy import finalize_deploy
 from pynchy.host.orchestrator.status import StatusDeps, collect_status
+from pynchy.logger import logger
 from pynchy.types import NewMessage
 
 _start_time = time.monotonic()

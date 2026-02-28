@@ -15,7 +15,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
-from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command, handle_pending_query
+from pynchy.config import get_settings
+from pynchy.event_bus import AgentActivityEvent, MessageEvent
+from pynchy.host.git_ops.utils import is_repo_dirty
+from pynchy.host.orchestrator.messaging.approval_handler import (
+    handle_approval_command,
+    handle_pending_query,
+)
 from pynchy.host.orchestrator.messaging.commands import (
     is_approval_command,
     is_context_reset,
@@ -23,12 +29,9 @@ from pynchy.host.orchestrator.messaging.commands import (
     is_pending_query,
     is_redeploy,
 )
-from pynchy.config import get_settings
-from pynchy.state import get_messages_since, store_message_direct
-from pynchy.event_bus import AgentActivityEvent, MessageEvent
-from pynchy.host.git_ops.utils import is_repo_dirty
 from pynchy.host.orchestrator.messaging.router import pop_last_result_ids
 from pynchy.logger import logger
+from pynchy.state import get_messages_since, store_message_direct
 from pynchy.utils import generate_message_id, run_shell_command
 
 if TYPE_CHECKING:

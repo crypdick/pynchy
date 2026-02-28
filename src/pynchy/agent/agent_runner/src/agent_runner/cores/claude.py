@@ -266,8 +266,7 @@ class ClaudeAgentCore:
 
         # Plugin BEFORE_TOOL_USE hooks from agnostic hook system
         plugin_pre_tool_hooks = [
-            _wrap_before_tool_use(fn)
-            for fn in agnostic_hooks.get(HookEvent.BEFORE_TOOL_USE, [])
+            _wrap_before_tool_use(fn) for fn in agnostic_hooks.get(HookEvent.BEFORE_TOOL_USE, [])
         ]
 
         all_pre_tool_hooks = builtin_pre_tool_hooks + plugin_pre_tool_hooks
@@ -277,9 +276,7 @@ class ClaudeAgentCore:
                 claude_hooks["PreToolUse"] = []
             # Single HookMatcher that matches all tools — hooks run in order,
             # first deny wins.
-            claude_hooks["PreToolUse"].append(
-                HookMatcher(hooks=all_pre_tool_hooks)
-            )
+            claude_hooks["PreToolUse"].append(HookMatcher(hooks=all_pre_tool_hooks))
 
         # Build allowed tools list
         allowed_tools = [

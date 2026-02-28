@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from pynchy.host.container_manager.security.gate import create_gate
 from pynchy.host.container_manager.security import gate as _gate_mod
+from pynchy.host.container_manager.security.gate import create_gate
 from pynchy.types import WorkspaceSecurity
 
 

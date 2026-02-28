@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from pynchy.config import get_settings
-from pynchy.state import get_messages_since
 from pynchy.host.git_ops.utils import get_head_commit_message, get_head_sha, is_repo_dirty, run_git
 from pynchy.logger import logger
+from pynchy.state import get_messages_since
 from pynchy.types import WorkspaceProfile, WorkspaceSecurity
 from pynchy.utils import write_json_atomic
 

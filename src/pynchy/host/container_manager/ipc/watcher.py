@@ -15,11 +15,11 @@ from watchdog.events import FileCreatedEvent, FileMovedEvent, FileSystemEventHan
 from watchdog.observers import Observer
 
 from pynchy.config import get_settings
-from pynchy.host.container_manager.process import OnOutput, is_query_done_pulse
-from pynchy.host.container_manager.serialization import _parse_container_output
 from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.host.container_manager.ipc.protocol import parse_ipc_file, validate_signal
 from pynchy.host.container_manager.ipc.registry import dispatch
+from pynchy.host.container_manager.process import OnOutput, is_query_done_pulse
+from pynchy.host.container_manager.serialization import _parse_container_output
 from pynchy.logger import logger
 
 _ipc_watcher_lock = asyncio.Lock()
@@ -420,7 +420,9 @@ async def _process_queue(
             elif subdir == "output":
                 await _process_output_file(file_path, source_group, ipc_base_dir)
             elif subdir == "approval_decisions":
-                from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
+                from pynchy.host.container_manager.ipc.handlers_approval import (
+                    process_approval_decision,
+                )
 
                 await process_approval_decision(file_path, source_group, deps=deps)
         except Exception:

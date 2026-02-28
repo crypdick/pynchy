@@ -27,6 +27,7 @@ from typing import Any
 
 import pluggy
 
+from pynchy.logger import logger
 from pynchy.plugins.integrations.browser import (
     check_browser_plugin_deps,
     chrome_path,
@@ -36,7 +37,6 @@ from pynchy.plugins.integrations.browser import (
     start_virtual_display,
     stop_procs,
 )
-from pynchy.logger import logger
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 

@@ -160,7 +160,9 @@ class TestInterceptSpecialCommand:
         deps = _make_deps(groups={"g@g.us": group})
         msg = _make_message("reset context")
 
-        with patch("pynchy.host.orchestrator.messaging.pipeline.is_context_reset", return_value=True):
+        with patch(
+            "pynchy.host.orchestrator.messaging.pipeline.is_context_reset", return_value=True
+        ):
             result = await intercept_special_command(deps, "g@g.us", group, msg)
 
         assert result is True
@@ -300,7 +302,9 @@ class TestInterceptSpecialCommand:
         deps = _make_deps()
         msg = _make_message("  reset context  ")
 
-        with patch("pynchy.host.orchestrator.messaging.pipeline.is_context_reset", return_value=True):
+        with patch(
+            "pynchy.host.orchestrator.messaging.pipeline.is_context_reset", return_value=True
+        ):
             result = await intercept_special_command(deps, "g@g.us", group, msg)
 
         assert result is True
@@ -793,9 +797,7 @@ class TestProcessGroupMessages:
             result = await process_group_messages(deps, jid)
 
         assert result is True
-        deps.send_reaction_to_outbound.assert_awaited_once_with(
-            jid, fake_ids, "zzz"
-        )
+        deps.send_reaction_to_outbound.assert_awaited_once_with(jid, fake_ids, "zzz")
 
 
 # ---------------------------------------------------------------------------

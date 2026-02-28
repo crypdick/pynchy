@@ -14,10 +14,14 @@ from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_chat_jid
 from pynchy.host.container_manager.ipc.registry import register_prefix
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
+from pynchy.host.container_manager.security.audit import record_security_event
+from pynchy.host.container_manager.security.gate import (
+    SecurityGate,
+    get_gate_for_group,
+    resolve_security,
+)
 from pynchy.logger import logger
 from pynchy.plugins import get_plugin_manager
-from pynchy.host.container_manager.security.audit import record_security_event
-from pynchy.host.container_manager.security.gate import SecurityGate, get_gate_for_group, resolve_security
 
 # Lazily populated mapping of tool_name -> async handler from plugins.
 _plugin_handlers: dict[str, Callable[[dict], Awaitable[dict]]] | None = None
@@ -130,7 +134,10 @@ async def _handle_service_request(
 
     if decision.needs_human:
         # Lazy import to avoid circular: security.approval → ipc._write → ipc.__init__ → here
-        from pynchy.host.container_manager.security.approval import create_pending_approval, format_approval_notification
+        from pynchy.host.container_manager.security.approval import (
+            create_pending_approval,
+            format_approval_notification,
+        )
 
         short_id = create_pending_approval(
             request_id=request_id,

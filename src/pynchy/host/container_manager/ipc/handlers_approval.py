@@ -23,8 +23,8 @@ from typing import Any
 from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.handlers_service import _get_plugin_handlers
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
-from pynchy.logger import logger
 from pynchy.host.container_manager.security.audit import record_security_event
+from pynchy.logger import logger
 
 
 async def process_approval_decision(

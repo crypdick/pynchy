@@ -27,9 +27,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from pynchy.config import get_settings
-from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response, write_json_atomic
-from pynchy.logger import logger
+from pynchy.host.container_manager.ipc.write import (
+    ipc_response_path,
+    write_ipc_response,
+    write_json_atomic,
+)
 from pynchy.host.container_manager.security.audit import record_security_event
+from pynchy.logger import logger
 
 # Alphabet for short approval IDs: lowercase + digits = 36 chars.
 # 2-char IDs give 1296 combinations — more than enough for the handful
@@ -75,6 +79,7 @@ def resolve_mcp_proxy_approval(request_id: str, approved: bool) -> bool:
         fut.set_result(approved)
         return True
     return False
+
 
 # Fields to omit from user-facing notification details
 _INTERNAL_FIELDS = frozenset({"type", "request_id", "source_group"})

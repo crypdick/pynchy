@@ -41,7 +41,9 @@ def _fail(stderr: str = "error") -> subprocess.CompletedProcess[str]:
 
 class TestDetectMainBranch:
     def test_parses_branch_from_symbolic_ref(self):
-        with patch("pynchy.host.git_ops.utils.run_git", return_value=_ok("refs/remotes/origin/main\n")):
+        with patch(
+            "pynchy.host.git_ops.utils.run_git", return_value=_ok("refs/remotes/origin/main\n")
+        ):
             assert detect_main_branch() == "main"
 
     def test_parses_non_standard_branch_name(self):

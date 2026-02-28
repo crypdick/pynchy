@@ -11,8 +11,8 @@ from pynchy.host.container_manager.mcp.lifecycle import (
     _build_placeholders,
     expand_arg_placeholders,
 )
-from pynchy.host.container_manager.mcp.resolution import McpInstance, resolve_all_instances
 from pynchy.host.container_manager.mcp.manager import McpManager
+from pynchy.host.container_manager.mcp.resolution import McpInstance, resolve_all_instances
 
 # ---------------------------------------------------------------------------
 # expand_arg_placeholders

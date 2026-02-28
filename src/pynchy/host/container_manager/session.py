@@ -23,11 +23,15 @@ import asyncio
 import contextlib
 
 from pynchy.config import get_settings
+from pynchy.host.container_manager.ipc.write import (
+    clean_ipc_input_dir,
+    write_ipc_close_sentinel,
+    write_ipc_message,
+)
 from pynchy.host.container_manager.process import (
     OnOutput,
     _docker_rm_force,
 )
-from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir, write_ipc_close_sentinel, write_ipc_message
 from pynchy.logger import logger
 from pynchy.utils import create_background_task
 

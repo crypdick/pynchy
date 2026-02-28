@@ -332,7 +332,9 @@ class TestHealthEndpoint(AioHTTPTestCase):
         """Health endpoint includes uptime_seconds."""
         with (
             patch("pynchy.host.orchestrator.http_server.get_head_sha", return_value="abc123"),
-            patch("pynchy.host.orchestrator.http_server.get_head_commit_message", return_value="Test"),
+            patch(
+                "pynchy.host.orchestrator.http_server.get_head_commit_message", return_value="Test"
+            ),
             patch("pynchy.host.orchestrator.http_server.is_repo_dirty", return_value=False),
         ):
             resp = await self.client.get("/health")

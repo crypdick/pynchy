@@ -172,7 +172,9 @@ def _write_settings_json(session_dir: Path) -> None:
     }
 
     # Merge hook config from agent/scripts/settings.json
-    hook_settings_file = get_settings().project_root / "src" / "pynchy" / "agent" / "scripts" / "settings.json"
+    hook_settings_file = (
+        get_settings().project_root / "src" / "pynchy" / "agent" / "scripts" / "settings.json"
+    )
     if hook_settings_file.exists():
         try:
             hook_settings = json.loads(hook_settings_file.read_text())

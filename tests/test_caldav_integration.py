@@ -15,7 +15,11 @@ from pynchy.config.models import (
     WorkspaceConfig,
     WorkspaceSecurityTomlConfig,
 )
-from pynchy.state import _init_test_database
+from pynchy.host.container_manager.ipc.handlers_service import (
+    _handle_service_request,
+    clear_plugin_handler_cache,
+)
+from pynchy.host.container_manager.security.gate import _gates, create_gate
 from pynchy.plugins.integrations.caldav import (
     _handle_create_event,
     _handle_delete_event,
@@ -25,11 +29,7 @@ from pynchy.plugins.integrations.caldav import (
     _resolve_server,
     clear_caldav_client_cache,
 )
-from pynchy.host.container_manager.ipc.handlers_service import (
-    _handle_service_request,
-    clear_plugin_handler_cache,
-)
-from pynchy.host.container_manager.security.gate import _gates, create_gate
+from pynchy.state import _init_test_database
 from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
 
 
@@ -716,9 +716,14 @@ async def test_calendar_tool_dispatches_to_plugin_handler(tmp_path):
     ]
 
     with (
-        patch("pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
+        ),
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
-        patch("pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager", return_value=fake_pm),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
+            return_value=fake_pm,
+        ),
         patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
         patch("pynchy.plugins.integrations.caldav._get_caldav_client", return_value=fake_client),
     ):

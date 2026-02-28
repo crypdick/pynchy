@@ -78,7 +78,9 @@ class TestHandleAskUserRequest:
         }
 
         with (
-            patch("pynchy.host.container_manager.ipc.handlers_ask_user.create_pending_question") as mock_create,
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_ask_user.create_pending_question"
+            ) as mock_create,
             patch("pynchy.host.container_manager.ipc.handlers_ask_user.update_message_id"),
         ):
             await _handle_ask_user_request(data, "my-group", False, deps)
@@ -141,7 +143,9 @@ class TestHandleAskUserRequest:
 
         with (
             patch("pynchy.host.container_manager.ipc.handlers_ask_user.create_pending_question"),
-            patch("pynchy.host.container_manager.ipc.handlers_ask_user.update_message_id") as mock_update,
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_ask_user.update_message_id"
+            ) as mock_update,
         ):
             await _handle_ask_user_request(data, "my-group", False, deps)
 
@@ -168,7 +172,9 @@ class TestHandleAskUserRequest:
 
         with (
             patch("pynchy.host.container_manager.ipc.handlers_ask_user.create_pending_question"),
-            patch("pynchy.host.container_manager.ipc.handlers_ask_user.update_message_id") as mock_update,
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_ask_user.update_message_id"
+            ) as mock_update,
         ):
             await _handle_ask_user_request(data, "my-group", False, deps)
 
@@ -197,7 +203,9 @@ class TestHandleAskUserRequest:
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
             patch("pynchy.host.container_manager.ipc.handlers_ask_user.create_pending_question"),
             patch("pynchy.host.container_manager.ipc.handlers_ask_user.update_message_id"),
-            patch("pynchy.host.container_manager.ipc.handlers_ask_user.resolve_pending_question") as mock_resolve,
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_ask_user.resolve_pending_question"
+            ) as mock_resolve,
         ):
             await _handle_ask_user_request(data, "my-group", False, deps)
 
@@ -224,7 +232,9 @@ class TestHandleAskUserRequest:
             # No request_id
         }
 
-        with patch("pynchy.host.container_manager.ipc.handlers_ask_user.create_pending_question") as mock_create:
+        with patch(
+            "pynchy.host.container_manager.ipc.handlers_ask_user.create_pending_question"
+        ) as mock_create:
             # Should not raise
             await _handle_ask_user_request(data, "my-group", False, deps)
 
@@ -248,7 +258,9 @@ class TestHandleAskUserRequest:
 
         with (
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
-            patch("pynchy.host.container_manager.ipc.handlers_ask_user.create_pending_question") as mock_create,
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_ask_user.create_pending_question"
+            ) as mock_create,
         ):
             await _handle_ask_user_request(data, "my-group", False, deps)
 
@@ -280,7 +292,9 @@ class TestHandleAskUserRequest:
 
         with (
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
-            patch("pynchy.host.container_manager.ipc.handlers_ask_user.create_pending_question") as mock_create,
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_ask_user.create_pending_question"
+            ) as mock_create,
         ):
             await _handle_ask_user_request(data, "my-group", False, deps)
 

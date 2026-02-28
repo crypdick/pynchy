@@ -5,9 +5,9 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from pynchy.host.orchestrator.deploy import build_container_image, finalize_deploy
 from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.host.container_manager.ipc.registry import register
+from pynchy.host.orchestrator.deploy import build_container_image, finalize_deploy
 from pynchy.logger import logger
 
 

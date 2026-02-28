@@ -60,7 +60,10 @@ class TestGetRepoToken:
         )
         with (
             patch("pynchy.config.get_settings", return_value=s),
-            patch("pynchy.host.container_manager.credentials._read_gh_token", return_value=GH_CLI_TOKEN),
+            patch(
+                "pynchy.host.container_manager.credentials._read_gh_token",
+                return_value=GH_CLI_TOKEN,
+            ),
         ):
             assert get_repo_token(REPO_SLUG) == SCOPED_TOKEN
 
@@ -72,7 +75,10 @@ class TestGetRepoToken:
         )
         with (
             patch("pynchy.config.get_settings", return_value=s),
-            patch("pynchy.host.container_manager.credentials._read_gh_token", return_value=GH_CLI_TOKEN),
+            patch(
+                "pynchy.host.container_manager.credentials._read_gh_token",
+                return_value=GH_CLI_TOKEN,
+            ),
         ):
             assert get_repo_token(REPO_SLUG) == BROAD_TOKEN
 
@@ -84,7 +90,10 @@ class TestGetRepoToken:
         )
         with (
             patch("pynchy.config.get_settings", return_value=s),
-            patch("pynchy.host.container_manager.credentials._read_gh_token", return_value=GH_CLI_TOKEN),
+            patch(
+                "pynchy.host.container_manager.credentials._read_gh_token",
+                return_value=GH_CLI_TOKEN,
+            ),
         ):
             assert get_repo_token(REPO_SLUG) == GH_CLI_TOKEN
 

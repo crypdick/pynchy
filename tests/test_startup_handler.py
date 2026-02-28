@@ -119,7 +119,9 @@ class TestAutoRollback:
             stderr = ""
 
         with (
-            patch("pynchy.host.orchestrator.startup_handler.run_git", return_value=FakeResult()) as mock_git,
+            patch(
+                "pynchy.host.orchestrator.startup_handler.run_git", return_value=FakeResult()
+            ) as mock_git,
             pytest.raises(SystemExit) as exc_info,
         ):
             await auto_rollback(cont_path, RuntimeError("startup failed"))

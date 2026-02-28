@@ -12,6 +12,13 @@ import asyncio
 from typing import Any
 from unittest.mock import AsyncMock
 
+from pynchy.event_bus import (
+    AgentActivityEvent,
+    AgentTraceEvent,
+    ChatClearedEvent,
+    EventBus,
+    MessageEvent,
+)
 from pynchy.host.orchestrator.adapters import (
     EventBusAdapter,
     GroupMetadataManager,
@@ -19,13 +26,6 @@ from pynchy.host.orchestrator.adapters import (
     MessageBroadcaster,
     SessionManager,
     find_admin_jid,
-)
-from pynchy.event_bus import (
-    AgentActivityEvent,
-    AgentTraceEvent,
-    ChatClearedEvent,
-    EventBus,
-    MessageEvent,
 )
 from pynchy.types import WorkspaceProfile
 
@@ -260,7 +260,10 @@ class TestMessageBroadcaster:
         # format_outbound strips internal tags and may adjust text
         from unittest.mock import patch as _patch
 
-        with _patch("pynchy.host.orchestrator.messaging.formatter.format_outbound", return_value="formatted text"):
+        with _patch(
+            "pynchy.host.orchestrator.messaging.formatter.format_outbound",
+            return_value="formatted text",
+        ):
             await broadcaster._broadcast_formatted("group@g.us", "raw text")
 
         assert len(ch.sent) == 1
@@ -273,7 +276,9 @@ class TestMessageBroadcaster:
 
         from unittest.mock import patch as _patch
 
-        with _patch("pynchy.host.orchestrator.messaging.formatter.format_outbound", return_value=""):
+        with _patch(
+            "pynchy.host.orchestrator.messaging.formatter.format_outbound", return_value=""
+        ):
             await broadcaster._broadcast_formatted("group@g.us", "raw text")
 
         assert len(ch.sent) == 0
@@ -291,7 +296,9 @@ class TestMessageBroadcaster:
 
         from unittest.mock import patch as _patch
 
-        with _patch("pynchy.host.orchestrator.messaging.formatter.format_outbound", return_value="ok"):
+        with _patch(
+            "pynchy.host.orchestrator.messaging.formatter.format_outbound", return_value="ok"
+        ):
             await broadcaster._broadcast_formatted("group@g.us", "raw")
 
         assert len(working.sent) == 1

@@ -14,14 +14,21 @@ if TYPE_CHECKING:
 
     from pynchy.host.container_manager import OnOutput
 
+from pynchy.config import get_settings
+from pynchy.event_bus import EventBus
 from pynchy.host.orchestrator import session_handler
 from pynchy.host.orchestrator.adapters import HostMessageBroadcaster, MessageBroadcaster
+from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.messaging import (
     channel_handler,
+)
+from pynchy.host.orchestrator.messaging import (
     pipeline as message_handler,
+)
+from pynchy.host.orchestrator.messaging import (
     router as output_handler,
 )
-from pynchy.config import get_settings
+from pynchy.logger import logger
 from pynchy.state import (
     delete_workspace_profile,
     get_all_chats,
@@ -30,9 +37,6 @@ from pynchy.state import (
     get_router_state,
     set_workspace_profile,
 )
-from pynchy.event_bus import EventBus
-from pynchy.host.orchestrator.concurrency import GroupQueue
-from pynchy.logger import logger
 from pynchy.types import (
     Channel,
     ContainerOutput,

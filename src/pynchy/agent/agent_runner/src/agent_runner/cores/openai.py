@@ -231,10 +231,12 @@ class OpenAIAgentCore:
             instructions=self._instructions,
             model=model,
             tools=[
-                ShellTool(executor=_make_shell_executor(
-                    self.config.cwd,
-                    before_tool_hooks=self._before_tool_hooks,
-                )),
+                ShellTool(
+                    executor=_make_shell_executor(
+                        self.config.cwd,
+                        before_tool_hooks=self._before_tool_hooks,
+                    )
+                ),
                 ApplyPatchTool(editor=_ContainerPatchEditor()),
                 WebSearchTool(),
             ],

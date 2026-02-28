@@ -15,12 +15,12 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config import CommandCenterConfig, WorkspaceConfig
-from pynchy.state import _init_test_database, create_task, get_active_task_for_group, get_all_tasks
-from pynchy.types import WorkspaceProfile
 from pynchy.host.orchestrator.workspace_config import (
     configure_plugin_workspaces,
     reconcile_workspaces,
 )
+from pynchy.state import _init_test_database, create_task, get_active_task_for_group, get_all_tasks
+from pynchy.types import WorkspaceProfile
 
 
 def _write_workspace_yaml(workspaces, folder_name, data):
@@ -241,9 +241,7 @@ class TestReconcileWorkspaces:
         assert len(tasks) == 1
         assert tasks[0].id == "periodic-monitor-abc123"
 
-    async def test_creates_chat_group_for_unregistered_workspace(
-        self, db, monkeypatch, tmp_path
-    ):
+    async def test_creates_chat_group_for_unregistered_workspace(self, db, monkeypatch, tmp_path):
         """Workspace with no DB entry should create a chat group via channel."""
         conn_ref = "connection.whatsapp.main"
         chat_ref = f"{conn_ref}.chat.new-agent"
@@ -285,9 +283,7 @@ class TestReconcileWorkspaces:
         assert profile.folder == "new-agent"
         assert profile.trigger is not None  # trigger is the @mention string
 
-    async def test_skips_when_no_channel_supports_create_group(
-        self, db, monkeypatch, tmp_path
-    ):
+    async def test_skips_when_no_channel_supports_create_group(self, db, monkeypatch, tmp_path):
         """Workspace needing new group should be skipped if no channel supports it."""
         conn_ref = "connection.whatsapp.main"
         chat_ref = f"{conn_ref}.chat.orphan-agent"

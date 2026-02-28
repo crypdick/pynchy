@@ -11,12 +11,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.state import _init_test_database
 from pynchy.host.container_manager.ipc.handlers_service import (
     _handle_service_request,
     clear_plugin_handler_cache,
 )
 from pynchy.host.container_manager.security.gate import _gates, create_gate
+from pynchy.state import _init_test_database
 from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
 
 
@@ -126,9 +126,14 @@ async def test_script_mcp_triggers_cop_gate(tmp_path):
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
     with (
-        patch("pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
+        ),
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
-        patch("pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager", return_value=fake_pm),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
+            return_value=fake_pm,
+        ),
         patch(
             "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
@@ -154,9 +159,14 @@ async def test_non_script_mcp_skips_cop_gate(tmp_path):
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
     with (
-        patch("pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
+        ),
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
-        patch("pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager", return_value=fake_pm),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
+            return_value=fake_pm,
+        ),
         patch(
             "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
@@ -182,9 +192,14 @@ async def test_script_mcp_blocked_by_cop(tmp_path):
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
     with (
-        patch("pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
+        ),
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
-        patch("pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager", return_value=fake_pm),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
+            return_value=fake_pm,
+        ),
         patch(
             "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
@@ -212,9 +227,14 @@ async def test_script_mcp_allowed_by_cop(tmp_path):
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
     with (
-        patch("pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
+        ),
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
-        patch("pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager", return_value=fake_pm),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
+            return_value=fake_pm,
+        ),
         patch(
             "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
@@ -238,9 +258,14 @@ async def test_cop_approved_skips_gate(tmp_path):
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
     with (
-        patch("pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
+        ),
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
-        patch("pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager", return_value=fake_pm),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
+            return_value=fake_pm,
+        ),
         patch(
             "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,

@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
+from pynchy.host.container_manager.ipc import dispatch
 from pynchy.state import (
     _init_test_database,
     create_host_job,
@@ -17,7 +18,6 @@ from pynchy.state import (
     get_task_by_id,
     set_workspace_profile,
 )
-from pynchy.host.container_manager.ipc import dispatch
 from pynchy.types import WorkspaceProfile
 
 ADMIN_GROUP = WorkspaceProfile(
@@ -839,7 +839,8 @@ class TestDeployAuth:
     async def test_admin_deploy_invokes_finalize(self, deps):
         """God deploy with valid data calls finalize_deploy."""
         with patch(
-            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy", new_callable=AsyncMock
+            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy",
+            new_callable=AsyncMock,
         ) as mock_finalize:
             await dispatch(
                 {
@@ -872,7 +873,8 @@ class TestResetContextExecution:
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.host.git_ops._worktree_merge.merge_worktree_with_policy", new_callable=AsyncMock
+                "pynchy.host.git_ops._worktree_merge.merge_worktree_with_policy",
+                new_callable=AsyncMock,
             ),
         ):
             (tmp_path / "data" / "ipc" / "admin-1").mkdir(parents=True)
@@ -899,7 +901,8 @@ class TestResetContextExecution:
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.host.git_ops._worktree_merge.merge_worktree_with_policy", new_callable=AsyncMock
+                "pynchy.host.git_ops._worktree_merge.merge_worktree_with_policy",
+                new_callable=AsyncMock,
             ),
         ):
             (tmp_path / "data" / "ipc" / "admin-1").mkdir(parents=True)
@@ -948,7 +951,8 @@ class TestResetContextExecution:
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.host.git_ops._worktree_merge.merge_worktree_with_policy", new_callable=AsyncMock
+                "pynchy.host.git_ops._worktree_merge.merge_worktree_with_policy",
+                new_callable=AsyncMock,
             ),
         ):
             (tmp_path / "data" / "ipc" / "admin-1").mkdir(parents=True)

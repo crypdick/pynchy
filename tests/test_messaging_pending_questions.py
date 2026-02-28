@@ -31,7 +31,10 @@ class TestCreatePendingQuestion:
     def test_creates_pending_file(self, ipc_dir: Path, settings):
         from pynchy.host.orchestrator.messaging.pending_questions import create_pending_question
 
-        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings):
+        with patch(
+            "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
+            return_value=settings,
+        ):
             create_pending_question(
                 request_id="aabb001122334455",
                 source_group="personal",
@@ -60,7 +63,10 @@ class TestCreatePendingQuestion:
     def test_atomic_write_no_tmp_left(self, ipc_dir: Path, settings):
         from pynchy.host.orchestrator.messaging.pending_questions import create_pending_question
 
-        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings):
+        with patch(
+            "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
+            return_value=settings,
+        ):
             create_pending_question(
                 request_id="abc123",
                 source_group="grp",
@@ -84,7 +90,10 @@ class TestFindPendingQuestion:
             find_pending_question,
         )
 
-        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings):
+        with patch(
+            "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
+            return_value=settings,
+        ):
             create_pending_question(
                 request_id="findme123",
                 source_group="grp1",
@@ -105,7 +114,10 @@ class TestFindPendingQuestion:
             find_pending_question,
         )
 
-        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings):
+        with patch(
+            "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
+            return_value=settings,
+        ):
             create_pending_question(
                 request_id="in-grp2",
                 source_group="grp2",
@@ -123,7 +135,10 @@ class TestFindPendingQuestion:
     def test_returns_none_when_missing(self, ipc_dir: Path, settings):
         from pynchy.host.orchestrator.messaging.pending_questions import find_pending_question
 
-        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings):
+        with patch(
+            "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
+            return_value=settings,
+        ):
             result = find_pending_question("nonexistent")
 
         assert result is None
@@ -133,7 +148,9 @@ class TestFindPendingQuestion:
         from pynchy.host.orchestrator.messaging.pending_questions import find_pending_question
 
         s = make_settings(data_dir=tmp_path / "empty")
-        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=s):
+        with patch(
+            "pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=s
+        ):
             result = find_pending_question("anything")
 
         assert result is None
@@ -149,7 +166,10 @@ class TestResolvePendingQuestion:
             resolve_pending_question,
         )
 
-        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings):
+        with patch(
+            "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
+            return_value=settings,
+        ):
             create_pending_question(
                 request_id="todelete",
                 source_group="grp",
@@ -167,7 +187,10 @@ class TestResolvePendingQuestion:
         """Resolving a nonexistent file should log a warning but not raise."""
         from pynchy.host.orchestrator.messaging.pending_questions import resolve_pending_question
 
-        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings):
+        with patch(
+            "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
+            return_value=settings,
+        ):
             resolve_pending_question("ghost", "grp")  # should not raise
 
 
@@ -181,7 +204,10 @@ class TestUpdateMessageId:
             update_message_id,
         )
 
-        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings):
+        with patch(
+            "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
+            return_value=settings,
+        ):
             create_pending_question(
                 request_id="msgupdate",
                 source_group="grp",
@@ -205,7 +231,10 @@ class TestUpdateMessageId:
             update_message_id,
         )
 
-        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings):
+        with patch(
+            "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
+            return_value=settings,
+        ):
             create_pending_question(
                 request_id="atomicup",
                 source_group="grp",
@@ -223,7 +252,10 @@ class TestUpdateMessageId:
         """Updating message_id on a nonexistent file should warn but not raise."""
         from pynchy.host.orchestrator.messaging.pending_questions import update_message_id
 
-        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings):
+        with patch(
+            "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
+            return_value=settings,
+        ):
             update_message_id("ghost", "grp", "msg-123")  # should not raise
 
 
@@ -239,7 +271,10 @@ class TestSweepExpiredQuestions:
         )
 
         with (
-            patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
+                return_value=settings,
+            ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             create_pending_question(
@@ -277,7 +312,10 @@ class TestSweepExpiredQuestions:
             sweep_expired_questions,
         )
 
-        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings):
+        with patch(
+            "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
+            return_value=settings,
+        ):
             create_pending_question(
                 request_id="req-fresh",
                 source_group="grp",
@@ -297,7 +335,9 @@ class TestSweepExpiredQuestions:
         from pynchy.host.orchestrator.messaging.pending_questions import sweep_expired_questions
 
         s = make_settings(data_dir=tmp_path / "empty")
-        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=s):
+        with patch(
+            "pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=s
+        ):
             expired = await sweep_expired_questions()
 
         assert expired == []
@@ -313,7 +353,10 @@ class TestSweepExpiredQuestions:
         corrupt_file = pending_dir / "req-corrupt.json"
         corrupt_file.write_text("{not valid json")
 
-        with patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings):
+        with patch(
+            "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
+            return_value=settings,
+        ):
             expired = await sweep_expired_questions()
 
         assert expired == []

@@ -16,12 +16,6 @@ from typing import Any, Protocol
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.docker import run_docker
-from pynchy.state import (
-    get_all_host_jobs,
-    get_all_tasks,
-    get_messaging_stats,
-    get_router_state,
-)
 from pynchy.host.git_ops.repo import RepoContext, get_repo_context
 from pynchy.host.git_ops.utils import (
     count_unpushed_commits,
@@ -32,6 +26,12 @@ from pynchy.host.git_ops.utils import (
     run_git,
 )
 from pynchy.logger import logger
+from pynchy.state import (
+    get_all_host_jobs,
+    get_all_tasks,
+    get_messaging_stats,
+    get_router_state,
+)
 
 # Module-level wall-clock start time for uptime reporting.
 # Monotonic _start_time in http_server.py is for duration math only;

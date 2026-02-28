@@ -17,10 +17,10 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
+from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.messaging.formatter import format_tool_preview
 from pynchy.state import _init_test_database, store_message
-from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.types import NewMessage, WorkspaceProfile
 
 _CR_ORCH = "pynchy.host.container_manager.orchestrator"

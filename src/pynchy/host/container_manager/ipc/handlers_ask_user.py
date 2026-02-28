@@ -12,14 +12,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_chat_jid
+from pynchy.host.container_manager.ipc.registry import register_prefix
+from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.orchestrator.messaging.pending_questions import (
     create_pending_question,
     resolve_pending_question,
     update_message_id,
 )
-from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_chat_jid
-from pynchy.host.container_manager.ipc.registry import register_prefix
-from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.logger import logger
 
 

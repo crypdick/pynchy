@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from pynchy.host.orchestrator.messaging.reconciler import reconcile_all_channels, reset_cooldowns
 from pynchy.config.models import OwnerConfig, WorkspaceConfig, WorkspaceDefaultsConfig
+from pynchy.host.orchestrator.messaging.reconciler import reconcile_all_channels, reset_cooldowns
 from pynchy.state import (
     _init_test_database,
     get_channel_cursor,
