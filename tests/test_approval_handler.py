@@ -35,7 +35,7 @@ class FakeDeps:
 class TestHandleApprovalCommand:
     @pytest.mark.asyncio
     async def test_writes_decision_file_on_approve(self, ipc_dir: Path, settings):
-        from pynchy.chat.approval_handler import handle_approval_command
+        from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command
         from pynchy.host.container_manager.security.approval import create_pending_approval
 
         with (
@@ -56,7 +56,7 @@ class TestHandleApprovalCommand:
 
     @pytest.mark.asyncio
     async def test_writes_decision_file_on_deny(self, ipc_dir: Path, settings):
-        from pynchy.chat.approval_handler import handle_approval_command
+        from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command
         from pynchy.host.container_manager.security.approval import create_pending_approval
 
         with (
@@ -72,7 +72,7 @@ class TestHandleApprovalCommand:
 
     @pytest.mark.asyncio
     async def test_unknown_id_sends_error(self, ipc_dir: Path, settings):
-        from pynchy.chat.approval_handler import handle_approval_command
+        from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command
 
         with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings):
             deps = FakeDeps()
@@ -83,7 +83,7 @@ class TestHandleApprovalCommand:
 
     @pytest.mark.asyncio
     async def test_confirmation_broadcast(self, ipc_dir: Path, settings):
-        from pynchy.chat.approval_handler import handle_approval_command
+        from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command
         from pynchy.host.container_manager.security.approval import create_pending_approval
 
         with (
@@ -102,7 +102,7 @@ class TestHandleApprovalCommand:
 class TestHandlePendingQuery:
     @pytest.mark.asyncio
     async def test_lists_pending_approvals(self, ipc_dir: Path, settings):
-        from pynchy.chat.approval_handler import handle_pending_query
+        from pynchy.host.orchestrator.messaging.approval_handler import handle_pending_query
         from pynchy.host.container_manager.security.approval import create_pending_approval
 
         with (
@@ -120,7 +120,7 @@ class TestHandlePendingQuery:
 
     @pytest.mark.asyncio
     async def test_no_pending_shows_message(self, ipc_dir: Path, settings):
-        from pynchy.chat.approval_handler import handle_pending_query
+        from pynchy.host.orchestrator.messaging.approval_handler import handle_pending_query
 
         with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings):
             deps = FakeDeps()

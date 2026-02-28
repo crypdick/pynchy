@@ -16,10 +16,10 @@ if TYPE_CHECKING:
 
 from pynchy.host.orchestrator import session_handler
 from pynchy.host.orchestrator.adapters import HostMessageBroadcaster, MessageBroadcaster
-from pynchy.chat import (
+from pynchy.host.orchestrator.messaging import (
     channel_handler,
-    message_handler,
-    output_handler,
+    pipeline as message_handler,
+    router as output_handler,
 )
 from pynchy.config import get_settings
 from pynchy.state import (
@@ -277,13 +277,13 @@ class PynchyApp:
 
     async def _on_reaction(self, jid: str, message_ts: str, user_id: str, emoji: str) -> None:
         """Handle an inbound reaction from a channel."""
-        from pynchy.chat.reaction_handler import handle_reaction
+        from pynchy.host.orchestrator.messaging.reaction_handler import handle_reaction
 
         await handle_reaction(self, jid, message_ts, user_id, emoji)
 
     async def _on_ask_user_answer(self, request_id: str, answer: dict) -> None:
         """Handle an ask_user answer from a channel interaction callback."""
-        from pynchy.chat.ask_user_handler import handle_ask_user_answer
+        from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
 
         await handle_ask_user_answer(request_id, answer, self)
 
@@ -335,7 +335,7 @@ class PynchyApp:
 
         Runs at boot AND periodically from the message polling loop.
         """
-        from pynchy.chat.reconciler import reconcile_all_channels
+        from pynchy.host.orchestrator.messaging.reconciler import reconcile_all_channels
 
         await reconcile_all_channels(self)
 

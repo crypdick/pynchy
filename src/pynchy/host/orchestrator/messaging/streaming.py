@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
-from pynchy.chat.bus import resolve_target_jid
+from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
 from pynchy.logger import logger
 from pynchy.utils import create_background_task
 

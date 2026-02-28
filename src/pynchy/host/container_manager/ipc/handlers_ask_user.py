@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pynchy.chat.pending_questions import (
+from pynchy.host.orchestrator.messaging.pending_questions import (
     create_pending_question,
     resolve_pending_question,
     update_message_id,

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
 
-from pynchy.chat.bus import resolve_target_jid
+from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
 from pynchy.logger import logger
 
 if TYPE_CHECKING:

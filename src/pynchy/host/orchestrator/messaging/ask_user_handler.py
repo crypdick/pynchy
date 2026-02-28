@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from pynchy.chat.pending_questions import find_pending_question, resolve_pending_question
+from pynchy.host.orchestrator.messaging.pending_questions import find_pending_question, resolve_pending_question
 from pynchy.host.container_manager.session import get_session
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.logger import logger

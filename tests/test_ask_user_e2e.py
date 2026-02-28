@@ -136,7 +136,7 @@ class TestAskUserE2E:
         }
 
         with (
-            patch("pynchy.chat.pending_questions.get_settings", return_value=settings),
+            patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             await _handle_ask_user_request(data, "mygroup", False, deps)
@@ -158,7 +158,7 @@ class TestAskUserE2E:
         assert updated_data["message_id"] == "msg-ts-123"
 
         # Step 2: Simulate user answering via channel callback
-        from pynchy.chat.ask_user_handler import handle_ask_user_answer
+        from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
 
         ask_user_deps = FakeAskUserDeps()
 
@@ -166,8 +166,8 @@ class TestAskUserE2E:
         fake_session = type("FakeSession", (), {"is_alive": True})()
 
         with (
-            patch("pynchy.chat.pending_questions.get_settings", return_value=settings),
-            patch("pynchy.chat.ask_user_handler.get_session", return_value=fake_session),
+            patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings),
+            patch("pynchy.host.orchestrator.messaging.ask_user_handler.get_session", return_value=fake_session),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             await handle_ask_user_answer(REQUEST_ID, {"answer": "JWT"}, ask_user_deps)
@@ -206,13 +206,13 @@ class TestAskUserE2E:
         (pending_dir / f"{request_id}.json").write_text(json.dumps(pending_data))
 
         # Step 2: Answer arrives with container dead
-        from pynchy.chat.ask_user_handler import handle_ask_user_answer
+        from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
 
         ask_user_deps = FakeAskUserDeps()
 
         with (
-            patch("pynchy.chat.pending_questions.get_settings", return_value=settings),
-            patch("pynchy.chat.ask_user_handler.get_session", return_value=None),
+            patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings),
+            patch("pynchy.host.orchestrator.messaging.ask_user_handler.get_session", return_value=None),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             await handle_ask_user_answer(request_id, {"answer": "OAuth"}, ask_user_deps)
@@ -250,7 +250,7 @@ class TestAskUserE2E:
         }
 
         with (
-            patch("pynchy.chat.pending_questions.get_settings", return_value=settings),
+            patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             await _handle_ask_user_request(data, "mygroup", False, deps)

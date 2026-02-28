@@ -17,8 +17,8 @@ import threading
 from typing import TYPE_CHECKING
 
 from pynchy.host.orchestrator import startup_handler
-from pynchy.chat import output_handler
-from pynchy.chat._message_routing import start_message_loop
+from pynchy.host.orchestrator.messaging import router as output_handler
+from pynchy.host.orchestrator.messaging.inbound import start_message_loop
 from pynchy.plugins.channel_runtime import (
     ChannelPluginContext,
     load_channels,

@@ -18,7 +18,7 @@ import pytest
 from conftest import make_settings
 
 from pynchy.host.orchestrator.app import PynchyApp
-from pynchy.chat.router import format_tool_preview
+from pynchy.host.orchestrator.messaging.formatter import format_tool_preview
 from pynchy.state import _init_test_database, store_message
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.types import NewMessage, WorkspaceProfile
@@ -69,8 +69,8 @@ def _patch_test_settings(tmp_path: Path):
             "pynchy.host.container_manager.orchestrator",
             "pynchy.host.container_manager.session",
             "pynchy.host.container_manager.snapshots",
-            "pynchy.chat.message_handler",
-            "pynchy.chat.output_handler",
+            "pynchy.host.orchestrator.messaging.pipeline",
+            "pynchy.host.orchestrator.messaging.router",
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         stack.enter_context(
@@ -450,7 +450,7 @@ class TestBroadcastConsistency:
 
         with _patch_test_settings(tmp_path):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
-            from pynchy.chat import message_handler
+            from pynchy.host.orchestrator.messaging import pipeline as message_handler
 
             await message_handler.execute_direct_command(
                 app, "group@g.us", group, msg, "echo hello world"
