@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from unittest.mock import patch
 
-from pynchy.chat.plugins.slack import _TtlCache
+from pynchy.plugins.channels.slack import _TtlCache
 
 
 class TestTtlCache:

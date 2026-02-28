@@ -29,7 +29,7 @@ def _run() -> None:
 
 
 def _tui(host: str) -> None:
-    from pynchy.chat.plugins.tui.client import run_tui
+    from pynchy.plugins.channels.tui.client import run_tui
 
     run_tui(host)
 

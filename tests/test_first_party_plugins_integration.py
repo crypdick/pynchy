@@ -92,7 +92,7 @@ class TestSlackPluginFunctionality:
         mock_settings = MagicMock()
         mock_settings.connection.slack = {}
 
-        with patch("pynchy.chat.plugins.slack.get_settings", return_value=mock_settings):
+        with patch("pynchy.plugins.channels.slack.get_settings", return_value=mock_settings):
             channels = pm.hook.pynchy_create_channel(context=MagicMock())
 
         # Slack should return None when no connections configured
