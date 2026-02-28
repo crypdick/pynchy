@@ -154,7 +154,6 @@ class TestTriggerGating:
 # --- parseHostTag ---
 
 
-
 class TestParseHostTag:
     """Test the parse_host_tag function which extracts host-tagged content.
 

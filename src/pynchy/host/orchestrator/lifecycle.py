@@ -16,17 +16,17 @@ import socket
 import threading
 from typing import TYPE_CHECKING
 
+from pynchy.config import get_settings
 from pynchy.host.orchestrator import startup_handler
 from pynchy.host.orchestrator.messaging import router as output_handler
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
+from pynchy.logger import logger
 from pynchy.plugins.channel_runtime import (
     ChannelPluginContext,
     load_channels,
     resolve_default_channel,
 )
-from pynchy.config import get_settings
 from pynchy.state import init_database, store_chat_metadata
-from pynchy.logger import logger
 from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
@@ -98,10 +98,10 @@ async def shutdown_app(app: PynchyApp, sig_name: str) -> None:
 
 async def _initialize_core(app: PynchyApp) -> None:
     """Plugins, gateway, database, observers, memory, state."""
-    from pynchy.plugins import get_plugin_manager
-    from pynchy.plugins.runtimes.system_checks import ensure_container_system_running
     from pynchy.host.orchestrator.service_installer import install_service
     from pynchy.host.orchestrator.workspace_config import configure_plugin_workspaces
+    from pynchy.plugins import get_plugin_manager
+    from pynchy.plugins.runtimes.system_checks import ensure_container_system_running
 
     install_service()
 
@@ -205,6 +205,12 @@ async def _reconcile_state(app: PynchyApp) -> dict[str, list[str]]:
 
 async def _start_subsystems(app: PynchyApp, repo_groups: dict[str, list[str]]) -> None:
     """Scheduler, IPC, git sync, HTTP server."""
+    from pynchy.host.container_manager.ipc import start_ipc_watcher
+    from pynchy.host.git_ops.repo import get_repo_context
+    from pynchy.host.git_ops.sync_poll import (
+        start_external_repo_sync_loop,
+        start_host_git_sync_loop,
+    )
     from pynchy.host.orchestrator.dep_factory import (
         make_git_sync_deps,
         make_http_deps,
@@ -212,13 +218,7 @@ async def _start_subsystems(app: PynchyApp, repo_groups: dict[str, list[str]]) -
         make_scheduler_deps,
         make_status_deps,
     )
-    from pynchy.host.git_ops.repo import get_repo_context
-    from pynchy.host.git_ops.sync_poll import (
-        start_external_repo_sync_loop,
-        start_host_git_sync_loop,
-    )
     from pynchy.host.orchestrator.http_server import start_http_server
-    from pynchy.host.container_manager.ipc import start_ipc_watcher
     from pynchy.host.orchestrator.status import record_start_time
     from pynchy.host.orchestrator.task_scheduler import start_scheduler_loop
     from pynchy.plugins.tunnels import check_tunnels

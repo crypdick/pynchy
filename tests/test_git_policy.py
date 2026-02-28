@@ -19,7 +19,7 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config import WorkspaceConfig
-from pynchy.state import _init_test_database
+from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.git_ops.sync import (
     GIT_POLICY_MERGE,
@@ -27,7 +27,7 @@ from pynchy.host.git_ops.sync import (
     host_create_pr_from_worktree,
     resolve_git_policy,
 )
-from pynchy.host.container_manager.ipc import dispatch
+from pynchy.state import _init_test_database
 from pynchy.types import WorkspaceProfile
 
 # ---------------------------------------------------------------------------

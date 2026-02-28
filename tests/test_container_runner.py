@@ -21,6 +21,7 @@ from pynchy.host.container_manager.credentials import (
     _shell_quote,
     _write_env_file,
 )
+from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 from pynchy.host.container_manager.mounts import _build_container_args, _build_volume_mounts
 from pynchy.host.container_manager.orchestrator import (
     _write_initial_input,
@@ -35,7 +36,6 @@ from pynchy.host.container_manager.session_prep import (
 )
 from pynchy.host.container_manager.snapshots import write_groups_snapshot, write_tasks_snapshot
 from pynchy.host.git_ops.repo import RepoContext
-from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 from pynchy.types import (
     ContainerInput,
     VolumeMount,

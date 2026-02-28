@@ -15,13 +15,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pynchy.config.settings import get_settings
 from pynchy.config.models import OwnerConfig
 from pynchy.config.refs import (
     channel_platform_from_name,
     connection_ref_from_parts,
     parse_chat_ref,
 )
+from pynchy.config.settings import get_settings
 
 if TYPE_CHECKING:
     from pynchy.types import ResolvedChannelConfig

@@ -14,15 +14,15 @@ import asyncio
 import time as _time
 from typing import TYPE_CHECKING
 
+from pynchy.config import get_settings
 from pynchy.host.orchestrator.messaging.commands import is_any_magic_command
 from pynchy.host.orchestrator.messaging.pipeline import (
     MessageHandlerDeps,
     _mark_dispatched,
     intercept_special_command,
 )
-from pynchy.config import get_settings
-from pynchy.state import get_messages_since, get_new_messages
 from pynchy.logger import logger
+from pynchy.state import get_messages_since, get_new_messages
 from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
@@ -94,7 +94,12 @@ async def _route_incoming_group(
         deps.last_agent_timestamp.get(group_jid, ""),
         deps._dispatched_through.get(group_jid, ""),
     )
-    logger.info("route_trace", step="get_messages_since", group=group.name, cursor=cursor[:30] if cursor else "empty")
+    logger.info(
+        "route_trace",
+        step="get_messages_since",
+        group=group.name,
+        cursor=cursor[:30] if cursor else "empty",
+    )
     all_pending = await get_messages_since(group_jid, cursor)
     if not all_pending:
         logger.info("route_trace", step="skip_no_pending", group=group.name)

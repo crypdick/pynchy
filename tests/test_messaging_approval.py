@@ -11,7 +11,9 @@ from conftest import make_settings
 @pytest.fixture(autouse=True)
 def _mock_settings():
     """Provide default settings so _strip_trigger works."""
-    with patch("pynchy.host.orchestrator.messaging.commands.get_settings", return_value=make_settings()):
+    with patch(
+        "pynchy.host.orchestrator.messaging.commands.get_settings", return_value=make_settings()
+    ):
         yield
 
 

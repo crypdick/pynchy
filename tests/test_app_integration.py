@@ -796,7 +796,10 @@ class TestDeployContinuationResume:
 
         with (
             patch("pynchy.host.orchestrator.startup_handler.get_settings") as mock_settings,
-            patch("pynchy.host.orchestrator.startup_handler.get_head_commit_message", return_value="test commit"),
+            patch(
+                "pynchy.host.orchestrator.startup_handler.get_head_commit_message",
+                return_value="test commit",
+            ),
         ):
             s = MagicMock()
             s.data_dir = data_dir

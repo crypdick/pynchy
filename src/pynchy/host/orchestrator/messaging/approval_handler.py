@@ -9,12 +9,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Protocol
 
-from pynchy.logger import logger
 from pynchy.host.container_manager.security.approval import (
     _approval_decisions_dir,
     find_pending_by_short_id,
     list_pending_approvals,
 )
+from pynchy.logger import logger
 from pynchy.utils import write_json_atomic
 
 

@@ -136,7 +136,10 @@ class TestAskUserE2E:
         }
 
         with (
-            patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
+                return_value=settings,
+            ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             await _handle_ask_user_request(data, "mygroup", False, deps)
@@ -166,8 +169,14 @@ class TestAskUserE2E:
         fake_session = type("FakeSession", (), {"is_alive": True})()
 
         with (
-            patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings),
-            patch("pynchy.host.orchestrator.messaging.ask_user_handler.get_session", return_value=fake_session),
+            patch(
+                "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.orchestrator.messaging.ask_user_handler.get_session",
+                return_value=fake_session,
+            ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             await handle_ask_user_answer(REQUEST_ID, {"answer": "JWT"}, ask_user_deps)
@@ -211,8 +220,13 @@ class TestAskUserE2E:
         ask_user_deps = FakeAskUserDeps()
 
         with (
-            patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings),
-            patch("pynchy.host.orchestrator.messaging.ask_user_handler.get_session", return_value=None),
+            patch(
+                "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.orchestrator.messaging.ask_user_handler.get_session", return_value=None
+            ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             await handle_ask_user_answer(request_id, {"answer": "OAuth"}, ask_user_deps)
@@ -250,7 +264,10 @@ class TestAskUserE2E:
         }
 
         with (
-            patch("pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
+                return_value=settings,
+            ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             await _handle_ask_user_request(data, "mygroup", False, deps)

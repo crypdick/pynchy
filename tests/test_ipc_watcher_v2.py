@@ -15,7 +15,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.state import _init_test_database
 from pynchy.host.container_manager.ipc.watcher import (
     _handle_signal,
     _IpcEventHandler,
@@ -23,6 +22,7 @@ from pynchy.host.container_manager.ipc.watcher import (
     _process_task_file,
     _sweep_directory,
 )
+from pynchy.state import _init_test_database
 from pynchy.types import WorkspaceProfile
 
 ADMIN_GROUP = WorkspaceProfile(
@@ -255,13 +255,16 @@ class TestStartupSweep:
             },
         )
 
-        with patch(
-            "pynchy.host.container_manager.ipc.watcher.get_settings",
-            return_value=_test_settings(data_dir=tmp_path),
-        ), patch(
-            "pynchy.host.container_manager.ipc.watcher._process_output_file",
-            new_callable=AsyncMock,
-        ) as mock_process:
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.watcher.get_settings",
+                return_value=_test_settings(data_dir=tmp_path),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.watcher._process_output_file",
+                new_callable=AsyncMock,
+            ) as mock_process,
+        ):
             handled = await _sweep_directory(ipc_dir, deps)
 
         # File should be deleted without calling _process_output_file
@@ -597,9 +600,7 @@ class TestIpcEventHandler:
 
         from watchdog.events import FileCreatedEvent
 
-        handler.on_created(
-            FileCreatedEvent(str(ipc_dir / "admin-1" / "output" / "001.json"))
-        )
+        handler.on_created(FileCreatedEvent(str(ipc_dir / "admin-1" / "output" / "001.json")))
         self._drain(loop)
         assert queue.qsize() == 1
 

@@ -10,6 +10,9 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
+from pynchy.config import get_settings
+from pynchy.host.container_manager import write_groups_snapshot as _write_groups_snapshot
+from pynchy.host.git_ops.utils import get_head_sha
 from pynchy.host.orchestrator.adapters import (
     EventBusAdapter,
     GroupMetadataManager,
@@ -21,15 +24,12 @@ from pynchy.host.orchestrator.adapters import (
     UserMessageHandler,
     find_admin_jid,
 )
-from pynchy.config import get_settings
-from pynchy.host.container_manager import write_groups_snapshot as _write_groups_snapshot
-from pynchy.host.git_ops.utils import get_head_sha
 
 if TYPE_CHECKING:
-    from pynchy.host.orchestrator.app import PynchyApp
-    from pynchy.host.git_ops.sync import GitSyncDeps
-    from pynchy.host.orchestrator.http_server import HttpDeps
     from pynchy.host.container_manager.ipc import IpcDeps
+    from pynchy.host.git_ops.sync import GitSyncDeps
+    from pynchy.host.orchestrator.app import PynchyApp
+    from pynchy.host.orchestrator.http_server import HttpDeps
     from pynchy.host.orchestrator.status import StatusDeps
     from pynchy.host.orchestrator.task_scheduler import SchedulerDependencies
 

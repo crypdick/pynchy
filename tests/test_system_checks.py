@@ -39,7 +39,9 @@ class TestEnsureContainerSystemRunning:
 
         with (
             patch("pynchy.plugins.runtimes.system_checks.get_runtime", return_value=mock_runtime),
-            patch("pynchy.plugins.runtimes.system_checks.subprocess.run", return_value=image_inspect),
+            patch(
+                "pynchy.plugins.runtimes.system_checks.subprocess.run", return_value=image_inspect
+            ),
         ):
             ensure_container_system_running()
 
@@ -78,7 +80,9 @@ class TestEnsureContainerSystemRunning:
 
         with (
             patch("pynchy.plugins.runtimes.system_checks.get_runtime", return_value=mock_runtime),
-            patch("pynchy.plugins.runtimes.system_checks.subprocess.run", return_value=inspect_fail),
+            patch(
+                "pynchy.plugins.runtimes.system_checks.subprocess.run", return_value=inspect_fail
+            ),
             patch(
                 "pynchy.plugins.runtimes.system_checks.get_settings",
                 return_value=self._settings(tmp_path),

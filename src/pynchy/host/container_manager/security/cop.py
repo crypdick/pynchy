@@ -195,10 +195,12 @@ async def _inspect(
             "messages": [{"role": "user", "content": user_content}],
         }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, json=body) as resp:
-                resp.raise_for_status()
-                data = await resp.json()
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(url, headers=headers, json=body) as resp,
+        ):
+            resp.raise_for_status()
+            data = await resp.json()
 
         text = data["content"][0]["text"].strip()
 

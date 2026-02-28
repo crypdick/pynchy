@@ -21,10 +21,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.state import _init_test_database
-from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.handlers_deploy import _handle_deploy
+from pynchy.host.git_ops.repo import RepoContext
+from pynchy.state import _init_test_database
 from pynchy.types import WorkspaceProfile
 
 ADMIN_GROUP = WorkspaceProfile(
@@ -390,7 +390,8 @@ class TestDeployEdgeCases:
     async def test_deploy_without_chat_jid_uses_admin_group(self, deps: MockDeps):
         """Deploy request missing chatJid should fall back to admin group's JID."""
         with patch(
-            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy", new_callable=AsyncMock
+            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy",
+            new_callable=AsyncMock,
         ) as mock_finalize:
             await _handle_deploy(
                 {
@@ -414,7 +415,8 @@ class TestDeployEdgeCases:
         no_admin_deps = MockDeps({"other@g.us": OTHER_GROUP})
 
         with patch(
-            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy", new_callable=AsyncMock
+            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy",
+            new_callable=AsyncMock,
         ) as mock_finalize:
             await _handle_deploy(
                 {
@@ -437,7 +439,8 @@ class TestDeployEdgeCases:
                 return_value=BuildResult(success=True, skipped=True),
             ),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy", new_callable=AsyncMock
+                "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy",
+                new_callable=AsyncMock,
             ) as mock_finalize,
         ):
             await _handle_deploy(
@@ -457,7 +460,8 @@ class TestDeployEdgeCases:
     async def test_deploy_uses_default_resume_prompt(self, deps: MockDeps):
         """Deploy with no resumePrompt should use the default."""
         with patch(
-            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy", new_callable=AsyncMock
+            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy",
+            new_callable=AsyncMock,
         ) as mock_finalize:
             await _handle_deploy(
                 {

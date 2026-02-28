@@ -20,13 +20,16 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.state import _init_test_database, get_all_host_jobs, get_all_tasks
 from pynchy.host.container_manager.ipc.handlers_groups import (
     _handle_create_periodic_agent,
     _handle_register_group,
 )
 from pynchy.host.container_manager.ipc.handlers_lifecycle import _handle_sync_worktree_to_main
-from pynchy.host.container_manager.ipc.handlers_tasks import _handle_schedule_host_job, _handle_schedule_task
+from pynchy.host.container_manager.ipc.handlers_tasks import (
+    _handle_schedule_host_job,
+    _handle_schedule_task,
+)
+from pynchy.state import _init_test_database, get_all_host_jobs, get_all_tasks
 from pynchy.types import WorkspaceProfile
 
 # ---------------------------------------------------------------------------

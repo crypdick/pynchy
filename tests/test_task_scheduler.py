@@ -242,7 +242,9 @@ class TestStartSchedulerLoop:
     @pytest.mark.asyncio
     async def test_prevents_duplicate_scheduler_start(self, mock_deps):
         """Should prevent starting multiple scheduler loops."""
-        with patch("pynchy.host.orchestrator.task_scheduler.get_due_tasks", new_callable=AsyncMock) as mock_get_due:
+        with patch(
+            "pynchy.host.orchestrator.task_scheduler.get_due_tasks", new_callable=AsyncMock
+        ) as mock_get_due:
             mock_get_due.return_value = []
 
             # Start first scheduler
@@ -279,7 +281,9 @@ class TestStartSchedulerLoop:
                 raise asyncio.CancelledError()
             return []
 
-        with patch("pynchy.host.orchestrator.task_scheduler.get_due_tasks", side_effect=mock_get_due):
+        with patch(
+            "pynchy.host.orchestrator.task_scheduler.get_due_tasks", side_effect=mock_get_due
+        ):
             with _patch_settings(poll_interval=0.01):
                 with contextlib.suppress(asyncio.CancelledError):
                     await start_scheduler_loop(mock_deps)
@@ -300,7 +304,9 @@ class TestStartSchedulerLoop:
                 raise asyncio.CancelledError()
             return []
 
-        with patch("pynchy.host.orchestrator.task_scheduler.get_due_tasks", side_effect=mock_get_due):
+        with patch(
+            "pynchy.host.orchestrator.task_scheduler.get_due_tasks", side_effect=mock_get_due
+        ):
             with _patch_settings(poll_interval=0.01):
                 with contextlib.suppress(asyncio.CancelledError):
                     await start_scheduler_loop(mock_deps)
@@ -332,8 +338,12 @@ class TestStartSchedulerLoop:
         async def mock_get_task(task_id):
             return sample_task
 
-        with patch("pynchy.host.orchestrator.task_scheduler.get_due_tasks", side_effect=mock_get_due):
-            with patch("pynchy.host.orchestrator.task_scheduler.get_task_by_id", side_effect=mock_get_task):
+        with patch(
+            "pynchy.host.orchestrator.task_scheduler.get_due_tasks", side_effect=mock_get_due
+        ):
+            with patch(
+                "pynchy.host.orchestrator.task_scheduler.get_task_by_id", side_effect=mock_get_task
+            ):
                 with _patch_settings(poll_interval=0.01):
                     with contextlib.suppress(asyncio.CancelledError):
                         await start_scheduler_loop(mock_deps)
@@ -380,8 +390,12 @@ class TestStartSchedulerLoop:
             # Return paused version on re-check
             return paused_task
 
-        with patch("pynchy.host.orchestrator.task_scheduler.get_due_tasks", side_effect=mock_get_due):
-            with patch("pynchy.host.orchestrator.task_scheduler.get_task_by_id", side_effect=mock_get_task):
+        with patch(
+            "pynchy.host.orchestrator.task_scheduler.get_due_tasks", side_effect=mock_get_due
+        ):
+            with patch(
+                "pynchy.host.orchestrator.task_scheduler.get_task_by_id", side_effect=mock_get_task
+            ):
                 with _patch_settings(poll_interval=0.01):
                     with contextlib.suppress(asyncio.CancelledError):
                         await start_scheduler_loop(mock_deps)
@@ -406,8 +420,12 @@ class TestRunScheduledAgent:
         async def mock_log_run(log: TaskRunLog):
             logged_runs.append(log)
 
-        with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", side_effect=mock_log_run):
-            with patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock):
+        with patch(
+            "pynchy.host.orchestrator.task_scheduler.log_task_run", side_effect=mock_log_run
+        ):
+            with patch(
+                "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
+            ):
                 with _patch_settings(groups_dir=tmp_path):
                     from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
 
@@ -426,8 +444,13 @@ class TestRunScheduledAgent:
         mock_deps.groups["test-jid"] = sample_group
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
-            with patch("pynchy.host.orchestrator.task_scheduler.update_task_after_run", new_callable=AsyncMock):
-                with patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock):
+            with patch(
+                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                new_callable=AsyncMock,
+            ):
+                with patch(
+                    "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
+                ):
                     with _patch_settings(groups_dir=tmp_path):
                         from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
 
@@ -452,8 +475,13 @@ class TestRunScheduledAgent:
         sample_task.repo_access = "owner/pynchy"
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
-            with patch("pynchy.host.orchestrator.task_scheduler.update_task_after_run", new_callable=AsyncMock):
-                with patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock):
+            with patch(
+                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                new_callable=AsyncMock,
+            ):
+                with patch(
+                    "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
+                ):
                     with _patch_settings(groups_dir=tmp_path):
                         from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
 
@@ -468,8 +496,13 @@ class TestRunScheduledAgent:
         mock_deps.groups["test-jid"] = sample_group
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
-            with patch("pynchy.host.orchestrator.task_scheduler.update_task_after_run", new_callable=AsyncMock):
-                with patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock):
+            with patch(
+                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                new_callable=AsyncMock,
+            ):
+                with patch(
+                    "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
+                ):
                     with _patch_settings(groups_dir=tmp_path):
                         from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
 
@@ -493,8 +526,13 @@ class TestRunScheduledAgent:
         mock_deps._run_agent_side_effect = mock_run
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
-            with patch("pynchy.host.orchestrator.task_scheduler.update_task_after_run", new_callable=AsyncMock):
-                with patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock):
+            with patch(
+                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                new_callable=AsyncMock,
+            ):
+                with patch(
+                    "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
+                ):
                     with _patch_settings(groups_dir=tmp_path):
                         from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
 
@@ -519,8 +557,13 @@ class TestRunScheduledAgent:
             updates.append((task_id, next_run, result_summary))
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
-            with patch("pynchy.host.orchestrator.task_scheduler.update_task_after_run", side_effect=mock_update):
-                with patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock):
+            with patch(
+                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                side_effect=mock_update,
+            ):
+                with patch(
+                    "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
+                ):
                     with _patch_settings(groups_dir=tmp_path):
                         from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
 
@@ -548,8 +591,13 @@ class TestRunScheduledAgent:
             updates.append((task_id, next_run, result_summary))
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
-            with patch("pynchy.host.orchestrator.task_scheduler.update_task_after_run", side_effect=mock_update):
-                with patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock):
+            with patch(
+                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                side_effect=mock_update,
+            ):
+                with patch(
+                    "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
+                ):
                     with _patch_settings(groups_dir=tmp_path):
                         from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
 
@@ -579,8 +627,13 @@ class TestRunScheduledAgent:
             updates.append((task_id, next_run, result_summary))
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
-            with patch("pynchy.host.orchestrator.task_scheduler.update_task_after_run", side_effect=mock_update):
-                with patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock):
+            with patch(
+                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                side_effect=mock_update,
+            ):
+                with patch(
+                    "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
+                ):
                     with _patch_settings(groups_dir=tmp_path):
                         from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
 
@@ -607,9 +660,16 @@ class TestRunScheduledAgent:
         async def mock_log_run(log: TaskRunLog):
             logged_runs.append(log)
 
-        with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", side_effect=mock_log_run):
-            with patch("pynchy.host.orchestrator.task_scheduler.update_task_after_run", new_callable=AsyncMock):
-                with patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock):
+        with patch(
+            "pynchy.host.orchestrator.task_scheduler.log_task_run", side_effect=mock_log_run
+        ):
+            with patch(
+                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                new_callable=AsyncMock,
+            ):
+                with patch(
+                    "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
+                ):
                     with _patch_settings(groups_dir=tmp_path):
                         from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
 
@@ -633,9 +693,16 @@ class TestRunScheduledAgent:
         async def mock_log_run(log: TaskRunLog):
             logged_runs.append(log)
 
-        with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", side_effect=mock_log_run):
-            with patch("pynchy.host.orchestrator.task_scheduler.update_task_after_run", new_callable=AsyncMock):
-                with patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock):
+        with patch(
+            "pynchy.host.orchestrator.task_scheduler.log_task_run", side_effect=mock_log_run
+        ):
+            with patch(
+                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                new_callable=AsyncMock,
+            ):
+                with patch(
+                    "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
+                ):
                     with _patch_settings(groups_dir=tmp_path):
                         from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
 
@@ -645,7 +712,6 @@ class TestRunScheduledAgent:
         assert len(logged_runs) == 1
         assert logged_runs[0].status == "error"
         assert "Agent returned error" in logged_runs[0].error
-
 
     @pytest.mark.asyncio
     async def test_advances_next_run_before_execution(
@@ -662,8 +728,13 @@ class TestRunScheduledAgent:
             early_updates.append((task_id, updates))
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
-            with patch("pynchy.host.orchestrator.task_scheduler.update_task_after_run", new_callable=AsyncMock):
-                with patch("pynchy.host.orchestrator.task_scheduler.update_task", side_effect=mock_update):
+            with patch(
+                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                new_callable=AsyncMock,
+            ):
+                with patch(
+                    "pynchy.host.orchestrator.task_scheduler.update_task", side_effect=mock_update
+                ):
                     with _patch_settings(groups_dir=tmp_path):
                         from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
 
@@ -699,9 +770,16 @@ class TestRunScheduledAgent:
         async def mock_log_run(log: TaskRunLog):
             logged_runs.append(log)
 
-        with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", side_effect=mock_log_run):
-            with patch("pynchy.host.orchestrator.task_scheduler.update_task_after_run", new_callable=AsyncMock):
-                with patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock):
+        with patch(
+            "pynchy.host.orchestrator.task_scheduler.log_task_run", side_effect=mock_log_run
+        ):
+            with patch(
+                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                new_callable=AsyncMock,
+            ):
+                with patch(
+                    "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
+                ):
                     with _patch_settings(groups_dir=tmp_path):
                         from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
 

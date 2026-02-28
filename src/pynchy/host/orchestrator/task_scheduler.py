@@ -11,6 +11,9 @@ if TYPE_CHECKING:
     from pynchy.host.container_manager import OnOutput
 
 from pynchy.config import get_settings
+from pynchy.host.orchestrator.concurrency import GroupQueue
+from pynchy.host.orchestrator.workspace_config import load_workspace_config
+from pynchy.logger import logger
 from pynchy.state import (
     get_due_host_jobs,
     get_due_tasks,
@@ -20,11 +23,8 @@ from pynchy.state import (
     update_task,
     update_task_after_run,
 )
-from pynchy.host.orchestrator.concurrency import GroupQueue
-from pynchy.logger import logger
 from pynchy.types import ContainerOutput, ScheduledTask, TaskRunLog, WorkspaceProfile
 from pynchy.utils import IdleTimer, compute_next_run, log_shell_result, run_shell_command
-from pynchy.host.orchestrator.workspace_config import load_workspace_config
 
 
 class SchedulerDependencies(Protocol):

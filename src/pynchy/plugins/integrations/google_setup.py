@@ -39,6 +39,7 @@ from typing import Any
 
 import pluggy
 
+from pynchy.logger import logger
 from pynchy.plugins.integrations.browser import (
     chrome_path,
     has_display,
@@ -47,7 +48,6 @@ from pynchy.plugins.integrations.browser import (
     start_virtual_display,
     stop_procs,
 )
-from pynchy.logger import logger
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 

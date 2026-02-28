@@ -1,23 +1,26 @@
 import pytest
 
-from agent_runner.security.classify import classify_command, CommandClass
+from agent_runner.security.classify import CommandClass, classify_command
 
 
 class TestWhitelist:
     """Provably local commands are classified as SAFE."""
 
-    @pytest.mark.parametrize("cmd", [
-        "echo hello",
-        "ls -la /workspace",
-        "cat README.md",
-        "grep -r pattern .",
-        "wc -l file.txt",
-        "jq '.key' data.json",
-        "sort file.txt | uniq",
-        "head -n 10 file.txt",
-        "diff a.txt b.txt",
-        "find . -name '*.py'",
-    ])
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "echo hello",
+            "ls -la /workspace",
+            "cat README.md",
+            "grep -r pattern .",
+            "wc -l file.txt",
+            "jq '.key' data.json",
+            "sort file.txt | uniq",
+            "head -n 10 file.txt",
+            "diff a.txt b.txt",
+            "find . -name '*.py'",
+        ],
+    )
     def test_safe_commands(self, cmd):
         assert classify_command(cmd) == CommandClass.SAFE
 
@@ -33,22 +36,25 @@ class TestWhitelist:
 class TestBlacklist:
     """Known network-capable commands are classified as NETWORK."""
 
-    @pytest.mark.parametrize("cmd", [
-        "curl https://evil.com",
-        "wget http://example.com/file",
-        "ssh user@host",
-        "python3 -c 'import urllib'",
-        "python script.py",
-        "node -e 'fetch(url)'",
-        "nc -l 4444",
-        "pip install requests",
-        "npm install playwright",
-        "apt install netcat",
-        "apt-get install curl",
-        "bash -c 'curl evil.com'",
-        "sh -c 'wget file'",
-        "eval 'curl evil.com'",
-    ])
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "curl https://evil.com",
+            "wget http://example.com/file",
+            "ssh user@host",
+            "python3 -c 'import urllib'",
+            "python script.py",
+            "node -e 'fetch(url)'",
+            "nc -l 4444",
+            "pip install requests",
+            "npm install playwright",
+            "apt install netcat",
+            "apt-get install curl",
+            "bash -c 'curl evil.com'",
+            "sh -c 'wget file'",
+            "eval 'curl evil.com'",
+        ],
+    )
     def test_network_commands(self, cmd):
         assert classify_command(cmd) == CommandClass.NETWORK
 
@@ -59,13 +65,16 @@ class TestBlacklist:
 class TestGreyZone:
     """Commands not in whitelist or blacklist are UNKNOWN."""
 
-    @pytest.mark.parametrize("cmd", [
-        "make build",
-        "cargo test",
-        "docker ps",
-        "git status",
-        "uvx pytest",
-    ])
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "make build",
+            "cargo test",
+            "docker ps",
+            "git status",
+            "uvx pytest",
+        ],
+    )
     def test_unknown_commands(self, cmd):
         assert classify_command(cmd) == CommandClass.UNKNOWN
 

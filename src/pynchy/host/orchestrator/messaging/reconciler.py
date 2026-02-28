@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Protocol
 
+from pynchy.logger import logger
 from pynchy.state import (
     advance_cursors_atomic,
     get_channel_cursor,
@@ -19,7 +20,6 @@ from pynchy.state import (
     message_exists,
     prune_stale_cursors,
 )
-from pynchy.logger import logger
 
 if TYPE_CHECKING:
     from pynchy.types import Channel, NewMessage, WorkspaceProfile

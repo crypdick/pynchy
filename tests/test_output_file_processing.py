@@ -12,8 +12,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from pynchy.state import _init_test_database
 from pynchy.host.container_manager.ipc.watcher import _process_output_file
+from pynchy.state import _init_test_database
 from pynchy.types import ContainerOutput
 
 
@@ -53,7 +53,9 @@ class TestOutputFileProcessing:
         )
 
         handler = AsyncMock()
-        with patch("pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler):
+        with patch(
+            "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler
+        ):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
         handler.assert_called_once()
@@ -76,7 +78,9 @@ class TestOutputFileProcessing:
         )
 
         handler = AsyncMock()
-        with patch("pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler):
+        with patch(
+            "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler
+        ):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
         assert not file_path.exists()
@@ -94,7 +98,9 @@ class TestOutputFileProcessing:
             },
         )
 
-        with patch("pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=None):
+        with patch(
+            "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=None
+        ):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
         assert file_path.exists(), "File should be preserved for one-shot container collection"
@@ -113,7 +119,9 @@ class TestOutputFileProcessing:
         )
 
         handler = AsyncMock()
-        with patch("pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler):
+        with patch(
+            "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler
+        ):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
         output: ContainerOutput = handler.call_args[0][0]
@@ -135,7 +143,9 @@ class TestOutputFileProcessing:
         )
 
         handler = AsyncMock()
-        with patch("pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler):
+        with patch(
+            "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler
+        ):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
         output: ContainerOutput = handler.call_args[0][0]
@@ -168,7 +178,10 @@ class TestQueryDonePulse:
 
         handler = AsyncMock()
         with (
-            patch("pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler),
+            patch(
+                "pynchy.host.container_manager.ipc.watcher._get_output_handler",
+                return_value=handler,
+            ),
             patch("pynchy.host.container_manager.ipc.watcher._signal_query_done") as mock_signal,
         ):
             await _process_output_file(file_path, "test-group", ipc_dir)
@@ -190,7 +203,9 @@ class TestQueryDonePulse:
         )
 
         with (
-            patch("pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=None),
+            patch(
+                "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=None
+            ),
             patch("pynchy.host.container_manager.ipc.watcher._signal_query_done") as mock_signal,
         ):
             await _process_output_file(file_path, "test-group", ipc_dir)
@@ -213,7 +228,9 @@ class TestQueryDonePulse:
         )
 
         with (
-            patch("pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=None),
+            patch(
+                "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=None
+            ),
             patch("pynchy.host.container_manager.ipc.watcher._signal_query_done") as mock_signal,
         ):
             await _process_output_file(file_path, "test-group", ipc_dir)
@@ -236,7 +253,9 @@ class TestQueryDonePulse:
         )
 
         with (
-            patch("pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=None),
+            patch(
+                "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=None
+            ),
             patch("pynchy.host.container_manager.ipc.watcher._signal_query_done") as mock_signal,
         ):
             await _process_output_file(file_path, "test-group", ipc_dir)
@@ -260,7 +279,10 @@ class TestQueryDonePulse:
 
         handler = AsyncMock()
         with (
-            patch("pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler),
+            patch(
+                "pynchy.host.container_manager.ipc.watcher._get_output_handler",
+                return_value=handler,
+            ),
             patch("pynchy.host.container_manager.ipc.watcher._signal_query_done"),
         ):
             await _process_output_file(file_path, "test-group", ipc_dir)
@@ -321,7 +343,9 @@ class TestOutputFileErrors:
         )
 
         handler = AsyncMock(side_effect=RuntimeError("handler boom"))
-        with patch("pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler):
+        with patch(
+            "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler
+        ):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
         # File should be deleted even though handler raised
@@ -346,7 +370,9 @@ class TestOutputFileErrors:
         )
 
         handler = AsyncMock()
-        with patch("pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler):
+        with patch(
+            "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler
+        ):
             await _process_output_file(file1, "test-group", ipc_dir)
             await _process_output_file(file2, "test-group", ipc_dir)
 

@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 
-from pynchy.state.connection import _get_db
 from pynchy.logger import logger
+from pynchy.state.connection import _get_db
 from pynchy.types import (
     ContainerConfig,
     ServiceTrustConfig,

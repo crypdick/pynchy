@@ -12,26 +12,54 @@ from typing import Any
 from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_chat_jid
 from pynchy.host.container_manager.ipc.registry import register_prefix
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
-from pynchy.logger import logger
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.host.container_manager.security.cop import inspect_bash
-from pynchy.host.container_manager.security.gate import SecurityGate, get_gate_for_group, resolve_security
+from pynchy.host.container_manager.security.gate import (
+    SecurityGate,
+    get_gate_for_group,
+    resolve_security,
+)
+from pynchy.logger import logger
 
 # Inline network-capable check (same logic as container's classify.py).
 # We duplicate rather than import because the container package isn't
 # available on the host.
-_NETWORK_SINGLE: frozenset[str] = frozenset({
-    "curl", "wget", "nc", "netcat", "ncat", "telnet",
-    "ssh", "scp", "sftp", "rsync",
-    "nslookup", "dig", "host", "ping", "traceroute",
-    "python", "python3", "node", "ruby", "perl", "php",
-    "eval",
-})
+_NETWORK_SINGLE: frozenset[str] = frozenset(
+    {
+        "curl",
+        "wget",
+        "nc",
+        "netcat",
+        "ncat",
+        "telnet",
+        "ssh",
+        "scp",
+        "sftp",
+        "rsync",
+        "nslookup",
+        "dig",
+        "host",
+        "ping",
+        "traceroute",
+        "python",
+        "python3",
+        "node",
+        "ruby",
+        "perl",
+        "php",
+        "eval",
+    }
+)
 
 _NETWORK_MULTI: tuple[str, ...] = (
-    "apt-get install", "apt install",
-    "pip install", "npm install", "yarn add", "cargo install",
-    "bash -c", "sh -c",
+    "apt-get install",
+    "apt install",
+    "pip install",
+    "npm install",
+    "yarn add",
+    "cargo install",
+    "bash -c",
+    "sh -c",
 )
 
 
@@ -123,7 +151,10 @@ async def _handle_bash_security_check(
 
     if decision["decision"] == "needs_human":
         # Lazy import to avoid circular: security.approval -> ipc._write -> ipc.__init__ -> here
-        from pynchy.host.container_manager.security.approval import create_pending_approval, format_approval_notification
+        from pynchy.host.container_manager.security.approval import (
+            create_pending_approval,
+            format_approval_notification,
+        )
 
         short_id = create_pending_approval(
             request_id=request_id,

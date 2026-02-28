@@ -13,9 +13,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.state import _init_test_database, get_all_tasks
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.watcher import _move_to_error_dir
+from pynchy.state import _init_test_database, get_all_tasks
 from pynchy.types import WorkspaceProfile
 
 
@@ -115,7 +115,8 @@ class TestCreatePeriodicAgent:
         with (
             pytest.MonkeyPatch.context() as mp,
             patch(
-                "pynchy.host.container_manager.ipc.handlers_groups.get_settings", return_value=self._settings(tmp_path)
+                "pynchy.host.container_manager.ipc.handlers_groups.get_settings",
+                return_value=self._settings(tmp_path),
             ),
             patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml") as add_ws,
         ):
@@ -167,7 +168,8 @@ class TestCreatePeriodicAgent:
 
         with (
             patch(
-                "pynchy.host.container_manager.ipc.handlers_groups.get_settings", return_value=self._settings(tmp_path)
+                "pynchy.host.container_manager.ipc.handlers_groups.get_settings",
+                return_value=self._settings(tmp_path),
             ),
             patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
         ):
@@ -202,7 +204,8 @@ class TestCreatePeriodicAgent:
 
         with (
             patch(
-                "pynchy.host.container_manager.ipc.handlers_groups.get_settings", return_value=self._settings(tmp_path)
+                "pynchy.host.container_manager.ipc.handlers_groups.get_settings",
+                return_value=self._settings(tmp_path),
             ),
             patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
         ):
@@ -230,7 +233,8 @@ class TestCreatePeriodicAgent:
 
         with (
             patch(
-                "pynchy.host.container_manager.ipc.handlers_groups.get_settings", return_value=self._settings(tmp_path)
+                "pynchy.host.container_manager.ipc.handlers_groups.get_settings",
+                return_value=self._settings(tmp_path),
             ),
             patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
         ):
@@ -260,7 +264,8 @@ class TestCreatePeriodicAgent:
 
         with (
             patch(
-                "pynchy.host.container_manager.ipc.handlers_groups.get_settings", return_value=self._settings(tmp_path)
+                "pynchy.host.container_manager.ipc.handlers_groups.get_settings",
+                return_value=self._settings(tmp_path),
             ),
             patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
         ):
@@ -288,7 +293,8 @@ class TestCreatePeriodicAgent:
 
         with (
             patch(
-                "pynchy.host.container_manager.ipc.handlers_groups.get_settings", return_value=self._settings(tmp_path)
+                "pynchy.host.container_manager.ipc.handlers_groups.get_settings",
+                return_value=self._settings(tmp_path),
             ),
             patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
         ):

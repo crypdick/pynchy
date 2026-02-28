@@ -75,7 +75,8 @@ description = "Dev"
 """.strip(),
         )
         with patch(
-            "pynchy.host.container_manager.security.mount_security.get_settings", return_value=_test_settings(allowlist)
+            "pynchy.host.container_manager.security.mount_security.get_settings",
+            return_value=_test_settings(allowlist),
         ):
             data = load_mount_allowlist()
         assert data is not None
@@ -86,7 +87,8 @@ description = "Dev"
     def test_missing_file_returns_none(self, tmp_path: Path):
         allowlist = tmp_path / "missing.toml"
         with patch(
-            "pynchy.host.container_manager.security.mount_security.get_settings", return_value=_test_settings(allowlist)
+            "pynchy.host.container_manager.security.mount_security.get_settings",
+            return_value=_test_settings(allowlist),
         ):
             assert load_mount_allowlist() is None
 
@@ -94,7 +96,8 @@ description = "Dev"
         allowlist = tmp_path / "mount-allowlist.toml"
         _write_allowlist(allowlist, "not = [valid")
         with patch(
-            "pynchy.host.container_manager.security.mount_security.get_settings", return_value=_test_settings(allowlist)
+            "pynchy.host.container_manager.security.mount_security.get_settings",
+            return_value=_test_settings(allowlist),
         ):
             assert load_mount_allowlist() is None
 
@@ -118,7 +121,8 @@ allow_read_write = true
 """.strip(),
         )
         with patch(
-            "pynchy.host.container_manager.security.mount_security.get_settings", return_value=_test_settings(allowlist)
+            "pynchy.host.container_manager.security.mount_security.get_settings",
+            return_value=_test_settings(allowlist),
         ):
             result = validate_mount(
                 AdditionalMount(host_path=str(target), container_path="repo"), is_admin=True
@@ -143,7 +147,8 @@ allow_read_write = true
 """.strip(),
         )
         with patch(
-            "pynchy.host.container_manager.security.mount_security.get_settings", return_value=_test_settings(allowlist)
+            "pynchy.host.container_manager.security.mount_security.get_settings",
+            return_value=_test_settings(allowlist),
         ):
             result = validate_mount(
                 AdditionalMount(host_path=str(outside), container_path="outside"),
@@ -167,7 +172,8 @@ allow_read_write = true
 """.strip(),
         )
         with patch(
-            "pynchy.host.container_manager.security.mount_security.get_settings", return_value=_test_settings(allowlist)
+            "pynchy.host.container_manager.security.mount_security.get_settings",
+            return_value=_test_settings(allowlist),
         ):
             result = validate_mount(
                 AdditionalMount(host_path=str(data), container_path="data", readonly=False),
@@ -200,7 +206,8 @@ allow_read_write = true
             AdditionalMount(host_path=str(tmp_path / "missing"), container_path="bad"),
         ]
         with patch(
-            "pynchy.host.container_manager.security.mount_security.get_settings", return_value=_test_settings(allowlist)
+            "pynchy.host.container_manager.security.mount_security.get_settings",
+            return_value=_test_settings(allowlist),
         ):
             result = validate_additional_mounts(mounts, "TestGroup", is_admin=True)
         assert len(result) == 1

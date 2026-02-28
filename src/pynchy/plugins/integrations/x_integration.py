@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any
 
 import pluggy
 
+from pynchy.logger import logger
 from pynchy.plugins.integrations.browser import (
     check_browser_plugin_deps,
     chrome_path,
@@ -39,7 +40,6 @@ from pynchy.plugins.integrations.browser import (
     profile_dir,
     stop_procs,
 )
-from pynchy.logger import logger
 
 if TYPE_CHECKING:
     from playwright.async_api import Page

@@ -26,15 +26,15 @@ from neonize.events import (
 from neonize.proto.Neonize_pb2 import JID
 from neonize.utils.jid import Jid2String
 
-from pynchy.host.orchestrator.messaging.pending_questions import find_pending_for_jid
 from pynchy.config import get_settings
+from pynchy.host.orchestrator.messaging.pending_questions import find_pending_for_jid
+from pynchy.logger import logger
 from pynchy.state import (
     get_chat_jids_by_name,
     get_last_group_sync,
     set_last_group_sync,
     update_chat_name,
 )
-from pynchy.logger import logger
 from pynchy.types import InboundFetchResult, NewMessage, WorkspaceProfile
 
 GROUP_SYNC_INTERVAL: float = 24 * 60 * 60  # 24 hours in seconds
@@ -347,7 +347,9 @@ class WhatsAppChannel:
             if pending is not None:
                 # Skip stale pending questions — let the sweep handle cleanup.
                 # A stale file from a crash should not silently swallow real messages.
-                from pynchy.host.orchestrator.messaging.pending_questions import PENDING_QUESTION_TIMEOUT_SECONDS
+                from pynchy.host.orchestrator.messaging.pending_questions import (
+                    PENDING_QUESTION_TIMEOUT_SECONDS,
+                )
 
                 ts = datetime.fromisoformat(pending.get("timestamp", ""))
                 age = (datetime.now(UTC) - ts).total_seconds()

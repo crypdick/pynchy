@@ -6,12 +6,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from pynchy.host.orchestrator.messaging.sender import broadcast as broadcast_to_channels
 from pynchy.host.orchestrator.messaging.channel_handler import (
     send_reaction_to_channels,
     send_reaction_to_outbound,
     set_typing_on_channels,
 )
+from pynchy.host.orchestrator.messaging.sender import broadcast as broadcast_to_channels
 
 # ---------------------------------------------------------------------------
 # Helpers

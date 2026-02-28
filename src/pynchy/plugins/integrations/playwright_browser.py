@@ -58,10 +58,7 @@ class PlaywrightBrowserPlugin:
         # __file__ is src/pynchy/plugins/integrations/playwright_browser.py
         # agent/ is 2 levels up: integrations/ -> plugins/ -> (pynchy package, which contains agent/)
         skill_dir = (
-            Path(__file__).resolve().parent.parent.parent
-            / "agent"
-            / "skills"
-            / "browser-control"
+            Path(__file__).resolve().parent.parent.parent / "agent" / "skills" / "browser-control"
         )
         if skill_dir.is_dir():
             return [str(skill_dir)]

@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from conftest import make_settings
 
+from pynchy.host.container_manager.ipc.write import write_ipc_response
 from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.git_ops.sync import host_sync_worktree
@@ -26,7 +27,6 @@ from pynchy.host.git_ops.sync_poll import (
     needs_deploy,
 )
 from pynchy.host.git_ops.worktree import ensure_worktree
-from pynchy.host.container_manager.ipc.write import write_ipc_response
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -78,14 +78,18 @@ class TestInstallService:
     def test_dispatches_to_launchd_on_darwin(self):
         with patch("pynchy.host.orchestrator.service_installer.sys") as mock_sys:
             mock_sys.platform = "darwin"
-            with patch("pynchy.host.orchestrator.service_installer._install_launchd_service") as mock_launchd:
+            with patch(
+                "pynchy.host.orchestrator.service_installer._install_launchd_service"
+            ) as mock_launchd:
                 install_service()
                 mock_launchd.assert_called_once()
 
     def test_dispatches_to_systemd_on_linux(self):
         with patch("pynchy.host.orchestrator.service_installer.sys") as mock_sys:
             mock_sys.platform = "linux"
-            with patch("pynchy.host.orchestrator.service_installer._install_systemd_service") as mock_systemd:
+            with patch(
+                "pynchy.host.orchestrator.service_installer._install_systemd_service"
+            ) as mock_systemd:
                 install_service()
                 mock_systemd.assert_called_once()
 
@@ -93,8 +97,12 @@ class TestInstallService:
         with patch("pynchy.host.orchestrator.service_installer.sys") as mock_sys:
             mock_sys.platform = "win32"
             with (
-                patch("pynchy.host.orchestrator.service_installer._install_launchd_service") as mock_launchd,
-                patch("pynchy.host.orchestrator.service_installer._install_systemd_service") as mock_systemd,
+                patch(
+                    "pynchy.host.orchestrator.service_installer._install_launchd_service"
+                ) as mock_launchd,
+                patch(
+                    "pynchy.host.orchestrator.service_installer._install_systemd_service"
+                ) as mock_systemd,
             ):
                 install_service()
                 mock_launchd.assert_not_called()
@@ -135,8 +143,12 @@ class TestInstallLaunchdService:
                 return_value=_test_settings(project_root=tmp_path),
             ),
             patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
-            patch("pynchy.host.orchestrator.service_installer.is_launchd_loaded", return_value=False),
-            patch("pynchy.host.orchestrator.service_installer.is_launchd_managed", return_value=False),
+            patch(
+                "pynchy.host.orchestrator.service_installer.is_launchd_loaded", return_value=False
+            ),
+            patch(
+                "pynchy.host.orchestrator.service_installer.is_launchd_managed", return_value=False
+            ),
             patch("subprocess.run") as mock_run,
         ):
             _install_launchd_service()
@@ -165,7 +177,9 @@ class TestInstallLaunchdService:
                 return_value=_test_settings(project_root=tmp_path),
             ),
             patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
-            patch("pynchy.host.orchestrator.service_installer.is_launchd_loaded", return_value=True),
+            patch(
+                "pynchy.host.orchestrator.service_installer.is_launchd_loaded", return_value=True
+            ),
             patch("subprocess.run") as mock_run,
         ):
             _install_launchd_service()
@@ -189,8 +203,12 @@ class TestInstallLaunchdService:
                 return_value=_test_settings(project_root=tmp_path),
             ),
             patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
-            patch("pynchy.host.orchestrator.service_installer.is_launchd_loaded", return_value=True),
-            patch("pynchy.host.orchestrator.service_installer.is_launchd_managed", return_value=False),
+            patch(
+                "pynchy.host.orchestrator.service_installer.is_launchd_loaded", return_value=True
+            ),
+            patch(
+                "pynchy.host.orchestrator.service_installer.is_launchd_managed", return_value=False
+            ),
             patch("subprocess.run") as mock_run,
         ):
             _install_launchd_service()
@@ -218,8 +236,12 @@ class TestInstallLaunchdService:
                 return_value=_test_settings(project_root=tmp_path),
             ),
             patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
-            patch("pynchy.host.orchestrator.service_installer.is_launchd_loaded", return_value=False),
-            patch("pynchy.host.orchestrator.service_installer.is_launchd_managed", return_value=True),
+            patch(
+                "pynchy.host.orchestrator.service_installer.is_launchd_loaded", return_value=False
+            ),
+            patch(
+                "pynchy.host.orchestrator.service_installer.is_launchd_managed", return_value=True
+            ),
             patch("subprocess.run") as mock_run,
         ):
             _install_launchd_service()

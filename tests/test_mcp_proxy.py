@@ -8,7 +8,10 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-from pynchy.host.container_manager.security.approval import _mcp_proxy_futures, resolve_mcp_proxy_approval
+from pynchy.host.container_manager.security.approval import (
+    _mcp_proxy_futures,
+    resolve_mcp_proxy_approval,
+)
 from pynchy.host.container_manager.security.cop import CopVerdict
 from pynchy.host.container_manager.security.gate import _gates, create_gate
 from pynchy.types import ServiceTrustConfig, WorkspaceSecurity

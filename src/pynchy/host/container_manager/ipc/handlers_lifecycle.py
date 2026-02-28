@@ -6,6 +6,9 @@ import json
 from typing import Any
 
 from pynchy.config import get_settings
+from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_workspace_by_folder
+from pynchy.host.container_manager.ipc.registry import register
+from pynchy.host.container_manager.ipc.write import write_ipc_response
 from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates
 from pynchy.host.git_ops.sync import (
     GIT_POLICY_PR,
@@ -15,9 +18,6 @@ from pynchy.host.git_ops.sync import (
 )
 from pynchy.host.git_ops.sync_poll import needs_container_rebuild, needs_deploy
 from pynchy.host.git_ops.utils import get_head_sha
-from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_workspace_by_folder
-from pynchy.host.container_manager.ipc.registry import register
-from pynchy.host.container_manager.ipc.write import write_ipc_response
 from pynchy.logger import logger
 
 

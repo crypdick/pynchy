@@ -12,7 +12,9 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src"))
+sys.path.insert(
+    0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src")
+)
 
 from agent_runner.core import AgentCore, AgentCoreConfig  # noqa: E402
 from agent_runner.registry import create_agent_core  # noqa: E402

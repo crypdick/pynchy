@@ -37,9 +37,7 @@ class TestRecordOutbound:
 
     @pytest.mark.asyncio
     async def test_creates_delivery_rows_for_each_channel(self):
-        lid = await record_outbound(
-            "group@g.us", "hello", "broadcast", ["slack", "whatsapp"]
-        )
+        lid = await record_outbound("group@g.us", "hello", "broadcast", ["slack", "whatsapp"])
         # Both channels should have pending deliveries
         slack_pending = await get_pending_outbound("slack", "group@g.us")
         wa_pending = await get_pending_outbound("whatsapp", "group@g.us")

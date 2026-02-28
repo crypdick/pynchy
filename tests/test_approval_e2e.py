@@ -15,9 +15,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.state import _init_test_database
-from pynchy.host.container_manager.ipc.handlers_service import _handle_service_request, clear_plugin_handler_cache
+from pynchy.host.container_manager.ipc.handlers_service import (
+    _handle_service_request,
+    clear_plugin_handler_cache,
+)
 from pynchy.host.container_manager.security.gate import _gates, create_gate
+from pynchy.state import _init_test_database
 from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
 
 
@@ -122,9 +125,18 @@ class TestApprovalE2E:
 
         # Step 1: Service request hits needs_human — creates pending, broadcasts
         with (
-            patch("pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=ws_settings),
-            patch("pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager", return_value=pm),
-            patch("pynchy.host.container_manager.security.approval.get_settings", return_value=approval_settings),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_service.get_settings",
+                return_value=ws_settings,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
+                return_value=pm,
+            ),
+            patch(
+                "pynchy.host.container_manager.security.approval.get_settings",
+                return_value=approval_settings,
+            ),
         ):
             data = {
                 "type": "service:x_post",
@@ -153,7 +165,10 @@ class TestApprovalE2E:
         # Step 2: User sends "approve <short_id>" via chat
         from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command
 
-        with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=approval_settings):
+        with patch(
+            "pynchy.host.container_manager.security.approval.get_settings",
+            return_value=approval_settings,
+        ):
             await handle_approval_command(deps, "chat@g.us", "approve", short_id, "testuser")
 
         # Verify: decision file created
@@ -174,8 +189,14 @@ class TestApprovalE2E:
         clear_plugin_handler_cache()
 
         with (
-            patch("pynchy.host.container_manager.ipc.handlers_approval.get_settings", return_value=approval_settings),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=approval_settings),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=approval_settings,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.write.get_settings",
+                return_value=approval_settings,
+            ),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_approval._get_plugin_handlers",
                 return_value={"x_post": mock_handler},
@@ -214,9 +235,18 @@ class TestApprovalE2E:
 
         # Step 1: Service request hits needs_human
         with (
-            patch("pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=ws_settings),
-            patch("pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager", return_value=pm),
-            patch("pynchy.host.container_manager.security.approval.get_settings", return_value=approval_settings),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_service.get_settings",
+                return_value=ws_settings,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
+                return_value=pm,
+            ),
+            patch(
+                "pynchy.host.container_manager.security.approval.get_settings",
+                return_value=approval_settings,
+            ),
         ):
             data = {
                 "type": "service:x_post",
@@ -233,7 +263,10 @@ class TestApprovalE2E:
         # Step 2: User denies
         from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command
 
-        with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=approval_settings):
+        with patch(
+            "pynchy.host.container_manager.security.approval.get_settings",
+            return_value=approval_settings,
+        ):
             await handle_approval_command(deps, "chat@g.us", "deny", short_id, "testuser")
 
         # Step 3: IPC handler processes denial
@@ -243,8 +276,14 @@ class TestApprovalE2E:
         decision_files = list(decisions_dir.glob("*.json"))
 
         with (
-            patch("pynchy.host.container_manager.ipc.handlers_approval.get_settings", return_value=approval_settings),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=approval_settings),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=approval_settings,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.write.get_settings",
+                return_value=approval_settings,
+            ),
         ):
             await process_approval_decision(decision_files[0], "mygroup")
 
@@ -276,9 +315,15 @@ class TestApprovalE2E:
         deps = FakeDeps({"chat@g.us": TEST_GROUP})
 
         with (
-            patch("pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=ws_settings),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_service.get_settings",
+                return_value=ws_settings,
+            ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=ws_settings),
-            patch("pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager", return_value=pm),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
+                return_value=pm,
+            ),
         ):
             data = {
                 "type": "service:safe_tool",

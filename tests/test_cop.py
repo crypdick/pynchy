@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-import json
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from pynchy.host.container_manager.security.cop import inspect_bash, inspect_inbound, inspect_outbound
+from pynchy.host.container_manager.security.cop import (
+    inspect_bash,
+    inspect_inbound,
+    inspect_outbound,
+)
 
 
 def _fake_gateway(port: int = 4010, key: str = "test-key"):
@@ -46,7 +49,9 @@ def _mock_aiohttp_session(response_text: str, *, status: int = 200):
 @pytest.mark.asyncio
 async def test_outbound_clean_diff():
     """Clean diff is not flagged."""
-    gw_patch = patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway())
+    gw_patch = patch(
+        "pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway()
+    )
     session_patch = _mock_aiohttp_session('{"flagged": false, "reason": "Normal refactoring"}')
 
     with gw_patch, session_patch:
@@ -61,7 +66,9 @@ async def test_outbound_clean_diff():
 @pytest.mark.asyncio
 async def test_outbound_malicious_diff():
     """Suspicious diff is flagged."""
-    gw_patch = patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway())
+    gw_patch = patch(
+        "pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway()
+    )
     session_patch = _mock_aiohttp_session('{"flagged": true, "reason": "Backdoor detected"}')
 
     with gw_patch, session_patch:
@@ -76,7 +83,9 @@ async def test_outbound_malicious_diff():
 @pytest.mark.asyncio
 async def test_inbound_benign_content():
     """Normal email content is not flagged."""
-    gw_patch = patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway())
+    gw_patch = patch(
+        "pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway()
+    )
     session_patch = _mock_aiohttp_session('{"flagged": false, "reason": "Normal email"}')
 
     with gw_patch, session_patch:
@@ -88,7 +97,9 @@ async def test_inbound_benign_content():
 @pytest.mark.asyncio
 async def test_inbound_injection_attempt():
     """Prompt injection in content is flagged."""
-    gw_patch = patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway())
+    gw_patch = patch(
+        "pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway()
+    )
     session_patch = _mock_aiohttp_session(
         '{"flagged": true, "reason": "Prompt injection: override instructions"}'
     )
@@ -115,7 +126,9 @@ async def test_cop_no_gateway_fails_open():
 @pytest.mark.asyncio
 async def test_cop_error_fails_open():
     """If the LLM call fails, the Cop allows the operation (fail open)."""
-    gw_patch = patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway())
+    gw_patch = patch(
+        "pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway()
+    )
 
     @asynccontextmanager
     async def _exploding_post(*_a, **_k):
@@ -143,7 +156,9 @@ async def test_cop_error_fails_open():
 @pytest.mark.asyncio
 async def test_cop_handles_markdown_fenced_json():
     """Cop handles LLM responses wrapped in markdown code fences."""
-    gw_patch = patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway())
+    gw_patch = patch(
+        "pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway()
+    )
     session_patch = _mock_aiohttp_session('```json\n{"flagged": false, "reason": "clean"}\n```')
 
     with gw_patch, session_patch:
@@ -155,7 +170,9 @@ async def test_cop_handles_markdown_fenced_json():
 @pytest.mark.asyncio
 async def test_bash_benign_command():
     """Safe bash command is not flagged."""
-    gw_patch = patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway())
+    gw_patch = patch(
+        "pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway()
+    )
     session_patch = _mock_aiohttp_session('{"flagged": false, "reason": "Local file operation"}')
 
     with gw_patch, session_patch:
@@ -167,7 +184,9 @@ async def test_bash_benign_command():
 @pytest.mark.asyncio
 async def test_bash_exfiltration_flagged():
     """Data exfiltration via curl is flagged."""
-    gw_patch = patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway())
+    gw_patch = patch(
+        "pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway()
+    )
     session_patch = _mock_aiohttp_session(
         '{"flagged": true, "reason": "Data exfiltration via curl"}'
     )

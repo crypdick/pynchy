@@ -44,9 +44,7 @@ class TestResolveDirectives:
         (d / "example.md.EXAMPLE").write_text("# Example\nIgnored.")
         return tmp_path
 
-    def _settings(
-        self, root: Path, directives: dict[str, DirectiveConfig]
-    ) -> MagicMock:
+    def _settings(self, root: Path, directives: dict[str, DirectiveConfig]) -> MagicMock:
         s = MagicMock()
         s.directives = directives
         s.project_root = root
@@ -72,9 +70,7 @@ class TestResolveDirectives:
 
     def test_scope_repo_slug_matches(self, tmp_project: Path):
         cfg = {
-            "repo": DirectiveConfig(
-                file="directives/repo.md", scope="crypdick/pynchy"
-            ),
+            "repo": DirectiveConfig(file="directives/repo.md", scope="crypdick/pynchy"),
         }
         with patch(_PATCH_TARGET, return_value=self._settings(tmp_project, cfg)):
             result = resolve_directives("code-improver", "crypdick/pynchy")
@@ -118,9 +114,7 @@ class TestResolveDirectives:
 
     def test_missing_file_warns_and_skips(self, tmp_project: Path):
         cfg = {
-            "missing": DirectiveConfig(
-                file="directives/nonexistent.md", scope="all"
-            ),
+            "missing": DirectiveConfig(file="directives/nonexistent.md", scope="all"),
         }
         with patch(_PATCH_TARGET, return_value=self._settings(tmp_project, cfg)):
             result = resolve_directives("any-workspace", None)
@@ -133,9 +127,7 @@ class TestResolveDirectives:
 
     def test_example_suffix_ignored(self, tmp_project: Path):
         cfg = {
-            "example": DirectiveConfig(
-                file="directives/example.md.EXAMPLE", scope="all"
-            ),
+            "example": DirectiveConfig(file="directives/example.md.EXAMPLE", scope="all"),
         }
         with patch(_PATCH_TARGET, return_value=self._settings(tmp_project, cfg)):
             result = resolve_directives("any-workspace", None)

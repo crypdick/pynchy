@@ -15,9 +15,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.state import _init_test_database
-from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.container_manager.ipc.watcher import _move_to_error_dir
+from pynchy.host.git_ops.repo import RepoContext
+from pynchy.state import _init_test_database
 from pynchy.types import WorkspaceProfile
 
 ADMIN_GROUP = WorkspaceProfile(
@@ -252,7 +252,8 @@ class TestIpcDeployEdgeCases:
         from pynchy.host.container_manager.ipc.handlers_deploy import _handle_deploy
 
         with patch(
-            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy", new_callable=AsyncMock
+            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy",
+            new_callable=AsyncMock,
         ) as mock_finalize:
             await _handle_deploy(
                 {
@@ -282,7 +283,8 @@ class TestIpcDeployEdgeCases:
         await _init_test_database()
 
         with patch(
-            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy", new_callable=AsyncMock
+            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy",
+            new_callable=AsyncMock,
         ) as mock_finalize:
             await _handle_deploy(
                 {

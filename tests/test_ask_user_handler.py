@@ -73,7 +73,9 @@ class TestPathAContainerAlive:
                 "pynchy.host.orchestrator.messaging.ask_user_handler.get_session",
                 return_value=alive_session,
             ),
-            patch("pynchy.host.orchestrator.messaging.ask_user_handler.write_ipc_response") as mock_write,
+            patch(
+                "pynchy.host.orchestrator.messaging.ask_user_handler.write_ipc_response"
+            ) as mock_write,
             patch(
                 "pynchy.host.orchestrator.messaging.ask_user_handler.ipc_response_path",
                 return_value=Path("/tmp/fake/responses/req-abc123.json"),
@@ -110,8 +112,13 @@ class TestPathAContainerAlive:
                 return_value=alive_session,
             ),
             patch("pynchy.host.orchestrator.messaging.ask_user_handler.write_ipc_response"),
-            patch("pynchy.host.orchestrator.messaging.ask_user_handler.ipc_response_path", return_value=Path("/tmp/x")),
-            patch("pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question") as mock_resolve,
+            patch(
+                "pynchy.host.orchestrator.messaging.ask_user_handler.ipc_response_path",
+                return_value=Path("/tmp/x"),
+            ),
+            patch(
+                "pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question"
+            ) as mock_resolve,
         ):
             await handle_ask_user_answer("req-abc123", {"choice": "A"}, deps)
 
@@ -196,7 +203,9 @@ class TestPathBContainerDead:
                 "pynchy.host.orchestrator.messaging.ask_user_handler.get_session",
                 return_value=None,
             ),
-            patch("pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question") as mock_resolve,
+            patch(
+                "pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question"
+            ) as mock_resolve,
         ):
             await handle_ask_user_answer("req-abc123", {"a": "b"}, deps)
 
@@ -222,7 +231,9 @@ class TestUnknownQuestion:
                 "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",
                 return_value=None,
             ),
-            patch("pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question") as mock_resolve,
+            patch(
+                "pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question"
+            ) as mock_resolve,
         ):
             # Should not raise
             await handle_ask_user_answer("nonexistent-id", {"x": "y"}, deps)

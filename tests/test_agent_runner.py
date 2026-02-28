@@ -15,7 +15,9 @@ from unittest.mock import patch
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src"))
+sys.path.insert(
+    0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src")
+)
 
 from agent_runner.core import AgentEvent
 from agent_runner.ipc import drain_ipc_input, should_close

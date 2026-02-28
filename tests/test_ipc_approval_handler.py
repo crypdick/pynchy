@@ -85,7 +85,10 @@ class TestProcessApprovalDecision:
         mock_handler = AsyncMock(return_value={"result": {"status": "posted"}})
 
         with (
-            patch("pynchy.host.container_manager.ipc.handlers_approval.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=settings,
+            ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_approval._get_plugin_handlers",
@@ -117,7 +120,10 @@ class TestProcessApprovalDecision:
         decision_file = _write_decision(ipc_dir, "grp", "req456", approved=False)
 
         with (
-            patch("pynchy.host.container_manager.ipc.handlers_approval.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=settings,
+            ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             await process_approval_decision(decision_file, "grp")
@@ -138,7 +144,10 @@ class TestProcessApprovalDecision:
 
         decision_file = _write_decision(ipc_dir, "grp", "orphan", approved=True)
 
-        with patch("pynchy.host.container_manager.ipc.handlers_approval.get_settings", return_value=settings):
+        with patch(
+            "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+            return_value=settings,
+        ):
             await process_approval_decision(decision_file, "grp")
 
         assert not decision_file.exists()
@@ -152,7 +161,10 @@ class TestProcessApprovalDecision:
         decision_file = _write_decision(ipc_dir, "grp", "req789", approved=True)
 
         with (
-            patch("pynchy.host.container_manager.ipc.handlers_approval.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=settings,
+            ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_approval._get_plugin_handlers",
@@ -176,7 +188,10 @@ class TestProcessApprovalDecision:
         mock_handler = AsyncMock(side_effect=RuntimeError("boom"))
 
         with (
-            patch("pynchy.host.container_manager.ipc.handlers_approval.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=settings,
+            ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_approval._get_plugin_handlers",
@@ -215,7 +230,10 @@ class TestIpcApprovalDispatch:
         mock_dispatch = AsyncMock()
 
         with (
-            patch("pynchy.host.container_manager.ipc.handlers_approval.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=settings,
+            ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
             patch("pynchy.host.container_manager.ipc.registry.dispatch", mock_dispatch),
         ):
@@ -249,7 +267,10 @@ class TestIpcApprovalDispatch:
         decision_file = _write_decision(ipc_dir, "grp", "ipc-req2", approved=True)
 
         with (
-            patch("pynchy.host.container_manager.ipc.handlers_approval.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=settings,
+            ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             await process_approval_decision(decision_file, "grp")  # No deps!
@@ -278,7 +299,10 @@ class TestIpcApprovalDispatch:
         mock_dispatch = AsyncMock(side_effect=RuntimeError("dispatch failed"))
 
         with (
-            patch("pynchy.host.container_manager.ipc.handlers_approval.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=settings,
+            ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
             patch("pynchy.host.container_manager.ipc.registry.dispatch", mock_dispatch),
         ):

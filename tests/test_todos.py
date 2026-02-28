@@ -11,7 +11,10 @@ from pynchy.host.orchestrator.todos import add_todo, get_todos
 
 class TestAddTodo:
     def test_creates_file_and_adds_item(self, tmp_path):
-        with patch("pynchy.host.orchestrator.todos.get_settings", return_value=make_settings(data_dir=tmp_path)):
+        with patch(
+            "pynchy.host.orchestrator.todos.get_settings",
+            return_value=make_settings(data_dir=tmp_path),
+        ):
             entry = add_todo("test-group", "rename x to y")
 
         assert entry["content"] == "rename x to y"
@@ -23,7 +26,10 @@ class TestAddTodo:
         assert todos_file.exists()
 
     def test_appends_to_existing_list(self, tmp_path):
-        with patch("pynchy.host.orchestrator.todos.get_settings", return_value=make_settings(data_dir=tmp_path)):
+        with patch(
+            "pynchy.host.orchestrator.todos.get_settings",
+            return_value=make_settings(data_dir=tmp_path),
+        ):
             add_todo("test-group", "first item")
             add_todo("test-group", "second item")
             items = get_todos("test-group")
@@ -33,7 +39,10 @@ class TestAddTodo:
         assert items[1]["content"] == "second item"
 
     def test_unique_ids(self, tmp_path):
-        with patch("pynchy.host.orchestrator.todos.get_settings", return_value=make_settings(data_dir=tmp_path)):
+        with patch(
+            "pynchy.host.orchestrator.todos.get_settings",
+            return_value=make_settings(data_dir=tmp_path),
+        ):
             a = add_todo("test-group", "a")
             b = add_todo("test-group", "b")
 
@@ -42,13 +51,19 @@ class TestAddTodo:
 
 class TestGetTodos:
     def test_returns_empty_when_no_file(self, tmp_path):
-        with patch("pynchy.host.orchestrator.todos.get_settings", return_value=make_settings(data_dir=tmp_path)):
+        with patch(
+            "pynchy.host.orchestrator.todos.get_settings",
+            return_value=make_settings(data_dir=tmp_path),
+        ):
             items = get_todos("test-group")
 
         assert items == []
 
     def test_returns_all_items(self, tmp_path):
-        with patch("pynchy.host.orchestrator.todos.get_settings", return_value=make_settings(data_dir=tmp_path)):
+        with patch(
+            "pynchy.host.orchestrator.todos.get_settings",
+            return_value=make_settings(data_dir=tmp_path),
+        ):
             add_todo("test-group", "item 1")
             add_todo("test-group", "item 2")
             items = get_todos("test-group")
@@ -56,7 +71,10 @@ class TestGetTodos:
         assert len(items) == 2
 
     def test_groups_are_isolated(self, tmp_path):
-        with patch("pynchy.host.orchestrator.todos.get_settings", return_value=make_settings(data_dir=tmp_path)):
+        with patch(
+            "pynchy.host.orchestrator.todos.get_settings",
+            return_value=make_settings(data_dir=tmp_path),
+        ):
             add_todo("group-a", "item for a")
             add_todo("group-b", "item for b")
 
@@ -74,7 +92,10 @@ class TestGetTodos:
         todos_dir.mkdir(parents=True)
         (todos_dir / "todos.json").write_text("not valid json {{{")
 
-        with patch("pynchy.host.orchestrator.todos.get_settings", return_value=make_settings(data_dir=tmp_path)):
+        with patch(
+            "pynchy.host.orchestrator.todos.get_settings",
+            return_value=make_settings(data_dir=tmp_path),
+        ):
             items = get_todos("test-group")
 
         assert items == []
@@ -85,7 +106,10 @@ class TestGetTodos:
         todos_dir.mkdir(parents=True)
         (todos_dir / "todos.json").write_text("")
 
-        with patch("pynchy.host.orchestrator.todos.get_settings", return_value=make_settings(data_dir=tmp_path)):
+        with patch(
+            "pynchy.host.orchestrator.todos.get_settings",
+            return_value=make_settings(data_dir=tmp_path),
+        ):
             items = get_todos("test-group")
 
         assert items == []
@@ -96,7 +120,10 @@ class TestAddTodoAtomicWrite:
 
     def test_write_is_atomic(self, tmp_path):
         """add_todo uses atomic rename; no partial writes should be visible."""
-        with patch("pynchy.host.orchestrator.todos.get_settings", return_value=make_settings(data_dir=tmp_path)):
+        with patch(
+            "pynchy.host.orchestrator.todos.get_settings",
+            return_value=make_settings(data_dir=tmp_path),
+        ):
             add_todo("test-group", "item 1")
 
         # No .tmp files should remain after write
@@ -110,7 +137,10 @@ class TestAddTodoAtomicWrite:
         todos_dir.mkdir(parents=True)
         (todos_dir / "todos.json").write_text("CORRUPTED DATA")
 
-        with patch("pynchy.host.orchestrator.todos.get_settings", return_value=make_settings(data_dir=tmp_path)):
+        with patch(
+            "pynchy.host.orchestrator.todos.get_settings",
+            return_value=make_settings(data_dir=tmp_path),
+        ):
             # _read_todos returns [] for corrupted file, then add_todo appends
             entry = add_todo("test-group", "fresh start")
             items = get_todos("test-group")

@@ -11,8 +11,8 @@ from conftest import make_settings
 
 import pynchy.plugins.runtimes.detection as runtime_mod
 from pynchy.config import ContainerConfig
-from pynchy.plugins.runtimes.docker_runtime.runtime import DockerContainerRuntime
 from pynchy.plugins.runtimes.detection import detect_runtime
+from pynchy.plugins.runtimes.docker_runtime.runtime import DockerContainerRuntime
 
 
 def _settings(*, runtime_override: str | None = None):
@@ -46,7 +46,10 @@ class TestDetectRuntime:
         docker = _docker_plugin()
         with (
             patch("pynchy.config.get_settings", return_value=_settings(runtime_override="apple")),
-            patch("pynchy.plugins.runtimes.detection._iter_plugin_runtimes", return_value=[apple, docker]),
+            patch(
+                "pynchy.plugins.runtimes.detection._iter_plugin_runtimes",
+                return_value=[apple, docker],
+            ),
         ):
             r = detect_runtime()
         assert r is apple
@@ -66,7 +69,10 @@ class TestDetectRuntime:
         docker = _docker_plugin()
         with (
             patch("pynchy.config.get_settings", return_value=_settings(runtime_override=None)),
-            patch("pynchy.plugins.runtimes.detection._iter_plugin_runtimes", return_value=[apple, docker]),
+            patch(
+                "pynchy.plugins.runtimes.detection._iter_plugin_runtimes",
+                return_value=[apple, docker],
+            ),
             patch("pynchy.plugins.runtimes.detection.sys") as mock_sys,
         ):
             mock_sys.platform = "darwin"
