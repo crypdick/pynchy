@@ -13,11 +13,11 @@ _HOST_TAG_RE = re.compile(r"^\s*<host>([\s\S]*?)</host>\s*$")
 
 
 def _format_internal_match(m: re.Match) -> str:
-    """Replace <internal>...</internal> with 🧠 *thought* (bold)."""
+    """Replace <internal>...</internal> with 🧠 _thought_ (italic)."""
     thought = m.group(1).strip()
     if not thought:
         return ""
-    return f"\U0001f9e0 *{thought}*\n"
+    return f"\U0001f9e0 _{thought}_\n"
 
 
 def format_messages_for_sdk(messages: list[NewMessage]) -> list[dict]:
@@ -64,7 +64,7 @@ def strip_internal_tags(text: str) -> str:
 
 
 def format_internal_tags(text: str) -> str:
-    """Transform <internal>...</internal> into 🧠 *thought* (bold) and trim whitespace."""
+    """Transform <internal>...</internal> into 🧠 _thought_ (italic) and trim whitespace."""
     return _INTERNAL_TAG_RE.sub(_format_internal_match, text).strip()
 
 
