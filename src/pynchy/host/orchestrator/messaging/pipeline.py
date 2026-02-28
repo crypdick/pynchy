@@ -455,10 +455,21 @@ async def process_group_messages(
     await deps.set_typing_on_channels(chat_jid, False)
     deps.emit(AgentActivityEvent(chat_jid=chat_jid, active=False))
 
-    # Send zzz reaction on the agent's final response to indicate sleep
+    # Register zzz reaction to fire when the container actually hibernates
+    # (idle timeout), not immediately after the query finishes.
     outbound_ids = pop_last_result_ids(chat_jid)
     if outbound_ids and output_sent_to_user:
-        await deps.send_reaction_to_outbound(chat_jid, outbound_ids, "zzz")
+        from pynchy.host.container_manager.session import get_session
+
+        session = get_session(group.folder)
+        if session is not None:
+            # Capture ids by value — the session may outlive these locals.
+            _ids = dict(outbound_ids)
+
+            async def _send_zzz() -> None:
+                await deps.send_reaction_to_outbound(chat_jid, _ids, "zzz")
+
+            session.set_idle_callback(_send_zzz)
 
     logger.info(
         "Message processing complete",

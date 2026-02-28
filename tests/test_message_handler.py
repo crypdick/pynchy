@@ -759,9 +759,10 @@ class TestProcessGroupMessages:
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_zzz_reaction_after_successful_run(self, tmp_path):
-        """After a successful agent run that produced output, a :zzz:
-        reaction should be sent on the agent's final response."""
+    async def test_zzz_reaction_registered_on_session_idle_callback(self, tmp_path):
+        """After a successful agent run that produced output, the zzz
+        reaction should be registered as the session's idle callback
+        (fired when the container actually hibernates, not immediately)."""
         jid = "g@g.us"
         group = _make_group(is_admin=True)
         deps = _make_deps(groups={jid: group}, last_agent_ts={jid: "old-ts"})
@@ -782,6 +783,7 @@ class TestProcessGroupMessages:
         deps.send_reaction_to_outbound = AsyncMock()
 
         fake_ids = {"slack": "1234567890.000001"}
+        mock_session = MagicMock()
 
         with (
             patch(_P_SETTINGS) as ms,
@@ -792,11 +794,23 @@ class TestProcessGroupMessages:
                 "pynchy.host.orchestrator.messaging.pipeline.pop_last_result_ids",
                 return_value=fake_ids,
             ),
+            patch(
+                "pynchy.host.container_manager.session.get_session",
+                return_value=mock_session,
+            ),
         ):
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, jid)
 
         assert result is True
+        # The reaction should NOT be sent immediately
+        deps.send_reaction_to_outbound.assert_not_awaited()
+        # Instead, set_idle_callback should be called on the session
+        mock_session.set_idle_callback.assert_called_once()
+
+        # Calling the stored callback should send the zzz reaction
+        callback = mock_session.set_idle_callback.call_args[0][0]
+        await callback()
         deps.send_reaction_to_outbound.assert_awaited_once_with(jid, fake_ids, "zzz")
 
 
