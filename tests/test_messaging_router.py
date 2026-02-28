@@ -6,8 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.host.orchestrator.messaging.streaming import stream_states
+from pynchy.host.orchestrator.messaging.streaming import StreamState, stream_states
 from pynchy.host.orchestrator.messaging.router import (
+    _last_result_ids,
     _next_trace_id,
     broadcast_trace,
     handle_streamed_output,
@@ -727,3 +728,30 @@ class TestHandleStreamedOutput:
 
         # Clean up
         stream_states.pop(jid, None)
+
+    @pytest.mark.asyncio
+    async def test_final_result_stashes_outbound_ids(self):
+        """When a result with text is handled, the per-channel message IDs
+        from the stream state should be stashed in _last_result_ids."""
+        deps = _make_deps()
+        group = _make_group()
+        output = _make_output(type="result", result="Hello!")
+        chat_jid = "g@g.us"
+
+        # Pre-populate stream state with a fake channel message ID
+        stream_states[chat_jid] = StreamState(
+            buffer="Hello!",
+            message_ids={"test": "1234567890.000001"},
+        )
+
+        with patch(
+            "pynchy.host.orchestrator.messaging.router.store_message_direct",
+            new_callable=AsyncMock,
+        ):
+            result = await handle_streamed_output(deps, chat_jid, group, output)
+
+        assert result is True
+        assert _last_result_ids.get(chat_jid) == {"test": "1234567890.000001"}
+
+        # Clean up
+        _last_result_ids.pop(chat_jid, None)
