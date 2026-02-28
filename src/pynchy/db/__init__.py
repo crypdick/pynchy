@@ -42,6 +42,7 @@ from pynchy.db.chats import (
 )
 from pynchy.db.events import store_event
 from pynchy.db.groups import (
+    delete_workspace_profile,
     get_all_workspace_profiles,
     get_workspace_profile,
     set_workspace_profile,
@@ -165,6 +166,7 @@ __all__ = [
     "set_router_state",
     "set_session",
     # groups
+    "delete_workspace_profile",
     "get_all_workspace_profiles",
     "get_workspace_profile",
     "set_workspace_profile",

@@ -247,11 +247,14 @@ async def reconcile_workspaces(
     register_fn: Callable[[WorkspaceProfile], Awaitable[None]],
     register_alias_fn: Callable[[str, str, str], Awaitable[None]] | None = None,
     get_channel_jid_fn: Callable[[str, str], str | None] | None = None,
+    unregister_fn: Callable[[str], Awaitable[None]] | None = None,
 ) -> None:
-    """Ensure tasks + chat groups exist for workspaces defined in config.toml.
+    """Ensure workspace state matches config.toml — create, update, AND clean up.
 
-    Idempotent — safe to run on every startup. Creates chat groups for
-    any workspace with no DB entry, and manages scheduled tasks for periodic agents.
+    Idempotent — safe to run on every startup. For each config-driven resource:
+      1. Workspace registrations — create missing, remove orphaned
+      2. Scheduled tasks — create missing, update changed, pause orphaned
+      3. Channel aliases — create missing (TODO: clean up orphaned)
     """
     from pynchy.types import WorkspaceProfile
 
@@ -386,6 +389,20 @@ async def reconcile_workspaces(
                 task_id=task.id,
                 folder=task.group_folder,
             )
+
+    # 4. Remove orphaned workspace registrations — in DB but not in config.
+    #    Admin workspaces are exempt: created dynamically at first boot without
+    #    a config entry.
+    if unregister_fn is not None:
+        config_folders = set(specs.keys())
+        for jid, profile in list(workspaces.items()):
+            if profile.folder not in config_folders and not profile.is_admin:
+                await unregister_fn(jid)
+                logger.info(
+                    "Removed orphaned workspace registration",
+                    folder=profile.folder,
+                    jid=jid,
+                )
 
 
 # ---------------------------------------------------------------------------
