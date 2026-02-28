@@ -158,9 +158,10 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
     s = get_settings()
     config = spec.config
 
-    # Apply workspace defaults for None fields
+    # Apply sandbox_universal defaults for None fields
     if config.context_mode is None:
-        config = config.model_copy(update={"context_mode": s.workspace_defaults.context_mode})
+        default_context_mode = s.sandbox_universal.context_mode or "group"
+        config = config.model_copy(update={"context_mode": default_context_mode})
 
     logger.debug(
         "Loaded workspace config",
@@ -222,7 +223,7 @@ async def reconcile_workspaces(
     reconciled = 0
     for folder, spec in specs.items():
         config = spec.config
-        context_mode = config.context_mode or s.workspace_defaults.context_mode
+        context_mode = config.context_mode or s.sandbox_universal.context_mode or "group"
 
         if config.name:
             display_name = config.name

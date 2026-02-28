@@ -174,15 +174,6 @@ class CommandCenterConfig(_StrictModel):
         return v
 
 
-class WorkspaceDefaultsConfig(_StrictModel):
-    context_mode: Literal["group", "isolated"] = "group"
-    access: Literal["read", "write", "readwrite"] = "readwrite"
-    mode: Literal["agent", "chat"] = "agent"
-    trust: bool = True
-    trigger: Literal["mention", "always"] = "mention"
-    allowed_users: list[str] | None = None
-
-
 class SandboxProfileConfig(_StrictModel):
     """Overridable sandbox config — used for sandbox_universal and sandbox_profiles.
 
@@ -270,12 +261,12 @@ class WorkspaceConfig(_StrictModel):
     repo_access: str | None = None  # GitHub slug (owner/repo) from [repos.*]; None = no worktree
     schedule: str | None = None  # cron expression
     prompt: str | None = None  # prompt for scheduled tasks
-    context_mode: str | None = None  # None → use workspace_defaults
+    context_mode: str | None = None  # None → use sandbox_universal
     security: WorkspaceSecurityTomlConfig | None = None  # Trust-based security profile
     skills: list[str] | None = None  # tier names and/or skill names; None = core only
     mcp_servers: list[str] | None = None  # server names + group names, set-unioned
     mcp: dict[str, dict[str, Any]] = {}  # {server_name: {key: value}} → per-MCP kwargs
-    # Channel access modes (None → inherit from workspace_defaults)
+    # Channel access modes (None → inherit from sandbox_universal/profile)
     access: Literal["read", "write", "readwrite"] | None = None
     mode: Literal["agent", "chat"] | None = None
     trust: bool | None = None
@@ -391,21 +382,6 @@ class CalDAVServerConfig(_StrictModel):
 class CalDAVConfig(_StrictModel):
     default_server: str = ""  # which server to use when no server prefix given
     servers: dict[str, CalDAVServerConfig] = {}
-
-
-class DirectiveConfig(_StrictModel):
-    """A system prompt directive scoped to specific workspaces.
-
-    Scope values:
-    - "all" → matches every workspace
-    - Contains "/" → repo slug, matches workspaces whose repo_access equals it
-    - Otherwise → workspace folder name
-    - Can be a string or list (union of scopes)
-    - None (omitted) → never matches (logged as warning)
-    """
-
-    file: str
-    scope: str | list[str] | None = None
 
 
 class SecurityConfig(_StrictModel):
