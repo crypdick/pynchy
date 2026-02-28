@@ -1,102 +1,73 @@
-"""Scoped system prompt directives — config-driven markdown injected into agent prompts.
+"""Convention-based directive resolution — reads directives/<name>.md files.
 
-Directives replace the old groups/global/CLAUDE.md overlay. Each directive has a
-markdown file and a scope that determines which workspaces receive it.
-
-Scope resolution:
-- "all" → matches every workspace
-- Contains "/" → repo slug, matches if workspace's repo_access equals it
-- Otherwise → workspace folder name
-- List → union of the above
-- None (omitted) → never matches, logged as warning
+Directive names map to files by convention: "base" → directives/base.md.
+No scope logic — assignment is handled by sandbox profiles.
 
 Usage::
 
-    from pynchy.config.directives import resolve_directives
+    from pynchy.config.directives import read_directives
 
-    text = resolve_directives("admin-1", repo_access="crypdick/pynchy")
+    text = read_directives(["base", "admin-ops"], project_root)
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from pynchy.config.settings import get_settings
 from pynchy.logger import logger
 
 
-def _scope_matches(
-    scope_entry: str,
-    workspace_folder: str,
-    repo_access: str | None,
-) -> bool:
-    """Check if a single scope entry matches the given workspace."""
-    if scope_entry == "all":
-        return True
-    if "/" in scope_entry:
-        return repo_access == scope_entry
-    return workspace_folder == scope_entry
+def read_directives(names: list[str], project_root: Path) -> str | None:
+    """Read and concatenate directive files by name.
 
+    Maps each name to ``directives/<name>.md`` under *project_root*.
+    Missing or empty files are warned about and skipped.
 
-def resolve_directives(workspace_folder: str, repo_access: str | None) -> str | None:
-    """Resolve and concatenate matching directives for a workspace.
-
-    Reads ``get_settings().directives``, checks each directive's scope against
-    the workspace, reads matching files, and concatenates them in sorted key order.
-
-    Returns None if no directives match (or all matched files are missing/empty).
+    Returns None if no directives produce content.
     """
-    s = get_settings()
-    if not s.directives:
+    if not names:
         return None
 
-    project_root = s.project_root
-    matched_parts: list[tuple[str, str]] = []  # (key, content) for sorting
+    parts: list[str] = []
 
-    for key in sorted(s.directives):
-        directive = s.directives[key]
-
-        # Skip .EXAMPLE files
-        if directive.file.endswith(".EXAMPLE"):
-            continue
-
-        # Check scope
-        if directive.scope is None:
-            logger.warning(
-                "Directive has no scope, skipping",
-                directive=key,
-            )
-            continue
-
-        scopes = directive.scope if isinstance(directive.scope, list) else [directive.scope]
-        if not any(_scope_matches(s, workspace_folder, repo_access) for s in scopes):
-            continue
-
-        # Read file
-        file_path = project_root / directive.file
+    for name in names:
+        file_path = project_root / "directives" / f"{name}.md"
         if not file_path.exists():
             logger.warning(
                 "Directive file not found, skipping",
-                directive=key,
+                directive=name,
                 path=str(file_path),
             )
             continue
 
-        content = _read_directive_file(file_path)
+        content = _read_file(file_path)
         if content:
-            matched_parts.append((key, content))
+            parts.append(content)
 
-    if not matched_parts:
+    if not parts:
         return None
 
-    return "\n\n---\n\n".join(content for _, content in matched_parts)
+    return "\n\n---\n\n".join(parts)
 
 
-def _read_directive_file(path: Path) -> str | None:
-    """Read a directive file, returning None on error or empty content."""
+def _read_file(path: Path) -> str | None:
+    """Read a file, returning None on error or empty content."""
     try:
         text = path.read_text().strip()
         return text if text else None
     except OSError:
         logger.warning("Failed to read directive file", path=str(path))
         return None
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat shim — keeps agent_runner.py working until Task 7 rewires
+# the callsite to use read_directives() + sandbox profiles.
+# TODO(sandbox-profiles): remove once agent_runner.py is updated (Task 7).
+# ---------------------------------------------------------------------------
+def resolve_directives(
+    workspace_folder: str,  # noqa: ARG001
+    repo_access: str | None,  # noqa: ARG001
+) -> str | None:
+    """Legacy shim — returns None (no-op) until callsite is migrated."""
+    return None
