@@ -59,7 +59,7 @@ No configuration files to learn. Just tell Pynchy what you want:
 | [Memory](memory.md) | Structured memory tools, file-based memory, conversation archives |
 | [Scheduled tasks](scheduled-tasks.md) | Task types, MCP tools, execution model |
 | [Agent cores](agent-cores.md) | LLM framework selection, LiteLLM gateway |
-| [Directives](directives.md) | System prompt extensions, per-workspace scoping |
+| [Directives](directives.md) | System prompt extensions via sandbox profiles |
 | [MCP servers](mcp.md) | Adding external tool servers, environment variables, multi-tenant setup |
 | [Notebooks](notebooks.md) | Jupyter/Quarto notebook execution via MCP tools |
 | [Google Drive](gdrive.md) | Google Drive file access via OAuth2 MCP server |
