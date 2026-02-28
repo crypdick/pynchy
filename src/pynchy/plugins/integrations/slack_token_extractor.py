@@ -27,7 +27,7 @@ from typing import Any
 
 import pluggy
 
-from pynchy.integrations.browser import (
+from pynchy.plugins.integrations.browser import (
     check_browser_plugin_deps,
     chrome_path,
     has_display,

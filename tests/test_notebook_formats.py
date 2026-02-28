@@ -11,14 +11,14 @@ import pytest
 from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
 
 try:
-    from pynchy.integrations.plugins.notebook_server._formats import (
+    from pynchy.plugins.integrations.notebook_server._formats import (
         load_notebook,
         notebook_path,
         parse_qmd,
         save_notebook,
         serialize_qmd,
     )
-    from pynchy.integrations.plugins.notebook_server._output import (
+    from pynchy.plugins.integrations.notebook_server._output import (
         outputs_for_agent,
         save_cell_images,
     )

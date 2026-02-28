@@ -36,47 +36,47 @@ __all__ = [
 # Each entry: (module_path, class_name, config_key)
 # config_key is checked against [plugins.<key>].enabled in config.toml.
 _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
-    ("pynchy.agent_framework.plugins.claude", "ClaudeAgentCorePlugin", "claude"),
-    ("pynchy.agent_framework.plugins.openai", "OpenAIAgentCorePlugin", "openai"),
+    ("pynchy.plugins.agent_cores.claude", "ClaudeAgentCorePlugin", "claude"),
+    ("pynchy.plugins.agent_cores.openai", "OpenAIAgentCorePlugin", "openai"),
     ("pynchy.plugins.channels.slack", "SlackChannelPlugin", "slack"),
     ("pynchy.plugins.channels.tui", "TuiChannelPlugin", "tui"),
     ("pynchy.plugins.channels.whatsapp", "WhatsAppPlugin", "whatsapp"),
-    ("pynchy.tunnels.plugins.tailscale", "TailscaleTunnelPlugin", "tailscale"),
-    ("pynchy.runtime.plugins.docker_runtime", "DockerRuntimePlugin", "docker-runtime"),
-    ("pynchy.runtime.plugins.apple_runtime", "AppleRuntimePlugin", "apple-runtime"),
-    ("pynchy.integrations.plugins.caldav", "CalDAVMcpServerPlugin", "caldav"),
+    ("pynchy.plugins.tunnels.tailscale", "TailscaleTunnelPlugin", "tailscale"),
+    ("pynchy.plugins.runtimes.docker_runtime", "DockerRuntimePlugin", "docker-runtime"),
+    ("pynchy.plugins.runtimes.apple_runtime", "AppleRuntimePlugin", "apple-runtime"),
+    ("pynchy.plugins.integrations.caldav", "CalDAVMcpServerPlugin", "caldav"),
     (
-        "pynchy.integrations.plugins.slack_token_extractor",
+        "pynchy.plugins.integrations.slack_token_extractor",
         "SlackTokenExtractorPlugin",
         "slack-token-extractor",
     ),
     (
-        "pynchy.integrations.plugins.x_integration",
+        "pynchy.plugins.integrations.x_integration",
         "XIntegrationPlugin",
         "x-integration",
     ),
     (
-        "pynchy.integrations.plugins.google_setup",
+        "pynchy.plugins.integrations.google_setup",
         "GoogleMcpPlugin",
         "google",
     ),
     (
-        "pynchy.integrations.plugins.google_setup",
+        "pynchy.plugins.integrations.google_setup",
         "GoogleSetupPlugin",
         "google-setup",
     ),
     (
-        "pynchy.integrations.plugins.playwright_browser",
+        "pynchy.plugins.integrations.playwright_browser",
         "PlaywrightBrowserPlugin",
         "playwright-browser",
     ),
     (
-        "pynchy.integrations.plugins.notebook_server",
+        "pynchy.plugins.integrations.notebook_server",
         "NotebookServerPlugin",
         "notebook",
     ),
-    ("pynchy.observers.plugins.sqlite_observer", "SqliteObserverPlugin", "sqlite-observer"),
-    ("pynchy.memory.plugins.sqlite_memory", "SqliteMemoryPlugin", "sqlite-memory"),
+    ("pynchy.plugins.observers.sqlite_observer", "SqliteObserverPlugin", "sqlite-observer"),
+    ("pynchy.plugins.memory.sqlite_memory", "SqliteMemoryPlugin", "sqlite-memory"),
 ]
 
 

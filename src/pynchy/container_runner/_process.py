@@ -14,7 +14,7 @@ import contextlib
 from collections.abc import Awaitable, Callable
 
 from pynchy.logger import logger
-from pynchy.runtime.runtime import get_runtime
+from pynchy.plugins.runtimes.detection import get_runtime
 from pynchy.types import ContainerOutput
 
 OnOutput = Callable[[ContainerOutput], Awaitable[None]]

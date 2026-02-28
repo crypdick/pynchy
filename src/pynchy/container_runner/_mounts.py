@@ -117,7 +117,7 @@ def _build_volume_mounts(
 def _build_container_args(mounts: list[VolumeMount], container_name: str) -> list[str]:
     """Build CLI args for `container run`."""
     from pynchy.container_runner.gateway import get_gateway
-    from pynchy.runtime.runtime import get_runtime
+    from pynchy.plugins.runtimes.detection import get_runtime
 
     # No --rm: persistent sessions need explicit cleanup via docker rm -f
     # (handled in _session.py on stop/create).

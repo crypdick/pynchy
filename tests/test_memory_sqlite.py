@@ -6,14 +6,14 @@ from unittest.mock import patch
 
 import pytest
 
-from pynchy.memory.plugins.sqlite_memory.backend import SqliteMemoryBackend
+from pynchy.plugins.memory.sqlite_memory.backend import SqliteMemoryBackend
 
 
 @pytest.fixture
 async def backend(tmp_path):
     """Create an isolated backend using a temp directory."""
     with patch(
-        "pynchy.memory.plugins.sqlite_memory.backend._db_path",
+        "pynchy.plugins.memory.sqlite_memory.backend._db_path",
         return_value=tmp_path / "memories.db",
     ):
         b = SqliteMemoryBackend()
@@ -180,7 +180,7 @@ class TestLifecycle:
     async def test_init_creates_db(self, tmp_path):
         db_path = tmp_path / "test.db"
         with patch(
-            "pynchy.memory.plugins.sqlite_memory.backend._db_path",
+            "pynchy.plugins.memory.sqlite_memory.backend._db_path",
             return_value=db_path,
         ):
             b = SqliteMemoryBackend()

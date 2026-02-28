@@ -36,7 +36,7 @@ def _tui(host: str) -> None:
 
 def _build() -> None:
     from pynchy.config import get_settings
-    from pynchy.runtime.runtime import get_runtime
+    from pynchy.plugins.runtimes.detection import get_runtime
 
     s = get_settings()
     runtime = get_runtime()

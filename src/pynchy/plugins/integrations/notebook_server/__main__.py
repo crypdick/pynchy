@@ -1,7 +1,7 @@
 """Notebook execution MCP server — FastMCP + jupyter_client + JupyterLab.
 
 Entry point for ``python -m notebook_server`` (Docker) or
-``python -m pynchy.integrations.plugins.notebook_server`` (host).
+``python -m pynchy.plugins.integrations.notebook_server`` (host).
 Heavy dependencies (JupyterLab, IPython kernel, FastMCP) are resolved here
 and never imported by the plugin class or the main pynchy process.
 
@@ -14,7 +14,7 @@ Usage (Docker)::
 
 Usage (host)::
 
-    python -m pynchy.integrations.plugins.notebook_server --workspace research --port 8460
+    python -m pynchy.plugins.integrations.notebook_server --workspace research --port 8460
 """
 
 from __future__ import annotations
