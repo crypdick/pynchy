@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ripgrep \
     jq \
     procps \
+    sudo \
     gpg \
     libmagic1 \
     ca-certificates \
@@ -54,6 +55,15 @@ RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/
 # Copy entrypoint script (sources env, restores .claude.json from backup, runs agent)
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
+
+# Create non-root user with passwordless sudo.
+# Claude Code refuses --dangerously-skip-permissions as root, so we run as a
+# regular user but grant sudo so agents can apt-get install tools they need.
+RUN useradd -m -s /bin/bash agent \
+ && echo 'agent ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/agent \
+ && chown -R agent:agent /workspace
+
+USER agent
 
 # Delegate git authentication to gh CLI (uses GH_TOKEN from environment at runtime)
 # Rewrite SSH remote URLs to HTTPS so the credential helper works (no SSH keys in container)
