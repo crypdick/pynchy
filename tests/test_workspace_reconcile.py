@@ -493,6 +493,69 @@ class TestReconcileWorkspaces:
         assert len(tasks) == 1
         assert tasks[0].status == "paused"
 
+    async def test_removes_orphaned_workspace_registration(self, db, groups_dir):
+        """Workspace in DB but not in config should be unregistered."""
+        orphan_jid = "orphan@g.us"
+        registered = {
+            orphan_jid: WorkspaceProfile(
+                jid=orphan_jid,
+                name="Orphan",
+                folder="orphan-agent",
+                trigger="@Pynchy",
+                added_at=datetime.now(UTC).isoformat(),
+            ),
+        }
+
+        register_fn = AsyncMock()
+        unregister_fn = AsyncMock()
+        await reconcile_workspaces(registered, [], register_fn, unregister_fn=unregister_fn)
+
+        unregister_fn.assert_called_once_with(orphan_jid)
+
+    async def test_does_not_remove_admin_workspace_without_config(self, db, groups_dir):
+        """Admin workspaces are exempt — created dynamically, no config entry."""
+        admin_jid = "admin@g.us"
+        registered = {
+            admin_jid: WorkspaceProfile(
+                jid=admin_jid,
+                name="Admin",
+                folder="admin",
+                trigger="@Pynchy",
+                added_at=datetime.now(UTC).isoformat(),
+                is_admin=True,
+            ),
+        }
+
+        register_fn = AsyncMock()
+        unregister_fn = AsyncMock()
+        await reconcile_workspaces(registered, [], register_fn, unregister_fn=unregister_fn)
+
+        unregister_fn.assert_not_called()
+
+    async def test_does_not_remove_workspace_present_in_config(self, db, groups_dir):
+        """Workspaces with matching config should not be removed."""
+        _write_workspace_yaml(
+            groups_dir,
+            "active-agent",
+            {"is_admin": False},
+        )
+
+        registered = {
+            "active@g.us": WorkspaceProfile(
+                jid="active@g.us",
+                name="Active",
+                folder="active-agent",
+                trigger="@Pynchy",
+                added_at=datetime.now(UTC).isoformat(),
+            ),
+        }
+
+        register_fn = AsyncMock()
+        unregister_fn = AsyncMock()
+        await reconcile_workspaces(registered, [], register_fn, unregister_fn=unregister_fn)
+
+        unregister_fn.assert_not_called()
+
     async def test_plugin_workspace_creates_task(self, db, groups_dir, tmp_path):
         fake_pm = SimpleNamespace(
             hook=SimpleNamespace(

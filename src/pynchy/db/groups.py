@@ -110,6 +110,13 @@ async def set_workspace_profile(profile: WorkspaceProfile) -> None:
     await db.commit()
 
 
+async def delete_workspace_profile(jid: str) -> None:
+    """Delete a workspace profile by JID."""
+    db = _get_db()
+    await db.execute("DELETE FROM registered_groups WHERE jid = ?", (jid,))
+    await db.commit()
+
+
 async def get_all_workspace_profiles() -> dict[str, WorkspaceProfile]:
     """Get all workspace profiles as dict of jid -> WorkspaceProfile."""
     db = _get_db()
