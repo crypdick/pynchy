@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal, Protocol, runtime_checkable
 
+from pynchy.host.orchestrator.messaging.formatters.base import BaseFormatter
+
 
 @dataclass
 class AdditionalMount:
@@ -331,10 +333,18 @@ class VolumeMount:
 @runtime_checkable
 class Channel(Protocol):
     name: str
+    formatter: BaseFormatter
 
     async def connect(self) -> None: ...
 
-    async def send_message(self, jid: str, text: str) -> None: ...
+    async def send_event(self, jid: str, event: OutboundEvent) -> None:
+        """Send a rendered event to the channel.
+
+        This is THE protocol method for all outbound messages.
+        Channels call self.formatter.render(event) and send via
+        their internal transport.
+        """
+        ...
 
     def is_connected(self) -> bool:
         """Return True iff the channel can currently receive inbound events.
@@ -388,6 +398,6 @@ class Channel(Protocol):
     # prefix_assistant_name is NOT part of the protocol — use getattr with default.
 
     # Optional: streaming message updates. Channels that support it implement:
-    #   post_message(jid, text) -> str | None   (returns message ID)
-    #   update_message(jid, message_id, text)   (updates in-place)
+    #   post_event(jid, event) -> str | None     (returns message_id)
+    #   update_event(jid, message_id, event)     (updates in-place)
     # Used by output_handler for real-time text streaming with a cursor indicator.

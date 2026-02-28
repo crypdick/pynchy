@@ -124,7 +124,7 @@ def _make_channel(
     ch._connected = True
     ch._outgoing_queue = MagicMock()
     ch._lid_to_phone = {}
-    ch.send_message = AsyncMock()
+    ch._send_text = AsyncMock()
     return ch
 
 
@@ -140,8 +140,8 @@ class TestSendAskUser:
         ch = _make_channel()
         await ch.send_ask_user(CHAT_JID, REQUEST_ID, _questions_with_options())
 
-        ch.send_message.assert_called_once()
-        text = ch.send_message.call_args[0][1]
+        ch._send_text.assert_called_once()
+        text = ch._send_text.call_args[0][1]
 
         assert "Which auth strategy?" in text
         assert "1. JWT tokens" in text
@@ -155,7 +155,7 @@ class TestSendAskUser:
         ch = _make_channel()
         await ch.send_ask_user(CHAT_JID, REQUEST_ID, _questions_with_string_options())
 
-        text = ch.send_message.call_args[0][1]
+        text = ch._send_text.call_args[0][1]
         assert "1. Red" in text
         assert "2. Green" in text
         assert "3. Blue" in text
@@ -166,7 +166,7 @@ class TestSendAskUser:
         ch = _make_channel()
         await ch.send_ask_user(CHAT_JID, REQUEST_ID, _questions_no_options())
 
-        text = ch.send_message.call_args[0][1]
+        text = ch._send_text.call_args[0][1]
         assert "What is the project name?" in text
         assert "Reply with your answer" in text
         # Should NOT contain numbered options
@@ -186,7 +186,7 @@ class TestSendAskUser:
         ch = _make_channel()
         await ch.send_ask_user(CHAT_JID, REQUEST_ID, _questions_with_options())
 
-        sent_jid = ch.send_message.call_args[0][0]
+        sent_jid = ch._send_text.call_args[0][0]
         assert sent_jid == CHAT_JID
 
 

@@ -27,6 +27,7 @@ from neonize.proto.Neonize_pb2 import JID
 from neonize.utils.jid import Jid2String
 
 from pynchy.config import get_settings
+from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
 from pynchy.host.orchestrator.messaging.pending_questions import find_pending_for_jid
 from pynchy.logger import logger
 from pynchy.state import (
@@ -35,7 +36,7 @@ from pynchy.state import (
     set_last_group_sync,
     update_chat_name,
 )
-from pynchy.types import InboundFetchResult, NewMessage, WorkspaceProfile
+from pynchy.types import InboundFetchResult, NewMessage, OutboundEvent, WorkspaceProfile
 
 GROUP_SYNC_INTERVAL: float = 24 * 60 * 60  # 24 hours in seconds
 
@@ -62,6 +63,7 @@ class WhatsAppChannel:
         on_ask_user_answer: Callable[[str, dict], None] | None = None,
     ) -> None:
         self.name = connection_name
+        self.formatter = TextFormatter()
         self._connection_name = connection_name
         self._auth_db_path = auth_db_path
         self._on_message = on_message
@@ -145,7 +147,18 @@ class WhatsAppChannel:
         self._idle_task = asyncio.ensure_future(self._client.idle())
         await self._first_connect.wait()
 
-    async def send_message(self, jid: str, text: str) -> None:
+    async def send_event(self, jid: str, event: OutboundEvent) -> None:
+        """Render an outbound event via the formatter and send the text."""
+        rendered = self.formatter.render(event)
+        await self._send_text(jid, rendered.text)
+
+    async def _send_text(self, jid: str, text: str) -> None:
+        """Send raw text to a JID, queueing if disconnected.
+
+        This is the internal transport method -- external callers should use
+        ``send_event`` instead.  Kept for queue flush and ``send_ask_user``
+        which build their own text payloads.
+        """
         if not self._connected:
             self._outgoing_queue.append(_OutgoingMessage(jid=jid, text=text))
             return
@@ -253,7 +266,7 @@ class WhatsAppChannel:
         try:
             while self._outgoing_queue:
                 item = self._outgoing_queue.popleft()
-                await self.send_message(item.jid, item.text)
+                await self._send_text(item.jid, item.text)
         finally:
             self._flushing = False
 
@@ -283,8 +296,8 @@ class WhatsAppChannel:
             lines.append("Reply with your answer.")
 
         text = "\n".join(lines)
-        await self.send_message(jid, text)
-        # Use request_id as a tracking identifier since WhatsApp send_message
+        await self._send_text(jid, text)
+        # Use request_id as a tracking identifier since WhatsApp _send_text
         # doesn't return a message ID we can use.
         return request_id
 
