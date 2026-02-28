@@ -320,6 +320,16 @@ class ClaudeAgentCore:
         _log(f"MCP servers details: {json.dumps(mcp_details)}")
         _log(f"Allowed tools: {allowed_tools}")
 
+        # Discover Claude Code plugins baked into the container image
+        plugins_dir = Path("/opt/plugins")
+        plugins = [
+            {"type": "local", "path": str(p)}
+            for p in sorted(plugins_dir.iterdir())
+            if p.is_dir()
+        ] if plugins_dir.is_dir() else []
+        if plugins:
+            _log(f"Loading plugins: {[p['path'] for p in plugins]}")
+
         # Build options
         options = ClaudeAgentOptions(
             model="opus",
@@ -335,6 +345,7 @@ class ClaudeAgentCore:
             setting_sources=["project", "user"],
             mcp_servers=self.config.mcp_servers,
             hooks=claude_hooks if claude_hooks else None,
+            plugins=plugins,
         )
 
         # Create and enter client context

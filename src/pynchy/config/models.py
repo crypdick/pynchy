@@ -242,7 +242,7 @@ class WorkspaceConfig(_StrictModel):
     prompt: str | None = None  # prompt for scheduled tasks
     context_mode: str | None = None  # None → use workspace_defaults
     security: WorkspaceSecurityTomlConfig | None = None  # Trust-based security profile
-    skills: list[str] | None = None  # tier names and/or skill names; None = all
+    skills: list[str] | None = None  # tier names and/or skill names; None = core only
     mcp_servers: list[str] | None = None  # server names + group names, set-unioned
     mcp: dict[str, dict[str, Any]] = {}  # {server_name: {key: value}} → per-MCP kwargs
     # Channel access modes (None → inherit from workspace_defaults)
