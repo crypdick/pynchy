@@ -13,9 +13,9 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from pynchy.config import get_settings
-from pynchy.ipc._write import clean_ipc_input_dir, write_ipc_close_sentinel, write_ipc_message
+from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir, write_ipc_close_sentinel, write_ipc_message
 from pynchy.logger import logger
-from pynchy.security.middleware import PolicyDeniedError
+from pynchy.host.container_manager.security.middleware import PolicyDeniedError
 from pynchy.utils import create_background_task
 
 
@@ -41,7 +41,7 @@ class GroupState:
     def release(self) -> None:
         """Reset transient per-run state when a container slot is freed."""
         if self.group_folder and self.invocation_ts:
-            from pynchy.security.gate import destroy_gate
+            from pynchy.host.container_manager.security.gate import destroy_gate
 
             destroy_gate(self.group_folder, self.invocation_ts)
         self.active = False
@@ -251,7 +251,7 @@ class GroupQueue:
 
         # Destroy persistent session (handles its own graceful stop + docker rm)
         if state.group_folder:
-            from pynchy.container_runner._session import destroy_session
+            from pynchy.host.container_manager.session import destroy_session
 
             await destroy_session(state.group_folder)
 
@@ -265,7 +265,7 @@ class GroupQueue:
         proc = state.process
         container_name = state.container_name
         if proc and container_name and proc.returncode is None:
-            from pynchy.container_runner._process import _graceful_stop
+            from pynchy.host.container_manager.process import _graceful_stop
 
             await _graceful_stop(proc, container_name)
 
@@ -432,7 +432,7 @@ class GroupQueue:
         )
 
         # Destroy all persistent sessions first
-        from pynchy.container_runner._session import destroy_all_sessions
+        from pynchy.host.container_manager.session import destroy_all_sessions
 
         await destroy_all_sessions()
 
@@ -453,7 +453,7 @@ class GroupQueue:
             containers=[name for _, name in active],
         )
 
-        from pynchy.container_runner._process import _graceful_stop
+        from pynchy.host.container_manager.process import _graceful_stop
 
         await asyncio.gather(
             *(_graceful_stop(proc, name) for proc, name in active),

@@ -22,14 +22,14 @@ from pynchy.adapters import (
     find_admin_jid,
 )
 from pynchy.config import get_settings
-from pynchy.container_runner import write_groups_snapshot as _write_groups_snapshot
+from pynchy.host.container_manager import write_groups_snapshot as _write_groups_snapshot
 from pynchy.git_ops.utils import get_head_sha
 
 if TYPE_CHECKING:
     from pynchy.app import PynchyApp
     from pynchy.git_ops.sync import GitSyncDeps
     from pynchy.http_server import HttpDeps
-    from pynchy.ipc import IpcDeps
+    from pynchy.host.container_manager.ipc import IpcDeps
     from pynchy.status import StatusDeps
     from pynchy.task_scheduler import SchedulerDependencies
 
@@ -209,7 +209,7 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
             }
 
         def get_gateway_info(self) -> dict[str, Any]:
-            from pynchy.container_runner.gateway import LiteLLMGateway, get_gateway
+            from pynchy.host.container_manager.gateway import LiteLLMGateway, get_gateway
 
             gw = get_gateway()
             if gw is None:

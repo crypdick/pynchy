@@ -231,11 +231,11 @@ def patch_test_settings(tmp_path: Path):
     )
     with contextlib.ExitStack() as stack:
         for mod in (
-            "pynchy.container_runner._credentials",
-            "pynchy.container_runner._mounts",
-            "pynchy.container_runner._session_prep",
-            "pynchy.container_runner._orchestrator",
-            "pynchy.container_runner._snapshots",
+            "pynchy.host.container_manager.credentials",
+            "pynchy.host.container_manager.mounts",
+            "pynchy.host.container_manager.session_prep",
+            "pynchy.host.container_manager.orchestrator",
+            "pynchy.host.container_manager.snapshots",
             "pynchy.chat.message_handler",
             "pynchy.chat.output_handler",
         ):

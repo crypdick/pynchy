@@ -13,7 +13,7 @@ from pynchy.state import (
     get_due_host_jobs,
     get_host_job_by_name,
 )
-from pynchy.ipc import dispatch
+from pynchy.host.container_manager.ipc import dispatch
 from pynchy.task_scheduler import _poll_database_host_jobs
 
 

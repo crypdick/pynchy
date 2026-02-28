@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from pynchy.security.gate import _gates, get_gate, get_gate_for_group
+from pynchy.host.container_manager.security.gate import _gates, get_gate, get_gate_for_group
 
 
 @pytest.fixture(autouse=True)
@@ -16,7 +16,7 @@ def _cleanup():
 class TestGateCreatedAtSpawn:
     def test_spawn_creates_gate(self):
         """Simulate what _spawn_container should do -- verify gate exists after."""
-        from pynchy.security.gate import create_gate
+        from pynchy.host.container_manager.security.gate import create_gate
         from pynchy.types import WorkspaceSecurity
 
         invocation_ts = 12345.0
@@ -27,7 +27,7 @@ class TestGateCreatedAtSpawn:
 
     def test_gate_accessible_by_group(self):
         """IPC handlers should find the gate by group folder."""
-        from pynchy.security.gate import create_gate
+        from pynchy.host.container_manager.security.gate import create_gate
         from pynchy.types import WorkspaceSecurity
 
         create_gate("test-ws", 12345.0, WorkspaceSecurity())
@@ -40,7 +40,7 @@ class TestGateDestroyedOnRelease:
     def test_group_state_release_destroys_gate(self):
         """GroupState.release() should call destroy_gate."""
         from pynchy.group_queue import GroupState
-        from pynchy.security.gate import create_gate
+        from pynchy.host.container_manager.security.gate import create_gate
         from pynchy.types import WorkspaceSecurity
 
         create_gate("test-ws", 100.0, WorkspaceSecurity())

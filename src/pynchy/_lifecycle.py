@@ -77,7 +77,7 @@ async def shutdown_app(app: PynchyApp, sig_name: str) -> None:
 
     await app.queue.shutdown()
 
-    from pynchy.container_runner.gateway import stop_gateway
+    from pynchy.host.container_manager.gateway import stop_gateway
 
     await stop_gateway()
     for obs in app._observers:
@@ -109,7 +109,7 @@ async def _initialize_core(app: PynchyApp) -> None:
     configure_plugin_workspaces(app.plugin_manager)
     ensure_container_system_running()
 
-    from pynchy.container_runner.gateway import start_gateway
+    from pynchy.host.container_manager.gateway import start_gateway
 
     await start_gateway(plugin_manager=app.plugin_manager)
 
@@ -220,7 +220,7 @@ async def _start_subsystems(app: PynchyApp, repo_groups: dict[str, list[str]]) -
         start_host_git_sync_loop,
     )
     from pynchy.http_server import start_http_server
-    from pynchy.ipc import start_ipc_watcher
+    from pynchy.host.container_manager.ipc import start_ipc_watcher
     from pynchy.status import record_start_time
     from pynchy.task_scheduler import start_scheduler_loop
     from pynchy.plugins.tunnels import check_tunnels

@@ -21,12 +21,12 @@ import pytest
 from conftest import make_settings
 
 from pynchy.state import _init_test_database, get_all_host_jobs, get_all_tasks
-from pynchy.ipc._handlers_groups import (
+from pynchy.host.container_manager.ipc.handlers_groups import (
     _handle_create_periodic_agent,
     _handle_register_group,
 )
-from pynchy.ipc._handlers_lifecycle import _handle_sync_worktree_to_main
-from pynchy.ipc._handlers_tasks import _handle_schedule_host_job, _handle_schedule_task
+from pynchy.host.container_manager.ipc.handlers_lifecycle import _handle_sync_worktree_to_main
+from pynchy.host.container_manager.ipc.handlers_tasks import _handle_schedule_host_job, _handle_schedule_task
 from pynchy.types import WorkspaceProfile
 
 # ---------------------------------------------------------------------------
@@ -138,12 +138,12 @@ class TestSyncWorktreeCopGate:
         """When cop_gate returns False, no merge or response file is written."""
         with (
             patch(
-                "pynchy.security.cop_gate.cop_gate",
+                "pynchy.host.container_manager.security.cop_gate.cop_gate",
                 new_callable=AsyncMock,
                 return_value=False,
             ) as mock_cop,
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=make_settings(data_dir=tmp_path / "data"),
             ),
         ):
@@ -165,12 +165,12 @@ class TestSyncWorktreeCopGate:
         """sync_worktree_to_main passes request_id to cop_gate (request-reply)."""
         with (
             patch(
-                "pynchy.security.cop_gate.cop_gate",
+                "pynchy.host.container_manager.security.cop_gate.cop_gate",
                 new_callable=AsyncMock,
                 return_value=False,
             ) as mock_cop,
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=make_settings(data_dir=tmp_path / "data"),
             ),
         ):
@@ -187,18 +187,18 @@ class TestSyncWorktreeCopGate:
         """When _cop_approved is set, cop_gate should not be called at all."""
         with (
             patch(
-                "pynchy.security.cop_gate.cop_gate",
+                "pynchy.host.container_manager.security.cop_gate.cop_gate",
                 new_callable=AsyncMock,
             ) as mock_cop,
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=make_settings(data_dir=tmp_path / "data"),
             ),
             patch(
                 "pynchy.git_ops.repo.resolve_repo_for_group",
                 return_value=None,
             ),
-            patch("pynchy.ipc._handlers_lifecycle.write_ipc_response"),
+            patch("pynchy.host.container_manager.ipc.handlers_lifecycle.write_ipc_response"),
         ):
             await _handle_sync_worktree_to_main(
                 {
@@ -225,7 +225,7 @@ class TestRegisterGroupCopGate:
     async def test_blocked_by_cop_skips_registration(self, deps):
         """When cop_gate returns False, register_workspace is not called."""
         with patch(
-            "pynchy.security.cop_gate.cop_gate",
+            "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
             return_value=False,
         ) as mock_cop:
@@ -251,7 +251,7 @@ class TestRegisterGroupCopGate:
     async def test_cop_approved_skips_gate(self, deps):
         """When _cop_approved is set, cop_gate is not called."""
         with patch(
-            "pynchy.security.cop_gate.cop_gate",
+            "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
         ) as mock_cop:
             await _handle_register_group(
@@ -275,7 +275,7 @@ class TestRegisterGroupCopGate:
     async def test_summary_includes_key_fields(self, deps):
         """cop_gate summary should contain name, folder, and trigger."""
         with patch(
-            "pynchy.security.cop_gate.cop_gate",
+            "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
             return_value=False,
         ) as mock_cop:
@@ -309,7 +309,7 @@ class TestCreatePeriodicAgentCopGate:
     async def test_blocked_by_cop_creates_nothing(self, deps, tmp_path):
         """When cop_gate returns False, no folder, config, or task is created."""
         with patch(
-            "pynchy.security.cop_gate.cop_gate",
+            "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
             return_value=False,
         ) as mock_cop:
@@ -335,7 +335,7 @@ class TestCreatePeriodicAgentCopGate:
     async def test_summary_includes_agent_identity(self, deps):
         """cop_gate summary should include name, schedule, and prompt preview."""
         with patch(
-            "pynchy.security.cop_gate.cop_gate",
+            "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
             return_value=False,
         ) as mock_cop:
@@ -367,11 +367,11 @@ class TestCreatePeriodicAgentCopGate:
 
         with (
             patch(
-                "pynchy.security.cop_gate.cop_gate",
+                "pynchy.host.container_manager.security.cop_gate.cop_gate",
                 new_callable=AsyncMock,
             ) as mock_cop,
             patch(
-                "pynchy.ipc._handlers_groups.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_groups.get_settings",
                 return_value=make_settings(
                     groups_dir=tmp_path,
                     project_root=tmp_path,
@@ -410,7 +410,7 @@ class TestScheduleTaskCopGate:
     async def test_blocked_by_cop_creates_no_task(self, deps):
         """When cop_gate returns False, no task is created in the DB."""
         with patch(
-            "pynchy.security.cop_gate.cop_gate",
+            "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
             return_value=False,
         ) as mock_cop:
@@ -434,7 +434,7 @@ class TestScheduleTaskCopGate:
     async def test_summary_includes_target_and_prompt(self, deps):
         """cop_gate summary should include target group, schedule, and prompt."""
         with patch(
-            "pynchy.security.cop_gate.cop_gate",
+            "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
             return_value=False,
         ) as mock_cop:
@@ -459,7 +459,7 @@ class TestScheduleTaskCopGate:
     async def test_cop_approved_skips_gate(self, deps):
         """When _cop_approved is set, cop_gate is not called."""
         with patch(
-            "pynchy.security.cop_gate.cop_gate",
+            "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
         ) as mock_cop:
             await _handle_schedule_task(
@@ -492,7 +492,7 @@ class TestScheduleHostJobCopGate:
     async def test_blocked_by_cop_creates_no_job(self, deps):
         """When cop_gate returns False, no host job is created."""
         with patch(
-            "pynchy.security.cop_gate.cop_gate",
+            "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
             return_value=False,
         ) as mock_cop:
@@ -516,7 +516,7 @@ class TestScheduleHostJobCopGate:
     async def test_summary_includes_command_and_schedule(self, deps):
         """cop_gate summary should include job name, command, and schedule."""
         with patch(
-            "pynchy.security.cop_gate.cop_gate",
+            "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
             return_value=False,
         ) as mock_cop:
@@ -541,7 +541,7 @@ class TestScheduleHostJobCopGate:
     async def test_cop_approved_skips_gate(self, deps):
         """When _cop_approved is set, cop_gate is not called."""
         with patch(
-            "pynchy.security.cop_gate.cop_gate",
+            "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
         ) as mock_cop:
             await _handle_schedule_host_job(

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import pluggy
 
-    from pynchy.container_runner import OnOutput
+    from pynchy.host.container_manager import OnOutput
 
 from pynchy import session_handler
 from pynchy.adapters import HostMessageBroadcaster, MessageBroadcaster

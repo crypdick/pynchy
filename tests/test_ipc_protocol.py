@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from pynchy.ipc._protocol import (
+from pynchy.host.container_manager.ipc.protocol import (
     SIGNAL_TYPES,
     TIER2_TYPES,
     make_signal,

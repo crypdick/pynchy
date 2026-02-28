@@ -7,12 +7,12 @@ from unittest.mock import MagicMock
 from conftest import make_settings
 
 from pynchy.config.mcp import McpServerConfig
-from pynchy.container_runner._mcp_lifecycle import (
+from pynchy.host.container_manager.mcp.lifecycle import (
     _build_placeholders,
     expand_arg_placeholders,
 )
-from pynchy.container_runner._mcp_resolution import McpInstance, resolve_all_instances
-from pynchy.container_runner.mcp_manager import McpManager
+from pynchy.host.container_manager.mcp.resolution import McpInstance, resolve_all_instances
+from pynchy.host.container_manager.mcp.manager import McpManager
 
 # ---------------------------------------------------------------------------
 # expand_arg_placeholders

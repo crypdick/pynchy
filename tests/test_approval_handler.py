@@ -36,10 +36,10 @@ class TestHandleApprovalCommand:
     @pytest.mark.asyncio
     async def test_writes_decision_file_on_approve(self, ipc_dir: Path, settings):
         from pynchy.chat.approval_handler import handle_approval_command
-        from pynchy.security.approval import create_pending_approval
+        from pynchy.host.container_manager.security.approval import create_pending_approval
 
         with (
-            patch("pynchy.security.approval.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings),
         ):
             short_id = create_pending_approval("aabb001122334455", "x_post", "grp", "j@g.us", {"text": "hi"})
             deps = FakeDeps()
@@ -57,10 +57,10 @@ class TestHandleApprovalCommand:
     @pytest.mark.asyncio
     async def test_writes_decision_file_on_deny(self, ipc_dir: Path, settings):
         from pynchy.chat.approval_handler import handle_approval_command
-        from pynchy.security.approval import create_pending_approval
+        from pynchy.host.container_manager.security.approval import create_pending_approval
 
         with (
-            patch("pynchy.security.approval.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings),
         ):
             short_id = create_pending_approval("aabb001122334455", "x_post", "grp", "j@g.us", {"text": "hi"})
             deps = FakeDeps()
@@ -74,7 +74,7 @@ class TestHandleApprovalCommand:
     async def test_unknown_id_sends_error(self, ipc_dir: Path, settings):
         from pynchy.chat.approval_handler import handle_approval_command
 
-        with patch("pynchy.security.approval.get_settings", return_value=settings):
+        with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings):
             deps = FakeDeps()
             await handle_approval_command(deps, "j@g.us", "approve", "nonexist", "testuser")
 
@@ -84,10 +84,10 @@ class TestHandleApprovalCommand:
     @pytest.mark.asyncio
     async def test_confirmation_broadcast(self, ipc_dir: Path, settings):
         from pynchy.chat.approval_handler import handle_approval_command
-        from pynchy.security.approval import create_pending_approval
+        from pynchy.host.container_manager.security.approval import create_pending_approval
 
         with (
-            patch("pynchy.security.approval.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings),
         ):
             short_id = create_pending_approval("aabb001122334455", "x_post", "grp", "j@g.us", {})
             deps = FakeDeps()
@@ -103,10 +103,10 @@ class TestHandlePendingQuery:
     @pytest.mark.asyncio
     async def test_lists_pending_approvals(self, ipc_dir: Path, settings):
         from pynchy.chat.approval_handler import handle_pending_query
-        from pynchy.security.approval import create_pending_approval
+        from pynchy.host.container_manager.security.approval import create_pending_approval
 
         with (
-            patch("pynchy.security.approval.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings),
         ):
             create_pending_approval("req1", "x_post", "grp", "j@g.us", {})
             create_pending_approval("req2", "send_email", "grp", "j@g.us", {})
@@ -122,7 +122,7 @@ class TestHandlePendingQuery:
     async def test_no_pending_shows_message(self, ipc_dir: Path, settings):
         from pynchy.chat.approval_handler import handle_pending_query
 
-        with patch("pynchy.security.approval.get_settings", return_value=settings):
+        with patch("pynchy.host.container_manager.security.approval.get_settings", return_value=settings):
             deps = FakeDeps()
             await handle_pending_query(deps, "j@g.us")
 

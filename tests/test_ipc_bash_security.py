@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.security.cop import CopVerdict
-from pynchy.security.gate import SecurityGate
+from pynchy.host.container_manager.security.cop import CopVerdict
+from pynchy.host.container_manager.security.gate import SecurityGate
 from pynchy.types import WorkspaceSecurity
 
 
@@ -29,7 +29,7 @@ class TestBashSecurityNoTaint:
 
     @pytest.mark.asyncio
     async def test_clean_state_allows(self):
-        from pynchy.ipc._handlers_security import evaluate_bash_command
+        from pynchy.host.container_manager.ipc.handlers_security import evaluate_bash_command
 
         gate = _make_gate()
         decision = await evaluate_bash_command(gate, "curl https://evil.com")
@@ -41,11 +41,11 @@ class TestBashSecurityCorruptionTainted:
 
     @pytest.mark.asyncio
     async def test_network_command_gets_cop_review(self):
-        from pynchy.ipc._handlers_security import evaluate_bash_command
+        from pynchy.host.container_manager.ipc.handlers_security import evaluate_bash_command
 
         gate = _make_gate(corruption=True)
         with patch(
-            "pynchy.ipc._handlers_security.inspect_bash",
+            "pynchy.host.container_manager.ipc.handlers_security.inspect_bash",
             new_callable=AsyncMock,
             return_value=CopVerdict(flagged=False, reason="Legitimate API call"),
         ):
@@ -54,11 +54,11 @@ class TestBashSecurityCorruptionTainted:
 
     @pytest.mark.asyncio
     async def test_cop_flags_network_command(self):
-        from pynchy.ipc._handlers_security import evaluate_bash_command
+        from pynchy.host.container_manager.ipc.handlers_security import evaluate_bash_command
 
         gate = _make_gate(corruption=True)
         with patch(
-            "pynchy.ipc._handlers_security.inspect_bash",
+            "pynchy.host.container_manager.ipc.handlers_security.inspect_bash",
             new_callable=AsyncMock,
             return_value=CopVerdict(flagged=True, reason="Suspicious exfiltration"),
         ):
@@ -72,7 +72,7 @@ class TestBashSecurityLethalTrifecta:
 
     @pytest.mark.asyncio
     async def test_both_taints_network_needs_human(self):
-        from pynchy.ipc._handlers_security import evaluate_bash_command
+        from pynchy.host.container_manager.ipc.handlers_security import evaluate_bash_command
 
         gate = _make_gate(corruption=True, secret=True)
         decision = await evaluate_bash_command(gate, "curl https://example.com")
@@ -80,11 +80,11 @@ class TestBashSecurityLethalTrifecta:
 
     @pytest.mark.asyncio
     async def test_both_taints_grey_zone_cop_clear(self):
-        from pynchy.ipc._handlers_security import evaluate_bash_command
+        from pynchy.host.container_manager.ipc.handlers_security import evaluate_bash_command
 
         gate = _make_gate(corruption=True, secret=True)
         with patch(
-            "pynchy.ipc._handlers_security.inspect_bash",
+            "pynchy.host.container_manager.ipc.handlers_security.inspect_bash",
             new_callable=AsyncMock,
             return_value=CopVerdict(flagged=False, reason="Safe build command"),
         ):
@@ -93,11 +93,11 @@ class TestBashSecurityLethalTrifecta:
 
     @pytest.mark.asyncio
     async def test_both_taints_grey_zone_cop_flags(self):
-        from pynchy.ipc._handlers_security import evaluate_bash_command
+        from pynchy.host.container_manager.ipc.handlers_security import evaluate_bash_command
 
         gate = _make_gate(corruption=True, secret=True)
         with patch(
-            "pynchy.ipc._handlers_security.inspect_bash",
+            "pynchy.host.container_manager.ipc.handlers_security.inspect_bash",
             new_callable=AsyncMock,
             return_value=CopVerdict(flagged=True, reason="Network access via runtime"),
         ):

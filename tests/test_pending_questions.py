@@ -240,7 +240,7 @@ class TestSweepExpiredQuestions:
 
         with (
             patch("pynchy.chat.pending_questions.get_settings", return_value=settings),
-            patch("pynchy.ipc._write.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             create_pending_question(
                 request_id="req-old",

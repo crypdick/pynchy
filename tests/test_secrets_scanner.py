@@ -1,6 +1,6 @@
 """Tests for payload secrets scanner."""
 
-from pynchy.security.secrets_scanner import scan_payload_for_secrets
+from pynchy.host.container_manager.security.secrets_scanner import scan_payload_for_secrets
 
 
 def test_no_secrets_in_plain_text():

@@ -17,7 +17,7 @@ from pynchy.state import (
     get_task_by_id,
     set_workspace_profile,
 )
-from pynchy.ipc import dispatch
+from pynchy.host.container_manager.ipc import dispatch
 from pynchy.types import WorkspaceProfile
 
 ADMIN_GROUP = WorkspaceProfile(
@@ -839,7 +839,7 @@ class TestDeployAuth:
     async def test_admin_deploy_invokes_finalize(self, deps):
         """God deploy with valid data calls finalize_deploy."""
         with patch(
-            "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
+            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy", new_callable=AsyncMock
         ) as mock_finalize:
             await dispatch(
                 {
@@ -868,7 +868,7 @@ class TestResetContextExecution:
     async def test_reset_context_clears_session_and_chat(self, deps, tmp_path):
         with (
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
@@ -895,7 +895,7 @@ class TestResetContextExecution:
     async def test_reset_context_writes_reset_prompt_file(self, deps, tmp_path):
         with (
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
@@ -944,7 +944,7 @@ class TestResetContextExecution:
         """reset_context without message should clear session but skip handoff file."""
         with (
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
@@ -972,7 +972,7 @@ class TestResetContextExecution:
         """reset_context should continue even if worktree merge fails."""
         with (
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(

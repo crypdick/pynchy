@@ -17,7 +17,7 @@ from conftest import make_settings
 
 from pynchy.state import _init_test_database
 from pynchy.git_ops.repo import RepoContext
-from pynchy.ipc._watcher import _move_to_error_dir
+from pynchy.host.container_manager.ipc.watcher import _move_to_error_dir
 from pynchy.types import WorkspaceProfile
 
 ADMIN_GROUP = WorkspaceProfile(
@@ -221,20 +221,20 @@ class TestIpcTaskFileEdgeCases:
 
     async def test_empty_type_field_is_ignored(self, deps):
         """A task file with no type field should be logged and ignored."""
-        from pynchy.ipc import dispatch
+        from pynchy.host.container_manager.ipc import dispatch
 
         # Should not raise
         await dispatch({"no_type_field": True}, "admin-1", True, deps)
 
     async def test_none_type_field_is_ignored(self, deps):
         """A task file with type=None should be handled gracefully."""
-        from pynchy.ipc import dispatch
+        from pynchy.host.container_manager.ipc import dispatch
 
         await dispatch({"type": None}, "admin-1", True, deps)
 
     async def test_empty_data_dict_is_ignored(self, deps):
         """An empty data dict should not crash the processor."""
-        from pynchy.ipc import dispatch
+        from pynchy.host.container_manager.ipc import dispatch
 
         await dispatch({}, "admin-1", True, deps)
 
@@ -249,10 +249,10 @@ class TestIpcDeployEdgeCases:
 
     async def test_deploy_without_chat_jid_uses_admin_group(self, deps):
         """Deploy request missing chatJid should fall back to admin group's JID."""
-        from pynchy.ipc._handlers_deploy import _handle_deploy
+        from pynchy.host.container_manager.ipc.handlers_deploy import _handle_deploy
 
         with patch(
-            "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
+            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy", new_callable=AsyncMock
         ) as mock_finalize:
             await _handle_deploy(
                 {
@@ -271,7 +271,7 @@ class TestIpcDeployEdgeCases:
 
     async def test_deploy_without_chat_jid_and_no_admin_group(self, deps):
         """Deploy request with no chatJid and no admin group should not finalize."""
-        from pynchy.ipc._handlers_deploy import _handle_deploy
+        from pynchy.host.container_manager.ipc.handlers_deploy import _handle_deploy
 
         # Remove admin group from deps
         no_admin_deps = MockDeps(
@@ -282,7 +282,7 @@ class TestIpcDeployEdgeCases:
         await _init_test_database()
 
         with patch(
-            "pynchy.ipc._handlers_deploy.finalize_deploy", new_callable=AsyncMock
+            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy", new_callable=AsyncMock
         ) as mock_finalize:
             await _handle_deploy(
                 {
@@ -306,7 +306,7 @@ class TestSyncWorktreeIpc:
 
     async def test_writes_result_file(self, deps, tmp_path: Path):
         """sync_worktree_to_main should write a result JSON for the blocking MCP tool."""
-        from pynchy.ipc import dispatch
+        from pynchy.host.container_manager.ipc import dispatch
 
         fake_repo_ctx = RepoContext(
             slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt"
@@ -314,7 +314,7 @@ class TestSyncWorktreeIpc:
 
         with (
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
@@ -322,11 +322,11 @@ class TestSyncWorktreeIpc:
                 return_value=fake_repo_ctx,
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
                 return_value={"success": True, "message": "Merged 1 commit(s)"},
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
                 new_callable=AsyncMock,
             ),
         ):
@@ -347,7 +347,7 @@ class TestSyncWorktreeIpc:
 
     async def test_notifies_other_worktrees_on_success(self, deps, tmp_path: Path):
         """On successful sync, other worktrees should be notified."""
-        from pynchy.ipc import dispatch
+        from pynchy.host.container_manager.ipc import dispatch
 
         fake_repo_ctx = RepoContext(
             slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt"
@@ -355,7 +355,7 @@ class TestSyncWorktreeIpc:
 
         with (
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
@@ -363,11 +363,11 @@ class TestSyncWorktreeIpc:
                 return_value=fake_repo_ctx,
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
                 return_value={"success": True, "message": "done"},
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
                 new_callable=AsyncMock,
             ) as mock_notify,
         ):
@@ -387,19 +387,19 @@ class TestSyncWorktreeIpc:
 
     async def test_skips_notification_on_failure(self, deps, tmp_path: Path):
         """On failed sync, worktree notification should be skipped."""
-        from pynchy.ipc import dispatch
+        from pynchy.host.container_manager.ipc import dispatch
 
         with (
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
                 return_value={"success": False, "message": "conflict"},
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
                 new_callable=AsyncMock,
             ) as mock_notify,
         ):

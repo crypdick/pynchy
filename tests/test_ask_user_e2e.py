@@ -127,7 +127,7 @@ class TestAskUserE2E:
         )
 
         # Step 1: Container sends ask_user:ask IPC task
-        from pynchy.ipc._handlers_ask_user import _handle_ask_user_request
+        from pynchy.host.container_manager.ipc.handlers_ask_user import _handle_ask_user_request
 
         data = {
             "type": "ask_user:ask",
@@ -137,7 +137,7 @@ class TestAskUserE2E:
 
         with (
             patch("pynchy.chat.pending_questions.get_settings", return_value=settings),
-            patch("pynchy.ipc._write.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             await _handle_ask_user_request(data, "mygroup", False, deps)
 
@@ -168,7 +168,7 @@ class TestAskUserE2E:
         with (
             patch("pynchy.chat.pending_questions.get_settings", return_value=settings),
             patch("pynchy.chat.ask_user_handler.get_session", return_value=fake_session),
-            patch("pynchy.ipc._write.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             await handle_ask_user_answer(REQUEST_ID, {"answer": "JWT"}, ask_user_deps)
 
@@ -213,7 +213,7 @@ class TestAskUserE2E:
         with (
             patch("pynchy.chat.pending_questions.get_settings", return_value=settings),
             patch("pynchy.chat.ask_user_handler.get_session", return_value=None),
-            patch("pynchy.ipc._write.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             await handle_ask_user_answer(request_id, {"answer": "OAuth"}, ask_user_deps)
 
@@ -241,7 +241,7 @@ class TestAskUserE2E:
             channels=[channel],
         )
 
-        from pynchy.ipc._handlers_ask_user import _handle_ask_user_request
+        from pynchy.host.container_manager.ipc.handlers_ask_user import _handle_ask_user_request
 
         data = {
             "type": "ask_user:ask",
@@ -251,7 +251,7 @@ class TestAskUserE2E:
 
         with (
             patch("pynchy.chat.pending_questions.get_settings", return_value=settings),
-            patch("pynchy.ipc._write.get_settings", return_value=settings),
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             await _handle_ask_user_request(data, "mygroup", False, deps)
 

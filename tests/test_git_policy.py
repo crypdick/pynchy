@@ -27,7 +27,7 @@ from pynchy.git_ops.sync import (
     host_create_pr_from_worktree,
     resolve_git_policy,
 )
-from pynchy.ipc import dispatch
+from pynchy.host.container_manager.ipc import dispatch
 from pynchy.types import WorkspaceProfile
 
 # ---------------------------------------------------------------------------
@@ -387,11 +387,11 @@ class TestIpcPolicyRouting:
 
         with (
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=make_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.resolve_git_policy",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.resolve_git_policy",
                 return_value=GIT_POLICY_MERGE,
             ),
             patch(
@@ -399,14 +399,14 @@ class TestIpcPolicyRouting:
                 return_value=fake_repo_ctx,
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
                 return_value={"success": True, "message": "Merged 1 commit(s)"},
             ) as mock_sync,
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_create_pr_from_worktree",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
             ) as mock_pr,
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
                 new_callable=AsyncMock,
             ),
         ):
@@ -433,11 +433,11 @@ class TestIpcPolicyRouting:
 
         with (
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=make_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.resolve_git_policy",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.resolve_git_policy",
                 return_value=GIT_POLICY_PR,
             ),
             patch(
@@ -445,10 +445,10 @@ class TestIpcPolicyRouting:
                 return_value=fake_repo_ctx,
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_sync_worktree",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
             ) as mock_sync,
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_create_pr_from_worktree",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
                 return_value={"success": True, "message": "Pushed 1 commit(s) and opened PR"},
             ) as mock_pr,
         ):
@@ -475,11 +475,11 @@ class TestIpcPolicyRouting:
 
         with (
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=make_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.resolve_git_policy",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.resolve_git_policy",
                 return_value=GIT_POLICY_PR,
             ),
             patch(
@@ -487,11 +487,11 @@ class TestIpcPolicyRouting:
                 return_value=fake_repo_ctx,
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_create_pr_from_worktree",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
                 return_value={"success": True, "message": "Pushed"},
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_notify_worktree_updates",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
                 new_callable=AsyncMock,
             ) as mock_notify,
         ):
@@ -512,11 +512,11 @@ class TestIpcPolicyRouting:
 
         with (
             patch(
-                "pynchy.ipc._handlers_lifecycle.get_settings",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=make_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.resolve_git_policy",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.resolve_git_policy",
                 return_value=GIT_POLICY_PR,
             ),
             patch(
@@ -524,7 +524,7 @@ class TestIpcPolicyRouting:
                 return_value=fake_repo_ctx,
             ),
             patch(
-                "pynchy.ipc._handlers_lifecycle.host_create_pr_from_worktree",
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
                 return_value={"success": True, "message": "Pushed"},
             ),
         ):

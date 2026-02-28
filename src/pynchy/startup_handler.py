@@ -60,7 +60,7 @@ async def send_boot_notification(deps: StartupDeps) -> None:
     parts = [f"🦞 online -- {label}"]
 
     # Check for API credentials and warn if missing
-    from pynchy.container_runner._credentials import has_api_credentials
+    from pynchy.host.container_manager.credentials import has_api_credentials
 
     if not has_api_credentials():
         parts.append(

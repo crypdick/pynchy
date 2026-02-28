@@ -20,7 +20,7 @@ from pynchy.app import PynchyApp
 from pynchy.state import _init_test_database, get_chat_history, store_message
 from pynchy.types import NewMessage, WorkspaceProfile
 
-_CR_ORCH = "pynchy.container_runner._orchestrator"
+_CR_ORCH = "pynchy.host.container_manager.orchestrator"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -64,12 +64,12 @@ def _patch_test_settings(tmp_path: Path):
     )
     with contextlib.ExitStack() as stack:
         for mod in (
-            "pynchy.container_runner._credentials",
-            "pynchy.container_runner._mounts",
-            "pynchy.container_runner._session_prep",
-            "pynchy.container_runner._orchestrator",
-            "pynchy.container_runner._session",
-            "pynchy.container_runner._snapshots",
+            "pynchy.host.container_manager.credentials",
+            "pynchy.host.container_manager.mounts",
+            "pynchy.host.container_manager.session_prep",
+            "pynchy.host.container_manager.orchestrator",
+            "pynchy.host.container_manager.session",
+            "pynchy.host.container_manager.snapshots",
             "pynchy.chat.message_handler",
             "pynchy.chat.output_handler",
         ):
@@ -79,10 +79,10 @@ def _patch_test_settings(tmp_path: Path):
         # the canonical location (_process) and the import site (_session)
         # because Python's from-import creates a separate reference.
         stack.enter_context(
-            patch("pynchy.container_runner._process._docker_rm_force", _noop_docker_rm)
+            patch("pynchy.host.container_manager.process._docker_rm_force", _noop_docker_rm)
         )
         stack.enter_context(
-            patch("pynchy.container_runner._session._docker_rm_force", _noop_docker_rm)
+            patch("pynchy.host.container_manager.session._docker_rm_force", _noop_docker_rm)
         )
         yield
 
@@ -140,8 +140,8 @@ class FakeProcess:
         and query-done pulse through the session API (mirroring the IPC
         watcher's behavior), then simulates a clean process exit.
         """
-        from pynchy.container_runner._serialization import _parse_container_output
-        from pynchy.container_runner._session import get_session
+        from pynchy.host.container_manager.serialization import _parse_container_output
+        from pynchy.host.container_manager.session import get_session
 
         # Wait for the session to be created and have an output handler
         session = None
@@ -216,9 +216,9 @@ async def _schedule_outputs_via_session(
     that triggers query completion.  If no output has new_session_id, a
     query-done pulse is appended automatically.
     """
-    from pynchy.container_runner._process import is_query_done_pulse
-    from pynchy.container_runner._serialization import _parse_container_output
-    from pynchy.container_runner._session import get_session
+    from pynchy.host.container_manager.process import is_query_done_pulse
+    from pynchy.host.container_manager.serialization import _parse_container_output
+    from pynchy.host.container_manager.session import get_session
 
     # Wait for session to have an output handler
     for _ in range(100):
@@ -273,7 +273,7 @@ async def app(tmp_path: Path):
     }
     yield a
     # Clean up any persistent sessions created during the test
-    from pynchy.container_runner._session import destroy_all_sessions
+    from pynchy.host.container_manager.session import destroy_all_sessions
 
     await destroy_all_sessions()
 

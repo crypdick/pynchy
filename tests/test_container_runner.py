@@ -14,28 +14,28 @@ from conftest import make_settings
 from pydantic import SecretStr
 
 from pynchy.config import GatewayConfig
-from pynchy.container_runner._credentials import (
+from pynchy.host.container_manager.credentials import (
     _read_gh_token,
     _read_git_identity,
     _read_oauth_token,
     _shell_quote,
     _write_env_file,
 )
-from pynchy.container_runner._mounts import _build_container_args, _build_volume_mounts
-from pynchy.container_runner._orchestrator import (
+from pynchy.host.container_manager.mounts import _build_container_args, _build_volume_mounts
+from pynchy.host.container_manager.orchestrator import (
     _write_initial_input,
     resolve_agent_core,
 )
-from pynchy.container_runner._serialization import _input_to_dict, _parse_container_output
-from pynchy.container_runner._session_prep import (
+from pynchy.host.container_manager.serialization import _input_to_dict, _parse_container_output
+from pynchy.host.container_manager.session_prep import (
     _is_skill_selected,
     _parse_skill_tier,
     _sync_skills,
     _write_settings_json,
 )
-from pynchy.container_runner._snapshots import write_groups_snapshot, write_tasks_snapshot
+from pynchy.host.container_manager.snapshots import write_groups_snapshot, write_tasks_snapshot
 from pynchy.git_ops.repo import RepoContext
-from pynchy.ipc._write import clean_ipc_input_dir
+from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 from pynchy.types import (
     ContainerInput,
     VolumeMount,
@@ -71,9 +71,9 @@ TEST_INPUT = ContainerInput(
 )
 
 
-_CR_CREDS = "pynchy.container_runner._credentials"
-_CR_ORCH = "pynchy.container_runner._orchestrator"
-_GATEWAY = "pynchy.container_runner.gateway"
+_CR_CREDS = "pynchy.host.container_manager.credentials"
+_CR_ORCH = "pynchy.host.container_manager.orchestrator"
+_GATEWAY = "pynchy.host.container_manager.gateway"
 
 
 class _MockGateway:
@@ -90,10 +90,10 @@ class _MockGateway:
 
 _SETTINGS_MODULES = [
     _CR_CREDS,
-    "pynchy.container_runner._mounts",
-    "pynchy.container_runner._session_prep",
+    "pynchy.host.container_manager.mounts",
+    "pynchy.host.container_manager.session_prep",
     _CR_ORCH,
-    "pynchy.container_runner._snapshots",
+    "pynchy.host.container_manager.snapshots",
 ]
 
 
@@ -324,7 +324,7 @@ class TestCleanIpcInputDir:
         (input_dir / "stale-msg.json").write_text('{"type": "message"}')
         (input_dir / "_close").write_text("")
 
-        with patch("pynchy.ipc._write.get_settings", return_value=settings):
+        with patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings):
             clean_ipc_input_dir("test-group", preserve_initial=True)
 
         assert (input_dir / "initial.json").exists()
@@ -339,7 +339,7 @@ class TestCleanIpcInputDir:
         (input_dir / "stale-msg.json").write_text('{"type": "message"}')
         (input_dir / "_close").write_text("")
 
-        with patch("pynchy.ipc._write.get_settings", return_value=settings):
+        with patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings):
             clean_ipc_input_dir("test-group", preserve_initial=False)
 
         assert not (input_dir / "initial.json").exists()
@@ -1626,7 +1626,7 @@ class TestContainerSessionSignalQueryDone:
 
     async def test_signal_query_done_sets_event(self):
         """signal_query_done() should set the _query_done event."""
-        from pynchy.container_runner._session import ContainerSession
+        from pynchy.host.container_manager.session import ContainerSession
 
         session = ContainerSession("test-group", "pynchy-test-group")
         assert not session._query_done.is_set()
@@ -1637,7 +1637,7 @@ class TestContainerSessionSignalQueryDone:
 
     async def test_signal_query_done_clears_output_handler(self):
         """signal_query_done() should clear the _on_output callback."""
-        from pynchy.container_runner._session import ContainerSession
+        from pynchy.host.container_manager.session import ContainerSession
 
         session = ContainerSession("test-group", "pynchy-test-group")
         session._on_output = AsyncMock()  # simulate active handler
@@ -1652,7 +1652,7 @@ class TestContainerSessionSignalQueryDone:
         With idle_timeout=0, _reset_idle_timer cancels any existing handle
         but does not schedule a new one.
         """
-        from pynchy.container_runner._session import ContainerSession
+        from pynchy.host.container_manager.session import ContainerSession
 
         session = ContainerSession("test-group", "pynchy-test-group")
         session._idle_timeout = 0
@@ -1670,7 +1670,7 @@ class TestContainerSessionSignalQueryDone:
 
     async def test_signal_query_done_after_set_output_handler(self):
         """Full cycle: set handler, signal done, verify state reset."""
-        from pynchy.container_runner._session import ContainerSession
+        from pynchy.host.container_manager.session import ContainerSession
 
         session = ContainerSession("test-group", "pynchy-test-group")
         handler = AsyncMock()
@@ -1691,7 +1691,7 @@ class TestGetSessionOutputHandler:
 
     def test_returns_handler_when_session_active(self):
         """Should return the session's _on_output when an active session exists."""
-        from pynchy.container_runner._session import (
+        from pynchy.host.container_manager.session import (
             ContainerSession,
             _sessions,
             get_session_output_handler,
@@ -1713,14 +1713,14 @@ class TestGetSessionOutputHandler:
 
     def test_returns_none_when_no_session(self):
         """Should return None when no session exists for the group."""
-        from pynchy.container_runner._session import get_session_output_handler
+        from pynchy.host.container_manager.session import get_session_output_handler
 
         result = get_session_output_handler("nonexistent-group")
         assert result is None
 
     def test_returns_none_when_no_handler_set(self):
         """Should return None when session exists but no handler is set."""
-        from pynchy.container_runner._session import (
+        from pynchy.host.container_manager.session import (
             ContainerSession,
             _sessions,
             get_session_output_handler,
@@ -1745,7 +1745,7 @@ class TestSessionStartOnlyStderr:
 
     async def test_start_creates_stderr_task(self):
         """start() should create a stderr reader task."""
-        from pynchy.container_runner._session import ContainerSession
+        from pynchy.host.container_manager.session import ContainerSession
 
         session = ContainerSession("start-test", "pynchy-start-test")
         proc = FakeProcess()
@@ -1760,7 +1760,7 @@ class TestSessionStartOnlyStderr:
 
     async def test_start_creates_proc_monitor_task(self):
         """start() should create a proc monitor task."""
-        from pynchy.container_runner._session import ContainerSession
+        from pynchy.host.container_manager.session import ContainerSession
 
         session = ContainerSession("monitor-test", "pynchy-monitor-test")
         proc = FakeProcess()
@@ -1775,7 +1775,7 @@ class TestSessionStartOnlyStderr:
 
     async def test_start_does_not_create_stdout_task(self):
         """start() should NOT create a stdout reader task (output is via IPC files now)."""
-        from pynchy.container_runner._session import ContainerSession
+        from pynchy.host.container_manager.session import ContainerSession
 
         session = ContainerSession("no-stdout-test", "pynchy-no-stdout-test")
         proc = FakeProcess()
@@ -1790,7 +1790,7 @@ class TestSessionStartOnlyStderr:
 
     async def test_proc_monitor_detects_death_during_query(self):
         """When the container dies mid-query, proc monitor should set _died_before_pulse."""
-        from pynchy.container_runner._session import ContainerSession
+        from pynchy.host.container_manager.session import ContainerSession
 
         session = ContainerSession("death-test", "pynchy-death-test")
         proc = FakeProcess()
@@ -1812,7 +1812,7 @@ class TestSessionStartOnlyStderr:
 
     async def test_proc_monitor_clean_exit_no_died_before_pulse(self):
         """A clean exit (code 0) during query should NOT set _died_before_pulse."""
-        from pynchy.container_runner._session import ContainerSession
+        from pynchy.host.container_manager.session import ContainerSession
 
         session = ContainerSession("clean-exit-test", "pynchy-clean-exit-test")
         proc = FakeProcess()
