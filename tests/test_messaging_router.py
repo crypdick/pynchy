@@ -15,6 +15,7 @@ from pynchy.host.orchestrator.messaging.router import (
     init_trace_batcher,
 )
 from pynchy.host.orchestrator.messaging.streaming import StreamState, stream_states
+from pynchy.types import OutboundEvent, OutboundEventType
 
 
 @pytest.fixture(autouse=True)
@@ -569,8 +570,8 @@ class TestHandleStreamedOutput:
         group = _make_group()
 
         # Pre-populate a stream state with message IDs
-        state = StreamState()
-        state.buffer = "Hello"
+        event = OutboundEvent(type=OutboundEventType.TEXT, content="Hello")
+        state = StreamState(event=event)
         state.message_ids = {"test": "msg-123"}
         stream_states["g@g.us"] = state
 

@@ -6,7 +6,7 @@ import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from pynchy.types import Channel, NewMessage
+    from pynchy.types import NewMessage
 
 _INTERNAL_TAG_RE = re.compile(r"<internal>([\s\S]*?)</internal>")
 _HOST_TAG_RE = re.compile(r"^\s*<host>([\s\S]*?)</host>\s*$")
@@ -74,16 +74,6 @@ def parse_host_tag(text: str) -> tuple[bool, str]:
     if match:
         return True, match.group(1).strip()
     return False, text
-
-
-def format_outbound(channel: Channel, raw_text: str) -> str:
-    """Format internal tags and optionally prefix with assistant name."""
-    text = format_internal_tags(raw_text)
-    if not text:
-        return ""
-    prefix_name = getattr(channel, "prefix_assistant_name", None)
-    prefix = "🦞 " if prefix_name is not False else ""
-    return f"{prefix}{text}"
 
 
 def _format_lines(

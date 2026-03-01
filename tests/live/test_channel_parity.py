@@ -7,7 +7,7 @@ paths, and verify that all channels receive equivalent output.
 "Equivalent" accounts for known, intentional differences:
 - Slack omits the assistant name prefix (the platform shows bot identity)
 - WhatsApp/TUI prefix agent messages with the assistant name
-- Streaming channels (Slack) receive updates via post_message/update_message
+- Streaming channels (Slack) receive updates via post_event/update_event
 
 Run with:
     uv run pytest tests/live/ -m "live and parity"
@@ -26,13 +26,12 @@ from pynchy.host.orchestrator.messaging.channel_handler import (
     send_reaction_to_channels,
     set_typing_on_channels,
 )
-from pynchy.host.orchestrator.messaging.formatter import format_outbound
 from pynchy.host.orchestrator.messaging.router import (
     broadcast_agent_input,
     handle_streamed_output,
 )
 from pynchy.host.orchestrator.messaging.sender import broadcast as broadcast_to_channels
-from pynchy.types import ContainerOutput, WorkspaceProfile
+from pynchy.types import ContainerOutput, OutboundEvent, OutboundEventType, WorkspaceProfile
 
 from .conftest import (
     RecordingChannel,
@@ -72,6 +71,11 @@ def _normalize_messages(channel: RecordingChannel) -> list[str]:
     return [_strip_prefix(text) for _, text in channel.sent_messages]
 
 
+def _text_event(text: str) -> OutboundEvent:
+    """Wrap a string in a TEXT OutboundEvent for broadcast tests."""
+    return OutboundEvent(type=OutboundEventType.TEXT, content=text)
+
+
 def _make_deps(channels: list[RecordingChannel]) -> Any:
     """Create a mock ChannelDeps with the given channels."""
     from unittest.mock import MagicMock
@@ -97,7 +101,7 @@ class TestBroadcastRawTextParity:
     async def test_simple_text_reaches_all_channels(self, channels):
         """Plain text broadcasts should arrive identically at every channel."""
         deps = _make_deps(channels)
-        await broadcast_to_channels(deps, CHAT_JID, "Hello, world!")
+        await broadcast_to_channels(deps, CHAT_JID, _text_event("Hello, world!"))
 
         for ch in channels:
             texts = ch.get_texts(CHAT_JID)
@@ -120,7 +124,7 @@ class TestBroadcastRawTextParity:
         for msg in messages:
             for ch in channels:
                 ch.clear()
-            await broadcast_to_channels(deps, CHAT_JID, msg)
+            await broadcast_to_channels(deps, CHAT_JID, _text_event(msg))
             texts_by_channel = {ch.name: ch.get_texts(CHAT_JID) for ch in channels}
 
             # All channels should receive the same text
@@ -136,7 +140,7 @@ class TestBroadcastRawTextParity:
         """Multi-line messages should be sent identically."""
         deps = _make_deps(channels)
         text = "Line 1\nLine 2\nLine 3\n\nLine 5 (after blank)"
-        await broadcast_to_channels(deps, CHAT_JID, text)
+        await broadcast_to_channels(deps, CHAT_JID, _text_event(text))
 
         for ch in channels:
             assert ch.get_texts(CHAT_JID) == [text], f"{ch.name} multiline mismatch"
@@ -145,7 +149,7 @@ class TestBroadcastRawTextParity:
         """Unicode, emoji, and special characters should pass through unchanged."""
         deps = _make_deps(channels)
         text = '🇺🇸 Héllo wörld! 你好 — "quotes" & <tags>'
-        await broadcast_to_channels(deps, CHAT_JID, text)
+        await broadcast_to_channels(deps, CHAT_JID, _text_event(text))
 
         for ch in channels:
             assert ch.get_texts(CHAT_JID) == [text], f"{ch.name} unicode mismatch"
@@ -153,7 +157,7 @@ class TestBroadcastRawTextParity:
     async def test_empty_text_parity(self, channels):
         """Empty string broadcasts should arrive at all channels."""
         deps = _make_deps(channels)
-        await broadcast_to_channels(deps, CHAT_JID, "")
+        await broadcast_to_channels(deps, CHAT_JID, _text_event(""))
 
         for ch in channels:
             assert ch.get_texts(CHAT_JID) == [""], f"{ch.name} empty text mismatch"
@@ -162,66 +166,14 @@ class TestBroadcastRawTextParity:
         """Very long messages should arrive identically (no truncation)."""
         deps = _make_deps(channels)
         text = "x" * 10000
-        await broadcast_to_channels(deps, CHAT_JID, text)
+        await broadcast_to_channels(deps, CHAT_JID, _text_event(text))
 
         for ch in channels:
             assert ch.get_texts(CHAT_JID) == [text], f"{ch.name} long text mismatch"
 
 
 # ---------------------------------------------------------------------------
-# 2. format_outbound — per-channel formatting parity
-# ---------------------------------------------------------------------------
-
-
-class TestFormatOutboundParity:
-    """Verify that format_outbound applies consistent prefix rules across channels."""
-
-    def test_whatsapp_prefixes_assistant_name(self):
-        ch = make_whatsapp_channel()
-        result = format_outbound(ch, "Hello world")
-        assert result == "🦞 Hello world"
-
-    def test_slack_does_not_prefix(self):
-        ch = make_slack_channel()
-        result = format_outbound(ch, "Hello world")
-        assert result == "Hello world"
-
-    def test_tui_prefixes_assistant_name(self):
-        ch = make_tui_channel()
-        result = format_outbound(ch, "Hello world")
-        assert result == "🦞 Hello world"
-
-    def test_internal_tags_stripped_consistently(self):
-        """<internal> tags should be stripped from ALL channels."""
-        raw = "<internal>thinking about it</internal>The answer is 42"
-        for ch in [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]:
-            result = format_outbound(ch, raw)
-            assert "<internal>" not in result, f"{ch.name} leaked internal tags"
-            assert "The answer is 42" in result, f"{ch.name} lost content"
-
-    def test_all_internal_returns_empty_for_all_channels(self):
-        """If text is entirely <internal>, all channels should get empty string."""
-        raw = "<internal>secret thoughts</internal>"
-        for ch in [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]:
-            result = format_outbound(ch, raw)
-            assert result == "", f"{ch.name} returned non-empty for all-internal: {result!r}"
-
-    def test_content_after_strip_is_identical(self):
-        """After removing the known prefix difference, content should be identical."""
-        raw = "Here is a complex response with **markdown** and `code`."
-        results = {}
-        for ch in [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]:
-            result = format_outbound(ch, raw)
-            results[ch.name] = _strip_prefix(result)
-
-        # All normalized results should be the same
-        values = list(results.values())
-        for name, val in results.items():
-            assert val == values[0], f"{name} content differs: {val!r} vs {values[0]!r}"
-
-
-# ---------------------------------------------------------------------------
-# 3. Host message parity
+# 2. Host message parity
 # ---------------------------------------------------------------------------
 
 
@@ -322,10 +274,10 @@ class TestAgentOutputParity:
         deps = MagicMock()
         deps.channels = channels
 
-        async def mock_broadcast(jid, text, **kwargs):
+        async def mock_broadcast(jid, event, **kwargs):
             for ch in channels:
                 if ch.is_connected():
-                    await ch.send_message(jid, text)
+                    await ch.send_event(jid, event)
 
         deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps.emit = MagicMock()
@@ -601,10 +553,10 @@ class TestAgentInputBroadcastParity:
         deps = _make_deps(channels)
 
         # Wire up broadcast_to_channels to actually call channels
-        async def mock_broadcast(jid, text, **kwargs):
+        async def mock_broadcast(jid, event, **kwargs):
             for ch in channels:
                 if ch.is_connected():
-                    await ch.send_message(jid, text)
+                    await ch.send_event(jid, event)
 
         deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps.emit = lambda *a, **kw: None
@@ -651,10 +603,10 @@ class TestAgentInputBroadcastParity:
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
         deps = _make_deps(channels)
 
-        async def mock_broadcast(jid, text, **kwargs):
+        async def mock_broadcast(jid, event, **kwargs):
             for ch in channels:
                 if ch.is_connected():
-                    await ch.send_message(jid, text)
+                    await ch.send_event(jid, event)
 
         deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps.emit = lambda *a, **kw: None
@@ -690,10 +642,10 @@ class TestFullTraceSequenceParity:
 
         deps_mock = _make_deps(channels)
 
-        async def mock_broadcast(jid, text, **kwargs):
+        async def mock_broadcast(jid, event, **kwargs):
             for ch in channels:
                 if ch.is_connected():
-                    await ch.send_message(jid, text)
+                    await ch.send_event(jid, event)
 
         deps_mock.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps_mock.emit = lambda *a, **kw: None
@@ -783,10 +735,10 @@ class TestEdgeCaseParity:
 
         deps = _make_deps(channels)
 
-        async def mock_broadcast(jid, text, **kwargs):
+        async def mock_broadcast(jid, event, **kwargs):
             for ch in channels:
                 if ch.is_connected():
-                    await ch.send_message(jid, text)
+                    await ch.send_event(jid, event)
 
         deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps.emit = lambda *a, **kw: None
@@ -819,10 +771,10 @@ class TestEdgeCaseParity:
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
         deps = _make_deps(channels)
 
-        async def mock_broadcast(jid, text, **kwargs):
+        async def mock_broadcast(jid, event, **kwargs):
             for ch in channels:
                 if ch.is_connected():
-                    await ch.send_message(jid, text)
+                    await ch.send_event(jid, event)
 
         deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps.emit = lambda *a, **kw: None
@@ -857,10 +809,10 @@ class TestEdgeCaseParity:
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
         deps = _make_deps(channels)
 
-        async def mock_broadcast(jid, text, **kwargs):
+        async def mock_broadcast(jid, event, **kwargs):
             for ch in channels:
                 if ch.is_connected():
-                    await ch.send_message(jid, text)
+                    await ch.send_event(jid, event)
 
         deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps.emit = lambda *a, **kw: None
@@ -911,10 +863,10 @@ class TestEdgeCaseParity:
         channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
         deps = _make_deps(channels)
 
-        async def mock_broadcast(jid, text, **kwargs):
+        async def mock_broadcast(jid, event, **kwargs):
             for ch in channels:
                 if ch.is_connected():
-                    await ch.send_message(jid, text)
+                    await ch.send_event(jid, event)
 
         deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps.emit = lambda *a, **kw: None
