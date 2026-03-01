@@ -54,7 +54,7 @@ dist/
 .coverage
 
 # Generated build artifacts
-container/requirements-plugins.txt
+src/pynchy/agent/requirements-plugins.txt
 *.local.md
 
 # Playwright MCP
