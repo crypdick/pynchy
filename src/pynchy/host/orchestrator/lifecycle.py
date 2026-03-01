@@ -178,10 +178,13 @@ async def _reconcile_state(app: PynchyApp) -> dict[str, list[str]]:
 
     s = get_settings()
 
+    from pynchy.host.orchestrator.workspace_config import load_resolved_config
+
     repo_groups: dict[str, list[str]] = {}
-    for folder, ws_cfg in s.workspaces.items():
-        if ws_cfg.repo_access:
-            repo_groups.setdefault(ws_cfg.repo_access, []).append(folder)
+    for folder in s.workspaces:
+        resolved = load_resolved_config(folder)
+        if resolved and resolved.repo_access:
+            repo_groups.setdefault(resolved.repo_access, []).append(folder)
 
     await asyncio.to_thread(
         reconcile_worktrees_at_startup,

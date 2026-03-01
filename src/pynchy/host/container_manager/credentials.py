@@ -161,9 +161,11 @@ def _write_env_file(*, is_admin: bool, group_folder: str) -> Path | None:
             logger.debug("Using GitHub token from gh CLI")
     else:
         # Non-admin: inject repo-scoped token if this workspace has repo_access
-        ws_cfg = s.workspaces.get(group_folder)
-        if ws_cfg and ws_cfg.repo_access:
-            repo_cfg = s.repos.get(ws_cfg.repo_access)
+        from pynchy.host.orchestrator.workspace_config import load_resolved_config
+
+        resolved = load_resolved_config(group_folder)
+        if resolved and resolved.repo_access:
+            repo_cfg = s.repos.get(resolved.repo_access)
             if repo_cfg and repo_cfg.token:
                 env_vars["GH_TOKEN"] = repo_cfg.token.get_secret_value()
 
