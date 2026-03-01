@@ -41,7 +41,6 @@ from pynchy.config.models import (
     ConnectionsConfig,
     ContainerConfig,
     CronJobConfig,
-    DirectiveConfig,
     GatewayConfig,
     IntervalsConfig,
     LoggingConfig,
@@ -49,13 +48,13 @@ from pynchy.config.models import (
     PluginConfig,
     QueueConfig,
     RepoConfig,
+    SandboxProfileConfig,
     SchedulerConfig,
     SecretsConfig,
     SecurityConfig,
     ServerConfig,
     ServiceTrustTomlConfig,
     WorkspaceConfig,
-    WorkspaceDefaultsConfig,
     _StrictModel,
 )
 from pynchy.config.refs import connection_ref_from_parts, parse_chat_ref, parse_connection_ref
@@ -159,7 +158,7 @@ class Settings(BaseSettings):
     logging: LoggingConfig = LoggingConfig()
     secrets: SecretsConfig = SecretsConfig()
     gateway: GatewayConfig = GatewayConfig()
-    workspace_defaults: WorkspaceDefaultsConfig = WorkspaceDefaultsConfig()
+    sandbox_universal: SandboxProfileConfig = SandboxProfileConfig()
     services: dict[str, ServiceTrustTomlConfig] = {}  # [services.<name>]
     repos: dict[str, RepoConfig] = {}  # [repos."owner/repo"]
     # FIXME: Rename "workspace" -> "sandbox" across config + codebase.
@@ -176,7 +175,7 @@ class Settings(BaseSettings):
     command_center: CommandCenterConfig = CommandCenterConfig()
     connection: ConnectionsConfig = ConnectionsConfig()
     plugins: dict[str, PluginConfig] = {}
-    directives: dict[str, DirectiveConfig] = {}
+    sandbox_profiles: dict[str, SandboxProfileConfig] = {}
     security: SecurityConfig = SecurityConfig()
     caldav: CalDAVConfig = CalDAVConfig()
 
@@ -197,7 +196,11 @@ class Settings(BaseSettings):
     @classmethod
     def _reject_legacy_sections(cls, data: dict[str, Any]) -> dict[str, Any]:
         if isinstance(data, dict):
-            legacy = [k for k in ("workspaces", "channels", "slack") if k in data]
+            legacy = [
+                k
+                for k in ("workspaces", "channels", "slack", "workspace_defaults", "directives")
+                if k in data
+            ]
             if legacy:
                 raise ValueError(
                     "Legacy config sections are no longer supported: "
@@ -268,6 +271,17 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _validate_profile_refs(self) -> Settings:
+        """Validate that sandbox profile references exist."""
+        for folder, ws in self.workspaces.items():
+            if ws.profile is not None and ws.profile not in self.sandbox_profiles:
+                raise ValueError(
+                    f"sandbox.{folder}.profile references unknown profile: "
+                    f"'{ws.profile}'. Available: {list(self.sandbox_profiles.keys())}"
+                )
+        return self
+
+    @model_validator(mode="after")
     def _validate_connections(self) -> Settings:
         """Validate that connection refs point to configured connections/chats.
 
@@ -319,7 +333,7 @@ class Settings(BaseSettings):
             # Resolve MCP server list (expand groups, "all")
             resolved: set[str] = set()
             for entry in ws.mcp_servers:
-                if entry == "all":
+                if entry == "*":
                     resolved.update(self.mcp_servers.keys())
                 elif entry in self.mcp_groups:
                     resolved.update(self.mcp_groups[entry])
