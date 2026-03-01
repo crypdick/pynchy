@@ -108,44 +108,6 @@ class TestSlackChannelProtocol:
         assert ch.owns_jid("C12345") is False
 
 
-class TestSlackChannelSendMessage:
-    @pytest.mark.asyncio
-    async def test_send_message_posts_to_correct_channel(self) -> None:
-        ch = _make_channel()
-        ch._connected = True
-        ch._app = MagicMock()
-        ch._app.client.chat_postMessage = AsyncMock()
-
-        await ch.send_message("slack:C12345", "hello world")
-
-        ch._app.client.chat_postMessage.assert_awaited_once_with(
-            channel="C12345", text="hello world"
-        )
-
-    @pytest.mark.asyncio
-    async def test_send_message_skips_non_owned_jid(self) -> None:
-        ch = _make_channel()
-        ch._connected = True
-        ch._app = MagicMock()
-        ch._app.client.chat_postMessage = AsyncMock()
-
-        await ch.send_message("whatsapp:12345@g.us", "hello")
-
-        ch._app.client.chat_postMessage.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_send_message_splits_long_text(self) -> None:
-        ch = _make_channel()
-        ch._connected = True
-        ch._app = MagicMock()
-        ch._app.client.chat_postMessage = AsyncMock()
-
-        long_text = "a" * 6000
-        await ch.send_message("slack:C12345", long_text)
-
-        assert ch._app.client.chat_postMessage.await_count == 2
-
-
 class TestSlackChannelDisconnect:
     @pytest.mark.asyncio
     async def test_disconnect_sets_connected_false(self) -> None:

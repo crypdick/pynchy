@@ -91,7 +91,7 @@ class RecordingChannel:
 
 @dataclass
 class StreamingChannel(RecordingChannel):
-    """Channel that supports streaming (post_message + update_message).
+    """Channel that supports streaming (post_event + update_event).
 
     Mirrors Slack's streaming capability where messages are posted first
     and then updated in-place as content streams in.
@@ -100,14 +100,16 @@ class StreamingChannel(RecordingChannel):
     supports_streaming: bool = True
     _post_counter: int = 0
 
-    async def post_message(self, jid: str, text: str) -> str | None:
+    async def post_event(self, jid: str, event: object) -> str | None:
         self._post_counter += 1
         msg_id = f"msg-{self._post_counter}"
-        self.posted_messages.append((jid, text))
+        content = event.content if hasattr(event, "content") else str(event)
+        self.posted_messages.append((jid, content))
         return msg_id
 
-    async def update_message(self, jid: str, message_id: str, text: str) -> None:
-        self.updated_messages.append((jid, message_id, text))
+    async def update_event(self, jid: str, message_id: str, event: object) -> None:
+        content = event.content if hasattr(event, "content") else str(event)
+        self.updated_messages.append((jid, message_id, content))
 
 
 def make_tui_channel() -> RecordingChannel:
@@ -133,7 +135,7 @@ def make_slack_channel() -> StreamingChannel:
     """Slack channel stub.
 
     Slack does NOT prefix assistant name (the bot identity is shown by the
-    platform). Supports streaming via post_message + update_message.
+    platform). Supports streaming via post_event + update_event.
     """
     return StreamingChannel(name="slack", prefix_assistant_name=False)
 

@@ -190,15 +190,6 @@ class SlackChannel:
             kwargs["blocks"] = rendered.blocks
         await self._app.client.chat_update(**kwargs)
 
-    async def send_message(self, jid: str, text: str) -> None:
-        if not self._app or not self.owns_jid(jid):
-            return
-        channel_id = _channel_id_from_jid(jid)
-        # Slack block limit is 3000 chars per section; split long messages.
-        chunks = split_text(text, max_len=3000)
-        for chunk in chunks:
-            await self._app.client.chat_postMessage(channel=channel_id, text=chunk)
-
     def is_connected(self) -> bool:
         return self._connected and self._handler_task is not None and not self._handler_task.done()
 
@@ -423,28 +414,7 @@ class SlackChannel:
     async def set_typing(self, jid: str, is_typing: bool) -> None:  # noqa: ARG002
         """Slack doesn't have a user-level typing indicator API, so this is a no-op."""
 
-    async def post_message(self, jid: str, text: str) -> str | None:
-        """Post a message and return its ``ts`` (message ID) for later updates."""
-        if not self._app or not self.owns_jid(jid):
-            return None
-        channel_id = _channel_id_from_jid(jid)
-        resp = await self._app.client.chat_postMessage(channel=channel_id, text=text)
-        return resp.get("ts")
-
-    async def update_message(self, jid: str, message_id: str, text: str) -> None:
-        """Update an existing Slack message in-place.
-
-        Raises on failure so callers (e.g. finalize_stream_or_broadcast) can
-        detect the error and fall back to send_message.
-        """
-        if not self._app or not self.owns_jid(jid):
-            logger.warning("update_message skipped — JID not owned", jid=jid)
-            return
-        channel_id = _channel_id_from_jid(jid)
-        chunks = split_text(text, max_len=3000)
-        await self._app.client.chat_update(channel=channel_id, ts=message_id, text=chunks[0])
-
-    # Unicode → Slack emoji name mapping.  Callers may pass either format;
+    # Unicode -> Slack emoji name mapping.  Callers may pass either format;
     # Slack's reactions.add API requires the short-code name.
     _UNICODE_TO_SLACK_NAME: dict[str, str] = {
         "👀": "eyes",

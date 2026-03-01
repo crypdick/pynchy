@@ -12,7 +12,6 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
-from pynchy.host.orchestrator.messaging.formatter import format_internal_tags
 from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
 from pynchy.logger import logger
 from pynchy.utils import create_background_task
@@ -49,10 +48,15 @@ _STREAM_THROTTLE = 0.5
 
 @dataclass
 class StreamState:
-    """Tracks in-progress streaming text for a single chat."""
+    """Tracks in-progress streaming text for a single chat.
 
-    buffer: str = ""
-    # channel → message_id for in-place updates
+    The ``event`` field is a TEXT OutboundEvent whose content grows as deltas
+    arrive.  The channel's formatter handles cursor display and internal-tag
+    rendering via ``event.metadata["cursor"]``.
+    """
+
+    event: OutboundEvent
+    # channel -> message_id for in-place updates
     message_ids: dict[str, str] = field(default_factory=dict)
     last_update: float = 0.0
 
@@ -68,32 +72,30 @@ async def stream_text_to_channels(
     *,
     final: bool = False,
 ) -> None:
-    """Push buffered text to channels that support update_message.
+    """Push the current OutboundEvent to channels that support update_event.
 
-    On first call, posts a new message. Subsequent calls update it in-place.
-    Throttled to _STREAM_THROTTLE unless ``final`` is True.
+    On first call, posts a new message via ``post_event``.  Subsequent calls
+    update it in-place via ``update_event``.  Throttled to _STREAM_THROTTLE
+    unless ``final`` is True.
 
-    Only sends to channels that own the canonical JID.
+    The formatter inside each channel handles cursor display and internal-tag
+    rendering -- this function just sets ``metadata["cursor"]`` and delegates.
     """
     now = time.monotonic()
     if not final and (now - state.last_update) < _STREAM_THROTTLE:
         return
 
-    # Transform completed <internal>...</internal> blocks into 🧠 *thought*.
-    # Hide any unclosed <internal> tag (closing tag hasn't streamed yet).
-    filtered = format_internal_tags(state.buffer)
-    unclosed = filtered.rfind("<internal>")
-    if unclosed != -1:
-        filtered = filtered[:unclosed].rstrip()
-    if not filtered and not final:
-        return  # nothing visible to show yet
-    display = filtered + (" \u258c" if not final else "")
+    if not state.event.content and not final:
+        return  # nothing to show yet
+
+    # Tell the formatter whether to show a cursor indicator.
+    state.event.metadata["cursor"] = not final
     state.last_update = now
 
     for ch in deps.channels:
         if not ch.is_connected():
             continue
-        if not hasattr(ch, "update_message") or not hasattr(ch, "post_message"):
+        if not hasattr(ch, "update_event") or not hasattr(ch, "post_event"):
             continue
 
         target_jid = resolve_target_jid(chat_jid, ch)
@@ -105,13 +107,13 @@ async def stream_text_to_channels(
 
         try:
             if msg_id is None:
-                msg_id = await ch.post_message(target_jid, display)
+                msg_id = await ch.post_event(target_jid, state.event)
                 if msg_id:
                     state.message_ids[ch_name] = msg_id
                 else:
-                    logger.warning("Stream post_message returned no message_id", channel=ch_name)
+                    logger.warning("Stream post_event returned no message_id", channel=ch_name)
             else:
-                await ch.update_message(target_jid, msg_id, display)
+                await ch.update_event(target_jid, msg_id, state.event)
         except Exception as exc:
             logger.warning("Stream post/update failed", channel=ch_name, err=str(exc))
 
@@ -124,7 +126,7 @@ async def finalize_active_stream(deps: OutputDeps, chat_jid: str) -> None:
     between agent text and tool calls in the channel.
     """
     state = stream_states.pop(chat_jid, None)
-    if state and state.buffer:
+    if state and state.event.content:
         await stream_text_to_channels(deps, chat_jid, state, final=True)
 
 
@@ -136,7 +138,7 @@ _DEFAULT_TRACE_COOLDOWN = 3.0
 
 
 class TraceBatcher:
-    """Buffers trace channel_text strings per JID and flushes after a cooldown.
+    """Buffers OutboundEvent objects per JID and flushes after a cooldown.
 
     Result/host messages bypass the batcher entirely; callers should
     ``await flush(chat_jid)`` before sending a result so traces always
@@ -146,14 +148,14 @@ class TraceBatcher:
     def __init__(self, deps: OutputDeps, cooldown: float = _DEFAULT_TRACE_COOLDOWN) -> None:
         self._deps = deps
         self._cooldown = cooldown
-        self._buffers: dict[str, list[str]] = {}
+        self._buffers: dict[str, list[OutboundEvent]] = {}
         self._timers: dict[str, asyncio.TimerHandle] = {}
 
     # -- public API ----------------------------------------------------------
 
-    def enqueue(self, chat_jid: str, channel_text: str) -> None:
-        """Append *channel_text* to the per-JID buffer and (re)start the timer."""
-        self._buffers.setdefault(chat_jid, []).append(channel_text)
+    def enqueue(self, chat_jid: str, event: OutboundEvent) -> None:
+        """Append *event* to the per-JID buffer and (re)start the timer."""
+        self._buffers.setdefault(chat_jid, []).append(event)
         self._reset_timer(chat_jid)
 
     async def flush(self, chat_jid: str) -> None:
@@ -161,15 +163,19 @@ class TraceBatcher:
         from pynchy.types import OutboundEvent, OutboundEventType
 
         self._cancel_timer(chat_jid)
-        texts = self._buffers.pop(chat_jid, [])
-        if texts:
-            # Wrap pre-formatted trace text as a TEXT event for the channel.
-            # The text is already rendered with emoji prefixes by the router.
-            event = OutboundEvent(type=OutboundEventType.TEXT, content="\n".join(texts))
-            await self._deps.broadcast_to_channels(chat_jid, event)
+        events = self._buffers.pop(chat_jid, [])
+        if events:
+            # Join buffered trace events into a single TEXT event for broadcast.
+            # Each event's content is already rendered with emoji prefixes by the
+            # router; we concatenate them with newlines.
+            combined = OutboundEvent(
+                type=OutboundEventType.TEXT,
+                content="\n".join(e.content for e in events),
+            )
+            await self._deps.broadcast_to_channels(chat_jid, combined)
 
     async def flush_all(self) -> None:
-        """Flush every JID — used during shutdown."""
+        """Flush every JID -- used during shutdown."""
         jids = list(self._buffers)
         for jid in jids:
             await self.flush(jid)
@@ -205,13 +211,9 @@ def get_trace_batcher() -> TraceBatcher | None:
     return _trace_batcher
 
 
-async def enqueue_or_broadcast(deps: OutputDeps, chat_jid: str, channel_text: str) -> None:
+async def enqueue_or_broadcast(deps: OutputDeps, chat_jid: str, event: OutboundEvent) -> None:
     """Enqueue via batcher if available, otherwise broadcast directly."""
     if _trace_batcher is not None:
-        _trace_batcher.enqueue(chat_jid, channel_text)
+        _trace_batcher.enqueue(chat_jid, event)
     else:
-        from pynchy.types import OutboundEvent, OutboundEventType
-
-        # Wrap pre-formatted trace text as a TEXT event for direct broadcast.
-        event = OutboundEvent(type=OutboundEventType.TEXT, content=channel_text)
         await deps.broadcast_to_channels(chat_jid, event)

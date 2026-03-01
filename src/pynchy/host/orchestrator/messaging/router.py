@@ -133,7 +133,7 @@ async def broadcast_trace(
         is_from_me=True,
         message_type=message_type,
     )
-    await enqueue_or_broadcast(deps, chat_jid, channel_text)
+    await enqueue_or_broadcast(deps, chat_jid, _make_event("text", channel_text))
     deps.emit(AgentTraceEvent(chat_jid=chat_jid, trace_type=trace_type, data=data))
 
 
@@ -311,11 +311,13 @@ async def _handle_system(deps: OutputDeps, chat_jid: str, result: ContainerOutpu
     # Suppress init from channels — the descriptive text above is still
     # persisted to DB for debugging.
     if subtype != "init":
-        await enqueue_or_broadcast(deps, chat_jid, channel_text)
+        await enqueue_or_broadcast(deps, chat_jid, _make_event("system", channel_text))
 
 
 async def _handle_text(deps: OutputDeps, chat_jid: str, result: ContainerOutput) -> None:
     """Handle a text delta event — accumulates into streaming state."""
+    from pynchy.types import OutboundEvent, OutboundEventType
+
     delta = result.text or ""
     deps.emit(
         AgentTraceEvent(
@@ -324,7 +326,7 @@ async def _handle_text(deps: OutputDeps, chat_jid: str, result: ContainerOutput)
             data={"text": delta},
         )
     )
-    # Stream text deltas to channels that support update_message
+    # Stream text deltas to channels that support update_event
     if delta:
         state = stream_states.get(chat_jid)
         if state is None:
@@ -333,9 +335,10 @@ async def _handle_text(deps: OutputDeps, chat_jid: str, result: ContainerOutput)
             batcher = get_trace_batcher()
             if batcher is not None:
                 await batcher.flush(chat_jid)
-            state = StreamState()
+            event = OutboundEvent(type=OutboundEventType.TEXT, content="")
+            state = StreamState(event=event)
             stream_states[chat_jid] = state
-        state.buffer += delta
+        state.event.content += delta
         await stream_text_to_channels(deps, chat_jid, state)
 
 
@@ -365,7 +368,7 @@ async def _handle_result_metadata(
         parts.append(f"{turns} turns")
     if parts:
         trace_text = f"\U0001f4ca {' \u00b7 '.join(parts)}"
-        await enqueue_or_broadcast(deps, chat_jid, trace_text)
+        await enqueue_or_broadcast(deps, chat_jid, _make_event("text", trace_text))
     deps.emit(
         AgentTraceEvent(
             chat_jid=chat_jid,

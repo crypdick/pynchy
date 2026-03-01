@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from conftest import make_settings
 
 from pynchy.host.orchestrator.messaging.formatter import (
     format_internal_tags,
-    format_outbound,
     format_tool_preview,
     parse_host_tag,
     strip_internal_tags,
@@ -102,38 +99,6 @@ class TestFormatInternalTags:
 
     def test_whitespace_only_internal_block_removed(self):
         assert format_internal_tags("<internal>  \n  </internal>text") == "text"
-
-
-# --- formatOutbound ---
-
-
-class TestFormatOutbound:
-    @dataclass
-    class _FakeChannel:
-        """Minimal channel stub for testing prefix behavior."""
-
-        prefix_assistant_name: object = True  # object to allow None/missing
-
-    def test_prefixes_with_lobster_emoji(self):
-        ch = self._FakeChannel(prefix_assistant_name=True)
-        assert format_outbound(ch, "hello world") == "🦞 hello world"
-
-    def test_does_not_prefix_when_opted_out(self):
-        ch = self._FakeChannel(prefix_assistant_name=False)
-        assert format_outbound(ch, "hello world") == "hello world"
-
-    def test_defaults_to_prefixing_when_undefined(self):
-        ch = self._FakeChannel(prefix_assistant_name=None)
-        assert format_outbound(ch, "hello world") == "🦞 hello world"
-
-    def test_formats_internal_as_brain_italic(self):
-        ch = self._FakeChannel(prefix_assistant_name=True)
-        assert format_outbound(ch, "<internal>hidden</internal>") == "🦞 🧠 _hidden_"
-
-    def test_formats_internal_and_prefixes_remaining(self):
-        ch = self._FakeChannel(prefix_assistant_name=True)
-        result = format_outbound(ch, "<internal>thinking</internal>The answer is 42")
-        assert result == "🦞 🧠 _thinking_\nThe answer is 42"
 
 
 # --- Trigger gating with trigger mode ---
