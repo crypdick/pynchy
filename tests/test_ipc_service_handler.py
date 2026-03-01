@@ -51,8 +51,10 @@ class FakeDeps:
     def workspaces(self) -> dict[str, WorkspaceProfile]:
         return self._groups
 
-    async def broadcast_to_channels(self, jid: str, text: str) -> None:
-        self.broadcast_messages.append((jid, text))
+    async def broadcast_to_channels(self, jid: str, event: object) -> None:
+        # event is an OutboundEvent; extract .content for string assertions
+        content = event.content if hasattr(event, "content") else str(event)
+        self.broadcast_messages.append((jid, content))
 
 
 TEST_GROUP = WorkspaceProfile(

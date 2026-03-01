@@ -51,8 +51,9 @@ class FakeDeps:
     def workspaces(self) -> dict[str, WorkspaceProfile]:
         return self._groups
 
-    async def broadcast_to_channels(self, jid: str, text: str) -> None:
-        self.broadcast_messages.append((jid, text))
+    async def broadcast_to_channels(self, jid: str, event: object) -> None:
+        content = event.content if hasattr(event, "content") else str(event)
+        self.broadcast_messages.append((jid, content))
 
 
 def _make_request(tool_name: str, request_id: str = "req-1", **extra) -> dict:

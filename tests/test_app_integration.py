@@ -98,8 +98,9 @@ class FakeChannel:
     async def connect(self) -> None:
         self.connected = True
 
-    async def send_message(self, jid: str, text: str) -> None:
-        self.sent_messages.append((jid, text))
+    async def send_event(self, jid: str, event: object) -> None:
+        content = event.content if hasattr(event, "content") else str(event)
+        self.sent_messages.append((jid, content))
 
     def is_connected(self) -> bool:
         return self.connected

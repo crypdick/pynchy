@@ -152,8 +152,8 @@ class MockSchedulerDeps:
     def workspaces(self) -> dict[str, WorkspaceProfile]:
         return self.groups
 
-    async def broadcast_to_channels(self, jid: str, text: str) -> None:
-        self.messages.append((jid, text))
+    async def broadcast_to_channels(self, jid: str, event) -> None:
+        self.messages.append((jid, event))
 
     async def run_agent(
         self,
@@ -508,7 +508,11 @@ class TestRunScheduledAgent:
 
                         await _run_scheduled_agent(sample_task, mock_deps)
 
-        assert ("test@g.us", "\u23f1 Scheduled task starting.") in mock_deps.messages
+        # Check that a scheduled task starting event was broadcast
+        assert len(mock_deps.messages) >= 1
+        jid, event = mock_deps.messages[0]
+        assert jid == "test@g.us"
+        assert "\u23f1 Scheduled task starting." in event.content
 
     @pytest.mark.asyncio
     async def test_on_output_delegates_to_handle_streamed_output(

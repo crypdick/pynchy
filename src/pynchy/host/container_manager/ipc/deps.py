@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from pynchy.types import Channel, WorkspaceProfile
+from pynchy.types import Channel, OutboundEvent, WorkspaceProfile
 
 
 class IpcDeps(Protocol):
     """Dependencies for IPC processing."""
 
-    async def broadcast_to_channels(self, jid: str, text: str) -> None: ...
+    async def broadcast_to_channels(self, jid: str, event: OutboundEvent) -> None: ...
 
     async def broadcast_host_message(self, jid: str, text: str) -> None: ...
 

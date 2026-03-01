@@ -27,7 +27,11 @@ from pynchy.host.orchestrator.adapters import (
     SessionManager,
     find_admin_jid,
 )
-from pynchy.types import WorkspaceProfile
+from pynchy.types import OutboundEvent, OutboundEventType, WorkspaceProfile
+
+
+def _make_event(content: str = "hello") -> OutboundEvent:
+    return OutboundEvent(type=OutboundEventType.HOST, content=content)
 
 
 def _group(
@@ -49,7 +53,7 @@ class FakeChannel:
     def __init__(self, *, connected: bool = True):
         self.name = "fake"
         self._connected = connected
-        self.sent: list[tuple[str, str]] = []
+        self.sent: list[tuple[str, OutboundEvent]] = []
 
     def is_connected(self) -> bool:
         return self._connected
@@ -57,8 +61,8 @@ class FakeChannel:
     def owns_jid(self, jid: str) -> bool:
         return True
 
-    async def send_message(self, jid: str, text: str) -> None:
-        self.sent.append((jid, text))
+    async def send_event(self, jid: str, event: OutboundEvent) -> None:
+        self.sent.append((jid, event))
 
 
 # ---------------------------------------------------------------------------
@@ -133,15 +137,15 @@ class TestHostMessageBroadcaster:
         assert kwargs["content"] == "⚠️ Error occurred"
         assert kwargs["is_from_me"] is True
 
-    async def test_host_message_sends_to_channel_with_emoji_prefix(self):
+    async def test_host_message_sends_event_to_channel(self):
         broadcaster, channel, _, _, _ = self._make_broadcaster()
         await broadcaster.broadcast_host_message("group@g.us", "Test message")
 
         assert len(channel.sent) == 1
-        jid, text = channel.sent[0]
+        jid, event = channel.sent[0]
         assert jid == "group@g.us"
-        assert text.startswith("\U0001f3e0")  # 🏠 emoji prefix
-        assert "Test message" in text
+        assert event.type == OutboundEventType.HOST
+        assert event.content == "Test message"
 
     async def test_host_message_emits_event(self):
         broadcaster, _, _, _, emitted = self._make_broadcaster()
@@ -188,13 +192,14 @@ class TestHostMessageBroadcaster:
         store_host_fn.assert_called_once()
         store_notice_fn.assert_not_called()
 
-    async def test_system_notice_sends_to_channel_with_megaphone_prefix(self):
+    async def test_system_notice_sends_event_to_channel(self):
         broadcaster, channel, _, _, _ = self._make_broadcaster()
         await broadcaster.broadcast_system_notice("group@g.us", "Update")
 
         assert len(channel.sent) == 1
-        _, text = channel.sent[0]
-        assert text.startswith("\U0001f4e2")  # 📢 emoji prefix
+        _, event = channel.sent[0]
+        assert event.type == OutboundEventType.SYSTEM
+        assert event.content == "[System Notice] Update"
 
     async def test_host_message_id_starts_with_host_prefix(self):
         broadcaster, _, store_host_fn, _, _ = self._make_broadcaster()
@@ -223,7 +228,8 @@ class TestMessageBroadcaster:
         ch1 = FakeChannel()
         ch2 = FakeChannel()
         broadcaster = MessageBroadcaster([ch1, ch2])
-        await broadcaster._broadcast_to_channels("group@g.us", "hello")
+        event = _make_event("hello")
+        await broadcaster._broadcast_to_channels("group@g.us", event)
 
         assert len(ch1.sent) == 1
         assert len(ch2.sent) == 1
@@ -232,7 +238,7 @@ class TestMessageBroadcaster:
         connected = FakeChannel(connected=True)
         disconnected = FakeChannel(connected=False)
         broadcaster = MessageBroadcaster([connected, disconnected])
-        await broadcaster._broadcast_to_channels("group@g.us", "hello")
+        await broadcaster._broadcast_to_channels("group@g.us", _make_event("hello"))
 
         assert len(connected.sent) == 1
         assert len(disconnected.sent) == 0
@@ -241,7 +247,7 @@ class TestMessageBroadcaster:
         """Channel send failures should be silently suppressed."""
 
         class FailingChannel(FakeChannel):
-            async def send_message(self, jid: str, text: str) -> None:
+            async def send_event(self, jid: str, event: OutboundEvent) -> None:
                 raise ConnectionError("channel down")
 
         failing = FailingChannel()
@@ -249,65 +255,21 @@ class TestMessageBroadcaster:
         broadcaster = MessageBroadcaster([failing, working])
 
         # Should not raise
-        await broadcaster._broadcast_to_channels("group@g.us", "hello")
+        await broadcaster._broadcast_to_channels("group@g.us", _make_event("hello"))
         assert len(working.sent) == 1
 
-    async def test_broadcast_formatted_applies_format(self):
-        """_broadcast_formatted applies per-channel formatting."""
-        ch = FakeChannel()
-        broadcaster = MessageBroadcaster([ch])
-
-        # format_outbound strips internal tags and may adjust text
-        from unittest.mock import patch as _patch
-
-        with _patch(
-            "pynchy.host.orchestrator.messaging.formatter.format_outbound",
-            return_value="formatted text",
-        ):
-            await broadcaster._broadcast_formatted("group@g.us", "raw text")
-
-        assert len(ch.sent) == 1
-        assert ch.sent[0][1] == "formatted text"
-
-    async def test_broadcast_formatted_skips_when_formatter_returns_empty(self):
-        """_broadcast_formatted skips send when format_outbound returns empty string."""
-        ch = FakeChannel()
-        broadcaster = MessageBroadcaster([ch])
-
-        from unittest.mock import patch as _patch
-
-        with _patch(
-            "pynchy.host.orchestrator.messaging.formatter.format_outbound", return_value=""
-        ):
-            await broadcaster._broadcast_formatted("group@g.us", "raw text")
-
-        assert len(ch.sent) == 0
-
-    async def test_broadcast_formatted_suppresses_channel_errors(self):
-        """_broadcast_formatted suppresses channel send errors like _broadcast_to_channels."""
-
-        class FailingChannel(FakeChannel):
-            async def send_message(self, jid: str, text: str) -> None:
-                raise OSError("send failed")
-
-        failing = FailingChannel()
-        working = FakeChannel()
-        broadcaster = MessageBroadcaster([failing, working])
-
-        from unittest.mock import patch as _patch
-
-        with _patch(
-            "pynchy.host.orchestrator.messaging.formatter.format_outbound", return_value="ok"
-        ):
-            await broadcaster._broadcast_formatted("group@g.us", "raw")
-
-        assert len(working.sent) == 1
+    async def test_broadcast_formatted_is_removed(self):
+        """_broadcast_formatted should no longer exist on MessageBroadcaster."""
+        broadcaster = MessageBroadcaster([])
+        assert not hasattr(broadcaster, "_broadcast_formatted"), (
+            "_broadcast_formatted should be removed — callers construct OutboundEvent directly"
+        )
 
     async def test_broadcast_to_empty_channel_list(self):
         """Broadcasting to empty channel list is a no-op."""
         broadcaster = MessageBroadcaster([])
         # Should not raise
-        await broadcaster._broadcast_to_channels("group@g.us", "hello")
+        await broadcaster._broadcast_to_channels("group@g.us", _make_event("hello"))
 
 
 # ---------------------------------------------------------------------------

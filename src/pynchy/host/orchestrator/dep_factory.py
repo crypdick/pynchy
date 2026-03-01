@@ -47,7 +47,7 @@ def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
     """Create the dependency object for the task scheduler."""
 
     class SchedulerDeps:
-        broadcast_to_channels = app._broadcaster._broadcast_formatted
+        broadcast_to_channels = app._broadcaster._broadcast_to_channels
 
         def workspaces(self) -> dict[str, Any]:
             return app.workspaces

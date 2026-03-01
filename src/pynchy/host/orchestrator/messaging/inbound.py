@@ -142,7 +142,12 @@ async def _route_incoming_group(
             # Non-interrupting — forward to active container via IPC but
             # don't advance the cursor.  Will be reprocessed after the
             # agent finishes its current turn.
-            await deps.broadcast_to_channels(group_jid, f"\u00bb [Forwarded] {last_content[:500]}")
+            from pynchy.types import OutboundEvent, OutboundEventType
+
+            msg = f"\u00bb [Forwarded] {last_content[:500]}"
+            await deps.broadcast_to_channels(
+                group_jid, OutboundEvent(type=OutboundEventType.TEXT, content=msg)
+            )
             deps.queue.enqueue_message_check(group_jid)
         else:
             logger.debug(
@@ -182,8 +187,13 @@ async def _handle_message_during_task(
         # read the IPC file (e.g. the agent calls finished_work() before
         # reaching wait_for_ipc_message).  We mark pending_messages so
         # _drain_group reprocesses them after the task exits.
+        from pynchy.types import OutboundEvent, OutboundEventType
+
         deps.queue.send_message(group_jid, formatted)
-        await deps.broadcast_to_channels(group_jid, f"\u00bb [Forwarded] {last_content[:500]}")
+        msg = f"\u00bb [Forwarded] {last_content[:500]}"
+        await deps.broadcast_to_channels(
+            group_jid, OutboundEvent(type=OutboundEventType.TEXT, content=msg)
+        )
         deps.queue.enqueue_message_check(group_jid)
     elif last_content.lower().startswith("todo "):
         # Non-interrupting — host writes directly to todos.json, then

@@ -41,6 +41,7 @@ from pynchy.types import (
     Channel,
     ContainerOutput,
     NewMessage,
+    OutboundEvent,
     WorkspaceProfile,
 )
 
@@ -171,10 +172,10 @@ class PynchyApp:
         self.event_bus.emit(event)
 
     async def broadcast_to_channels(
-        self, chat_jid: str, text: str, *, suppress_errors: bool = True
+        self, chat_jid: str, event: OutboundEvent, *, suppress_errors: bool = True
     ) -> None:
         await self._broadcaster._broadcast_to_channels(
-            chat_jid, text, suppress_errors=suppress_errors
+            chat_jid, event, suppress_errors=suppress_errors
         )
 
     async def send_reaction_to_channels(

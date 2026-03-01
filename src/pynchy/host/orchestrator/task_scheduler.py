@@ -23,7 +23,7 @@ from pynchy.state import (
     update_task,
     update_task_after_run,
 )
-from pynchy.types import ContainerOutput, ScheduledTask, TaskRunLog, WorkspaceProfile
+from pynchy.types import ContainerOutput, OutboundEvent, ScheduledTask, TaskRunLog, WorkspaceProfile
 from pynchy.utils import IdleTimer, compute_next_run, log_shell_result, run_shell_command
 
 
@@ -35,7 +35,7 @@ class SchedulerDependencies(Protocol):
     @property
     def queue(self) -> GroupQueue: ...
 
-    async def broadcast_to_channels(self, jid: str, text: str) -> None: ...
+    async def broadcast_to_channels(self, jid: str, event: OutboundEvent) -> None: ...
 
     async def run_agent(
         self,
@@ -233,9 +233,11 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
         )
         return
 
+    from pynchy.types import OutboundEvent, OutboundEventType
+
     await deps.broadcast_to_channels(
         task.chat_jid,
-        "⏱ Scheduled task starting.",
+        OutboundEvent(type=OutboundEventType.SYSTEM, content="\u23f1 Scheduled task starting."),
     )
 
     result: str | None = None

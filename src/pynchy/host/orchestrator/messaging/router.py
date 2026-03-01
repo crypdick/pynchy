@@ -34,7 +34,7 @@ from pynchy.state import store_message_direct
 from pynchy.utils import generate_message_id
 
 if TYPE_CHECKING:
-    from pynchy.types import ContainerOutput, WorkspaceProfile
+    from pynchy.types import ContainerOutput, OutboundEvent, WorkspaceProfile
 
 # Re-export for consumers that import from this module (app.py uses these)
 __all__ = [
@@ -50,6 +50,31 @@ __all__ = [
 ]
 
 _trace_counter = count(1)
+
+
+def _make_event(event_type: str, content: str, **metadata: object) -> OutboundEvent:
+    """Construct an OutboundEvent with the given type, content, and metadata.
+
+    The event_type string is resolved to an OutboundEventType enum value.
+    Metadata kwargs are passed through for formatter-specific rendering hints.
+    """
+    from pynchy.types import OutboundEvent, OutboundEventType
+
+    type_map = {
+        "thinking": OutboundEventType.THINKING,
+        "tool_trace": OutboundEventType.TOOL_TRACE,
+        "tool_result": OutboundEventType.TOOL_RESULT,
+        "system": OutboundEventType.SYSTEM,
+        "text": OutboundEventType.TEXT,
+        "result": OutboundEventType.RESULT,
+        "host": OutboundEventType.HOST,
+    }
+    return OutboundEvent(
+        type=type_map.get(event_type, OutboundEventType.TEXT),
+        content=content,
+        metadata=dict(metadata) if metadata else {},
+    )
+
 
 # Per-chat outbound message IDs from the last final result.
 # Populated by _handle_final_result(), consumed by pop_last_result_ids().
@@ -160,7 +185,7 @@ async def broadcast_agent_input(
         if len(content) > 500:
             content = content[:497] + "..."
         channel_text = f"\u00bb [{label}] {content}"
-        await deps.broadcast_to_channels(chat_jid, channel_text)
+        await deps.broadcast_to_channels(chat_jid, _make_event("text", channel_text))
         deps.emit(
             AgentTraceEvent(
                 chat_jid=chat_jid,
@@ -378,13 +403,13 @@ async def _handle_final_result(
         sender = "host"
         sender_name = "host"
         db_content = content
-        channel_text = f"\U0001f3e0 {content}"
+        event = _make_event("host", content)
         logger.info("Host message", group=group.name, text=content[:200])
     else:
         sender = "bot"
         sender_name = s.agent.name
         db_content = text
-        channel_text = f"🦞 {text}"
+        event = _make_event("result", text)
         logger.info("Agent output", group=group.name, text=raw[:200])
 
     msg_type = "host" if sender == "host" else "assistant"
@@ -402,9 +427,7 @@ async def _handle_final_result(
     # For channels that were streaming, finalize the existing message.
     # For all others, post normally via broadcast.
     stream_ids = stream_state.message_ids if stream_state else None
-    await finalize_stream_or_broadcast(
-        deps, chat_jid, channel_text, stream_ids, suppress_errors=False
-    )
+    await finalize_stream_or_broadcast(deps, chat_jid, event, stream_ids, suppress_errors=False)
 
     # Stash per-channel message IDs for post-run reactions (e.g. zzz).
     if stream_ids:
