@@ -197,5 +197,5 @@ async def test_cop_gate_notification_includes_reason(mock_deps):
 
     # Notification should contain the cop reason
     broadcast_call = mock_deps.broadcast_to_channels.call_args
-    notification_text = broadcast_call.args[1]
-    assert "backdoor pattern detected" in notification_text
+    event = broadcast_call.args[1]
+    assert "backdoor pattern detected" in event.content

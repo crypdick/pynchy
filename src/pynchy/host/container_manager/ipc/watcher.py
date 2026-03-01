@@ -62,11 +62,14 @@ async def _process_message_file(
             workspaces = deps.workspaces()
             target_group = workspaces.get(data["chatJid"])
             if is_admin or (target_group and target_group.folder == source_group):
+                from pynchy.types import OutboundEvent, OutboundEventType
+
                 sender = data.get("sender")
                 prefix = f"{sender}" if sender else s.agent.name
+                msg = f"{prefix}: {data['text']}"
                 await deps.broadcast_to_channels(
                     data["chatJid"],
-                    f"{prefix}: {data['text']}",
+                    OutboundEvent(type=OutboundEventType.TEXT, content=msg),
                 )
                 logger.info(
                     "IPC message sent",

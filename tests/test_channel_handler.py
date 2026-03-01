@@ -12,6 +12,7 @@ from pynchy.host.orchestrator.messaging.channel_handler import (
     set_typing_on_channels,
 )
 from pynchy.host.orchestrator.messaging.sender import broadcast as broadcast_to_channels
+from pynchy.types import OutboundEvent, OutboundEventType
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -28,7 +29,7 @@ def _make_channel(
     ch = MagicMock()
     ch.name = name
     ch.is_connected.return_value = connected
-    ch.send_message = AsyncMock()
+    ch.send_event = AsyncMock()
 
     if has_reaction:
         ch.send_reaction = AsyncMock()
@@ -61,48 +62,53 @@ class TestBroadcastToChannels:
         ch1 = _make_channel(name="ch1")
         ch2 = _make_channel(name="ch2")
         deps = _make_deps([ch1, ch2])
+        event = OutboundEvent(type=OutboundEventType.HOST, content="hello")
 
-        await broadcast_to_channels(deps, "group@g.us", "hello")
+        await broadcast_to_channels(deps, "group@g.us", event)
 
-        ch1.send_message.assert_awaited_once_with("group@g.us", "hello")
-        ch2.send_message.assert_awaited_once_with("group@g.us", "hello")
+        ch1.send_event.assert_awaited_once_with("group@g.us", event)
+        ch2.send_event.assert_awaited_once_with("group@g.us", event)
 
     @pytest.mark.asyncio
     async def test_skips_disconnected_channels(self):
         ch = _make_channel(connected=False)
         deps = _make_deps([ch])
+        event = OutboundEvent(type=OutboundEventType.HOST, content="hello")
 
-        await broadcast_to_channels(deps, "group@g.us", "hello")
+        await broadcast_to_channels(deps, "group@g.us", event)
 
-        ch.send_message.assert_not_awaited()
+        ch.send_event.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_suppress_errors_catches_network_errors(self):
         ch = _make_channel()
-        ch.send_message.side_effect = OSError("network down")
+        ch.send_event.side_effect = OSError("network down")
         deps = _make_deps([ch])
+        event = OutboundEvent(type=OutboundEventType.HOST, content="hello")
 
         # Should NOT raise
-        await broadcast_to_channels(deps, "group@g.us", "hello", suppress_errors=True)
+        await broadcast_to_channels(deps, "group@g.us", event, suppress_errors=True)
 
     @pytest.mark.asyncio
     async def test_suppress_errors_does_not_catch_unexpected_errors(self):
         ch = _make_channel()
-        ch.send_message.side_effect = RuntimeError("unexpected")
+        ch.send_event.side_effect = RuntimeError("unexpected")
         deps = _make_deps([ch])
+        event = OutboundEvent(type=OutboundEventType.HOST, content="hello")
 
         # RuntimeError is not in (OSError, TimeoutError, ConnectionError)
         with pytest.raises(RuntimeError, match="unexpected"):
-            await broadcast_to_channels(deps, "group@g.us", "hello", suppress_errors=True)
+            await broadcast_to_channels(deps, "group@g.us", event, suppress_errors=True)
 
     @pytest.mark.asyncio
     async def test_no_suppress_catches_all_exceptions(self):
         ch = _make_channel()
-        ch.send_message.side_effect = RuntimeError("unexpected")
+        ch.send_event.side_effect = RuntimeError("unexpected")
         deps = _make_deps([ch])
+        event = OutboundEvent(type=OutboundEventType.HOST, content="hello")
 
         # suppress_errors=False catches Exception
-        await broadcast_to_channels(deps, "group@g.us", "hello", suppress_errors=False)
+        await broadcast_to_channels(deps, "group@g.us", event, suppress_errors=False)
 
 
 # ---------------------------------------------------------------------------

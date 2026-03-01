@@ -103,7 +103,9 @@ class TestHandleReaction:
         deps.queue.clear_pending_tasks.assert_called_once_with(TEST_JID)
         # stop_active_process should be scheduled as a background task
         mock_bg.assert_called_once()
-        deps.broadcast_to_channels.assert_called_once_with(TEST_JID, "Interrupted by reaction.")
+        deps.broadcast_to_channels.assert_called_once()
+        event = deps.broadcast_to_channels.call_args[0][1]
+        assert event.content == "Interrupted by reaction."
         mock_bg.call_args[0][0].close()  # discard unawaited coroutine from AsyncMock
 
     @pytest.mark.asyncio

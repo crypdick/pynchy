@@ -336,9 +336,9 @@ class TestExecuteDirectCommand:
             await execute_direct_command(deps, "g@g.us", group, msg, "echo hi")
 
         deps.broadcast_to_channels.assert_awaited_once()
-        channel_text = deps.broadcast_to_channels.call_args[0][1]
-        assert "✅" in channel_text
-        assert "hi" in channel_text
+        event = deps.broadcast_to_channels.call_args[0][1]
+        assert "✅" in event.content
+        assert "hi" in event.content
 
     @pytest.mark.asyncio
     async def test_failed_command_shows_error(self):
@@ -357,9 +357,9 @@ class TestExecuteDirectCommand:
             mock_shell.return_value = ShellResult(returncode=1, stdout="", stderr="error msg")
             await execute_direct_command(deps, "g@g.us", group, msg, "false")
 
-        channel_text = deps.broadcast_to_channels.call_args[0][1]
-        assert "❌" in channel_text
-        assert "error msg" in channel_text
+        event = deps.broadcast_to_channels.call_args[0][1]
+        assert "❌" in event.content
+        assert "error msg" in event.content
 
     @pytest.mark.asyncio
     async def test_timeout_sends_host_message(self):

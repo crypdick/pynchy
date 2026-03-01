@@ -183,9 +183,15 @@ async def ingest_user_message(
     # skipped, so magic-word detection on the originating channel is
     # unaffected — and receiving channels won't re-ingest bot-posted
     # messages (Slack filters bot_id, WhatsApp filters IsFromMe echoes).
+    from pynchy.types import OutboundEvent, OutboundEventType
+
     channel_text = f"[{msg.sender_name}] {msg.content}"
     await broadcast(
-        deps, msg.chat_jid, channel_text, skip_channel=source_channel, source="cross_post"
+        deps,
+        msg.chat_jid,
+        OutboundEvent(type=OutboundEventType.TEXT, content=channel_text),
+        skip_channel=source_channel,
+        source="cross_post",
     )
 
 

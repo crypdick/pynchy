@@ -11,11 +11,12 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from pynchy.state import clear_session, get_active_task_for_group, get_chat_history
+from pynchy.types import OutboundEventType
 from pynchy.utils import create_background_task, generate_message_id
 
 if TYPE_CHECKING:
     from pynchy.event_bus import EventBus
-    from pynchy.types import Channel, NewMessage, WorkspaceProfile
+    from pynchy.types import Channel, NewMessage, OutboundEvent, WorkspaceProfile
 
 # Type aliases for callback signatures used across adapters
 StoreMessageFn = Callable[..., Awaitable[None]]
@@ -66,27 +67,16 @@ class MessageBroadcaster:
     # -- Broadcast methods --
 
     async def _broadcast_to_channels(
-        self, jid: str, text: str, *, suppress_errors: bool = True
+        self, jid: str, event: OutboundEvent, *, suppress_errors: bool = True
     ) -> None:
-        """Send message to all connected channels.
+        """Send event to all connected channels.
 
-        Delegates to ``bus.broadcast()`` — the single code path for channel
+        Delegates to ``sender.broadcast()`` — the single code path for channel
         iteration, JID resolution, ownership checks, and error handling.
         """
         from pynchy.host.orchestrator.messaging.sender import broadcast
 
-        await broadcast(self, jid, text, suppress_errors=suppress_errors)
-
-    async def _broadcast_formatted(self, jid: str, raw_text: str) -> None:
-        """Send message with per-channel formatting (internal use).
-
-        Unlike ``_broadcast_to_channels``, this applies ``format_outbound``
-        per channel (e.g. Markdown for Slack, plain text for others).
-        Used by the scheduler for periodic task output.
-        """
-        from pynchy.host.orchestrator.messaging.sender import broadcast_formatted
-
-        await broadcast_formatted(self, jid, raw_text)
+        await broadcast(self, jid, event, suppress_errors=suppress_errors)
 
 
 class HostMessageBroadcaster:
@@ -117,7 +107,7 @@ class HostMessageBroadcaster:
         id_prefix: str,
         sender: str,
         sender_name: str,
-        channel_emoji: str,
+        event_type: OutboundEventType,
         store_fn: StoreMessageFn,
     ) -> None:
         """Store a message, broadcast to channels, and emit an event.
@@ -126,6 +116,7 @@ class HostMessageBroadcaster:
         Each caller passes its own store_fn to control the message_type in the DB.
         """
         from pynchy.event_bus import MessageEvent
+        from pynchy.types import OutboundEvent
 
         ts = datetime.now(UTC).isoformat()
         await store_fn(
@@ -137,8 +128,8 @@ class HostMessageBroadcaster:
             timestamp=ts,
             is_from_me=True,
         )
-        channel_text = f"{channel_emoji} {text}"
-        await self.broadcaster._broadcast_to_channels(chat_jid, channel_text)
+        event = OutboundEvent(type=event_type, content=text)
+        await self.broadcaster._broadcast_to_channels(chat_jid, event)
         self.emit_event(
             MessageEvent(
                 chat_jid=chat_jid,
@@ -165,7 +156,7 @@ class HostMessageBroadcaster:
             id_prefix="host",
             sender="host",
             sender_name="host",
-            channel_emoji="\U0001f3e0",
+            event_type=OutboundEventType.HOST,
             store_fn=self._store_host,
         )
 
@@ -192,7 +183,7 @@ class HostMessageBroadcaster:
             id_prefix="sys-notice",
             sender="system_notice",
             sender_name="System",
-            channel_emoji="\U0001f4e2",
+            event_type=OutboundEventType.SYSTEM,
             store_fn=self._store_notice,
         )
 

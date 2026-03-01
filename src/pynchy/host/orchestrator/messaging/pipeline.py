@@ -37,7 +37,7 @@ from pynchy.utils import generate_message_id, run_shell_command
 if TYPE_CHECKING:
     from pynchy.host.container_manager import OnOutput
     from pynchy.host.orchestrator.concurrency import GroupQueue
-    from pynchy.types import Channel, ContainerOutput, NewMessage, WorkspaceProfile
+    from pynchy.types import Channel, ContainerOutput, NewMessage, OutboundEvent, WorkspaceProfile
 
 
 class MessageHandlerDeps(Protocol):
@@ -78,7 +78,7 @@ class MessageHandlerDeps(Protocol):
     async def trigger_manual_redeploy(self, chat_jid: str) -> None: ...
 
     async def broadcast_to_channels(
-        self, chat_jid: str, text: str, *, suppress_errors: bool = True
+        self, chat_jid: str, event: OutboundEvent, *, suppress_errors: bool = True
     ) -> None: ...
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
@@ -214,8 +214,12 @@ async def execute_direct_command(
         metadata={"exit_code": result.returncode},
     )
 
-    channel_text = f"🔧 {output_text}"
-    await deps.broadcast_to_channels(chat_jid, channel_text)
+    from pynchy.types import OutboundEvent, OutboundEventType
+
+    event = OutboundEvent(
+        type=OutboundEventType.TOOL_RESULT, content=output_text, metadata={"verbose": True}
+    )
+    await deps.broadcast_to_channels(chat_jid, event)
 
     deps.emit(
         MessageEvent(

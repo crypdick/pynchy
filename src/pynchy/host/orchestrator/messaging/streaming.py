@@ -18,7 +18,7 @@ from pynchy.logger import logger
 from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
-    from pynchy.types import Channel
+    from pynchy.types import Channel, OutboundEvent
 
 
 # ---------------------------------------------------------------------------
@@ -33,7 +33,7 @@ class OutputDeps(Protocol):
     def channels(self) -> list[Channel]: ...
 
     async def broadcast_to_channels(
-        self, chat_jid: str, text: str, *, suppress_errors: bool = True
+        self, chat_jid: str, event: OutboundEvent, *, suppress_errors: bool = True
     ) -> None: ...
 
     def emit(self, event: Any) -> None: ...
@@ -158,10 +158,15 @@ class TraceBatcher:
 
     async def flush(self, chat_jid: str) -> None:
         """Flush pending traces for *chat_jid* immediately."""
+        from pynchy.types import OutboundEvent, OutboundEventType
+
         self._cancel_timer(chat_jid)
         texts = self._buffers.pop(chat_jid, [])
         if texts:
-            await self._deps.broadcast_to_channels(chat_jid, "\n".join(texts))
+            # Wrap pre-formatted trace text as a TEXT event for the channel.
+            # The text is already rendered with emoji prefixes by the router.
+            event = OutboundEvent(type=OutboundEventType.TEXT, content="\n".join(texts))
+            await self._deps.broadcast_to_channels(chat_jid, event)
 
     async def flush_all(self) -> None:
         """Flush every JID — used during shutdown."""
@@ -205,4 +210,8 @@ async def enqueue_or_broadcast(deps: OutputDeps, chat_jid: str, channel_text: st
     if _trace_batcher is not None:
         _trace_batcher.enqueue(chat_jid, channel_text)
     else:
-        await deps.broadcast_to_channels(chat_jid, channel_text)
+        from pynchy.types import OutboundEvent, OutboundEventType
+
+        # Wrap pre-formatted trace text as a TEXT event for direct broadcast.
+        event = OutboundEvent(type=OutboundEventType.TEXT, content=channel_text)
+        await deps.broadcast_to_channels(chat_jid, event)

@@ -67,8 +67,9 @@ class MockDeps:
         self.enqueued_checks: list[str] = []
         self.deploy_calls: list[tuple[str, bool]] = []
 
-    async def broadcast_to_channels(self, jid: str, text: str) -> None:
-        self.broadcast_messages.append((jid, text))
+    async def broadcast_to_channels(self, jid: str, event: object) -> None:
+        content = event.content if hasattr(event, "content") else str(event)
+        self.broadcast_messages.append((jid, content))
 
     async def broadcast_host_message(self, jid: str, text: str) -> None:
         self.host_messages.append((jid, text))

@@ -95,15 +95,23 @@ async def cop_gate(
             request_data=data,
             handler_type="ipc",
         )
+        from pynchy.types import OutboundEvent, OutboundEventType
+
         notification = format_approval_notification(operation, data, short_id)
         notification = f"[Cop flagged: {verdict.reason}]\n\n{notification}"
-        await deps.broadcast_to_channels(chat_jid, notification)
-    else:
-        # Fire-and-forget: no approval possible, just warn
         await deps.broadcast_to_channels(
-            chat_jid,
+            chat_jid, OutboundEvent(type=OutboundEventType.SYSTEM, content=notification)
+        )
+    else:
+        from pynchy.types import OutboundEvent, OutboundEventType
+
+        # Fire-and-forget: no approval possible, just warn
+        msg = (
             f"[Cop blocked] {operation} from {source_group}: {verdict.reason}\n"
-            f"(fire-and-forget \u2014 no approval possible)",
+            f"(fire-and-forget \u2014 no approval possible)"
+        )
+        await deps.broadcast_to_channels(
+            chat_jid, OutboundEvent(type=OutboundEventType.SYSTEM, content=msg)
         )
 
     return False

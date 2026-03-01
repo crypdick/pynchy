@@ -147,8 +147,12 @@ async def _handle_service_request(
             request_data=data,
         )
 
+        from pynchy.types import OutboundEvent, OutboundEventType
+
         notification = format_approval_notification(tool_name, data, short_id)
-        await deps.broadcast_to_channels(chat_jid, notification)
+        await deps.broadcast_to_channels(
+            chat_jid, OutboundEvent(type=OutboundEventType.SYSTEM, content=notification)
+        )
 
         await record_security_event(
             chat_jid=chat_jid,

@@ -6,9 +6,12 @@ without sending a follow-up text message.
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from pynchy.logger import logger
+
+if TYPE_CHECKING:
+    from pynchy.types import OutboundEvent
 
 
 class ReactionDeps(Protocol):
@@ -21,7 +24,7 @@ class ReactionDeps(Protocol):
     def queue(self) -> Any: ...
 
     async def broadcast_to_channels(
-        self, chat_jid: str, text: str, *, suppress_errors: bool = True
+        self, chat_jid: str, event: OutboundEvent, *, suppress_errors: bool = True
     ) -> None: ...
 
 
@@ -63,5 +66,10 @@ async def handle_reaction(
                 deps.queue.stop_active_process(jid),
                 name=f"reaction-interrupt-{jid[:20]}",
             )
-            await deps.broadcast_to_channels(jid, "Interrupted by reaction.")
+            from pynchy.types import OutboundEvent, OutboundEventType
+
+            await deps.broadcast_to_channels(
+                jid,
+                OutboundEvent(type=OutboundEventType.SYSTEM, content="Interrupted by reaction."),
+            )
             logger.info("Reaction interrupt", group=group.name, emoji=emoji)

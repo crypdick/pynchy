@@ -163,8 +163,12 @@ async def _handle_bash_security_check(
             chat_jid=chat_jid,
             request_data={"command": command},
         )
+        from pynchy.types import OutboundEvent, OutboundEventType
+
         notification = format_approval_notification("Bash", {"command": command}, short_id)
-        await deps.broadcast_to_channels(chat_jid, notification)
+        await deps.broadcast_to_channels(
+            chat_jid, OutboundEvent(type=OutboundEventType.SYSTEM, content=notification)
+        )
 
         await record_security_event(
             chat_jid=chat_jid,

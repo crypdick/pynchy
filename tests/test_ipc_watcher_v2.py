@@ -61,8 +61,10 @@ class MockDeps:
         self.sync_calls: list[bool] = []
         self.snapshot_calls: list[tuple] = []
 
-    async def broadcast_to_channels(self, jid: str, text: str) -> None:
-        self.broadcast_messages.append((jid, text))
+    async def broadcast_to_channels(self, jid: str, event: object) -> None:
+        # event is an OutboundEvent; extract .content for string assertions
+        content = event.content if hasattr(event, "content") else str(event)
+        self.broadcast_messages.append((jid, content))
 
     async def broadcast_host_message(self, jid: str, text: str) -> None:
         self.host_messages.append((jid, text))
