@@ -1,21 +1,23 @@
 """Channel access resolution — walk the config cascade at runtime.
 
 Resolves the effective access mode, trigger, trust, and allowed users
-for a given workspace by walking a 4-level cascade:
+for a given workspace by walking a 5-level cascade:
 
-1. ``[workspace_defaults]``                 (global defaults)
-2. ``[connection.<type>.<name>].security``  (connection-level overrides)
-3. ``[connection.<type>.<name>.chat.*]``    (chat-level overrides)
-4. ``[sandbox.<name>]``                     (workspace overrides, most specific)
+1. ``[sandbox_universal]``                  (global defaults)
+2. ``[sandbox_profiles.<name>]``            (profile defaults)
+3. ``[sandbox.<name>]``                     (workspace overrides)
+4. ``[connection.<type>.<name>].security``  (connection-level overrides)
+5. ``[connection.<type>.<name>.chat.*]``    (chat-level overrides, most specific)
 
-At each level, non-None fields win over the previous layer.
+Layers 1-3 use merge_sandbox_config() (three-tier merge with union/override
+semantics).  Layers 4-5 apply connection and chat security overrides on top.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pynchy.config.models import OwnerConfig
+from pynchy.config.models import OwnerConfig, WorkspaceConfig
 from pynchy.config.refs import (
     channel_platform_from_name,
     connection_ref_from_parts,
@@ -26,10 +28,9 @@ from pynchy.config.settings import get_settings
 if TYPE_CHECKING:
     from pynchy.types import ResolvedChannelConfig
 
-# The fields that participate in the override cascade.  Adding a new
-# overridable field means adding it here, to ChannelOverrideConfig,
-# WorkspaceConfig, and WorkspaceDefaultsConfig — the helper below
-# takes care of the rest.
+# The fields that participate in the connection/chat override cascade
+# (layers 4-5).  The sandbox merge (layers 1-3) handles these fields
+# via merge_sandbox_config().
 _CASCADE_FIELDS = ("access", "mode", "trust", "trigger", "allowed_users")
 
 
@@ -65,27 +66,38 @@ def resolve_channel_config(
     """Walk the resolution cascade and return a fully-resolved config.
 
     Cascade (most specific wins):
-    1. sandbox.<name>.* (workspace overrides)
-    2. connection.<type>.<name>.chat.*.security
-    3. connection.<type>.<name>.security
-    4. workspace_defaults.*
+    1. connection.<type>.<name>.chat.*.security (chat-level overrides)
+    2. connection.<type>.<name>.security (connection-level overrides)
+    3. sandbox.<name>.* (workspace overrides)
+    4. sandbox_profiles.<name>.* (profile defaults)
+    5. sandbox_universal.* (global defaults)
     """
+    from pynchy.config.merge import merge_sandbox_config
     from pynchy.types import ResolvedChannelConfig
 
     s = get_settings()
-    defaults = s.workspace_defaults
     ws = s.workspaces.get(workspace_name)
 
-    # Layer 0: global defaults
+    # Layers 3-5: merge universal + profile + per-sandbox
+    profile = None
+    if ws is not None and ws.profile:
+        profile = s.sandbox_profiles.get(ws.profile)
+
+    merged = merge_sandbox_config(
+        s.sandbox_universal,
+        profile,
+        ws or WorkspaceConfig(),
+    )
+
     state: dict = {
-        "access": defaults.access,
-        "mode": defaults.mode,
-        "trust": defaults.trust,
-        "trigger": defaults.trigger,
-        "allowed_users": defaults.allowed_users or ["owner"],
+        "access": merged.access,
+        "mode": merged.mode,
+        "trust": merged.trust,
+        "trigger": merged.trigger,
+        "allowed_users": merged.allowed_users,
     }
 
-    # Layer 1: connection-level overrides
+    # Layers 1-2: connection and chat-level overrides (most specific)
     if ws is not None:
         chat_ref = parse_chat_ref(ws.chat)
         if chat_ref is not None:
@@ -96,9 +108,6 @@ def resolve_channel_config(
                 chat_cfg = conn_cfg.chat.get(chat_ref.chat)
                 if chat_cfg and chat_cfg.security:
                     _apply_overrides(state, chat_cfg.security)
-
-        # Layer 2: workspace-level overrides (most specific)
-        _apply_overrides(state, ws)
 
     return ResolvedChannelConfig(**state)
 
