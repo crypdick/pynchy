@@ -124,13 +124,36 @@ class SlackBlocksFormatter(BaseFormatter):
     # ------------------------------------------------------------------
 
     def _render_text(self, event: OutboundEvent) -> RenderedMessage:
-        """TEXT — streaming text updates, rendered as a ``markdown`` block."""
+        """TEXT — streaming text updates, rendered as a ``markdown`` block.
+
+        When ``cursor`` is True (actively streaming) and ``group_name`` is present,
+        appends a Stop button so the user can cancel the running agent.
+        The button is removed on the next update when streaming ends (cursor=False).
+        """
         content = format_internal_tags(event.content)
         fallback = content
-        if event.metadata.get("cursor"):
+        cursor = event.metadata.get("cursor", False)
+        if cursor:
             content += " \u258c"
             fallback += " \u258c"
-        blocks = [_markdown_block(content)]
+        blocks: list[dict] = [_markdown_block(content)]
+
+        if cursor and event.metadata.get("group_name"):
+            group = event.metadata["group_name"]
+            blocks.append(
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "\u23f9 Stop"},
+                            "action_id": f"agent_stop_{group}",
+                            "value": group,
+                        }
+                    ],
+                }
+            )
+
         return RenderedMessage(text=fallback, blocks=blocks)
 
     def _render_result(self, event: OutboundEvent) -> RenderedMessage:
@@ -197,8 +220,39 @@ class SlackBlocksFormatter(BaseFormatter):
         return RenderedMessage(text=fallback, blocks=blocks)
 
     def _render_host(self, event: OutboundEvent) -> RenderedMessage:
-        """HOST — small muted operational line."""
-        blocks = [_context_block(f"\U0001f3e0 {event.content}")]
+        """HOST — small muted operational line.
+
+        When ``approval`` metadata is True, appends Approve/Deny action buttons
+        with action_ids encoding the short_id (e.g. ``cop_approve_a1``).
+        The Slack interaction handler routes button clicks to the existing
+        approval decision pipeline.
+        """
+        blocks: list[dict] = [_context_block(f"\U0001f3e0 {event.content}")]
+
+        if event.metadata.get("approval"):
+            short_id = event.metadata.get("short_id", "")
+            blocks.append(
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "\u2705 Approve"},
+                            "action_id": f"cop_approve_{short_id}",
+                            "style": "primary",
+                            "value": short_id,
+                        },
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "\u274c Deny"},
+                            "action_id": f"cop_deny_{short_id}",
+                            "style": "danger",
+                            "value": short_id,
+                        },
+                    ],
+                }
+            )
+
         return RenderedMessage(text=f"\U0001f3e0 {event.content}", blocks=blocks)
 
     def _render_system(self, event: OutboundEvent) -> RenderedMessage:
