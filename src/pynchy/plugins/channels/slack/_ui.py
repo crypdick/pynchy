@@ -9,13 +9,13 @@ import re
 from typing import Any
 
 # action_id prefixes used to match interaction callbacks:
-#   ask_user_btn_{request_id}_{q_idx}_{label}  — option button click
-#   ask_user_submit_{request_id}                — free-text submit button
-#   ask_user_text_{request_id}_{q_idx}          — plain_text_input element
-# Only btn (button click) and submit (text-input submit button) fire
-# block_actions events. The input element uses dispatch_action=False so
-# its action_id (ask_user_text_*) is never dispatched by Slack.
-ASK_USER_ACTION_RE = re.compile(r"^ask_user_(btn|submit)_")
+#   ask_user_checkbox_{request_id}_{q_idx} — checkbox toggle (state only, ignored)
+#   ask_user_submit_{request_id}           — submit button (collects checkbox + text)
+#   ask_user_text_{request_id}_{q_idx}     — plain_text_input element (state only)
+# Only submit fires a meaningful block_actions event.  Checkbox toggles
+# fire too (Slack sends them), but we ignore them — the submit handler
+# reads final checkbox state from ``state.values``.
+ASK_USER_ACTION_RE = re.compile(r"^ask_user_(submit|checkbox)_")
 
 # Approval button action_ids: cop_approve_{short_id}, cop_deny_{short_id}
 COP_APPROVAL_ACTION_RE = re.compile(r"^cop_(approve|deny)_")
@@ -60,10 +60,11 @@ def build_ask_user_blocks(request_id: str, questions: list[dict]) -> list[dict]:
 
     Each question gets:
     - A ``section`` block with the question text (mrkdwn)
-    - An ``actions`` block with buttons (one per option), if options exist
+    - An ``actions`` block with checkboxes (if options exist)
     - A ``divider`` between questions
-    After all questions, a single ``input`` block with ``plain_text_input``
-    and a submit button for free-form answers.
+
+    After all questions, a free-text ``input`` block and a single Submit
+    button.  The submit handler reads checkbox state from ``state.values``.
     """
     blocks: list[dict] = []
 
@@ -80,31 +81,30 @@ def build_ask_user_blocks(request_id: str, questions: list[dict]) -> list[dict]:
             }
         )
 
-        # Option buttons (if any)
+        # Checkboxes for options (if any)
         if options:
-            buttons = []
+            checkbox_options: list[dict[str, Any]] = []
             for opt in options:
                 label = opt.get("label", "")
                 desc = opt.get("description", "")
-                button: dict[str, Any] = {
-                    "type": "button",
+                option: dict[str, Any] = {
                     "text": {"type": "plain_text", "text": label[:75]},
-                    "action_id": f"ask_user_btn_{request_id}_{q_idx}_{label}",
                     "value": label,
                 }
                 if desc:
-                    button["confirm"] = {
-                        "title": {"type": "plain_text", "text": label},
-                        "text": {"type": "mrkdwn", "text": desc},
-                        "confirm": {"type": "plain_text", "text": "Select"},
-                        "deny": {"type": "plain_text", "text": "Cancel"},
-                    }
-                buttons.append(button)
+                    option["description"] = {"type": "plain_text", "text": desc[:75]}
+                checkbox_options.append(option)
             blocks.append(
                 {
                     "type": "actions",
                     "block_id": f"ask_user_actions_{request_id}_{q_idx}",
-                    "elements": buttons,
+                    "elements": [
+                        {
+                            "type": "checkboxes",
+                            "action_id": f"ask_user_checkbox_{request_id}_{q_idx}",
+                            "options": checkbox_options,
+                        }
+                    ],
                 }
             )
 
@@ -128,7 +128,7 @@ def build_ask_user_blocks(request_id: str, questions: list[dict]) -> list[dict]:
         }
     )
 
-    # Submit button for the text input
+    # Single submit button — reads checkbox state + text from state.values
     blocks.append(
         {
             "type": "actions",
@@ -163,3 +163,23 @@ def extract_text_input_value(body: dict, request_id: str) -> str:
             if action_id.startswith(f"ask_user_text_{request_id}"):
                 return payload.get("value", "") or ""
     return ""
+
+
+def extract_checkbox_values(body: dict, request_id: str) -> str:
+    """Extract selected checkbox values from ``state.values``.
+
+    Scans all ``ask_user_actions_{request_id}_*`` blocks and collects
+    ``selected_options`` from any checkbox element.  Returns labels
+    joined with ``", "`` (comma-space), or ``""`` if nothing selected.
+    """
+    values = body.get("state", {}).get("values", {})
+    selected_labels: list[str] = []
+    for block_id, actions in values.items():
+        if not block_id.startswith(f"ask_user_actions_{request_id}"):
+            continue
+        for _action_id, payload in actions.items():
+            for opt in payload.get("selected_options", []):
+                label = opt.get("value", "")
+                if label:
+                    selected_labels.append(label)
+    return ", ".join(selected_labels)
