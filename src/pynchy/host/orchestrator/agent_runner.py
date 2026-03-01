@@ -167,14 +167,14 @@ async def _pre_container_setup(
 ) -> _PreContainerResult:
     """Common pre-container setup for both warm and cold paths."""
     from pynchy.config.directives import read_directives
-    from pynchy.host.orchestrator.workspace_config import get_repo_access, load_resolved_config
+    from pynchy.host.orchestrator.workspace_config import load_resolved_config
 
     is_admin = group.is_admin
     resolved = load_resolved_config(group.folder)
     if repo_access_override is not None:
         repo_access: str | None = repo_access_override
     else:
-        repo_access = resolved.repo_access if resolved else get_repo_access(group)
+        repo_access = resolved.repo_access if resolved else None
     system_prompt_append = read_directives(
         resolved.directives if resolved else [],
         get_settings().project_root,
