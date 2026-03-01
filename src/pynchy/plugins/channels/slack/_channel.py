@@ -16,7 +16,9 @@ from pynchy.plugins.channels.slack._blocks import SlackBlocksFormatter
 from pynchy.types import InboundFetchResult, NewMessage, OutboundEvent
 
 from ._ui import (
+    AGENT_STOP_ACTION_RE,
     ASK_USER_ACTION_RE,
+    COP_APPROVAL_ACTION_RE,
     build_ask_user_blocks,
     extract_text_input_value,
     normalize_chat_name,
@@ -88,6 +90,8 @@ class SlackChannel:
         on_chat_metadata: Callable[[str, str, str | None], None],
         on_reaction: Callable[[str, str, str, str], None] | None = None,
         on_ask_user_answer: Callable[[str, dict], None] | None = None,
+        on_approval_decision: Callable[[str, str, str, str], None] | None = None,
+        on_agent_stop: Callable[[str, str], None] | None = None,
     ) -> None:
         self.name = connection_name
         self.formatter = SlackBlocksFormatter()
@@ -102,6 +106,10 @@ class SlackChannel:
         self._on_chat_metadata = on_chat_metadata
         self._on_reaction = on_reaction
         self._on_ask_user_answer = on_ask_user_answer
+        # on_approval_decision(chat_jid, action, short_id, user_id)
+        self._on_approval_decision = on_approval_decision
+        # on_agent_stop(group_name, user_id)
+        self._on_agent_stop = on_agent_stop
         self._connected = False
         self._shutting_down = False
 
@@ -653,6 +661,22 @@ class SlackChannel:
             await ack()
             await self._on_ask_user_interaction(body, action)
 
+        # --- Approval button handlers (Approve/Deny from approval gate) ---
+        @self._app.action(COP_APPROVAL_ACTION_RE)
+        async def _handle_approval_action(
+            ack: Any, body: dict[str, Any], action: dict[str, Any]
+        ) -> None:
+            await ack()
+            await self._on_approval_interaction(body, action)
+
+        # --- Agent stop button handler ---
+        @self._app.action(AGENT_STOP_ACTION_RE)
+        async def _handle_agent_stop(
+            ack: Any, body: dict[str, Any], action: dict[str, Any]
+        ) -> None:
+            await ack()
+            await self._on_agent_stop_interaction(body, action)
+
         # --- Slack Assistant panel (sidebar DM experience) ---
         self._register_assistant_handlers()
 
@@ -890,6 +914,118 @@ class SlackChannel:
                 )
             except Exception as exc:
                 logger.debug("Failed to update ask_user message", err=str(exc))
+
+    async def _on_approval_interaction(self, body: dict[str, Any], action: dict[str, Any]) -> None:
+        """Handle an approval button click (Approve or Deny).
+
+        Extracts the action and short_id from the ``action_id`` (e.g.
+        ``cop_approve_a1``), invokes the approval callback, and updates the
+        original message to remove buttons and show the decision.
+        """
+        action_id = action.get("action_id", "")
+        channel_id = body.get("channel", {}).get("id", "")
+
+        if channel_id and not self._is_allowed_channel(channel_id):
+            return
+
+        # Parse action_id: cop_{approve|deny}_{short_id}
+        parts = action_id.split("_", 2)  # ["cop", "approve", "a1"]
+        if len(parts) < 3:
+            return
+        decision = parts[1]  # "approve" or "deny"
+        short_id = parts[2]
+
+        message_ts = body.get("message", {}).get("ts", "")
+        user_id = body.get("user", {}).get("id", "")
+        user_name = body.get("user", {}).get("username", user_id)
+
+        # Invoke the approval decision callback
+        if self._on_approval_decision and channel_id:
+            jid = _jid(channel_id)
+            self._on_approval_decision(jid, decision, short_id, user_id)
+
+        # Update the original message: remove buttons, add confirmation
+        if channel_id and message_ts:
+            original_blocks = body.get("message", {}).get("blocks", [])
+            # Keep only non-actions blocks (the context line with the approval text)
+            kept_blocks = [b for b in original_blocks if b.get("type") != "actions"]
+            verb = "Approved" if decision == "approve" else "Denied"
+            kept_blocks.append(
+                {
+                    "type": "context",
+                    "elements": [{"type": "mrkdwn", "text": f"\u2705 {verb} by <@{user_id}>"}],
+                }
+            )
+            try:
+                await self._app.client.chat_update(
+                    channel=channel_id,
+                    ts=message_ts,
+                    text=f"{verb} by {user_name}",
+                    blocks=kept_blocks,
+                )
+            except Exception as exc:
+                logger.debug("Failed to update approval message", err=str(exc))
+
+        logger.info(
+            "Approval button clicked",
+            decision=decision,
+            short_id=short_id,
+            user=user_id,
+        )
+
+    async def _on_agent_stop_interaction(
+        self, body: dict[str, Any], action: dict[str, Any]
+    ) -> None:
+        """Handle a Stop button click during agent streaming.
+
+        Extracts the ``group_name`` from the ``action_id`` (e.g.
+        ``agent_stop_ops``), invokes the stop callback, and updates the
+        message to show who stopped the agent.
+        """
+        action_id = action.get("action_id", "")
+        channel_id = body.get("channel", {}).get("id", "")
+
+        if channel_id and not self._is_allowed_channel(channel_id):
+            return
+
+        # Parse action_id: agent_stop_{group_name}
+        group_name = action_id.removeprefix("agent_stop_")
+        if not group_name:
+            return
+
+        message_ts = body.get("message", {}).get("ts", "")
+        user_id = body.get("user", {}).get("id", "")
+        user_name = body.get("user", {}).get("username", user_id)
+
+        # Signal cancellation to the agent execution loop
+        if self._on_agent_stop:
+            self._on_agent_stop(group_name, user_id)
+
+        # Update the message: remove the stop button, add "Stopped by" context
+        if channel_id and message_ts:
+            original_blocks = body.get("message", {}).get("blocks", [])
+            kept_blocks = [b for b in original_blocks if b.get("type") != "actions"]
+            kept_blocks.append(
+                {
+                    "type": "context",
+                    "elements": [{"type": "mrkdwn", "text": f"\u23f9 Stopped by <@{user_id}>"}],
+                }
+            )
+            try:
+                await self._app.client.chat_update(
+                    channel=channel_id,
+                    ts=message_ts,
+                    text=f"Stopped by {user_name}",
+                    blocks=kept_blocks,
+                )
+            except Exception as exc:
+                logger.debug("Failed to update stop message", err=str(exc))
+
+        logger.info(
+            "Agent stop button clicked",
+            group=group_name,
+            user=user_id,
+        )
 
     # ------------------------------------------------------------------
     # Helpers
