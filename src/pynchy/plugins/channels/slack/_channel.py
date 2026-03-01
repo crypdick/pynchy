@@ -20,6 +20,7 @@ from ._ui import (
     ASK_USER_ACTION_RE,
     COP_APPROVAL_ACTION_RE,
     build_ask_user_blocks,
+    extract_checkbox_values,
     extract_text_input_value,
     normalize_chat_name,
     split_text,
@@ -853,39 +854,36 @@ class SlackChannel:
     async def _on_ask_user_interaction(self, body: dict[str, Any], action: dict[str, Any]) -> None:
         """Handle a block_actions interaction from an ask_user widget.
 
-        Dispatches button clicks and text-submit actions, invokes the
-        ``on_ask_user_answer`` callback, and updates the original message
-        to replace interactive blocks with a static "Answered" confirmation.
+        Checkbox toggles fire as ``ask_user_checkbox_*`` but are ignored —
+        we only act on the submit button (``ask_user_submit_*``), which
+        reads the final checkbox selections and free-text value from
+        ``state.values``.
         """
         action_id = action.get("action_id", "")
         channel_id = body.get("channel", {}).get("id", "")
 
-        # Guard: only process interactions from allowed channels (consistent
-        # with _on_slack_message and _on_slack_reaction).
+        # Guard: only process interactions from allowed channels.
         if channel_id and not self._is_allowed_channel(channel_id):
+            return
+
+        # Ignore bare checkbox toggles — wait for submit.
+        if action_id.startswith("ask_user_checkbox_"):
+            return
+
+        if not action_id.startswith("ask_user_submit_"):
             return
 
         message_ts = body.get("message", {}).get("ts", "")
         user_id = body.get("user", {}).get("id", "")
 
-        # Parse action type, request_id, and answer.
-        # The answer label is stored in the button's ``value`` field (safe
-        # regardless of underscores in request_id or label).
-        if action_id.startswith("ask_user_btn_"):
-            # Button click — answer is the button value
-            block_id = action.get("block_id", "")
-            # block_id format: ask_user_actions_{request_id}_{q_idx}
-            # Rsplit on _ to isolate q_idx, everything before is the request_id.
-            rest = block_id.removeprefix("ask_user_actions_")
-            request_id = rest.rsplit("_", 1)[0] if "_" in rest else rest
-            answer = action.get("value", "")
-        elif action_id.startswith("ask_user_submit_"):
-            # Free-text submit — request_id is the entire suffix after prefix
-            request_id = action_id.removeprefix("ask_user_submit_")
-            # Extract text from state.values
-            answer = extract_text_input_value(body, request_id)
-        else:
-            return  # Not an ask_user action we handle
+        request_id = action_id.removeprefix("ask_user_submit_")
+
+        # Collect checkbox selections and free-text input.
+        checkbox_answer = extract_checkbox_values(body, request_id)
+        text_answer = extract_text_input_value(body, request_id)
+
+        # Prefer text if provided, otherwise use checkbox selections.
+        answer = text_answer if text_answer else checkbox_answer
 
         answer_dict = {
             "answer": answer,

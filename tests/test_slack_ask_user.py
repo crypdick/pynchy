@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,6 +10,7 @@ import pytest
 slack_bolt = pytest.importorskip("slack_bolt", reason="slack optional extra not installed")
 
 from pynchy.plugins.channels.slack import SlackChannel, _jid  # noqa: E402
+from pynchy.plugins.channels.slack._ui import ASK_USER_ACTION_RE  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -88,7 +90,7 @@ def _multi_questions() -> list[dict]:
 class TestSendAskUser:
     @pytest.mark.asyncio
     async def test_builds_correct_blocks_with_options(self) -> None:
-        """Verify Block Kit payload has section, actions, and input blocks."""
+        """Verify Block Kit payload has section, actions (checkboxes), and input blocks."""
         ch = _make_channel()
         await ch.send_ask_user(JID, REQUEST_ID, _questions_with_options())
 
@@ -96,23 +98,26 @@ class TestSendAskUser:
         call_kwargs = ch._app.client.chat_postMessage.call_args.kwargs
         blocks = call_kwargs["blocks"]
 
-        # Should have: header section, actions with buttons, divider, input block
         block_types = [b["type"] for b in blocks]
         assert "section" in block_types, "Expected a section block for the question"
-        assert "actions" in block_types, "Expected an actions block for option buttons"
+        assert "actions" in block_types, "Expected an actions block for checkboxes"
         assert "input" in block_types, "Expected an input block for free-form text"
 
         # Verify section contains question text
         section_block = next(b for b in blocks if b["type"] == "section")
         assert "Which framework" in section_block["text"]["text"]
 
-        # Verify actions block has correct buttons
-        actions_block = next(b for b in blocks if b["type"] == "actions")
-        button_texts = [
-            el["text"]["text"] for el in actions_block["elements"] if el["type"] == "button"
-        ]
-        assert "React" in button_texts
-        assert "Vue" in button_texts
+        # Verify actions block has checkboxes (not buttons)
+        actions_block = next(
+            b
+            for b in blocks
+            if b["type"] == "actions"
+            and any(el.get("type") == "checkboxes" for el in b["elements"])
+        )
+        checkbox_el = next(el for el in actions_block["elements"] if el["type"] == "checkboxes")
+        option_labels = [o["text"]["text"] for o in checkbox_el["options"]]
+        assert "React" in option_labels
+        assert "Vue" in option_labels
 
         # Verify block_id encodes request_id
         assert any(REQUEST_ID in b.get("block_id", "") for b in blocks), (
@@ -196,22 +201,21 @@ class TestSendAskUser:
         assert len(call_kwargs["text"]) > 0
 
     @pytest.mark.asyncio
-    async def test_button_action_ids_encode_request_and_label(self) -> None:
-        """Button action_id should encode request_id and option label for routing."""
+    async def test_checkbox_action_id_encodes_request_id(self) -> None:
+        """Checkbox action_id should encode request_id for routing."""
         ch = _make_channel()
         await ch.send_ask_user(JID, REQUEST_ID, _questions_with_options())
 
         call_kwargs = ch._app.client.chat_postMessage.call_args.kwargs
         blocks = call_kwargs["blocks"]
-        actions_block = next(b for b in blocks if b["type"] == "actions")
-
-        for button in actions_block["elements"]:
-            if button["type"] == "button":
-                action_id = button["action_id"]
-                # action_id should contain the request_id and the label
-                assert REQUEST_ID in action_id, (
-                    f"Expected {REQUEST_ID!r} in action_id {action_id!r}"
-                )
+        actions_block = next(
+            b
+            for b in blocks
+            if b["type"] == "actions"
+            and any(el.get("type") == "checkboxes" for el in b["elements"])
+        )
+        checkbox_el = next(el for el in actions_block["elements"] if el["type"] == "checkboxes")
+        assert REQUEST_ID in checkbox_el["action_id"]
 
 
 # ---------------------------------------------------------------------------
@@ -221,34 +225,46 @@ class TestSendAskUser:
 
 class TestBlockActionHandlers:
     @pytest.mark.asyncio
-    async def test_button_click_calls_callback(self) -> None:
-        """Simulated button click should invoke on_ask_user_answer callback."""
+    async def test_submit_with_checkboxes_calls_callback(self) -> None:
+        """Submit with checkbox selections should invoke on_ask_user_answer callback."""
         callback = MagicMock()
         ch = _make_channel(on_ask_user_answer=callback)
-
-        # Register handlers (normally done in connect())
         ch._register_handlers()
 
-        # Find the registered action handler
-        # slack-bolt's @app.action() stores handlers internally.
-        # We need to capture the handler function that was registered.
-        action_handler = _extract_action_handler(ch._app)
-        assert action_handler is not None, "Expected an action handler to be registered"
+        action_handler = _extract_action_handler(ch._app, pattern=ASK_USER_ACTION_RE)
+        assert action_handler is not None
 
-        # Simulate a Slack block_actions payload for a button click
         ack = AsyncMock()
         body = {
             "actions": [
                 {
-                    "action_id": f"ask_user_btn_{REQUEST_ID}_0_React",
-                    "block_id": f"ask_user_actions_{REQUEST_ID}_0",
+                    "action_id": f"ask_user_submit_{REQUEST_ID}",
+                    "block_id": f"ask_user_submit_actions_{REQUEST_ID}",
                     "type": "button",
-                    "value": "React",
+                    "value": "submit",
                 }
             ],
             "channel": {"id": CHANNEL_ID},
             "message": {"ts": "1234567890.123456"},
             "user": {"id": "U999"},
+            "state": {
+                "values": {
+                    f"ask_user_actions_{REQUEST_ID}_0": {
+                        f"ask_user_checkbox_{REQUEST_ID}_0": {
+                            "type": "checkboxes",
+                            "selected_options": [
+                                {"text": {"type": "plain_text", "text": "React"}, "value": "React"},
+                            ],
+                        }
+                    },
+                    f"ask_user_input_{REQUEST_ID}_0": {
+                        f"ask_user_text_{REQUEST_ID}_0": {
+                            "type": "plain_text_input",
+                            "value": None,
+                        }
+                    },
+                }
+            },
         }
 
         await action_handler(ack=ack, body=body, action=body["actions"][0])
@@ -261,27 +277,45 @@ class TestBlockActionHandlers:
         assert answer_dict["answered_by"] == "U999"
 
     @pytest.mark.asyncio
-    async def test_button_click_updates_message(self) -> None:
-        """After a button click, the original message should be updated."""
+    async def test_submit_with_checkboxes_updates_message(self) -> None:
+        """After submit, the original message should be updated with the answer."""
         callback = MagicMock()
         ch = _make_channel(on_ask_user_answer=callback)
         ch._register_handlers()
 
-        action_handler = _extract_action_handler(ch._app)
+        action_handler = _extract_action_handler(ch._app, pattern=ASK_USER_ACTION_RE)
 
         ack = AsyncMock()
         body = {
             "actions": [
                 {
-                    "action_id": f"ask_user_btn_{REQUEST_ID}_0_React",
-                    "block_id": f"ask_user_actions_{REQUEST_ID}_0",
+                    "action_id": f"ask_user_submit_{REQUEST_ID}",
+                    "block_id": f"ask_user_submit_actions_{REQUEST_ID}",
                     "type": "button",
-                    "value": "React",
+                    "value": "submit",
                 }
             ],
             "channel": {"id": CHANNEL_ID},
             "message": {"ts": "1234567890.123456"},
             "user": {"id": "U999"},
+            "state": {
+                "values": {
+                    f"ask_user_actions_{REQUEST_ID}_0": {
+                        f"ask_user_checkbox_{REQUEST_ID}_0": {
+                            "type": "checkboxes",
+                            "selected_options": [
+                                {"text": {"type": "plain_text", "text": "React"}, "value": "React"},
+                            ],
+                        }
+                    },
+                    f"ask_user_input_{REQUEST_ID}_0": {
+                        f"ask_user_text_{REQUEST_ID}_0": {
+                            "type": "plain_text_input",
+                            "value": None,
+                        }
+                    },
+                }
+            },
         }
 
         await action_handler(ack=ack, body=body, action=body["actions"][0])
@@ -290,44 +324,30 @@ class TestBlockActionHandlers:
         update_kwargs = ch._app.client.chat_update.call_args.kwargs
         assert update_kwargs["channel"] == CHANNEL_ID
         assert update_kwargs["ts"] == "1234567890.123456"
-        # Updated message should indicate the answer
         assert "React" in update_kwargs["text"]
 
     @pytest.mark.asyncio
     async def test_text_submit_calls_callback(self) -> None:
-        """Simulated text input submission should invoke on_ask_user_answer callback."""
+        """Submit with free-text (no checkboxes) should use the text answer."""
         callback = MagicMock()
         ch = _make_channel(on_ask_user_answer=callback)
         ch._register_handlers()
 
-        action_handler = _extract_action_handler(ch._app)
+        action_handler = _extract_action_handler(ch._app, pattern=ASK_USER_ACTION_RE)
         assert action_handler is not None
 
-        # Simulate a text input submission action
         ack = AsyncMock()
         body = {
             "actions": [
                 {
                     "action_id": f"ask_user_submit_{REQUEST_ID}",
-                    "block_id": f"ask_user_input_{REQUEST_ID}_0",
+                    "block_id": f"ask_user_submit_actions_{REQUEST_ID}",
                     "type": "button",
                     "value": "submit",
                 }
             ],
             "channel": {"id": CHANNEL_ID},
-            "message": {
-                "ts": "1234567890.123456",
-                "blocks": [
-                    {
-                        "type": "input",
-                        "block_id": f"ask_user_input_{REQUEST_ID}_0",
-                        "element": {
-                            "type": "plain_text_input",
-                            "action_id": f"ask_user_text_{REQUEST_ID}_0",
-                        },
-                    }
-                ],
-            },
+            "message": {"ts": "1234567890.123456"},
             "user": {"id": "U999"},
             "state": {
                 "values": {
@@ -350,26 +370,102 @@ class TestBlockActionHandlers:
         assert answer_dict["answer"] == "My custom answer"
 
     @pytest.mark.asyncio
-    async def test_no_callback_no_error(self) -> None:
-        """If on_ask_user_answer is None, button clicks should not raise."""
-        ch = _make_channel(on_ask_user_answer=None)
+    async def test_text_overrides_checkboxes(self) -> None:
+        """When both checkboxes and text are filled, text takes priority."""
+        callback = MagicMock()
+        ch = _make_channel(on_ask_user_answer=callback)
         ch._register_handlers()
 
-        action_handler = _extract_action_handler(ch._app)
+        action_handler = _extract_action_handler(ch._app, pattern=ASK_USER_ACTION_RE)
 
         ack = AsyncMock()
         body = {
             "actions": [
                 {
-                    "action_id": f"ask_user_btn_{REQUEST_ID}_0_React",
-                    "block_id": f"ask_user_actions_{REQUEST_ID}_0",
+                    "action_id": f"ask_user_submit_{REQUEST_ID}",
+                    "block_id": f"ask_user_submit_actions_{REQUEST_ID}",
                     "type": "button",
-                    "value": "React",
+                    "value": "submit",
                 }
             ],
             "channel": {"id": CHANNEL_ID},
             "message": {"ts": "1234567890.123456"},
             "user": {"id": "U999"},
+            "state": {
+                "values": {
+                    f"ask_user_actions_{REQUEST_ID}_0": {
+                        f"ask_user_checkbox_{REQUEST_ID}_0": {
+                            "type": "checkboxes",
+                            "selected_options": [
+                                {"text": {"type": "plain_text", "text": "React"}, "value": "React"},
+                            ],
+                        }
+                    },
+                    f"ask_user_input_{REQUEST_ID}_0": {
+                        f"ask_user_text_{REQUEST_ID}_0": {
+                            "type": "plain_text_input",
+                            "value": "Actually use Svelte",
+                        }
+                    },
+                }
+            },
+        }
+
+        await action_handler(ack=ack, body=body, action=body["actions"][0])
+        callback.assert_called_once()
+        answer_dict = callback.call_args[0][1]
+        assert answer_dict["answer"] == "Actually use Svelte"
+
+    @pytest.mark.asyncio
+    async def test_checkbox_toggle_ignored(self) -> None:
+        """Bare checkbox toggle events should be ignored (no callback, no update)."""
+        callback = MagicMock()
+        ch = _make_channel(on_ask_user_answer=callback)
+        ch._register_handlers()
+
+        action_handler = _extract_action_handler(ch._app, pattern=ASK_USER_ACTION_RE)
+
+        ack = AsyncMock()
+        body = {
+            "actions": [
+                {
+                    "action_id": f"ask_user_checkbox_{REQUEST_ID}_0",
+                    "block_id": f"ask_user_actions_{REQUEST_ID}_0",
+                    "type": "checkboxes",
+                }
+            ],
+            "channel": {"id": CHANNEL_ID},
+            "message": {"ts": "1234567890.123456"},
+            "user": {"id": "U999"},
+        }
+
+        await action_handler(ack=ack, body=body, action=body["actions"][0])
+        ack.assert_called_once()
+        callback.assert_not_called()
+        ch._app.client.chat_update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_callback_no_error(self) -> None:
+        """If on_ask_user_answer is None, submit should not raise."""
+        ch = _make_channel(on_ask_user_answer=None)
+        ch._register_handlers()
+
+        action_handler = _extract_action_handler(ch._app, pattern=ASK_USER_ACTION_RE)
+
+        ack = AsyncMock()
+        body = {
+            "actions": [
+                {
+                    "action_id": f"ask_user_submit_{REQUEST_ID}",
+                    "block_id": f"ask_user_submit_actions_{REQUEST_ID}",
+                    "type": "button",
+                    "value": "submit",
+                }
+            ],
+            "channel": {"id": CHANNEL_ID},
+            "message": {"ts": "1234567890.123456"},
+            "user": {"id": "U999"},
+            "state": {"values": {}},
         }
 
         # Should not raise even without a callback
@@ -408,18 +504,36 @@ class TestOnAskUserAnswerCallback:
 # ---------------------------------------------------------------------------
 
 
-def _extract_action_handler(mock_app: MagicMock) -> object | None:
+def _extract_action_handler(
+    mock_app: MagicMock, *, pattern: re.Pattern | None = None
+) -> object | None:
     """Extract the handler function registered via ``@app.action(pattern)``.
 
-    On a MagicMock, ``@app.action(pattern)`` is equivalent to::
+    On a MagicMock, ``@app.action(pattern)`` is called once per handler
+    registration.  Each call passes the regex pattern; the returned decorator
+    is then called with the handler function.
 
-        decorator = mock_app.action(pattern)   # returns mock_app.action.return_value
-        decorator(handler_fn)                  # handler is the first positional arg
-
-    All ``@app.action(...)`` calls share the same ``return_value`` mock, so
-    the handler is always the first arg of the last call to that decorator.
+    When *pattern* is given, find the ``@app.action(pat)`` call whose first
+    positional arg matches ``pattern``, then return the handler.
+    When *pattern* is ``None``, return the last registered handler (legacy).
     """
+    # Each call to mock_app.action(pat) is recorded in call_args_list.
+    # The decorator returned each time is the *same* return_value mock,
+    # but its call_args_list records all decorator(handler_fn) calls in order.
+    action_calls = mock_app.action.call_args_list  # [(pat,), ...] per registration
     decorator_mock = mock_app.action.return_value
-    if decorator_mock.call_args_list:
-        return decorator_mock.call_args_list[-1][0][0]
+    handler_calls = decorator_mock.call_args_list  # [(handler_fn,), ...] per registration
+
+    if not handler_calls:
+        return None
+
+    if pattern is None:
+        return handler_calls[-1][0][0]
+
+    # Match the pattern arg of each @app.action(pat) call to find the index
+    for idx, call in enumerate(action_calls):
+        pat_arg = call[0][0] if call[0] else None
+        if pat_arg is pattern and idx < len(handler_calls):
+            return handler_calls[idx][0][0]
+
     return None
