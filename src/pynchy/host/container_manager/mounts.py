@@ -13,7 +13,7 @@ from pynchy.host.container_manager.credentials import _write_env_file
 from pynchy.host.container_manager.security.mount_security import validate_additional_mounts
 from pynchy.host.container_manager.session_prep import _sync_skills, _write_settings_json
 from pynchy.host.git_ops.repo import RepoContext
-from pynchy.host.orchestrator.workspace_config import load_workspace_config
+from pynchy.host.orchestrator.workspace_config import load_resolved_config
 from pynchy.types import VolumeMount, WorkspaceProfile
 
 
@@ -56,11 +56,11 @@ def _build_volume_mounts(
     session_dir = s.data_dir / "sessions" / group.folder / ".claude"
     session_dir.mkdir(parents=True, exist_ok=True)
     _write_settings_json(session_dir)
-    ws_config = load_workspace_config(group.folder)
+    resolved = load_resolved_config(group.folder)
     _sync_skills(
         session_dir,
         plugin_manager,
-        workspace_skills=ws_config.skills if ws_config else None,
+        workspace_skills=resolved.skills if resolved else None,
     )
     mounts.append(VolumeMount(str(session_dir), "/home/agent/.claude", readonly=False))
 

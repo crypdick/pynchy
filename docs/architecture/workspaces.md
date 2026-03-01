@@ -46,13 +46,16 @@ This means editing `config.toml` and restarting the service is all that's needed
 | Field | Type | Description |
 |-------|------|-------------|
 | `is_admin` | `bool` | Whether this is an admin workspace |
+| `profile` | `str` | Name of a sandbox profile from `[sandbox_profiles.*]` |
+| `directives` | `list[str]` | Directive names (convention-resolved to `directives/<name>.md`) |
 | `repo_access` | `str` | GitHub slug (`owner/repo`) from `[repos.*]`; mounts a project worktree |
 | `schedule` | `str` | Cron expression for periodic execution |
 | `prompt` | `str` | Prompt sent to the agent on each scheduled run |
 | `context_mode` | `str` | `"group"` (shared session) or `"isolated"` (fresh each time) |
 | `trigger` | `str` | `"mention"` (default) or `"always"` — whether @mention is required |
 | `name` | `str` | Display name (defaults to folder titlecased) |
-| `skills` | `list[str]` | Skill tier names and/or skill names to include; omit for core-only |
+| `skills` | `list[str]` | Skill tier names and/or skill names to include; `"*"` = include all |
+| `mcp_servers` | `list[str]` | MCP server names and group names to attach to the sandbox |
 | `security` | `dict` | MCP tool access control and rate limiting |
 
 ---

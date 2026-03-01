@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from pynchy.config.models import OwnerConfig, WorkspaceConfig, WorkspaceDefaultsConfig
+from pynchy.config.models import OwnerConfig, SandboxProfileConfig, WorkspaceConfig
 from pynchy.host.orchestrator.messaging.reconciler import reconcile_all_channels, reset_cooldowns
 from pynchy.state import (
     _init_test_database,
@@ -94,7 +94,7 @@ def _permissive_sender_defaults(monkeypatch):
     restrictive settings via monkeypatch."""
     monkeypatch.setattr(
         "pynchy.config.settings._settings",
-        make_settings(workspace_defaults=WorkspaceDefaultsConfig(allowed_users=["*"])),
+        make_settings(sandbox_universal=SandboxProfileConfig(allowed_users=["*"])),
     )
 
 

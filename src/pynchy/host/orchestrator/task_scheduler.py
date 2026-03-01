@@ -244,7 +244,9 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
     # Idle timer: close container stdin after IDLE_TIMEOUT of no output,
     # so the container exits instead of hanging at waitForIpcMessage.
     ws_config = load_workspace_config(task.group_folder)
-    idle_enabled = ws_config.idle_terminate if ws_config else True
+    idle_enabled = (
+        ws_config.idle_terminate if ws_config and ws_config.idle_terminate is not None else True
+    )
 
     def _idle_timeout_callback() -> None:
         logger.debug("Scheduled task idle timeout, closing stdin", task_id=task.id)
