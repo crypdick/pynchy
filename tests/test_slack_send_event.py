@@ -67,15 +67,18 @@ async def test_send_event_skips_when_no_app(slack_channel):
 
 
 @pytest.mark.asyncio
-async def test_send_event_splits_long_text(slack_channel):
-    """Long text without blocks should be split into chunks."""
+async def test_send_event_sends_blocks_for_long_text(slack_channel):
+    """Long text with blocks should be sent as a single blocks message (no chunking)."""
     event = OutboundEvent(
         type=OutboundEventType.RESULT,
         content="a" * 6000,
         metadata={"prefix_assistant_name": False},
     )
     await slack_channel.send_event("slack:C123", event)
-    assert slack_channel._app.client.chat_postMessage.await_count == 2
+    # SlackBlocksFormatter always produces blocks, so a single API call is made
+    assert slack_channel._app.client.chat_postMessage.await_count == 1
+    call_kwargs = slack_channel._app.client.chat_postMessage.call_args.kwargs
+    assert "blocks" in call_kwargs
 
 
 @pytest.mark.asyncio
@@ -177,17 +180,19 @@ async def test_update_event_passes_blocks_when_present(slack_channel):
 
 
 @pytest.mark.asyncio
-async def test_update_event_omits_blocks_when_none(slack_channel):
-    """update_event should not include blocks key when formatter returns None blocks."""
+async def test_update_event_includes_blocks_from_blocks_formatter(slack_channel):
+    """update_event should include blocks when SlackBlocksFormatter produces them."""
     event = OutboundEvent(type=OutboundEventType.TEXT, content="text", metadata={})
     await slack_channel.update_event("slack:C123", "123.456", event)
     call_kwargs = slack_channel._app.client.chat_update.call_args.kwargs
-    assert "blocks" not in call_kwargs
+    # SlackBlocksFormatter always produces blocks for TEXT events
+    assert "blocks" in call_kwargs
+    assert any(b["type"] == "markdown" for b in call_kwargs["blocks"])
 
 
 @pytest.mark.asyncio
-async def test_formatter_is_text_formatter(slack_channel):
-    """SlackChannel should use TextFormatter by default."""
-    from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
+async def test_formatter_is_slack_blocks_formatter(slack_channel):
+    """SlackChannel should use SlackBlocksFormatter."""
+    from pynchy.plugins.channels.slack._blocks import SlackBlocksFormatter
 
-    assert isinstance(slack_channel.formatter, TextFormatter)
+    assert isinstance(slack_channel.formatter, SlackBlocksFormatter)
