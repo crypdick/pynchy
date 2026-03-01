@@ -135,10 +135,8 @@ class SlackBlocksFormatter(BaseFormatter):
 
     def _render_result(self, event: OutboundEvent) -> RenderedMessage:
         """RESULT — final assistant response, rendered as a ``markdown`` block."""
-        content = event.content
-        fallback = format_internal_tags(content)
-        # The markdown block gets the raw content — Slack's markdown block
-        # natively renders standard markdown including internal tag content.
+        content = format_internal_tags(event.content)
+        fallback = content
         blocks = [_markdown_block(content)]
         return RenderedMessage(text=fallback, blocks=blocks)
 
@@ -177,7 +175,7 @@ class SlackBlocksFormatter(BaseFormatter):
             blocks: list[dict] = [header, _rich_text_preformatted_block(content)]
             fallback = f"\U0001f4cb {label}:\n{content}"
         elif content:
-            # Non-verbose with content: show abbreviated
+            # Non-verbose with content: full output in blocks, compact notification text
             blocks = [header, _rich_text_preformatted_block(content)]
             fallback = f"\U0001f4cb {label} result"
         else:
