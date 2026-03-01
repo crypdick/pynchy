@@ -136,17 +136,18 @@ def ensure_repo_cloned(repo_ctx: RepoContext) -> bool:
 
 
 def resolve_repo_for_group(group_folder: str) -> RepoContext | None:
-    """Look up workspace config.repo_access and return the resolved RepoContext.
+    """Look up the merged sandbox config's repo_access and return the resolved RepoContext.
 
+    Uses the three-tier merge cascade (universal < profile < per-sandbox) so that
+    ``repo_access`` inherited from a sandbox profile is correctly resolved.
     Returns None if the group has no repo_access or the slug is not configured.
     """
-    from pynchy.config import get_settings
+    from pynchy.host.orchestrator.workspace_config import load_resolved_config
 
-    s = get_settings()
-    ws_cfg = s.workspaces.get(group_folder)
-    if ws_cfg is None or not ws_cfg.repo_access:
+    resolved = load_resolved_config(group_folder)
+    if resolved is None or not resolved.repo_access:
         return None
-    return get_repo_context(ws_cfg.repo_access)
+    return get_repo_context(resolved.repo_access)
 
 
 def check_token_expiry(slug: str, token: str) -> None:

@@ -279,12 +279,17 @@ class TestContainerCredentialInjection:
             },
             secrets=MagicMock(gh_token=SecretStr(BROAD_TOKEN)),
         )
+        fake_resolved = MagicMock(repo_access=REPO_SLUG)
         with (
             patch("pynchy.host.container_manager.credentials.get_settings", return_value=s),
             patch("pynchy.host.container_manager.gateway.get_gateway", return_value=None),
             patch(
                 "pynchy.host.container_manager.credentials._read_git_identity",
                 return_value=(None, None),
+            ),
+            patch(
+                "pynchy.host.orchestrator.workspace_config.load_resolved_config",
+                return_value=fake_resolved,
             ),
         ):
             env_dir = _write_env_file(is_admin=False, group_folder="code-improver")
@@ -308,12 +313,17 @@ class TestContainerCredentialInjection:
             },
             secrets=MagicMock(gh_token=SecretStr(BROAD_TOKEN)),
         )
+        fake_resolved = MagicMock(repo_access=None)
         with (
             patch("pynchy.host.container_manager.credentials.get_settings", return_value=s),
             patch("pynchy.host.container_manager.gateway.get_gateway", return_value=None),
             patch(
                 "pynchy.host.container_manager.credentials._read_git_identity",
                 return_value=("Test", "test@test.com"),
+            ),
+            patch(
+                "pynchy.host.orchestrator.workspace_config.load_resolved_config",
+                return_value=fake_resolved,
             ),
         ):
             env_dir = _write_env_file(is_admin=False, group_folder="basic-group")
@@ -338,12 +348,17 @@ class TestContainerCredentialInjection:
             },
             secrets=MagicMock(gh_token=SecretStr(BROAD_TOKEN)),
         )
+        fake_resolved = MagicMock(repo_access=REPO_SLUG)
         with (
             patch("pynchy.host.container_manager.credentials.get_settings", return_value=s),
             patch("pynchy.host.container_manager.gateway.get_gateway", return_value=None),
             patch(
                 "pynchy.host.container_manager.credentials._read_git_identity",
                 return_value=("Test", "test@test.com"),
+            ),
+            patch(
+                "pynchy.host.orchestrator.workspace_config.load_resolved_config",
+                return_value=fake_resolved,
             ),
         ):
             env_dir = _write_env_file(is_admin=False, group_folder="code-improver")

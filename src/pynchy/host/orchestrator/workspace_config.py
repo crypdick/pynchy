@@ -196,11 +196,11 @@ def load_resolved_config(group_folder: str) -> ResolvedSandboxConfig | None:
 def get_repo_access(group: WorkspaceProfile) -> str | None:
     """Return the repo_access slug for a group, or None if not configured.
 
-    Unlike the old has_pynchy_repo_access, admin groups no longer get implicit
-    access — they must set repo_access explicitly in config.toml.
+    Uses the three-tier merge cascade so that repo_access inherited from a
+    sandbox profile is correctly resolved.
     """
-    config = load_workspace_config(group.folder)
-    slug = config.repo_access if config else None
+    resolved = load_resolved_config(group.folder)
+    slug = resolved.repo_access if resolved else None
     logger.debug(
         "Checked repo access",
         folder=group.folder,
@@ -212,13 +212,14 @@ def get_repo_access(group: WorkspaceProfile) -> str | None:
 def get_repo_access_groups(workspaces: dict[str, Any]) -> dict[str, list[str]]:
     """Return a mapping of slug → list of group folder names with repo_access.
 
-    Only groups with an explicit repo_access slug in config.toml are included.
+    Uses the three-tier merge cascade so that repo_access inherited from a
+    sandbox profile is correctly resolved.
     """
     result: dict[str, list[str]] = {}
     for profile in workspaces.values():
-        config = load_workspace_config(profile.folder)
-        if config and config.repo_access:
-            result.setdefault(config.repo_access, []).append(profile.folder)
+        resolved = load_resolved_config(profile.folder)
+        if resolved and resolved.repo_access:
+            result.setdefault(resolved.repo_access, []).append(profile.folder)
     return result
 
 
@@ -243,13 +244,15 @@ async def reconcile_workspaces(
     reconciled = 0
     for folder, spec in specs.items():
         config = spec.config
+        resolved = load_resolved_config(folder)
         context_mode = config.context_mode or s.sandbox_universal.context_mode or "group"
+        resolved_repo_access = resolved.repo_access if resolved else config.repo_access
 
         if config.name:
             display_name = config.name
-        elif config.repo_access:
+        elif resolved_repo_access:
             # Slack channel names can't contain slashes — use double-dash convention
-            display_name = config.repo_access.replace("/", "--")
+            display_name = resolved_repo_access.replace("/", "--")
         else:
             display_name = folder.replace("-", " ").title()
 
@@ -339,7 +342,7 @@ async def reconcile_workspaces(
                     "schedule_type": "cron",
                     "schedule_value": config.schedule,
                     "context_mode": context_mode,
-                    "repo_access": config.repo_access,
+                    "repo_access": resolved_repo_access,
                     "next_run": next_run,
                     "status": "active",
                     "created_at": datetime.now(UTC).isoformat(),
@@ -358,8 +361,8 @@ async def reconcile_workspaces(
                 updates["next_run"] = compute_next_run("cron", config.schedule, s.timezone)
             if existing_task.prompt != config.prompt:
                 updates["prompt"] = config.prompt
-            if existing_task.repo_access != config.repo_access:
-                updates["repo_access"] = config.repo_access
+            if existing_task.repo_access != resolved_repo_access:
+                updates["repo_access"] = resolved_repo_access
             if updates:
                 await update_task(existing_task.id, updates)
                 logger.info(
