@@ -11,8 +11,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pynchy.config import get_settings
-from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
 from pynchy.logger import logger
+from pynchy.plugins.channels.slack._blocks import SlackBlocksFormatter
 from pynchy.types import InboundFetchResult, NewMessage, OutboundEvent
 
 from ._ui import (
@@ -90,7 +90,7 @@ class SlackChannel:
         on_ask_user_answer: Callable[[str, dict], None] | None = None,
     ) -> None:
         self.name = connection_name
-        self.formatter = TextFormatter()
+        self.formatter = SlackBlocksFormatter()
         self._connection_name = connection_name
         self._bot_token = bot_token
         self._app_token = app_token
