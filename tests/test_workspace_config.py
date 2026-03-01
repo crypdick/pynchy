@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -118,54 +117,28 @@ class TestWorkspaceConfigModel:
 
 class TestGetRepoAccess:
     def test_returns_none_when_no_config(self):
-        @dataclass
-        class FakeGroup:
-            is_admin: bool = False
-            folder: str = "dev"
-
         s = _settings_with_workspaces(workspaces={})
         with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
-            assert get_repo_access(FakeGroup()) is None
+            assert get_repo_access("dev") is None
 
     def test_returns_slug_from_config(self):
-        @dataclass
-        class FakeGroup:
-            is_admin: bool = False
-            folder: str = "dev"
-
         s = _settings_with_workspaces(
             workspaces={"dev": WorkspaceConfig(name="test", repo_access="owner/myrepo")}
         )
         with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
-            assert get_repo_access(FakeGroup()) == "owner/myrepo"
+            assert get_repo_access("dev") == "owner/myrepo"
 
     def test_admin_without_explicit_repo_access_returns_none(self):
         """Admin groups no longer get implicit repo access."""
-
-        @dataclass
-        class FakeGroup:
-            is_admin: bool = True
-            folder: str = "admin-1"
-
         s = _settings_with_workspaces(
             workspaces={"admin-1": WorkspaceConfig(name="test", is_admin=True)}
         )
         with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
-            assert get_repo_access(FakeGroup()) is None
+            assert get_repo_access("admin-1") is None
 
 
 class TestGetRepoAccessGroups:
     def test_maps_slug_to_folders(self):
-        @dataclass
-        class FakeProfile:
-            is_admin: bool
-            folder: str
-
-        workspaces = {
-            "jid1": FakeProfile(is_admin=False, folder="code-improver"),
-            "jid2": FakeProfile(is_admin=False, folder="plain"),
-            "jid3": FakeProfile(is_admin=False, folder="other-project"),
-        }
         s = _settings_with_workspaces(
             workspaces={
                 "code-improver": WorkspaceConfig(name="test", repo_access="owner/pynchy"),
@@ -174,7 +147,7 @@ class TestGetRepoAccessGroups:
             }
         )
         with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
-            result = get_repo_access_groups(workspaces)
+            result = get_repo_access_groups(["code-improver", "plain", "other-project"])
 
         assert "owner/pynchy" in result
         assert set(result["owner/pynchy"]) == {"code-improver", "other-project"}

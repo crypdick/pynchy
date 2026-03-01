@@ -174,17 +174,14 @@ async def _setup_channels(app: PynchyApp) -> None:
 async def _reconcile_state(app: PynchyApp) -> dict[str, list[str]]:
     """Worktree + workspace reconciliation.  Returns repo_groups."""
     from pynchy.host.git_ops.worktree import reconcile_worktrees_at_startup
-    from pynchy.host.orchestrator.workspace_config import reconcile_workspaces
+    from pynchy.host.orchestrator.workspace_config import (
+        get_repo_access_groups,
+        reconcile_workspaces,
+    )
 
     s = get_settings()
 
-    from pynchy.host.orchestrator.workspace_config import load_resolved_config
-
-    repo_groups: dict[str, list[str]] = {}
-    for folder in s.workspaces:
-        resolved = load_resolved_config(folder)
-        if resolved and resolved.repo_access:
-            repo_groups.setdefault(resolved.repo_access, []).append(folder)
+    repo_groups = get_repo_access_groups(s.workspaces)
 
     await asyncio.to_thread(
         reconcile_worktrees_at_startup,

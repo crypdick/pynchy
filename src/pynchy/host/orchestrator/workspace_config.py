@@ -9,7 +9,7 @@ Runtime creation (e.g. via IPC) writes new sections using add_workspace_to_toml(
 from __future__ import annotations
 
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -193,33 +193,33 @@ def load_resolved_config(group_folder: str) -> ResolvedSandboxConfig | None:
     return merge_sandbox_config(s.sandbox_universal, profile, ws)
 
 
-def get_repo_access(group: WorkspaceProfile) -> str | None:
-    """Return the repo_access slug for a group, or None if not configured.
+def get_repo_access(group_folder: str) -> str | None:
+    """Return the repo_access slug for a group folder, or None if not configured.
 
     Uses the three-tier merge cascade so that repo_access inherited from a
     sandbox profile is correctly resolved.
     """
-    resolved = load_resolved_config(group.folder)
+    resolved = load_resolved_config(group_folder)
     slug = resolved.repo_access if resolved else None
     logger.debug(
         "Checked repo access",
-        folder=group.folder,
+        folder=group_folder,
         slug=slug,
     )
     return slug
 
 
-def get_repo_access_groups(workspaces: dict[str, Any]) -> dict[str, list[str]]:
+def get_repo_access_groups(folders: Iterable[str]) -> dict[str, list[str]]:
     """Return a mapping of slug → list of group folder names with repo_access.
 
     Uses the three-tier merge cascade so that repo_access inherited from a
     sandbox profile is correctly resolved.
     """
     result: dict[str, list[str]] = {}
-    for profile in workspaces.values():
-        resolved = load_resolved_config(profile.folder)
-        if resolved and resolved.repo_access:
-            result.setdefault(resolved.repo_access, []).append(profile.folder)
+    for folder in folders:
+        slug = get_repo_access(folder)
+        if slug:
+            result.setdefault(slug, []).append(folder)
     return result
 
 
@@ -244,9 +244,8 @@ async def reconcile_workspaces(
     reconciled = 0
     for folder, spec in specs.items():
         config = spec.config
-        resolved = load_resolved_config(folder)
         context_mode = config.context_mode or s.sandbox_universal.context_mode or "group"
-        resolved_repo_access = resolved.repo_access if resolved else config.repo_access
+        resolved_repo_access = get_repo_access(folder)
 
         if config.name:
             display_name = config.name
