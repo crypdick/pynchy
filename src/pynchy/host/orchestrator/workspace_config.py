@@ -30,6 +30,7 @@ from pynchy.utils import compute_next_run
 if TYPE_CHECKING:
     import pluggy
 
+    from pynchy.config.merge import ResolvedSandboxConfig
     from pynchy.types import Channel, WorkspaceProfile
 
 
@@ -158,18 +159,38 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
     s = get_settings()
     config = spec.config
 
-    # Apply workspace defaults for None fields
+    # Apply sandbox_universal defaults for None fields
     if config.context_mode is None:
-        config = config.model_copy(update={"context_mode": s.workspace_defaults.context_mode})
+        default_context_mode = s.sandbox_universal.context_mode or "group"
+        config = config.model_copy(update={"context_mode": default_context_mode})
 
     logger.debug(
         "Loaded workspace config",
         folder=group_folder,
-        is_admin=config.is_admin,
+        is_admin=config.is_admin or False,
         repo_access=config.repo_access,
         is_periodic=config.is_periodic,
     )
     return config
+
+
+def load_resolved_config(group_folder: str) -> ResolvedSandboxConfig | None:
+    """Load and merge the full config cascade for a sandbox.
+
+    Returns None if the group has no config.
+    """
+    from pynchy.config.merge import merge_sandbox_config
+
+    ws = load_workspace_config(group_folder)
+    if ws is None:
+        return None
+
+    s = get_settings()
+    profile = None
+    if ws.profile:
+        profile = s.sandbox_profiles.get(ws.profile)
+
+    return merge_sandbox_config(s.sandbox_universal, profile, ws)
 
 
 def get_repo_access(group: WorkspaceProfile) -> str | None:
@@ -222,7 +243,7 @@ async def reconcile_workspaces(
     reconciled = 0
     for folder, spec in specs.items():
         config = spec.config
-        context_mode = config.context_mode or s.workspace_defaults.context_mode
+        context_mode = config.context_mode or s.sandbox_universal.context_mode or "group"
 
         if config.name:
             display_name = config.name
@@ -262,7 +283,7 @@ async def reconcile_workspaces(
                 folder=folder,
                 trigger=f"@{s.agent.name}",
                 added_at=datetime.now(UTC).isoformat(),
-                is_admin=config.is_admin,
+                is_admin=config.is_admin or False,
             )
             await register_fn(profile)
             folder_to_jid[folder] = jid
@@ -270,7 +291,7 @@ async def reconcile_workspaces(
                 "Registered workspace for configured chat",
                 name=display_name,
                 folder=folder,
-                is_admin=config.is_admin,
+                is_admin=config.is_admin or False,
             )
         elif expected_jid and jid != expected_jid:
             logger.warning(

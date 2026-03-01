@@ -173,14 +173,14 @@ class TestAdminCleanRoomGroupExpansion:
 
 
 class TestAdminCleanRoomAllKeyword:
-    """The 'all' keyword expands to all MCP servers."""
+    """The '*' wildcard expands to all MCP servers."""
 
     def test_rejects_all_when_any_public_source(self):
         with pytest.raises(ValidationError, match="public_source"):
             Settings(
                 connection=_base_connection(),
                 sandbox={
-                    "admin-ws": _ws(is_admin=True, mcp_servers=["all"]),
+                    "admin-ws": _ws(is_admin=True, mcp_servers=["*"]),
                 },
                 mcp_servers={
                     "safe-mcp": McpServerConfig(type="docker", image="s:latest", port=8080),

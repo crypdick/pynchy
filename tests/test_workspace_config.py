@@ -8,7 +8,8 @@ from unittest.mock import patch
 
 from conftest import make_settings
 
-from pynchy.config import WorkspaceConfig, WorkspaceDefaultsConfig
+from pynchy.config import WorkspaceConfig
+from pynchy.config.models import SandboxProfileConfig
 from pynchy.host.orchestrator.workspace_config import (
     configure_plugin_workspaces,
     get_repo_access,
@@ -20,11 +21,11 @@ from pynchy.host.orchestrator.workspace_config import (
 def _settings_with_workspaces(
     *,
     workspaces: dict[str, WorkspaceConfig] | None = None,
-    defaults: WorkspaceDefaultsConfig | None = None,
+    defaults: SandboxProfileConfig | None = None,
 ):
     return make_settings(
         workspaces=workspaces or {},
-        workspace_defaults=defaults or WorkspaceDefaultsConfig(),
+        sandbox_universal=defaults or SandboxProfileConfig(),
     )
 
 
@@ -40,7 +41,7 @@ class TestLoadWorkspaceConfig:
     def test_applies_workspace_defaults(self):
         s = _settings_with_workspaces(
             workspaces={"team": WorkspaceConfig(name="test", is_admin=False)},
-            defaults=WorkspaceDefaultsConfig(trigger="always", context_mode="isolated"),
+            defaults=SandboxProfileConfig(trigger="always", context_mode="isolated"),
         )
         with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
             cfg = load_workspace_config("team")
@@ -104,7 +105,7 @@ class TestLoadWorkspaceConfig:
 class TestWorkspaceConfigModel:
     def test_defaults(self):
         cfg = WorkspaceConfig(name="test")
-        assert cfg.is_admin is False
+        assert cfg.is_admin is None
         assert cfg.trigger is None
         assert cfg.repo_access is None
         assert cfg.context_mode is None
