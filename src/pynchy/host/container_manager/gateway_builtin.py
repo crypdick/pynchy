@@ -25,6 +25,12 @@ from pynchy.logger import logger
 
 _ANTHROPIC_BASE = "https://api.anthropic.com"
 _OPENAI_BASE = "https://api.openai.com"
+# Load-bearing: required for the Anthropic API to accept OAuth tokens at all.
+# Without this header, Bearer-auth with a sk-ant-oat01-* token returns 401
+# "OAuth authentication is currently not supported." The misleading error text
+# suggests a feature gap, but it's actually a missing-header gate — this beta
+# flag is what unlocks the subscription-billed OAuth path.
+# Verified empirically 2026-04-24. Do not remove without re-testing.
 _ANTHROPIC_OAUTH_BETA = "oauth-2025-04-20"
 
 _STRIP_REQUEST_HEADERS = frozenset({"authorization", "x-api-key", "host", "content-length"})

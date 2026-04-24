@@ -14,6 +14,7 @@ from pynchy.host.container_manager.gateway import (
     _load_or_create_persistent_key,
     start_gateway,
 )
+from pynchy.host.container_manager.gateway_builtin import _ANTHROPIC_OAUTH_BETA
 
 # ---------------------------------------------------------------------------
 # LiteLLMGateway — unit tests (Docker calls mocked)
@@ -318,6 +319,71 @@ class TestBuiltinGateway:
         gw = BuiltinGateway(port=4010, host="0.0.0.0", container_host="host.docker.internal")
         assert gw.has_provider("anthropic") is False
         assert gw.has_provider("openai") is False
+
+
+class TestBuiltinGatewayOAuthHeader:
+    """Lock in the OAuth beta header invariant.
+
+    Without ``anthropic-beta: oauth-2025-04-20``, Anthropic rejects OAuth tokens
+    with 401 ``"OAuth authentication is currently not supported."``  This header
+    is the sole mechanism converting subscription-OAuth credentials into accepted
+    API calls — and the sole reason pynchy containers are subscription-billed
+    rather than API-billed. Removing it silently breaks billing.
+    """
+
+    @staticmethod
+    def _make_gateway(creds_type: str) -> BuiltinGateway:
+        gw = BuiltinGateway(port=4010, host="0.0.0.0", container_host="host.docker.internal")
+        gw._credentials = {
+            "anthropic": {"type": creds_type, "value": "sk-ant-secret"},
+        }
+        return gw
+
+    @staticmethod
+    def _make_request(headers: dict[str, str] | None = None) -> MagicMock:
+        request = MagicMock()
+        request.headers = headers or {}
+        return request
+
+    def test_oauth_creds_inject_beta_header(self):
+        gw = self._make_gateway("oauth")
+        headers = gw._build_upstream_headers(self._make_request(), "anthropic")
+        assert _ANTHROPIC_OAUTH_BETA in headers.get("anthropic-beta", ""), (
+            "OAuth token requests must carry the anthropic-beta: oauth-2025-04-20 "
+            "header or Anthropic returns 401. See gateway_builtin.py for context."
+        )
+
+    def test_oauth_creds_use_bearer_auth(self):
+        gw = self._make_gateway("oauth")
+        headers = gw._build_upstream_headers(self._make_request(), "anthropic")
+        assert headers["Authorization"] == "Bearer sk-ant-secret"
+        assert "x-api-key" not in headers
+
+    def test_api_key_creds_do_not_set_beta_header(self):
+        gw = self._make_gateway("api_key")
+        headers = gw._build_upstream_headers(self._make_request(), "anthropic")
+        assert headers["x-api-key"] == "sk-ant-secret"
+        assert "Authorization" not in headers
+        assert "anthropic-beta" not in headers
+
+    def test_oauth_preserves_existing_beta_flags(self):
+        """Clients may send their own anthropic-beta flags; don't clobber them."""
+        gw = self._make_gateway("oauth")
+        headers = gw._build_upstream_headers(
+            self._make_request({"anthropic-beta": "prompt-caching-2024-07-31"}),
+            "anthropic",
+        )
+        beta = headers["anthropic-beta"]
+        assert "prompt-caching-2024-07-31" in beta
+        assert _ANTHROPIC_OAUTH_BETA in beta
+
+    def test_oauth_beta_not_duplicated_if_already_present(self):
+        gw = self._make_gateway("oauth")
+        headers = gw._build_upstream_headers(
+            self._make_request({"anthropic-beta": _ANTHROPIC_OAUTH_BETA}),
+            "anthropic",
+        )
+        assert headers["anthropic-beta"].count(_ANTHROPIC_OAUTH_BETA) == 1
 
 
 # ---------------------------------------------------------------------------
