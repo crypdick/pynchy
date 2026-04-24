@@ -5,14 +5,14 @@
 - If something looks over-engineered, think about how to simplify it
 - **Prefer simplification and code removal**: If you find legacy fallbacks, backwards compatibility shims, or deprecated patterns, prefer to delete them and use the latest pattern. Reduce bloat by removing code rather than adding more.
 - If there are parallel implementations for the same functionality, consolidate them. But don't be too pedantic about it; if it's just a couple of lines of code that appear in a couple of places, it's usually not worth the effort.
-- If a change requires design input, do not make the change. add the proposal to backlog/0-proposed/ and a human will review it.
-- Prefix all commits with `[code improver]`
+- remove overly defensive try/except blocks that swallow errors. we should only swallow try/except errors for expected errors during normal operation, not to sweep potential bugs under the rug.
 - Fix warnings in tests.
 - Never make purely cosmetic changes
 - Don't make 'god' modules. Files should generally max out around ~450 lines. Files much larger than this should be refactored.
+- If a change requires design input, do not make the change. add the proposal to backlog/0-proposed/ and a human will review it.
 - Keep docs and comments up to date in accordance to the [contributing-docs.md](../../docs/contributing/contributing-docs.md) file.
 - making sure plugin-specific code doesn't leak into the core codebase; it should stay with the plugin.
-- remove overly defensive try/except blocks that swallow errors. we should only swallow try/except errors for expected errors during normal operation, not to sweep potential bugs under the rug.
+- Prefix all commits with `[code improver]`
 
 ## Production Architecture
 
