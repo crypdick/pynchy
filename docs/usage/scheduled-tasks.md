@@ -1,12 +1,12 @@
 # Scheduled Tasks
 
-This page covers how to schedule recurring and one-time tasks. Use scheduled tasks to automate briefings, maintenance scripts, periodic code reviews, or any other job that should run on a timer.
+Schedule recurring or one-time tasks: briefings, maintenance scripts, periodic code reviews, or anything else that runs on a timer.
 
-Pynchy supports two kinds: **agent tasks** (run a Claude agent in a container) and **host tasks** (execute shell commands directly on the host). Both use the same set of MCP tools.
+Two kinds: **agent tasks** (run a Claude agent in a container) and **host tasks** (run shell commands on the host). Both use the same MCP tools.
 
 ## Agent Tasks
 
-Agent tasks spin up a containerized Claude agent on schedule. The agent receives a prompt and can use all its normal tools (Bash, MCP, etc.), just as if a user had sent a message. Any group can schedule agent tasks for itself; the admin group can schedule them for any group.
+Agent tasks spin up a containerized Claude agent on schedule. The agent gets a prompt and uses its normal tools (Bash, MCP, etc.), as if a user had sent the message. Any group can schedule agent tasks for itself; the admin group can schedule them for any group.
 
 ### Context Modes
 
@@ -15,13 +15,13 @@ Agent tasks spin up a containerized Claude agent on schedule. The agent receives
 | `group` | Runs in the group's current session (shares conversation history) |
 | `isolated` | Runs in a fresh session each time |
 
-Agent tasks can optionally send messages to their group via `send_message`, or complete silently. Each task run gets logged to the database with duration and result. If the task has `pynchy_repo_access`, worktree commits merge and push after a successful run.
+Agent tasks can optionally send messages to their group via `send_message`, or finish silently. Each run is logged to the database with duration and result. If the task has `pynchy_repo_access`, worktree commits merge and push after a successful run.
 
 ## Host Tasks
 
-Host tasks run shell commands directly on the host — no LLM, no container. Use them for maintenance scripts, backups, git operations, or anything that doesn't need an agent. Only the admin group can create and manage host tasks.
+Host tasks run shell commands on the host — no LLM, no container. Use them for maintenance scripts, backups, git operations, or anything that doesn't need an agent. Only the admin group can create and manage host tasks.
 
-Two definition methods exist:
+Two ways to define them:
 
 ### Config file (`config.toml`)
 
@@ -36,15 +36,15 @@ timeout_seconds = 600           # default: 600
 enabled = true                  # default: true
 ```
 
-Config cron jobs only support cron expressions. The scheduler polls them each tick and runs them in the host process. They don't appear in `list_tasks` (static config, not database entries).
+Config cron jobs only support cron expressions. The scheduler polls them each tick and runs them in the host process. They don't show up in `list_tasks` (static config, not database entries).
 
 ### MCP tool (`schedule_task` with `task_type: "host"`)
 
-Agents in the admin group can create host jobs dynamically via `schedule_task` with `task_type` set to `"host"`. The database stores these jobs, and they support all schedule types (cron, interval, once). They appear in `list_tasks` and can be paused/resumed/cancelled like agent tasks.
+Agents in the admin group can create host jobs dynamically via `schedule_task` with `task_type` set to `"host"`. The database stores them, and they support all schedule types (cron, interval, once). They show up in `list_tasks` and can be paused/resumed/cancelled like agent tasks.
 
 ## MCP Tools
 
-A single set of tools manages all task types. The `schedule_task` tool uses a `task_type` parameter (`"agent"` or `"host"`) to determine what kind of task to create. The management tools (`list_tasks`, `pause_task`, etc.) work on both types — host job IDs carry a `host-` prefix so routing happens automatically.
+One set of tools manages all task types. `schedule_task` takes a `task_type` parameter (`"agent"` or `"host"`) to pick what kind of task to create. Management tools (`list_tasks`, `pause_task`, etc.) work on both — host job IDs carry a `host-` prefix so routing happens automatically.
 
 | Tool | Purpose |
 |------|---------|

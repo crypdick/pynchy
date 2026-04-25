@@ -1,6 +1,6 @@
 # Workspaces
 
-This page explains how managed workspace definitions work under the hood. Understanding this helps you build plugins that ship preconfigured agents — periodic code reviewers, monitoring bots, or any agent that should "just work" after installation.
+How managed workspace definitions work under the hood. Use this page to build plugins that ship preconfigured agents — periodic code reviewers, monitoring bots, or anything that should "just work" after installation.
 
 Workspaces are pluggable. Plugins can provide workspace specs that create groups and scheduled tasks automatically.
 
@@ -8,7 +8,7 @@ Workspaces are pluggable. Plugins can provide workspace specs that create groups
 
 A workspace spec is a declaration: "this agent should exist with these settings." It includes a folder name and configuration (schedule, prompt, access level).
 
-At startup, Pynchy **reconciles** workspace specs against the database — creating groups and scheduling tasks as needed. This means a plugin can ship a fully configured periodic agent that activates the moment you install the package. Agent instructions are delivered via [directives](../usage/directives.md) rather than seeded files.
+At startup, Pynchy **reconciles** workspace specs against the database — creating groups and scheduling tasks as needed. A plugin can ship a fully configured periodic agent that activates the moment you install the package. Agent instructions are delivered via [directives](../usage/directives.md) rather than seeded files.
 
 ## Config Merging
 
@@ -24,7 +24,7 @@ This lets plugins provide sensible defaults while users retain full control.
 
 ## Reconciliation
 
-Scheduled tasks and workspace state live in the database, but the **source of truth is `config.toml`** (and plugin specs). On every startup, `reconcile_workspaces()` syncs the declared configuration into the database:
+Scheduled tasks and workspace state live in the database, but the **source of truth is `config.toml`** (and plugin specs). On every startup, `reconcile_workspaces()` syncs the declared config into the database:
 
 1. Merges plugin specs with `config.toml` workspaces
 2. Creates chat groups for workspaces missing database entries
@@ -33,13 +33,13 @@ Scheduled tasks and workspace state live in the database, but the **source of tr
 
 ### Automatic config-to-database sync
 
-For periodic agents, the reconciler compares the database row against `config.toml` on every startup. If any of the following fields differ, it patches the database to match:
+For periodic agents, the reconciler compares the database row against `config.toml` on every startup. If any of these fields differ, it patches the database to match:
 
 - **`schedule`** — also recalculates `next_run` when the cron expression changes
 - **`prompt`** — updates the prompt sent to the agent on each scheduled run
 - **`repo_access`** — updates the repo worktree mount
 
-This means editing `config.toml` and restarting the service is all that's needed to change a schedule, prompt, or repo access. No manual database edits required.
+To change a schedule, prompt, or repo access, edit `config.toml` and restart the service. No manual database edits required.
 
 ## Workspace Config Fields
 

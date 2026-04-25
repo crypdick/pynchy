@@ -40,7 +40,7 @@ def pynchy_agent_core_info(self) -> dict[str, str | list[str] | None]:
 
 ## pynchy_service_handler
 
-Provide host-side handlers for service tools. This hook provides handler functions that run on the **host process** and are dispatched to via IPC when container agents invoke service tools.
+Provide host-side handlers for service tools. The handler functions run in the **host process** and are dispatched via IPC when container agents invoke service tools.
 
 **Calling strategy:** All results collected; tool mappings are merged (last-write-wins on conflict).
 
@@ -138,7 +138,7 @@ Workspaces opt into skills via the `skills` config field:
 skills = ["core", "dev"]           # tier names and/or individual skill names
 ```
 
-When `skills` is not set, only core-tier skills are included (safe default). When set, entries are unioned — `["core", "my-skill"]` means all core-tier skills plus `my-skill` specifically. Core is always implicit when any filtering is active. Use `["all"]` to include every available skill.
+When `skills` is unset, only core-tier skills are included (safe default). When set, entries are unioned — `["core", "my-skill"]` means all core-tier skills plus `my-skill`. Core is always implicit when any filtering is active. Use `["all"]` to include every skill.
 
 ## pynchy_create_channel
 
@@ -239,7 +239,7 @@ def pynchy_tunnel(self) -> Any | None:
 | `is_connected()` | `() -> bool` | Returns whether the tunnel is currently connected |
 | `status_summary()` | `() -> str` | Human-readable status string for logging |
 
-**Built-in:** Tailscale is provided as a built-in plugin (`src/pynchy/tunnels/plugins/tailscale.py`). It shells out to `tailscale status --json` and checks `BackendState`.
+**Built-in:** Tailscale ships as a built-in plugin (`src/pynchy/tunnels/plugins/tailscale.py`). It shells out to `tailscale status --json` and checks `BackendState`.
 
 ## pynchy_observer
 
@@ -273,7 +273,7 @@ def pynchy_observer(self) -> Any | None:
 **Built-in:** The SQLite observer (`src/pynchy/observers/plugins/sqlite_observer/`) stores all events to a dedicated `events` table in the main database.
 
 !!! warning
-    Observer plugins run **in the host process** and subscribe to all events. A misbehaving observer can slow down event dispatch. Keep handlers lightweight and non-blocking.
+    Observer plugins run **in the host process** and subscribe to every event. A misbehaving observer can slow down event dispatch. Keep handlers light and non-blocking.
 
 ## pynchy_memory
 
@@ -353,7 +353,7 @@ def pynchy_mcp_server_spec(self) -> list[dict[str, Any]]:
 | `env_forward` | `list[str] \| dict[str, str] \| None` | Host env vars to forward |
 | `volumes` | `list[str] \| None` | Volume mounts as `"host_path:container_path"` strings; supports `{key}` placeholders expanded from instance kwargs |
 
-**Instance expansion:** Users don't configure the base spec — they declare *instances* in `config.toml` that reference the plugin-provided template:
+**Instance expansion:** Users don't configure the base spec. They declare *instances* in `config.toml` that reference the plugin-provided template:
 
 ```toml
 [mcp_servers.gdrive.anyscale]
@@ -413,7 +413,7 @@ class CalendarPlugin:
         return [str(Path(__file__).parent / "skills" / "calendar")]
 ```
 
-No categories attribute needed — pluggy determines capabilities from which hooks the class implements.
+No categories attribute needed. Pluggy figures out capabilities from which hooks the class implements.
 
 ## Hook Execution Order
 

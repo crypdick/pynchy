@@ -1,10 +1,10 @@
 # Inter-Process Communication (IPC)
 
-Containers communicate with the host through a file-based IPC channel. The container writes JSON files to shared directories; the host watches for filesystem events (watchdog/inotify) and processes them immediately.
+Containers talk to the host through a file-based IPC channel. The container writes JSON files to shared directories; the host watches for filesystem events (watchdog/inotify) and processes them immediately.
 
 ## Why File-Based
 
-Containers have no network route back to the host. File mounts provide the only shared surface, so IPC uses atomic file writes (temp file + rename) to pass structured messages between the two processes without sockets, HTTP, or message queues.
+Containers have no network route back to the host. File mounts are the only shared surface, so IPC uses atomic file writes (temp file + rename) to pass structured messages between the two processes — no sockets, HTTP, or message queues required.
 
 ## Directory Layout
 
@@ -45,7 +45,7 @@ The host only reads `.json` files, so the `.json.tmp` intermediate is never pick
 
 ## Message Flow (Host → Container)
 
-When a user sends a follow-up message while the container is already running, the host writes to `data/ipc/{group}/input/`. The container's agent runner watches this directory and injects the message into the active conversation via stdin.
+When a user sends a follow-up message while the container is running, the host writes to `data/ipc/{group}/input/`. The container's agent runner watches this directory and injects the message into the active conversation via stdin.
 
 ## IPC Protocol
 
@@ -110,7 +110,7 @@ The host enforces permissions based on the source group's identity. See [Securit
 
 Service requests use the `service:<tool_name>` type prefix for request-response IPC. The container writes a request with a unique `request_id` to `tasks/`, and the host writes the response to `responses/{request_id}.json`. The container polls for the response file.
 
-Service requests go through the [security policy middleware](security.md) before dispatch. Plugin-provided handlers process the request and return a result or error.
+Service requests pass through the [security policy middleware](security.md) before dispatch. Plugin-provided handlers process the request and return a result or error.
 
 Current service tools:
 
@@ -119,7 +119,7 @@ Current service tools:
 
 ## Security Requests
 
-Security requests use the `security:` type prefix. Unlike service requests (which are initiated by MCP tools), security requests originate from the agent runner's `BEFORE_TOOL_USE` hooks — the agent never sees them unless a command is blocked.
+Security requests use the `security:` type prefix. Unlike service requests (initiated by MCP tools), security requests originate from the agent runner's `BEFORE_TOOL_USE` hooks — the agent never sees them unless a command is blocked.
 
 ### `security:bash_check`
 
@@ -146,10 +146,10 @@ The container's bash security hook sends this request when a command is not on t
 
 When the decision is `needs_human`, the host creates a pending approval (broadcast to the chat channel) and does **not** write a response file. The container blocks until the human approves or denies, or the 300-second timeout expires.
 
-The `security:` prefix is registered as a prefix handler — all `security:*` IPC types route to the same handler module. This makes the namespace extensible for future security gates without additional IPC wiring.
+The `security:` prefix is registered as a prefix handler — all `security:*` IPC types route to the same handler module, so adding new security gates needs no extra IPC wiring.
 
 ## Container-Side MCP Server
 
-The agent interacts with IPC through MCP tools exposed by the agent tools MCP server (running inside the container). These tools validate inputs and write the appropriate JSON files. The agent never writes IPC files directly.
+The agent interacts with IPC through MCP tools exposed by the agent tools MCP server (running inside the container). These tools validate inputs and write the JSON files. The agent never writes IPC files directly.
 
 For the list of MCP tools available to agents, see [Scheduled Tasks](../usage/scheduled-tasks.md#mcp-tools).

@@ -1,6 +1,6 @@
 # Installation Guide
 
-This guide walks through installing Pynchy on macOS or Linux, for both desktop and headless server deployments.
+Install Pynchy on macOS or Linux — desktop or headless server.
 
 ## Prerequisites
 

@@ -1,6 +1,6 @@
 # Architecture
 
-This section explains how Pynchy works under the hood. Understanding these concepts helps you troubleshoot issues, reason about security boundaries, and extend the system through plugins.
+How Pynchy works under the hood. Read this to troubleshoot issues, reason about security boundaries, and extend the system through plugins.
 
 ## System Overview
 
@@ -47,7 +47,7 @@ graph TB
 
 ## Pluggable Subsystems
 
-These subsystems have dedicated architecture pages explaining their internal design. Each is backed by a pluggy hook and can be extended or replaced via plugins.
+Each subsystem below is backed by a pluggy hook and can be extended or replaced via plugins.
 
 | Topic | Hook | What it covers |
 |-------|------|---------------|

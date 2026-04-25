@@ -1,6 +1,6 @@
 # Packaging & Distribution
 
-This page covers how to package, distribute, and install pynchy plugins. Follow these conventions to make your plugin discoverable and installable by other users.
+How to package, distribute, and install pynchy plugins. Following these conventions makes your plugin discoverable and installable by other users.
 
 ## Plugin Package Structure
 
@@ -25,7 +25,7 @@ Pynchy discovers plugins via Python entry points. In your `pyproject.toml`:
 my-plugin = "pynchy_plugin_name:MyPlugin"
 ```
 
-The group **must** be `"pynchy"`. The key (left side) provides a human-readable name. The value points to your plugin class.
+The group **must** be `"pynchy"`. The key (left side) is a human-readable name. The value points to your plugin class.
 
 ## Naming Conventions
 
@@ -61,7 +61,7 @@ uv pip install git+https://${GITHUB_TOKEN}@github.com/user/pynchy-plugin-voice.g
 uv pip install -e /path/to/pynchy-plugin-voice
 ```
 
-Editable installs reflect code changes immediately — no reinstall needed.
+Editable installs pick up code changes immediately. No reinstall needed.
 
 ## Verifying Installation
 
@@ -83,11 +83,11 @@ Restart pynchy — the plugin's hooks are no longer called.
 
 ## Container Dependencies
 
-Plugins that provide container-side code (MCP servers, agent cores) need their dependencies available inside the container.
+Plugins that ship container-side code (MCP servers, agent cores) need their dependencies inside the container.
 
-**Packages already in the container image:** `mcp`, `croniter`, Python standard library, Claude Agent SDK.
+**Already in the container image:** `mcp`, `croniter`, Python standard library, Claude Agent SDK.
 
-**If your plugin needs additional packages,** document this in your README. Users add them to their container Dockerfile:
+**If your plugin needs more,** document it in your README. Users add them to their container Dockerfile:
 
 ```dockerfile
 RUN pip install openai-whisper

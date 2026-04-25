@@ -21,7 +21,7 @@ Plugins come as regular Python packages, discovered automatically at startup. In
 | **MCP Server** | `pynchy_mcp_server_spec()` | On-demand tool servers (Docker or script) | Host + Container |
 | **Workspace** | `pynchy_workspace_spec()` | Managed workspace/task definitions (e.g. periodic agents) | Host |
 
-A single plugin can implement multiple hooks. For example, a "voice" plugin might provide both an MCP server (transcription tools) and a skill (voice interaction patterns).
+A single plugin can implement multiple hooks. A "voice" plugin might provide both an MCP server (transcription tools) and a skill (voice interaction patterns).
 
 > **LLM Gateway:** Regardless of which Agent Core plugin is active, all LLM API calls route through a host-side [LiteLLM](https://docs.litellm.ai/docs/) gateway. This provides automatic load balancing across APIs, access to [100+ LLM providers](https://docs.litellm.ai/docs/providers), and credential isolation — containers never see real API keys. Configure it via `litellm_config.yaml` (see [Container Isolation — Environment Variable Isolation](../architecture/container-isolation.md#environment-variable-isolation)).
 
@@ -35,9 +35,9 @@ App starts
   → Ready: pm.hook.pynchy_agent_core_info(), etc.
 ```
 
-Built-in plugins are part of the monorepo and loaded from a static registry in `src/pynchy/plugins/__init__.py`. Plugins with optional dependencies (WhatsApp, Slack, CalDAV) are gracefully skipped if their packages aren't installed.
+Built-in plugins live in the monorepo and load from a static registry in `src/pynchy/plugins/__init__.py`. Plugins with optional dependencies (WhatsApp, Slack, CalDAV) are gracefully skipped if their packages aren't installed.
 
-Third-party plugins register via `pyproject.toml` entry points in the `"pynchy"` group. Installation activates them. Uninstalling removes them. No config files needed.
+Third-party plugins register via `pyproject.toml` entry points in the `"pynchy"` group. Installing activates them. Uninstalling removes them. No config files needed.
 
 ## Security Model
 

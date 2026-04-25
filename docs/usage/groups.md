@@ -1,6 +1,6 @@
 # Groups
 
-This page covers how to manage groups and understand the admin channel's privileges. Groups provide isolated contexts — each group has its own memory, filesystem, and container sandbox.
+Groups are isolated contexts — each one has its own memory, filesystem, and container sandbox.
 
 ## Group Management
 
@@ -11,7 +11,7 @@ This page covers how to manage groups and understand the admin channel's privile
 
 ## Admin Channel Privileges
 
-The admin channel serves as the admin/control group (typically your WhatsApp self-chat).
+The admin channel is the admin/control group (typically your WhatsApp self-chat).
 
 | Capability | Admin | Non-Admin |
 |------------|-----|---------|

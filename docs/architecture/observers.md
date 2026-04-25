@@ -1,12 +1,12 @@
 # Observers
 
-This page explains the event observation system — how Pynchy emits events and how plugins can subscribe to persist or process them. Understanding this helps you build monitoring, analytics, or debugging tools for your Pynchy installation.
+The event observation system — how Pynchy emits events and how plugins subscribe to persist or process them. Use this page to build monitoring, analytics, or debugging tools for your Pynchy installation.
 
-Observers are pluggable. The built-in observer stores events to SQLite, but alternative backends (OpenTelemetry, log files, external services) can be added via plugins.
+Observers are pluggable. The built-in observer stores events to SQLite. Alternative backends (OpenTelemetry, log files, external services) can be added via plugins.
 
 ## Event Bus
 
-Pynchy uses a lightweight asyncio event dispatcher. Components emit events during normal operation, and observers subscribe to the event types they care about.
+Pynchy uses a small asyncio event dispatcher. Components emit events during normal operation, and observers subscribe to the event types they care about.
 
 **Design properties:**
 
@@ -43,7 +43,7 @@ Persists all events to a dedicated `events` table in the main SQLite database.
 
 **What it stores:** event type, chat JID, timestamp, and a JSON payload with event-specific fields. Message content is truncated to 500 characters.
 
-**Indexes:** event type, chat JID, and timestamp — designed for querying event history by group or time range.
+**Indexes:** event type, chat JID, and timestamp — for querying event history by group or time range.
 
 ---
 

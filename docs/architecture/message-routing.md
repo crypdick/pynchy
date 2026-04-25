@@ -1,12 +1,12 @@
 # Message Routing
 
-This page explains how messages flow from channels to agents and back. Understanding the routing model helps you debug message delivery and reason about what the LLM sees in its context. For user-facing information on talking to your assistant (trigger words, message prefixes), see [Usage](../usage/index.md).
+How messages flow from channels to agents and back. Read this to debug message delivery and reason about what the LLM sees in its context. For user-facing info on talking to your assistant (trigger words, message prefixes), see [Usage](../usage/index.md).
 
 Messages arrive from plugin-provided [channels](../usage/channels.md) (WhatsApp, Slack, TUI, etc.) and all flow through the same routing code path.
 
 ## Transparent Token Stream
 
-The chat history faithfully represents the LLM's token stream. A user reading the conversation can reconstruct the exact contents of the LLM context. Nothing hides; every message type appears visible and distinguishable.
+The chat history mirrors the LLM's token stream. A user reading the conversation can reconstruct the exact contents of the LLM context. Nothing hides; every message type is visible and distinguishable.
 
 The sender vocabulary in the database:
 

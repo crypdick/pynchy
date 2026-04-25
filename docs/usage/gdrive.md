@@ -48,9 +48,9 @@ Ask your agent to set up Google for the profile:
 @Pynchy set up Google for the mycompany profile
 ```
 
-The agent calls `setup_google(chrome_profile="mycompany")`, which automates the full GCP setup flow: create a project, enable the Drive API, configure OAuth consent, create credentials, and run the OAuth authorization. You click "Allow" on the Google consent screen to grant read-only Drive access.
+The agent calls `setup_google(chrome_profile="mycompany")`, which automates the full GCP setup: create a project, enable the Drive API, configure OAuth consent, create credentials, run the OAuth authorization. You click "Allow" on the Google consent screen to grant read-only Drive access.
 
-On a **headless server**, the agent returns a noVNC URL — open it in your browser to interact with the GCP Console and Google login.
+On a **headless server**, the agent returns a noVNC URL — open it to interact with the GCP Console and Google login.
 
 ## 4. Verify
 
@@ -87,11 +87,11 @@ The Drive API isn't enabled for your GCP project. Ask the agent to set up Google
 
 ### Token expired / authentication errors
 
-Ask the agent to set up Google for the profile again. The `setup_google` tool is idempotent — it detects that credentials exist but tokens are expired, and runs only the OAuth flow.
+Ask the agent to set up Google for the profile again. `setup_google` is idempotent — it detects that credentials exist but tokens are expired, and runs only the OAuth flow.
 
 ### noVNC not loading
 
-Ensure `xvfb`, `x11vnc`, and `novnc` are installed on the host. The setup tools start the virtual display automatically, but the packages must be present.
+Make sure `xvfb`, `x11vnc`, and `novnc` are installed on the host. The setup tools start the virtual display automatically, but the packages must be present.
 
 ### Browser lock files after crash
 

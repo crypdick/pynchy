@@ -1,10 +1,10 @@
 # Directives
 
-This page explains how to configure system prompt directives — the mechanism that controls what instructions your agents receive. Understanding directives helps you customize agent behavior without editing code.
+Directives are how you customize what instructions your agents receive in their system prompt — without editing code.
 
 ## What Directives Are
 
-Directives are markdown files that get injected into an agent's system prompt. They contain behavioral instructions, persona definitions, tool usage guidance, and anything else that shapes how the agent operates. Different sandboxes can receive different sets of directives, so you can give admin agents different instructions than regular group agents.
+Directives are markdown files injected into an agent's system prompt. They contain behavioral instructions, persona definitions, tool usage guidance, and anything else that shapes how the agent operates. Different sandboxes can receive different sets of directives, so admin agents and regular group agents can get different instructions.
 
 ## Convention-Based Resolution
 
@@ -16,11 +16,11 @@ Directive names map to files by convention:
 "pynchy-dev"     →  directives/pynchy-dev.md
 ```
 
-There is no registry or config mapping — the name **is** the path. Place your directive file at `directives/<name>.md` and reference it by name in your config.
+No registry or config mapping — the name **is** the path. Place your directive file at `directives/<name>.md` and reference it by name in your config.
 
 ## Assigning Directives
 
-Directives are assigned through sandbox config tiers in `config.toml`. There are three tiers, and directive lists are **unioned** across all of them:
+Directives are assigned through sandbox config tiers in `config.toml`. Three tiers, with lists **unioned** across all of them:
 
 ### 1. `[sandbox_universal]` — applies to every sandbox
 
@@ -46,24 +46,24 @@ directives = ["extra-safety"]
 
 ### How Tiers Merge
 
-Directive lists are **unioned** across all three tiers with order-preserved deduplication. Given the config above, a sandbox using the `pynchy-dev` profile with its own `["extra-safety"]` directive receives:
+The three lists are unioned with order-preserved dedup. Given the config above, a sandbox using the `pynchy-dev` profile with its own `["extra-safety"]` directive gets:
 
 ```
 ["base", "idle-escape", "pynchy-admin-ops", "pynchy-code-improver", "extra-safety"]
 ```
 
-Universal directives come first, then profile directives, then per-sandbox directives. Duplicates are removed (first occurrence wins).
+Universal first, then profile, then per-sandbox. First occurrence wins on duplicates.
 
 ## File Location and Format
 
-Directive files live under `directives/` in the project root. They are plain markdown — write them the same way you would write a CLAUDE.md file. Multiple matching directives are concatenated with `---` separators.
+Directive files live under `directives/` in the project root. Plain markdown — write them like a CLAUDE.md file. Multiple matching directives are concatenated with `---` separators.
 
-Files ending in `.EXAMPLE` are automatically ignored (they exist as templates in the repo).
+Files ending in `.EXAMPLE` are ignored (they're repo templates).
 
 ## Relationship to CLAUDE.md
 
-Directives are additive to the project's `CLAUDE.md`. Admin and repo_access sandboxes have their `cwd` set to `/workspace/project`, so Claude Code discovers the project-root `CLAUDE.md` natively. Directives provide additional instructions on top of that — things like persona, communication style, and operational procedures that are not appropriate for the project CLAUDE.md.
+Directives stack on top of the project's `CLAUDE.md`. Admin and repo_access sandboxes set `cwd` to `/workspace/project`, so Claude Code finds the project-root `CLAUDE.md` natively. Directives carry the stuff that doesn't belong in the project CLAUDE.md — persona, communication style, operational procedures.
 
 ## KV Cache Considerations
 
-Directive content is stable across session resumes — it does not change between runs. This means the system prompt stays constant, preserving the API's KV cache. Avoid putting ephemeral or frequently-changing content in directives; use system notices for per-run context instead.
+Directive content stays stable across session resumes. The system prompt doesn't change between runs, so the API's KV cache is preserved. Don't put ephemeral or frequently-changing content in directives — use system notices for per-run context.

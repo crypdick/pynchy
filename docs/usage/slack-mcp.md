@@ -1,12 +1,12 @@
 # Slack MCP Server
 
-This page covers setting up [korotovsky/slack-mcp-server](https://github.com/korotovsky/slack-mcp-server) so your agents can read Slack channels, messages, and user lists.
+Set up [korotovsky/slack-mcp-server](https://github.com/korotovsky/slack-mcp-server) so agents can read Slack channels, messages, and user lists.
 
 > **Freshness warning.** The upstream project may change its authentication flow or configuration at any time. If anything here doesn't match, check the [official authentication docs](https://github.com/korotovsky/slack-mcp-server/blob/master/docs/01-authentication-setup.md) first.
 
 ## Why this server?
 
-Pynchy's built-in Slack channel plugin requires a bot token (`xoxb`), which means a workspace admin has to install a Slack app. This MCP server uses browser session tokens instead — you can connect to any Slack workspace you can log into, even ones you don't admin. The tradeoff is that browser tokens expire when you log out or Slack rotates sessions.
+Pynchy's built-in Slack channel plugin needs a bot token (`xoxb`), which means a workspace admin has to install a Slack app. This MCP server uses browser session tokens instead — works on any Slack workspace you can log into, even ones you don't admin. The tradeoff: browser tokens expire when you log out or Slack rotates sessions.
 
 ## Prerequisites
 
@@ -32,7 +32,7 @@ For multiple Slack workspaces, add another entry with a different name, port, an
 
 ## 2. Extract browser tokens
 
-The Slack MCP server authenticates using browser session tokens (`xoxc` and `xoxd`). These are not API tokens — they come from your logged-in Slack browser session.
+The Slack MCP server authenticates using browser session tokens (`xoxc` and `xoxd`). Not API tokens — they come from your logged-in Slack browser session.
 
 ### Get the `xoxc` token
 
@@ -56,7 +56,7 @@ The Slack MCP server authenticates using browser session tokens (`xoxc` and `xox
 
 ### Token lifetime
 
-These are browser session tokens. They expire when you log out of Slack in the browser or when Slack rotates sessions. When they expire, the MCP server will fail to authenticate and you'll need to extract fresh tokens.
+Browser session tokens. They expire when you log out of Slack in the browser or when Slack rotates sessions. Once expired, the MCP server fails to authenticate and you need to extract fresh tokens.
 
 ## 3. Add tokens to `.env`
 
@@ -78,9 +78,9 @@ The Docker container starts on-demand when an agent first needs it. Tools like `
 
 ## 5. Automated token refresh (optional)
 
-Instead of manually extracting tokens from DevTools every time they expire, you can use the **slack-token-extractor** plugin to automate extraction via a persistent browser session.
+Instead of manually extracting tokens from DevTools every time they expire, use the **slack-token-extractor** plugin to automate extraction via a persistent browser session.
 
-The approach: you log into Slack once via a visible browser (handling CAPTCHA, magic links, SSO yourself). The browser session is saved. Future token extractions run headlessly using that saved session — no human interaction needed until Slack's full session expires.
+The approach: log into Slack once via a visible browser (handling CAPTCHA, magic links, SSO yourself). The browser session is saved. Future token extractions run headlessly against that saved session — no human interaction until Slack's full session expires.
 
 ### Setup
 
@@ -99,13 +99,13 @@ uv run --with playwright python -m playwright install chromium
 
 ### Initial login (one-time, requires display)
 
-The first time, a human must complete the Slack login manually. This requires a display server on the host (VNC, SSH X-forwarding, or local desktop):
+The first time, a human must complete the Slack login manually. Needs a display server on the host (VNC, SSH X-forwarding, or local desktop):
 
 ```
 setup_slack_session(workspace_name="acme")
 ```
 
-This opens a visible Chromium window at the Slack login page. Complete the login flow (CAPTCHA, magic link, SSO — whatever Slack requires). Once you reach the Slack client, the session is saved automatically.
+Opens a visible Chromium window at the Slack login page. Complete the login flow (CAPTCHA, magic link, SSO — whatever Slack requires). Once you reach the Slack client, the session is saved automatically.
 
 On headless servers, the tool auto-starts a noVNC virtual display on port 6080 — open `http://<server>:6080/vnc.html?autoconnect=true` to interact with the browser. If Slack login requires a **hardware security key** (YubiKey/FIDO2), run `setup_slack_session` locally instead and rsync the profile:
 
@@ -115,7 +115,7 @@ rsync -az data/playwright-profiles/acme/ server:path/to/pynchy/data/playwright-p
 
 ### Refreshing tokens
 
-Once the session is established, tokens can be refreshed headlessly:
+Once the session is established, tokens refresh headlessly:
 
 ```
 refresh_slack_tokens(
@@ -139,7 +139,7 @@ prompt = "Refresh Slack tokens for ACME workspace using the slack_token_extracto
 mcp_servers = ["slack_token_extractor"]
 ```
 
-When the persistent session expires (Slack rotates sessions periodically), the scheduled refresh will fail with "Not logged in". Run `setup_slack_session` again to re-establish the session.
+When the persistent session expires (Slack rotates sessions periodically), the scheduled refresh fails with "Not logged in". Run `setup_slack_session` again to re-establish the session.
 
 ## 6. Verify
 

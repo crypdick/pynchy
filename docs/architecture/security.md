@@ -1,6 +1,6 @@
 # Pynchy Security Model
 
-This page covers Pynchy's security boundaries, trust model, and credential handling. Read this to understand what agents can and cannot access, and how to evaluate the risk of adding mounts, plugins, or new groups.
+Pynchy's security boundaries, trust model, and credential handling. Read this to understand what agents can and cannot access, and how to evaluate the risk of adding mounts, plugins, or new groups.
 
 ## Trust Model
 
@@ -22,7 +22,7 @@ Agents execute in Apple Container (macOS) or Docker (Linux), providing:
 - **Full container privileges** — runs as root inside the container; container isolation is the security boundary
 - **Ephemeral containers** — fresh environment per invocation (`--rm`)
 
-The container boundary limits the attack surface to what gets mounted, rather than relying on application-level permission checks.
+The container boundary limits the attack surface to what's mounted, rather than relying on application-level permission checks.
 
 ### 2. Mount Security
 
@@ -68,7 +68,7 @@ The host verifies messages and task operations against group identity:
 
 ### 5. Service Trust Policy (Lethal Trifecta Defenses)
 
-Host-side service tools (calendar, Slack, browser, etc.) are gated by `SecurityPolicy`, which prevents the *lethal trifecta*: an agent that simultaneously has access to **untrusted input**, **sensitive data**, and **untrusted output channels**.
+Host-side service tools (calendar, Slack, browser, etc.) are gated by `SecurityPolicy`, which prevents the *lethal trifecta*: an agent with simultaneous access to **untrusted input**, **sensitive data**, and **untrusted output channels**.
 
 Each service declares four trust properties in `config.toml`:
 
@@ -102,17 +102,17 @@ Admin workspaces bypass all policy gates. Admin workspaces are additionally prot
 
 ### 5a. Bash Security Gate
 
-The service trust policy (above) gates MCP service tools, but agents also have access to a general-purpose Bash tool. Without additional controls, a corruption-tainted agent could run `curl`, `python`, or `ssh` to exfiltrate data — bypassing the service trust layer entirely.
+The service trust policy (above) gates MCP service tools, but agents also have a general-purpose Bash tool. Without extra controls, a corruption-tainted agent could run `curl`, `python`, or `ssh` to exfiltrate data — bypassing the service trust layer entirely.
 
 The bash security gate closes this gap. It runs as a `BEFORE_TOOL_USE` hook inside the container, intercepting every Bash tool call before execution. Both the Claude SDK and OpenAI Agents SDK cores wire in the same hook, so the gate applies regardless of which agent framework is active.
 
 **Classification cascade.** The container classifies each command locally using a three-tier system:
 
-1. **Regex whitelist** — provably local commands (`ls`, `cat`, `grep`, `sed`, `jq`, etc.) that cannot reach the network. These execute immediately without IPC.
+1. **Regex whitelist** — provably local commands (`ls`, `cat`, `grep`, `sed`, `jq`, etc.) that cannot reach the network. These run immediately without IPC.
 2. **Regex blacklist** — known network-capable commands (`curl`, `python`, `ssh`, `wget`, `pip install`, etc.). These always escalate to the host.
-3. **Unknown** — commands not on either list. These also escalate to the host for evaluation.
+3. **Unknown** — commands on neither list. Also escalated to the host.
 
-Pipelines and chains are split into segments; a single network-capable segment makes the whole command network-classified.
+Pipelines and chains are split into segments; one network-capable segment makes the whole command network-classified.
 
 **Host-side evaluation.** When a command escalates, the container sends a `security:bash_check` IPC request (see [IPC docs](ipc.md#security-requests)). The host evaluates the command against the session's taint state:
 
@@ -124,11 +124,11 @@ Pipelines and chains are split into segments; a single network-capable segment m
 
 The Cop is the same LLM-based inspector used for host-mutating operations. If the Cop flags a command in a dual-tainted session, the decision escalates to human approval. The 300-second approval timeout matches the existing service approval flow.
 
-**Fail-open design.** If IPC fails (timeout, malformed response), the gate allows the command. This prevents the security gate from breaking normal agent operation during transient failures.
+**Fail-open design.** If IPC fails (timeout, malformed response), the gate allows the command. Otherwise the security gate would break normal agent operation during transient failures.
 
 ### 5b. Host-Mutating Operations (Cop Gate)
 
-Some IPC operations can change what code runs on the host machine. These are **host-mutating** and receive an additional layer of inspection from the Cop — an LLM-based security inspector that reviews payloads for signs of manipulation.
+Some IPC operations change what code runs on the host machine. These are **host-mutating** and get an extra layer of inspection from the Cop — an LLM-based security inspector that reviews payloads for signs of manipulation.
 
 **Host-mutating operations:**
 
@@ -141,7 +141,7 @@ Some IPC operations can change what code runs on the host machine. These are **h
 | `schedule_host_job` | Schedules host command | Command and schedule |
 | Script-type MCP tools | Runs host subprocess | Tool arguments |
 
-**Auto-classified:** MCP servers with `type = "script"` run as host subprocesses. Any tool call to a script-type MCP is implicitly host-mutating and goes through the Cop.
+**Auto-classified:** MCP servers with `type = "script"` run as host subprocesses. Any tool call to a script-type MCP is host-mutating by definition and goes through the Cop.
 
 **Not host-mutating:** Docker-type MCPs (isolated container), URL-type MCPs (remote), and `deploy` (restarts with existing code on main).
 
@@ -153,7 +153,7 @@ Some IPC operations can change what code runs on the host machine. These are **h
 | Flagged (request-reply) | Human approval required |
 | Flagged (fire-and-forget) | Operation blocked, warning broadcast |
 
-The Cop always inspects. Human involvement only when the Cop detects something suspicious.
+The Cop always inspects. Humans only get pulled in when the Cop detects something suspicious.
 
 ### 5c. Admin Clean Room
 
@@ -161,7 +161,7 @@ Admin workspaces cannot have `public_source=true` MCP servers assigned. This is 
 
 This prevents the most privileged workspace from ever being corruption-tainted, eliminating prompt injection as a threat vector for admin operations.
 
-For tasks that require untrusted input (web browsing, email), create a non-admin workspace with appropriate trust declarations.
+For tasks that need untrusted input (web browsing, email), create a non-admin workspace with appropriate trust declarations.
 
 ### 6. Credential Handling
 

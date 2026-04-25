@@ -1,8 +1,6 @@
 # Agent Cores
 
-This page explains how to choose which LLM framework powers your agents. The agent core determines which SDK and model provider the agent uses inside its container.
-
-Agent cores are pluggable. Pynchy ships with two built-in cores, and you can add more (Ollama, local models, etc.) via plugins.
+The agent core determines which LLM SDK and model provider your agents use inside the container. Pynchy ships with two built-in cores, and you can add more (Ollama, local models, etc.) via plugins.
 
 ## Switching Cores
 
@@ -25,38 +23,38 @@ Restart Pynchy after changing the core.
 
 The default core. Uses the Claude Agent SDK (Claude Code) to power agents.
 
-- **Model selection:** Configured via the LiteLLM gateway (see below)
-- **Session management:** Maintains conversation sessions across messages, with auto-compaction when context grows too long
-- **Tools:** Full access to Bash, file operations, MCP servers, and all Claude Code capabilities
+- **Model selection:** via the LiteLLM gateway (see below)
+- **Session management:** maintains conversation sessions across messages, auto-compacts when context grows too long
+- **Tools:** Bash, file operations, MCP servers, and all Claude Code capabilities
 
 ## Built-in: OpenAI Agents SDK
 
 An alternative core using OpenAI's Agents SDK.
 
-- **Activation:** Set `core = "openai"` in config and ensure an OpenAI API key is available
-- **Model selection:** Configured via the LiteLLM gateway
+- **Activation:** set `core = "openai"` in config and make sure an OpenAI API key is available
+- **Model selection:** via the LiteLLM gateway
 
 ## Tool Security
 
-Both cores share the same `BEFORE_TOOL_USE` hook pipeline. Built-in hooks run first (security), followed by any plugin-provided hooks.
+Both cores share the `BEFORE_TOOL_USE` hook pipeline. Built-in security hooks run first; plugin-provided hooks run after.
 
-**Bash security gate.** Every Bash tool call is intercepted before execution. Safe commands (file operations, text processing) run immediately; network-capable commands are evaluated against the session's taint state and may require Cop review or human approval. This is transparent to the agent unless a command is blocked. See [Bash Command Gating](security.md#bash-command-gating) for details.
+**Bash security gate.** Every Bash tool call is intercepted before execution. Safe commands (file operations, text processing) run immediately; network-capable commands are checked against the session's taint state and may require Cop review or human approval. The agent doesn't see this unless a command is blocked. See [Bash Command Gating](security.md#bash-command-gating).
 
-**WebFetch removal.** The `WebFetch` tool has been removed from both cores. Web access is now provided exclusively through the Playwright browser MCP server, which goes through the standard service trust policy as a declared MCP with its own trust properties.
+**WebFetch removal.** The `WebFetch` tool is gone from both cores. Web access goes through the Playwright browser MCP server, which is gated by the standard service trust policy.
 
-**Extensibility.** The `BEFORE_TOOL_USE` hook is extensible via plugins. A plugin can register a hook module that exports a `before_tool_use(tool_name, tool_input)` function returning a `HookDecision`. See the [Plugin Authoring Guide](../plugins/index.md) for details.
+**Extensibility.** Plugins can register their own `BEFORE_TOOL_USE` hooks — a module exporting `before_tool_use(tool_name, tool_input)` that returns a `HookDecision`. See the [Plugin Authoring Guide](../plugins/index.md).
 
 ## LLM Gateway
 
-Regardless of which core is active, all LLM API calls route through a host-side gateway. This provides:
+All LLM API calls — from either core — route through a host-side gateway. You get:
 
 - **Credential isolation** — containers never see real API keys (see [Security Model](../architecture/security.md#6-credential-handling))
-- **Provider flexibility** — access [100+ LLM providers](https://docs.litellm.ai/docs/providers) via LiteLLM
-- **Load balancing** — distribute requests across multiple API keys or providers
+- **Provider flexibility** — [100+ LLM providers](https://docs.litellm.ai/docs/providers) via LiteLLM
+- **Load balancing** — across multiple API keys or providers
 
-The gateway is configured in `litellm_config.yaml` and runs as a Docker container managed by Pynchy. See the [Installation Guide](../install.md) for setup details.
+The gateway is configured in `litellm_config.yaml` and runs as a Docker container managed by Pynchy. See the [Installation Guide](../install.md).
 
-**Key point:** The agent core (Claude SDK vs OpenAI SDK) and the gateway are independent systems. Switching cores doesn't require changing your gateway config, and the gateway can route to any provider regardless of which SDK is in use.
+The core and the gateway are independent. Switching cores doesn't require changing your gateway config, and the gateway routes to any provider regardless of which SDK runs.
 
 ---
 

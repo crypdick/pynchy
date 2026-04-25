@@ -1,6 +1,6 @@
 # Message Types
 
-This page documents the message type system that determines how each message gets stored, filtered, and displayed. Understanding these types helps you debug missing messages, write channel plugins, and trace what the LLM receives in its context.
+The message type system that determines how each message is stored, filtered, and displayed. Use this page to debug missing messages, write channel plugins, and trace what the LLM receives in its context.
 
 ## Message Types
 

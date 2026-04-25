@@ -1,12 +1,12 @@
 # Memory
 
-This page explains how agents remember things across conversations. Understanding memory helps you work effectively with your assistant — it can save preferences, recall past decisions, and maintain context between sessions.
+How agents remember things across conversations. The memory subsystem lets agents save preferences, recall past decisions, and keep context between sessions.
 
-Pynchy's memory subsystem is pluggable. The built-in plugin uses SQLite with full-text search, but alternative backends can be swapped in via plugins.
+The memory subsystem is pluggable. The built-in plugin uses SQLite with full-text search, but you can swap in alternative backends via plugins.
 
 ## How Memory Works
 
-Every group has **isolated memory** — what one group saves, another cannot access. Agents have four tools for managing persistent memory:
+Every group has **isolated memory** — one group can't read another's. Agents have four tools for persistent memory:
 
 | Tool | What it does |
 |------|-------------|
@@ -19,36 +19,36 @@ Each memory has a **key** (unique identifier), **content**, and a **category**:
 
 | Category | Purpose |
 |----------|---------|
-| `core` | Permanent facts (default) — your preferences, project details, recurring instructions |
+| `core` | Permanent facts (default) — preferences, project details, recurring instructions |
 | `daily` | Session context — ephemeral notes for the current work |
-| `conversation` | Auto-archived conversation summaries (created automatically when sessions compact) |
+| `conversation` | Auto-archived conversation summaries (created when sessions compact) |
 
-You don't need to manage categories yourself — the agent picks the right one based on context. `core` is the default for most things you ask it to remember.
+You don't manage categories yourself — the agent picks the right one based on context. `core` is the default for most things you ask it to remember.
 
 ## File-Based Memory
 
-In addition to the structured memory tools above, agents have file-based storage:
+On top of the structured tools above, agents have file-based storage:
 
-- **Per-group memory** — Each group has a folder under `groups/{name}/`. The agent reads files here on every run.
+- **Per-group memory** — Each group has a folder under `groups/{name}/`. The agent reads files there on every run.
 - **Files** — Groups can create and read files in their folder and reference them in conversations.
 
 ### Conversation Archives
 
-When a session compacts (context gets too long), the agent automatically archives the conversation to both:
+When a session compacts (context gets too long), the agent archives the conversation to both:
 
 - A markdown file in the group's `conversations/` folder
 - Structured memory with category `conversation` (searchable via `recall_memories`)
 
 ## Built-in: sqlite-memory
 
-The default memory backend uses **SQLite with FTS5 full-text search**.
+The default backend uses **SQLite with FTS5 full-text search**.
 
 ### How Search Works
 
-`recall_memories` uses a two-tier search strategy:
+`recall_memories` uses a two-tier strategy:
 
 1. **BM25 full-text search** — SQLite FTS5 tokenizes content and ranks results by term frequency. Best for natural language queries ("favorite color", "project deadline").
-2. **LIKE fallback** — If FTS5 returns no results, falls back to substring matching. Catches queries that don't tokenize well (URLs, special characters, partial words).
+2. **LIKE fallback** — If FTS5 returns nothing, fall back to substring matching. Catches queries that don't tokenize well (URLs, special characters, partial words).
 
 ### Storage Details
 

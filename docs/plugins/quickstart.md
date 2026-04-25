@@ -1,6 +1,6 @@
 # Quickstart: Build Your First Plugin
 
-This guide walks you through creating, installing, and testing a pynchy plugin. You'll build a service handler plugin that provides a host-side tool to the agent.
+This guide walks through creating, installing, and testing a pynchy plugin. You'll build a service handler plugin that exposes a host-side tool to the agent.
 
 ## Prerequisites
 
@@ -64,9 +64,9 @@ async def _handle_hello(data: dict) -> dict:
     return {"result": f"Hello, {name}! This is a pynchy plugin tool."}
 ```
 
-That covers the entire plugin. The `@hookimpl` decorator tells pluggy this class implements the `pynchy_service_handler` hook. No base classes, no registration boilerplate.
+That's the whole plugin. The `@hookimpl` decorator tells pluggy this class implements the `pynchy_service_handler` hook. No base classes, no registration boilerplate.
 
-The handler function runs on the **host process** and is dispatched via IPC when an agent invokes the `hello` service tool. Policy middleware (risk tiers, rate limits) is enforced before your handler is called.
+The handler function runs in the **host process** and is dispatched via IPC when an agent invokes the `hello` service tool. Policy middleware (risk tiers, rate limits) runs before your handler.
 
 ## 3. Install and Test
 

@@ -44,7 +44,7 @@ Ask your agent to set up Google for the profile:
 @Pynchy set up Google for the mycompany profile
 ```
 
-The agent calls `setup_google(chrome_profile="mycompany")`. This is idempotent — it checks what's already done and only runs the missing steps. Required OAuth scopes are auto-computed from which services (gdrive, gcal) reference the profile.
+The agent calls `setup_google(chrome_profile="mycompany")`. Idempotent — checks what's already done and only runs the missing steps. Required OAuth scopes are auto-computed from which services (gdrive, gcal) reference the profile.
 
 On a **headless server**, the agent returns a noVNC URL for browser interaction.
 
@@ -75,4 +75,4 @@ The agent sees separate tool namespaces: `mcp__gcal_mycompany__list_events` and 
 
 ## How it works
 
-The gcal MCP server uses `@cocal/google-calendar-mcp`, which has native Streamable HTTP support (no supergateway needed). Credentials from the chrome profile directory are mounted into the container at `/home/chrome/`. The entrypoint copies tokens to gcal's expected format.
+The gcal MCP server uses `@cocal/google-calendar-mcp`, which has native Streamable HTTP support (no supergateway needed). Credentials from the chrome profile directory mount into the container at `/home/chrome/`. The entrypoint copies tokens to gcal's expected format.

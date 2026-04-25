@@ -9,35 +9,35 @@
 
 ## Why Pynchy?
 
-Everyone is writing their own AI assistant. Why write another one? The biggest reason is that I wanted something written in Python, because that's what I'm most comfortable with.
+Everyone is writing their own AI assistant. Why write another one? Mainly because I wanted something written in Python — that's what I'm most comfortable with.
 
 ### Comparison to Related Projects
 
 - [ZeroClaw](https://github.com/theonlyhennygod/zeroclaw) looks great actually, but I don't know how to write in Rust.
 - [Happy](https://github.com/slopus/happy) looks great, but ultimately is a remote terminal to Claude Code. I want to add my own security features. Also, I am not fluent in TypeScript.
-- [NanoClaw](https://github.com/qwibitai/nanoclaw) is a too minimalist.
+- [NanoClaw](https://github.com/qwibitai/nanoclaw) is too minimalist.
 - [OpenClaw](https://github.com/openclaw/openclaw) is a massive pile of overcooked spaghetti code. Ain't no way I'm running that security nightmare on my machine.
-- [pi mono](https://github.com/badlogic/pi-mono) is a less crazy project, which actually OpenClaw built on top of. It doesn't have the security features that I want.
+- [pi mono](https://github.com/badlogic/pi-mono) is a less crazy project, which OpenClaw built on top of. It doesn't have the security features I want.
 
 ## Features
 
-- Agents run in containers, providing process, filesystem, and network isolation.
+- Agents run in containers, with process, filesystem, and network isolation.
 - Built-in plugins ship with the monorepo; third-party plugins are discoverable via Python entry points.
-- Uses [LiteLLM](https://docs.litellm.ai/docs/) as the LLM gateway, providing a bunch of features out of the box:
+- Uses [LiteLLM](https://docs.litellm.ai/docs/) as the LLM gateway, which gives you a bunch of features out of the box:
   - Automatic load balancing across APIs, to soak up your various allowances from different providers.
   - Access to [100+ LLM providers](https://docs.litellm.ai/docs/providers)
   - Cost tracking and budget management.
   - Rate limiting
-  - MCP gateway — centralized management of external MCP tool servers with per-workspace access control, on-demand Docker lifecycle, and config-driven setup.
+  - MCP gateway — manages external MCP tool servers with per-workspace access control and on-demand Docker lifecycle.
   - (see the [LiteLLM docs](https://docs.litellm.ai/docs/) for more details)
-- Customizable; [eight types of plugins](https://pynchy.ricardodecal.com/plugins/) are supported — agent cores, skills, channels, service handlers, container runtimes, workspaces, observers, and tunnels.
+- [Eight types of plugins](https://pynchy.ricardodecal.com/plugins/) — agent cores, skills, channels, service handlers, container runtimes, workspaces, observers, and tunnels.
 - Persistent memory with BM25-ranked full-text search — agents save and recall facts across sessions.
-- Reoccurring tasks can be scheduled to run at a specific time or interval.
+- Recurring tasks scheduled at specific times or intervals.
 - Policy groups to prevent [lethal trifecta prompt injection attacks](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/).
 
 ## Integrations
 
-Built-in plugins provide integrations with external services. All integrations are pluggable — see [plugin authoring](https://pynchy.ricardodecal.com/plugins/) to add your own.
+Built-in plugins provide integrations with external services, and they're all pluggable — see [plugin authoring](https://pynchy.ricardodecal.com/plugins/) to add your own.
 
 | Integration | What it does |
 |-------------|-------------|
@@ -50,7 +50,7 @@ Built-in plugins provide integrations with external services. All integrations a
 
 ## Getting Started
 
-See the **[installation guide](https://pynchy.ricardodecal.com/install/)** to get started.
+See the **[installation guide](https://pynchy.ricardodecal.com/install/)**.
 
 ## Documentation
 
@@ -75,11 +75,11 @@ On macOS, Apple Container is lightweight and optimized for Apple silicon. Docker
 Agents run in containers, not behind application-level permission checks. They can only access explicitly mounted directories. See [the security model](https://pynchy.ricardodecal.com/architecture/security/) for details.
 
 **How do I debug issues?**
-Ask Pynchy. "Why isn't the scheduler running?" "What's in the recent logs?" That's the AI-native approach.
+Ask Pynchy. "Why isn't the scheduler running?" "What's in the recent logs?"
 
 ### Credits
 
-Huge thanks to [NanoClaw](https://github.com/qwibitai/nanoclaw). This project started as a Python port of that project.
+Huge thanks to [NanoClaw](https://github.com/qwibitai/nanoclaw). Pynchy started as a Python port of NanoClaw.
 
 ## License
 

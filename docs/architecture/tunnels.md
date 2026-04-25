@@ -1,14 +1,14 @@
 # Tunnels
 
-This page explains Pynchy's tunnel connectivity detection system. Understanding this helps you ensure your Pynchy instance is reachable remotely — for features like the TUI client, deploy webhooks, and any other HTTP-based access.
+Pynchy's tunnel connectivity detection system. Use this page to make sure your Pynchy instance is reachable remotely — for the TUI client, deploy webhooks, and other HTTP-based access.
 
 Tunnels are pluggable. The built-in plugin detects Tailscale, but alternative providers (Cloudflare Tunnel, WireGuard, etc.) can be added via plugins.
 
 ## What Tunnels Do
 
-Pynchy exposes an HTTP server (default port 8484) for the TUI client, deploy webhooks, and SSE event streaming. If you're running Pynchy on a headless server, you need a way to reach that port from other machines.
+Pynchy exposes an HTTP server (default port 8484) for the TUI client, deploy webhooks, and SSE event streaming. On a headless server, you need a way to reach that port from other machines.
 
-The tunnel subsystem **detects** whether a tunnel is available — it doesn't create or manage tunnels itself. At startup, Pynchy checks all registered tunnel providers and warns you if none are connected.
+The tunnel subsystem **detects** whether a tunnel is available — it doesn't create or manage tunnels itself. At startup, Pynchy checks every registered tunnel provider and warns if none are connected.
 
 **This is purely informational.** If no tunnel is detected, Pynchy continues running normally. You might still have connectivity through other means (direct network access, port forwarding, etc.).
 
@@ -33,7 +33,7 @@ Detects Tailscale connectivity by running `tailscale status --json` and checking
 
 - **Available** when the `tailscale` CLI is installed
 - **Connected** when `BackendState == "Running"`
-- Handles failures gracefully — CLI not found, timeouts, and parse errors all result in "not connected"
+- Failures fall through to "not connected" — CLI not found, timeouts, and parse errors are all treated the same
 
 ## Tunnel Provider Contract
 

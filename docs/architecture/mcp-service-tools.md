@@ -1,8 +1,8 @@
 # MCP Service Tools
 
-This page explains how host-side service tools work — tools that agents invoke via MCP but that execute on the host process rather than inside the container. Understanding this helps you build plugins that give agents access to host resources (calendars, databases, external APIs) while maintaining security boundaries.
+How host-side service tools work — tools that agents invoke via MCP but that run on the host process rather than inside the container. Use this page to build plugins that give agents access to host resources (calendars, databases, external APIs) while keeping security boundaries intact.
 
-MCP service tool handlers are pluggable. The built-in CalDAV plugin provides calendar tools, and the memory plugin provides memory tools. Additional host-side tools can be added via plugins.
+MCP service tool handlers are pluggable. The built-in CalDAV plugin provides calendar tools and the memory plugin provides memory tools. Additional host-side tools can be added via plugins.
 
 ## How Service Tools Work
 
@@ -12,11 +12,11 @@ Unlike regular MCP servers (which run inside the container), service tool handle
 Agent → MCP tool call → IPC request → Host policy check → Plugin handler → IPC response → Agent
 ```
 
-This architecture lets agents interact with host resources (calendars, databases, network services) that aren't accessible from inside the container sandbox.
+This lets agents interact with host resources (calendars, databases, network services) that aren't reachable from inside the container sandbox.
 
 ## Security Policy
 
-All service tool requests pass through `SecurityPolicy` before reaching the plugin handler. Each service declares four trust properties (`public_source`, `secret_data`, `public_sink`, `dangerous_writes`) that control how the policy gates access based on taint tracking.
+All service tool requests pass through `SecurityPolicy` before reaching the plugin handler. Each service declares four trust properties (`public_source`, `secret_data`, `public_sink`, `dangerous_writes`) that control gating based on taint tracking.
 
 Admin workspaces bypass all policy gates. Non-admin workspaces are gated by service trust declarations — see [Service Trust Policy](security.md#5-service-trust-policy-lethal-trifecta-defenses) for the architecture and [Service Trust](../usage/security.md) for configuration.
 

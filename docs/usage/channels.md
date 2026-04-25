@@ -1,22 +1,20 @@
 # Channels
 
-This page explains how Pynchy connects to messaging platforms. Channels are how you talk to your assistant — whether through WhatsApp, Slack, or a terminal UI.
-
-Channels are pluggable. The built-in options cover common platforms, but you can add more (Telegram, Discord, etc.) via plugins.
+Channels are how you talk to your assistant — WhatsApp, Slack, or a terminal UI. They're pluggable; built-ins cover the common platforms, and you can add more (Telegram, Discord, etc.) via plugins.
 
 ## Multi-Channel Sync
 
-All channels see the same messages. Send a message from WhatsApp, and the response shows up in Slack and the TUI too. This means you can:
+All channels see the same messages. Send from WhatsApp, the response also shows up in Slack and the TUI. So you can:
 
 - Start a conversation on your phone (WhatsApp) and continue at your desk (TUI or Slack)
-- Monitor agent activity from any connected platform
-- Use whichever channel is most convenient at the moment
+- Watch agent activity from any connected platform
+- Use whichever channel is convenient
 
-Under the hood, all outbound messages route through a unified broadcast bus. Each channel maps its platform-specific identifiers (WhatsApp phone numbers, Slack channel IDs) to a canonical group ID, so the agent sees one conversation regardless of which channels are connected.
+Outbound messages route through a single broadcast bus. Each channel maps its platform-specific identifiers (WhatsApp phone numbers, Slack channel IDs) to a canonical group ID, so the agent sees one conversation no matter which channels are connected.
 
 ## Built-in: WhatsApp
 
-The primary channel for most users. Uses the neonize library (whatsmeow Python bindings).
+The primary channel for most users. Uses neonize (whatsmeow Python bindings).
 
 **Setup:**
 ```bash
@@ -65,7 +63,7 @@ uv sync --extra slack
 
 ## Built-in: TUI
 
-A terminal UI client built with Textual. Connects to Pynchy's HTTP/SSE server — no external service needed.
+A terminal UI built with Textual. Connects to Pynchy's HTTP/SSE server — no external service needed.
 
 **Usage:**
 ```bash
@@ -73,11 +71,11 @@ uv run pynchy --tui                          # Local
 uv run pynchy --tui --host your-server:8484  # Remote (over Tailscale)
 ```
 
-The TUI is always available — no configuration or extra dependencies required.
+The TUI is always available — no config or extra dependencies required.
 
 ## Enabling and Disabling Channels
 
-Channels activate automatically when their dependencies are installed and configured. To disable a specific channel:
+Channels activate automatically once their dependencies are installed and configured. To turn one off:
 
 ```toml
 [plugins.slack]
@@ -88,7 +86,7 @@ If a channel's dependencies aren't installed or its config section is missing, i
 
 ## Default Channel
 
-The default channel determines which platform creates the admin channel on first run:
+The default channel picks which platform creates the admin channel on first run:
 
 ```toml
 [channels]

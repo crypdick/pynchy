@@ -1,10 +1,10 @@
 # Notebooks
 
-The built-in notebook MCP server lets agents create, execute, and manage Jupyter notebooks and Quarto documents (.qmd). Agents interact through MCP tools; humans view results in JupyterLab.
+The built-in notebook MCP server lets agents create, execute, and manage Jupyter notebooks and Quarto documents (.qmd). Agents talk to it through MCP tools; humans view results in JupyterLab.
 
 ## Installation
 
-The notebook server runs as a Docker container. The image is built automatically on deploy (`src/pynchy/agent/build.sh`) or on first use by the MCP manager. To build manually:
+The notebook server runs as a Docker container. The image builds automatically on deploy (`src/pynchy/agent/build.sh`) or on first use by the MCP manager. To build manually:
 
 ```bash
 docker build -t pynchy-mcp-notebook:latest -f src/pynchy/agent/mcp/notebook.Dockerfile .
@@ -12,13 +12,13 @@ docker build -t pynchy-mcp-notebook:latest -f src/pynchy/agent/mcp/notebook.Dock
 
 ## How it works
 
-The notebook server is a first-party plugin that runs as a Docker container, sandboxing all kernel execution. It provides:
+The notebook server is a first-party plugin running as a Docker container, sandboxing all kernel execution. It provides:
 
 - **MCP tools** for agents — start kernels, execute code cells, add markdown, save/load notebooks
-- **JupyterLab** for humans — a web frontend on port 8888 for viewing and interacting with notebooks
+- **JupyterLab** for humans — web frontend on port 8888 for viewing and interacting with notebooks
 - **IPython kernels** managed directly via `jupyter_client` — no `jupyter_server` overhead
 
-Agents interact with notebooks exclusively through MCP tools, which handle kernel lifecycle, cell execution, output collection, and auto-saving. Agents can also read and edit `.qmd` files directly from the workspace, since notebooks live in `groups/<workspace>/notebooks/` (mounted at `/workspace/group/notebooks/` inside the container).
+Agents work with notebooks only through MCP tools, which handle kernel lifecycle, cell execution, output collection, and auto-saving. They can also read and edit `.qmd` files directly from the workspace, since notebooks live in `groups/<workspace>/notebooks/` (mounted at `/workspace/group/notebooks/` inside the container).
 
 ## Enabling notebooks
 
@@ -29,13 +29,13 @@ Add `"notebook"` to a workspace's MCP server list:
 mcp_servers = ["notebook"]
 ```
 
-No per-workspace config required. The server automatically scopes notebooks to `groups/<workspace>/notebooks/` and sets the kernel's working directory to `groups/<workspace>/`, so the agent can reference workspace files naturally (e.g., `pd.read_csv("mydata.csv")`).
+No per-workspace config needed. The server scopes notebooks to `groups/<workspace>/notebooks/` and sets the kernel's working directory to `groups/<workspace>/`, so the agent references workspace files naturally (e.g., `pd.read_csv("mydata.csv")`).
 
 Each workspace gets its own server instance — no cross-workspace contamination.
 
 ## Default format: Quarto (.qmd)
 
-Notebooks default to **.qmd** (Quarto markdown) rather than .ipynb. Quarto documents use plain text with code fences, making them more readable for agents and easier to diff in version control:
+Notebooks default to **.qmd** (Quarto markdown) rather than .ipynb. Quarto documents are plain text with code fences — easier for agents to read and easier to diff in version control:
 
 ````markdown
 ## Sales Analysis
@@ -55,7 +55,7 @@ To work with .ipynb files instead, include the extension in the notebook name (e
 
 ## MCP tools
 
-All tools become available once the workspace includes `"notebook"` in its server list.
+All tools are available once the workspace includes `"notebook"` in its server list.
 
 ### Kernel lifecycle
 
@@ -67,13 +67,13 @@ All tools become available once the workspace includes `"notebook"` in its serve
 
 ### Working with cells
 
-**`execute_cell(kernel_id, code)`** — Execute Python code. Returns outputs (text, image file paths, errors). The cell and its outputs append to the notebook and auto-save to disk. Images save automatically to `<notebook>_files/` alongside the notebook.
+**`execute_cell(kernel_id, code)`** — Execute Python code. Returns outputs (text, image file paths, errors). The cell and outputs append to the notebook and auto-save to disk. Images save to `<notebook>_files/` alongside the notebook.
 
 **`add_markdown(kernel_id, content)`** — Add a markdown cell. Auto-saves to disk.
 
 ### File operations
 
-**`save_as(kernel_id, name)`** — Save under a different name. Use `.qmd` or `.ipynb` extension to control format.
+**`save_as(kernel_id, name)`** — Save under a different name. Use `.qmd` or `.ipynb` extension to pick format.
 
 **`read_notebook(name)`** — Read an existing notebook without starting a kernel. Returns structured cell contents.
 
@@ -108,17 +108,17 @@ When an agent calls `start_kernel(name="q4-sales-analysis")` for an existing not
 1. Starts a fresh IPython kernel
 2. Loads the notebook from disk
 3. Re-executes all code cells sequentially to restore kernel state
-4. Returns a summary: cell count, any errors during replay
+4. Returns a summary: cell count and any errors during replay
 
-This lets agents resume work across sessions without losing state. The kernel starts fresh, but replaying the cells restores all variables and imports.
+Agents can resume work across sessions without losing state. The kernel starts fresh, but replaying the cells restores all variables and imports.
 
 ## Agent-friendly output
 
-The kernel auto-configures libraries for text-friendly output at startup:
+At startup, the kernel auto-configures libraries for text-friendly output:
 
 - **Pandas** — wide column display, increased row/column limits for readable tables
 - **Matplotlib** — non-interactive `Agg` backend (avoids GUI window attempts)
-- **Images** — all `image/png` outputs (matplotlib plots, PIL images, etc.) save automatically to `<notebook>_files/cell_N.png`. The agent receives the file path instead of raw base64.
+- **Images** — all `image/png` outputs (matplotlib plots, PIL images, etc.) save to `<notebook>_files/cell_N.png`. The agent gets the file path instead of raw base64.
 
 ### Finding saved images
 
@@ -133,22 +133,22 @@ For example, a notebook named `q4-sales-analysis` that produces a plot in cell 3
 - **Relative path** (returned by tool): `q4-sales-analysis_files/cell_3.png`
 - **Container path**: `/workspace/group/notebooks/q4-sales-analysis_files/cell_3.png`
 
-If a single cell produces multiple images, they're suffixed: `cell_3_1.png`, `cell_3_2.png`, etc.
+If a single cell produces multiple images, they get suffixed: `cell_3_1.png`, `cell_3_2.png`, etc.
 
 ## Installing dependencies
 
-The container ships with common data-science libraries pre-installed (pandas, matplotlib, numpy). When you need a package that isn't available, install it at runtime from a notebook cell using `uv`:
+The container ships with common data-science libraries (pandas, matplotlib, numpy). When you need something else, install it at runtime from a notebook cell using `uv`:
 
 ```python
 import subprocess
 subprocess.run(["uv", "pip", "install", "--system", "seaborn"], check=True)
 ```
 
-Use `--system` because the container runs without a virtual environment. Installed packages persist for the lifetime of the container but are lost when it restarts (idle timeout, deploy, manual stop). Add frequently needed packages to `src/pynchy/agent/mcp/notebook.Dockerfile` instead.
+Use `--system` because the container runs without a virtual environment. Installed packages last for the lifetime of the container but are lost when it restarts (idle timeout, deploy, manual stop). Add frequently needed packages to `src/pynchy/agent/mcp/notebook.Dockerfile` instead.
 
 ## Direct file access
 
-Since notebooks live inside the workspace folder (`/workspace/group/notebooks/`), agents can also:
+Notebooks live inside the workspace folder (`/workspace/group/notebooks/`), so agents can also:
 
 - Read `.qmd` files from previous sessions directly with filesystem tools
 - Edit earlier cells by modifying the `.qmd` file, then re-executing with `start_kernel(name=...)`
@@ -156,13 +156,13 @@ Since notebooks live inside the workspace folder (`/workspace/group/notebooks/`)
 
 ## Viewing notebooks
 
-JupyterLab runs alongside the MCP server on port 8888 (no authentication — designed for Tailscale access). Open `http://pynchy-server:8888` to browse and interact with notebooks.
+JupyterLab runs alongside the MCP server on port 8888 (no auth — designed for Tailscale access). Open `http://pynchy-server:8888` to browse and interact with notebooks.
 
-Notebooks auto-save on every `execute_cell` and `add_markdown` call, so JupyterLab always reflects the latest state.
+Notebooks auto-save on every `execute_cell` and `add_markdown` call, so JupyterLab always shows the latest state.
 
 ## Idle timeout
 
-The MCP manager stops the container after 30 minutes of no MCP tool calls. Notebook files persist on the host (bind-mounted workspace), so no data is lost. The next agent tool call starts a fresh container automatically.
+The MCP manager stops the container after 30 minutes of no MCP tool calls. Notebook files persist on the host (bind-mounted workspace), so no data is lost. The next agent tool call starts a fresh container.
 
 ---
 

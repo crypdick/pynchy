@@ -1,10 +1,10 @@
 # Memory and Sessions — Architecture
 
-This page covers the internal design of the memory subsystem and session management. For user-facing memory documentation (tools, categories, file-based memory), see [Usage — Memory](../usage/memory.md).
+Internal design of the memory subsystem and session management. For user-facing memory docs (tools, categories, file-based memory), see [Usage — Memory](../usage/memory.md).
 
 ## Memory Plugin Architecture
 
-Memory is a pluggable subsystem defined by the `pynchy_memory` hookspec. Any plugin implementing this hook can provide an alternative memory backend.
+Memory is pluggable via the `pynchy_memory` hookspec. Any plugin implementing this hook can provide an alternative memory backend.
 
 **Hookspec contract:**
 

@@ -1,6 +1,6 @@
 # Usage
 
-This section covers day-to-day operation of Pynchy — managing groups, scheduling tasks, and interacting with your agents.
+Day-to-day operation of Pynchy — managing groups, scheduling tasks, talking to your agents.
 
 ## What You Can Do
 
@@ -33,17 +33,17 @@ From the Admin channel (your self-chat), you can manage groups and tasks:
 
 ## Messaging During Active Tasks
 
-When an agent already works on something (a user message or scheduled task), new messages behave differently depending on the prefix:
+When the agent is busy (handling a user message or scheduled task), new messages behave differently depending on prefix:
 
-**btw ...** adds context to work already in progress ("btw the file is in `/tmp/data.csv`"). The agent sees it as a follow-up message.
+**btw ...** adds context to in-flight work ("btw the file is in `/tmp/data.csv`"). The agent sees it as a follow-up message.
 
-**todo ...** queues items for the agent to handle later without derailing the current task ("todo also rename the config keys when you're done"). The agent views and manages the todo list via `list_todos` and `complete_todo` MCP tools.
+**todo ...** queues an item for later without derailing the current task ("todo also rename the config keys when you're done"). The agent views and manages the todo list via `list_todos` and `complete_todo` MCP tools.
 
-Sending a normal message (no prefix) interrupts the active task — the container stops and your new message gets processed from scratch.
+A normal message (no prefix) interrupts the active task — the container stops and your new message starts fresh.
 
 ## Customizing
 
-No configuration files to learn. Just tell Pynchy what you want:
+No config files to learn. Just tell Pynchy what you want:
 
 - "Change the trigger word to @Bob"
 - "Remember in the future to make responses shorter and more direct"
