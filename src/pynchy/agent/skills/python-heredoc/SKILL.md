@@ -6,7 +6,7 @@ tier: core
 
 # Python Heredoc Pattern
 
-When you need to run Python code via `Bash`, **never** use `python -c "..."` for anything beyond trivial one-liners. Shell quoting breaks with f-strings, apostrophes, nested quotes, and escape sequences.
+Run Python via `Bash`? **Never** `python -c "..."` beyond trivial one-liners. Shell quoting break on f-strings, apostrophes, nested quotes, escape sequences.
 
 ## Use heredoc syntax instead
 
@@ -19,7 +19,7 @@ print(json.dumps(data, indent=2))
 PYTHON_CODE
 ```
 
-The single quotes around `'PYTHON_CODE'` prevent shell variable expansion, so `$variables` and backticks are treated as literal Python code.
+Single quotes round `'PYTHON_CODE'` block shell var expansion. `$variables` and backticks stay literal Python.
 
 ## With dependencies
 
@@ -34,7 +34,7 @@ PYTHON_CODE
 
 ## Rules
 
-1. Always use `uv run python` (not bare `python` or `python3`)
-2. Always quote the delimiter: `<< 'PYTHON_CODE'` (not `<< PYTHON_CODE`)
-3. The closing `PYTHON_CODE` must be on its own line with no leading whitespace
-4. Never use `python -c` for code containing quotes, f-strings, or multiple statements
+1. Always `uv run python` (not bare `python` or `python3`)
+2. Always quote delimiter: `<< 'PYTHON_CODE'` (not `<< PYTHON_CODE`)
+3. Closing `PYTHON_CODE` own line, no leading whitespace
+4. Never `python -c` for code with quotes, f-strings, multiple statements

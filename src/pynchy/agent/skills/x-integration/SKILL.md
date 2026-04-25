@@ -6,33 +6,33 @@ tier: social
 
 # X (Twitter) Integration
 
-Automates X/Twitter actions via Playwright browser automation with a persistent Chromium profile.
+Automate X/Twitter actions via Playwright browser automation, persistent Chromium profile.
 
 ## System requirements
 
-Requires a system Chrome/Chromium binary — `CHROME_PATH` must be set in `.env` (e.g. `CHROME_PATH=/usr/bin/google-chrome-stable`). Playwright's bundled Chromium is not used because X fingerprints it as a bot.
+Need system Chrome/Chromium binary — `CHROME_PATH` must be set in `.env` (e.g. `CHROME_PATH=/usr/bin/google-chrome-stable`). Playwright bundled Chromium not used — X fingerprint as bot.
 
-All X tools run in **headed mode** (not headless) because X actively detects and blocks headless browsers. On headless servers, this requires Xvfb (`apt install xvfb`).
+All X tools run **headed mode** (not headless) — X detect + block headless browsers. Headless servers need Xvfb (`apt install xvfb`).
 
-For interactive login via `setup_x_session`, you also need VNC (`apt install x11vnc novnc`).
+Interactive login via `setup_x_session` also need VNC (`apt install x11vnc novnc`).
 
 ## How it works
 
-Playwright drives the system Chrome binary (via `CHROME_PATH`) using persistent browser contexts. After one manual login (human handles CAPTCHA / 2FA), subsequent actions run automatically using the saved session. All tools use headed mode with anti-detection flags to avoid X's bot fingerprinting.
+Playwright drive system Chrome binary (via `CHROME_PATH`) with persistent browser contexts. After one manual login (human do CAPTCHA / 2FA), next actions run auto from saved session. All tools use headed mode + anti-detection flags to dodge X bot fingerprinting.
 
 ## First-time setup (requires human)
 
-Before any X actions can be performed, a human must log in once:
+Human must log in once before any X action:
 
 ```
 setup_x_session()
 ```
 
-This opens a **visible** Chromium window at the X login page. The human completes the login flow. The session is saved for future automated use.
+Opens **visible** Chromium window at X login page. Human do login flow. Session saved for future auto use.
 
-On a **headless server** (no X display), the tool automatically starts Xvfb + noVNC on port 6080. **Before calling** `setup_x_session`, tell the human to open `http://<server>:6080/vnc.html?autoconnect=true` in their browser.
+On **headless server** (no X display), tool auto-starts Xvfb + noVNC on port 6080. **Before call** `setup_x_session`, tell human open `http://<server>:6080/vnc.html?autoconnect=true` in browser.
 
-**Hardware security keys (YubiKey, FIDO2):** noVNC cannot forward WebAuthn challenges — the key must be physically connected to the machine running the browser. If X login requires a hardware key, run `setup_x_session` on a local machine with the key attached, then rsync the profile to the server:
+**Hardware security keys (YubiKey, FIDO2):** noVNC cannot forward WebAuthn challenges — key must physically connect to machine running browser. If X login need hardware key, run `setup_x_session` on local machine with key attached, then rsync profile to server:
 
 ```bash
 rsync -az data/playwright-profiles/x/ server:path/to/pynchy/data/playwright-profiles/x/
@@ -42,36 +42,36 @@ rsync -az data/playwright-profiles/x/ server:path/to/pynchy/data/playwright-prof
 
 ### `setup_x_session(timeout_seconds=120)`
 
-Launch a headed browser for manual X login. Saves the session to a persistent profile for future use.
+Launch headed browser for manual X login. Saves session to persistent profile for future use.
 
-- `timeout_seconds` — how long to wait for login completion (default: 120s)
+- `timeout_seconds` — wait time for login completion (default: 120s)
 
 ### `x_post(content)`
 
-Post a tweet. Content must be 1–280 characters.
+Post tweet. Content 1–280 chars.
 
 ### `x_like(tweet_url)`
 
-Like a tweet. Accepts a full URL (`https://x.com/user/status/123`) or a bare tweet ID.
+Like tweet. Accepts full URL (`https://x.com/user/status/123`) or bare tweet ID.
 
 ### `x_reply(tweet_url, content)`
 
-Reply to a tweet. Content must be 1–280 characters.
+Reply to tweet. Content 1–280 chars.
 
 ### `x_retweet(tweet_url)`
 
-Retweet without comment.
+Retweet, no comment.
 
 ### `x_quote(tweet_url, comment)`
 
-Quote tweet with a comment. Comment must be 1–280 characters.
+Quote tweet with comment. Comment 1–280 chars.
 
 ## Error handling
 
-- **"X login expired"** — The saved browser session has expired. A human needs to run `setup_x_session` again.
-- **"Tweet not found"** — The tweet URL is invalid or the tweet was deleted.
-- **"Post/Submit button disabled"** — Content may be empty or exceed the character limit.
-- **"Login not completed within Xs"** — The human didn't finish the manual login in time. Try again with a longer `timeout_seconds`.
-- **"CHROME_PATH is required"** — Set `CHROME_PATH` in `.env` to the system Chrome/Chromium binary path.
-- **"No display available and Xvfb not installed"** — X tools need headed mode. Install Xvfb on the server.
-- **Selector errors** — X may have changed its UI. Check if the data-testid selectors in the plugin still match X's React components.
+- **"X login expired"** — Saved session expired. Human run `setup_x_session` again.
+- **"Tweet not found"** — Tweet URL invalid or tweet deleted.
+- **"Post/Submit button disabled"** — Content empty or over char limit.
+- **"Login not completed within Xs"** — Human no finish manual login in time. Retry with bigger `timeout_seconds`.
+- **"CHROME_PATH is required"** — Set `CHROME_PATH` in `.env` to system Chrome/Chromium binary path.
+- **"No display available and Xvfb not installed"** — X tools need headed mode. Install Xvfb on server.
+- **Selector errors** — X may change UI. Check data-testid selectors in plugin still match X React components.
