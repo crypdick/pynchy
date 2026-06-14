@@ -322,11 +322,11 @@ class ClaudeAgentCore:
 
         # Discover Claude Code plugins baked into the container image
         plugins_dir = Path("/opt/plugins")
-        plugins = [
-            {"type": "local", "path": str(p)}
-            for p in sorted(plugins_dir.iterdir())
-            if p.is_dir()
-        ] if plugins_dir.is_dir() else []
+        plugins = (
+            [{"type": "local", "path": str(p)} for p in sorted(plugins_dir.iterdir()) if p.is_dir()]
+            if plugins_dir.is_dir()
+            else []
+        )
         if plugins:
             _log(f"Loading plugins: {[p['path'] for p in plugins]}")
 
