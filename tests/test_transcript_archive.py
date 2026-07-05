@@ -1,7 +1,10 @@
-"""Tests for claude core transcript parsing helpers.
+"""Tests for the shared transcript archival helpers.
 
 These functions are pure logic with no SDK dependency — they parse JSONL
-transcripts and format them as markdown for archival.
+transcripts and format them as markdown for archival. They live in
+``agent_runner.transcript_archive`` and are shared by both agent cores (the SDK
+core wraps them in a PreCompact hook; the claude-cli core runs the module's
+``main`` as a PreCompact command hook).
 """
 
 from __future__ import annotations
@@ -9,15 +12,11 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock
-
-# Mock claude_agent_sdk so we can import container code on the host
-sys.modules.setdefault("claude_agent_sdk", MagicMock())
 
 sys.path.insert(
     0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src")
 )
-from agent_runner.cores.claude import (  # noqa: E402
+from agent_runner.transcript_archive import (  # noqa: E402
     _format_transcript_markdown,
     _generate_fallback_name,
     _get_session_summary,

@@ -24,6 +24,13 @@ from agent_runner.hooks import HookDecision, builtin_before_tool_hooks
 # Built-in gate, single-sourced from the shared roster so every core (SDK,
 # OpenAI, and this CLI entrypoint) enforces the same hooks in the same order:
 # first deny wins.
+#
+# NOTE: this is the *built-in* roster only. Unlike the SDK core -- which also
+# registers plugin-provided BEFORE_TOOL_USE hooks (load_hooks(plugin_hooks)) --
+# this entrypoint runs no plugin hooks. Moot today because main.py wires
+# plugin_hooks=[] for every core, but if that TODO is resolved this must grow to
+# load and run the plugin BEFORE_TOOL_USE roster too, or the claude-cli core
+# will silently enforce fewer hooks than the SDK core.
 _HOOKS = tuple(builtin_before_tool_hooks())
 
 

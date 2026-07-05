@@ -100,9 +100,15 @@ class ClaudeCLIAgentCore:
         if self.config.mcp_servers:
             self._mcp_config_json = json.dumps({"mcpServers": self.config.mcp_servers})
 
-        # Settings: attribution off (match the SDK core) + a PreToolUse hook that
-        # shells back into pynchy's Python security gate. The CLI passes the tool
-        # call as JSON on the hook command's stdin and reads a decision on stdout.
+        # Settings: attribution off (match the SDK core) + two command hooks that
+        # shell back into pynchy's Python, mirroring what the SDK core registers
+        # in-process (cores/claude.py). The CLI passes the hook payload as JSON on
+        # each command's stdin.
+        #   - PreToolUse -> the shared BEFORE_TOOL_USE security gate; reads a
+        #     decision back on stdout (see security/hook_entry.py).
+        #   - PreCompact -> archives the transcript before auto-compaction, the
+        #     same behavior the SDK core gets from its PreCompact hook
+        #     (see transcript_archive.py).
         settings: dict[str, Any] = {
             "attribution": {"commit": "", "pr": ""},
             "hooks": {
@@ -118,7 +124,18 @@ class ClaudeCLIAgentCore:
                             }
                         ],
                     }
-                ]
+                ],
+                "PreCompact": [
+                    {
+                        "matcher": "*",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": (f"{sys.executable} -m agent_runner.transcript_archive"),
+                            }
+                        ],
+                    }
+                ],
             },
         }
         self._settings_json = json.dumps(settings)
@@ -278,14 +295,21 @@ class ClaudeCLIAgentCore:
             )
 
         elif msg_type in ("assistant", "user"):
-            # Assistant blocks are thinking/text/tool_use; tool results come back
-            # inside "user" messages as tool_result blocks.
+            # Assistant messages carry thinking/text/tool_use blocks; "user"
+            # messages on this stream carry only tool_result blocks (verified
+            # against claude CLI stream-json output -- the input prompt is *not*
+            # echoed back on stdout). Restrict user-message mapping to
+            # tool_result so a future CLI that echoes a text turn can't surface
+            # the human's own prompt as an agent "text" event.
             content = (obj.get("message") or {}).get("content") or []
             if isinstance(content, str):
-                content = [{"type": "text", "text": content}]
+                content = [{"type": "text", "text": content}] if msg_type == "assistant" else []
             for block in content:
-                if isinstance(block, dict):
-                    events.extend(self._map_block(block))
+                if not isinstance(block, dict):
+                    continue
+                if msg_type == "user" and block.get("type") != "tool_result":
+                    continue
+                events.extend(self._map_block(block))
 
         elif msg_type == "result":
             sid = obj.get("session_id")
