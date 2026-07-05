@@ -64,6 +64,9 @@ dev = [
     "pytest-xdist>=3.8.0",
     "pyupgrade>=3.21.2",
     "ruff>=0.15.0",
+    "types-croniter>=6.2.3.20260704",
+    "types-pyyaml>=6.0.12.20260518",
+    "types-qrcode>=8.2.0.20260518",
     "vulture>=2.16",
     "xenon>=0.9.3",
 ]
@@ -118,6 +121,12 @@ quote-style = "double"
 # ─────────────────────────────────────────────────────────────────────────────
 [tool.mypy]
 strict = true
+# agent_runner is a separate uv sub-project (own venv, own dependency set) that
+# runs inside the agent container, not the host. Its package root is
+# src/pynchy/agent/agent_runner/src, so mypy invoked from here can never resolve
+# its internal imports correctly regardless of config; it's checked on its own
+# via src/pynchy/agent/agent_runner/pyproject.toml's mirrored [tool.mypy].
+exclude = "^src/pynchy/agent/agent_runner/"
 warn_return_any = true
 warn_unused_configs = true
 show_error_codes = true
@@ -142,6 +151,20 @@ disallow_untyped_defs = false
 disallow_untyped_calls = false
 check_untyped_defs = false
 ignore_errors = true
+
+# Optional plugin dependencies (see [project.optional-dependencies]): not installed
+# in the base dev environment, and none ship type stubs or a `types-*` package.
+[[tool.mypy.overrides]]
+module = [
+    "caldav.*",
+    "fastmcp.*",
+    "jupyter_client.*",
+    "neonize.*",
+    "playwright.*",
+    "slack_bolt.*",
+    "ubuntu_namer.*",
+]
+ignore_missing_imports = true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # coverage — ratchet floor set at the measured baseline (68.93%, via
