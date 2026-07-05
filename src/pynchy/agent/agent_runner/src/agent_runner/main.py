@@ -136,7 +136,11 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
         is_scheduled_task=container_input.is_scheduled_task,
         system_prompt_append=system_prompt_append,
         mcp_servers=mcp_servers_dict,
-        plugin_hooks=[],  # TODO: load plugin hooks from container_input
+        # No plugin hooks are configured yet. Enforcement is fully wired: every
+        # core (incl. the claude-cli PreToolUse subprocess) composes its gate via
+        # before_tool_use_roster, so the moment this list is populated all cores
+        # enforce it identically. TODO: source real specs from container_input.
+        plugin_hooks=[],
         extra=extra,
     )
 

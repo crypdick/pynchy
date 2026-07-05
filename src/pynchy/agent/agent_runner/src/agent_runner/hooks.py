@@ -147,11 +147,28 @@ def load_hooks(plugin_hooks: list[dict[str, str]]) -> dict[HookEvent, list[Calla
 def builtin_before_tool_hooks() -> list[Callable]:
     """Return the built-in BEFORE_TOOL_USE security hooks, in enforcement order.
 
-    Single source of truth for the security roster shared by every agent core
-    (Claude wraps these for the SDK; OpenAI calls them directly).  Built-ins
-    run before any plugin-provided BEFORE_TOOL_USE hooks.
+    Built-ins run before any plugin-provided BEFORE_TOOL_USE hooks. Callers
+    should not compose the full gate by hand -- use
+    :func:`before_tool_use_roster` so every core enforces the same set.
     """
     from agent_runner.security.bash_gate import bash_security_hook
     from agent_runner.security.guard_git import guard_git_hook
 
     return [bash_security_hook, guard_git_hook]
+
+
+def before_tool_use_roster(agnostic_hooks: dict[HookEvent, list[Callable]]) -> list[Callable]:
+    """The complete BEFORE_TOOL_USE gate every core must enforce, in order.
+
+    Built-in security hooks first, then plugin-provided BEFORE_TOOL_USE hooks;
+    first deny wins. This is the *single source of truth* for the security
+    roster: every core composes its gate here -- the SDK core (cores/claude.py),
+    the OpenAI core (cores/openai.py), and the claude-cli ``PreToolUse``
+    subprocess (security/hook_entry.py). Routing all three through one function
+    makes it impossible for a core to silently enforce a different set than the
+    others (the exact drift that let the CLI subprocess run builtins-only).
+
+    ``agnostic_hooks`` is the already-loaded :func:`load_hooks` map; callers that
+    only have raw specs pass ``load_hooks(specs)``.
+    """
+    return [*builtin_before_tool_hooks(), *agnostic_hooks.get(HookEvent.BEFORE_TOOL_USE, [])]

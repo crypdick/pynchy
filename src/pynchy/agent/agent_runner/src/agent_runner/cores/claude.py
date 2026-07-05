@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import json
-import re
 import sys
 from collections.abc import AsyncIterator
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +23,9 @@ from claude_agent_sdk import (
 )
 
 from ..core import AgentCoreConfig, AgentEvent
-from ..hooks import AGNOSTIC_TO_CLAUDE, HookEvent, builtin_before_tool_hooks, load_hooks
+from ..hooks import AGNOSTIC_TO_CLAUDE, HookEvent, before_tool_use_roster, load_hooks
+from ..transcript_archive import archive_transcript
+from ._tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 
 
 def _log(message: str) -> None:
@@ -34,146 +34,26 @@ def _log(message: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Transcript archival helpers (PreCompact hook)
+# PreCompact hook (transcript archival)
 # ---------------------------------------------------------------------------
 
 
-def _sanitize_filename(summary: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", summary.lower()).strip("-")[:50]
-
-
-def _generate_fallback_name() -> str:
-    now = datetime.now()
-    return f"conversation-{now.hour:02d}{now.minute:02d}"
-
-
-def _parse_transcript(content: str) -> list[dict[str, str]]:
-    """Parse JSONL transcript to messages."""
-    messages: list[dict[str, str]] = []
-
-    for line in content.splitlines():
-        if not line.strip():
-            continue
-        try:
-            entry = json.loads(line)
-            if entry.get("type") == "user" and entry.get("message", {}).get("content"):
-                raw = entry["message"]["content"]
-                text = raw if isinstance(raw, str) else "".join(c.get("text", "") for c in raw)
-                if text:
-                    messages.append({"role": "user", "content": text})
-            elif entry.get("type") == "assistant" and entry.get("message", {}).get("content"):
-                text_parts = [
-                    c.get("text", "")
-                    for c in entry["message"]["content"]
-                    if c.get("type") == "text"
-                ]
-                text = "".join(text_parts)
-                if text:
-                    messages.append({"role": "assistant", "content": text})
-        except (json.JSONDecodeError, KeyError, TypeError):
-            pass
-
-    return messages
-
-
-def _format_transcript_markdown(messages: list[dict[str, str]], title: str | None = None) -> str:
-    """Format parsed messages as markdown."""
-    now = datetime.now()
-    formatted_date = now.strftime("%b %d, %I:%M %p")
-
-    lines = [
-        f"# {title or 'Conversation'}",
-        "",
-        f"Archived: {formatted_date}",
-        "",
-        "---",
-        "",
-    ]
-
-    for msg in messages:
-        sender = "User" if msg["role"] == "user" else "Pynchy"
-        content = msg["content"][:2000] + "..." if len(msg["content"]) > 2000 else msg["content"]
-        lines.append(f"**{sender}**: {content}")
-        lines.append("")
-
-    return "\n".join(lines)
-
-
-def _get_session_summary(session_id: str, transcript_path: str) -> str | None:
-    """Look up session summary from sessions-index.json."""
-    project_dir = Path(transcript_path).parent
-    index_path = project_dir / "sessions-index.json"
-
-    if not index_path.exists():
-        _log(f"Sessions index not found at {index_path}")
-        return None
-
-    try:
-        index = json.loads(index_path.read_text())
-        for entry in index.get("entries", []):
-            if entry.get("sessionId") == session_id:
-                return entry.get("summary")
-    except (json.JSONDecodeError, OSError) as exc:
-        _log(f"Failed to read sessions index: {exc}")
-
-    return None
-
-
 def _create_pre_compact_hook():
-    """Create a PreCompact hook that archives the transcript."""
+    """Create a PreCompact hook that archives the transcript.
+
+    The claude-cli core wires the same archival via a ``PreCompact`` command
+    hook into ``agent_runner.transcript_archive``; both share that module.
+    """
 
     async def hook(
         input_data: dict[str, Any],
         tool_use_id: str | None,
         context: HookContext,
     ) -> dict[str, Any]:
-        transcript_path = input_data.get("transcript_path", "")
-        session_id = input_data.get("session_id", "")
-
-        if not transcript_path or not Path(transcript_path).exists():
-            _log("No transcript found for archiving")
-            return {}
-
-        try:
-            content = Path(transcript_path).read_text()
-            messages = _parse_transcript(content)
-
-            if not messages:
-                _log("No messages to archive")
-                return {}
-
-            summary = _get_session_summary(session_id, transcript_path)
-            name = _sanitize_filename(summary) if summary else _generate_fallback_name()
-
-            conversations_dir = Path("/workspace/group/conversations")
-            conversations_dir.mkdir(parents=True, exist_ok=True)
-
-            date = datetime.now().strftime("%Y-%m-%d")
-            filename = f"{date}-{name}.md"
-            file_path = conversations_dir / filename
-
-            markdown = _format_transcript_markdown(messages, summary)
-            file_path.write_text(markdown)
-
-            _log(f"Archived conversation to {file_path}")
-
-            # Best-effort: also save to structured memory for search
-            try:
-                from agent_runner.agent_tools._ipc_request import ipc_service_request
-
-                await ipc_service_request(
-                    "save_memory",
-                    {
-                        "key": f"conversation-{date}-{name}",
-                        "content": markdown[:2000],
-                        "category": "conversation",
-                    },
-                )
-            except Exception as exc:  # allow: exception-handling — non-fatal; logged via _log()
-                _log(f"save_memory IPC failed (non-fatal): {exc}")
-        except Exception as exc:  # allow: exception-handling — best-effort; logged via _log()
-            _log(f"Failed to archive transcript: {exc}")
-
+        await archive_transcript(
+            input_data.get("transcript_path", ""),
+            input_data.get("session_id", ""),
+        )
         return {}
 
     return hook
@@ -250,11 +130,9 @@ def _build_claude_hooks(config: AgentCoreConfig) -> dict[str, list]:
         claude_hooks["PreCompact"] = []
     claude_hooks["PreCompact"].append(HookMatcher(hooks=[_create_pre_compact_hook()]))
 
-    pre_tool_hooks = [
-        *builtin_before_tool_hooks(),
-        *agnostic_hooks.get(HookEvent.BEFORE_TOOL_USE, []),
+    all_pre_tool_hooks = [
+        _wrap_before_tool_use(fn) for fn in before_tool_use_roster(agnostic_hooks)
     ]
-    all_pre_tool_hooks = [_wrap_before_tool_use(fn) for fn in pre_tool_hooks]
     if all_pre_tool_hooks:
         if "PreToolUse" not in claude_hooks:
             claude_hooks["PreToolUse"] = []
@@ -266,28 +144,7 @@ def _build_claude_hooks(config: AgentCoreConfig) -> dict[str, list]:
 
 
 def _build_allowed_tools(config: AgentCoreConfig) -> list[str]:
-    allowed_tools = [
-        "Bash",
-        "BashOutput",
-        "KillBash",
-        "Read",
-        "Write",
-        "Edit",
-        "Glob",
-        "Grep",
-        "WebSearch",
-        "Task",
-        "TaskOutput",
-        "TaskStop",
-        "TeamCreate",
-        "TeamDelete",
-        "SendMessage",
-        "TodoWrite",
-        "ToolSearch",
-        "Skill",
-        "NotebookEdit",
-        "mcp__pynchy__*",
-    ]
+    allowed_tools = list(BUILTIN_ALLOWED_TOOLS)
     if "tools" in config.mcp_servers:
         allowed_tools.append("mcp__tools__*")
     for server_name in config.mcp_servers:
@@ -344,7 +201,7 @@ class ClaudeAgentCore:
             allowed_tools=allowed_tools,
             # Plan mode tools require interactive approval that headless
             # containers can't provide, causing an infinite resume loop.
-            disallowed_tools=["AskUserQuestion", "EnterPlanMode", "ExitPlanMode"],
+            disallowed_tools=DISALLOWED_TOOLS,
             permission_mode="bypassPermissions",
             settings='{"attribution": {"commit": "", "pr": ""}}',
             setting_sources=["project", "user"],

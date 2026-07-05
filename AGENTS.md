@@ -1,6 +1,6 @@
 # Pynchy
 
-Personal Claude assistant. See [README.md](README.md) for philosophy. See [installation guide](https://pynchy.ricardodecal.com/install/) for installation. See [architecture](https://pynchy.ricardodecal.com/architecture/) for architecture.
+Personal Claude assistant. See [README.md](README.md) for philosophy. See [installation guide](https://pynchy.ricardodecal.com/install/) for installation. See [architecture](https://pynchy.ricardodecal.com/architecture/) for architecture. See [CONVENTIONS.md](CONVENTIONS.md) for design principles (composition over inheritance, parse-don't-validate, semantic types, code/doc coupling) — apply them when writing or reviewing code.
 
 ## Deployment Awareness
 
