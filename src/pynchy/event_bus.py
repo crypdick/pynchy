@@ -58,6 +58,10 @@ class EventBus:
 
     def __init__(self) -> None:
         self._listeners: defaultdict[type, list[Listener]] = defaultdict(list)
+        # Fire-and-forget tasks need a strong reference somewhere or the event
+        # loop may garbage-collect them mid-execution; this set holds them
+        # until each completes (self-removing via the done callback).
+        self._background_tasks: set[asyncio.Task[None]] = set()
 
     def subscribe(self, event_type: type, listener: Listener) -> Callable[[], None]:
         """Subscribe to an event type. Returns an unsubscribe function."""
@@ -72,7 +76,9 @@ class EventBus:
     def emit(self, event: Event) -> None:
         """Emit an event to all subscribers. Non-blocking, fire-and-forget."""
         for listener in self._listeners[type(event)]:
-            asyncio.create_task(_safe_call(listener, event))
+            task = asyncio.create_task(_safe_call(listener, event))
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
 
 
 async def _safe_call(listener: Listener, event: Event) -> None:

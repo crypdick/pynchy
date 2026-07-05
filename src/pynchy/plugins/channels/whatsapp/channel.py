@@ -7,10 +7,11 @@ import contextlib
 import re
 import sys
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from neonize.aioze import client as neonize_client
 from neonize.aioze import events as neonize_events
@@ -76,6 +77,10 @@ class WhatsAppChannel:
         self._flushing = False
         self._group_sync_task: asyncio.Task[None] | None = None
         self._idle_task: asyncio.Task[None] | None = None
+        # One-shot fire-and-forget tasks (flush, initial group sync) — tracked
+        # here so the event loop can't GC them mid-flight, and so disconnect()
+        # can cancel any still in progress.
+        self._background_tasks: set[asyncio.Task[None]] = set()
         self._first_connect: asyncio.Event = asyncio.Event()
 
         loop = asyncio.get_running_loop()
@@ -86,6 +91,13 @@ class WhatsAppChannel:
         Path(auth_db).expanduser().parent.mkdir(parents=True, exist_ok=True)
         self._client = NewAClient(auth_db)
         self._register_events()
+
+    def _spawn(self, coro: Coroutine[Any, Any, None]) -> asyncio.Task[None]:
+        """Fire-and-forget a coroutine, tracking it so it can't be GC'd or leaked."""
+        task = asyncio.ensure_future(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+        return task
 
     def _register_events(self) -> None:
         @self._client.event(ConnectedEv)
@@ -99,8 +111,8 @@ class WhatsAppChannel:
                 if jid and lid and lid.User:
                     self._lid_to_phone[lid.User] = f"{jid.User}@s.whatsapp.net"
 
-            asyncio.ensure_future(self._flush_outgoing_queue())
-            asyncio.ensure_future(self._sync_group_metadata())
+            self._spawn(self._flush_outgoing_queue())
+            self._spawn(self._sync_group_metadata())
             if self._group_sync_task is None:
                 self._group_sync_task = asyncio.ensure_future(self._periodic_group_sync())
             self._first_connect.set()
@@ -175,6 +187,8 @@ class WhatsAppChannel:
             self._group_sync_task.cancel()
         if self._idle_task:
             self._idle_task.cancel()
+        for task in self._background_tasks:
+            task.cancel()
         with contextlib.suppress(Exception):
             await self._client.disconnect()
 
