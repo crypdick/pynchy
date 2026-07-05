@@ -25,6 +25,7 @@ from claude_agent_sdk import (
 from ..core import AgentCoreConfig, AgentEvent
 from ..hooks import AGNOSTIC_TO_CLAUDE, HookEvent, before_tool_use_roster, load_hooks
 from ..transcript_archive import archive_transcript
+from ._tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 
 
 def _log(message: str) -> None:
@@ -149,29 +150,8 @@ class ClaudeAgentCore:
             # first deny wins.
             claude_hooks["PreToolUse"].append(HookMatcher(hooks=all_pre_tool_hooks))
 
-        # Build allowed tools list
-        allowed_tools = [
-            "Bash",
-            "BashOutput",
-            "KillBash",
-            "Read",
-            "Write",
-            "Edit",
-            "Glob",
-            "Grep",
-            "WebSearch",
-            "Task",
-            "TaskOutput",
-            "TaskStop",
-            "TeamCreate",
-            "TeamDelete",
-            "SendMessage",
-            "TodoWrite",
-            "ToolSearch",
-            "Skill",
-            "NotebookEdit",
-            "mcp__pynchy__*",
-        ]
+        # Build allowed tools list from the shared roster (cores/_tools.py).
+        allowed_tools = list(BUILTIN_ALLOWED_TOOLS)
 
         # Add remote MCP tools if configured
         if "tools" in self.config.mcp_servers:
@@ -210,7 +190,7 @@ class ClaudeAgentCore:
             allowed_tools=allowed_tools,
             # Plan mode tools require interactive approval that headless
             # containers can't provide, causing an infinite resume loop.
-            disallowed_tools=["AskUserQuestion", "EnterPlanMode", "ExitPlanMode"],
+            disallowed_tools=DISALLOWED_TOOLS,
             permission_mode="bypassPermissions",
             settings='{"attribution": {"commit": "", "pr": ""}}',
             setting_sources=["project", "user"],

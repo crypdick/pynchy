@@ -32,7 +32,7 @@ Write tests that validate **actual business logic**, not just line coverage. See
 
 ## Known Issues (2026-02-08)
 
-1. **[FIXED] Resume branches from stale tree position** — subagent CLI processes write to the same session JSONL; on resume, the CLI may pick a stale branch tip. Fix: pass `resumeSessionAt` with the last assistant message UUID.
+1. **[MITIGATED] Resume could branch from stale tree position** — if a teammate/subagent CLI process writes to the same session JSONL mid-turn, a later bare-session-id resume could pick a stale branch tip. The TS original anchored each resume with `resumeSessionAt` (last assistant UUID); that primitive was **lost in the Python port** and has no CLI successor, so it is NOT re-added despite the earlier "[FIXED]" note (which was a stale TS-era leftover). Instead the mechanism is closed by construction: native Teams tools (`TeamCreate`/`TeamDelete`/`SendMessage`) are no longer allow-listed in either core, so nothing can branch the leader's transcript. `Task` sidechains remain allowed (they write off the main chain and resume safely). Reintroducing Teams requires per-teammate session isolation first.
 
 2. **IDLE_TIMEOUT == CONTAINER_TIMEOUT (both 30 min)** — both timers fire together, so containers exit via hard SIGKILL (code 137) instead of graceful `_close` shutdown. Idle timeout should be shorter (~5 min).
 

@@ -33,38 +33,11 @@ from pathlib import Path
 from typing import Any
 
 from ..core import AgentCoreConfig, AgentEvent
+from ._tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 
 # stream-json lines can carry large tool results; lift the asyncio reader limit
 # well above the 64 KiB default to avoid "chunk exceeded the limit" on big lines.
 _STREAM_LINE_LIMIT = 32 * 1024 * 1024
-
-# Built-in tools the agent may use (kept in sync with cores/claude.py).
-_ALLOWED_TOOLS = [
-    "Bash",
-    "BashOutput",
-    "KillBash",
-    "Read",
-    "Write",
-    "Edit",
-    "Glob",
-    "Grep",
-    "WebSearch",
-    "Task",
-    "TaskOutput",
-    "TaskStop",
-    "TeamCreate",
-    "TeamDelete",
-    "SendMessage",
-    "TodoWrite",
-    "ToolSearch",
-    "Skill",
-    "NotebookEdit",
-    "mcp__pynchy__*",
-]
-
-# Plan-mode / interactive tools that would hang a headless container
-# (they require interactive approval; matches cores/claude.py).
-_DISALLOWED_TOOLS = ["AskUserQuestion", "EnterPlanMode", "ExitPlanMode"]
 
 
 def _log(message: str) -> None:
@@ -152,7 +125,7 @@ class ClaudeCLIAgentCore:
 
     def _allowed_tools(self) -> list[str]:
         """Built-in allow-list plus a wildcard per configured MCP server."""
-        tools = list(_ALLOWED_TOOLS)
+        tools = list(BUILTIN_ALLOWED_TOOLS)
         for server_name in self.config.mcp_servers:
             pattern = f"mcp__{server_name}__*"
             if pattern not in tools:
@@ -185,7 +158,7 @@ class ClaudeCLIAgentCore:
             "--allowedTools",
             *self._allowed_tools(),
             "--disallowedTools",
-            *_DISALLOWED_TOOLS,
+            *DISALLOWED_TOOLS,
         ]
         if self._session_id:
             args += ["--resume", self._session_id]
