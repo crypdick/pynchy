@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -108,102 +109,125 @@ def _truncate_path(path: str, max_len: int = 150) -> str:
     return path
 
 
+def _preview_bash(tool_input: dict) -> str:
+    cmd = tool_input.get("command", "")
+    if cmd:
+        return f"Bash:\n```\n{cmd}\n```"
+    return "Bash"
+
+
+def _preview_read(tool_input: dict) -> str:
+    path = tool_input.get("file_path", "")
+    if path:
+        return f"Read: {_truncate_path(path)}"
+    return "Read"
+
+
+def _preview_edit(tool_input: dict) -> str:
+    path = tool_input.get("file_path", "")
+    if not path:
+        return "Edit"
+    header = f"Edit: {_truncate_path(path)}"
+    old = tool_input.get("old_string", "")
+    new = tool_input.get("new_string", "")
+    if not old and not new:
+        return header
+    diff_lines = []
+    if old:
+        diff_lines.append(_format_lines(old.splitlines(), prefix="-"))
+    if new:
+        diff_lines.append(_format_lines(new.splitlines(), prefix="+"))
+    return header + "\n```\n" + "\n".join(diff_lines) + "\n```"
+
+
+def _preview_write(tool_input: dict) -> str:
+    path = tool_input.get("file_path", "")
+    if not path:
+        return "Write"
+    header = f"Write: {_truncate_path(path)}"
+    content = tool_input.get("content", "")
+    if not content:
+        return header
+    return header + "\n```\n" + _format_lines(content.splitlines(), prefix="+") + "\n```"
+
+
+def _preview_grep(tool_input: dict) -> str:
+    pattern = tool_input.get("pattern", "")
+    path = tool_input.get("path", "")
+    parts = ["Grep"]
+    if pattern:
+        parts.append(f"/{pattern}/")
+    if path:
+        parts.append(path)
+    return " ".join(parts)
+
+
+def _preview_glob(tool_input: dict) -> str:
+    pattern = tool_input.get("pattern", "")
+    if pattern:
+        return f"Glob: {pattern}"
+    return "Glob"
+
+
+def _preview_truncated_field(tool_name: str, tool_input: dict, key: str) -> str:
+    """Shared by WebFetch/WebSearch: show a length-capped field value."""
+    value = tool_input.get(key, "")
+    if not value:
+        return tool_name
+    if len(value) > 150:
+        value = value[:147] + "..."
+    return f"{tool_name}: {value}"
+
+
+def _preview_task(tool_input: dict) -> str:
+    desc = tool_input.get("description", "")
+    if desc:
+        return f"Task: {desc}"
+    return "Task"
+
+
+def _preview_ask_user_question(tool_input: dict) -> str:
+    questions = tool_input.get("questions", [])
+    if questions:
+        parts = []
+        for q in questions:
+            text = q.get("question", "") if isinstance(q, dict) else ""
+            if text:
+                parts.append(text)
+        if parts:
+            return "Asking: " + " | ".join(parts)
+    return "AskUserQuestion"
+
+
+def _preview_fallback(tool_name: str, tool_input: dict) -> str:
+    """Show the first 150 chars of the raw input for tools with no dedicated formatter."""
+    preview = str(tool_input)
+    if len(preview) > 150:
+        preview = preview[:147] + "..."
+    return f"{tool_name}: {preview}" if tool_input else tool_name
+
+
+_TOOL_PREVIEW_FORMATTERS: dict[str, Callable[[dict], str]] = {
+    "Bash": _preview_bash,
+    "Read": _preview_read,
+    "Edit": _preview_edit,
+    "Write": _preview_write,
+    "Grep": _preview_grep,
+    "Glob": _preview_glob,
+    "WebFetch": lambda ti: _preview_truncated_field("WebFetch", ti, "url"),
+    "WebSearch": lambda ti: _preview_truncated_field("WebSearch", ti, "query"),
+    "Task": _preview_task,
+    "AskUserQuestion": _preview_ask_user_question,
+}
+
+
 def format_tool_preview(tool_name: str, tool_input: dict) -> str:
     """Format a one-line preview of a tool invocation for channel messages.
 
     Extracts the most relevant detail per tool type so messaging channel
     users see *what* the agent is doing, not just the tool name.
     """
-    if tool_name == "Bash":
-        cmd = tool_input.get("command", "")
-        if cmd:
-            return f"Bash:\n```\n{cmd}\n```"
-        return "Bash"
-
-    if tool_name == "Read":
-        path = tool_input.get("file_path", "")
-        if path:
-            return f"Read: {_truncate_path(path)}"
-        return "Read"
-
-    if tool_name == "Edit":
-        path = tool_input.get("file_path", "")
-        if not path:
-            return "Edit"
-        header = f"Edit: {_truncate_path(path)}"
-        old = tool_input.get("old_string", "")
-        new = tool_input.get("new_string", "")
-        if not old and not new:
-            return header
-        diff_lines = []
-        if old:
-            diff_lines.append(_format_lines(old.splitlines(), prefix="-"))
-        if new:
-            diff_lines.append(_format_lines(new.splitlines(), prefix="+"))
-        return header + "\n```\n" + "\n".join(diff_lines) + "\n```"
-
-    if tool_name == "Write":
-        path = tool_input.get("file_path", "")
-        if not path:
-            return "Write"
-        header = f"Write: {_truncate_path(path)}"
-        content = tool_input.get("content", "")
-        if not content:
-            return header
-        return header + "\n```\n" + _format_lines(content.splitlines(), prefix="+") + "\n```"
-
-    if tool_name == "Grep":
-        pattern = tool_input.get("pattern", "")
-        path = tool_input.get("path", "")
-        parts = [tool_name]
-        if pattern:
-            parts.append(f"/{pattern}/")
-        if path:
-            parts.append(path)
-        return " ".join(parts)
-
-    if tool_name == "Glob":
-        pattern = tool_input.get("pattern", "")
-        if pattern:
-            return f"Glob: {pattern}"
-        return "Glob"
-
-    if tool_name == "WebFetch":
-        url = tool_input.get("url", "")
-        if url:
-            if len(url) > 150:
-                url = url[:147] + "..."
-            return f"WebFetch: {url}"
-        return "WebFetch"
-
-    if tool_name == "WebSearch":
-        query = tool_input.get("query", "")
-        if query:
-            if len(query) > 150:
-                query = query[:147] + "..."
-            return f"WebSearch: {query}"
-        return "WebSearch"
-
-    if tool_name == "Task":
-        desc = tool_input.get("description", "")
-        if desc:
-            return f"Task: {desc}"
-        return "Task"
-
-    if tool_name == "AskUserQuestion":
-        questions = tool_input.get("questions", [])
-        if questions:
-            parts = []
-            for q in questions:
-                text = q.get("question", "") if isinstance(q, dict) else ""
-                if text:
-                    parts.append(text)
-            if parts:
-                return "Asking: " + " | ".join(parts)
-        return "AskUserQuestion"
-
-    # Fallback: show first 150 chars of input
-    preview = str(tool_input)
-    if len(preview) > 150:
-        preview = preview[:147] + "..."
-    return f"{tool_name}: {preview}" if tool_input else tool_name
+    formatter = _TOOL_PREVIEW_FORMATTERS.get(tool_name)
+    if formatter is not None:
+        return formatter(tool_input)
+    return _preview_fallback(tool_name, tool_input)
