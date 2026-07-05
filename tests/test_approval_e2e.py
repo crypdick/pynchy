@@ -96,7 +96,7 @@ def _make_pm(*tool_names: str, handler_fn=None):
     fn = handler_fn or _default
     pm = MagicMock()
     pm.hook.pynchy_service_handler.return_value = [
-        {"tools": {name: fn for name in tool_names}},
+        {"tools": dict.fromkeys(tool_names, fn)},
     ]
     return pm
 

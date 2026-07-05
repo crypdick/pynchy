@@ -16,7 +16,7 @@ class _Hook:
     def __init__(self, channels: list[Any]) -> None:
         self._channels = channels
 
-    def pynchy_create_channel(self, context: Any) -> list[Any]:  # noqa: ARG002
+    def pynchy_create_channel(self, context: Any) -> list[Any]:
         return self._channels
 
 

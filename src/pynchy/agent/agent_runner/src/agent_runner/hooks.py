@@ -94,14 +94,17 @@ def load_hooks(plugin_hooks: list[dict[str, str]]) -> dict[HookEvent, list[Calla
         module_path = spec.get("module_path")
 
         if not module_path:
-            print(f"[agent-runner] Hook '{name}' missing module_path, skipping", file=sys.stderr)
+            print(  # allow: print-statements — stderr diagnostic channel; no logger available
+                f"[agent-runner] Hook '{name}' missing module_path, skipping",
+                file=sys.stderr,
+            )
             continue
 
         try:
             # Load module from file path
             spec_obj = importlib.util.spec_from_file_location(f"hook_{name}", module_path)
             if spec_obj is None or spec_obj.loader is None:
-                print(
+                print(  # allow: print-statements — stderr diagnostic channel; no logger available
                     f"[agent-runner] Failed to load hook '{name}' from {module_path}",
                     file=sys.stderr,
                 )
@@ -122,18 +125,21 @@ def load_hooks(plugin_hooks: list[dict[str, str]]) -> dict[HookEvent, list[Calla
                         registered_events.append(func_name)
 
             if registered_events:
-                print(
+                print(  # allow: print-statements — stderr diagnostic channel; no logger available
                     f"[agent-runner] Loaded hook '{name}': {', '.join(registered_events)}",
                     file=sys.stderr,
                 )
             else:
-                print(
+                print(  # allow: print-statements — stderr diagnostic channel; no logger available
                     f"[agent-runner] Hook '{name}' loaded but has no event handlers",
                     file=sys.stderr,
                 )
 
-        except Exception as exc:
-            print(f"[agent-runner] Failed to load hook '{name}': {exc}", file=sys.stderr)
+        except Exception as exc:  # allow: exception-handling — one bad hook must not block others
+            print(  # allow: print-statements — stderr diagnostic channel; no logger available
+                f"[agent-runner] Failed to load hook '{name}': {exc}",
+                file=sys.stderr,
+            )
 
     return hooks
 

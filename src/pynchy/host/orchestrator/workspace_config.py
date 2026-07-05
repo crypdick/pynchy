@@ -4,10 +4,9 @@ Workspaces are defined in [sandbox.<folder_name>] sections of config.toml.
 Runtime creation (e.g. via IPC) writes new sections using add_workspace_to_toml().
 """
 
-# FIXME: Rename "workspace" -> "sandbox" across config + codebase.
-
 from __future__ import annotations
 
+# FIXME: Rename "workspace" -> "sandbox" across config + codebase.
 import uuid
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, replace

@@ -101,7 +101,7 @@ class FakeChannel:
     def is_connected(self) -> bool:
         return self.connected
 
-    def owns_jid(self, jid: str) -> bool:  # noqa: ARG002
+    def owns_jid(self, jid: str) -> bool:
         return True
 
     async def disconnect(self) -> None:

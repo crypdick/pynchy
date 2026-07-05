@@ -40,8 +40,8 @@ _REACTION_ACTIONS = {
 async def handle_reaction(
     deps: ReactionDeps,
     jid: str,
-    message_ts: str,  # noqa: ARG001
-    user_id: str,  # noqa: ARG001
+    message_ts: str,
+    user_id: str,
     emoji: str,
 ) -> None:
     """Route an inbound reaction to the appropriate action."""

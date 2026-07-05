@@ -90,7 +90,7 @@ from pynchy.state.tasks import (
     update_task_after_run,
 )
 
-__all__ = [
+__all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alphabetical
     # connection
     "_get_db",
     "_init_test_database",

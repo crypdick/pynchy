@@ -18,10 +18,12 @@ repos:
       - id: check-merge-conflict
       - id: check-yaml
       - id: check-toml
+      - id: check-json
       - id: end-of-file-fixer
       - id: trailing-whitespace
       - id: detect-private-key
       - id: check-case-conflict
+      - id: debug-statements
 
   # Detect secrets/credentials
   - repo: https://github.com/Yelp/detect-secrets
@@ -30,6 +32,98 @@ repos:
       - id: detect-secrets
         args: [--baseline, .secrets.baseline]
         exclude: uv\.lock
+
+  # Syntax modernization (auto-fix, blocking: re-stage and re-commit if it edits files)
+  - repo: local
+    hooks:
+      - id: fix-future-annotations
+        name: Fix 'from __future__ import annotations' placement
+        entry: uv run python scripts/pre_commit_hooks/fix_future_annotations.py
+        language: system
+        types: [python]
+      - id: pyupgrade
+        name: Upgrade syntax to target Python version
+        entry: uv run pyupgrade --py313-plus
+        language: system
+        types: [python]
+      - id: flynt
+        name: Convert to f-strings
+        entry: uv run flynt --line-length=100
+        language: system
+        types: [python]
+
+  # Custom blocking lint checks (see AGENTS.md for the '# allow: <hook-name>' exemption convention)
+  - repo: local
+    hooks:
+      - id: check-print-statements
+        name: Ban print() in favor of structured logging
+        entry: uv run python scripts/pre_commit_hooks/check_print_statements.py
+        language: system
+        types: [python]
+      - id: check-exception-handling
+        name: Ban bare/broad exception handling
+        entry: uv run python scripts/pre_commit_hooks/check_exception_handling.py
+        language: system
+        types: [python]
+      - id: check-file-length
+        name: Enforce 400-logical-line file budget
+        entry: uv run python scripts/pre_commit_hooks/check_file_length.py
+        language: system
+        types: [python]
+        files: ^src/
+
+  # Informational-only gates (pragmatic ratchet): report violations without
+  # blocking commits. Existing debt in these categories has not been audited
+  # or fixed yet, so `|| true` keeps them non-blocking until it has been.
+  - repo: local
+    hooks:
+      # FIXME: promote to blocking once the existing debt is paid down.
+      # ~162 violations across src/ as of this writing — mostly ordinary
+      # words (new/old/replace/refactor/etc.) caught by a broad keyword list,
+      # not necessarily all real timeless-comment smells. Triage and fix (or
+      # add narrow `# allow: timeless-comments` exemptions) file by file,
+      # then drop the `|| true` here.
+      - id: check-timeless-comments
+        name: "[informational] Flag temporal language in comments (legacy/old/refactor/...)"
+        entry: bash -c 'uv run python scripts/pre_commit_hooks/check_timeless_comments.py "$@" || true' --
+        language: system
+        types: [python]
+        verbose: true
+      - id: vulture
+        name: "[informational] Detect dead code"
+        entry: bash -c 'uv run vulture src tests --min-confidence 80 || true'
+        language: system
+        pass_filenames: false
+        types: [python]
+        verbose: true
+      - id: xenon
+        name: "[informational] Check cyclomatic complexity"
+        entry: bash -c 'uv run xenon --max-absolute C --max-modules C --max-average B src || true'
+        language: system
+        pass_filenames: false
+        types: [python]
+        verbose: true
+      - id: mypy
+        name: "[informational] Strict type check"
+        entry: bash -c 'uv run mypy src tests || true'
+        language: system
+        pass_filenames: false
+        types: [python]
+        verbose: true
+      # FIXME: promote to blocking once the existing debt is paid down.
+      # 187 violations across tests/ as of this writing. For each: either
+      # drive the private through its public entry point instead (preferred),
+      # delete it if nothing public reaches it (dead code), or add a narrow
+      # `# allow: private-test-imports` exemption when genuinely warranted
+      # (e.g. `_init_test_database` — test-only setup, no public entry point).
+      # Then drop the `|| true` here.
+      - id: check-private-test-imports
+        name: "[informational] Flag tests importing private first-party symbols"
+        entry: bash -c 'uv run python scripts/pre_commit_hooks/check_private_test_imports.py "$@" || true' --
+        language: system
+        types: [python]
+        files: ^tests/
+        verbose: true
 
   # Documentation link validation
   - repo: local

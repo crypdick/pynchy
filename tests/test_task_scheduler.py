@@ -9,10 +9,9 @@ Tests the scheduled task execution logic, including:
 - Group lookup and validation
 """
 
-# ruff: noqa: SIM117, E501
-
 from __future__ import annotations
 
+# ruff: noqa: SIM117
 import asyncio
 import contextlib
 from datetime import UTC, datetime

@@ -231,7 +231,7 @@ def test_resolve_server_primary_no_default_calendar():
 
 def test_resolve_server_none_defaults_to_primary():
     """None calendar string defaults to 'primary'."""
-    name, cfg, cal = _resolve_server(CALDAV_CONFIG, None)
+    name, _cfg, cal = _resolve_server(CALDAV_CONFIG, None)
     assert name == "work"
     assert cal == "meetings"
 

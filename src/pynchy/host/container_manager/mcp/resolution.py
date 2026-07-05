@@ -98,7 +98,7 @@ def merged_mcp_servers(
     result = dict(plugin_mcp_servers)
     result.update(settings.mcp_servers)  # config.toml flat overrides
 
-    # Expand template × instance pairs
+    # Expand template x instance pairs
     for template, instances in settings.mcp_server_instances.items():
         base = result.pop(template, None)
         if base is None:
@@ -118,7 +118,7 @@ def merged_mcp_servers(
 
             if chrome_profile:
                 vol = f"data/chrome-profiles/{chrome_profile}:/home/chrome"
-                updates["volumes"] = list(base.volumes) + [vol]
+                updates["volumes"] = [*base.volumes, vol]
 
             merged_env = dict(base.env)
             merged_env["PORT"] = str(port)
@@ -183,7 +183,7 @@ def resolve_kwargs(settings: Settings, group_folder: str, server_name: str) -> d
     # Explicit kwargs override/append to presets
     for key, value in raw_kwargs.items():
         if key in merged:
-            merged[key] = f"{merged[key]};{str(value)}"
+            merged[key] = f"{merged[key]};{value!s}"
         else:
             merged[key] = str(value)
 

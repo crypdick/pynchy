@@ -72,7 +72,7 @@ class TestPluginTrustExtraction:
         ]
 
         # Should not raise ValidationError from extra="forbid"
-        servers, trust_defaults = _collect_plugin_mcp_servers(fake_pm)
+        servers, _trust_defaults = _collect_plugin_mcp_servers(fake_pm)
         assert "risky" in servers
 
     def test_multiple_specs_with_mixed_trust(self):

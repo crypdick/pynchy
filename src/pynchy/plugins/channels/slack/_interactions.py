@@ -51,7 +51,7 @@ class SlackInteractionMixin:
                 channel=channel_id, ts=message_ts, text=fallback, blocks=kept_blocks
             )
         except Exception as exc:
-            logger.debug(f"Failed to update {label} message", err=str(exc))
+            logger.debug("failed to update message", label=label, err=str(exc))
 
     async def _on_ask_user_interaction(self, body: dict[str, Any], action: dict[str, Any]) -> None:
         """Handle a block_actions interaction from an ask_user widget.

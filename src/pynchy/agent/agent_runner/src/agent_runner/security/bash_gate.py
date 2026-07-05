@@ -18,7 +18,7 @@ from agent_runner.security.classify import CommandClass, classify_command
 
 
 def _log(message: str) -> None:
-    print(f"[bash-gate] {message}", file=sys.stderr, flush=True)
+    print(f"[bash-gate] {message}", file=sys.stderr, flush=True)  # allow: print-statements
 
 
 async def _ipc_bash_check(command: str) -> HookDecision:

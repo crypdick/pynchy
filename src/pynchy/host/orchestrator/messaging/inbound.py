@@ -238,7 +238,7 @@ async def start_message_loop(
     _CATCHUP_INTERVAL = 10  # seconds between channel history reconciliation
     _last_catchup = _time.monotonic()
 
-    logger.info(f"🦞 Pynchy running (trigger: @{s.agent.name})")
+    logger.info("🦞 Pynchy running", trigger=s.agent.name)
 
     while not shutting_down():
         try:

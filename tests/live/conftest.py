@@ -19,7 +19,9 @@ from conftest import make_settings
 
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.host.orchestrator.app import PynchyApp
-from pynchy.state import _init_test_database
+from pynchy.state import (
+    _init_test_database,  # allow: private-test-imports — test-only DB setup, no public entry point
+)
 from pynchy.types import NewMessage, WorkspaceProfile
 
 # ---------------------------------------------------------------------------

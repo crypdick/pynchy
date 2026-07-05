@@ -1,4 +1,3 @@
-# tests/test_script_mcp_cop.py
 """Tests for script-type MCP auto-classification as host-mutating.
 
 Script-type MCP servers run as host subprocesses, so any tool call targeting
@@ -106,7 +105,7 @@ def _make_fake_plugin_manager(*tool_names: str, handler_fn=None):
     fn = handler_fn or _stub_handler
     fake_pm = MagicMock()
     fake_pm.hook.pynchy_service_handler.return_value = [
-        {"tools": {name: fn for name in tool_names}},
+        {"tools": dict.fromkeys(tool_names, fn)},
     ]
     return fake_pm
 

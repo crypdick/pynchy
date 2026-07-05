@@ -376,9 +376,11 @@ def check_browser_plugin_deps(service_name: str) -> None:
     try:
         chrome_path()
     except RuntimeError as e:
-        logger.warning(f"{service_name} system dep check failed", error=str(e))
+        logger.warning("system dep check failed", service_name=service_name, error=str(e))
         return
     if not os.environ.get("DISPLAY"):
         missing = [t for t in ("Xvfb", "x11vnc", "websockify") if not shutil.which(t)]
         if missing:
-            logger.warning(f"Headless server — {service_name} needs VNC deps", missing=missing)
+            logger.warning(
+                "headless server needs VNC deps", service_name=service_name, missing=missing
+            )

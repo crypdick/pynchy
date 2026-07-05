@@ -36,8 +36,8 @@ from pynchy.host.git_ops.worktree import (
 
 __all__ = [
     "GitSyncDeps",
-    "WorktreeNotifyDeps",
     "WorktreeError",
+    "WorktreeNotifyDeps",
     "WorktreeResult",
     "count_commits",
     "count_unpushed_commits",

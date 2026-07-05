@@ -30,7 +30,7 @@ from ..hooks import AGNOSTIC_TO_CLAUDE, HookEvent, builtin_before_tool_hooks, lo
 
 def _log(message: str) -> None:
     """Log to stderr (captured by host container runner)."""
-    print(f"[claude-core] {message}", file=sys.stderr, flush=True)
+    print(f"[claude-core] {message}", file=sys.stderr, flush=True)  # allow: print-statements
 
 
 # ---------------------------------------------------------------------------
@@ -169,9 +169,9 @@ def _create_pre_compact_hook():
                         "category": "conversation",
                     },
                 )
-            except Exception as exc:
+            except Exception as exc:  # allow: exception-handling — non-fatal; logged via _log()
                 _log(f"save_memory IPC failed (non-fatal): {exc}")
-        except Exception as exc:
+        except Exception as exc:  # allow: exception-handling — best-effort; logged via _log()
             _log(f"Failed to archive transcript: {exc}")
 
         return {}
@@ -455,7 +455,7 @@ class ClaudeAgentCore:
         if self._client is not None:
             try:
                 await self._client.__aexit__(None, None, None)
-            except Exception as exc:
+            except Exception as exc:  # allow: exception-handling — cleanup; logged via _log()
                 _log(f"Error during client cleanup: {exc}")
             finally:
                 self._client = None

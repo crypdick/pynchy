@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from itertools import pairwise
 from pathlib import Path
 from unittest.mock import patch
 
@@ -128,7 +129,7 @@ class TestSequentialOrdering:
 
         stems = sorted(int(f.stem) for f in output_dir.glob("*.json"))
         assert len(stems) == 3
-        for a, b in zip(stems, stems[1:], strict=False):
+        for a, b in pairwise(stems):
             assert a < b, f"Timestamps not strictly increasing: {a} >= {b}"
 
 

@@ -112,7 +112,7 @@ _runtime: RuntimeProvider | None = None
 
 def get_runtime() -> RuntimeProvider:
     """Lazy singleton — caches the result of detect_runtime()."""
-    global _runtime  # noqa: PLW0603
+    global _runtime
     if _runtime is None:
         _runtime = detect_runtime()
         logger.info("Container runtime detected", name=_runtime.name, cli=_runtime.cli)

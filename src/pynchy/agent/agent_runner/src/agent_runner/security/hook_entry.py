@@ -28,7 +28,7 @@ _HOOKS = (bash_security_hook, guard_git_hook)
 
 
 def _log(message: str) -> None:
-    print(f"[claude-cli-hook] {message}", file=sys.stderr, flush=True)
+    print(f"[claude-cli-hook] {message}", file=sys.stderr, flush=True)  # allow: print-statements
 
 
 async def _evaluate(tool_name: str, tool_input: dict) -> HookDecision | None:
@@ -56,7 +56,7 @@ def main() -> None:
 
     try:
         decision = asyncio.run(_evaluate(tool_name, tool_input))
-    except Exception as exc:  # noqa: BLE001 - never crash the agent's tool loop
+    except Exception as exc:  # allow: exception-handling — gate fails open; logged via _log()
         _log(f"gate evaluation error, allowing by default: {exc}")
         sys.exit(0)
 

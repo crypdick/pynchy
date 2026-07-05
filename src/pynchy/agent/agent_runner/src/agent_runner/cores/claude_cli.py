@@ -68,7 +68,7 @@ _DISALLOWED_TOOLS = ["AskUserQuestion", "EnterPlanMode", "ExitPlanMode"]
 
 def _log(message: str) -> None:
     """Log to stderr (captured by the host container runner)."""
-    print(f"[claude-cli-core] {message}", file=sys.stderr, flush=True)
+    print(f"[claude-cli-core] {message}", file=sys.stderr, flush=True)  # allow: print-statements
 
 
 class ClaudeCLIAgentCore:
@@ -357,7 +357,7 @@ class ClaudeCLIAgentCore:
             except (TimeoutError, ProcessLookupError):
                 with contextlib.suppress(ProcessLookupError):
                     proc.kill()
-            except Exception as exc:  # noqa: BLE001 - cleanup must not raise
+            except Exception as exc:  # allow: exception-handling — cleanup; logged via _log()
                 _log(f"error during process cleanup: {exc}")
             finally:
                 self._proc = None

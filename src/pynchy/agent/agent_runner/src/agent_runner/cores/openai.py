@@ -17,7 +17,7 @@ from ._openai_tool_parsing import extract_tool_call, extract_tool_result
 
 def _log(message: str) -> None:
     """Log to stderr (captured by host container runner)."""
-    print(f"[openai-core] {message}", file=sys.stderr, flush=True)
+    print(f"[openai-core] {message}", file=sys.stderr, flush=True)  # allow: print-statements
 
 
 def _normalize_response_id(value: str | None) -> str | None:
@@ -34,7 +34,7 @@ def _disable_tracing() -> None:
 
         set_tracing_disabled(disabled=True)
         _log("Tracing disabled")
-    except Exception as exc:
+    except Exception as exc:  # allow: exception-handling — best-effort; logged via _log()
         _log(f"Tracing disable skipped: {exc}")
 
 
@@ -124,7 +124,7 @@ def _make_shell_executor(cwd: str, before_tool_hooks: list | None = None):
         except TimeoutError:
             proc.kill()
             return f"Command timed out after {timeout_s}s"
-        except Exception as exc:
+        except Exception as exc:  # allow: exception-handling — returned to agent as output
             return f"Shell error: {exc}"
 
     return executor
@@ -146,7 +146,7 @@ class _ContainerPatchEditor(ApplyPatchEditor):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(op.new_content or "")
             return ApplyPatchResult(status="completed")
-        except Exception as exc:
+        except Exception as exc:  # allow: exception-handling — surfaced as failed result
             return ApplyPatchResult(status="failed", output=str(exc))
 
     async def update_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
@@ -158,7 +158,7 @@ class _ContainerPatchEditor(ApplyPatchEditor):
                 return ApplyPatchResult(status="failed", output=f"File not found: {op.path}")
             path.write_text(op.new_content or "")
             return ApplyPatchResult(status="completed")
-        except Exception as exc:
+        except Exception as exc:  # allow: exception-handling — surfaced as failed result
             return ApplyPatchResult(status="failed", output=str(exc))
 
     async def delete_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
@@ -167,7 +167,7 @@ class _ContainerPatchEditor(ApplyPatchEditor):
         try:
             Path(op.path).unlink(missing_ok=True)
             return ApplyPatchResult(status="completed")
-        except Exception as exc:
+        except Exception as exc:  # allow: exception-handling — surfaced as failed result
             return ApplyPatchResult(status="failed", output=str(exc))
 
 
@@ -210,13 +210,13 @@ class OpenAIAgentCore:
 
         if transport in ("sse",):
             params = {"url": spec["url"]}
-            if "headers" in spec and spec["headers"]:
+            if spec.get("headers"):
                 params["headers"] = spec["headers"]
             return MCPServerSse(params=params, name=name)
 
         if transport in ("streamable_http", "http"):
             params = {"url": spec["url"]}
-            if "headers" in spec and spec["headers"]:
+            if spec.get("headers"):
                 params["headers"] = spec["headers"]
             return MCPServerStreamableHttp(params=params, name=name)
 
@@ -413,7 +413,7 @@ class OpenAIAgentCore:
         for server in reversed(self._mcp_servers):
             try:
                 await server.__aexit__(None, None, None)
-            except Exception as exc:
+            except Exception as exc:  # allow: exception-handling — cleanup; logged via _log()
                 _log(f"Error closing MCP server: {exc}")
         self._mcp_servers.clear()
         self._mcp_contexts.clear()

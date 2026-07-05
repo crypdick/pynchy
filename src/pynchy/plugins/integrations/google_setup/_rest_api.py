@@ -1,0 +1,130 @@
+"""Service Usage REST API helpers for Google Setup.
+
+Reading project metadata from stored credentials, refreshing access tokens,
+and enabling Google APIs without needing browser automation when possible.
+"""
+
+from __future__ import annotations
+
+import json
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+from pynchy.logger import logger
+from pynchy.plugins.integrations.google_setup._oauth import parse_client_credentials
+from pynchy.plugins.integrations.google_setup._paths import (
+    SERVICE_USAGE_URL,
+    credentials_path,
+    keys_path,
+)
+
+
+def get_project_number(kp: Path) -> str | None:
+    """Extract the GCP project number from the OAuth client_id."""
+    if not kp.exists():
+        return None
+    try:
+        with open(kp) as f:
+            data = json.load(f)
+        client = data.get("installed") or data.get("web")
+        if client and client.get("client_id"):
+            return client["client_id"].split("-", 1)[0]
+    except (OSError, ValueError, KeyError) as exc:
+        logger.debug("Could not extract project number from credentials", error=str(exc))
+    return None
+
+
+def read_project_id(kp: Path) -> str | None:
+    """Auto-detect project ID from existing credentials JSON."""
+    if not kp.exists():
+        return None
+    try:
+        with open(kp) as f:
+            data = json.load(f)
+        client = data.get("installed") or data.get("web")
+        if client and client.get("project_id"):
+            return client["project_id"]
+    except (OSError, ValueError, KeyError) as exc:
+        logger.debug("Could not read project id from credentials", error=str(exc))
+    return None
+
+
+def refresh_access_token(profile_name: str) -> str | None:
+    """Refresh the OAuth access token using stored credentials.
+
+    Reads from chrome profile directory (not Docker volume).
+    """
+    kp = keys_path(profile_name)
+    if not kp.exists():
+        return None
+
+    try:
+        client_id, client_secret = parse_client_credentials(kp)
+    except (OSError, ValueError, KeyError) as exc:
+        logger.debug("Could not parse client credentials for refresh", error=str(exc))
+        return None
+
+    creds_path = credentials_path(profile_name)
+    if not creds_path.exists():
+        return None
+
+    try:
+        creds = json.loads(creds_path.read_text())
+        refresh_token = creds.get("refresh_token")
+        if not refresh_token:
+            return None
+    except (OSError, ValueError) as exc:
+        logger.debug("Could not read stored refresh token", error=str(exc))
+        return None
+
+    data = urllib.parse.urlencode(
+        {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "refresh_token": refresh_token,
+            "grant_type": "refresh_token",
+        }
+    ).encode()
+    req = urllib.request.Request(
+        "https://oauth2.googleapis.com/token",
+        data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            tokens = json.loads(resp.read())
+        return tokens.get("access_token")
+    except (urllib.error.URLError, ValueError) as exc:
+        logger.debug("Access token refresh failed", error=str(exc))
+        return None
+
+
+def enable_api_via_rest(project_number: str, access_token: str, api_id: str) -> bool:
+    """Enable a Google API via the Service Usage REST API."""
+    url = f"{SERVICE_USAGE_URL}/projects/{project_number}/services/{api_id}:enable"
+    req = urllib.request.Request(
+        url,
+        data=b"{}",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            result = json.loads(resp.read())
+        logger.info("API enabled via REST", api=api_id, result_name=result.get("name", ""))
+        return True
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode()
+        if "SCOPE_INSUFFICIENT" in body or "ACCESS_TOKEN_SCOPE_INSUFFICIENT" in body:
+            logger.info("REST enable failed (insufficient scopes)", api=api_id)
+        else:
+            logger.warning("REST enable failed", api=api_id, status=exc.code, body=body[:200])
+        return False
+    except urllib.error.URLError as exc:
+        logger.warning("REST enable failed", api=api_id, error=str(exc))
+        return False

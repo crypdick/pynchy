@@ -24,13 +24,13 @@ _GATEWAY_MOD = "pynchy.host.container_manager.gateway"
 _LITELLM_MOD = "pynchy.host.container_manager.gateway_litellm"
 _DOCKER_MOD = "pynchy.host.container_manager.docker"
 
-_LITELLM_KWARGS = dict(
-    port=4000,
-    container_host="host.docker.internal",
-    image="ghcr.io/berriai/litellm:main-latest",
-    postgres_image="postgres:17-alpine",
-    master_key="test-master-key",
-)
+_LITELLM_KWARGS = {
+    "port": 4000,
+    "container_host": "host.docker.internal",
+    "image": "ghcr.io/berriai/litellm:main-latest",
+    "postgres_image": "postgres:17-alpine",
+    "master_key": "test-master-key",
+}
 
 
 class TestPersistentKey:

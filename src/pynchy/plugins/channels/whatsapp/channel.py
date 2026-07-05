@@ -418,8 +418,8 @@ class WhatsAppChannel:
 
     async def fetch_inbound_since(
         self,
-        channel_jid: str,  # noqa: ARG002
-        since: str,  # noqa: ARG002
+        channel_jid: str,
+        since: str,
     ) -> InboundFetchResult:
         # WhatsApp has no "fetch history since timestamp" API.  Neonize
         # exposes HistorySyncEv (bootstrap + on-demand via

@@ -278,11 +278,11 @@ async def _await_query(
     try:
         await session.wait_for_query_done(timeout=timeout)
     except TimeoutError:
-        logger.error(f"{label} timed out, destroying session", group=group.name)
+        logger.error("query timed out, destroying session", label=label, group=group.name)
         await destroy_session(group.folder)
         return "error"
     except SessionDiedError:
-        logger.error(f"Container died during {label}", group=group.name)
+        logger.error("container died during query", label=label, group=group.name)
         return "error"
     return "success"
 

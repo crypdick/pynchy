@@ -56,7 +56,7 @@ def write_output(output: ContainerOutput) -> None:
 
 def log(message: str) -> None:
     """Log to stderr (captured by host container runner)."""
-    print(f"[agent-runner] {message}", file=sys.stderr, flush=True)
+    print(f"[agent-runner] {message}", file=sys.stderr, flush=True)  # allow: print-statements
 
 
 # ---------------------------------------------------------------------------

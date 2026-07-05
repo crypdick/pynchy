@@ -133,7 +133,7 @@ async def test_cop_error_fails_open():
     @asynccontextmanager
     async def _exploding_post(*_a, **_k):
         raise RuntimeError("API down")
-        yield  # noqa: RUF027 — unreachable but needed for generator syntax
+        yield
 
     mock_session = AsyncMock()
     mock_session.post = _exploding_post

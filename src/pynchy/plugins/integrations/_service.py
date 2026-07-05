@@ -32,7 +32,7 @@ def service_tool(handler: ServiceHandler) -> ServiceHandler:
         try:
             return await handler(data)
         except Exception as exc:
-            logger.error(f"{op} failed", error=str(exc))
+            logger.error("service tool failed", op=op, error=str(exc))
             return {"error": str(exc)}
 
     return wrapper

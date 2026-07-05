@@ -77,7 +77,7 @@ class TestHandleApprovalCommand:
             await handle_approval_command(deps, "j@g.us", "deny", short_id, "testuser")
 
         decisions_dir = ipc_dir / "grp" / "approval_decisions"
-        data = json.loads(list(decisions_dir.glob("*.json"))[0].read_text())
+        data = json.loads(next(iter(decisions_dir.glob("*.json"))).read_text())
         assert data["approved"] is False
 
     @pytest.mark.asyncio

@@ -86,6 +86,12 @@ When the user proposes something inelegant, architecturally unsound, or otherwis
 - **Always use `uv run python`** instead of bare `python` or `python3`. This ensures the correct virtual environment and dependencies are used.
 - **Always use `uvx`** to run Python CLI tools (e.g., `uvx ruff`, `uvx pytest`). Do not install tools globally or use `pip install` for CLI tools.
 
+## Pre-commit Hooks
+
+`.pre-commit-config.yaml` runs custom lint checks (banned `print()`, broad exception handling, file-length budget) plus informational-only checks (dead code, complexity, strict typing, temporal language in comments, tests importing private first-party symbols) that report but never block a commit.
+
+Exempt a specific line from a *blocking* custom check with `# allow: <hook-id>`, e.g. `# allow: print-statements`, `# allow: exception-handling`, or `# allow: private-test-imports`. Always justify the exemption inline (why the violation is intentional here), and prefer fixing the underlying issue over exempting it.
+
 ## Diligence and curiousity
 
 When you notice unexpected or fishy-looking code, make sure to document it. For example, `TODO: this function is hard-coded to returns an empty list, but in the other implementation it doesn't. Investigate why this is`. It's ok if you don't plan to solve it yourself, just make sure not to lose the insight-- false positives are better than false negatives. If you find the answer, make sure to circle back and document it. To continue this example: `Returns an empty list because this method is meaningless for this subclass`. That way, it doesn't confuse you next time you encounter the suspicuous code.

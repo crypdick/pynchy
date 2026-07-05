@@ -496,7 +496,7 @@ class TestParseHostTag:
 
     def test_partial_host_tag_not_matched(self):
         """Host tag must wrap the entire text."""
-        is_host, content = parse_host_tag("prefix <host>inner</host> suffix")
+        is_host, _content = parse_host_tag("prefix <host>inner</host> suffix")
         assert is_host is False
 
     def test_empty_host_tag(self):

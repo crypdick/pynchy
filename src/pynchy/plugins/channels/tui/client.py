@@ -6,6 +6,7 @@ import asyncio
 import json
 import re
 from datetime import UTC, datetime
+from typing import ClassVar
 
 import aiohttp
 from textual.app import App, ComposeResult
@@ -47,7 +48,7 @@ class PynchyTUI(App):
     }
     """
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[Binding]] = [
         Binding("ctrl+n", "next_group", "Next Group"),
         Binding("ctrl+p", "prev_group", "Prev Group"),
         Binding("ctrl+q", "quit", "Quit"),
@@ -267,7 +268,7 @@ class ChatLog(RichLog):
     """
 
     @property
-    def allow_select(self) -> bool:  # noqa: D102
+    def allow_select(self) -> bool:
         return True
 
     def get_selection(self, selection: Selection) -> tuple[str, str] | None:

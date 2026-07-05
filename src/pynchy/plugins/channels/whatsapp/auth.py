@@ -23,7 +23,14 @@ from pynchy.config import get_settings
 
 
 async def authenticate() -> None:
-    """Authenticate WhatsApp by scanning a QR code."""
+    """Authenticate WhatsApp by scanning a QR code.
+
+    This is an interactive CLI entry point (``pynchy-whatsapp-auth``): it renders
+    a QR code and step-by-step instructions to the terminal for the user to scan.
+    The ``print()`` calls below are intentional user-facing console output — they
+    must reach stdout regardless of log configuration, so they are exempted from
+    the structured-logging rule.
+    """
     # Neonize keeps module-level loop references; patch both modules so events
     # and internal tasks bind to this running loop.
     loop = asyncio.get_running_loop()
@@ -37,16 +44,16 @@ async def authenticate() -> None:
     client = NewAClient(auth_db)
 
     if await client.is_logged_in:
-        print("[OK] Already authenticated with WhatsApp")
-        print("     Delete data/neonize.db to force re-authentication.")
+        print("[OK] Already authenticated with WhatsApp")  # allow: print-statements
+        print("     Delete data/neonize.db to force re-authentication.")  # allow: print-statements
         return
 
-    print("Starting WhatsApp authentication...")
-    print("Scan the QR code with WhatsApp:")
-    print("  1. Open WhatsApp on your phone")
-    print("  2. Tap Settings -> Linked Devices -> Link a Device")
-    print("  3. Point your camera at the QR code below")
-    print()
+    print("Starting WhatsApp authentication...")  # allow: print-statements
+    print("Scan the QR code with WhatsApp:")  # allow: print-statements
+    print("  1. Open WhatsApp on your phone")  # allow: print-statements
+    print("  2. Tap Settings -> Linked Devices -> Link a Device")  # allow: print-statements
+    print("  3. Point your camera at the QR code below")  # allow: print-statements
+    print()  # allow: print-statements
 
     done = asyncio.Event()
     exit_code = 0
@@ -58,33 +65,35 @@ async def authenticate() -> None:
         qr.make()
         buf = io.StringIO()
         qr.print_ascii(out=buf, invert=True)
-        print(buf.getvalue(), flush=True)
+        print(buf.getvalue(), flush=True)  # allow: print-statements
 
     @client.event(ConnectedEv)
     async def on_connected(_client: NewAClient, _ev: ConnectedEv) -> None:
-        print()
-        print("[OK] Successfully authenticated with WhatsApp")
-        print(f"     Credentials saved to {auth_db}")
-        print("     You can now run pynchy.")
+        print()  # allow: print-statements
+        print("[OK] Successfully authenticated with WhatsApp")  # allow: print-statements
+        print(f"     Credentials saved to {auth_db}")  # allow: print-statements
+        print("     You can now run pynchy.")  # allow: print-statements
         done.set()
 
     @client.event(PairStatusEv)
     async def on_pair_status(_client: NewAClient, ev: PairStatusEv) -> None:
-        print(f"  Paired as {ev.ID.User}")
+        print(f"  Paired as {ev.ID.User}")  # allow: print-statements
 
     @client.event(LoggedOutEv)
     async def on_logged_out(_client: NewAClient, _ev: LoggedOutEv) -> None:
         nonlocal exit_code
-        print()
-        print("[ERROR] Logged out. Delete data/neonize.db and try again.")
+        print()  # allow: print-statements
+        print(
+            "[ERROR] Logged out. Delete data/neonize.db and try again."
+        )  # allow: print-statements
         exit_code = 1
         done.set()
 
     @client.event(ConnectFailureEv)
     async def on_connect_failure(_client: NewAClient, _ev: ConnectFailureEv) -> None:
         nonlocal exit_code
-        print()
-        print("[ERROR] Connection failed. Please try again.")
+        print()  # allow: print-statements
+        print("[ERROR] Connection failed. Please try again.")  # allow: print-statements
         exit_code = 1
         done.set()
 
@@ -103,8 +112,8 @@ def main() -> None:
     try:
         asyncio.run(authenticate())
     except KeyboardInterrupt:
-        print()
-        print("Authentication cancelled.")
+        print()  # allow: print-statements
+        print("Authentication cancelled.")  # allow: print-statements
         sys.exit(1)
 
 

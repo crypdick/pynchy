@@ -202,6 +202,12 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                         new_outbound_cursor = row.timestamp
                     retried += 1
                 except Exception as exc:
+                    logger.warning(
+                        "outbound retry failed",
+                        channel=ch.name,
+                        ledger_id=row.ledger_id,
+                        error=str(exc),
+                    )
                     await mark_delivery_error(row.ledger_id, ch.name, str(exc))
                     break  # preserve ordering — don't skip ahead
 

@@ -214,7 +214,7 @@ async def main() -> None:
         log(f"Received input for group: {container_input.group_folder}")
         core_ref = f"{container_input.agent_core_module}.{container_input.agent_core_class}"
         log(f"Using agent core: {core_ref}")
-    except Exception as exc:
+    except Exception as exc:  # allow: exception-handling — reported to host; exits
         write_output(
             ContainerOutput(
                 status="error",
@@ -268,7 +268,7 @@ async def main() -> None:
         core = create_agent_core(
             container_input.agent_core_module, container_input.agent_core_class, core_config
         )
-    except Exception as exc:
+    except Exception as exc:  # allow: exception-handling — reported to host; exits
         core_ref = f"{container_input.agent_core_module}.{container_input.agent_core_class}"
         write_output(
             ContainerOutput(
@@ -280,7 +280,7 @@ async def main() -> None:
 
     try:
         await core.start()
-    except Exception as exc:
+    except Exception as exc:  # allow: exception-handling — reported to host; exits
         write_output(
             ContainerOutput(
                 status="error",
@@ -355,7 +355,7 @@ async def main() -> None:
             log(f"Got new message ({len(next_message)} chars), starting new query")
             prompt = next_message
 
-    except Exception as exc:
+    except Exception as exc:  # allow: exception-handling — agent loop boundary; reported to host
         error_message = str(exc)
         log(f"Agent error: {error_message}")
         write_output(
@@ -370,5 +370,5 @@ async def main() -> None:
         # Clean up core
         try:
             await core.stop()
-        except Exception as exc:
+        except Exception as exc:  # allow: exception-handling — cleanup; logged via log()
             log(f"Error stopping core: {exc}")

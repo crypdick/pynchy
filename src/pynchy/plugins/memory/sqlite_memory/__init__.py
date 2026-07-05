@@ -17,7 +17,7 @@ _backend: SqliteMemoryBackend | None = None
 
 
 def _get_backend() -> SqliteMemoryBackend:
-    global _backend  # noqa: PLW0603
+    global _backend
     if _backend is None:
         _backend = SqliteMemoryBackend()
     return _backend

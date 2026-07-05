@@ -29,7 +29,7 @@ _plugin_handlers: dict[str, Callable[[dict], Awaitable[dict]]] | None = None
 
 def _get_plugin_handlers() -> dict[str, Callable[[dict], Awaitable[dict]]]:
     """Collect and cache tool handlers from all MCP server plugins."""
-    global _plugin_handlers  # noqa: PLW0603
+    global _plugin_handlers
     if _plugin_handlers is not None:
         return _plugin_handlers
 
@@ -45,7 +45,7 @@ def _get_plugin_handlers() -> dict[str, Callable[[dict], Awaitable[dict]]]:
 
 def clear_plugin_handler_cache() -> None:
     """Clear the cached plugin handler mapping (for tests or config reload)."""
-    global _plugin_handlers  # noqa: PLW0603
+    global _plugin_handlers
     _plugin_handlers = None
 
 

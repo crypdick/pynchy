@@ -207,7 +207,7 @@ class SlackBlocksFormatter(BaseFormatter):
 
         return RenderedMessage(text=fallback, blocks=blocks)
 
-    def _render_thinking(self, event: OutboundEvent) -> RenderedMessage:  # noqa: ARG002
+    def _render_thinking(self, event: OutboundEvent) -> RenderedMessage:
         """THINKING — compact muted line in a ``context`` block.
 
         Always shows a brief "thinking..." indicator regardless of content.

@@ -224,7 +224,12 @@ async def _handle_setup_slack_session(data: dict) -> dict:
                     re.compile(r"/client/"),
                     timeout=timeout_seconds * 1000,
                 )
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "Slack login not completed before timeout",
+                    timeout_seconds=timeout_seconds,
+                    error=str(exc),
+                )
                 await context.close()
                 result = {
                     "status": "error",

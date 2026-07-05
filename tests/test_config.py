@@ -140,7 +140,7 @@ class TestIsContextReset:
         """Verify key verb+noun combinations work.
 
         This tests a representative sample from the cartesian product
-        of _RESET_VERBS × _RESET_NOUNS to ensure the logic works correctly.
+        of _RESET_VERBS x _RESET_NOUNS to ensure the logic works correctly.
         """
         test_cases = [
             ("reset", "context"),
