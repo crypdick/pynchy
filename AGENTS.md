@@ -88,7 +88,7 @@ When the user proposes something inelegant, architecturally unsound, or otherwis
 
 ## Pre-commit Hooks
 
-`.pre-commit-config.yaml` runs custom lint checks (banned `print()`, broad exception handling, file-length budget, dead code, complexity) plus informational-only checks (strict typing, temporal language in comments, tests importing private first-party symbols) that report but never block a commit.
+`.pre-commit-config.yaml` runs custom lint checks (banned `print()`, broad exception handling, file-length budget, dead code, complexity, temporal language in `src/` comments) plus informational-only checks (strict typing, tests importing private first-party symbols) that report but never block a commit.
 
 Exempt a specific line from a *blocking* custom check with `# allow: <hook-id>`, e.g. `# allow: print-statements`, `# allow: exception-handling`, or `# allow: private-test-imports`. Always justify the exemption inline (why the violation is intentional here), and prefer fixing the underlying issue over exempting it.
 
