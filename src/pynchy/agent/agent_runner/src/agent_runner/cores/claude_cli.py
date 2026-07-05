@@ -26,6 +26,7 @@ import contextlib
 import json
 import os
 import shutil
+import signal
 import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -372,11 +373,17 @@ class ClaudeCLIAgentCore:
         return []
 
     async def stop(self) -> None:
-        """Terminate any still-running turn process."""
+        """Interrupt any still-running turn process.
+
+        Send SIGINT first (what Ctrl+C sends): the ``claude`` CLI treats it as a
+        graceful interrupt and checkpoints its session JSONL, so the next
+        ``--resume`` sees a consistent transcript. Escalate to SIGKILL only if it
+        doesn't exit in time.
+        """
         proc = self._proc
         if proc is not None and proc.returncode is None:
             try:
-                proc.terminate()
+                proc.send_signal(signal.SIGINT)
                 await asyncio.wait_for(proc.wait(), timeout=5)
             except (TimeoutError, ProcessLookupError):
                 with contextlib.suppress(ProcessLookupError):

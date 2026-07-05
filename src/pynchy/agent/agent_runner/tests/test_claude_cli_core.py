@@ -8,6 +8,9 @@ surfacing a text block as an agent ``text`` event.
 
 from __future__ import annotations
 
+import asyncio
+import signal
+
 from agent_runner.core import AgentCoreConfig
 from agent_runner.cores.claude_cli import ClaudeCLIAgentCore
 
@@ -154,3 +157,68 @@ def test_unknown_type_yields_nothing():
     # e.g. rate_limit_event / stream_event lines the parser intentionally ignores
     assert _types(_core(), {"type": "rate_limit_event"}) == []
     assert _types(_core(), {"type": "stream_event", "event": {}}) == []
+
+
+# ---------------------------------------------------------------------------
+# stop(): SIGINT-first, escalate to kill
+# ---------------------------------------------------------------------------
+
+
+class _FakeProc:
+    def __init__(self, returncode=None):
+        self.returncode = returncode
+        self.signals: list[int] = []
+        self.killed = False
+
+    def send_signal(self, sig):
+        self.signals.append(sig)
+
+    def kill(self):
+        self.killed = True
+
+    async def wait(self):
+        return 0
+
+
+def test_stop_sends_sigint_and_clears_proc():
+    core = _core()
+    proc = _FakeProc(returncode=None)
+    core._proc = proc
+    asyncio.run(core.stop())
+    assert proc.signals == [signal.SIGINT]
+    assert proc.killed is False
+    assert core._proc is None
+
+
+def test_stop_escalates_to_kill_on_timeout(monkeypatch):
+    core = _core()
+    proc = _FakeProc(returncode=None)
+    core._proc = proc
+
+    async def _raise_timeout(awaitable=None, *_args, **_kwargs):
+        # Close the proc.wait() coroutine we're bypassing so it isn't reported
+        # as "never awaited".
+        if hasattr(awaitable, "close"):
+            awaitable.close()
+        raise TimeoutError
+
+    monkeypatch.setattr(asyncio, "wait_for", _raise_timeout)
+    asyncio.run(core.stop())
+    assert proc.killed is True
+    assert core._proc is None
+
+
+def test_stop_noop_when_already_exited():
+    core = _core()
+    proc = _FakeProc(returncode=0)  # already finished
+    core._proc = proc
+    asyncio.run(core.stop())
+    assert proc.signals == []
+    assert proc.killed is False
+
+
+def test_stop_noop_when_no_proc():
+    core = _core()
+    core._proc = None
+    asyncio.run(core.stop())  # must not raise
+    assert core._proc is None
