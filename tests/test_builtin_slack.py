@@ -447,7 +447,7 @@ class TestSlackChannelPlugin:
 
 
 # ------------------------------------------------------------------
-# fetch_missed_messages (history catch-up)
+# History catch-up (_fetch_missed_messages_with_watermark)
 # ------------------------------------------------------------------
 
 
@@ -468,7 +468,7 @@ class TestFetchMissedMessages:
             }
         )
 
-        result = await ch.fetch_missed_messages("C12345", "1700000000.000000")
+        result, _ = await ch._fetch_missed_messages_with_watermark("C12345", "1700000000.000000")
 
         assert len(result) == 2
         # Chronological order (oldest first)
@@ -493,7 +493,7 @@ class TestFetchMissedMessages:
             }
         )
 
-        result = await ch.fetch_missed_messages("C12345", "1700000000.000000")
+        result, _ = await ch._fetch_missed_messages_with_watermark("C12345", "1700000000.000000")
 
         assert len(result) == 1
         assert result[0].content == "human"
@@ -524,7 +524,7 @@ class TestFetchMissedMessages:
             }
         )
 
-        result = await ch.fetch_missed_messages("C12345", "1700000000.000000")
+        result, _ = await ch._fetch_missed_messages_with_watermark("C12345", "1700000000.000000")
 
         assert len(result) == 1
         assert result[0].content == "normal"
@@ -544,7 +544,7 @@ class TestFetchMissedMessages:
             }
         )
 
-        result = await ch.fetch_missed_messages("C12345", "1700000000.000000")
+        result, _ = await ch._fetch_missed_messages_with_watermark("C12345", "1700000000.000000")
 
         assert len(result) == 1
         assert result[0].content == "@pynchy c"
@@ -555,7 +555,7 @@ class TestFetchMissedMessages:
         ch._app = MagicMock()
         ch._app.client.conversations_history = AsyncMock(side_effect=Exception("API error"))
 
-        result = await ch.fetch_missed_messages("C12345", "1700000000.000000")
+        result, _ = await ch._fetch_missed_messages_with_watermark("C12345", "1700000000.000000")
 
         assert result == []
 
@@ -564,7 +564,7 @@ class TestFetchMissedMessages:
         ch = _make_channel()
         ch._app = None
 
-        result = await ch.fetch_missed_messages("C12345", "1700000000.000000")
+        result, _ = await ch._fetch_missed_messages_with_watermark("C12345", "1700000000.000000")
 
         assert result == []
 
@@ -582,7 +582,7 @@ class TestFetchMissedMessages:
             return_value={"messages": [{"user": "U1", "text": "hi", "ts": ts}]}
         )
 
-        result = await ch.fetch_missed_messages("C12345", "1700000000.000000")
+        result, _ = await ch._fetch_missed_messages_with_watermark("C12345", "1700000000.000000")
 
         expected = datetime.fromtimestamp(float(ts), tz=UTC).isoformat()
         assert result[0].timestamp == expected
@@ -634,14 +634,14 @@ class TestDeterministicMessageIds:
         )
         id_from_live = on_message.call_args[0][1].id
 
-        # Second call via fetch_missed_messages
+        # Second call via history catch-up
         ch2 = _make_channel()
         ch2._app = MagicMock()
         ch2._resolve_user_name = AsyncMock(return_value="Alice")
         ch2._app.client.conversations_history = AsyncMock(
             return_value={"messages": [{"user": "U1", "text": "hi", "ts": ts}]}
         )
-        msgs = await ch2.fetch_missed_messages("C1", "0")
+        msgs, _ = await ch2._fetch_missed_messages_with_watermark("C1", "0")
         id_from_catchup = msgs[0].id
 
         assert id_from_live == id_from_catchup == f"slack-{ts}"

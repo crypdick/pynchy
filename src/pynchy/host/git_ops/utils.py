@@ -71,24 +71,19 @@ def git_env_with_token(slug: str) -> dict[str, str] | None:
     return env
 
 
-class GitCommandError(Exception):
-    """Raised when a git command fails."""
+def count_commits(range_expr: str, *, cwd: Path | None = None) -> int | None:
+    """Count commits in a rev-list range (e.g. ``"main..branch"``).
 
-    def __init__(self, command: str, stderr: str, returncode: int) -> None:
-        self.command = command
-        self.stderr = stderr
-        self.returncode = returncode
-        super().__init__(f"git {command} failed (exit {returncode}): {stderr}")
-
-
-def require_success(result: subprocess.CompletedProcess[str], command: str) -> str:
-    """Assert that a git command succeeded, raising GitCommandError otherwise.
-
-    Returns the stripped stdout on success.
+    Returns ``None`` if the git command fails or its output can't be parsed,
+    letting callers treat "couldn't determine" with a single ``is None`` guard.
     """
+    result = run_git("rev-list", range_expr, "--count", cwd=cwd)
     if result.returncode != 0:
-        raise GitCommandError(command, result.stderr.strip(), result.returncode)
-    return result.stdout.strip()
+        return None
+    try:
+        return int(result.stdout.strip() or "0")
+    except ValueError:
+        return None
 
 
 def detect_main_branch(cwd: Path | None = None) -> str:
@@ -125,12 +120,10 @@ def count_unpushed_commits(cwd: Path | None = None) -> int:
     """Count commits ahead of origin/main. Returns 0 on failure."""
     try:
         main = detect_main_branch(cwd=cwd)
-        result = run_git("rev-list", f"origin/{main}..HEAD", "--count", cwd=cwd)
-        if result.returncode == 0:
-            return int(result.stdout.strip() or "0")
-    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        return count_commits(f"origin/{main}..HEAD", cwd=cwd) or 0
+    except (OSError, subprocess.SubprocessError) as exc:
         logger.debug("count_unpushed_commits failed", error=str(exc))
-    return 0
+        return 0
 
 
 def get_head_commit_message(max_length: int = 72, cwd: Path | None = None) -> str:
@@ -174,8 +167,8 @@ def push_local_commits(
                 logger.warning("push_local: git fetch failed", stderr=fetch.stderr.strip())
                 return False
 
-        count = run_git("rev-list", f"origin/{main}..HEAD", "--count", cwd=cwd)
-        if count.returncode != 0 or int(count.stdout.strip() or "0") == 0:
+        ahead = count_commits(f"origin/{main}..HEAD", cwd=cwd)
+        if not ahead:
             return True  # nothing to push (or can't tell)
 
         # Try rebase+push, retry once if origin advanced mid-operation

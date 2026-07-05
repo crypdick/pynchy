@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Any
 import pluggy
 
 from pynchy.logger import logger
+from pynchy.plugins.integrations._service import service_tool
 from pynchy.plugins.integrations.browser import (
     check_browser_plugin_deps,
     chrome_path,
@@ -372,6 +373,7 @@ async def _handle_setup_x_session(data: dict) -> dict:
         stop_procs(vnc_procs)
 
 
+@service_tool
 async def _handle_x_post(data: dict) -> dict:
     """Post a tweet on X (Twitter)."""
     content = data.get("content", "")
@@ -409,13 +411,10 @@ async def _handle_x_post(data: dict) -> dict:
         preview = content[:50] + ("..." if len(content) > 50 else "")
         return {"result": {"status": "ok", "message": f"Tweet posted: {preview}"}}
 
-    try:
-        return await _with_browser(action)
-    except Exception as exc:
-        logger.error("X post failed", error=str(exc))
-        return {"error": str(exc)}
+    return await _with_browser(action)
 
 
+@service_tool
 async def _handle_x_like(data: dict) -> dict:
     """Like a tweet on X (Twitter)."""
     tweet_url = data.get("tweet_url", "")
@@ -447,13 +446,10 @@ async def _handle_x_like(data: dict) -> dict:
             }
         }
 
-    try:
-        return await _with_browser(action)
-    except Exception as exc:
-        logger.error("X like failed", error=str(exc))
-        return {"error": str(exc)}
+    return await _with_browser(action)
 
 
+@service_tool
 async def _handle_x_reply(data: dict) -> dict:
     """Reply to a tweet on X (Twitter)."""
     tweet_url = data.get("tweet_url", "")
@@ -496,13 +492,10 @@ async def _handle_x_reply(data: dict) -> dict:
         preview = content[:50] + ("..." if len(content) > 50 else "")
         return {"result": {"status": "ok", "message": f"Reply posted: {preview}"}}
 
-    try:
-        return await _with_browser(action)
-    except Exception as exc:
-        logger.error("X reply failed", error=str(exc))
-        return {"error": str(exc)}
+    return await _with_browser(action)
 
 
+@service_tool
 async def _handle_x_retweet(data: dict) -> dict:
     """Retweet a tweet on X (Twitter)."""
     tweet_url = data.get("tweet_url", "")
@@ -539,13 +532,10 @@ async def _handle_x_retweet(data: dict) -> dict:
             }
         }
 
-    try:
-        return await _with_browser(action)
-    except Exception as exc:
-        logger.error("X retweet failed", error=str(exc))
-        return {"error": str(exc)}
+    return await _with_browser(action)
 
 
+@service_tool
 async def _handle_x_quote(data: dict) -> dict:
     """Quote tweet with a comment on X (Twitter)."""
     tweet_url = data.get("tweet_url", "")
@@ -595,11 +585,7 @@ async def _handle_x_quote(data: dict) -> dict:
         preview = comment[:50] + ("..." if len(comment) > 50 else "")
         return {"result": {"status": "ok", "message": f"Quote tweet posted: {preview}"}}
 
-    try:
-        return await _with_browser(action)
-    except Exception as exc:
-        logger.error("X quote failed", error=str(exc))
-        return {"error": str(exc)}
+    return await _with_browser(action)
 
 
 # ---------------------------------------------------------------------------

@@ -143,8 +143,7 @@ async def intercept_special_command(
     # --- Redeploy: advance cursor BEFORE the call (process may die) ---
 
     if is_redeploy(content):
-        deps.last_agent_timestamp[chat_jid] = message.timestamp
-        await deps.save_state()
+        await advance_cursor(deps, chat_jid, message.timestamp)
         await deps.trigger_manual_redeploy(chat_jid)
         return True
 
@@ -160,8 +159,7 @@ async def intercept_special_command(
     else:
         return False
 
-    deps.last_agent_timestamp[chat_jid] = message.timestamp
-    await deps.save_state()
+    await advance_cursor(deps, chat_jid, message.timestamp)
     return True
 
 
@@ -325,13 +323,18 @@ def _check_dirty_repo(group_name: str, dirty_check_file: Path) -> list[str]:
     return notices
 
 
-async def _advance_cursor(
+async def advance_cursor(
     deps: MessageHandlerDeps,
     chat_jid: str,
     new_cursor: str,
-    previous_cursor: str,
 ) -> None:
-    """Advance the agent timestamp cursor, rolling back on save failure."""
+    """Commit the agent timestamp cursor, rolling back on save failure.
+
+    The single place cursor writes are persisted — captures the prior value
+    so any ``save_state`` failure leaves the in-memory cursor consistent with
+    what's on disk (preventing message reprocessing / duplicate responses).
+    """
+    previous_cursor = deps.last_agent_timestamp.get(chat_jid, "")
     deps.last_agent_timestamp[chat_jid] = new_cursor
     try:
         await deps.save_state()
@@ -414,10 +417,7 @@ async def process_group_messages(
     dirty_check_file = s.data_dir / "ipc" / group.folder / "needs_dirty_check.json"
     reset_system_notices = _check_dirty_repo(group.name, dirty_check_file) if is_admin_group else []
 
-    # Remember the current cursor so we can restore it if save_state fails at completion.
-    previous_cursor = deps.last_agent_timestamp.get(chat_jid, "")
-
-    # Mark dispatched (in-memory only).  last_agent_timestamp stays at previous_cursor
+    # Mark dispatched (in-memory only).  last_agent_timestamp stays at its pre-run value
     # until the container finishes — on an unexpected kill the DB retains the pre-run
     # value so recover_pending_messages can re-find the boundary message on restart.
     _mark_dispatched(deps, chat_jid, missed_messages[-1].timestamp)
@@ -488,29 +488,29 @@ async def process_group_messages(
     dispatched = deps._dispatched_through.pop(chat_jid, missed_messages[-1].timestamp)
     final_cursor = max(missed_messages[-1].timestamp, dispatched)
 
-    if agent_result == "error" or had_error:
-        if output_sent_to_user:
-            # Partial output already sent — advance cursor to prevent a duplicate
-            # response if the same messages are re-processed on the next trigger.
-            await _advance_cursor(deps, chat_jid, final_cursor, previous_cursor)
-            logger.warning(
-                "Agent error after output was sent, advanced cursor to prevent retry duplicate",
-                group=group.name,
-            )
-            return True
+    failed = agent_result == "error" or had_error
+
+    # The cursor advances in every case EXCEPT a clean failure with no
+    # user-visible output — that's the only path we want re-tried verbatim.
+    if failed and not output_sent_to_user:
         await deps.broadcast_host_message(
             chat_jid, "⚠️ Agent error occurred. Will retry on next message."
         )
-        logger.warning(
-            "Agent error, cursor unchanged for retry",
-            group=group.name,
-        )
+        logger.warning("Agent error, cursor unchanged for retry", group=group.name)
         return False
 
-    # Success: advance the true processed cursor now that the container finished.
-    await _advance_cursor(deps, chat_jid, final_cursor, previous_cursor)
+    await advance_cursor(deps, chat_jid, final_cursor)
 
-    # Merge worktree commits into main and push for groups with repo_access
+    if failed:
+        # Partial output already sent — cursor advanced to prevent a duplicate
+        # response if the same messages are re-processed on the next trigger.
+        logger.warning(
+            "Agent error after output was sent, advanced cursor to prevent retry duplicate",
+            group=group.name,
+        )
+        return True
+
+    # Success: merge worktree commits into main and push for groups with repo_access
     from pynchy.host.git_ops._worktree_merge import background_merge_worktree
 
     background_merge_worktree(group)

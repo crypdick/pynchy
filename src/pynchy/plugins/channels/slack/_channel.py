@@ -15,67 +15,20 @@ from pynchy.logger import logger
 from pynchy.plugins.channels.slack._blocks import SlackBlocksFormatter
 from pynchy.types import InboundFetchResult, NewMessage, OutboundEvent
 
+from ._cache import TtlCache
+from ._ids import JID_PREFIX, _channel_id_from_jid, _jid
+from ._interactions import SlackInteractionMixin
 from ._ui import (
     AGENT_STOP_ACTION_RE,
     ASK_USER_ACTION_RE,
     COP_APPROVAL_ACTION_RE,
     build_ask_user_blocks,
-    extract_checkbox_values,
-    extract_text_input_value,
     normalize_chat_name,
     split_text,
 )
 
-JID_PREFIX = "slack:"
 
-
-def _jid(channel_id: str) -> str:
-    """Convert a Slack channel ID to a pynchy JID."""
-    return f"{JID_PREFIX}{channel_id}"
-
-
-def _channel_id_from_jid(jid: str) -> str:
-    """Extract the Slack channel ID from a pynchy JID."""
-    return jid.removeprefix(JID_PREFIX)
-
-
-class _TtlCache:
-    """Bounded cache with per-entry TTL for Slack API lookups.
-
-    Evicts expired entries lazily on get/put.  Hard-caps at ``max_size``
-    entries to bound memory regardless of TTL.
-    """
-
-    def __init__(self, ttl_seconds: float = 3600, max_size: int = 500) -> None:
-        self._ttl = ttl_seconds
-        self._max_size = max_size
-        self._data: dict[str, tuple[str, float]] = {}  # key → (value, expiry_mono)
-
-    def get(self, key: str) -> str | None:
-        entry = self._data.get(key)
-        if entry is None:
-            return None
-        value, expiry = entry
-        if time.monotonic() > expiry:
-            del self._data[key]
-            return None
-        return value
-
-    def put(self, key: str, value: str) -> None:
-        if len(self._data) >= self._max_size:
-            self._evict_expired()
-        # If still at capacity after eviction, drop oldest entry
-        if len(self._data) >= self._max_size:
-            oldest_key = next(iter(self._data))
-            del self._data[oldest_key]
-        self._data[key] = (value, time.monotonic() + self._ttl)
-
-    def _evict_expired(self) -> None:
-        now = time.monotonic()
-        self._data = {k: v for k, v in self._data.items() if v[1] > now}
-
-
-class SlackChannel:
+class SlackChannel(SlackInteractionMixin):
     """Pynchy ``Channel`` protocol implementation backed by Slack Socket Mode."""
 
     prefix_assistant_name: bool = False  # Slack shows the bot username already
@@ -126,8 +79,8 @@ class SlackChannel:
         self._seen_ts_max = 500
         # Cache resolved Slack user/channel names to avoid redundant API calls.
         # TTL of 1 hour — names change rarely; bounded to 500 entries.
-        self._user_name_cache = _TtlCache(ttl_seconds=3600, max_size=500)
-        self._channel_name_cache = _TtlCache(ttl_seconds=3600, max_size=500)
+        self._user_name_cache = TtlCache(ttl_seconds=3600, max_size=500)
+        self._channel_name_cache = TtlCache(ttl_seconds=3600, max_size=500)
 
     # ------------------------------------------------------------------
     # Channel protocol
@@ -590,21 +543,6 @@ class SlackChannel:
 
         return [], high_water_mark
 
-    async def fetch_missed_messages(
-        self, channel_id: str, oldest: str, *, limit: int = 1000
-    ) -> list[NewMessage]:
-        """Fetch messages sent while disconnected — convenience wrapper.
-
-        Delegates to :meth:`_fetch_missed_messages_with_watermark` and
-        discards the high-water mark.  Kept for backward compatibility
-        with callers that don't need the watermark (e.g. reconnect
-        recovery).
-        """
-        messages, _ = await self._fetch_missed_messages_with_watermark(
-            channel_id, oldest, limit=limit
-        )
-        return messages
-
     async def fetch_inbound_since(self, channel_jid: str, since: str) -> InboundFetchResult:
         """Fetch Slack messages newer than ``since`` for a single channel.
 
@@ -761,9 +699,7 @@ class SlackChannel:
 
         Keeps a bounded dict so memory doesn't grow without limit.
         """
-        import time as _time
-
-        now = _time.monotonic()
+        now = time.monotonic()
         if ts in self._seen_ts:
             return True
         # Evict old entries when the dict gets too large
@@ -850,180 +786,6 @@ class SlackChannel:
 
         jid = _jid(channel_id)
         self._on_reaction(jid, message_ts, user_id, reaction)
-
-    async def _on_ask_user_interaction(self, body: dict[str, Any], action: dict[str, Any]) -> None:
-        """Handle a block_actions interaction from an ask_user widget.
-
-        Checkbox toggles fire as ``ask_user_checkbox_*`` but are ignored —
-        we only act on the submit button (``ask_user_submit_*``), which
-        reads the final checkbox selections and free-text value from
-        ``state.values``.
-        """
-        action_id = action.get("action_id", "")
-        channel_id = body.get("channel", {}).get("id", "")
-
-        # Guard: only process interactions from allowed channels.
-        if channel_id and not self._is_allowed_channel(channel_id):
-            return
-
-        # Ignore bare checkbox toggles — wait for submit.
-        if action_id.startswith("ask_user_checkbox_"):
-            return
-
-        if not action_id.startswith("ask_user_submit_"):
-            return
-
-        message_ts = body.get("message", {}).get("ts", "")
-        user_id = body.get("user", {}).get("id", "")
-
-        request_id = action_id.removeprefix("ask_user_submit_")
-
-        # Collect checkbox selections and free-text input.
-        checkbox_answer = extract_checkbox_values(body, request_id)
-        text_answer = extract_text_input_value(body, request_id)
-
-        # Prefer text if provided, otherwise use checkbox selections.
-        answer = text_answer if text_answer else checkbox_answer
-
-        answer_dict = {
-            "answer": answer,
-            "answered_by": user_id,
-            "channel_id": channel_id,
-            "message_ts": message_ts,
-        }
-
-        if self._on_ask_user_answer:
-            self._on_ask_user_answer(request_id, answer_dict)
-
-        # Update the original message to show the answer and remove interactivity
-        if channel_id and message_ts:
-            answered_text = f"Answered: *{answer}*"
-            try:
-                await self._app.client.chat_update(
-                    channel=channel_id,
-                    ts=message_ts,
-                    text=answered_text,
-                    blocks=[
-                        {
-                            "type": "section",
-                            "text": {"type": "mrkdwn", "text": answered_text},
-                        }
-                    ],
-                )
-            except Exception as exc:
-                logger.debug("Failed to update ask_user message", err=str(exc))
-
-    async def _on_approval_interaction(self, body: dict[str, Any], action: dict[str, Any]) -> None:
-        """Handle an approval button click (Approve or Deny).
-
-        Extracts the action and short_id from the ``action_id`` (e.g.
-        ``cop_approve_a1``), invokes the approval callback, and updates the
-        original message to remove buttons and show the decision.
-        """
-        action_id = action.get("action_id", "")
-        channel_id = body.get("channel", {}).get("id", "")
-
-        if channel_id and not self._is_allowed_channel(channel_id):
-            return
-
-        # Parse action_id: cop_{approve|deny}_{short_id}
-        parts = action_id.split("_", 2)  # ["cop", "approve", "a1"]
-        if len(parts) < 3:
-            return
-        decision = parts[1]  # "approve" or "deny"
-        short_id = parts[2]
-
-        message_ts = body.get("message", {}).get("ts", "")
-        user_id = body.get("user", {}).get("id", "")
-        user_name = body.get("user", {}).get("username", user_id)
-
-        # Invoke the approval decision callback
-        if self._on_approval_decision and channel_id:
-            jid = _jid(channel_id)
-            self._on_approval_decision(jid, decision, short_id, user_id)
-
-        # Update the original message: remove buttons, add confirmation
-        if channel_id and message_ts:
-            original_blocks = body.get("message", {}).get("blocks", [])
-            # Keep only non-actions blocks (the context line with the approval text)
-            kept_blocks = [b for b in original_blocks if b.get("type") != "actions"]
-            verb = "Approved" if decision == "approve" else "Denied"
-            kept_blocks.append(
-                {
-                    "type": "context",
-                    "elements": [{"type": "mrkdwn", "text": f"\u2705 {verb} by <@{user_id}>"}],
-                }
-            )
-            try:
-                await self._app.client.chat_update(
-                    channel=channel_id,
-                    ts=message_ts,
-                    text=f"{verb} by {user_name}",
-                    blocks=kept_blocks,
-                )
-            except Exception as exc:
-                logger.debug("Failed to update approval message", err=str(exc))
-
-        logger.info(
-            "Approval button clicked",
-            decision=decision,
-            short_id=short_id,
-            user=user_id,
-        )
-
-    async def _on_agent_stop_interaction(
-        self, body: dict[str, Any], action: dict[str, Any]
-    ) -> None:
-        """Handle a Stop button click during agent streaming.
-
-        Extracts the ``group_name`` from the ``action_id`` (e.g.
-        ``agent_stop_ops``), invokes the stop callback, and updates the
-        message to show who stopped the agent.
-        """
-        action_id = action.get("action_id", "")
-        channel_id = body.get("channel", {}).get("id", "")
-
-        if channel_id and not self._is_allowed_channel(channel_id):
-            return
-
-        # Parse action_id: agent_stop_{group_name}
-        group_name = action_id.removeprefix("agent_stop_")
-        if not group_name:
-            return
-
-        message_ts = body.get("message", {}).get("ts", "")
-        user_id = body.get("user", {}).get("id", "")
-        user_name = body.get("user", {}).get("username", user_id)
-
-        # Signal cancellation to the agent execution loop
-        if self._on_agent_stop:
-            self._on_agent_stop(group_name, user_id)
-
-        # Update the message: remove the stop button, add "Stopped by" context
-        if channel_id and message_ts:
-            original_blocks = body.get("message", {}).get("blocks", [])
-            kept_blocks = [b for b in original_blocks if b.get("type") != "actions"]
-            kept_blocks.append(
-                {
-                    "type": "context",
-                    "elements": [{"type": "mrkdwn", "text": f"\u23f9 Stopped by <@{user_id}>"}],
-                }
-            )
-            try:
-                await self._app.client.chat_update(
-                    channel=channel_id,
-                    ts=message_ts,
-                    text=f"Stopped by {user_name}",
-                    blocks=kept_blocks,
-                )
-            except Exception as exc:
-                logger.debug("Failed to update stop message", err=str(exc))
-
-        logger.info(
-            "Agent stop button clicked",
-            group=group_name,
-            user=user_id,
-        )
 
     # ------------------------------------------------------------------
     # Helpers

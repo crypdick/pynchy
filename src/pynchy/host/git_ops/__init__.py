@@ -16,7 +16,7 @@ from pynchy.host.git_ops.sync_poll import (
     start_host_git_sync_loop,
 )
 from pynchy.host.git_ops.utils import (
-    GitCommandError,
+    count_commits,
     count_unpushed_commits,
     detect_main_branch,
     files_changed_between,
@@ -24,7 +24,6 @@ from pynchy.host.git_ops.utils import (
     git_env_with_token,
     is_repo_dirty,
     push_local_commits,
-    require_success,
     run_git,
 )
 from pynchy.host.git_ops.worktree import (
@@ -36,11 +35,11 @@ from pynchy.host.git_ops.worktree import (
 )
 
 __all__ = [
-    "GitCommandError",
     "GitSyncDeps",
     "WorktreeNotifyDeps",
     "WorktreeError",
     "WorktreeResult",
+    "count_commits",
     "count_unpushed_commits",
     "detect_main_branch",
     "ensure_worktree",
@@ -58,7 +57,6 @@ __all__ = [
     "needs_deploy",
     "push_local_commits",
     "reconcile_worktrees_at_startup",
-    "require_success",
     "run_git",
     "start_host_git_sync_loop",
 ]

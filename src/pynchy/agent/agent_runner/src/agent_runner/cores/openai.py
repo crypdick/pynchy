@@ -270,15 +270,14 @@ class OpenAIAgentCore:
         self._model_fallback = self.config.extra.get("fallback_model", "openai/gpt-5.2-codex")
         self._instructions = instructions
 
-        # Build security hooks list (same hooks used by the Claude core)
-        from agent_runner.hooks import HookEvent, load_hooks
-        from agent_runner.security.bash_gate import bash_security_hook
-        from agent_runner.security.guard_git import guard_git_hook
+        # Build security hooks list (same roster used by the Claude core).
+        from agent_runner.hooks import HookEvent, builtin_before_tool_hooks, load_hooks
 
-        self._before_tool_hooks = [bash_security_hook, guard_git_hook]
-        # Add plugin-provided BEFORE_TOOL_USE hooks
         agnostic = load_hooks(self.config.plugin_hooks)
-        self._before_tool_hooks.extend(agnostic.get(HookEvent.BEFORE_TOOL_USE, []))
+        self._before_tool_hooks = [
+            *builtin_before_tool_hooks(),
+            *agnostic.get(HookEvent.BEFORE_TOOL_USE, []),
+        ]
 
         _log(
             f"Creating agent with model={self._model_primary}, "

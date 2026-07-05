@@ -19,11 +19,11 @@ from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
+from pynchy.host.container_manager.mcp.resolution import WorkspaceTeam
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
     from pynchy.host.container_manager.gateway import LiteLLMGateway
-    from pynchy.host.container_manager.mcp.manager import WorkspaceTeam
     from pynchy.host.container_manager.mcp.resolution import McpInstance
 
 
@@ -206,8 +206,6 @@ async def sync_teams(
     Mutates *workspace_teams* in place: adds new entries for created teams,
     removes entries for stale workspaces.
     """
-    from pynchy.host.container_manager.mcp.manager import WorkspaceTeam as _WT
-
     async with aiohttp.ClientSession() as session:
         for folder, instance_ids in workspace_instances.items():
             existing_team = workspace_teams.get(folder)
@@ -222,7 +220,7 @@ async def sync_teams(
                 if virtual_key is None:
                     continue
 
-                workspace_teams[folder] = _WT(
+                workspace_teams[folder] = WorkspaceTeam(
                     team_id=team_id,
                     virtual_key=virtual_key,
                 )
@@ -327,14 +325,12 @@ def load_teams_cache(
     cache_path: Path,
 ) -> dict[str, WorkspaceTeam]:
     """Load cached team_id -> virtual_key mapping from disk."""
-    from pynchy.host.container_manager.mcp.manager import WorkspaceTeam as _WT
-
     if not cache_path.exists():
         return {}
     try:
         data = json.loads(cache_path.read_text())
         return {
-            folder: _WT(
+            folder: WorkspaceTeam(
                 team_id=team_data["team_id"],
                 virtual_key=team_data["virtual_key"],
             )

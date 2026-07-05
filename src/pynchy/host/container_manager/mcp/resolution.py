@@ -64,6 +64,14 @@ class McpInstance:
 
 
 @dataclass
+class WorkspaceTeam:
+    """Cached LiteLLM team + virtual key for a workspace."""
+
+    team_id: str
+    virtual_key: str
+
+
+@dataclass
 class _SyncState:
     """Intermediate state built during sync — all instances and workspace mappings."""
 

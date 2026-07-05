@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from pynchy.host.git_ops.repo import RepoContext
-from pynchy.host.git_ops.utils import detect_main_branch, get_head_sha, run_git
+from pynchy.host.git_ops.utils import count_commits, detect_main_branch, get_head_sha, run_git
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
@@ -123,12 +123,8 @@ async def host_notify_worktree_updates(
 
         # Check if behind main
         branch_name = f"worktree/{group_folder}"
-        behind = run_git("rev-list", f"{branch_name}..{main_branch}", "--count", cwd=repo_ctx.root)
-        try:
-            behind_n = int(behind.stdout.strip())
-        except (ValueError, TypeError):
-            behind_n = 0
-        if behind.returncode != 0 or behind_n == 0:
+        behind_n = count_commits(f"{branch_name}..{main_branch}", cwd=repo_ctx.root)
+        if not behind_n:
             continue  # up to date or can't check
 
         # Route based on whether the workspace has an ongoing conversation.

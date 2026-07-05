@@ -25,9 +25,7 @@ from claude_agent_sdk import (
 )
 
 from ..core import AgentCoreConfig, AgentEvent
-from ..hooks import AGNOSTIC_TO_CLAUDE, HookEvent, load_hooks
-from ..security.bash_gate import bash_security_hook
-from ..security.guard_git import guard_git_hook
+from ..hooks import AGNOSTIC_TO_CLAUDE, HookEvent, builtin_before_tool_hooks, load_hooks
 
 
 def _log(message: str) -> None:
@@ -257,19 +255,13 @@ class ClaudeAgentCore:
             claude_hooks["PreCompact"] = []
         claude_hooks["PreCompact"].append(HookMatcher(hooks=[_create_pre_compact_hook()]))
 
-        # Register built-in BEFORE_TOOL_USE hooks as PreToolUse matchers.
-        # Built-in hooks run first (security), then plugin hooks.
-        builtin_pre_tool_hooks = [
-            _wrap_before_tool_use(bash_security_hook),
-            _wrap_before_tool_use(guard_git_hook),
+        # Register BEFORE_TOOL_USE hooks as PreToolUse matchers.
+        # Built-in security hooks run first, then plugin hooks.
+        pre_tool_hooks = [
+            *builtin_before_tool_hooks(),
+            *agnostic_hooks.get(HookEvent.BEFORE_TOOL_USE, []),
         ]
-
-        # Plugin BEFORE_TOOL_USE hooks from agnostic hook system
-        plugin_pre_tool_hooks = [
-            _wrap_before_tool_use(fn) for fn in agnostic_hooks.get(HookEvent.BEFORE_TOOL_USE, [])
-        ]
-
-        all_pre_tool_hooks = builtin_pre_tool_hooks + plugin_pre_tool_hooks
+        all_pre_tool_hooks = [_wrap_before_tool_use(fn) for fn in pre_tool_hooks]
 
         if all_pre_tool_hooks:
             if "PreToolUse" not in claude_hooks:

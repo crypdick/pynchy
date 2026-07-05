@@ -541,8 +541,8 @@ class TestMcpProxyLifecycle:
         assert proxy.port == port
         await proxy.stop()
 
-    async def test_update_routes(self, mock_backend):
-        """update_routes should update the instance URL mapping.
+    async def test_routes_resolve_dynamically(self, mock_backend):
+        """An unmapped instance 404s until its route is added to proxy state.
 
         Uses TestClient (in-process) instead of real TCP to avoid
         port-binding issues under pytest-xdist workers.
@@ -565,7 +565,7 @@ class TestMcpProxyLifecycle:
             )
             assert resp.status == 404
 
-            # Mutate routes via _ProxyState (same mechanism as McpProxy.update_routes)
+            # Add a route by mutating the proxy's _ProxyState in place
             backend_url = f"http://localhost:{mock_backend.port}/mcp"
             app[_STATE_KEY].instance_urls = {"browser": backend_url}
 

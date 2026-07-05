@@ -4,7 +4,7 @@ Covers:
 - intercept_special_command: reset, end session, redeploy, !commands
 - process_group_messages: reset handoff, trigger filtering, cursor management,
   dirty repo check, error rollback, worktree merge
-- _check_dirty_repo, _advance_cursor, _handle_reset_handoff (extracted helpers)
+- _check_dirty_repo, advance_cursor, _handle_reset_handoff (extracted helpers)
 - start_message_loop: "btw" non-interrupting messages during active tasks
 """
 

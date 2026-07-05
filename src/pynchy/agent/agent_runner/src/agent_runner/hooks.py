@@ -136,3 +136,16 @@ def load_hooks(plugin_hooks: list[dict[str, str]]) -> dict[HookEvent, list[Calla
             print(f"[agent-runner] Failed to load hook '{name}': {exc}", file=sys.stderr)
 
     return hooks
+
+
+def builtin_before_tool_hooks() -> list[Callable]:
+    """Return the built-in BEFORE_TOOL_USE security hooks, in enforcement order.
+
+    Single source of truth for the security roster shared by every agent core
+    (Claude wraps these for the SDK; OpenAI calls them directly).  Built-ins
+    run before any plugin-provided BEFORE_TOOL_USE hooks.
+    """
+    from agent_runner.security.bash_gate import bash_security_hook
+    from agent_runner.security.guard_git import guard_git_hook
+
+    return [bash_security_hook, guard_git_hook]

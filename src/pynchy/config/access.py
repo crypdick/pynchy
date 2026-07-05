@@ -15,7 +15,8 @@ semantics).  Layers 4-5 apply connection and chat security overrides on top.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from dataclasses import replace
+from typing import TYPE_CHECKING, Any
 
 from pynchy.config.models import OwnerConfig, WorkspaceConfig
 from pynchy.config.refs import (
@@ -26,7 +27,7 @@ from pynchy.config.refs import (
 from pynchy.config.settings import get_settings
 
 if TYPE_CHECKING:
-    from pynchy.types import ResolvedChannelConfig
+    from pynchy.config.merge import ResolvedSandboxConfig
 
 # The fields that participate in the connection/chat override cascade
 # (layers 4-5).  The sandbox merge (layers 1-3) handles these fields
@@ -34,16 +35,17 @@ if TYPE_CHECKING:
 _CASCADE_FIELDS = ("access", "mode", "trust", "trigger", "allowed_users")
 
 
-def _apply_overrides(state: dict, source: object) -> None:
-    """Apply non-None fields from *source* onto *state*.
+def _collect_overrides(overrides: dict[str, Any], source: object) -> None:
+    """Collect non-None cascade fields from *source* into *overrides*.
 
-    Works with WorkspaceConfig, ChannelOverrideConfig, or any object
-    that has the standard cascade fields as attributes.
+    Works with any object exposing the standard cascade fields
+    (e.g. ChannelOverrideConfig).  Later calls shadow earlier ones,
+    giving most-specific-wins semantics.
     """
     for field in _CASCADE_FIELDS:
         value = getattr(source, field, None)
         if value is not None:
-            state[field] = value
+            overrides[field] = value
 
 
 def resolve_workspace_connection_name(workspace_name: str) -> str | None:
@@ -62,7 +64,7 @@ def resolve_channel_config(
     workspace_name: str,
     channel_jid: str | None = None,
     channel_plugin_name: str | None = None,
-) -> ResolvedChannelConfig:
+) -> ResolvedSandboxConfig:
     """Walk the resolution cascade and return a fully-resolved config.
 
     Cascade (most specific wins):
@@ -71,9 +73,12 @@ def resolve_channel_config(
     3. sandbox.<name>.* (workspace overrides)
     4. sandbox_profiles.<name>.* (profile defaults)
     5. sandbox_universal.* (global defaults)
+
+    Layers 3-5 are resolved by :func:`merge_sandbox_config`; the connection-
+    and chat-level overrides (layers 1-2) are then applied on top of the
+    resulting :class:`ResolvedSandboxConfig`.
     """
     from pynchy.config.merge import merge_sandbox_config
-    from pynchy.types import ResolvedChannelConfig
 
     s = get_settings()
     ws = s.workspaces.get(workspace_name)
@@ -89,27 +94,20 @@ def resolve_channel_config(
         ws or WorkspaceConfig(),
     )
 
-    state: dict = {
-        "access": merged.access,
-        "mode": merged.mode,
-        "trust": merged.trust,
-        "trigger": merged.trigger,
-        "allowed_users": merged.allowed_users,
-    }
-
-    # Layers 1-2: connection and chat-level overrides (most specific)
+    # Layers 1-2: connection- and chat-level overrides (most specific wins)
+    overrides: dict[str, Any] = {}
     if ws is not None:
         chat_ref = parse_chat_ref(ws.chat)
         if chat_ref is not None:
             conn_cfg = s.connection.get_connection(chat_ref.platform, chat_ref.name)
             if conn_cfg and conn_cfg.security:
-                _apply_overrides(state, conn_cfg.security)
+                _collect_overrides(overrides, conn_cfg.security)
             if conn_cfg:
                 chat_cfg = conn_cfg.chat.get(chat_ref.chat)
                 if chat_cfg and chat_cfg.security:
-                    _apply_overrides(state, chat_cfg.security)
+                    _collect_overrides(overrides, chat_cfg.security)
 
-    return ResolvedChannelConfig(**state)
+    return replace(merged, **overrides) if overrides else merged
 
 
 # ---------------------------------------------------------------------------

@@ -24,7 +24,8 @@ import pluggy
 from pynchy.config import get_settings
 from pynchy.logger import logger
 
-from ._channel import SlackChannel, _channel_id_from_jid, _jid, _TtlCache
+from ._cache import TtlCache
+from ._channel import SlackChannel, _channel_id_from_jid, _jid
 from ._ui import normalize_chat_name as _normalize_chat_name
 from ._ui import split_text as _split_text
 
@@ -34,7 +35,7 @@ hookimpl = pluggy.HookimplMarker("pynchy")
 __all__ = [
     "SlackChannel",
     "SlackChannelPlugin",
-    "_TtlCache",
+    "TtlCache",
     "_channel_id_from_jid",
     "_jid",
     "_normalize_chat_name",

@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from pynchy.config import get_settings
@@ -41,12 +40,10 @@ from pynchy.host.container_manager.mcp.litellm import (
 from pynchy.host.container_manager.mcp.proxy import McpProxy
 from pynchy.host.container_manager.mcp.resolution import (
     McpInstance,
+    WorkspaceTeam,
     build_trust_map,
-    get_instance_id,
     merged_mcp_servers,
     resolve_all_instances,
-    resolve_kwargs,
-    resolve_workspace_servers,
 )
 from pynchy.logger import logger
 from pynchy.utils import create_background_task
@@ -61,14 +58,6 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
-
-
-@dataclass
-class WorkspaceTeam:
-    """Cached LiteLLM team + virtual key for a workspace."""
-
-    team_id: str
-    virtual_key: str
 
 
 # ---------------------------------------------------------------------------
@@ -277,18 +266,6 @@ class McpManager:
                 await stop_container(instance.container_name)
 
         logger.info("All MCP instances stopped")
-
-    def resolve_workspace_servers(self, group_folder: str) -> list[str]:
-        """Expand workspace's mcp_servers list (groups + names) into concrete server names."""
-        return resolve_workspace_servers(self._settings, self._merged_mcp_servers, group_folder)
-
-    def resolve_kwargs(self, group_folder: str, server_name: str) -> dict[str, str]:
-        """Resolve per-workspace kwargs for an MCP server."""
-        return resolve_kwargs(self._settings, group_folder, server_name)
-
-    def get_instance_id(self, server_name: str, kwargs: dict[str, str]) -> str:
-        """Compute instance ID: server_name + underscore + short hash of sorted kwargs."""
-        return get_instance_id(server_name, kwargs)
 
     def get_workspace_instance_ids(self, group_folder: str) -> list[str]:
         """Get the list of MCP instance IDs for a workspace."""

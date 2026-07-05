@@ -24,7 +24,7 @@ import pluggy
 
 from pynchy.config import get_settings
 from pynchy.config.models import CalDAVConfig, CalDAVServerConfig
-from pynchy.logger import logger
+from pynchy.plugins.integrations._service import service_tool
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
@@ -169,115 +169,103 @@ def _parse_event(component) -> dict:
 # ---------------------------------------------------------------------------
 
 
+@service_tool
 async def _handle_list_calendars(data: dict) -> dict:
     """Discover all visible calendars across all configured servers."""
     cfg = get_settings().caldav
     if err := _check_configured(cfg):
         return {"error": err}
 
-    try:
-        result: dict[str, list[str]] = {}
-        for name, server_cfg in cfg.servers.items():
-            client = _get_caldav_client(name, server_cfg)
-            principal = client.principal()
-            all_cals = principal.calendars()
-            visible = _filter_calendars(all_cals, server_cfg)
-            result[name] = [c.name for c in visible if c.name]
+    result: dict[str, list[str]] = {}
+    for name, server_cfg in cfg.servers.items():
+        client = _get_caldav_client(name, server_cfg)
+        principal = client.principal()
+        all_cals = principal.calendars()
+        visible = _filter_calendars(all_cals, server_cfg)
+        result[name] = [c.name for c in visible if c.name]
 
-        return {"result": {"servers": result, "default_server": cfg.default_server}}
-    except Exception as e:
-        logger.error("CalDAV list_calendars failed", error=str(e))
-        return {"error": f"CalDAV error: {e}"}
+    return {"result": {"servers": result, "default_server": cfg.default_server}}
 
 
+@service_tool
 async def _handle_list_calendar(data: dict) -> dict:
     """List calendar events within a date range."""
     cfg = get_settings().caldav
     if err := _check_configured(cfg):
         return {"error": err}
 
-    try:
-        server_name, server_cfg, cal_name = _resolve_server(cfg, data.get("calendar"))
-        cal = _resolve_calendar(server_name, server_cfg, cal_name)
+    server_name, server_cfg, cal_name = _resolve_server(cfg, data.get("calendar"))
+    cal = _resolve_calendar(server_name, server_cfg, cal_name)
 
-        now = datetime.now(tz=UTC)
-        start_str = data.get("start_date")
-        end_str = data.get("end_date")
+    now = datetime.now(tz=UTC)
+    start_str = data.get("start_date")
+    end_str = data.get("end_date")
 
-        start = datetime.fromisoformat(start_str) if start_str else now
-        end = datetime.fromisoformat(end_str) if end_str else now + timedelta(days=7)
+    start = datetime.fromisoformat(start_str) if start_str else now
+    end = datetime.fromisoformat(end_str) if end_str else now + timedelta(days=7)
 
-        # Ensure timezone-aware
-        if start.tzinfo is None:
-            start = start.replace(tzinfo=UTC)
-        if end.tzinfo is None:
-            end = end.replace(tzinfo=UTC)
+    # Ensure timezone-aware
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=UTC)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=UTC)
 
-        results = cal.date_search(start=start, end=end, expand=True)
+    results = cal.date_search(start=start, end=end, expand=True)
 
-        events = []
-        for event_obj in results:
-            component = event_obj.icalendar_component
-            if component:
-                events.append(_parse_event(component))
+    events = []
+    for event_obj in results:
+        component = event_obj.icalendar_component
+        if component:
+            events.append(_parse_event(component))
 
-        return {"result": {"events": events, "count": len(events)}}
-    except Exception as e:
-        logger.error("CalDAV list_calendar failed", error=str(e))
-        return {"error": f"CalDAV error: {e}"}
+    return {"result": {"events": events, "count": len(events)}}
 
 
+@service_tool
 async def _handle_create_event(data: dict) -> dict:
     """Create a calendar event."""
     cfg = get_settings().caldav
     if err := _check_configured(cfg):
         return {"error": err}
 
-    try:
-        server_name, server_cfg, cal_name = _resolve_server(cfg, data.get("calendar"))
-        cal = _resolve_calendar(server_name, server_cfg, cal_name)
+    server_name, server_cfg, cal_name = _resolve_server(cfg, data.get("calendar"))
+    cal = _resolve_calendar(server_name, server_cfg, cal_name)
 
-        ical_kwargs: dict[str, Any] = {}
-        ical_kwargs["dtstart"] = datetime.fromisoformat(data["start"])
-        ical_kwargs["dtend"] = datetime.fromisoformat(data["end"])
-        ical_kwargs["summary"] = data["title"]
+    ical_kwargs: dict[str, Any] = {}
+    ical_kwargs["dtstart"] = datetime.fromisoformat(data["start"])
+    ical_kwargs["dtend"] = datetime.fromisoformat(data["end"])
+    ical_kwargs["summary"] = data["title"]
 
-        if data.get("description"):
-            ical_kwargs["description"] = data["description"]
-        if data.get("location"):
-            ical_kwargs["location"] = data["location"]
+    if data.get("description"):
+        ical_kwargs["description"] = data["description"]
+    if data.get("location"):
+        ical_kwargs["location"] = data["location"]
 
-        event = cal.save_event(**ical_kwargs)
+    event = cal.save_event(**ical_kwargs)
 
-        uid = None
-        component = event.icalendar_component
-        if component:
-            uid_val = component.get("uid")
-            if uid_val:
-                uid = str(uid_val)
+    uid = None
+    component = event.icalendar_component
+    if component:
+        uid_val = component.get("uid")
+        if uid_val:
+            uid = str(uid_val)
 
-        return {"result": {"uid": uid, "status": "created"}}
-    except Exception as e:
-        logger.error("CalDAV create_event failed", error=str(e))
-        return {"error": f"CalDAV error: {e}"}
+    return {"result": {"uid": uid, "status": "created"}}
 
 
+@service_tool
 async def _handle_delete_event(data: dict) -> dict:
     """Delete a calendar event by UID."""
     cfg = get_settings().caldav
     if err := _check_configured(cfg):
         return {"error": err}
 
-    try:
-        server_name, server_cfg, cal_name = _resolve_server(cfg, data.get("calendar"))
-        cal = _resolve_calendar(server_name, server_cfg, cal_name)
-        uid = data["event_id"]
-        event = cal.event_by_uid(uid)
-        event.delete()
-        return {"result": {"uid": uid, "status": "deleted"}}
-    except Exception as e:
-        logger.error("CalDAV delete_event failed", error=str(e))
-        return {"error": f"CalDAV error: {e}"}
+    server_name, server_cfg, cal_name = _resolve_server(cfg, data.get("calendar"))
+    cal = _resolve_calendar(server_name, server_cfg, cal_name)
+    uid = data["event_id"]
+    event = cal.event_by_uid(uid)
+    event.delete()
+    return {"result": {"uid": uid, "status": "deleted"}}
 
 
 # ---------------------------------------------------------------------------

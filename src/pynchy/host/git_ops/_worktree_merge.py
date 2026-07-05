@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.git_ops.utils import (
+    count_commits,
     detect_main_branch,
     git_env_with_token,
     push_local_commits,
@@ -44,23 +45,9 @@ def merge_worktree(group_folder: str, repo_ctx: RepoContext) -> bool:
     main_branch = detect_main_branch(cwd=repo_ctx.root)
 
     # Check if worktree branch has commits ahead of HEAD
-    count = run_git("rev-list", f"HEAD..{branch_name}", "--count", cwd=repo_ctx.root)
-    if count.returncode != 0:
-        logger.warning(
-            "Failed to check worktree commits",
-            group=group_folder,
-            error=count.stderr.strip(),
-        )
-        return False
-
-    try:
-        ahead = int(count.stdout.strip())
-    except (ValueError, TypeError):
-        logger.warning(
-            "Failed to parse worktree commit count",
-            group=group_folder,
-            stdout=count.stdout.strip(),
-        )
+    ahead = count_commits(f"HEAD..{branch_name}", cwd=repo_ctx.root)
+    if ahead is None:
+        logger.warning("Failed to check worktree commits", group=group_folder)
         return False
 
     if ahead == 0:

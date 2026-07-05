@@ -17,6 +17,7 @@ from typing import Any, Protocol
 from pynchy.config import get_settings
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.git_ops.utils import (
+    count_commits,
     detect_main_branch,
     git_env_with_token,
     push_local_commits,
@@ -92,22 +93,12 @@ def _validate_sync_preconditions(
             ),
         }
 
-    count = run_git("rev-list", f"{main_branch}..{branch_name}", "--count", cwd=repo_ctx.root)
-    if count.returncode != 0:
+    ahead = count_commits(f"{main_branch}..{branch_name}", cwd=repo_ctx.root)
+    if ahead is None:
         return {
             "success": False,
             "message": (
-                f"Failed to check commits: {count.stderr.strip()}. "
-                "Verify your branch is valid with `git log --oneline`."
-            ),
-        }
-    try:
-        ahead = int(count.stdout.strip())
-    except (ValueError, TypeError):
-        return {
-            "success": False,
-            "message": (
-                f"Failed to parse commit count: {count.stdout.strip()!r}. "
+                "Failed to check commits on your branch. "
                 "Verify your branch is valid with `git log --oneline`."
             ),
         }

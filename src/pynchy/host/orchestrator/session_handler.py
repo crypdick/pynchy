@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from pynchy.event_bus import ChatClearedEvent, MessageEvent
 from pynchy.host.container_manager.session import destroy_session
 from pynchy.host.git_ops._worktree_merge import background_merge_worktree
+from pynchy.host.orchestrator.messaging.pipeline import advance_cursor
 from pynchy.host.orchestrator.messaging.sender import broadcast
 from pynchy.logger import logger
 from pynchy.state import clear_session, set_chat_cleared_at, store_message
@@ -86,9 +87,8 @@ async def _teardown_group(
         deps.queue.stop_active_process(chat_jid),
         name=f"stop-container-{chat_jid[:20]}",
     )
-    deps.last_agent_timestamp[chat_jid] = timestamp
     logger.info("teardown_trace", step="save_state_start", group=group.name)
-    await deps.save_state()
+    await advance_cursor(deps, chat_jid, timestamp)
     logger.info("teardown_trace", step="done", group=group.name)
 
 

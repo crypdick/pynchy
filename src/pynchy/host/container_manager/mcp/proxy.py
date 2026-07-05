@@ -42,9 +42,9 @@ ApprovalRequestFn = Callable[[str, str, dict, str], Awaitable[None]]
 class _ProxyState:
     """Mutable routing state for the proxy.
 
-    Stored as a single app-key value at construction time so that
-    update_routes() can mutate the contents without touching the
-    frozen app dict.
+    Stored as a single app-key value so its contents (e.g. ``http_session``,
+    set once the aiohttp session is created) can be populated without
+    replacing entries in the frozen app dict.
     """
 
     instance_urls: dict[str, str] = field(default_factory=dict)
@@ -350,18 +350,3 @@ class McpProxy:
             await self._runner.cleanup()
             self._runner = None
             logger.info("MCP proxy stopped")
-
-    def update_routes(
-        self,
-        instance_urls: dict[str, str],
-        trust_map: dict[str, dict[str, Any]] | None = None,
-    ) -> None:
-        """Update the instance URL and trust mappings on a running proxy.
-
-        Mutates the _ProxyState dataclass in-place rather than the
-        frozen app dict -- safe to call while the server is running.
-        """
-        if self._runner and self._runner.app:
-            state = self._runner.app[_STATE_KEY]
-            state.instance_urls = instance_urls
-            state.trust_map = trust_map or {}

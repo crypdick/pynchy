@@ -20,7 +20,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from pynchy.host.git_ops.repo import RepoContext
-from pynchy.host.git_ops.utils import detect_main_branch, git_env_with_token, run_git
+from pynchy.host.git_ops.utils import (
+    count_commits,
+    detect_main_branch,
+    git_env_with_token,
+    run_git,
+)
 from pynchy.logger import logger
 
 
@@ -345,22 +350,11 @@ def reconcile_worktrees_at_startup(
                 continue
 
             # Check divergence: commits ahead and behind main
-            ahead = run_git(
-                "rev-list", f"{main_branch}..{branch_name}", "--count", cwd=repo_ctx.root
-            )
-            behind = run_git(
-                "rev-list", f"{branch_name}..{main_branch}", "--count", cwd=repo_ctx.root
-            )
+            ahead_count = count_commits(f"{main_branch}..{branch_name}", cwd=repo_ctx.root)
+            behind_count = count_commits(f"{branch_name}..{main_branch}", cwd=repo_ctx.root)
 
-            if ahead.returncode != 0 or behind.returncode != 0:
+            if ahead_count is None or behind_count is None:
                 logger.warning("Failed to check worktree divergence", group=group_folder)
-                continue
-
-            try:
-                ahead_count = int(ahead.stdout.strip())
-                behind_count = int(behind.stdout.strip())
-            except (ValueError, TypeError):
-                logger.warning("Failed to parse worktree divergence count", group=group_folder)
                 continue
 
             if ahead_count == 0 or behind_count == 0:
