@@ -89,6 +89,12 @@ repos:
         language: system
         types: [python]
         files: ^src/
+      - id: check-private-test-imports
+        name: Flag tests importing private first-party symbols
+        entry: uv run python scripts/pre_commit_hooks/check_private_test_imports.py
+        language: system
+        types: [python]
+        files: ^tests/
 
   # Informational-only gates (pragmatic ratchet): report violations without
   # blocking commits. Existing debt in these categories has not been audited
@@ -101,20 +107,6 @@ repos:
         language: system
         pass_filenames: false
         types: [python]
-        verbose: true
-      # FIXME: promote to blocking once the existing debt is paid down.
-      # 187 violations across tests/ as of this writing. For each: either
-      # drive the private through its public entry point instead (preferred),
-      # delete it if nothing public reaches it (dead code), or add a narrow
-      # `# allow: private-test-imports` exemption when genuinely warranted
-      # (e.g. `_init_test_database` — test-only setup, no public entry point).
-      # Then drop the `|| true` here.
-      - id: check-private-test-imports
-        name: "[informational] Flag tests importing private first-party symbols"
-        entry: bash -c 'uv run python scripts/pre_commit_hooks/check_private_test_imports.py "$@" || true' --
-        language: system
-        types: [python]
-        files: ^tests/
         verbose: true
 
   # Documentation link validation
