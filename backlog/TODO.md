@@ -18,8 +18,8 @@ Single source of truth for all pynchy work items.
 
 - convert setup into pyinfra deployments for repeatable deployments.
 - **Deputy agent for worktree contributions** — Ephemeral agent that inspects commits from worktrees before they enter main. Reviews for malicious code, security issues, and project conventions. Spawned by `host_sync_worktree()` before the merge step.
-- **Automated repo token refresh via GitHub App** — Replace manually-created fine-grained PATs with a GitHub App that auto-generates short-lived, repo-scoped installation tokens. Eliminates manual rotation. Builds on [repo-scoped tokens](5-completed/repo-scoped-tokens.md) (Phase 1 complete).
-- [Sandbox profiles and universal config](0-proposed/sandbox-profiles.md) — Replace top-level `[directives.*]` with a three-tier union model: `sandbox_universal` ∪ `sandbox_profile` ∪ per-sandbox. Makes directive assignment consistent with skills and mcp_servers.
+- **Automated repo token refresh via GitHub App** — Replace manually-created fine-grained PATs with a GitHub App that auto-generates short-lived, repo-scoped installation tokens. Eliminates manual rotation. Builds on repo-scoped tokens (Phase 1 complete).
+- [Reintroduce Teams with session isolation](0-proposed/reintroduce-teams-session-isolation.md) — Teams tools (`TeamCreate`/`SendMessage`) are unlisted to prevent transcript branching; re-enabling needs per-teammate session isolation first.
 
 ### 1 - Approved
 *Approved ideas. No plan yet.*
@@ -42,7 +42,7 @@ Single source of truth for all pynchy work items.
     - Runtime (container runtimes)
 - enforce `"forbidden"` trust level — `TrustLevel = "forbidden"` is declared in `ServiceTrustConfig` but doesn't block anything yet. Needs: (1) SecurityPolicy.evaluate_read/evaluate_write to reject forbidden operations, (2) plugin hook so plugins can declare forbidden operations in their trust config, (3) expose as first-class plugin API so marking a service property as `"forbidden"` actually changes behavior at the plugin level.
 - GMail integration
-- Protonmail integration
+- [Protonmail integration](1-approved/proton-mcp.md) — pm-cli-based Proton Mail send/read via MCP (design doc in backlog)
 - if a deployment fails, it should spawn a local claude agent out-of-band to rescue the deployment
 
 
@@ -63,10 +63,9 @@ Single source of truth for all pynchy work items.
 
 - add a mcp that allows admin accounts to add passwords to the .env. it should be upsert only permissions. it should be written in such a way that when the user pastes in their password, it bypasses the llm, the mcp updates .env, and a message posted on the chat saying they can delete the message they posted containing their password. the password should never be stored in the sqlite db. when using the service adder mcp, it should print a system message saying that if the mcp requires any password_env fields, to paste it in. maybe there should be a magic phrase, like 'env add KEY=VALUE' and this is what the harness intercepts. i guess in that case it shouldn't even be an MCP, it should be part of the harness. oh, and afterwards there should be a system (not host) message broadcast so that the local agent is aware when the env files are updated.
 
-- [Observability gaps](5-completed/observability-gaps.md) — Slack message loss alerting, scheduled task progress heartbeats (RESOLVED), boot failure notifications
+- Observability gaps — Slack message loss alerting and boot failure notifications still open (scheduled task progress heartbeats already resolved)
 
 #### Bugs
-- [MCP gateway transport](3-ready/mcp-gateway-transport.md) — Claude SDK `type: "http"` hangs during init against LiteLLM's Streamable HTTP `/mcp/` endpoint; `type: "sse"` fails gracefully but tools unavailable
 - [Slack shutdown race (recurrence)](3-ready/slack-shutdown-race.md) — `RuntimeError: Executor shutdown` during service restart. Commit `76065e0` cancels `_reconnect_task` in `disconnect()`, but orphaned aiohttp subtasks spawned by `connect()` still crash when the executor tears down. Follow-up commit `730e2a7` (guard reconnect against shutdown race) didn't fully resolve it either. Downstream: `Failed to resolve bot user ID (mention stripping disabled)` during reconnect. Needs deeper fix in `slack.py` reconnect path.
 - messaging desync — sometimes no response appears in TUI until a follow-up message is sent. Partially fixed (cursor advance bug, input pipeline unification), but full fix likely depends on per-channel bidirectional cursors (see [reliable-channel-messaging](2-planning/reliable-channel-messaging.md)).
 
@@ -81,7 +80,7 @@ Single source of truth for all pynchy work items.
 
 
 ### Completed
-We don't track completed items here. Plans are moved to `5-completed/` via `git mv` and the line is removed.
+We don't track completed items here. Completed plans are deleted — git history is the archive — and the line is removed.
 
 ### Denied
 We don't track denied items here. Plans are moved to `denied/` via `git mv` and the line is removed.

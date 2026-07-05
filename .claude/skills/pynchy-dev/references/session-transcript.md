@@ -2,7 +2,7 @@
 
 When agent teams spawn subagent CLI processes, they write to the same session JSONL. On subsequent `query()` resumes, the CLI reads the JSONL but may pick a stale branch tip (from before the subagent activity), causing the agent's response to land on a branch the host never receives a `result` for.
 
-**Fix**: pass `resumeSessionAt` with the last assistant message UUID to explicitly anchor each resume.
+**Current state — closed by construction, not by an anchor.** The TS original anchored each resume with `resumeSessionAt` (last assistant UUID); that primitive was lost in the Python port and has no CLI successor, so it is *not* the fix here. Instead, native Teams tools (`TeamCreate`/`TeamDelete`/`SendMessage`) are not allow-listed in either core, so nothing can branch the leader's transcript. `Task` sidechains stay allowed — they write off the main chain and resume safely. Reintroducing Teams requires per-teammate session isolation first. The diagnostics below still apply for detecting any branching that does slip in.
 
 ## Diagnostics
 
