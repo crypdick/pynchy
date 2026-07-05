@@ -11,10 +11,13 @@ import pynchy.host.container_manager.gateway as _gw_mod
 from pynchy.host.container_manager.gateway import (
     BuiltinGateway,
     LiteLLMGateway,
-    _load_or_create_persistent_key,
+    _load_or_create_persistent_key,  # allow: private-test-imports
     start_gateway,
 )
-from pynchy.host.container_manager.gateway_builtin import _ANTHROPIC_OAUTH_BETA
+
+# The anthropic-beta value is an external Anthropic API contract (OAuth token
+# requests 401 without it). Pin the literal so a production change trips the test.
+_ANTHROPIC_OAUTH_BETA = "oauth-2025-04-20"
 
 # ---------------------------------------------------------------------------
 # LiteLLMGateway — unit tests (Docker calls mocked)

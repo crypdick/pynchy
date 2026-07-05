@@ -55,9 +55,9 @@ class _FakeDeps:
 
 def _make_pre_container_result():
     """Build a fake _PreContainerResult with all required fields."""
-    from pynchy.host.orchestrator.agent_runner import _PreContainerResult
+    from pynchy.host.orchestrator import agent_runner
 
-    return _PreContainerResult(
+    return agent_runner._PreContainerResult(
         is_admin=False,
         repo_access=None,
         system_prompt_append=None,
@@ -117,9 +117,9 @@ class TestScheduledTaskUsesSession:
 
     async def _call(self):
         """Call _run_scheduled_task with standard mocks."""
-        from pynchy.host.orchestrator.agent_runner import _run_scheduled_task
+        from pynchy.host.orchestrator import agent_runner
 
-        return await _run_scheduled_task(
+        return await agent_runner._run_scheduled_task(
             self.deps,
             self.group,
             "test@g.us",

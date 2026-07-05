@@ -11,15 +11,17 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from conftest import init_test_database
 
-from pynchy.host.container_manager.ipc.watcher import _process_output_file
-from pynchy.state import _init_test_database
+from pynchy.host.container_manager.ipc.watcher import (
+    _process_output_file,  # allow: private-test-imports
+)
 from pynchy.types import ContainerOutput
 
 
 @pytest.fixture
 async def _db():
-    await _init_test_database()
+    await init_test_database()
 
 
 def _write_output_file(base_dir: Path, group: str, data: dict, filename: str = "test.json") -> Path:

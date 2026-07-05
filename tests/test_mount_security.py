@@ -10,18 +10,14 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
+from pynchy.host.container_manager.security import mount_security
 from pynchy.host.container_manager.security.mount_security import (
-    _expand_path,
-    _find_allowed_root,
-    _is_valid_container_path,
-    _matches_blocked_pattern,
-    _reset_cache,
     generate_allowlist_template,
     load_mount_allowlist,
     validate_additional_mounts,
     validate_mount,
 )
-from pynchy.types import AdditionalMount, AllowedRoot
+from pynchy.types import AdditionalMount
 
 
 def _test_settings(allowlist_path: Path):
@@ -30,9 +26,12 @@ def _test_settings(allowlist_path: Path):
 
 @pytest.fixture(autouse=True)
 def _clear_cache():
-    _reset_cache()
+    # Reset the module-level allowlist cache for test isolation. The reset is a
+    # test-only affordance on the module; reaching it by attribute avoids
+    # importing a private symbol.
+    mount_security._reset_cache()
     yield
-    _reset_cache()
+    mount_security._reset_cache()
 
 
 def _write_allowlist(path: Path, content: str) -> None:
@@ -40,23 +39,125 @@ def _write_allowlist(path: Path, content: str) -> None:
 
 
 class TestHelpers:
-    def test_expand_path(self):
-        with patch.dict(os.environ, {"HOME": "/home/test"}):
-            assert _expand_path("~/projects") == "/home/test/projects"
+    """Path/pattern helpers, exercised through the public validate_mount()."""
 
-    def test_matches_blocked_pattern(self):
-        assert _matches_blocked_pattern("/home/u/.ssh/id_rsa", [".ssh"]) == ".ssh"
-        assert _matches_blocked_pattern("/home/u/src", [".ssh"]) is None
+    def test_home_expansion_in_allowed_root(self, tmp_path: Path):
+        """A ~ in an allowed root path is expanded to the home directory."""
+        projects = tmp_path / "projects"
+        projects.mkdir()
+        target = projects / "repo"
+        target.mkdir()
+        allowlist = tmp_path / "mount-allowlist.toml"
+        _write_allowlist(
+            allowlist,
+            """
+non_admin_read_only = true
+blocked_patterns = []
 
-    def test_find_allowed_root(self, tmp_path: Path):
-        root = AllowedRoot(path=str(tmp_path))
-        child = tmp_path / "a"
+[[allowed_roots]]
+path = "~/projects"
+allow_read_write = true
+""".strip(),
+        )
+        with (
+            patch.dict(os.environ, {"HOME": str(tmp_path)}),
+            patch(
+                "pynchy.host.container_manager.security.mount_security.get_settings",
+                return_value=_test_settings(allowlist),
+            ),
+        ):
+            result = validate_mount(
+                AdditionalMount(host_path=str(target), container_path="repo"), is_admin=True
+            )
+        assert result.allowed is True
+
+    def test_blocked_pattern_rejects_mount(self, tmp_path: Path):
+        """A path segment matching a blocked pattern is rejected."""
+        allowed = tmp_path / "allowed"
+        allowed.mkdir()
+        secret = allowed / "secret-data"
+        secret.mkdir()
+        allowlist = tmp_path / "mount-allowlist.toml"
+        _write_allowlist(
+            allowlist,
+            f"""
+non_admin_read_only = true
+blocked_patterns = ["secret-data"]
+
+[[allowed_roots]]
+path = "{allowed}"
+allow_read_write = true
+""".strip(),
+        )
+        with patch(
+            "pynchy.host.container_manager.security.mount_security.get_settings",
+            return_value=_test_settings(allowlist),
+        ):
+            result = validate_mount(
+                AdditionalMount(host_path=str(secret), container_path="x"), is_admin=True
+            )
+        assert result.allowed is False
+        assert "blocked pattern" in result.reason
+
+    def test_mount_under_allowed_root_resolves(self, tmp_path: Path):
+        """A path under an allowed root resolves and reports its real path."""
+        root = tmp_path / "root"
+        root.mkdir()
+        child = root / "a"
         child.mkdir()
-        assert _find_allowed_root(str(child), [root]) is root
+        allowlist = tmp_path / "mount-allowlist.toml"
+        _write_allowlist(
+            allowlist,
+            f"""
+non_admin_read_only = true
+blocked_patterns = []
 
-    def test_container_path_validation(self):
-        assert _is_valid_container_path("data") is True
-        assert _is_valid_container_path("../escape") is False
+[[allowed_roots]]
+path = "{root}"
+allow_read_write = true
+""".strip(),
+        )
+        with patch(
+            "pynchy.host.container_manager.security.mount_security.get_settings",
+            return_value=_test_settings(allowlist),
+        ):
+            result = validate_mount(
+                AdditionalMount(host_path=str(child), container_path="a"), is_admin=True
+            )
+        assert result.allowed is True
+        assert result.real_host_path == os.path.realpath(str(child))
+
+    def test_container_path_validation(self, tmp_path: Path):
+        """Container paths must be relative and free of parent-dir escapes."""
+        root = tmp_path / "root"
+        root.mkdir()
+        target = root / "data"
+        target.mkdir()
+        allowlist = tmp_path / "mount-allowlist.toml"
+        _write_allowlist(
+            allowlist,
+            f"""
+non_admin_read_only = true
+blocked_patterns = []
+
+[[allowed_roots]]
+path = "{root}"
+allow_read_write = true
+""".strip(),
+        )
+        with patch(
+            "pynchy.host.container_manager.security.mount_security.get_settings",
+            return_value=_test_settings(allowlist),
+        ):
+            ok = validate_mount(
+                AdditionalMount(host_path=str(target), container_path="data"), is_admin=True
+            )
+            bad = validate_mount(
+                AdditionalMount(host_path=str(target), container_path="../escape"), is_admin=True
+            )
+        assert ok.allowed is True
+        assert bad.allowed is False
+        assert "container path" in bad.reason.lower()
 
 
 class TestLoadAllowlist:

@@ -33,7 +33,7 @@ from pynchy.state.chats import (
     store_chat_metadata,
     update_chat_name,
 )
-from pynchy.state.connection import _get_db, _init_test_database, init_database
+from pynchy.state.connection import _get_db, init_database, init_test_database
 from pynchy.state.events import store_event
 from pynchy.state.groups import (
     delete_workspace_profile,
@@ -93,8 +93,8 @@ from pynchy.state.tasks import (
 __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alphabetical
     # connection
     "_get_db",
-    "_init_test_database",
     "init_database",
+    "init_test_database",
     # channel_cursors
     "advance_cursors_atomic",
     "get_channel_cursor",

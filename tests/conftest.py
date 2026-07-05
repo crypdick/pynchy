@@ -7,7 +7,10 @@ import re
 import pytest
 from pydantic import BaseModel, SecretStr
 
+from pynchy.state import init_test_database
 from pynchy.types import NewMessage
+
+__all__ = ["init_test_database"]
 
 # ---------------------------------------------------------------------------
 # Shared helpers (plain functions, not fixtures — importable by test files)

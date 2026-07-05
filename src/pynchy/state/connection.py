@@ -104,7 +104,7 @@ async def init_database() -> None:
     await create_schema(_db)
 
 
-async def _init_test_database() -> None:
+async def init_test_database() -> None:
     """Create an in-memory database for tests.
 
     Uses ``stop()`` + thread join instead of ``await close()`` because

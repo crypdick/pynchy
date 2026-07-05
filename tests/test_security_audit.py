@@ -6,14 +6,14 @@ import json
 
 import pytest
 
+from pynchy import state
 from pynchy.host.container_manager.security.audit import prune_security_audit, record_security_event
-from pynchy.state import _init_test_database, store_message_direct
-from pynchy.state.connection import _get_db
+from pynchy.state import connection, store_message_direct
 
 
 @pytest.fixture(autouse=True)
 async def _setup_db():
-    await _init_test_database()
+    await state.init_test_database()
 
 
 @pytest.mark.asyncio
@@ -30,7 +30,7 @@ async def test_record_security_event():
         request_id="req-123",
     )
 
-    db = _get_db()
+    db = connection._get_db()
     cursor = await db.execute("SELECT * FROM messages WHERE sender = 'security'")
     entries = await cursor.fetchall()
     assert len(entries) == 1
@@ -54,7 +54,7 @@ async def test_record_security_event_strips_none():
         decision="denied",
     )
 
-    db = _get_db()
+    db = connection._get_db()
     cursor = await db.execute("SELECT * FROM messages WHERE sender = 'security'")
     entries = await cursor.fetchall()
     assert len(entries) == 1
@@ -79,7 +79,7 @@ async def test_record_multiple_events():
             request_id=f"req-{i}",
         )
 
-    db = _get_db()
+    db = connection._get_db()
     cursor = await db.execute("SELECT * FROM messages WHERE sender = 'security'")
     entries = await cursor.fetchall()
     assert len(entries) == 5
@@ -103,7 +103,7 @@ async def test_prune_security_audit_deletes_old_entries():
     deleted = await prune_security_audit(retention_days=1)
     assert deleted == 1
 
-    db = _get_db()
+    db = connection._get_db()
     cursor = await db.execute("SELECT * FROM messages WHERE sender = 'security'")
     entries = await cursor.fetchall()
     assert len(entries) == 0
@@ -139,7 +139,7 @@ async def test_prune_security_audit_preserves_chat_messages():
     deleted = await prune_security_audit(retention_days=1)
     assert deleted == 1  # Only the security row
 
-    db = _get_db()
+    db = connection._get_db()
     cursor = await db.execute("SELECT * FROM messages WHERE sender = 'user@s.whatsapp.net'")
     entries = await cursor.fetchall()
     assert len(entries) == 1  # Chat message preserved
@@ -160,7 +160,7 @@ async def test_prune_security_audit_preserves_recent():
     deleted = await prune_security_audit(retention_days=1)
     assert deleted == 0  # Nothing old enough to delete
 
-    db = _get_db()
+    db = connection._get_db()
     cursor = await db.execute("SELECT * FROM messages WHERE sender = 'security'")
     entries = await cursor.fetchall()
     assert len(entries) == 1  # Recent entry preserved

@@ -20,8 +20,8 @@ import pytest
 sys.path.insert(
     0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src")
 )
-from agent_runner import transcript_archive as ta  # noqa: E402
-from agent_runner.transcript_archive import (  # noqa: E402
+from agent_runner import transcript_archive as ta
+from agent_runner.transcript_archive import (
     _format_transcript_markdown,
     _generate_fallback_name,
     _get_session_summary,

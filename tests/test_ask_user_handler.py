@@ -244,16 +244,42 @@ class TestUnknownQuestion:
 
 
 # ---------------------------------------------------------------------------
-# _format_answer_context
+# Cold-start answer-context formatting (observed via handle_ask_user_answer)
 # ---------------------------------------------------------------------------
 
 
-class TestFormatAnswerContext:
-    def test_format_with_options(self, pending_question):
-        """Format context text with question and options."""
-        from pynchy.host.orchestrator.messaging.ask_user_handler import _format_answer_context
+async def _cold_start_text(pending: dict, answer: dict) -> str:
+    """Drive the public cold-start path and return the enqueued context text.
 
-        text = _format_answer_context(pending_question, {"auth_strategy": "JWT tokens"})
+    With no live session, handle_ask_user_answer formats the Q&A and enqueues
+    it as a synthetic message — so the enqueued text is the observable output
+    of the answer-context formatting.
+    """
+    from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
+
+    deps = MagicMock()
+    deps.enqueue_message = AsyncMock()
+    with (
+        patch(
+            "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",
+            return_value=pending,
+        ),
+        patch(
+            "pynchy.host.orchestrator.messaging.ask_user_handler.get_session",
+            return_value=None,
+        ),
+        patch("pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question"),
+    ):
+        await handle_ask_user_answer(pending.get("request_id", "req-x"), answer, deps)
+
+    return deps.enqueue_message.call_args[0][1]
+
+
+class TestFormatAnswerContext:
+    @pytest.mark.asyncio
+    async def test_format_with_options(self, pending_question):
+        """Cold-start text includes the question and numbered options."""
+        text = await _cold_start_text(pending_question, {"auth_strategy": "JWT tokens"})
 
         assert "Which auth strategy?" in text
         assert "1. JWT tokens" in text
@@ -261,11 +287,13 @@ class TestFormatAnswerContext:
         assert "3. OAuth 2.0" in text
         assert "Continue from where you left off" in text
 
-    def test_format_with_dict_options(self):
+    @pytest.mark.asyncio
+    async def test_format_with_dict_options(self):
         """Dict options with label/description should render labels, not raw dicts."""
-        from pynchy.host.orchestrator.messaging.ask_user_handler import _format_answer_context
-
         pending = {
+            "request_id": "req-dict",
+            "source_group": "test-group",
+            "chat_jid": "slack:C123",
             "questions": [
                 {
                     "question": "Which auth strategy?",
@@ -276,7 +304,7 @@ class TestFormatAnswerContext:
                 }
             ],
         }
-        text = _format_answer_context(pending, {"answer": "JWT"})
+        text = await _cold_start_text(pending, {"answer": "JWT"})
 
         assert "1. JWT" in text
         assert "2. OAuth" in text
@@ -284,29 +312,33 @@ class TestFormatAnswerContext:
         assert "{'label'" not in text
         assert '{"label"' not in text
 
-    def test_format_without_options(self):
-        """Format context text when the question has no options."""
-        from pynchy.host.orchestrator.messaging.ask_user_handler import _format_answer_context
-
+    @pytest.mark.asyncio
+    async def test_format_without_options(self):
+        """Cold-start text when the question has no options."""
         pending = {
+            "request_id": "req-noopt",
+            "source_group": "test-group",
+            "chat_jid": "slack:C123",
             "questions": [{"question": "What should the timeout be?"}],
         }
-        text = _format_answer_context(pending, {"timeout": "30s"})
+        text = await _cold_start_text(pending, {"timeout": "30s"})
 
         assert "What should the timeout be?" in text
         assert "30s" in text
 
-    def test_format_multiple_questions(self):
-        """Format context text with multiple questions."""
-        from pynchy.host.orchestrator.messaging.ask_user_handler import _format_answer_context
-
+    @pytest.mark.asyncio
+    async def test_format_multiple_questions(self):
+        """Cold-start text with multiple questions."""
         pending = {
+            "request_id": "req-multi",
+            "source_group": "test-group",
+            "chat_jid": "slack:C123",
             "questions": [
                 {"question": "Pick a color", "options": ["red", "blue"]},
                 {"question": "Pick a size", "options": ["S", "M", "L"]},
             ],
         }
-        text = _format_answer_context(pending, {"color": "red", "size": "M"})
+        text = await _cold_start_text(pending, {"color": "red", "size": "M"})
 
         assert "Pick a color" in text
         assert "Pick a size" in text

@@ -7,22 +7,21 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from pynchy import state
 from pynchy.config.models import WorkspaceConfig
-from pynchy.host.container_manager.ipc.handlers_service import (
-    _handle_service_request,
-    clear_plugin_handler_cache,
-)
-from pynchy.host.container_manager.security.gate import _gates, create_gate
-from pynchy.state import _init_test_database
+from pynchy.host.container_manager.ipc import registry
+from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
+from pynchy.host.container_manager.security import gate
+from pynchy.host.container_manager.security.gate import create_gate
 from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
 
 
 @pytest.fixture(autouse=True)
 async def _setup():
-    await _init_test_database()
+    await state.init_test_database()
     clear_plugin_handler_cache()
     yield
-    _gates.clear()
+    gate._gates.clear()
 
 
 @pytest.fixture
@@ -138,7 +137,7 @@ async def test_plugin_dispatch_calls_handler(tmp_path, register_gate):
         ),
     ):
         data = _make_request("my_tool", some_param="value")
-        await _handle_service_request(data, "test-ws", False, deps)
+        await registry.dispatch(data, "test-ws", False, deps)
 
     mock_handler.assert_awaited_once()
 
@@ -173,7 +172,7 @@ async def test_forbidden_tool_denied(tmp_path, register_gate):
         ),
     ):
         data = _make_request("forbidden_tool", param="value")
-        await _handle_service_request(data, "test-ws", False, deps)
+        await registry.dispatch(data, "test-ws", False, deps)
 
     response_file = tmp_path / "ipc" / "test-ws" / "responses" / "test-req-1.json"
     assert response_file.exists()
@@ -215,7 +214,7 @@ async def test_dangerous_writes_requires_human(tmp_path, register_gate):
         ),
     ):
         data = _make_request("sensitive_tool", item_id="123")
-        await _handle_service_request(data, "test-ws", False, deps)
+        await registry.dispatch(data, "test-ws", False, deps)
 
     # No response file — container blocks until human decides
     response_file = tmp_path / "ipc" / "test-ws" / "responses" / "test-req-1.json"
@@ -257,7 +256,7 @@ async def test_unknown_tool_type(tmp_path):
             "type": "service:nonexistent_tool",
             "request_id": "req-unknown",
         }
-        await _handle_service_request(data, "test-ws", False, deps)
+        await registry.dispatch(data, "test-ws", False, deps)
 
     response_file = tmp_path / "ipc" / "test-ws" / "responses" / "req-unknown.json"
     response = json.loads(response_file.read_text())
@@ -272,7 +271,7 @@ async def test_missing_request_id():
 
     # Should return without writing any response (just logs warning)
     data = {"type": "service:some_tool"}
-    await _handle_service_request(data, "test-ws", False, deps)
+    await registry.dispatch(data, "test-ws", False, deps)
 
 
 @pytest.mark.asyncio
@@ -309,7 +308,7 @@ async def test_fallback_security_for_unconfigured_workspace(tmp_path):
         ),
     ):
         data = _make_request("some_tool")
-        await _handle_service_request(data, "unknown-ws", False, deps)
+        await registry.dispatch(data, "unknown-ws", False, deps)
 
     # Default ServiceTrustConfig has dangerous_writes=True -> needs human
     # No response file written (container blocks)
@@ -353,7 +352,7 @@ async def test_safe_service_allowed(tmp_path, register_gate):
         ),
     ):
         data = _make_request("safe_tool")
-        await _handle_service_request(data, "test-ws", False, deps)
+        await registry.dispatch(data, "test-ws", False, deps)
 
     response_file = tmp_path / "ipc" / "test-ws" / "responses" / "test-req-1.json"
     response = json.loads(response_file.read_text())

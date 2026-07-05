@@ -9,15 +9,14 @@ import pytest
 from pynchy.config.models import OwnerConfig, SandboxProfileConfig, WorkspaceConfig
 from pynchy.host.orchestrator.messaging.reconciler import reconcile_all_channels, reset_cooldowns
 from pynchy.state import (
-    _init_test_database,
     get_channel_cursor,
     get_pending_outbound,
     record_outbound,
     set_channel_cursor,
+    store_chat_metadata,
 )
-from pynchy.state.connection import _get_db
 from pynchy.types import InboundFetchResult, NewMessage, WorkspaceProfile
-from tests.conftest import make_settings
+from tests.conftest import init_test_database, make_settings
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -68,15 +67,10 @@ def _make_deps(
 
 @pytest.fixture()
 async def _db():
-    await _init_test_database()
+    await init_test_database()
     # Seed chat rows for the FK constraint
-    db = _get_db()
     for jid in ("group@g.us", "admin@g.us"):
-        await db.execute(
-            "INSERT INTO chats (jid, last_message_time) VALUES (?, ?)",
-            (jid, "2024-01-01T00:00:00"),
-        )
-    await db.commit()
+        await store_chat_metadata(jid, "2024-01-01T00:00:00")
 
 
 @pytest.fixture(autouse=True)

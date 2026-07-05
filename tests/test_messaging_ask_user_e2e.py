@@ -20,13 +20,13 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.state import _init_test_database
+from pynchy.state import init_test_database
 from pynchy.types import WorkspaceProfile
 
 
 @pytest.fixture(autouse=True)
 async def _setup():
-    await _init_test_database()
+    await init_test_database()
 
 
 @pytest.fixture
@@ -127,7 +127,7 @@ class TestAskUserE2E:
         )
 
         # Step 1: Container sends ask_user:ask IPC task
-        from pynchy.host.container_manager.ipc.handlers_ask_user import _handle_ask_user_request
+        from pynchy.host.container_manager.ipc import dispatch
 
         data = {
             "type": "ask_user:ask",
@@ -142,7 +142,7 @@ class TestAskUserE2E:
             ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
-            await _handle_ask_user_request(data, "mygroup", False, deps)
+            await dispatch(data, "mygroup", False, deps)
 
         # Verify: pending question file created
         pending_path = tmp_path / "ipc" / "mygroup" / "pending_questions" / f"{REQUEST_ID}.json"
@@ -255,7 +255,7 @@ class TestAskUserE2E:
             channels=[channel],
         )
 
-        from pynchy.host.container_manager.ipc.handlers_ask_user import _handle_ask_user_request
+        from pynchy.host.container_manager.ipc import dispatch
 
         data = {
             "type": "ask_user:ask",
@@ -270,7 +270,7 @@ class TestAskUserE2E:
             ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
-            await _handle_ask_user_request(data, "mygroup", False, deps)
+            await dispatch(data, "mygroup", False, deps)
 
         # Verify: error response written
         response_path = tmp_path / "ipc" / "mygroup" / "responses" / f"{REQUEST_ID}.json"

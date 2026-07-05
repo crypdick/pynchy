@@ -17,7 +17,7 @@ from typing import Any
 from pynchy.types import ContainerInput, ContainerOutput
 
 
-def _input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
+def input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
     """Convert ContainerInput to dict for the Python agent-runner.
 
     Includes all fields except those set to None.  The container-side
@@ -32,7 +32,7 @@ def _input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
     }
 
 
-def _parse_container_output(json_str: str) -> ContainerOutput:
+def parse_container_output(json_str: str) -> ContainerOutput:
     """Parse JSON from the Python agent-runner into ContainerOutput.
 
     Unknown keys in the JSON are silently ignored (forward-compat).

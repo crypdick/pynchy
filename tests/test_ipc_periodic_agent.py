@@ -11,11 +11,13 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import make_settings
+from conftest import init_test_database, make_settings
 
 from pynchy.host.container_manager.ipc import dispatch
-from pynchy.host.container_manager.ipc.watcher import _move_to_error_dir
-from pynchy.state import _init_test_database, get_all_tasks
+from pynchy.host.container_manager.ipc.watcher import (
+    _move_to_error_dir,  # allow: private-test-imports
+)
+from pynchy.state import get_all_tasks
 from pynchy.types import WorkspaceProfile
 
 
@@ -78,7 +80,7 @@ class MockDeps:
 
 @pytest.fixture
 async def deps():
-    await _init_test_database()
+    await init_test_database()
     return MockDeps(
         {
             "admin-1@g.us": WorkspaceProfile(

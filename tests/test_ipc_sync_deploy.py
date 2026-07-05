@@ -19,12 +19,10 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import make_settings
+from conftest import init_test_database, make_settings
 
 from pynchy.host.container_manager.ipc import dispatch
-from pynchy.host.container_manager.ipc.handlers_deploy import _handle_deploy
 from pynchy.host.git_ops.repo import RepoContext
-from pynchy.state import _init_test_database
 from pynchy.types import WorkspaceProfile
 
 ADMIN_GROUP = WorkspaceProfile(
@@ -119,7 +117,7 @@ class MockDeps:
 
 @pytest.fixture
 async def deps():
-    await _init_test_database()
+    await init_test_database()
     return MockDeps(
         {
             "admin-1@g.us": ADMIN_GROUP,
@@ -394,8 +392,9 @@ class TestDeployEdgeCases:
             "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy",
             new_callable=AsyncMock,
         ) as mock_finalize:
-            await _handle_deploy(
+            await dispatch(
                 {
+                    "type": "deploy",
                     "rebuildContainer": False,
                     "resumePrompt": "Done.",
                     "headSha": "abc123",
@@ -411,7 +410,7 @@ class TestDeployEdgeCases:
 
     async def test_deploy_without_chat_jid_and_no_admin_group(self):
         """Deploy request with no chatJid and no admin group should not finalize."""
-        await _init_test_database()
+        await init_test_database()
         # Deps with no admin group
         no_admin_deps = MockDeps({"other@g.us": OTHER_GROUP})
 
@@ -419,8 +418,9 @@ class TestDeployEdgeCases:
             "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy",
             new_callable=AsyncMock,
         ) as mock_finalize:
-            await _handle_deploy(
+            await dispatch(
                 {
+                    "type": "deploy",
                     "rebuildContainer": False,
                     "headSha": "abc123",
                 },
@@ -444,8 +444,9 @@ class TestDeployEdgeCases:
                 new_callable=AsyncMock,
             ) as mock_finalize,
         ):
-            await _handle_deploy(
+            await dispatch(
                 {
+                    "type": "deploy",
                     "rebuildContainer": True,
                     "resumePrompt": "Done.",
                     "headSha": "abc123",
@@ -464,8 +465,9 @@ class TestDeployEdgeCases:
             "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy",
             new_callable=AsyncMock,
         ) as mock_finalize:
-            await _handle_deploy(
+            await dispatch(
                 {
+                    "type": "deploy",
                     "rebuildContainer": False,
                     "headSha": "abc123",
                     "chatJid": "admin-1@g.us",

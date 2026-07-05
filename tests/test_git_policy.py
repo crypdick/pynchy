@@ -16,7 +16,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from conftest import make_settings
+from conftest import init_test_database, make_settings
 
 from pynchy.config import WorkspaceConfig
 from pynchy.host.container_manager.ipc import dispatch
@@ -27,7 +27,6 @@ from pynchy.host.git_ops.sync import (
     host_create_pr_from_worktree,
     resolve_git_policy,
 )
-from pynchy.state import _init_test_database
 from pynchy.types import WorkspaceProfile
 
 # ---------------------------------------------------------------------------
@@ -362,7 +361,7 @@ class MockDeps:
 
 @pytest.fixture
 async def deps():
-    await _init_test_database()
+    await init_test_database()
     return MockDeps(
         {
             "agent@g.us": WorkspaceProfile(

@@ -18,10 +18,8 @@ from pynchy.host.git_ops.utils import (
     is_repo_dirty,
     push_local_commits,
 )
-from pynchy.host.orchestrator.http_server import (
-    _write_boot_warning,
-    deps_key,
-)
+from pynchy.host.orchestrator import http_server
+from pynchy.host.orchestrator.http_server import deps_key
 from pynchy.types import NewMessage
 
 
@@ -216,7 +214,7 @@ def testpush_local_commits_exception():
 def test_write_boot_warning_creates_file(tmp_path: Path):
     """_write_boot_warning creates boot_warnings.json with message."""
     with _patch_settings(data_dir=tmp_path):
-        _write_boot_warning("Test warning")
+        http_server._write_boot_warning("Test warning")
         warnings_file = tmp_path / "boot_warnings.json"
         assert warnings_file.exists()
         warnings = json.loads(warnings_file.read_text())
@@ -227,9 +225,9 @@ def test_write_boot_warning_appends_to_existing(tmp_path: Path):
     """_write_boot_warning appends to existing warnings."""
     with _patch_settings(data_dir=tmp_path):
         # First warning
-        _write_boot_warning("Warning 1")
+        http_server._write_boot_warning("Warning 1")
         # Second warning
-        _write_boot_warning("Warning 2")
+        http_server._write_boot_warning("Warning 2")
 
         warnings_file = tmp_path / "boot_warnings.json"
         warnings = json.loads(warnings_file.read_text())
@@ -242,7 +240,7 @@ def test_write_boot_warning_handles_corrupted_file(tmp_path: Path):
         warnings_file = tmp_path / "boot_warnings.json"
         warnings_file.write_text("{invalid json}")
 
-        _write_boot_warning("New warning")
+        http_server._write_boot_warning("New warning")
 
         warnings = json.loads(warnings_file.read_text())
         assert warnings == ["New warning"]
@@ -300,12 +298,10 @@ class TestHealthEndpoint(AioHTTPTestCase):
     """Tests for /health endpoint."""
 
     async def get_application(self) -> web.Application:
-        from pynchy.host.orchestrator.http_server import _handle_health
-
         app = web.Application()
         self.deps = MockHttpDeps()
         app[deps_key] = self.deps
-        app.router.add_get("/health", _handle_health)
+        app.router.add_get("/health", http_server._handle_health)
         return app
 
     async def test_health_returns_status_ok(self):
@@ -347,13 +343,6 @@ class TestTUIAPIEndpoints(AioHTTPTestCase):
     """Tests for TUI API endpoints."""
 
     async def get_application(self) -> web.Application:
-        from pynchy.host.orchestrator.http_server import (
-            _handle_api_groups,
-            _handle_api_messages,
-            _handle_api_periodic,
-            _handle_api_send,
-        )
-
         app = web.Application()
         self.deps = MockHttpDeps()
         self.deps._messages = [
@@ -379,10 +368,10 @@ class TestTUIAPIEndpoints(AioHTTPTestCase):
         self.deps._periodic_agents = [{"name": "test-agent", "status": "running"}]
 
         app[deps_key] = self.deps
-        app.router.add_get("/api/groups", _handle_api_groups)
-        app.router.add_get("/api/messages", _handle_api_messages)
-        app.router.add_post("/api/send", _handle_api_send)
-        app.router.add_get("/api/periodic", _handle_api_periodic)
+        app.router.add_get("/api/groups", http_server._handle_api_groups)
+        app.router.add_get("/api/messages", http_server._handle_api_messages)
+        app.router.add_post("/api/send", http_server._handle_api_send)
+        app.router.add_get("/api/periodic", http_server._handle_api_periodic)
         return app
 
     async def test_api_groups_returns_groups(self):

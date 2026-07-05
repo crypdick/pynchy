@@ -37,7 +37,7 @@ HOST_GIT_SYNC_POLL_INTERVAL = 5.0
 # ---------------------------------------------------------------------------
 
 
-def _get_local_head_sha(repo_root: Path | None = None) -> str:
+def get_local_head_sha(repo_root: Path | None = None) -> str:
     """Get the local HEAD SHA."""
     sha = get_head_sha(cwd=repo_root)
     return "" if sha == "unknown" else sha
@@ -57,7 +57,7 @@ def _host_get_origin_main_sha(repo_root: Path, env: dict[str, str] | None = None
     return None
 
 
-def _host_update_main(repo_root: Path, env: dict[str, str] | None = None) -> bool:
+def host_update_main(repo_root: Path, env: dict[str, str] | None = None) -> bool:
     """Fetch origin and rebase main onto origin/main. Returns True on success.
 
     Includes pre-flight recovery for stale rebase state and dirty working trees
@@ -127,7 +127,7 @@ def _host_container_files_changed(old_sha: str, new_sha: str) -> bool:
     return files_changed_between(old_sha, new_sha, "src/pynchy/agent/")
 
 
-def _host_source_files_changed(old_sha: str, new_sha: str) -> bool:
+def host_source_files_changed(old_sha: str, new_sha: str) -> bool:
     """Check if host source files changed between two commits.
 
     The running Python process holds stale modules in memory. A restart is needed
@@ -138,7 +138,7 @@ def _host_source_files_changed(old_sha: str, new_sha: str) -> bool:
 
 def needs_deploy(old_sha: str, new_sha: str) -> bool:
     """Check if a restart is needed between two commits."""
-    return _host_container_files_changed(old_sha, new_sha) or _host_source_files_changed(
+    return _host_container_files_changed(old_sha, new_sha) or host_source_files_changed(
         old_sha, new_sha
     )
 
@@ -207,7 +207,7 @@ async def _check_local_head_drift(
     deps: GitSyncDeps,
 ) -> bool:
     """Detect local HEAD drift and deploy if needed. Returns True to stop the loop."""
-    state.local_head = await asyncio.to_thread(_get_local_head_sha, pynchy_root)
+    state.local_head = await asyncio.to_thread(get_local_head_sha, pynchy_root)
     if not (state.local_head and state.deployed_sha and state.local_head != state.deployed_sha):
         return False
 
@@ -252,19 +252,19 @@ async def _check_origin_drift(
         logger.info("Origin changed but local already matches, skipping pull")
         return False  # drift check above already handled deploy
 
-    updated = await asyncio.to_thread(_host_update_main, pynchy_root)
+    updated = await asyncio.to_thread(host_update_main, pynchy_root)
     if not updated:
         return False
     state.last_origin_sha = current_origin
 
-    new_head_after_pull = await asyncio.to_thread(_get_local_head_sha, pynchy_root)
+    new_head_after_pull = await asyncio.to_thread(get_local_head_sha, pynchy_root)
     if pynchy_repo_ctx:
         notified = last_notified_sha.get(str(pynchy_root), "")
         if notified != new_head_after_pull:
             await host_notify_worktree_updates(None, deps, pynchy_repo_ctx)
 
     # Check deploy inline (avoid 5s delay for next tick)
-    new_head = await asyncio.to_thread(_get_local_head_sha, pynchy_root)
+    new_head = await asyncio.to_thread(get_local_head_sha, pynchy_root)
     if state.deployed_sha and new_head and needs_deploy(state.deployed_sha, new_head):
         rebuild = needs_container_rebuild(state.deployed_sha, new_head)
         await deps.trigger_deploy(state.deployed_sha, rebuild=rebuild)
@@ -285,7 +285,7 @@ async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
 
     state = _HostSyncState(
         last_origin_sha=await asyncio.to_thread(_host_get_origin_main_sha, pynchy_root),
-        deployed_sha=await asyncio.to_thread(_get_local_head_sha, pynchy_root),
+        deployed_sha=await asyncio.to_thread(get_local_head_sha, pynchy_root),
         config_hash=_hash_config_files(),
     )
 
@@ -331,12 +331,12 @@ async def start_external_repo_sync_loop(repo_ctx: RepoContext, deps: GitSyncDeps
                 new_sha=current_origin[:8],
             )
 
-            updated = await asyncio.to_thread(_host_update_main, repo_root, env)
+            updated = await asyncio.to_thread(host_update_main, repo_root, env)
             if not updated:
                 continue
             last_origin_sha = current_origin
 
-            new_head = await asyncio.to_thread(_get_local_head_sha, repo_root)
+            new_head = await asyncio.to_thread(get_local_head_sha, repo_root)
             notified = last_notified_sha.get(str(repo_root), "")
             if notified != new_head:
                 await host_notify_worktree_updates(None, deps, repo_ctx)

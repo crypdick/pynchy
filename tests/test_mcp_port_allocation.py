@@ -8,7 +8,7 @@ from conftest import make_settings
 
 from pynchy.config.mcp import McpServerConfig
 from pynchy.host.container_manager.mcp.lifecycle import (
-    _build_placeholders,
+    _build_placeholders,  # allow: private-test-imports
     expand_arg_placeholders,
 )
 from pynchy.host.container_manager.mcp.manager import McpManager

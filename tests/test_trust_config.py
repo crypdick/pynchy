@@ -11,7 +11,7 @@ from pynchy.types import ServiceTrustConfig
 class TestPluginTrustExtraction:
     def test_extract_trust_from_plugin_spec(self):
         """Plugin specs with 'trust' should have it extracted before McpServerConfig validation."""
-        from pynchy.host.container_manager.gateway import _collect_plugin_mcp_servers
+        from pynchy.host.container_manager.gateway import collect_plugin_mcp_servers
 
         fake_pm = MagicMock()
         fake_pm.hook.pynchy_mcp_server_spec.return_value = [
@@ -30,7 +30,7 @@ class TestPluginTrustExtraction:
             }
         ]
 
-        servers, trust_defaults = _collect_plugin_mcp_servers(fake_pm)
+        servers, trust_defaults = collect_plugin_mcp_servers(fake_pm)
         assert "browser" in servers
         assert "browser" in trust_defaults
         assert trust_defaults["browser"].public_source is True
@@ -38,7 +38,7 @@ class TestPluginTrustExtraction:
 
     def test_spec_without_trust_has_no_default(self):
         """Specs without a trust key should not appear in trust_defaults."""
-        from pynchy.host.container_manager.gateway import _collect_plugin_mcp_servers
+        from pynchy.host.container_manager.gateway import collect_plugin_mcp_servers
 
         fake_pm = MagicMock()
         fake_pm.hook.pynchy_mcp_server_spec.return_value = [
@@ -51,13 +51,13 @@ class TestPluginTrustExtraction:
             }
         ]
 
-        servers, trust_defaults = _collect_plugin_mcp_servers(fake_pm)
+        servers, trust_defaults = collect_plugin_mcp_servers(fake_pm)
         assert "notebook" in servers
         assert "notebook" not in trust_defaults
 
     def test_trust_not_passed_to_model_validate(self):
         """The trust key must be popped before McpServerConfig.model_validate (extra=forbid)."""
-        from pynchy.host.container_manager.gateway import _collect_plugin_mcp_servers
+        from pynchy.host.container_manager.gateway import collect_plugin_mcp_servers
 
         fake_pm = MagicMock()
         fake_pm.hook.pynchy_mcp_server_spec.return_value = [
@@ -72,12 +72,12 @@ class TestPluginTrustExtraction:
         ]
 
         # Should not raise ValidationError from extra="forbid"
-        servers, _trust_defaults = _collect_plugin_mcp_servers(fake_pm)
+        servers, _trust_defaults = collect_plugin_mcp_servers(fake_pm)
         assert "risky" in servers
 
     def test_multiple_specs_with_mixed_trust(self):
         """Multiple specs: some with trust, some without."""
-        from pynchy.host.container_manager.gateway import _collect_plugin_mcp_servers
+        from pynchy.host.container_manager.gateway import collect_plugin_mcp_servers
 
         fake_pm = MagicMock()
         fake_pm.hook.pynchy_mcp_server_spec.return_value = [
@@ -98,7 +98,7 @@ class TestPluginTrustExtraction:
             },
         ]
 
-        servers, trust_defaults = _collect_plugin_mcp_servers(fake_pm)
+        servers, trust_defaults = collect_plugin_mcp_servers(fake_pm)
         assert "a" in servers and "b" in servers
         assert "a" in trust_defaults
         assert "b" not in trust_defaults

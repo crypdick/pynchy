@@ -15,31 +15,35 @@ from pynchy.config.models import (
     WorkspaceConfig,
     WorkspaceSecurityTomlConfig,
 )
-from pynchy.host.container_manager.ipc.handlers_service import (
-    _handle_service_request,
-    clear_plugin_handler_cache,
-)
-from pynchy.host.container_manager.security.gate import _gates, create_gate
+from pynchy.host.container_manager.ipc import dispatch
+from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
+from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
 from pynchy.plugins.integrations.caldav import (
-    _handle_create_event,
-    _handle_delete_event,
-    _handle_list_calendar,
-    _handle_list_calendars,
-    _is_calendar_visible,
-    _resolve_server,
+    CalDAVMcpServerPlugin,
     clear_caldav_client_cache,
 )
-from pynchy.state import _init_test_database
+from pynchy.state import init_test_database
 from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
+
+# CalDAV service handlers are exposed through the plugin's public tool contract —
+# the same registry the IPC service dispatcher consumes. Resolve them here rather
+# than importing the private handler functions, so tests drive the public surface.
+_CALDAV_TOOLS = CalDAVMcpServerPlugin().pynchy_service_handler()["tools"]
+_handle_list_calendars = _CALDAV_TOOLS["list_calendars"]
+_handle_list_calendar = _CALDAV_TOOLS["list_calendar"]
+_handle_create_event = _CALDAV_TOOLS["create_event"]
+_handle_delete_event = _CALDAV_TOOLS["delete_event"]
 
 
 @pytest.fixture(autouse=True)
 async def _setup():
-    await _init_test_database()
+    await init_test_database()
     clear_caldav_client_cache()
     clear_plugin_handler_cache()
     yield
-    _gates.clear()
+    # The only SecurityGate this module registers is the e2e test's fixed key;
+    # drop it via the public API so gate state never leaks across tests.
+    destroy_gate("test-ws", 1000.0)
 
 
 class FakeDeps:
@@ -193,106 +197,186 @@ async def test_list_calendars_not_configured():
 
 
 # ---------------------------------------------------------------------------
-# Server resolution tests
+# Server / calendar resolution tests (driven through the public list handlers)
 # ---------------------------------------------------------------------------
 
-
-def test_resolve_server_explicit():
-    """'work/meetings' resolves to work server with calendar 'meetings'."""
-    name, cfg, cal = _resolve_server(CALDAV_CONFIG, "work/meetings")
-    assert name == "work"
-    assert cfg is WORK_SERVER
-    assert cal == "meetings"
+_NO_CALENDAR = object()
 
 
-def test_resolve_server_default():
-    """'meetings' resolves to default server (work)."""
-    name, cfg, cal = _resolve_server(CALDAV_CONFIG, "meetings")
-    assert name == "work"
-    assert cfg is WORK_SERVER
-    assert cal == "meetings"
+def _single_server_cfg(*, allow=None, ignore=None):
+    """A one-server CalDAV config for exercising allow/ignore filtering."""
+    return CalDAVConfig(
+        default_server="work",
+        servers={
+            "work": CalDAVServerConfig(
+                url="http://x",
+                username="u",
+                password_env="CALDAV_TEST_WORK_PASS",  # pragma: allowlist secret
+                allow=allow,
+                ignore=ignore,
+            ),
+        },
+    )
 
 
-def test_resolve_server_primary():
-    """'primary' resolves to default server's default_calendar."""
-    name, cfg, cal = _resolve_server(CALDAV_CONFIG, "primary")
-    assert name == "work"
-    assert cfg is WORK_SERVER
-    assert cal == "meetings"  # work server's default_calendar
+async def _resolve_via_list(cfg, calendar_arg, *calendar_names):
+    """Drive the public list_calendar handler and report how it resolved.
+
+    Returns ``(server_requested, searched_calendar, result)`` — the server whose
+    client was requested and the calendar that was actually queried are the
+    observable effects of ``_resolve_server``/``_resolve_calendar``.
+    """
+    fake_client, cals = _make_fake_client(*calendar_names)
+    for cal in cals:
+        cal.date_search.return_value = []
+    settings = _make_settings(caldav_cfg=cfg)
+    get_client = MagicMock(return_value=fake_client)
+    data = {} if calendar_arg is _NO_CALENDAR else {"calendar": calendar_arg}
+    with (
+        patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
+        patch("pynchy.plugins.integrations.caldav._get_caldav_client", get_client),
+    ):
+        result = await _handle_list_calendar(data)
+    server_requested = get_client.call_args.args[0] if get_client.call_args else None
+    searched = next((c.name for c in cals if c.date_search.called), None)
+    return server_requested, searched, result
 
 
-def test_resolve_server_primary_no_default_calendar():
-    """'primary' with no default_calendar returns None (first-visible)."""
-    name, cfg, cal = _resolve_server(CALDAV_CONFIG, "personal/primary")
-    assert name == "personal"
-    assert cfg is PERSONAL_SERVER
-    assert cal is None  # personal has no default_calendar
+async def _visible_calendars(cfg, *calendar_names):
+    """Return the visible calendars the public list_calendars handler reports for
+    the 'work' server — the observable result of allow/ignore filtering."""
+    fake_client, _ = _make_fake_client(*calendar_names)
+    settings = _make_settings(caldav_cfg=cfg)
+    with (
+        patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
+        patch("pynchy.plugins.integrations.caldav._get_caldav_client", return_value=fake_client),
+    ):
+        result = await _handle_list_calendars({})
+    return result["result"]["servers"]["work"]
 
 
-def test_resolve_server_none_defaults_to_primary():
-    """None calendar string defaults to 'primary'."""
-    name, _cfg, cal = _resolve_server(CALDAV_CONFIG, None)
-    assert name == "work"
-    assert cal == "meetings"
+@pytest.mark.asyncio
+async def test_resolve_server_explicit():
+    """'work/meetings' drives the work server and its 'meetings' calendar."""
+    server, searched, result = await _resolve_via_list(CALDAV_CONFIG, "work/meetings", "meetings")
+    assert server == "work"
+    assert searched == "meetings"
+    assert "result" in result
 
 
-def test_resolve_server_unknown():
-    """Unknown server name raises ValueError."""
-    with pytest.raises(ValueError, match="not found"):
-        _resolve_server(CALDAV_CONFIG, "nonexistent/cal")
+@pytest.mark.asyncio
+async def test_resolve_server_default():
+    """'meetings' (no prefix) drives the default server (work)."""
+    server, searched, result = await _resolve_via_list(CALDAV_CONFIG, "meetings", "meetings")
+    assert server == "work"
+    assert searched == "meetings"
+    assert "result" in result
 
 
-def test_resolve_server_empty_default():
-    """Empty default_server and no prefix raises ValueError."""
+@pytest.mark.asyncio
+async def test_resolve_server_primary():
+    """'primary' resolves to the default server's default_calendar (meetings)."""
+    server, searched, result = await _resolve_via_list(
+        CALDAV_CONFIG, "primary", "meetings", "standup"
+    )
+    assert server == "work"
+    assert searched == "meetings"  # work's default_calendar wins over 'standup'
+    assert "result" in result
+
+
+@pytest.mark.asyncio
+async def test_resolve_server_primary_no_default_calendar():
+    """'personal/primary' (no default_calendar) uses the first visible calendar."""
+    server, searched, result = await _resolve_via_list(
+        CALDAV_CONFIG, "personal/primary", "cal-a", "cal-b"
+    )
+    assert server == "personal"
+    assert searched == "cal-a"  # first visible — personal has no default_calendar
+    assert "result" in result
+
+
+@pytest.mark.asyncio
+async def test_resolve_server_none_defaults_to_primary():
+    """A missing calendar argument defaults to the default server + calendar."""
+    server, searched, result = await _resolve_via_list(
+        CALDAV_CONFIG, _NO_CALENDAR, "meetings", "standup"
+    )
+    assert server == "work"
+    assert searched == "meetings"
+    assert "result" in result
+
+
+@pytest.mark.asyncio
+async def test_resolve_server_unknown():
+    """An unknown server name surfaces a 'not found' error."""
+    _server, _searched, result = await _resolve_via_list(CALDAV_CONFIG, "nonexistent/cal")
+    assert "error" in result
+    assert "not found" in result["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_resolve_server_empty_default():
+    """An empty default_server with no prefix surfaces a 'not found' error."""
     cfg = CalDAVConfig(default_server="", servers={"work": WORK_SERVER})
-    with pytest.raises(ValueError, match="not found"):
-        _resolve_server(cfg, "meetings")
+    _server, _searched, result = await _resolve_via_list(cfg, "meetings")
+    assert "error" in result
+    assert "not found" in result["error"].lower()
 
 
 # ---------------------------------------------------------------------------
-# Allow/ignore filtering tests
+# Allow/ignore filtering tests (driven through the public list_calendars handler)
 # ---------------------------------------------------------------------------
 
 
-def test_is_visible_no_filters():
-    """All calendars visible when no allow/ignore set."""
-    cfg = CalDAVServerConfig(url="http://x", username="u")
-    assert _is_calendar_visible("anything", cfg) is True
+@pytest.mark.asyncio
+async def test_is_visible_no_filters():
+    """All calendars are visible when no allow/ignore set."""
+    visible = await _visible_calendars(_single_server_cfg(), "anything")
+    assert visible == ["anything"]
 
 
-def test_is_visible_allow_match():
-    """Calendar in allow list is visible."""
-    cfg = CalDAVServerConfig(url="http://x", username="u", allow=["meetings", "personal"])
-    assert _is_calendar_visible("meetings", cfg) is True
-    assert _is_calendar_visible("Meetings", cfg) is True  # case-insensitive
+@pytest.mark.asyncio
+async def test_is_visible_allow_match():
+    """Calendars in the allow list are visible (case-insensitively)."""
+    visible = await _visible_calendars(
+        _single_server_cfg(allow=["meetings", "personal"]), "meetings", "Meetings"
+    )
+    assert "meetings" in visible
+    assert "Meetings" in visible  # case-insensitive match
 
 
-def test_is_visible_allow_no_match():
-    """Calendar not in allow list is hidden."""
-    cfg = CalDAVServerConfig(url="http://x", username="u", allow=["meetings"])
-    assert _is_calendar_visible("trash", cfg) is False
+@pytest.mark.asyncio
+async def test_is_visible_allow_no_match():
+    """Calendars absent from the allow list are hidden."""
+    visible = await _visible_calendars(_single_server_cfg(allow=["meetings"]), "trash")
+    assert "trash" not in visible
 
 
-def test_is_visible_ignore_match():
-    """Calendar in ignore list is hidden."""
-    cfg = CalDAVServerConfig(url="http://x", username="u", ignore=["trash", "birthdays"])
-    assert _is_calendar_visible("trash", cfg) is False
-    assert _is_calendar_visible("Trash", cfg) is False  # case-insensitive
+@pytest.mark.asyncio
+async def test_is_visible_ignore_match():
+    """Calendars in the ignore list are hidden (case-insensitively)."""
+    visible = await _visible_calendars(
+        _single_server_cfg(ignore=["trash", "birthdays"]), "trash", "Trash"
+    )
+    assert "trash" not in visible
+    assert "Trash" not in visible
 
 
-def test_is_visible_ignore_no_match():
-    """Calendar not in ignore list is visible."""
-    cfg = CalDAVServerConfig(url="http://x", username="u", ignore=["trash"])
-    assert _is_calendar_visible("meetings", cfg) is True
+@pytest.mark.asyncio
+async def test_is_visible_ignore_no_match():
+    """Calendars absent from the ignore list stay visible."""
+    visible = await _visible_calendars(_single_server_cfg(ignore=["trash"]), "meetings")
+    assert "meetings" in visible
 
 
-def test_allow_overrides_ignore():
-    """When both allow and ignore are set, allow wins."""
-    cfg = CalDAVServerConfig(url="http://x", username="u", allow=["meetings"], ignore=["meetings"])
-    # "meetings" is in both — allow wins, so it's visible
-    assert _is_calendar_visible("meetings", cfg) is True
-    # "other" is not in allow, so it's hidden (allow list is exclusive)
-    assert _is_calendar_visible("other", cfg) is False
+@pytest.mark.asyncio
+async def test_allow_overrides_ignore():
+    """When both allow and ignore list a calendar, allow wins."""
+    visible = await _visible_calendars(
+        _single_server_cfg(allow=["meetings"], ignore=["meetings"]), "meetings", "other"
+    )
+    assert "meetings" in visible  # allow wins
+    assert "other" not in visible  # allow list is exclusive
 
 
 # ---------------------------------------------------------------------------
@@ -708,8 +792,6 @@ async def test_calendar_tool_dispatches_to_plugin_handler(tmp_path):
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
     # Mock the plugin manager to return our CalDAV handlers
-    from pynchy.plugins.integrations.caldav import CalDAVMcpServerPlugin
-
     fake_pm = MagicMock()
     fake_pm.hook.pynchy_service_handler.return_value = [
         CalDAVMcpServerPlugin().pynchy_service_handler(),
@@ -734,7 +816,7 @@ async def test_calendar_tool_dispatches_to_plugin_handler(tmp_path):
             "end_date": "2026-02-17T00:00:00+00:00",
             "calendar": "primary",
         }
-        await _handle_service_request(data, "test-ws", False, deps)
+        await dispatch(data, "test-ws", False, deps)
 
     response_file = tmp_path / "ipc" / "test-ws" / "responses" / "cal-req-1.json"
     assert response_file.exists()

@@ -77,30 +77,9 @@ def parse_host_tag(text: str) -> tuple[bool, str]:
     return False, text
 
 
-def _format_lines(
-    lines: list[str],
-    *,
-    prefix: str,
-    max_lines: int = 0,
-    max_chars: int = 0,
-) -> str:
-    """Format lines with a prefix, optionally truncating.
-
-    Used by Edit/Write previews to show content snippets in channel messages.
-    max_lines=0 and max_chars=0 mean no limit (default).
-    """
-    if not lines:
-        return ""
-    shown = lines[:max_lines] if max_lines > 0 else lines
-    remainder = len(lines) - len(shown)
-    result_lines = []
-    for line in shown:
-        if max_chars > 0 and len(line) > max_chars:
-            line = line[:max_chars] + "..."
-        result_lines.append(f"{prefix} {line}")
-    if remainder > 0:
-        result_lines.append(f"(+{remainder} more lines)")
-    return "\n".join(result_lines)
+def _format_lines(lines: list[str], *, prefix: str) -> str:
+    """Prefix each line for an Edit/Write diff preview in channel messages."""
+    return "\n".join(f"{prefix} {line}" for line in lines)
 
 
 def _truncate_path(path: str, max_len: int = 150) -> str:

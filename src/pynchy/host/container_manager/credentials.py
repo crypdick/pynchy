@@ -20,7 +20,7 @@ from pynchy.logger import logger
 # ---------------------------------------------------------------------------
 
 
-def _read_oauth_token() -> str | None:
+def read_oauth_token() -> str | None:
     """Read the OAuth access token from Claude Code's credentials.
 
     Checks (in order):
@@ -96,7 +96,7 @@ def _read_git_identity() -> tuple[str | None, str | None]:
     return name, email
 
 
-def _shell_quote(value: str) -> str:
+def shell_quote(value: str) -> str:
     """Quote a value for safe inclusion in a shell env file."""
     return "'" + value.replace("'", "'\\''") + "'"
 
@@ -228,6 +228,6 @@ def _write_env_file(*, is_admin: bool, group_folder: str) -> Path | None:
         is_admin=is_admin,
         vars=list(env_vars.keys()),
     )
-    lines = [f"{k}={_shell_quote(v)}" for k, v in env_vars.items()]
+    lines = [f"{k}={shell_quote(v)}" for k, v in env_vars.items()]
     (env_dir / "env").write_text("\n".join(lines) + "\n")
     return env_dir

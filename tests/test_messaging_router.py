@@ -8,11 +8,10 @@ import pytest
 
 from pynchy.host.orchestrator.messaging import streaming
 from pynchy.host.orchestrator.messaging.router import (
-    _last_result_ids,
-    _next_trace_id,
     broadcast_trace,
     handle_streamed_output,
     init_trace_batcher,
+    pop_last_result_ids,
 )
 from pynchy.host.orchestrator.messaging.streaming import StreamState, stream_states
 from pynchy.types import OutboundEvent, OutboundEventType
@@ -92,19 +91,32 @@ def _get_send_event(deps: MagicMock):
 
 
 # ---------------------------------------------------------------------------
-# _next_trace_id
+# trace id generation (observed via the stored trace row's id)
 # ---------------------------------------------------------------------------
 
 
 class TestNextTraceId:
-    def test_prefix_is_present(self):
-        tid = _next_trace_id("tool")
-        assert tid.startswith("tool-")
+    @pytest.mark.asyncio
+    async def test_prefix_is_present(self):
+        deps = _make_deps()
+        with patch(
+            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
+        ) as mock_store:
+            await broadcast_trace(
+                deps, "g@g.us", "tool_use", {}, "text", db_id_prefix="tool", db_sender="tool_use"
+            )
+        assert mock_store.call_args[1]["id"].startswith("tool-")
 
-    def test_ids_are_unique(self):
-        a = _next_trace_id("t")
-        b = _next_trace_id("t")
-        assert a != b
+    @pytest.mark.asyncio
+    async def test_ids_are_unique(self):
+        deps = _make_deps()
+        with patch(
+            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
+        ) as mock_store:
+            await broadcast_trace(deps, "g@g.us", "t", {}, "text", db_id_prefix="t", db_sender="t")
+            await broadcast_trace(deps, "g@g.us", "t", {}, "text", db_id_prefix="t", db_sender="t")
+        ids = [call.kwargs["id"] for call in mock_store.call_args_list]
+        assert ids[0] != ids[1]
 
 
 # ---------------------------------------------------------------------------
@@ -583,10 +595,8 @@ class TestHandleStreamedOutput:
             result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is True
-        # The stashed IDs should match the stream state
-        assert _last_result_ids.get("g@g.us") == {"test": "msg-123"}
-        # Clean up
-        _last_result_ids.pop("g@g.us", None)
+        # The stashed IDs should match the stream state (pop also clears them)
+        assert pop_last_result_ids("g@g.us") == {"test": "msg-123"}
 
     @pytest.mark.asyncio
     async def test_full_interleaving_sequence(self):

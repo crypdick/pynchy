@@ -6,11 +6,13 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from conftest import init_test_database
 
 from pynchy.host.container_manager.ipc import dispatch
-from pynchy.host.orchestrator.task_scheduler import _poll_database_host_jobs
+from pynchy.host.orchestrator.task_scheduler import (
+    _poll_database_host_jobs,  # allow: private-test-imports
+)
 from pynchy.state import (
-    _init_test_database,
     create_host_job,
     get_due_host_jobs,
     get_host_job_by_name,
@@ -19,7 +21,7 @@ from pynchy.state import (
 
 @pytest.fixture(autouse=True)
 async def _setup_db():
-    await _init_test_database()
+    await init_test_database()
 
 
 @pytest.fixture

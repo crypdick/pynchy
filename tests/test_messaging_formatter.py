@@ -9,51 +9,12 @@ means host messages leak into prompts or user messages get dropped.
 from __future__ import annotations
 
 from pynchy.host.orchestrator.messaging.formatter import (
-    _format_lines,
     format_messages_for_sdk,
     format_tool_preview,
     parse_host_tag,
     strip_internal_tags,
 )
 from pynchy.types import NewMessage
-
-# ---------------------------------------------------------------------------
-# _format_lines — helper for Edit/Write previews
-# ---------------------------------------------------------------------------
-
-
-class TestFormatLines:
-    """Test the line-formatting helper used by Edit/Write previews."""
-
-    def test_single_line(self):
-        assert _format_lines(["hello"], prefix="-") == "- hello"
-
-    def test_multiple_lines(self):
-        assert _format_lines(["a", "b", "c"], prefix="+") == "+ a\n+ b\n+ c"
-
-    def test_truncates_at_max_lines(self):
-        lines = [f"line{i}" for i in range(10)]
-        result = _format_lines(lines, prefix="-", max_lines=5)
-        assert result.count("\n") == 5  # 5 prefixed lines + 1 summary line
-        assert "(+5 more lines)" in result
-
-    def test_truncates_long_individual_lines(self):
-        long_line = "x" * 200
-        result = _format_lines([long_line], prefix="+", max_chars=120)
-        first_line = result.split("\n")[0]
-        assert first_line.endswith("...")
-
-    def test_empty_lines_preserved(self):
-        assert _format_lines(["a", "", "b"], prefix="+") == "+ a\n+ \n+ b"
-
-    def test_empty_input(self):
-        assert _format_lines([], prefix="-") == ""
-
-    def test_exactly_max_lines_no_summary(self):
-        lines = ["a", "b", "c", "d", "e"]
-        result = _format_lines(lines, prefix="-", max_lines=5)
-        assert "more lines" not in result
-
 
 # ---------------------------------------------------------------------------
 # format_tool_preview — one branch per tool type

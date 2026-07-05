@@ -23,7 +23,7 @@ from pynchy.logger import logger
 _DEFAULT_TIER = "community"
 
 
-def _parse_skill_tier(skill_dir: Path) -> tuple[str, str]:
+def parse_skill_tier(skill_dir: Path) -> tuple[str, str]:
     """Read ``name`` and ``tier`` from a skill's SKILL.md YAML frontmatter.
 
     Uses simple line-based parsing (no PyYAML dependency). Returns
@@ -57,7 +57,7 @@ def _parse_skill_tier(skill_dir: Path) -> tuple[str, str]:
     return name, tier
 
 
-def _is_skill_selected(name: str, tier: str, workspace_skills: list[str] | None) -> bool:
+def is_skill_selected(name: str, tier: str, workspace_skills: list[str] | None) -> bool:
     """Determine whether a skill should be included for a workspace.
 
     Resolution rules:
@@ -106,8 +106,8 @@ def _sync_skills(
         for skill_dir in skills_src.iterdir():
             if not skill_dir.is_dir():
                 continue
-            name, tier = _parse_skill_tier(skill_dir)
-            if not _is_skill_selected(name, tier, workspace_skills):
+            name, tier = parse_skill_tier(skill_dir)
+            if not is_skill_selected(name, tier, workspace_skills):
                 logger.debug("Skipping skill (not selected)", skill=name, tier=tier)
                 continue
             dst_dir = skills_dst / skill_dir.name
@@ -131,8 +131,8 @@ def _sync_skills(
                         )
                         continue
 
-                    name, tier = _parse_skill_tier(skill_path)
-                    if not _is_skill_selected(name, tier, workspace_skills):
+                    name, tier = parse_skill_tier(skill_path)
+                    if not is_skill_selected(name, tier, workspace_skills):
                         logger.debug("Skipping plugin skill (not selected)", skill=name, tier=tier)
                         continue
 

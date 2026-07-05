@@ -16,8 +16,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import make_settings
 
+from pynchy import state
 from pynchy.host.orchestrator.app import PynchyApp
-from pynchy.state import _init_test_database, get_chat_history, store_message
+from pynchy.state import get_chat_history, store_message
 from pynchy.types import NewMessage, WorkspaceProfile
 
 _CR_ORCH = "pynchy.host.container_manager.orchestrator"
@@ -141,7 +142,7 @@ class FakeProcess:
         and query-done pulse through the session API (mirroring the IPC
         watcher's behavior), then simulates a clean process exit.
         """
-        from pynchy.host.container_manager.serialization import _parse_container_output
+        from pynchy.host.container_manager import serialization
         from pynchy.host.container_manager.session import get_session
 
         # Wait for the session to be created and have an output handler
@@ -156,7 +157,7 @@ class FakeProcess:
         assert session._on_output is not None, "Session has no output handler"
 
         if self._output:
-            output = _parse_container_output(json.dumps(self._output))
+            output = serialization.parse_container_output(json.dumps(self._output))
             if session._on_output:
                 await session._on_output(output)
 
@@ -166,7 +167,7 @@ class FakeProcess:
                 "result": None,
                 "new_session_id": self._output.get("new_session_id", "test-session"),
             }
-            pulse = _parse_container_output(json.dumps(pulse_data))
+            pulse = serialization.parse_container_output(json.dumps(pulse_data))
             if session._on_output:
                 await session._on_output(pulse)
             session.signal_query_done()
@@ -217,8 +218,8 @@ async def _schedule_outputs_via_session(
     that triggers query completion.  If no output has new_session_id, a
     query-done pulse is appended automatically.
     """
+    from pynchy.host.container_manager import serialization
     from pynchy.host.container_manager.process import is_query_done_pulse
-    from pynchy.host.container_manager.serialization import _parse_container_output
     from pynchy.host.container_manager.session import get_session
 
     # Wait for session to have an output handler
@@ -232,7 +233,7 @@ async def _schedule_outputs_via_session(
 
     for output_dict in outputs:
         await asyncio.sleep(0.01)
-        parsed = _parse_container_output(json.dumps(output_dict))
+        parsed = serialization.parse_container_output(json.dumps(output_dict))
         if session._on_output:
             await session._on_output(parsed)
         if is_query_done_pulse(parsed):
@@ -240,7 +241,7 @@ async def _schedule_outputs_via_session(
 
     # If no output triggered query done, append a pulse
     if not session._query_done.is_set():
-        pulse = _parse_container_output(
+        pulse = serialization.parse_container_output(
             json.dumps({"status": "success", "result": None, "new_session_id": final_session_id})
         )
         if session._on_output:
@@ -261,7 +262,7 @@ async def _schedule_outputs_via_session(
 @pytest.fixture
 async def app(tmp_path: Path):
     """Create a PynchyApp with a fresh in-memory DB and patched dirs."""
-    await _init_test_database()
+    await state.init_test_database()
     a = PynchyApp()
     a.workspaces = {
         "group@g.us": WorkspaceProfile(
@@ -755,7 +756,7 @@ class TestDeployContinuationResume:
 
     async def test_resumes_all_groups_from_active_sessions(self, app: PynchyApp, tmp_path: Path):
         """check_deploy_continuation should inject resume messages for every active session."""
-        await _init_test_database()
+        await state.init_test_database()
 
         # Register two groups
         app.workspaces = {
@@ -824,7 +825,7 @@ class TestDeployContinuationResume:
 
     async def test_skips_when_no_active_sessions(self, app: PynchyApp, tmp_path: Path):
         """Continuation with empty active_sessions and no session_id should skip resume."""
-        await _init_test_database()
+        await state.init_test_database()
 
         data_dir = tmp_path / "data"
         data_dir.mkdir(parents=True, exist_ok=True)

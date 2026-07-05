@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from pynchy.state import (
-    _init_test_database,
     clear_session,
     create_host_job,
     create_task,
@@ -26,6 +25,7 @@ from pynchy.state import (
     get_task_by_id,
     get_tasks_for_group,
     get_workspace_profile,
+    init_test_database,
     log_task_run,
     set_chat_cleared_at,
     set_router_state,
@@ -50,7 +50,7 @@ from pynchy.types import (
 
 @pytest.fixture(autouse=True)
 async def _setup_db():
-    await _init_test_database()
+    await init_test_database()
 
 
 def _store(
@@ -1190,10 +1190,10 @@ class TestEnsureColumns:
     """Test that _ensure_columns adds missing columns to existing tables."""
 
     async def test_adds_missing_column_to_existing_table(self):
-        """Simulate an old DB missing a column, then run _ensure_columns."""
+        """Simulate an old DB missing a column, then run create_schema."""
         import aiosqlite
 
-        from pynchy.state.schema import _ensure_columns
+        from pynchy.state.schema import create_schema
 
         db = await aiosqlite.connect(":memory:")
         # Create registered_groups WITHOUT is_admin column (old schema)
@@ -1213,8 +1213,9 @@ class TestEnsureColumns:
         cols = {row[1] for row in await cursor.fetchall()}
         assert "is_admin" not in cols
 
-        # Run _ensure_columns — should add is_admin and security_profile
-        await _ensure_columns(db)
+        # create_schema is the public entry that runs the _ensure_columns
+        # migration; on an old table it should add is_admin and security_profile.
+        await create_schema(db)
 
         cursor = await db.execute("PRAGMA table_info(registered_groups)")
         cols = {row[1] for row in await cursor.fetchall()}
@@ -1224,16 +1225,19 @@ class TestEnsureColumns:
         await db.close()
 
     async def test_noop_when_all_columns_present(self):
-        """_ensure_columns is a no-op when schema is already up to date."""
+        """create_schema is idempotent when the schema is already up to date."""
         import aiosqlite
 
-        from pynchy.state.schema import _SCHEMA, _ensure_columns
+        from pynchy.state.schema import create_schema
 
         db = await aiosqlite.connect(":memory:")
-        await db.executescript(_SCHEMA)
+        # First application builds the full schema; the second must not raise.
+        await create_schema(db)
+        await create_schema(db)
 
-        # Should not raise
-        await _ensure_columns(db)
+        cursor = await db.execute("PRAGMA table_info(registered_groups)")
+        cols = {row[1] for row in await cursor.fetchall()}
+        assert "is_admin" in cols
         await db.close()
 
 

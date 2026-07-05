@@ -15,21 +15,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.host.container_manager.ipc.handlers_service import (
-    _handle_service_request,
-    clear_plugin_handler_cache,
-)
-from pynchy.host.container_manager.security.gate import _gates, create_gate
-from pynchy.state import _init_test_database
+from pynchy import state
+from pynchy.host.container_manager.ipc import registry
+from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
+from pynchy.host.container_manager.security import gate
+from pynchy.host.container_manager.security.gate import create_gate
 from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
 
 
 @pytest.fixture(autouse=True)
 async def _setup():
-    await _init_test_database()
+    await state.init_test_database()
     clear_plugin_handler_cache()
     yield
-    _gates.clear()
+    gate._gates.clear()
 
 
 @pytest.fixture
@@ -145,7 +144,7 @@ class TestApprovalE2E:
                 "request_id": "aabb001122334455",
                 "text": "Hello world",
             }
-            await _handle_service_request(data, "mygroup", False, deps)
+            await registry.dispatch(data, "mygroup", False, deps)
 
         # Verify: no response file yet (container blocked)
         response_path = tmp_path / "ipc" / "mygroup" / "responses" / "aabb001122334455.json"
@@ -255,7 +254,7 @@ class TestApprovalE2E:
                 "request_id": "ccdd556677889900",
                 "text": "Bad tweet",
             }
-            await _handle_service_request(data, "mygroup", False, deps)
+            await registry.dispatch(data, "mygroup", False, deps)
 
         # Read the actual short_id from the pending file
         pending_path = tmp_path / "ipc" / "mygroup" / "pending_approvals" / "ccdd556677889900.json"
@@ -331,7 +330,7 @@ class TestApprovalE2E:
                 "type": "service:safe_tool",
                 "request_id": "safe-req-1",
             }
-            await _handle_service_request(data, "mygroup", False, deps)
+            await registry.dispatch(data, "mygroup", False, deps)
 
         # Handler called immediately
         mock_handler.assert_awaited_once()

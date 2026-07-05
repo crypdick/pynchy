@@ -44,6 +44,84 @@ def _patch_settings(*, poll_interval: float = 5.0, groups_dir=None, cron_jobs=No
         yield
 
 
+async def _wait_queue_idle(queue: GroupQueue) -> None:
+    """Wait until the queue has drained all active/pending work."""
+    for _ in range(2000):
+        snap = queue.snapshot()
+        meta = snap["_meta"]
+        pending = any(v["pending_tasks"] for k, v in snap.items() if k != "_meta")
+        if meta["active_count"] == 0 and meta["waiting_count"] == 0 and not pending:
+            return
+        await asyncio.sleep(0.005)
+    raise AssertionError("scheduler queue did not drain")
+
+
+async def _run_due_task_via_scheduler(deps, task: ScheduledTask) -> None:
+    """Drive the public scheduler loop through one poll that yields *task*, then
+    wait for the queued runner (which invokes ``_run_scheduled_agent``) to finish.
+
+    Caller must be inside ``_patch_settings(poll_interval=<small>, groups_dir=...)``
+    plus whatever state patches (``log_task_run``, ``update_task`` …) the
+    assertions need — those stay active across the wait so the background runner
+    sees them.
+    """
+    import pynchy.host.orchestrator.task_scheduler as ts_mod
+
+    ts_mod._scheduler_running = False
+
+    poll = [0]
+
+    async def fake_due():
+        poll[0] += 1
+        if poll[0] == 1:
+            return [task]
+        raise asyncio.CancelledError()
+
+    async def fake_by_id(task_id):
+        return task if task.id == task_id else None
+
+    with (
+        patch("pynchy.host.orchestrator.task_scheduler.get_due_tasks", side_effect=fake_due),
+        patch("pynchy.host.orchestrator.task_scheduler.get_task_by_id", side_effect=fake_by_id),
+        patch(
+            "pynchy.host.orchestrator.task_scheduler._poll_host_cron_jobs", new_callable=AsyncMock
+        ),
+        patch(
+            "pynchy.host.orchestrator.task_scheduler._poll_database_host_jobs",
+            new_callable=AsyncMock,
+        ),
+    ):
+        with contextlib.suppress(asyncio.CancelledError):
+            await start_scheduler_loop(deps)
+
+    await _wait_queue_idle(deps.queue)
+
+
+async def _run_scheduler_cron_once(deps) -> None:
+    """Drive the public scheduler loop for a single host-cron poll, then stop.
+
+    The loop runs ``_poll_host_cron_jobs`` before checking for due tasks, so
+    raising ``CancelledError`` from ``get_due_tasks`` on the first poll exercises
+    exactly one real cron poll through the public entry point.
+    """
+    import pynchy.host.orchestrator.task_scheduler as ts_mod
+
+    ts_mod._scheduler_running = False
+
+    async def fake_due():
+        raise asyncio.CancelledError()
+
+    with (
+        patch("pynchy.host.orchestrator.task_scheduler.get_due_tasks", side_effect=fake_due),
+        patch(
+            "pynchy.host.orchestrator.task_scheduler._poll_database_host_jobs",
+            new_callable=AsyncMock,
+        ),
+    ):
+        with contextlib.suppress(asyncio.CancelledError):
+            await start_scheduler_loop(deps)
+
+
 class TestScheduledTaskSnapshotDict:
     """Test ScheduledTask.to_snapshot_dict() serialization.
 
@@ -425,10 +503,8 @@ class TestRunScheduledAgent:
             with patch(
                 "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
             ):
-                with _patch_settings(groups_dir=tmp_path):
-                    from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
-
-                    await _run_scheduled_agent(sample_task, mock_deps)
+                with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
+                    await _run_due_task_via_scheduler(mock_deps, sample_task)
 
         # Should have logged an error
         assert len(logged_runs) == 1
@@ -450,10 +526,8 @@ class TestRunScheduledAgent:
                 with patch(
                     "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
                 ):
-                    with _patch_settings(groups_dir=tmp_path):
-                        from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
-
-                        await _run_scheduled_agent(sample_task, mock_deps)
+                    with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
+                        await _run_due_task_via_scheduler(mock_deps, sample_task)
 
         assert len(mock_deps.agent_runs) == 1
         run = mock_deps.agent_runs[0]
@@ -481,10 +555,8 @@ class TestRunScheduledAgent:
                 with patch(
                     "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
                 ):
-                    with _patch_settings(groups_dir=tmp_path):
-                        from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
-
-                        await _run_scheduled_agent(sample_task, mock_deps)
+                    with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
+                        await _run_due_task_via_scheduler(mock_deps, sample_task)
 
         assert len(mock_deps.agent_runs) == 1
         assert mock_deps.agent_runs[0]["repo_access_override"] == "owner/pynchy"
@@ -502,10 +574,8 @@ class TestRunScheduledAgent:
                 with patch(
                     "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
                 ):
-                    with _patch_settings(groups_dir=tmp_path):
-                        from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
-
-                        await _run_scheduled_agent(sample_task, mock_deps)
+                    with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
+                        await _run_due_task_via_scheduler(mock_deps, sample_task)
 
         # Check that a scheduled task starting event was broadcast
         assert len(mock_deps.messages) >= 1
@@ -536,10 +606,8 @@ class TestRunScheduledAgent:
                 with patch(
                     "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
                 ):
-                    with _patch_settings(groups_dir=tmp_path):
-                        from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
-
-                        await _run_scheduled_agent(sample_task, mock_deps)
+                    with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
+                        await _run_due_task_via_scheduler(mock_deps, sample_task)
 
         # Should have delegated to handle_streamed_output
         assert len(mock_deps.streamed_outputs) == 1
@@ -567,10 +635,8 @@ class TestRunScheduledAgent:
                 with patch(
                     "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
                 ):
-                    with _patch_settings(groups_dir=tmp_path):
-                        from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
-
-                        await _run_scheduled_agent(sample_task, mock_deps)
+                    with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
+                        await _run_due_task_via_scheduler(mock_deps, sample_task)
 
         # Should have calculated next run
         assert len(updates) == 1
@@ -601,10 +667,8 @@ class TestRunScheduledAgent:
                 with patch(
                     "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
                 ):
-                    with _patch_settings(groups_dir=tmp_path):
-                        from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
-
-                        await _run_scheduled_agent(sample_task, mock_deps)
+                    with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
+                        await _run_due_task_via_scheduler(mock_deps, sample_task)
 
         # Should have calculated next run
         assert len(updates) == 1
@@ -637,10 +701,8 @@ class TestRunScheduledAgent:
                 with patch(
                     "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
                 ):
-                    with _patch_settings(groups_dir=tmp_path):
-                        from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
-
-                        await _run_scheduled_agent(sample_task, mock_deps)
+                    with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
+                        await _run_due_task_via_scheduler(mock_deps, sample_task)
 
         # Should have no next run for 'once' tasks
         assert len(updates) == 1
@@ -673,10 +735,8 @@ class TestRunScheduledAgent:
                 with patch(
                     "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
                 ):
-                    with _patch_settings(groups_dir=tmp_path):
-                        from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
-
-                        await _run_scheduled_agent(sample_task, mock_deps)
+                    with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
+                        await _run_due_task_via_scheduler(mock_deps, sample_task)
 
         # Should have logged the error
         assert len(logged_runs) == 1
@@ -706,10 +766,8 @@ class TestRunScheduledAgent:
                 with patch(
                     "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
                 ):
-                    with _patch_settings(groups_dir=tmp_path):
-                        from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
-
-                        await _run_scheduled_agent(sample_task, mock_deps)
+                    with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
+                        await _run_due_task_via_scheduler(mock_deps, sample_task)
 
         # Should have logged the error
         assert len(logged_runs) == 1
@@ -738,10 +796,8 @@ class TestRunScheduledAgent:
                 with patch(
                     "pynchy.host.orchestrator.task_scheduler.update_task", side_effect=mock_update
                 ):
-                    with _patch_settings(groups_dir=tmp_path):
-                        from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
-
-                        await _run_scheduled_agent(sample_task, mock_deps)
+                    with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
+                        await _run_due_task_via_scheduler(mock_deps, sample_task)
 
         # Should have called update_task with next_run before execution
         assert len(early_updates) == 1
@@ -783,10 +839,8 @@ class TestRunScheduledAgent:
                 with patch(
                     "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
                 ):
-                    with _patch_settings(groups_dir=tmp_path):
-                        from pynchy.host.orchestrator.task_scheduler import _run_scheduled_agent
-
-                        await _run_scheduled_agent(sample_task, mock_deps)
+                    with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
+                        await _run_due_task_via_scheduler(mock_deps, sample_task)
 
         assert len(logged_runs) == 1
         assert logged_runs[0].status == "error"
@@ -825,9 +879,7 @@ class TestHostCronJobs:
                 return_value=fake_proc,
             ) as mock_spawn,
         ):
-            from pynchy.host.orchestrator.task_scheduler import _poll_host_cron_jobs
-
-            await _poll_host_cron_jobs()
+            await _run_scheduler_cron_once(MockSchedulerDeps())
 
         mock_spawn.assert_awaited_once()
         args = mock_spawn.await_args
@@ -856,8 +908,6 @@ class TestHostCronJobs:
                 new_callable=AsyncMock,
             ) as mock_spawn,
         ):
-            from pynchy.host.orchestrator.task_scheduler import _poll_host_cron_jobs
-
-            await _poll_host_cron_jobs()
+            await _run_scheduler_cron_once(MockSchedulerDeps())
 
         mock_spawn.assert_not_awaited()

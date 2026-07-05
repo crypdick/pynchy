@@ -87,7 +87,7 @@ class BuiltinGateway:
     # ------------------------------------------------------------------
 
     def _discover_credentials(self) -> None:
-        from pynchy.host.container_manager.credentials import _read_oauth_token
+        from pynchy.host.container_manager.credentials import read_oauth_token
 
         s = get_settings()
         providers: dict[str, dict[str, str]] = {}
@@ -103,7 +103,7 @@ class BuiltinGateway:
                 "value": s.secrets.claude_code_oauth_token.get_secret_value(),
             }
         else:
-            token = _read_oauth_token()
+            token = read_oauth_token()
             if token:
                 providers["anthropic"] = {"type": "oauth", "value": token}
 

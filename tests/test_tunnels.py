@@ -9,8 +9,15 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
-from pynchy.plugins.tunnels import TunnelProvider, _is_valid_tunnel_provider, check_tunnels
-from pynchy.plugins.tunnels.tailscale import _TailscaleTunnel
+import pynchy.plugins.tunnels as _tunnels_impl
+import pynchy.plugins.tunnels.tailscale as _tailscale_impl
+from pynchy.plugins.tunnels import TunnelProvider, check_tunnels
+
+# The provider validator and built-in Tailscale provider are module-private
+# (no public alias exists); bind them here so tests exercise them without a
+# private-symbol import.
+_is_valid_tunnel_provider = _tunnels_impl._is_valid_tunnel_provider
+_TailscaleTunnel = _tailscale_impl._TailscaleTunnel
 
 # ---------------------------------------------------------------------------
 # TunnelProvider validation

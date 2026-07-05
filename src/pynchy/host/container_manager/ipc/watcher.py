@@ -19,7 +19,7 @@ from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.host.container_manager.ipc.protocol import parse_ipc_file, validate_signal
 from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.container_manager.process import OnOutput, is_query_done_pulse
-from pynchy.host.container_manager.serialization import _parse_container_output
+from pynchy.host.container_manager.serialization import parse_container_output
 from pynchy.logger import logger
 
 _ipc_watcher_lock = asyncio.Lock()
@@ -158,7 +158,7 @@ async def _process_output_file(
 ) -> None:
     """Process a single output event file from a container.
 
-    Reads JSON, parses via _parse_container_output(), dispatches to the
+    Reads JSON, parses via parse_container_output(), dispatches to the
     session's output handler, and detects query-done pulses (result events
     with new_session_id).
 
@@ -168,7 +168,7 @@ async def _process_output_file(
     """
     try:
         json_str = file_path.read_text()
-        output = _parse_container_output(json_str)
+        output = parse_container_output(json_str)
 
         # Dispatch to the session's output handler
         handler = _get_output_handler(source_group)

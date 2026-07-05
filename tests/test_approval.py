@@ -8,14 +8,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from conftest import make_settings
-
-from pynchy.state import _init_test_database
+from conftest import init_test_database, make_settings
 
 
 @pytest.fixture
 async def _setup_db():
-    await _init_test_database()
+    await init_test_database()
 
 
 @pytest.fixture

@@ -65,16 +65,10 @@ class TestSkillContent:
 
 
 class TestPluginRegistration:
-    def test_plugin_in_builtin_specs(self):
-        """Verify the plugin is registered in _BUILTIN_PLUGIN_SPECS."""
-        from pynchy.plugins import _BUILTIN_PLUGIN_SPECS
+    def test_plugin_is_registered(self):
+        """The playwright plugin should be registered in the plugin manager."""
+        from pynchy.plugins import get_plugin_manager
 
-        entries = [
-            (mod, cls, key)
-            for mod, cls, key in _BUILTIN_PLUGIN_SPECS
-            if key == "playwright-browser"
-        ]
-        assert len(entries) == 1
-        mod_path, cls_name, _ = entries[0]
-        assert mod_path == "pynchy.plugins.integrations.playwright_browser"
-        assert cls_name == "PlaywrightBrowserPlugin"
+        pm = get_plugin_manager()
+        plugin = pm.get_plugin("builtin-playwright-browser")
+        assert isinstance(plugin, PlaywrightBrowserPlugin)
