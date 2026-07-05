@@ -10,10 +10,10 @@ Uses its own IPC type prefix (``ask_user:``) instead of the generic
 
 from __future__ import annotations
 
-from mcp.types import CallToolResult, TextContent, Tool
+from mcp.types import CallToolResult, TextContent
 
 from agent_runner.agent_tools._ipc_request import ipc_service_request
-from agent_runner.agent_tools._registry import ToolEntry, register, tool_error
+from agent_runner.agent_tools._registry import tool, tool_error
 
 ASK_USER_TIMEOUT = 1800  # 30 minutes — user may take a while to reply
 
@@ -23,55 +23,52 @@ ASK_USER_TIMEOUT = 1800  # 30 minutes — user may take a while to reply
 # ---------------------------------------------------------------------------
 
 
-def _ask_user_definition() -> Tool:
-    return Tool(
-        name="ask_user",
-        description=(
-            "Ask the user one or more questions and wait for their reply. "
-            "The question is forwarded to the messaging channel "
-            "(Slack/WhatsApp) and the tool blocks until the user responds. "
-            "Use this when you need user input, confirmation, or a decision "
-            "before proceeding.\n\n"
-            "Each question can optionally include predefined options for "
-            "the user to choose from."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "questions": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "question": {
-                                "type": "string",
-                                "description": "The question to ask the user",
-                            },
-                            "options": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "label": {"type": "string"},
-                                        "description": {"type": "string"},
-                                    },
-                                    "required": ["label", "description"],
-                                },
-                                "description": "Optional predefined answer options",
-                            },
+@tool(
+    "ask_user",
+    (
+        "Ask the user one or more questions and wait for their reply. "
+        "The question is forwarded to the messaging channel "
+        "(Slack/WhatsApp) and the tool blocks until the user responds. "
+        "Use this when you need user input, confirmation, or a decision "
+        "before proceeding.\n\n"
+        "Each question can optionally include predefined options for "
+        "the user to choose from."
+    ),
+    {
+        "type": "object",
+        "properties": {
+            "questions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "question": {
+                            "type": "string",
+                            "description": "The question to ask the user",
                         },
-                        "required": ["question"],
+                        "options": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "label": {"type": "string"},
+                                    "description": {"type": "string"},
+                                },
+                                "required": ["label", "description"],
+                            },
+                            "description": "Optional predefined answer options",
+                        },
                     },
-                    "minItems": 1,
-                    "maxItems": 4,
-                    "description": "List of questions to ask the user (1-4)",
+                    "required": ["question"],
                 },
+                "minItems": 1,
+                "maxItems": 4,
+                "description": "List of questions to ask the user (1-4)",
             },
-            "required": ["questions"],
         },
-    )
-
-
+        "required": ["questions"],
+    },
+)
 async def _ask_user_handle(arguments: dict) -> list[TextContent] | CallToolResult:
     questions = arguments.get("questions")
     if not questions:
@@ -82,9 +79,3 @@ async def _ask_user_handle(arguments: dict) -> list[TextContent] | CallToolResul
         timeout=ASK_USER_TIMEOUT,
         type_override="ask_user:ask",
     )
-
-
-register(
-    "ask_user",
-    ToolEntry(definition=_ask_user_definition, handler=_ask_user_handle),
-)

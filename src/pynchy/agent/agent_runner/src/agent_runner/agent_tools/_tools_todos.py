@@ -12,9 +12,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from mcp.types import CallToolResult, TextContent, Tool
+from mcp.types import CallToolResult, TextContent
 
-from agent_runner.agent_tools._registry import ToolEntry, register, tool_error
+from agent_runner.agent_tools._registry import tool, tool_error
 
 _TODOS_FILE = Path("/workspace/ipc/todos.json")
 
@@ -38,27 +38,24 @@ def _write_todos(todos: list[dict]) -> None:
 # -- list_todos ----------------------------------------------------------------
 
 
-def _list_todos_definition() -> Tool:
-    return Tool(
-        name="list_todos",
-        description=(
-            "List todo items for this group. The user can add items "
-            "from outside the agent loop (via the 'todo' prefix), and "
-            "you can manage them here."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "include_done": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Whether to include completed items.",
-                },
+@tool(
+    "list_todos",
+    (
+        "List todo items for this group. The user can add items "
+        "from outside the agent loop (via the 'todo' prefix), and "
+        "you can manage them here."
+    ),
+    {
+        "type": "object",
+        "properties": {
+            "include_done": {
+                "type": "boolean",
+                "default": False,
+                "description": "Whether to include completed items.",
             },
         },
-    )
-
-
+    },
+)
 async def _list_todos_handle(arguments: dict) -> list[TextContent]:
     todos = _read_todos()
     include_done = arguments.get("include_done", False)
@@ -79,23 +76,20 @@ async def _list_todos_handle(arguments: dict) -> list[TextContent]:
 # -- complete_todo -------------------------------------------------------------
 
 
-def _complete_todo_definition() -> Tool:
-    return Tool(
-        name="complete_todo",
-        description="Mark a todo item as done by its ID.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "todo_id": {
-                    "type": "string",
-                    "description": "The ID of the todo item to complete.",
-                },
+@tool(
+    "complete_todo",
+    "Mark a todo item as done by its ID.",
+    {
+        "type": "object",
+        "properties": {
+            "todo_id": {
+                "type": "string",
+                "description": "The ID of the todo item to complete.",
             },
-            "required": ["todo_id"],
         },
-    )
-
-
+        "required": ["todo_id"],
+    },
+)
 async def _complete_todo_handle(arguments: dict) -> list[TextContent] | CallToolResult:
     todo_id = arguments.get("todo_id", "")
     todos = _read_todos()
@@ -107,15 +101,3 @@ async def _complete_todo_handle(arguments: dict) -> list[TextContent] | CallTool
             return [TextContent(type="text", text=f"Todo {todo_id} marked as done.")]
 
     return tool_error(f"Todo {todo_id} not found.")
-
-
-# -- registration --------------------------------------------------------------
-
-register(
-    "list_todos",
-    ToolEntry(definition=_list_todos_definition, handler=_list_todos_handle),
-)
-register(
-    "complete_todo",
-    ToolEntry(definition=_complete_todo_definition, handler=_complete_todo_handle),
-)

@@ -20,9 +20,46 @@ class ToolEntry:
 _TOOLS: dict[str, ToolEntry] = {}
 
 
+Handler = Callable[..., Awaitable[list[TextContent] | CallToolResult]]
+
+
 def register(name: str, entry: ToolEntry) -> None:
     """Register a tool by name."""
     _TOOLS[name] = entry
+
+
+def tool(
+    name: str,
+    description: str,
+    input_schema: dict[str, Any] | None = None,
+    *,
+    visible: Callable[[], bool] | None = None,
+) -> Callable[[Handler], Handler]:
+    """Register a local-logic tool by decorating its handler.
+
+    Fuses the :class:`Tool` definition and registration onto the handler,
+    replacing the ``_xxx_definition()`` + ``register(ToolEntry(...))`` ritual.
+
+    Pass *visible* (a no-arg predicate) for tools that should be hidden in some
+    contexts — the definition returns ``None`` when it evaluates falsy, which
+    :func:`all_tools` filters out.
+
+    Use :func:`register_ipc_tool` instead for pure IPC-proxy tools, and the
+    explicit :func:`register` for tools whose definition needs richer runtime
+    logic (dynamic schema/description).
+    """
+    schema = input_schema if input_schema is not None else {"type": "object", "properties": {}}
+
+    def deco(handler: Handler) -> Handler:
+        def definition() -> Tool | None:
+            if visible is not None and not visible():
+                return None
+            return Tool(name=name, description=description, inputSchema=schema)
+
+        register(name, ToolEntry(definition=definition, handler=handler))
+        return handler
+
+    return deco
 
 
 def register_ipc_tool(

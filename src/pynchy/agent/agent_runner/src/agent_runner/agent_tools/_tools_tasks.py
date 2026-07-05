@@ -8,7 +8,7 @@ from croniter import croniter
 from mcp.types import CallToolResult, TextContent, Tool
 
 from agent_runner.agent_tools import _ipc
-from agent_runner.agent_tools._registry import ToolEntry, register, tool_error
+from agent_runner.agent_tools._registry import ToolEntry, register, tool, tool_error
 
 # -- schedule_task --
 
@@ -256,19 +256,16 @@ def _validate_schedule(schedule_type: str, schedule_value: str) -> CallToolResul
 # -- list_tasks --
 
 
-def _list_tasks_definition() -> Tool:
-    return Tool(
-        name="list_tasks",
-        description=(
-            "List all scheduled tasks (both agent tasks and host "
-            "jobs). Each entry is labelled [agent] or [host]. "
-            "From admin: shows all tasks across all groups. "
-            "From other groups: shows only that group's agent tasks."
-        ),
-        inputSchema={"type": "object", "properties": {}},
-    )
-
-
+@tool(
+    "list_tasks",
+    (
+        "List all scheduled tasks (both agent tasks and host "
+        "jobs). Each entry is labelled [agent] or [host]. "
+        "From admin: shows all tasks across all groups. "
+        "From other groups: shows only that group's agent tasks."
+    ),
+    {"type": "object", "properties": {}},
+)
 async def _list_tasks_handle(arguments: dict) -> list[TextContent]:
     tasks_file = _ipc.IPC_DIR / "current_tasks.json"
 
@@ -319,56 +316,16 @@ async def _list_tasks_handle(arguments: dict) -> list[TextContent]:
 
 # -- pause/resume/cancel --
 
-
-def _pause_task_definition() -> Tool:
-    return Tool(
-        name="pause_task",
-        description="Pause a scheduled task or host job. It will not run until resumed.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "task_id": {
-                    "type": "string",
-                    "description": "The task ID to pause",
-                },
-            },
-            "required": ["task_id"],
+_TASK_ID_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "task_id": {
+            "type": "string",
+            "description": "The task ID",
         },
-    )
-
-
-def _resume_task_definition() -> Tool:
-    return Tool(
-        name="resume_task",
-        description="Resume a paused task or host job.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "task_id": {
-                    "type": "string",
-                    "description": "The task ID to resume",
-                },
-            },
-            "required": ["task_id"],
-        },
-    )
-
-
-def _cancel_task_definition() -> Tool:
-    return Tool(
-        name="cancel_task",
-        description="Cancel and delete a scheduled task or host job.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "task_id": {
-                    "type": "string",
-                    "description": "The task ID to cancel",
-                },
-            },
-            "required": ["task_id"],
-        },
-    )
+    },
+    "required": ["task_id"],
+}
 
 
 def _task_action(action: str, task_id: str) -> list[TextContent]:
@@ -389,35 +346,28 @@ def _task_action(action: str, task_id: str) -> list[TextContent]:
     return [TextContent(type="text", text=f"Task {task_id} {verb} requested.")]
 
 
+@tool(
+    "pause_task",
+    "Pause a scheduled task or host job. It will not run until resumed.",
+    _TASK_ID_SCHEMA,
+)
 async def _pause_task_handle(arguments: dict) -> list[TextContent]:
     return _task_action("pause_task", arguments["task_id"])
 
 
+@tool("resume_task", "Resume a paused task or host job.", _TASK_ID_SCHEMA)
 async def _resume_task_handle(arguments: dict) -> list[TextContent]:
     return _task_action("resume_task", arguments["task_id"])
 
 
+@tool("cancel_task", "Cancel and delete a scheduled task or host job.", _TASK_ID_SCHEMA)
 async def _cancel_task_handle(arguments: dict) -> list[TextContent]:
     return _task_action("cancel_task", arguments["task_id"])
 
 
+# schedule_task keeps the explicit form — its definition is large enough to
+# read better as a named function than inline in a decorator.
 register(
     "schedule_task",
     ToolEntry(definition=_schedule_task_definition, handler=_schedule_task_handle),
-)
-register(
-    "list_tasks",
-    ToolEntry(definition=_list_tasks_definition, handler=_list_tasks_handle),
-)
-register(
-    "pause_task",
-    ToolEntry(definition=_pause_task_definition, handler=_pause_task_handle),
-)
-register(
-    "resume_task",
-    ToolEntry(definition=_resume_task_definition, handler=_resume_task_handle),
-)
-register(
-    "cancel_task",
-    ToolEntry(definition=_cancel_task_definition, handler=_cancel_task_handle),
 )
