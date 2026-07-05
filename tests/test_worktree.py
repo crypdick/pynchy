@@ -208,6 +208,7 @@ class TestEnsureWorktree:
         assert (result2.path / "README.md").read_text() == "initial"
         # WIP file is gone (worktree was recreated from scratch)
         assert not (wt_path / "wip.txt").exists()
+        assert "Broken worktree detected, recreating" in caplog.text
 
 
 # ---------------------------------------------------------------------------

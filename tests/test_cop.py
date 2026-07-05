@@ -130,13 +130,15 @@ async def test_cop_error_fails_open():
         "pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway()
     )
 
-    @asynccontextmanager
-    async def _exploding_post(*_a, **_k):
-        raise RuntimeError("API down")
-        yield
+    class _ExplodingPost:
+        async def __aenter__(self):
+            raise RuntimeError("API down")
+
+        async def __aexit__(self, *_exc_info):
+            return False
 
     mock_session = AsyncMock()
-    mock_session.post = _exploding_post
+    mock_session.post = lambda *_a, **_k: _ExplodingPost()
 
     @asynccontextmanager
     async def _session_ctx(*_a, **_k):

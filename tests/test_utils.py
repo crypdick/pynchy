@@ -182,6 +182,8 @@ class TestCreateBackgroundTask:
         with pytest.raises(RuntimeError, match="intentional failure"):
             await task
 
+        assert "intentional failure" in caplog.text
+
         # The done callback fires after the await, but we need to let the
         # event loop process it
         await asyncio.sleep(0)
