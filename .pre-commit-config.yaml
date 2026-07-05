@@ -71,6 +71,18 @@ repos:
         language: system
         types: [python]
         files: ^src/
+      - id: vulture
+        name: Detect dead code
+        entry: uv run vulture src tests --min-confidence 80
+        language: system
+        pass_filenames: false
+        types: [python]
+      - id: xenon
+        name: Check cyclomatic complexity
+        entry: uv run xenon --max-absolute C --max-modules C --max-average B src
+        language: system
+        pass_filenames: false
+        types: [python]
 
   # Informational-only gates (pragmatic ratchet): report violations without
   # blocking commits. Existing debt in these categories has not been audited
@@ -87,20 +99,6 @@ repos:
         name: "[informational] Flag temporal language in comments (legacy/old/refactor/...)"
         entry: bash -c 'uv run python scripts/pre_commit_hooks/check_timeless_comments.py "$@" || true' --
         language: system
-        types: [python]
-        verbose: true
-      - id: vulture
-        name: "[informational] Detect dead code"
-        entry: bash -c 'uv run vulture src tests --min-confidence 80 || true'
-        language: system
-        pass_filenames: false
-        types: [python]
-        verbose: true
-      - id: xenon
-        name: "[informational] Check cyclomatic complexity"
-        entry: bash -c 'uv run xenon --max-absolute C --max-modules C --max-average B src || true'
-        language: system
-        pass_filenames: false
         types: [python]
         verbose: true
       - id: mypy
