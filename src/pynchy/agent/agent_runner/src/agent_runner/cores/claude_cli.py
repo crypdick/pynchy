@@ -97,6 +97,13 @@ class ClaudeCLIAgentCore:
         # token, PYTHONPATH (so the PreToolUse hook can import agent_runner).
         self._env = os.environ.copy()
 
+        # The PreToolUse gate runs as a *fresh subprocess* (hook_entry.py) that
+        # can't see our in-memory config, so plugin BEFORE_TOOL_USE specs travel
+        # to it via this env var (inherited by the hook command the claude binary
+        # spawns). hook_entry composes the same before_tool_use_roster the SDK
+        # core does -- builtin + these -- so the gate can't differ by core.
+        self._env["PYNCHY_PLUGIN_HOOKS"] = json.dumps(self.config.plugin_hooks)
+
         # MCP servers -> inline --mcp-config JSON: {"mcpServers": {...}}.
         if self.config.mcp_servers:
             self._mcp_config_json = json.dumps({"mcpServers": self.config.mcp_servers})

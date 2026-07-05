@@ -17,30 +17,45 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
+from collections.abc import Callable
 
-from agent_runner.hooks import HookDecision, builtin_before_tool_hooks
+from agent_runner.hooks import HookDecision, before_tool_use_roster, load_hooks
 
-# Built-in gate, single-sourced from the shared roster so every core (SDK,
-# OpenAI, and this CLI entrypoint) enforces the same hooks in the same order:
-# first deny wins.
-#
-# NOTE: this is the *built-in* roster only. Unlike the SDK core -- which also
-# registers plugin-provided BEFORE_TOOL_USE hooks (load_hooks(plugin_hooks)) --
-# this entrypoint runs no plugin hooks. Moot today because main.py wires
-# plugin_hooks=[] for every core, but if that TODO is resolved this must grow to
-# load and run the plugin BEFORE_TOOL_USE roster too, or the claude-cli core
-# will silently enforce fewer hooks than the SDK core.
-_HOOKS = tuple(builtin_before_tool_hooks())
+# Env var the claude-cli core (cores/claude_cli.py) uses to hand plugin
+# BEFORE_TOOL_USE specs to this subprocess. See _load_roster.
+_PLUGIN_HOOKS_ENV = "PYNCHY_PLUGIN_HOOKS"
 
 
 def _log(message: str) -> None:
     print(f"[claude-cli-hook] {message}", file=sys.stderr, flush=True)
 
 
-async def _evaluate(tool_name: str, tool_input: dict) -> HookDecision | None:
-    """Run the built-in gate; return the first denying decision, else None."""
-    for hook in _HOOKS:
+def _load_roster() -> tuple[Callable, ...]:
+    """Compose the exact BEFORE_TOOL_USE gate the SDK core enforces.
+
+    This subprocess is spawned fresh by the ``claude`` binary per tool call, so
+    it can't share the core's in-memory config. The claude-cli core forwards the
+    plugin-hook specs via ``PYNCHY_PLUGIN_HOOKS``; we load them and run them
+    through the shared before_tool_use_roster (builtin hooks first, then plugin
+    hooks). Because both cores compose here, the CLI subprocess can never enforce
+    a different set than the SDK core -- parity by construction, not by comment.
+    """
+    raw = os.environ.get(_PLUGIN_HOOKS_ENV, "")
+    try:
+        specs = json.loads(raw) if raw.strip() else []
+    except json.JSONDecodeError:
+        _log(f"unparseable {_PLUGIN_HOOKS_ENV}, running built-in gate only: {raw[:200]}")
+        specs = []
+    return tuple(before_tool_use_roster(load_hooks(specs)))
+
+
+async def _evaluate(
+    hooks: tuple[Callable, ...], tool_name: str, tool_input: dict
+) -> HookDecision | None:
+    """Run the gate; return the first denying decision, else None."""
+    for hook in hooks:
         decision = await hook(tool_name, tool_input)
         if not decision.allowed:
             return decision
@@ -61,8 +76,9 @@ def main() -> None:
     tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {}) or {}
 
+    hooks = _load_roster()
     try:
-        decision = asyncio.run(_evaluate(tool_name, tool_input))
+        decision = asyncio.run(_evaluate(hooks, tool_name, tool_input))
     except Exception as exc:  # noqa: BLE001 - never crash the agent's tool loop
         _log(f"gate evaluation error, allowing by default: {exc}")
         sys.exit(0)

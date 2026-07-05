@@ -23,7 +23,7 @@ from claude_agent_sdk import (
 )
 
 from ..core import AgentCoreConfig, AgentEvent
-from ..hooks import AGNOSTIC_TO_CLAUDE, HookEvent, builtin_before_tool_hooks, load_hooks
+from ..hooks import AGNOSTIC_TO_CLAUDE, HookEvent, before_tool_use_roster, load_hooks
 from ..transcript_archive import archive_transcript
 
 
@@ -134,13 +134,13 @@ class ClaudeAgentCore:
             claude_hooks["PreCompact"] = []
         claude_hooks["PreCompact"].append(HookMatcher(hooks=[_create_pre_compact_hook()]))
 
-        # Register BEFORE_TOOL_USE hooks as PreToolUse matchers.
-        # Built-in security hooks run first, then plugin hooks.
-        pre_tool_hooks = [
-            *builtin_before_tool_hooks(),
-            *agnostic_hooks.get(HookEvent.BEFORE_TOOL_USE, []),
+        # Register BEFORE_TOOL_USE hooks as PreToolUse matchers. The roster
+        # (built-ins first, then plugin hooks) is composed by the shared
+        # before_tool_use_roster so this core enforces exactly what the OpenAI
+        # and claude-cli cores do.
+        all_pre_tool_hooks = [
+            _wrap_before_tool_use(fn) for fn in before_tool_use_roster(agnostic_hooks)
         ]
-        all_pre_tool_hooks = [_wrap_before_tool_use(fn) for fn in pre_tool_hooks]
 
         if all_pre_tool_hooks:
             if "PreToolUse" not in claude_hooks:
