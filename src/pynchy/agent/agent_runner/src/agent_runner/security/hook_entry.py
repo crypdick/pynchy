@@ -19,12 +19,12 @@ import asyncio
 import json
 import sys
 
-from agent_runner.hooks import HookDecision
-from agent_runner.security.bash_gate import bash_security_hook
-from agent_runner.security.guard_git import guard_git_hook
+from agent_runner.hooks import HookDecision, builtin_before_tool_hooks
 
-# Built-in gate, in the same order the SDK core registers it: first deny wins.
-_HOOKS = (bash_security_hook, guard_git_hook)
+# Built-in gate, single-sourced from the shared roster so every core (SDK,
+# OpenAI, and this CLI entrypoint) enforces the same hooks in the same order:
+# first deny wins.
+_HOOKS = tuple(builtin_before_tool_hooks())
 
 
 def _log(message: str) -> None:
