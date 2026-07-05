@@ -30,7 +30,7 @@ async def record_outbound(
     source: str,
     channel_names: list[str],
 ) -> int:
-    """Write a new outbound message and create delivery rows for each channel.
+    """Write an outbound message and create delivery rows for each channel.
 
     Returns the ledger row ID.
     """
@@ -107,7 +107,7 @@ async def gc_delivered(max_age_hours: int = 24) -> int:
     """
     db = _get_db()
     cutoff = (datetime.now(UTC) - timedelta(hours=max_age_hours)).isoformat()
-    # Find ledger IDs that are old enough AND have no pending deliveries
+    # Find ledger IDs past the cutoff with no pending deliveries
     cursor = await db.execute(
         "SELECT ol.id FROM outbound_ledger ol"
         " WHERE ol.timestamp < ?"

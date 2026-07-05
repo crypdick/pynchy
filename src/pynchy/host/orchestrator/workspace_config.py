@@ -1,7 +1,7 @@
 """Workspace configuration — reads from config.toml via Settings.
 
 Workspaces are defined in [sandbox.<folder_name>] sections of config.toml.
-Runtime creation (e.g. via IPC) writes new sections using add_workspace_to_toml().
+Runtime creation (e.g. via IPC) writes sections using add_workspace_to_toml().
 """
 
 from __future__ import annotations
@@ -375,7 +375,7 @@ async def _reconcile_periodic_task(
 
 
 async def _pause_orphaned_tasks(specs: dict[str, WorkspaceSpec]) -> None:
-    """Pause active scheduled tasks whose workspace is no longer periodic/configured."""
+    """Pause active scheduled tasks whose workspace is not periodic/configured."""
     periodic_folders = {f for f, sp in specs.items() if sp.config.is_periodic}
     all_tasks = await get_all_tasks()
     for task in all_tasks:

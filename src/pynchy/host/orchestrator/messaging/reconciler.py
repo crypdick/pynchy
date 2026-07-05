@@ -1,4 +1,4 @@
-"""Unified channel reconciliation — replaces _catch_up_channel_history().
+"""Unified channel reconciliation.
 
 Single code path for all channels.  Per-(channel, group) cooldown prevents
 excessive API calls during rapid polling cycles.  Channels that don't own
@@ -187,8 +187,7 @@ async def _retry_outbound(
 async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
     """Reconcile inbound history and retry pending outbound for all channels.
 
-    Replaces _catch_up_channel_history(). Runs at boot and periodically
-    from the message polling loop.
+    Runs at boot and periodically from the message polling loop.
     """
     now = datetime.now(UTC)
     recovered = 0
@@ -249,7 +248,7 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
     if not recovered and not retried:
         logger.debug("Reconciliation complete, nothing to recover")
 
-    # GC cursors for channels that no longer exist (e.g. after a rename)
+    # GC cursors for channels absent from the active set (e.g. after a rename)
     active_names = {ch.name for ch in deps.channels}
     pruned = await prune_stale_cursors(active_names)
     if pruned:

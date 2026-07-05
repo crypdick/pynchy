@@ -92,7 +92,7 @@ async def set_workspace_profile(profile: WorkspaceProfile) -> None:
     }
 
     await db.execute(
-        """INSERT OR REPLACE INTO registered_groups
+        """INSERT OR REPLACE INTO registered_groups -- temporal-ok
             (jid, name, folder, trigger_pattern, added_at,
              container_config, security_profile, is_admin)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",

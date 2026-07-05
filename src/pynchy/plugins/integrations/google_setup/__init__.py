@@ -45,7 +45,7 @@ class GoogleMcpPlugin:
 
     These are templates — they exist only to be inherited by config
     instances (e.g., ``[mcp_servers.gdrive.mycompany]``).  If no instances
-    are declared, the template sits unused.
+    are declared, the template sits idle.
     """
 
     @hookimpl

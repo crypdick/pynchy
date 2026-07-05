@@ -96,7 +96,7 @@ def exchange_code_for_tokens(code: str, client_id: str, client_secret: str) -> d
     if "error" in tokens:
         raise RuntimeError(f"Token exchange failed: {tokens['error']}")
 
-    # Add expiry_date (ms) for compatibility with googleapis Node.js client
+    # Add expiry_date (ms) as expected by the googleapis Node.js client
     if "expires_in" in tokens:
         tokens["expiry_date"] = int(time.time() * 1000) + tokens["expires_in"] * 1000
 

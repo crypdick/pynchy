@@ -101,7 +101,7 @@ async def message_exists(msg_id: str, chat_jid: str) -> bool:
 
 
 async def get_new_messages(jids: list[str], last_timestamp: str) -> tuple[list[NewMessage], str]:
-    """Get new messages across multiple groups since a timestamp."""
+    """Get messages across multiple groups since a timestamp."""
     if not jids:
         return [], last_timestamp
 

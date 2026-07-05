@@ -457,7 +457,7 @@ class ClaudeAgentCore:
                     },
                 )
 
-        # Update session ID if we got a new one
+        # Update session ID if one was issued
         if new_session_id:
             self._session_id = new_session_id
 

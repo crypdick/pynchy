@@ -356,7 +356,7 @@ def stop_procs(procs: list[subprocess.Popen]) -> None:
 def cleanup_lock_files(profile: Path) -> None:
     """Remove stale Chromium lock files from a profile directory.
 
-    A previous browser crash or unclean shutdown can leave these behind,
+    A browser crash or unclean shutdown can leave these behind,
     preventing the next persistent context from launching.
     """
     for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):

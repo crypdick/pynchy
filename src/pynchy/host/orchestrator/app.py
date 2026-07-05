@@ -221,7 +221,7 @@ class PynchyApp:
     # ------------------------------------------------------------------
 
     async def _register_workspace(self, profile: WorkspaceProfile) -> None:
-        """Register a new workspace and persist it."""
+        """Register a workspace and persist it."""
         self.workspaces[profile.jid] = profile
         await set_workspace_profile(profile)
 

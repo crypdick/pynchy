@@ -65,7 +65,7 @@ async def send_boot_notification(deps: StartupDeps) -> None:
         )
         logger.warning("No API credentials found at startup")
 
-    # Check for boot warnings left by a previous deploy
+    # Check for boot warnings left by the deploy step
     boot_warnings_path = s.data_dir / "boot_warnings.json"
     if boot_warnings_path.exists():
         try:
@@ -115,7 +115,7 @@ async def recover_pending_messages(deps: StartupDeps) -> None:
 
 
 async def auto_rollback(continuation_path: Path, exc: Exception) -> None:
-    """Roll back to the previous commit if startup fails after a deploy."""
+    """Roll back to the pre-deploy commit if startup fails after a deploy."""
     try:
         continuation = json.loads(continuation_path.read_text())
     except (json.JSONDecodeError, OSError) as read_exc:

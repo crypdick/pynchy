@@ -28,7 +28,7 @@ def _row_to_task(row) -> ScheduledTask:
 
 
 async def create_task(task: dict[str, Any]) -> None:
-    """Create a new scheduled task."""
+    """Create a scheduled task."""
     db = _get_db()
     await db.execute(
         """
@@ -136,7 +136,7 @@ async def get_due_tasks() -> list[ScheduledTask]:
 
 
 async def update_task_after_run(task_id: str, next_run: str | None, last_result: str) -> None:
-    """Update a task after it has been run."""
+    """Update a task after a run."""
     db = _get_db()
     now = datetime.now(UTC).isoformat()
     await db.execute(

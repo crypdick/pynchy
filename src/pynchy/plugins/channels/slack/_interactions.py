@@ -97,7 +97,7 @@ class SlackInteractionMixin:
         if self._on_ask_user_answer:
             self._on_ask_user_answer(request_id, answer_dict)
 
-        # Update the original message to show the answer and remove interactivity
+        # Update the question message to show the answer and remove interactivity
         if channel_id and message_ts:
             answered_text = f"Answered: *{answer}*"
             try:
@@ -120,7 +120,7 @@ class SlackInteractionMixin:
 
         Extracts the action and short_id from the ``action_id`` (e.g.
         ``cop_approve_a1``), invokes the approval callback, and updates the
-        original message to remove buttons and show the decision.
+        prompt message to remove buttons and show the decision.
         """
         action_id = action.get("action_id", "")
         channel_id = body.get("channel", {}).get("id", "")

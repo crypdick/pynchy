@@ -43,7 +43,7 @@ def resolve_container_timeout(group: WorkspaceProfile) -> float:
 
 
 def _sanitize_folder(group_folder: str) -> str:
-    """Replace non-alphanumeric/non-dash chars with dashes for container names."""
+    """Convert non-alphanumeric/non-dash chars to dashes for container names."""
     return "".join(c if c.isalnum() or c == "-" else "-" for c in group_folder)
 
 
@@ -51,7 +51,7 @@ def stable_container_name(group_folder: str) -> str:
     """Deterministic container name for persistent sessions.
 
     Using a stable name means we can docker rm -f the stale container
-    before spawning a new one for the same group.
+    before spawning a fresh one for the same group.
     """
     return f"pynchy-{_sanitize_folder(group_folder)}"
 

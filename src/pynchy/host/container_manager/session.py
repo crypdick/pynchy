@@ -13,8 +13,8 @@ Output routing:
   Output arrives as files in the IPC output/ directory and is processed by the
   IPC watcher (_watcher.py).  The watcher calls get_session_output_handler() to
   look up the current callback and signal_query_done() when a query-done pulse
-  is detected.  The session no longer reads stdout for output — only stderr is
-  read (for log capture) and proc.wait() is monitored for unexpected death.
+  is detected.  The session reads only stderr (for log capture) and monitors
+  proc.wait() for unexpected death.
 """
 
 from __future__ import annotations
@@ -188,7 +188,7 @@ class ContainerSession:
         self._on_idle_expire = callback
 
     def _on_idle_expired(self) -> None:
-        """Called when the session has been idle for too long."""
+        """Called when the session exceeds the idle timeout."""
         logger.info(
             "Session idle timeout, destroying",
             group=self.group_folder,
@@ -306,15 +306,15 @@ async def create_session(
     proc: asyncio.subprocess.Process,
     idle_timeout_override: float | None = None,
 ) -> ContainerSession:
-    """Create and register a new session for a group.
+    """Create and register a session for a group.
 
-    Assumes the caller has already removed any stale container with the
+    Assumes the caller has already cleared any stale container with the
     same name *before* spawning ``proc``.  Stale IPC files are cleaned here.
 
     IMPORTANT: Do NOT call ``_docker_rm_force(container_name)`` here.
     By this point the container is already running — force-removing it
     would race with (and potentially kill) the just-spawned process.
-    The old session's ``stop()`` call below handles the previous container,
+    The existing session's ``stop()`` call below handles its container,
     and the caller (``_cold_start``) handles stale-name cleanup pre-spawn.
     """
     # Destroy existing session if any
@@ -322,7 +322,7 @@ async def create_session(
     if old is not None:
         await old.stop()
 
-    # Clean stale IPC files from the previous session.
+    # Clean stale IPC files before the starting container reads them.
     # preserve_initial=True because the container is still starting and
     # reads initial.json on boot.
     clean_ipc_input_dir(group_folder, preserve_initial=True)
@@ -370,8 +370,8 @@ async def destroy_all_sessions() -> None:
 def _clean_ipc_output(group_folder: str) -> None:
     """Remove stale IPC output files for a group.
 
-    Called when creating a new session to prevent replay of output events
-    from a previous (dead) session.  Output files are ephemeral mid-query
+    Called when creating a session to prevent replay of output events
+    left by a dead session.  Output files are ephemeral mid-query
     artefacts — they have no value once the session that produced them is
     gone.
     """

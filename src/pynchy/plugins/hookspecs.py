@@ -177,6 +177,6 @@ class PynchySpec:
         Returns:
             Dict with keys:
                 - folder: Workspace folder name (e.g., "code-improver")
-                - config: WorkspaceConfig-compatible dict (schedule, prompt, etc.)
+                - config: dict matching the WorkspaceConfig schema (schedule, prompt, etc.)
                 - claude_md: Optional CLAUDE.md content to seed on first run
         """

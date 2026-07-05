@@ -1,6 +1,6 @@
 """Message routing and polling loop — dispatches incoming messages to agents or tasks.
 
-Decides whether to enqueue a new container run, pipe messages to an
+Decides whether to enqueue a container run, pipe messages to an
 active container, interrupt a running scheduled task, or skip the group
 entirely (trigger/access rules, system-notice filtering, special commands).
 
@@ -39,7 +39,7 @@ async def _route_incoming_group(
 ) -> None:
     """Route newly arrived messages for a single group.
 
-    Decides whether to enqueue a new container run, pipe messages to an
+    Decides whether to enqueue a container run, pipe messages to an
     active container, or interrupt a running scheduled task.  Early-returns
     when the group should be skipped (access/trigger rules, system-notice
     filtering, special commands).
@@ -160,7 +160,7 @@ async def _route_incoming_group(
             _mark_dispatched(deps, group_jid, all_pending[-1].timestamp)
         return
 
-    # --- No active container: enqueue a new run ---
+    # --- No active container: enqueue a run ---
     logger.info("route_trace", step="enqueue_new_run", group=group.name)
     first_msg = group_messages[0]
     await deps.send_reaction_to_channels(group_jid, first_msg.id, first_msg.sender, "sunrise")
@@ -206,7 +206,7 @@ async def _handle_message_during_task(
         # and use a "[System notice]" prefix convention on the IPC
         # notification so the agent treats it as informational rather
         # than a user request.  If the SDK adds external tool invocation
-        # or system message injection, this workaround can be replaced.
+        # or system message injection, this workaround becomes unnecessary.
         from pynchy.host.orchestrator.todos import add_todo
 
         item = last_content[5:]  # strip "todo " prefix
@@ -233,7 +233,7 @@ async def start_message_loop(
     deps: MessageHandlerDeps,
     shutting_down: Callable[[], bool],
 ) -> None:
-    """Main polling loop — checks for new messages every message_poll interval."""
+    """Main polling loop — checks for incoming messages every message_poll interval."""
     s = get_settings()
     _CATCHUP_INTERVAL = 10  # seconds between channel history reconciliation
     _last_catchup = _time.monotonic()

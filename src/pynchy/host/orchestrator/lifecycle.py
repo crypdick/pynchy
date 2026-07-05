@@ -62,7 +62,7 @@ async def shutdown_app(app: PynchyApp, sig_name: str) -> None:
         logger.debug("Shutdown notification failed", exc_info=True)
 
     # Cancel subsystem tasks first — prevents scheduler/IPC from creating
-    # new work while we're shutting down.
+    # more work while we're shutting down.
     for task in app._subsystem_tasks:
         task.cancel()
     app._subsystem_tasks.clear()

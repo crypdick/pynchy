@@ -74,7 +74,7 @@ async def stream_text_to_channels(
 ) -> None:
     """Push the current OutboundEvent to channels that support update_event.
 
-    On first call, posts a new message via ``post_event``.  Subsequent calls
+    On first call, posts a message via ``post_event``.  Subsequent calls
     update it in-place via ``update_event``.  Throttled to _STREAM_THROTTLE
     unless ``final`` is True.
 

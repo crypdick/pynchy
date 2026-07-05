@@ -34,7 +34,7 @@ class HookEvent(StrEnum):
     """Fired after each LLM query completes."""
 
     SESSION_START = "session_start"
-    """Fired when a new session is initialized."""
+    """Fired when a session is initialized."""
 
     SESSION_END = "session_end"
     """Fired when a session ends."""

@@ -131,7 +131,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
     new_sha = get_head_sha()
     has_new_code = new_sha != old_sha
 
-    # 4. Validate import (only when new code was pulled)
+    # 4. Validate import (only when the pull changed HEAD)
     if has_new_code:
         s = get_settings()
         validate = subprocess.run(
@@ -164,7 +164,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
                 msg = "Deploy warning — container rebuild failed, continuing with old image."
                 await deps.broadcast_host_message(chat_jid, msg)
 
-    # 6. Restart (write continuation only when new code was deployed)
+    # 6. Restart (write continuation only when the pull changed HEAD)
     chat_jid = deps.admin_chat_jid()
     if has_new_code:
         await finalize_deploy(

@@ -1,6 +1,6 @@
 """ask_user tool — routes questions to the user via the host messaging channel.
 
-Replaces the built-in ``AskUserQuestion`` tool.  The agent calls this to
+Used in place of the SDK's built-in ``AskUserQuestion`` tool.  The agent calls this to
 ask the user one or more questions; the host forwards them to the messaging
 channel (Slack/WhatsApp) and blocks until a reply arrives.
 

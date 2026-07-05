@@ -5,7 +5,7 @@ pushes MCP state to LiteLLM via its HTTP API.  Docker-based MCP containers and
 script-based MCP subprocesses start on-demand when an agent first needs them
 and stop after an idle timeout.
 
-Adding a new MCP is as simple as adding a ``[mcp_servers.<name>]`` section to
+Adding an MCP is as simple as adding a ``[mcp_servers.<name>]`` section to
 ``config.toml`` — no policy files, no editing ``litellm_config.yaml``.  Plugins
 can also provide MCP servers via the ``pynchy_mcp_server_spec()`` hook.
 

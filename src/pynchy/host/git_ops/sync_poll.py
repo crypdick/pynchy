@@ -130,7 +130,7 @@ def _host_container_files_changed(old_sha: str, new_sha: str) -> bool:
 def _host_source_files_changed(old_sha: str, new_sha: str) -> bool:
     """Check if host source files changed between two commits.
 
-    The running Python process has old modules in memory. A restart is needed
+    The running Python process holds stale modules in memory. A restart is needed
     to pick up src/ changes — git pull alone doesn't hot-reload Python.
     """
     return files_changed_between(old_sha, new_sha, "src/")

@@ -16,7 +16,7 @@ from pynchy.logger import logger
 
 @dataclass
 class MessageEvent:
-    """A new message was stored (inbound or outbound)."""
+    """A message was stored (inbound or outbound)."""
 
     chat_jid: str
     sender_name: str

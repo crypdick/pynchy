@@ -331,7 +331,7 @@ async def advance_cursor(
 ) -> None:
     """Commit the agent timestamp cursor, rolling back on save failure.
 
-    The single place cursor writes are persisted — captures the prior value
+    The single place cursor writes are persisted — captures the pre-write value
     so any ``save_state`` failure leaves the in-memory cursor consistent with
     what's on disk (preventing message reprocessing / duplicate responses).
     """
@@ -527,10 +527,10 @@ async def process_group_messages(
         # Handoff failed — return False so GroupQueue will retry.
         return False
     # reset_result is None (no file) or True (handoff ran) — fall through to
-    # process any pending user messages in the same cycle.  The old code
-    # returned True on a successful handoff, silently dropping the message
-    # that triggered this run (e.g. the user's first message after a context
-    # reset could sit unprocessed until the next incoming message).
+    # process any pending user messages in the same cycle.  Falling through
+    # ensures the message that triggered this run (e.g. the user's first
+    # message after a context reset) is processed now rather than sitting
+    # unprocessed until the next incoming message.
 
     is_admin_group = group.is_admin
     since_timestamp = deps.last_agent_timestamp.get(chat_jid, "")

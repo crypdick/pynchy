@@ -91,7 +91,7 @@ def merged_mcp_servers(
     """Config.toml servers + plugin-provided servers, with instance expansion.
 
     Instance expansion: for each template in ``mcp_server_instances``,
-    the bare template is consumed (removed from result) and replaced by
+    the bare template is consumed (dropped from result) and expanded into
     one entry per instance with auto-assigned port, chrome-profile volume
     mount, and PORT env var.
     """
@@ -270,7 +270,7 @@ def build_trust_map(
 ) -> dict[str, dict[str, Any]]:
     """Build trust metadata for each instance (used by proxy for fencing decisions).
 
-    Priority: plugin defaults > safe fallback.
+    Priority: plugin defaults, else a safe default.
     """
     trust_map: dict[str, dict[str, Any]] = {}
     for iid, instance in instances.items():

@@ -30,7 +30,7 @@ def _move_to_error_dir(ipc_base_dir: Path, source_group: str, file_path: Path) -
     """Move a failed IPC file to the errors/ directory for later inspection.
 
     Safe to call inside ``except`` blocks — catches its own OSError so a
-    failed move never masks the original error or escapes the handler.
+    failed move never masks the error being handled or escapes the handler.
     """
     try:
         error_dir = ipc_base_dir / "errors"

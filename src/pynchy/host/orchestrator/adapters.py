@@ -34,7 +34,7 @@ class MessageBroadcaster:
     code path (JID resolution, ownership check, error handling).
 
     Uses a callable for channel list so the broadcaster always reads the
-    current state (channels may be replaced at runtime or in tests).
+    current state (channels may be swapped at runtime or in tests).
     """
 
     def __init__(
@@ -44,7 +44,7 @@ class MessageBroadcaster:
     ) -> None:
         # Accept either a list or a callable returning a list.
         # Callable form ensures the broadcaster always reads the current channels
-        # (important when the channel list may be replaced, e.g. in tests).
+        # (important when the channel list may be swapped, e.g. in tests).
         self._get_channels: Callable[[], list[Channel]] = (
             channels if callable(channels) else lambda: channels
         )
@@ -432,7 +432,7 @@ class GroupRegistrationManager:
         return self._groups
 
     def register_workspace(self, profile: WorkspaceProfile) -> None:
-        """Register a new workspace (async operation scheduled)."""
+        """Register a workspace (async operation scheduled)."""
         create_background_task(
             self._register_workspace(profile),
             name=f"register-workspace-{profile.folder}",

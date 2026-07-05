@@ -49,7 +49,7 @@ def detect_runtime() -> RuntimeProvider:
     Priority:
     1) settings.container.runtime override (if available)
     2) platform-aware auto-detect (darwin prefers apple plugin, then docker)
-    3) first available plugin runtime, then docker fallback
+    3) first available plugin runtime, else docker
     """
     from pynchy.config import get_settings
 

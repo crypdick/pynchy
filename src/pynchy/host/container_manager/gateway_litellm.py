@@ -198,7 +198,7 @@ class LiteLLMGateway:
         placeholder vars produce a warning and are skipped.
 
         Callers should pass the **filtered** config path so that env vars
-        belonging to removed model entries are not forwarded.
+        belonging to filtered-out model entries are not forwarded.
         """
         text = config_path.read_text()
         var_names = set(re.findall(r"os\.environ/(\w+)", text))
@@ -378,7 +378,7 @@ class LiteLLMGateway:
 
         await ensure_image(self._image)
 
-        # Remove stale LiteLLM container from previous run
+        # Remove any stale LiteLLM container before starting
         await remove_container(_LITELLM_CONTAINER)
 
         # Resolve env vars once — shared by config filtering and env-var forwarding.
@@ -405,7 +405,7 @@ class LiteLLMGateway:
         ]
 
         # Forward env vars referenced in the *filtered* config so we don't
-        # forward vars for model entries that were already removed.
+        # forward vars for model entries that were filtered out.
         for var_name, value in self._collect_yaml_env_refs(filtered_config, env):
             env_vars.extend(["-e", f"{var_name}={value}"])
 

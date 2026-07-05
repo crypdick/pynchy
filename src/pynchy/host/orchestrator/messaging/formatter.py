@@ -14,7 +14,7 @@ _HOST_TAG_RE = re.compile(r"^\s*<host>([\s\S]*?)</host>\s*$")
 
 
 def _format_internal_match(m: re.Match) -> str:
-    """Replace <internal>...</internal> with 🧠 _thought_ (italic)."""
+    """Format <internal>...</internal> as 🧠 _thought_ (italic)."""
     thought = m.group(1).strip()
     if not thought:
         return ""

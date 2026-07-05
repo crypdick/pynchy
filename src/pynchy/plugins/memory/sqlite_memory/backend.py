@@ -142,7 +142,7 @@ class SqliteMemoryBackend:
         # Tier 1: BM25 via FTS5
         results = await self._fts_search(db, group_folder, query, category, limit)
 
-        # Tier 2: LIKE fallback if FTS5 returns nothing
+        # Tier 2: LIKE search when FTS5 returns nothing
         if not results:
             results = await self._like_search(db, group_folder, query, category, limit)
 

@@ -182,7 +182,7 @@ async def sync_mcp_endpoints(
 
         # ----------------------------------------------------------
         # Anything left in `existing` is not in instances --
-        # delete ALL entries for those names (stale from old config).
+        # delete ALL entries for those names (stale, not in current config).
         # ----------------------------------------------------------
         for name, entries in existing.items():
             for entry in entries:
@@ -203,7 +203,7 @@ async def sync_teams(
 ) -> None:
     """Create/update LiteLLM teams per workspace with MCP access control.
 
-    Mutates *workspace_teams* in place: adds new entries for created teams,
+    Mutates *workspace_teams* in place: adds entries for created teams,
     removes entries for stale workspaces.
     """
     async with aiohttp.ClientSession() as session:
@@ -229,7 +229,7 @@ async def sync_teams(
                 # Update existing team's allowed servers
                 await _update_team(session, gateway, existing_team.team_id, instance_ids)
 
-    # Clean up teams for removed workspaces
+    # Delete teams for stale workspaces
     stale = set(workspace_teams) - set(workspace_instances)
     for folder in stale:
         team = workspace_teams.pop(folder)

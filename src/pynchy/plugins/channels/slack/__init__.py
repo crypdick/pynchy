@@ -31,7 +31,7 @@ from ._ui import split_text as _split_text
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
-# Re-export under original names for backwards compatibility (tests import these).
+# Re-exported so the test suite can import these names.
 __all__ = [
     "SlackChannel",
     "SlackChannelPlugin",

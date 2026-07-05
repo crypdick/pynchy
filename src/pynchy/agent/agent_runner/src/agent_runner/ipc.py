@@ -143,9 +143,9 @@ class _InputEventHandler(FileSystemEventHandler):
 
 
 async def wait_for_ipc_message() -> str | None:
-    """Wait for a new IPC message or _close sentinel.
+    """Wait for an incoming IPC message or _close sentinel.
 
-    Uses watchdog to detect new files in IPC_INPUT_DIR instead of polling.
+    Uses watchdog to detect incoming files in IPC_INPUT_DIR instead of polling.
     Returns the messages as a single string, or None if _close.
     """
     loop = asyncio.get_running_loop()
@@ -164,7 +164,7 @@ async def wait_for_ipc_message() -> str | None:
             messages = drain_ipc_input()
             if messages:
                 return "\n".join(messages)
-            # Wait until watchdog signals new file activity, then re-check
+            # Wait until watchdog signals file activity, then re-check
             await wakeup.wait()
             wakeup.clear()
     finally:

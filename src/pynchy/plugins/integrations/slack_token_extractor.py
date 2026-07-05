@@ -273,7 +273,7 @@ async def _handle_setup_slack_session(data: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
-# Run at import time (same behavior as the old standalone script)
+# Validate browser deps at import time so failures surface on plugin load
 check_browser_plugin_deps("setup_slack_session")
 
 

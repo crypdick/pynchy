@@ -205,7 +205,7 @@ class SlackChannel(
         channel_id = _channel_id_from_jid(jid)
 
         blocks = build_ask_user_blocks(request_id, questions)
-        # Fallback text for notifications / clients that don't render blocks
+        # Plain text for notifications / clients that don't render blocks
         fallback = "Question: " + "; ".join(q.get("question", "") for q in questions)
 
         resp = await self._app.client.chat_postMessage(
@@ -344,8 +344,8 @@ class SlackChannel(
     async def _resolve_user_name(self, user_id: str) -> str:
         """Look up a Slack user's display name, falling back to user ID.
 
-        Results are cached for 1 hour to avoid redundant API calls — the same
-        user sending multiple messages no longer triggers repeated users.info.
+        Results are cached for 1 hour so that a user sending multiple messages
+        triggers a single users.info call rather than one per message.
         """
         cached = self._user_name_cache.get(user_id)
         if cached is not None:

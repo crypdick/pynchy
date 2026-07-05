@@ -243,10 +243,10 @@ def terminate_process(instance: McpInstance) -> None:
 
 
 def expand_arg_placeholders(args: list[str], placeholders: dict[str, str]) -> list[str]:
-    """Replace ``{key}`` placeholders in *args* with values from *placeholders*.
+    """Substitute ``{key}`` placeholders in *args* with values from *placeholders*.
 
-    Same pattern used for volume mounts — extends it to command args so
-    plugins can use ``{port}``, ``{workspace}``, etc.
+    Mirrors the volume-mount placeholder syntax so plugins can use
+    ``{port}``, ``{workspace}``, etc. in command args.
     Unrecognised placeholders are left as-is.
     """
     expanded: list[str] = []

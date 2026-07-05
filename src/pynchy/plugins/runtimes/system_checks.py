@@ -37,7 +37,7 @@ def ensure_container_system_running() -> None:
         if build.returncode != 0:
             raise RuntimeError(f"Failed to build container image '{image}'")
 
-    # Kill orphaned containers from previous runs
+    # Kill orphaned pynchy containers left running
     orphans = runtime.list_running_containers("pynchy-")
     for name in orphans:
         with contextlib.suppress(OSError, subprocess.SubprocessError):

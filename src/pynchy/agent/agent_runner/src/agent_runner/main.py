@@ -33,15 +33,13 @@ from .registry import create_agent_core
 
 
 def build_sdk_messages(messages: list[dict[str, Any]]) -> str:
-    """Convert message list to SDK-compatible format.
+    """Convert message list to the format the SDK's query() method expects.
 
-    For now, we convert to XML format for compatibility. In the future,
-    this will build proper SDK message objects (UserMessage, AssistantMessage, etc.)
-    once the SDK supports that in the query() method.
+    Wraps each message in a ``<message>`` XML element.
 
     Message types:
     - 'user': From humans
-    - 'assistant': From LLM (previous responses)
+    - 'assistant': Responses from the LLM
     - 'system': Context for LLM (currently handled via system_prompt)
     - 'tool_result': Command outputs, tool execution results
     - 'host': Operational notifications (FILTERED OUT - should never reach here)
@@ -73,7 +71,6 @@ def build_sdk_messages(messages: list[dict[str, Any]]) -> str:
 def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
     """Build AgentCoreConfig from ContainerInput."""
     # Directives are resolved host-side and passed in via system_prompt_append.
-    # This replaced the old global/CLAUDE.md file-reading approach.
     system_prompt_append = container_input.system_prompt_append
 
     # IMPORTANT: Do NOT append ephemeral per-run content (system notices, dirty

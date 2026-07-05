@@ -41,7 +41,7 @@ from pynchy.plugins.integrations.x_integration._actions import (
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
-# Run at import time (same behavior as the old standalone script)
+# Validate browser deps at import time so failures surface on plugin load
 check_browser_plugin_deps("setup_x_session")
 
 

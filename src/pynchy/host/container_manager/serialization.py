@@ -3,9 +3,9 @@
 Converts ContainerInput to dict for JSON transport into the container,
 and parses JSON output from the container back to ContainerOutput.
 
-Both functions are field-driven (via ``dataclasses.fields``) so new
-fields added to the dataclasses are automatically handled without
-updating the serialization code.
+Both functions are field-driven (via ``dataclasses.fields``) so fields
+added to the dataclasses are automatically handled without updating the
+serialization code.
 """
 
 from __future__ import annotations

@@ -121,11 +121,11 @@ async def start_kernel(name: str | None = None) -> dict[str, Any]:
 
     If ``name`` refers to an existing notebook on disk, loads it and
     re-executes all code cells to restore kernel state. If omitted, creates
-    a new notebook with an auto-generated name.
+    a notebook with an auto-generated name.
 
     Args:
         name: Notebook name (without path). If the notebook exists on disk,
-              its cells are re-executed to restore state. If omitted, a new
+              its cells are re-executed to restore state. If omitted, a
               name is auto-generated.
 
     Returns:
@@ -262,10 +262,10 @@ async def save_as(kernel_id: str, name: str) -> dict[str, Any]:
 
     Args:
         kernel_id: Kernel identifier from ``start_kernel``.
-        name: New notebook name (without path).
+        name: Notebook name to save under (without path).
 
     Returns:
-        Confirmation with new filename and cell count.
+        Confirmation with the saved filename and cell count.
     """
 
     session = _sessions.get(kernel_id)

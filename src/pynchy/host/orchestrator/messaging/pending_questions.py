@@ -133,7 +133,7 @@ def find_pending_for_jid(chat_jid: str) -> dict | None:
 
 
 def resolve_pending_question(request_id: str, source_group: str) -> None:
-    """Delete the pending question file (question has been answered)."""
+    """Delete the pending question file once the question is answered."""
     pending_dir = _pending_questions_dir(source_group)
     filepath = pending_dir / f"{request_id}.json"
     if filepath.exists():
@@ -154,7 +154,7 @@ def resolve_pending_question(request_id: str, source_group: str) -> None:
 def update_message_id(request_id: str, source_group: str, message_id: str) -> None:
     """Update the message_id field after the channel widget is posted.
 
-    This lets the answer callback find the original message to update/remove it.
+    This lets the answer callback find the posted message to update/remove it.
     Uses atomic write (tmp+rename) to avoid partial reads.
     """
     pending_dir = _pending_questions_dir(source_group)

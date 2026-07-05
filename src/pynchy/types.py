@@ -284,8 +284,8 @@ class OutboundEventType(Enum):
 class OutboundEvent:
     """A structured event flowing from the agent/host toward the channel.
 
-    Replaces raw text strings in the outbound pipeline, carrying both the
-    content and metadata needed for rich formatting (e.g. Slack blocks).
+    Carries both the content and the metadata needed for rich formatting
+    (e.g. Slack blocks).
     """
 
     type: OutboundEventType

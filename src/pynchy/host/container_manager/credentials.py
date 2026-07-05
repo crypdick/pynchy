@@ -24,10 +24,10 @@ def _read_oauth_token() -> str | None:
     """Read the OAuth access token from Claude Code's credentials.
 
     Checks (in order):
-    1. Legacy ~/.claude/.credentials.json file
+    1. ~/.claude/.credentials.json file
     2. macOS keychain (service "Claude Code-credentials")
     """
-    # 1. Legacy JSON file
+    # 1. JSON credentials file
     creds_file = Path.home() / ".claude" / ".credentials.json"
     if creds_file.exists():
         try:
@@ -197,7 +197,7 @@ def _write_env_file(*, is_admin: bool, group_folder: str) -> Path | None:
 
     Returns the per-group env dir, or ``None`` if no credentials were found.
 
-    LLM credentials are replaced by gateway URL + ephemeral key.
+    LLM credentials are swapped for a gateway URL + ephemeral key.
     Real API keys never enter the container.
 
     Non-LLM credentials (GH_TOKEN, git identity) are written directly —

@@ -26,10 +26,10 @@ from pynchy.logger import logger
 def write_json_atomic(path: Path, data: Any, *, indent: int | None = None) -> None:
     """Write JSON data to a file using atomic rename (tmp → final).
 
-    Ensures the target file is never partially written — readers either
-    see the old content or the complete new content.  Used for IPC files
-    watched by filesystem events and any other write where partial reads
-    must be avoided.
+    Ensures the target file is never partially written — a reader sees
+    either the complete existing contents or the complete updated
+    contents.  Used for IPC files watched by filesystem events and any
+    other write where partial reads must be avoided.
 
     Creates parent directories if they don't exist.
     """

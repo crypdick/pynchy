@@ -129,12 +129,12 @@ class SlackEventsMixin:
         self._app.use(assistant)
 
     def _normalize_bot_mention(self, text: str) -> str:
-        """Replace the bot's ``<@BOT_ID>`` mention with the canonical trigger.
+        """Rewrite the bot's ``<@BOT_ID>`` mention as the canonical trigger.
 
         Slack sends mentions as ``<@UBOTID>`` which is meaningless to the
-        trigger pattern.  Replacing it with ``@AgentName`` preserves the
+        trigger pattern.  Substituting ``@AgentName`` preserves the
         trigger intent so the downstream pattern check (``^@AgentName\\b``)
-        still matches.  If the mention appears mid-text, it's replaced
+        still matches.  If the mention appears mid-text, it's substituted
         inline rather than stripped so context is preserved.
         """
         if not self._bot_user_id:
@@ -150,7 +150,7 @@ class SlackEventsMixin:
         now = time.monotonic()
         if ts in self._seen_ts:
             return True
-        # Evict old entries when the dict gets too large
+        # Evict stale entries when the dict gets too large
         if len(self._seen_ts) >= self._seen_ts_max:
             cutoff = now - 120  # 2 minutes
             self._seen_ts = {k: v for k, v in self._seen_ts.items() if v > cutoff}
@@ -183,7 +183,7 @@ class SlackEventsMixin:
 
         jid = _jid(channel_id)
 
-        # Replace the bot's Slack-native @mention with the canonical
+        # Rewrite the bot's Slack-native @mention as the canonical
         # trigger word so the downstream trigger pattern still matches.
         text = self._normalize_bot_mention(text)
 

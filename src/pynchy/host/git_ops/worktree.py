@@ -56,7 +56,7 @@ class WorktreeResult:
 def ensure_worktree(group_folder: str, repo_ctx: RepoContext) -> WorktreeResult:
     """Ensure a git worktree exists for the given group.
 
-    For new worktrees: creates from origin/{main}. Raises WorktreeError on failure.
+    When absent: creates from origin/{main}. Raises WorktreeError on failure.
 
     For existing worktrees: best-effort pull (fetch + merge). Uncommitted changes
     are preserved and reported via notices so the agent can resume gracefully
@@ -70,7 +70,7 @@ def ensure_worktree(group_folder: str, repo_ctx: RepoContext) -> WorktreeResult:
         WorktreeResult with path and any system notices for the agent
 
     Raises:
-        WorktreeError: If creating a new worktree fails
+        WorktreeError: If creating a worktree fails
     """
     worktree_path = repo_ctx.worktrees_dir / group_folder
     # Use worktree/ prefix to avoid ref conflicts (e.g. "main/workspace" would
@@ -150,7 +150,7 @@ def _create_new_worktree(
     main_branch: str,
     repo_ctx: RepoContext,
 ) -> WorktreeResult:
-    """Create a new worktree from origin/{main}. Raises WorktreeError on failure."""
+    """Create a worktree from origin/{main}. Raises WorktreeError on failure."""
     env = git_env_with_token(repo_ctx.slug)
     # Fetch is required for initial creation
     fetch = run_git("fetch", "origin", cwd=repo_ctx.root, env=env)
@@ -159,7 +159,7 @@ def _create_new_worktree(
 
     repo_ctx.worktrees_dir.mkdir(parents=True, exist_ok=True)
 
-    # Clean up stale worktree entries and branches from previous runs
+    # Clean up stale worktree entries and branches
     run_git("worktree", "prune", cwd=repo_ctx.root)
     run_git("branch", "-D", branch_name, cwd=repo_ctx.root)
 
@@ -189,7 +189,7 @@ def install_pre_commit_hooks(repo_root: Path) -> None:
 
     Git worktrees share hooks from the main repo, so installing once covers
     all agent workspaces. The generated hook script falls back to ``pre-commit``
-    on PATH when the original venv isn't available (e.g. inside containers).
+    on PATH when the configured venv isn't available (e.g. inside containers).
     """
     config = repo_root / ".pre-commit-config.yaml"
     if not config.exists():
@@ -220,12 +220,12 @@ def install_pre_commit_hooks(repo_root: Path) -> None:
 
 
 def _migrate_old_worktrees(repo_ctx: RepoContext, old_base: Path) -> None:
-    """Migrate existing worktrees from old location to new unified structure.
+    """Move worktrees into the unified data/worktrees/ structure.
 
-    Old path: ~/.config/pynchy/worktrees/<folder>/
-    New path: data/worktrees/<owner>/<repo>/<folder>/
+    Source: ~/.config/pynchy/worktrees/<folder>/
+    Destination: data/worktrees/<owner>/<repo>/<folder>/
 
-    Attempts `git worktree move` first; falls back to deleting the old entry
+    Attempts `git worktree move` first; falls back to deleting the source entry
     so reconcile_worktrees_at_startup can recreate it from the branch.
     """
     if not old_base.exists():
@@ -240,7 +240,7 @@ def _migrate_old_worktrees(repo_ctx: RepoContext, old_base: Path) -> None:
 
         new_path = repo_ctx.worktrees_dir / entry.name
         if new_path.exists():
-            continue  # already migrated
+            continue  # destination already exists
 
         new_path.parent.mkdir(parents=True, exist_ok=True)
         move = run_git("worktree", "move", str(entry), str(new_path), cwd=repo_ctx.root)
@@ -252,7 +252,7 @@ def _migrate_old_worktrees(repo_ctx: RepoContext, old_base: Path) -> None:
                 new=str(new_path),
             )
         else:
-            # Move failed (e.g. git version too old) — remove and let reconcile recreate
+            # Move failed (e.g. git lacks `worktree move`) — remove and let reconcile recreate
             logger.warning(
                 "Worktree move failed, removing for recreation",
                 group=entry.name,
@@ -289,7 +289,7 @@ def reconcile_worktrees_at_startup(
 
     repo_groups = repo_groups or {}
 
-    # Old worktrees base (pre-migration)
+    # Source base path worktrees are relocated from
     s = get_settings()
     old_base = s.home_dir / ".config" / "pynchy" / "worktrees"
 
@@ -320,7 +320,7 @@ def reconcile_worktrees_at_startup(
         # Install pre-commit hooks for this repo
         install_pre_commit_hooks(repo_ctx.root)
 
-        # Migrate pynchy's own worktrees from the old ~/.config/pynchy/worktrees/ path
+        # Relocate pynchy's own worktrees out of the ~/.config/pynchy/worktrees/ path
         if repo_ctx.root.resolve() == s.project_root.resolve():
             _migrate_old_worktrees(repo_ctx, old_base)
 

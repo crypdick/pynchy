@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-# action_id prefixes used to match interaction callbacks:
+# action_id prefixes for matching interaction callbacks:
 #   ask_user_checkbox_{request_id}_{q_idx} — checkbox toggle (state only, ignored)
 #   ask_user_submit_{request_id}           — submit button (collects checkbox + text)
 #   ask_user_text_{request_id}_{q_idx}     — plain_text_input element (state only)

@@ -21,8 +21,8 @@ _db: aiosqlite.Connection | None = None
 # Shared write lock for multi-statement DB transactions — see atomic_write().
 #
 # pynchy uses a single aiosqlite connection shared across many concurrent
-# asyncio coroutines.  Python's sqlite3 in legacy isolation mode manages
-# transactions implicitly: the first DML statement auto-opens a transaction
+# asyncio coroutines.  Python's sqlite3 manages transactions implicitly:
+# the first DML statement auto-opens a transaction
 # on the *connection*, not per-coroutine.  Two coroutines whose DML
 # interleaves at await points share the same implicit transaction — a
 # rollback() from one silently undoes the other's uncommitted work.
@@ -108,9 +108,9 @@ async def _init_test_database() -> None:
     """Create an in-memory database for tests.
 
     Uses ``stop()`` + thread join instead of ``await close()`` because
-    pytest-asyncio creates a new event loop per test function.  The
-    previous connection's worker thread targets its original (now-dead)
-    loop via ``call_soon_threadsafe``, so ``await close()`` hangs.
+    pytest-asyncio creates a fresh event loop per test function.  A
+    lingering connection's worker thread targets the (now-dead) loop it
+    was created on via ``call_soon_threadsafe``, so ``await close()`` hangs.
     ``stop()`` bypasses the loop entirely — it puts the close command
     directly on the worker queue and lets the thread exit on its own.
     """

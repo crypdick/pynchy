@@ -365,7 +365,7 @@ async def _warm_query(
 
 
 # ---------------------------------------------------------------------------
-# Cold path — spawn new container and create session
+# Cold path — spawn container and create session
 # ---------------------------------------------------------------------------
 
 
@@ -376,7 +376,7 @@ async def _cold_start(
     messages: list[dict],
     ctx: _PreContainerResult,
 ) -> str:
-    """Spawn a new container, create a persistent session, and wait for the first query."""
+    """Spawn a container, create a persistent session, and wait for the first query."""
     container_name = stable_container_name(group.folder)
     input_data = _build_container_input(messages, ctx, chat_jid, group)
 
@@ -430,7 +430,7 @@ async def run_agent(
 
     This is the single public entry point for all agent invocations.
     Uses persistent sessions for interactive messages (warm path reuses an
-    existing container, cold path spawns a new one).  Scheduled tasks always
+    existing container, cold path spawns one).  Scheduled tasks always
     use one-shot containers.
 
     Args:

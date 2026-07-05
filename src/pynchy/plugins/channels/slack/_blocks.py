@@ -11,7 +11,7 @@ Uses Slack's purpose-built block types:
 No truncation on the Slack path — full output is sent and Slack handles collapse
 via ``expand: false`` on section blocks and ``rich_text_preformatted`` for code.
 
-The ``text`` field on RenderedMessage is always populated as a plain-text fallback
+The ``text`` field on RenderedMessage is always populated with plain text
 (Slack uses it for notifications, screen readers, and clients that don't render blocks).
 """
 
@@ -63,7 +63,7 @@ class SlackBlocksFormatter(BaseFormatter):
 
     Each event type maps to one or more Block Kit blocks.  The ``render()``
     method returns a ``RenderedMessage`` with both ``blocks`` (for rich
-    rendering) and ``text`` (plain-text fallback for notifications).
+    rendering) and ``text`` (plain text for notifications).
 
     ``render_batch()`` concatenates blocks from each event, enforcing the
     50-block-per-message Slack limit by dropping oldest events that would
@@ -96,7 +96,7 @@ class SlackBlocksFormatter(BaseFormatter):
 
         Concatenates blocks from each event, respecting the 50-block budget.
         When the budget is exhausted, remaining events are dropped (their
-        fallback text is still included in the text field).
+        plain text is still included in the text field).
         """
         if not events:
             return RenderedMessage(text="", blocks=[])
@@ -128,7 +128,7 @@ class SlackBlocksFormatter(BaseFormatter):
 
         When ``cursor`` is True (actively streaming) and ``group_name`` is present,
         appends a Stop button so the user can cancel the running agent.
-        The button is removed on the next update when streaming ends (cursor=False).
+        The button is omitted on the next update when streaming ends (cursor=False).
         """
         content = format_internal_tags(event.content)
         fallback = content
@@ -292,6 +292,6 @@ class SlackBlocksFormatter(BaseFormatter):
             return f"/{pattern}/ {path}".strip() if pattern else tool_name
         if tool_name == "Glob":
             return tool_input.get("pattern", tool_name)
-        # Fallback: stringify the input
+        # Default: stringify the input
         preview = str(tool_input)
         return preview if tool_input else tool_name

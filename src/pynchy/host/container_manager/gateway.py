@@ -7,7 +7,7 @@ Two modes, selected by ``[gateway].litellm_config`` in config.toml:
     (models, keys, budgets, load balancing) lives in the user-managed
     ``litellm_config.yaml`` — pynchy doesn't translate or duplicate it.
 
-**Builtin mode** (fallback)
+**Builtin mode** (default when LiteLLM is unconfigured)
     Simple aiohttp reverse proxy for single-key setups.  Used when
     ``litellm_config`` is not set.  Reads keys from ``[secrets]``.
 
@@ -41,7 +41,7 @@ from pynchy.host.container_manager.gateway_litellm import (
 from pynchy.logger import logger
 from pynchy.types import ServiceTrustConfig
 
-# Re-export for backwards compatibility with existing imports
+# Public gateway API re-exported from this module
 __all__ = [
     "BuiltinGateway",
     "GatewayProto",
