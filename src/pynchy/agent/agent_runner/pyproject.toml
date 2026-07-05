@@ -32,7 +32,7 @@ src = ["src"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "UP", "C4", "SIM", "RUF"]
-ignore = ["E501", "RUF006"]
+ignore = ["E501"]
 
 [tool.ruff.format]
 quote-style = "double"

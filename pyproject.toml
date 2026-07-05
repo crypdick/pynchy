@@ -96,8 +96,8 @@ src = ["src"]
 select = ["E", "W", "F", "I", "B", "UP", "C4", "SIM", "RUF"]
 # E501 (line length) is enforced by the formatter, not the linter, to avoid double-reporting.
 # NOTE: `preview` is intentionally off — on this mature codebase preview rules are churn, not
-# signal. RUF006 (asyncio dangling tasks) is a known-debt ratchet item, see NOTE below.
-ignore = ["E501", "RUF006"]
+# signal.
+ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 # Tests legitimately capture unused returns and use high-complexity parameterized setup.
