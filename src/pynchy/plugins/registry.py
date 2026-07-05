@@ -37,6 +37,7 @@ __all__ = [
 # config_key is checked against [plugins.<key>].enabled in config.toml.
 _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
     ("pynchy.plugins.agent_cores.claude", "ClaudeAgentCorePlugin", "claude"),
+    ("pynchy.plugins.agent_cores.claude_cli", "ClaudeCLIAgentCorePlugin", "claude-cli"),
     ("pynchy.plugins.agent_cores.openai", "OpenAIAgentCorePlugin", "openai"),
     ("pynchy.plugins.channels.slack", "SlackChannelPlugin", "slack"),
     ("pynchy.plugins.channels.tui", "TuiChannelPlugin", "tui"),
