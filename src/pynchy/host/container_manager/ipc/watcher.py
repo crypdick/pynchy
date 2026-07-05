@@ -242,6 +242,104 @@ async def _handle_signal(
         )
 
 
+async def _sweep_messages(
+    messages_dir: Path, source_group: str, is_admin: bool, ipc_base_dir: Path, deps: IpcDeps
+) -> int:
+    """Replay pending message files. Returns the number processed."""
+    if not messages_dir.exists():
+        return 0
+    try:
+        count = 0
+        for file_path in sorted(f for f in messages_dir.iterdir() if f.suffix == ".json"):
+            await _process_message_file(file_path, source_group, is_admin, ipc_base_dir, deps)
+            count += 1
+        return count
+    except OSError as exc:
+        logger.error(
+            "Error reading IPC messages directory during sweep",
+            err=str(exc),
+            source_group=source_group,
+        )
+        return 0
+
+
+async def _sweep_tasks(
+    tasks_dir: Path, source_group: str, is_admin: bool, ipc_base_dir: Path, deps: IpcDeps
+) -> int:
+    """Replay pending task files. Returns the number processed."""
+    if not tasks_dir.exists():
+        return 0
+    try:
+        count = 0
+        for file_path in sorted(f for f in tasks_dir.iterdir() if f.suffix == ".json"):
+            await _process_task_file(file_path, source_group, is_admin, ipc_base_dir, deps)
+            count += 1
+        return count
+    except OSError as exc:
+        logger.error(
+            "Error reading IPC tasks directory during sweep",
+            err=str(exc),
+            source_group=source_group,
+        )
+        return 0
+
+
+def _clean_output_dir(output_dir: Path, source_group: str) -> int:
+    """Delete stale output files — mid-query artefacts from a dead session;
+    replaying them on crash recovery is meaningless since there's no active
+    session to dispatch to. Returns the number deleted.
+    """
+    if not output_dir.exists():
+        return 0
+    try:
+        count = 0
+        for file_path in sorted(f for f in output_dir.iterdir() if f.suffix == ".json"):
+            file_path.unlink()
+            count += 1
+        return count
+    except OSError as exc:
+        logger.error(
+            "Error cleaning IPC output directory during sweep",
+            err=str(exc),
+            source_group=source_group,
+        )
+        return 0
+
+
+def _clean_stale_initial(input_dir: Path, source_group: str) -> int:
+    """Delete a stale initial.json — a cold-start prompt never consumed
+    because the container crashed before reading it. Returns 1 if deleted.
+    """
+    try:
+        initial_file = input_dir / "initial.json"
+        if initial_file.exists():
+            initial_file.unlink()
+            return 1
+        return 0
+    except OSError as exc:
+        logger.error(
+            "Error cleaning stale initial.json during sweep",
+            err=str(exc),
+            source_group=source_group,
+        )
+        return 0
+
+
+async def _sweep_expired_state() -> None:
+    """Auto-deny/expire stale approvals and pending questions left from a crash."""
+    from pynchy.host.container_manager.security.approval import sweep_expired_approvals
+
+    expired = await sweep_expired_approvals()
+    if expired:
+        logger.info("Expired approvals auto-denied during sweep", count=len(expired))
+
+    from pynchy.host.orchestrator.messaging.pending_questions import sweep_expired_questions
+
+    expired_qs = await sweep_expired_questions()
+    if expired_qs:
+        logger.info("Expired pending questions auto-expired during sweep", count=len(expired_qs))
+
+
 async def _sweep_directory(
     ipc_base_dir: Path,
     deps: IpcDeps,
@@ -254,8 +352,6 @@ async def _sweep_directory(
 
     Returns the total number of files handled (processed + cleaned).
     """
-    processed = 0
-    cleaned = 0
     try:
         group_folders = [
             f.name for f in ipc_base_dir.iterdir() if f.is_dir() and f.name != "errors"
@@ -267,86 +363,24 @@ async def _sweep_directory(
     workspaces = deps.workspaces()
     admin_folders = {g.folder for g in workspaces.values() if g.is_admin}
 
+    processed = 0
+    cleaned = 0
     for source_group in group_folders:
         is_admin = source_group in admin_folders
-        messages_dir = ipc_base_dir / source_group / "messages"
-        tasks_dir = ipc_base_dir / source_group / "tasks"
-        output_dir = ipc_base_dir / source_group / "output"
-
-        # Process messages
-        try:
-            if messages_dir.exists():
-                for file_path in sorted(f for f in messages_dir.iterdir() if f.suffix == ".json"):
-                    await _process_message_file(
-                        file_path, source_group, is_admin, ipc_base_dir, deps
-                    )
-                    processed += 1
-        except OSError as exc:
-            logger.error(
-                "Error reading IPC messages directory during sweep",
-                err=str(exc),
-                source_group=source_group,
-            )
-
-        # Process tasks
-        try:
-            if tasks_dir.exists():
-                for file_path in sorted(f for f in tasks_dir.iterdir() if f.suffix == ".json"):
-                    await _process_task_file(file_path, source_group, is_admin, ipc_base_dir, deps)
-                    processed += 1
-        except OSError as exc:
-            logger.error(
-                "Error reading IPC tasks directory during sweep",
-                err=str(exc),
-                source_group=source_group,
-            )
-
-        # Delete stale output files — these were mid-query events from a dead
-        # session; replaying them on crash recovery is meaningless since there
-        # is no active session to dispatch to.
-        try:
-            if output_dir.exists():
-                for file_path in sorted(f for f in output_dir.iterdir() if f.suffix == ".json"):
-                    file_path.unlink()
-                    cleaned += 1
-        except OSError as exc:
-            logger.error(
-                "Error cleaning IPC output directory during sweep",
-                err=str(exc),
-                source_group=source_group,
-            )
-
-        # Delete stale initial.json — a cold-start prompt that was never
-        # consumed because the container crashed before reading it.
-        input_dir = ipc_base_dir / source_group / "input"
-        try:
-            initial_file = input_dir / "initial.json"
-            if initial_file.exists():
-                initial_file.unlink()
-                cleaned += 1
-        except OSError as exc:
-            logger.error(
-                "Error cleaning stale initial.json during sweep",
-                err=str(exc),
-                source_group=source_group,
-            )
+        group_dir = ipc_base_dir / source_group
+        processed += await _sweep_messages(
+            group_dir / "messages", source_group, is_admin, ipc_base_dir, deps
+        )
+        processed += await _sweep_tasks(
+            group_dir / "tasks", source_group, is_admin, ipc_base_dir, deps
+        )
+        cleaned += _clean_output_dir(group_dir / "output", source_group)
+        cleaned += _clean_stale_initial(group_dir / "input", source_group)
 
     if cleaned > 0:
         logger.info("IPC startup sweep cleaned stale files", cleaned=cleaned)
 
-    # Sweep expired approvals (crash recovery: auto-deny stale pending files)
-    from pynchy.host.container_manager.security.approval import sweep_expired_approvals
-
-    expired = await sweep_expired_approvals()
-    if expired:
-        logger.info("Expired approvals auto-denied during sweep", count=len(expired))
-
-    # Sweep expired pending questions (crash recovery: auto-expire stale questions)
-    from pynchy.host.orchestrator.messaging.pending_questions import sweep_expired_questions
-
-    expired_qs = await sweep_expired_questions()
-    if expired_qs:
-        logger.info("Expired pending questions auto-expired during sweep", count=len(expired_qs))
+    await _sweep_expired_state()
 
     return processed + cleaned
 

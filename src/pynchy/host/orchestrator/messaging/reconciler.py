@@ -49,6 +49,141 @@ class ReconcilerDeps(Protocol):
     ) -> None: ...
 
 
+def _should_skip_pair(
+    ch: Channel, canonical_jid: str, group: WorkspaceProfile | None, now: datetime
+) -> bool:
+    """Gate a (channel, jid) pair: connection mismatch, non-ownership, or cooldown."""
+    from pynchy.config.access import resolve_workspace_connection_name
+
+    if group is not None:
+        expected = resolve_workspace_connection_name(group.folder)
+        if expected and expected != ch.name:
+            logger.debug(
+                "connection_gate_skip",
+                channel=ch.name,
+                canonical_jid=canonical_jid,
+                expected=expected,
+            )
+            return True
+
+    if not ch.owns_jid(canonical_jid):
+        logger.debug("jid_ownership_skip", channel=ch.name, canonical_jid=canonical_jid)
+        return True
+
+    key = (ch.name, canonical_jid)
+    return now - _last_reconciled.get(key, _EPOCH) < RECONCILE_COOLDOWN
+
+
+async def _reconcile_inbound(
+    ch: Channel,
+    canonical_jid: str,
+    target_jid: str,
+    group: WorkspaceProfile | None,
+    inbound_cursor: str,
+    deps: ReconcilerDeps,
+) -> tuple[str, int] | None:
+    """Fetch and ingest missed inbound messages.
+
+    Returns (new_inbound_cursor, recovered_count), or None if the fetch itself
+    failed (caller should skip outbound retry and the cooldown/cursor update
+    for this pair, so the next cycle retries without waiting out the cooldown).
+    """
+    from pynchy.config.access import filter_allowed_messages
+
+    logger.debug(
+        "reconciler_trace",
+        step="fetch_inbound",
+        channel=ch.name,
+        jid=canonical_jid,
+        cursor=inbound_cursor[:30] if inbound_cursor else "none",
+    )
+    try:
+        result = await ch.fetch_inbound_since(target_jid, inbound_cursor)
+    except Exception as exc:
+        logger.warning(
+            "fetch_inbound_since failed", channel=ch.name, jid=canonical_jid, error=str(exc)
+        )
+        return None
+
+    remote_messages = result.messages
+    logger.debug(
+        "reconciler_trace",
+        step="fetch_result",
+        channel=ch.name,
+        jid=canonical_jid,
+        msg_count=len(remote_messages),
+        high_water_mark=result.high_water_mark[:30] if result.high_water_mark else "none",
+    )
+    # Seed with high-water mark so the cursor advances past bot-only
+    # pages even when no user messages are found.
+    new_inbound_cursor = (
+        result.high_water_mark if result.high_water_mark > inbound_cursor else inbound_cursor
+    )
+    recovered = 0
+    for msg in remote_messages:
+        # Remap chat_jid to canonical (the channel returned channel-native JIDs)
+        msg.chat_jid = canonical_jid
+        exists = await message_exists(msg.id, canonical_jid)
+        logger.debug(
+            "reconciler_trace",
+            step="msg_check",
+            jid=canonical_jid,
+            msg_id=msg.id,
+            msg_ts=msg.timestamp[:30] if msg.timestamp else "none",
+            exists=exists,
+            sender=msg.sender,
+        )
+        if not exists:
+            # Sender filter: match _route_incoming_group behavior.
+            # Admin groups bypass; non-admin groups check allowed_users.
+            if not filter_allowed_messages([msg], group, ch.name):
+                logger.debug(
+                    "reconciler_skip_sender", channel=ch.name, jid=canonical_jid, sender=msg.sender
+                )
+                if msg.timestamp > new_inbound_cursor:
+                    new_inbound_cursor = msg.timestamp
+                continue
+            logger.debug("reconciler_trace", step="ingesting", jid=canonical_jid, msg_id=msg.id)
+            await deps._ingest_user_message(msg, source_channel=ch.name)
+            deps.queue.enqueue_message_check(canonical_jid)
+            recovered += 1
+        if msg.timestamp > new_inbound_cursor:
+            new_inbound_cursor = msg.timestamp
+
+    logger.debug(
+        "reconciler_trace",
+        step="cursor_advance",
+        jid=canonical_jid,
+        old_cursor=inbound_cursor[:30] if inbound_cursor else "none",
+        new_cursor=new_inbound_cursor[:30] if new_inbound_cursor else "none",
+        will_advance=new_inbound_cursor != inbound_cursor,
+    )
+    return new_inbound_cursor, recovered
+
+
+async def _retry_outbound(
+    ch: Channel, canonical_jid: str, target_jid: str, outbound_cursor: str
+) -> tuple[str, int]:
+    """Retry pending outbound deliveries. Returns (new_outbound_cursor, retried_count)."""
+    pending = await get_pending_outbound(ch.name, canonical_jid)
+    new_outbound_cursor = outbound_cursor
+    retried = 0
+    for row in pending:
+        try:
+            await ch.send_message(target_jid, row.content)
+            await mark_delivered(row.ledger_id, ch.name)
+            if row.timestamp > new_outbound_cursor:
+                new_outbound_cursor = row.timestamp
+            retried += 1
+        except Exception as exc:
+            logger.warning(
+                "outbound retry failed", channel=ch.name, ledger_id=row.ledger_id, error=str(exc)
+            )
+            await mark_delivery_error(row.ledger_id, ch.name, str(exc))
+            break  # preserve ordering — don't skip ahead
+    return new_outbound_cursor, retried
+
+
 async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
     """Reconcile inbound history and retry pending outbound for all channels.
 
@@ -61,39 +196,13 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
 
     for ch in deps.channels:
         for canonical_jid in deps.workspaces:
-            from pynchy.config.access import (
-                filter_allowed_messages,
-                resolve_workspace_connection_name,
-            )
-
             group = deps.workspaces.get(canonical_jid)
-            if group is not None:
-                expected = resolve_workspace_connection_name(group.folder)
-                if expected and expected != ch.name:
-                    logger.debug(
-                        "connection_gate_skip",
-                        channel=ch.name,
-                        canonical_jid=canonical_jid,
-                        expected=expected,
-                    )
-                    continue
-
-            if not ch.owns_jid(canonical_jid):
-                logger.debug(
-                    "jid_ownership_skip",
-                    channel=ch.name,
-                    canonical_jid=canonical_jid,
-                )
+            if _should_skip_pair(ch, canonical_jid, group, now):
                 continue
 
             target_jid = canonical_jid
-
-            # --- Cooldown ---
             key = (ch.name, canonical_jid)
-            if now - _last_reconciled.get(key, _EPOCH) < RECONCILE_COOLDOWN:
-                continue
 
-            # --- Inbound ---
             logger.debug(
                 "reconciler_trace",
                 step="past_cooldown",
@@ -101,6 +210,7 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                 jid=canonical_jid,
                 target_jid=target_jid,
             )
+
             inbound_cursor = await get_channel_cursor(ch.name, canonical_jid, "inbound")
             if not inbound_cursor:
                 # No cursor yet — channel was never reconciled (e.g. a
@@ -110,108 +220,20 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                 # naturally as messages are walked.
                 inbound_cursor = (now - _INITIAL_LOOKBACK).isoformat()
 
-            logger.debug(
-                "reconciler_trace",
-                step="fetch_inbound",
-                channel=ch.name,
-                jid=canonical_jid,
-                cursor=inbound_cursor[:30] if inbound_cursor else "none",
+            inbound_result = await _reconcile_inbound(
+                ch, canonical_jid, target_jid, group, inbound_cursor, deps
             )
-            try:
-                result = await ch.fetch_inbound_since(target_jid, inbound_cursor)
-            except Exception as exc:
-                logger.warning(
-                    "fetch_inbound_since failed",
-                    channel=ch.name,
-                    jid=canonical_jid,
-                    error=str(exc),
-                )
+            if inbound_result is None:
                 continue
+            new_inbound_cursor, pair_recovered = inbound_result
+            recovered += pair_recovered
 
-            remote_messages = result.messages
-            logger.debug(
-                "reconciler_trace",
-                step="fetch_result",
-                channel=ch.name,
-                jid=canonical_jid,
-                msg_count=len(remote_messages),
-                high_water_mark=result.high_water_mark[:30] if result.high_water_mark else "none",
-            )
-            # Seed with high-water mark so the cursor advances past bot-only
-            # pages even when no user messages are found.
-            new_inbound_cursor = (
-                result.high_water_mark
-                if result.high_water_mark > inbound_cursor
-                else inbound_cursor
-            )
-            for msg in remote_messages:
-                # Remap chat_jid to canonical (the channel returned channel-native JIDs)
-                msg.chat_jid = canonical_jid
-                exists = await message_exists(msg.id, canonical_jid)
-                logger.debug(
-                    "reconciler_trace",
-                    step="msg_check",
-                    jid=canonical_jid,
-                    msg_id=msg.id,
-                    msg_ts=msg.timestamp[:30] if msg.timestamp else "none",
-                    exists=exists,
-                    sender=msg.sender,
-                )
-                if not exists:
-                    # Sender filter: match _route_incoming_group behavior.
-                    # Admin groups bypass; non-admin groups check allowed_users.
-                    if not filter_allowed_messages([msg], group, ch.name):
-                        logger.debug(
-                            "reconciler_skip_sender",
-                            channel=ch.name,
-                            jid=canonical_jid,
-                            sender=msg.sender,
-                        )
-                        if msg.timestamp > new_inbound_cursor:
-                            new_inbound_cursor = msg.timestamp
-                        continue
-                    logger.debug(
-                        "reconciler_trace",
-                        step="ingesting",
-                        jid=canonical_jid,
-                        msg_id=msg.id,
-                    )
-                    await deps._ingest_user_message(msg, source_channel=ch.name)
-                    deps.queue.enqueue_message_check(canonical_jid)
-                    recovered += 1
-                if msg.timestamp > new_inbound_cursor:
-                    new_inbound_cursor = msg.timestamp
-
-            logger.debug(
-                "reconciler_trace",
-                step="cursor_advance",
-                jid=canonical_jid,
-                old_cursor=inbound_cursor[:30] if inbound_cursor else "none",
-                new_cursor=new_inbound_cursor[:30] if new_inbound_cursor else "none",
-                will_advance=new_inbound_cursor != inbound_cursor,
-            )
-            # --- Outbound retry ---
-            pending = await get_pending_outbound(ch.name, canonical_jid)
             outbound_cursor = await get_channel_cursor(ch.name, canonical_jid, "outbound")
-            new_outbound_cursor = outbound_cursor
-            for row in pending:
-                try:
-                    await ch.send_message(target_jid, row.content)
-                    await mark_delivered(row.ledger_id, ch.name)
-                    if row.timestamp > new_outbound_cursor:
-                        new_outbound_cursor = row.timestamp
-                    retried += 1
-                except Exception as exc:
-                    logger.warning(
-                        "outbound retry failed",
-                        channel=ch.name,
-                        ledger_id=row.ledger_id,
-                        error=str(exc),
-                    )
-                    await mark_delivery_error(row.ledger_id, ch.name, str(exc))
-                    break  # preserve ordering — don't skip ahead
+            new_outbound_cursor, pair_retried = await _retry_outbound(
+                ch, canonical_jid, target_jid, outbound_cursor
+            )
+            retried += pair_retried
 
-            # --- Atomic cursor update ---
             await advance_cursors_atomic(
                 ch.name,
                 canonical_jid,

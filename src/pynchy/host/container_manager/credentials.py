@@ -11,6 +11,8 @@ import subprocess
 from pathlib import Path
 
 from pynchy.config import get_settings
+from pynchy.config.settings import Settings
+from pynchy.host.container_manager.gateway import BuiltinGateway, LiteLLMGateway
 from pynchy.logger import logger
 
 # ---------------------------------------------------------------------------
@@ -116,6 +118,80 @@ def has_api_credentials() -> bool:
     return gateway is not None and gateway.has_provider("anthropic")
 
 
+def _gateway_env_vars(gateway: LiteLLMGateway | BuiltinGateway | None) -> dict[str, str]:
+    """LLM credentials, routed through the gateway (real keys never enter the container)."""
+    env_vars: dict[str, str] = {}
+    if gateway is None:
+        return env_vars
+    if gateway.has_provider("anthropic"):
+        env_vars["ANTHROPIC_BASE_URL"] = gateway.base_url
+        env_vars["ANTHROPIC_AUTH_TOKEN"] = gateway.key
+    if gateway.has_provider("openai"):
+        env_vars["OPENAI_BASE_URL"] = gateway.base_url
+        env_vars["OPENAI_API_KEY"] = gateway.key
+    return env_vars
+
+
+def _gh_token_env_var(s: Settings, *, is_admin: bool, group_folder: str) -> dict[str, str]:
+    """GH_TOKEN — admin gets a broad token, non-admin gets a repo-scoped token."""
+    if is_admin:
+        if s.secrets.gh_token:
+            return {"GH_TOKEN": s.secrets.gh_token.get_secret_value()}
+        if gh_token := _read_gh_token():
+            logger.debug("Using GitHub token from gh CLI")
+            return {"GH_TOKEN": gh_token}
+        return {}
+
+    # Non-admin: inject repo-scoped token if this workspace has repo_access
+    from pynchy.host.orchestrator.workspace_config import load_resolved_config
+
+    resolved = load_resolved_config(group_folder)
+    if resolved and resolved.repo_access:
+        repo_cfg = s.repos.get(resolved.repo_access)
+        if repo_cfg and repo_cfg.token:
+            return {"GH_TOKEN": repo_cfg.token.get_secret_value()}
+    return {}
+
+
+def _git_identity_env_vars() -> dict[str, str]:
+    git_name, git_email = _read_git_identity()
+    env_vars: dict[str, str] = {}
+    if git_name:
+        env_vars["GIT_AUTHOR_NAME"] = git_name
+        env_vars["GIT_COMMITTER_NAME"] = git_name
+    if git_email:
+        env_vars["GIT_AUTHOR_EMAIL"] = git_email
+        env_vars["GIT_COMMITTER_EMAIL"] = git_email
+    return env_vars
+
+
+def _chrome_profiles_env_var(s: Settings, *, is_admin: bool, group_folder: str) -> dict[str, str]:
+    """Chrome profiles — extract from workspace's mcp_servers list.
+
+    If a workspace has mcp_servers = ["gdrive.mycompany", "gcal.work"], the
+    profiles are {"mycompany", "work"} (extracted from instance names
+    matching templates that have declared instances). Admin gets all
+    chrome_profiles; non-admin gets only its attached ones.
+    """
+    if is_admin:
+        chrome_profiles = s.chrome_profiles
+    else:
+        ws_cfg = s.workspaces.get(group_folder)
+        chrome_profiles_set: set[str] = set()
+        if ws_cfg and ws_cfg.mcp_servers:
+            for entry in ws_cfg.mcp_servers:
+                if "." in entry:
+                    # "gdrive.mycompany" → check if "mycompany" is a chrome profile
+                    _, inst_name = entry.split(".", 1)
+                    if inst_name in s.chrome_profiles:
+                        chrome_profiles_set.add(inst_name)
+        chrome_profiles = sorted(chrome_profiles_set)
+
+    if chrome_profiles:
+        return {"PYNCHY_CHROME_PROFILES": ",".join(chrome_profiles)}
+    return {}
+
+
 def _write_env_file(*, is_admin: bool, group_folder: str) -> Path | None:
     """Write credential env vars for a specific group's container.
 
@@ -134,70 +210,10 @@ def _write_env_file(*, is_admin: bool, group_folder: str) -> Path | None:
     env_dir.mkdir(parents=True, exist_ok=True)
 
     env_vars: dict[str, str] = {}
-    gateway = get_gateway()
-
-    # ------------------------------------------------------------------
-    # LLM credentials — routed through the gateway
-    # ------------------------------------------------------------------
-
-    if gateway is not None:
-        if gateway.has_provider("anthropic"):
-            env_vars["ANTHROPIC_BASE_URL"] = gateway.base_url
-            env_vars["ANTHROPIC_AUTH_TOKEN"] = gateway.key
-        if gateway.has_provider("openai"):
-            env_vars["OPENAI_BASE_URL"] = gateway.base_url
-            env_vars["OPENAI_API_KEY"] = gateway.key
-
-    # ------------------------------------------------------------------
-    # Non-LLM credentials (not proxied)
-    # ------------------------------------------------------------------
-
-    # GH_TOKEN — admin gets broad token, non-admin gets repo-scoped token
-    if is_admin:
-        if s.secrets.gh_token:
-            env_vars["GH_TOKEN"] = s.secrets.gh_token.get_secret_value()
-        elif gh_token := _read_gh_token():
-            env_vars["GH_TOKEN"] = gh_token
-            logger.debug("Using GitHub token from gh CLI")
-    else:
-        # Non-admin: inject repo-scoped token if this workspace has repo_access
-        from pynchy.host.orchestrator.workspace_config import load_resolved_config
-
-        resolved = load_resolved_config(group_folder)
-        if resolved and resolved.repo_access:
-            repo_cfg = s.repos.get(resolved.repo_access)
-            if repo_cfg and repo_cfg.token:
-                env_vars["GH_TOKEN"] = repo_cfg.token.get_secret_value()
-
-    # Git identity
-    git_name, git_email = _read_git_identity()
-    if git_name:
-        env_vars["GIT_AUTHOR_NAME"] = git_name
-        env_vars["GIT_COMMITTER_NAME"] = git_name
-    if git_email:
-        env_vars["GIT_AUTHOR_EMAIL"] = git_email
-        env_vars["GIT_COMMITTER_EMAIL"] = git_email
-
-    # Chrome profiles — extract from workspace's mcp_servers list.
-    # If a workspace has mcp_servers = ["gdrive.mycompany", "gcal.work"],
-    # the profiles are {"mycompany", "work"} (extracted from instance names
-    # matching templates that have declared instances).
-    ws_cfg = s.workspaces.get(group_folder) if not is_admin else None
-    # For admin: expose all chrome_profiles. For non-admin: only attached ones.
-    if is_admin:
-        chrome_profiles = s.chrome_profiles
-    else:
-        chrome_profiles_set: set[str] = set()
-        if ws_cfg and ws_cfg.mcp_servers:
-            for entry in ws_cfg.mcp_servers:
-                if "." in entry:
-                    # "gdrive.mycompany" → check if "mycompany" is a chrome profile
-                    _, inst_name = entry.split(".", 1)
-                    if inst_name in s.chrome_profiles:
-                        chrome_profiles_set.add(inst_name)
-        chrome_profiles = sorted(chrome_profiles_set)
-    if chrome_profiles:
-        env_vars["PYNCHY_CHROME_PROFILES"] = ",".join(chrome_profiles)
+    env_vars.update(_gateway_env_vars(get_gateway()))
+    env_vars.update(_gh_token_env_var(s, is_admin=is_admin, group_folder=group_folder))
+    env_vars.update(_git_identity_env_vars())
+    env_vars.update(_chrome_profiles_env_var(s, is_admin=is_admin, group_folder=group_folder))
 
     if not env_vars:
         logger.warning(

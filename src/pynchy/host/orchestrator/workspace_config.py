@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     import pluggy
 
     from pynchy.config.merge import ResolvedSandboxConfig
+    from pynchy.config.settings import Settings
     from pynchy.types import Channel, WorkspaceProfile
 
 
@@ -222,6 +223,189 @@ def get_repo_access_groups(folders: Iterable[str]) -> dict[str, list[str]]:
     return result
 
 
+def _resolve_display_name(
+    folder: str, config: WorkspaceConfig, resolved_repo_access: str | None
+) -> str:
+    if config.name:
+        return config.name
+    if resolved_repo_access:
+        # Slack channel names can't contain slashes — use double-dash convention
+        return resolved_repo_access.replace("/", "--")
+    return folder.replace("-", " ").title()
+
+
+async def _ensure_workspace_registered(
+    folder: str,
+    config: WorkspaceConfig,
+    display_name: str,
+    workspaces: dict[str, WorkspaceProfile],
+    folder_to_jid: dict[str, str],
+    channels: list[Channel],
+    s: Settings,
+    register_fn: Callable[[WorkspaceProfile], Awaitable[None]],
+) -> str | None:
+    """Ensure folder is registered to its configured chat. Returns the resolved jid, or None if unavailable."""
+    from pynchy.types import WorkspaceProfile
+
+    jid = folder_to_jid.get(folder)
+    chat_ref = parse_chat_ref(config.chat)
+    connection_name = (
+        connection_ref_from_parts(chat_ref.platform, chat_ref.name) if chat_ref else ""
+    )
+    allow_create = bool(
+        s.command_center.connection and connection_name == s.command_center.connection
+    )
+
+    expected_jid = await _resolve_configured_jid(
+        config=config,
+        channels=channels,
+        allow_create=allow_create,
+    )
+
+    if jid is None:
+        if expected_jid is None:
+            logger.warning("Workspace chat unavailable, skipping registration", folder=folder)
+            return None
+        jid = expected_jid
+        profile = WorkspaceProfile(
+            jid=jid,
+            name=display_name,
+            folder=folder,
+            trigger=f"@{s.agent.name}",
+            added_at=datetime.now(UTC).isoformat(),
+            is_admin=config.is_admin or False,
+        )
+        await register_fn(profile)
+        folder_to_jid[folder] = jid
+        logger.info(
+            "Registered workspace for configured chat",
+            name=display_name,
+            folder=folder,
+            is_admin=config.is_admin or False,
+        )
+    elif expected_jid and jid != expected_jid:
+        logger.warning(
+            "Workspace JID mismatch with configured chat",
+            folder=folder,
+            registered_jid=jid,
+            expected_jid=expected_jid,
+        )
+
+    return jid
+
+
+async def _sync_workspace_profile(
+    jid: str | None,
+    workspaces: dict[str, WorkspaceProfile],
+    folder: str,
+    display_name: str,
+    config: WorkspaceConfig,
+) -> None:
+    """Update the stored workspace profile if display name or admin flag changed."""
+    if jid is None or jid not in workspaces:
+        return
+    profile = workspaces[jid]
+    changed: dict[str, Any] = {}
+    if profile.name != display_name:
+        changed["name"] = display_name
+    if profile.is_admin != config.is_admin:
+        changed["is_admin"] = config.is_admin
+    if not changed:
+        return
+    updated = replace(profile, **changed)
+    workspaces[jid] = updated
+    await set_workspace_profile(updated)
+    logger.info("Updated workspace profile", folder=folder, changed=list(changed.keys()))
+
+
+async def _reconcile_periodic_task(
+    folder: str,
+    config: WorkspaceConfig,
+    jid: str | None,
+    resolved_repo_access: str | None,
+    context_mode: str,
+    s: Settings,
+) -> None:
+    """Create or update the scheduled task backing a periodic-agent workspace."""
+    existing_task = await get_active_task_for_group(folder)
+
+    if existing_task is None:
+        next_run = compute_next_run("cron", config.schedule, s.timezone)
+        task_id = f"periodic-{folder}-{uuid.uuid4().hex[:8]}"
+        await create_task(
+            {
+                "id": task_id,
+                "group_folder": folder,
+                "chat_jid": jid,
+                "prompt": config.prompt,
+                "schedule_type": "cron",
+                "schedule_value": config.schedule,
+                "context_mode": context_mode,
+                "repo_access": resolved_repo_access,
+                "next_run": next_run,
+                "status": "active",
+                "created_at": datetime.now(UTC).isoformat(),
+            }
+        )
+        logger.info(
+            "Created scheduled task for periodic agent",
+            task_id=task_id,
+            folder=folder,
+            schedule=config.schedule,
+        )
+        return
+
+    updates: dict[str, Any] = {}
+    if existing_task.schedule_value != config.schedule:
+        updates["schedule_value"] = config.schedule
+        updates["next_run"] = compute_next_run("cron", config.schedule, s.timezone)
+    if existing_task.prompt != config.prompt:
+        updates["prompt"] = config.prompt
+    if existing_task.repo_access != resolved_repo_access:
+        updates["repo_access"] = resolved_repo_access
+    if not updates:
+        return
+    await update_task(existing_task.id, updates)
+    logger.info(
+        "Updated periodic agent task",
+        task_id=existing_task.id,
+        folder=folder,
+        changed=list(updates.keys()),
+    )
+
+
+async def _pause_orphaned_tasks(specs: dict[str, WorkspaceSpec]) -> None:
+    """Pause active scheduled tasks whose workspace is no longer periodic/configured."""
+    periodic_folders = {f for f, sp in specs.items() if sp.config.is_periodic}
+    all_tasks = await get_all_tasks()
+    for task in all_tasks:
+        if task.status == "active" and task.group_folder not in periodic_folders:
+            await update_task(task.id, {"status": "paused"})
+            logger.info(
+                "Paused orphaned scheduled task",
+                task_id=task.id,
+                folder=task.group_folder,
+            )
+
+
+async def _remove_orphaned_workspaces(
+    specs: dict[str, WorkspaceSpec],
+    workspaces: dict[str, WorkspaceProfile],
+    unregister_fn: Callable[[str], Awaitable[None]] | None,
+) -> None:
+    """Remove workspace registrations in the DB but not in config (admin exempt).
+
+    Admin workspaces are created dynamically at first boot without a config entry.
+    """
+    if unregister_fn is None:
+        return
+    config_folders = set(specs.keys())
+    for jid, profile in list(workspaces.items()):
+        if profile.folder not in config_folders and not profile.is_admin:
+            await unregister_fn(jid)
+            logger.info("Removed orphaned workspace registration", folder=profile.folder, jid=jid)
+
+
 async def reconcile_workspaces(
     workspaces: dict[str, WorkspaceProfile],
     channels: list[Channel],
@@ -234,8 +418,6 @@ async def reconcile_workspaces(
       1. Workspace registrations — create missing, remove orphaned
       2. Scheduled tasks — create missing, update changed, pause orphaned
     """
-    from pynchy.types import WorkspaceProfile
-
     s = get_settings()
     specs = _workspace_specs()
     folder_to_jid: dict[str, str] = {g.folder: jid for jid, g in workspaces.items()}
@@ -245,161 +427,28 @@ async def reconcile_workspaces(
         config = spec.config
         context_mode = config.context_mode or s.sandbox_universal.context_mode or "group"
         resolved_repo_access = get_repo_access(folder)
+        display_name = _resolve_display_name(folder, config, resolved_repo_access)
 
-        if config.name:
-            display_name = config.name
-        elif resolved_repo_access:
-            # Slack channel names can't contain slashes — use double-dash convention
-            display_name = resolved_repo_access.replace("/", "--")
-        else:
-            display_name = folder.replace("-", " ").title()
-
-        # 1. Ensure the group is registered (bind to configured chat)
-        jid = folder_to_jid.get(folder)
-        chat_ref = parse_chat_ref(config.chat)
-        connection_name = (
-            connection_ref_from_parts(chat_ref.platform, chat_ref.name) if chat_ref else ""
+        jid = await _ensure_workspace_registered(
+            folder, config, display_name, workspaces, folder_to_jid, channels, s, register_fn
         )
-        allow_create = bool(
-            s.command_center.connection and connection_name == s.command_center.connection
-        )
-
-        expected_jid = await _resolve_configured_jid(
-            config=config,
-            channels=channels,
-            allow_create=allow_create,
-        )
-
         if jid is None:
-            if expected_jid is None:
-                logger.warning(
-                    "Workspace chat unavailable, skipping registration",
-                    folder=folder,
-                )
-                continue
-            jid = expected_jid
-            profile = WorkspaceProfile(
-                jid=jid,
-                name=display_name,
-                folder=folder,
-                trigger=f"@{s.agent.name}",
-                added_at=datetime.now(UTC).isoformat(),
-                is_admin=config.is_admin or False,
-            )
-            await register_fn(profile)
-            folder_to_jid[folder] = jid
-            logger.info(
-                "Registered workspace for configured chat",
-                name=display_name,
-                folder=folder,
-                is_admin=config.is_admin or False,
-            )
-        elif expected_jid and jid != expected_jid:
-            logger.warning(
-                "Workspace JID mismatch with configured chat",
-                folder=folder,
-                registered_jid=jid,
-                expected_jid=expected_jid,
-            )
+            continue
 
-        # 1b. Update existing workspace profile if config fields changed
-        if jid is not None and jid in workspaces:
-            profile = workspaces[jid]
-            changed: dict[str, Any] = {}
-            if profile.name != display_name:
-                changed["name"] = display_name
-            if profile.is_admin != config.is_admin:
-                changed["is_admin"] = config.is_admin
-            if changed:
-                updated = replace(profile, **changed)
-                workspaces[jid] = updated
-                await set_workspace_profile(updated)
-                logger.info(
-                    "Updated workspace profile",
-                    folder=folder,
-                    changed=list(changed.keys()),
-                )
+        await _sync_workspace_profile(jid, workspaces, folder, display_name, config)
 
-        # 2. For periodic agents, ensure scheduled task exists and is up to date
         if not config.is_periodic:
             reconciled += 1
             continue
 
-        existing_task = await get_active_task_for_group(folder)
-
-        if existing_task is None:
-            next_run = compute_next_run("cron", config.schedule, s.timezone)
-
-            task_id = f"periodic-{folder}-{uuid.uuid4().hex[:8]}"
-            await create_task(
-                {
-                    "id": task_id,
-                    "group_folder": folder,
-                    "chat_jid": jid,
-                    "prompt": config.prompt,
-                    "schedule_type": "cron",
-                    "schedule_value": config.schedule,
-                    "context_mode": context_mode,
-                    "repo_access": resolved_repo_access,
-                    "next_run": next_run,
-                    "status": "active",
-                    "created_at": datetime.now(UTC).isoformat(),
-                }
-            )
-            logger.info(
-                "Created scheduled task for periodic agent",
-                task_id=task_id,
-                folder=folder,
-                schedule=config.schedule,
-            )
-        else:
-            updates: dict[str, Any] = {}
-            if existing_task.schedule_value != config.schedule:
-                updates["schedule_value"] = config.schedule
-                updates["next_run"] = compute_next_run("cron", config.schedule, s.timezone)
-            if existing_task.prompt != config.prompt:
-                updates["prompt"] = config.prompt
-            if existing_task.repo_access != resolved_repo_access:
-                updates["repo_access"] = resolved_repo_access
-            if updates:
-                await update_task(existing_task.id, updates)
-                logger.info(
-                    "Updated periodic agent task",
-                    task_id=existing_task.id,
-                    folder=folder,
-                    changed=list(updates.keys()),
-                )
-
+        await _reconcile_periodic_task(folder, config, jid, resolved_repo_access, context_mode, s)
         reconciled += 1
 
     if reconciled:
         logger.info("Workspaces reconciled", count=reconciled)
 
-    # 3. Pause orphaned tasks — workspace removed from config or no longer periodic
-    periodic_folders = {f for f, sp in specs.items() if sp.config.is_periodic}
-    all_tasks = await get_all_tasks()
-    for task in all_tasks:
-        if task.status == "active" and task.group_folder not in periodic_folders:
-            await update_task(task.id, {"status": "paused"})
-            logger.info(
-                "Paused orphaned scheduled task",
-                task_id=task.id,
-                folder=task.group_folder,
-            )
-
-    # 4. Remove orphaned workspace registrations — in DB but not in config.
-    #    Admin workspaces are exempt: created dynamically at first boot without
-    #    a config entry.
-    if unregister_fn is not None:
-        config_folders = set(specs.keys())
-        for jid, profile in list(workspaces.items()):
-            if profile.folder not in config_folders and not profile.is_admin:
-                await unregister_fn(jid)
-                logger.info(
-                    "Removed orphaned workspace registration",
-                    folder=profile.folder,
-                    jid=jid,
-                )
+    await _pause_orphaned_tasks(specs)
+    await _remove_orphaned_workspaces(specs, workspaces, unregister_fn)
 
 
 # ---------------------------------------------------------------------------
