@@ -37,9 +37,12 @@ class AgentConfig(_StrictModel):
 
 class ContainerConfig(_StrictModel):
     image: str = "pynchy-agent:latest"
-    timeout_ms: int = 1800000  # 30 minutes
+    timeout_ms: int = 1800000  # 30 minutes — hard per-query wall-clock safety net
     max_output_size: int = 10485760  # 10MB
-    idle_timeout_ms: int = 1800000  # 30 minutes
+    # Idle reclamation timer (resets on every output). Kept well under timeout_ms
+    # so a finished container hibernates gracefully via the cooperative _close
+    # sentinel before the hard timeout would race docker stop -> SIGKILL (137).
+    idle_timeout_ms: int = 900000  # 15 minutes
     max_concurrent: int = 10
     runtime: str | None = None  # "docker" | plugin runtime name (e.g. "apple") | None
 
