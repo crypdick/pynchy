@@ -13,7 +13,7 @@ import contextlib
 import sys
 from typing import Any
 
-from .core import AgentCoreConfig, AgentEvent
+from .core import AgentCore, AgentCoreConfig, AgentEvent
 from .ipc import (
     IPC_INPUT_CLOSE_SENTINEL,
     IPC_INPUT_DIR,
@@ -207,28 +207,21 @@ def event_to_output(event: AgentEvent, session_id: str | None) -> ContainerOutpu
 # ---------------------------------------------------------------------------
 
 
-async def main() -> None:
-    # Read initial input from file (written by host before container start)
+def _read_container_input() -> ContainerInput:
+    """Read initial input from file (written by host before container start)."""
     try:
         container_input = read_initial_input()
         log(f"Received input for group: {container_input.group_folder}")
         core_ref = f"{container_input.agent_core_module}.{container_input.agent_core_class}"
         log(f"Using agent core: {core_ref}")
+        return container_input
     except Exception as exc:  # allow: exception-handling — reported to host; exits
-        write_output(
-            ContainerOutput(
-                status="error",
-                error=f"Failed to read initial input: {exc}",
-            )
-        )
+        write_output(ContainerOutput(status="error", error=f"Failed to read initial input: {exc}"))
         sys.exit(1)
 
-    # Clean up stale _close sentinel
-    IPC_INPUT_DIR.mkdir(parents=True, exist_ok=True)
-    with contextlib.suppress(OSError):
-        IPC_INPUT_CLOSE_SENTINEL.unlink()
 
-    # Build initial prompt from SDK messages
+def _build_initial_prompt(container_input: ContainerInput) -> str:
+    """Build the initial prompt: SDK messages, scheduled-task framing, notices, pending IPC."""
     log(f"Using SDK message list ({len(container_input.messages)} messages)")
     prompt = build_sdk_messages(container_input.messages)
 
@@ -254,16 +247,18 @@ async def main() -> None:
         )
         prompt = notices_text + "\n\n" + prompt
 
-    # Drain any pending IPC messages into initial prompt
     pending = drain_ipc_input()
     if pending:
         log(f"Draining {len(pending)} pending IPC messages into initial prompt")
         prompt += "\n" + "\n".join(pending)
 
-    # Build core config
+    return prompt
+
+
+async def _create_and_start_core(container_input: ContainerInput) -> AgentCore:
+    """Create and start the agent core, exiting the process on failure."""
     core_config = build_core_config(container_input)
 
-    # Create and start agent core
     try:
         core = create_agent_core(
             container_input.agent_core_module, container_input.agent_core_class, core_config
@@ -272,8 +267,7 @@ async def main() -> None:
         core_ref = f"{container_input.agent_core_module}.{container_input.agent_core_class}"
         write_output(
             ContainerOutput(
-                status="error",
-                error=f"Failed to create agent core '{core_ref}': {exc}",
+                status="error", error=f"Failed to create agent core '{core_ref}': {exc}"
             )
         )
         sys.exit(1)
@@ -281,47 +275,59 @@ async def main() -> None:
     try:
         await core.start()
     except Exception as exc:  # allow: exception-handling — reported to host; exits
-        write_output(
-            ContainerOutput(
-                status="error",
-                error=f"Failed to start agent core: {exc}",
-            )
-        )
+        write_output(ContainerOutput(status="error", error=f"Failed to start agent core: {exc}"))
         sys.exit(1)
 
-    session_id = container_input.session_id
+    return core
 
+
+async def _run_single_query(
+    core: AgentCore, prompt: str, session_id: str | None
+) -> tuple[str | None, int, bool]:
+    """Run one query to completion, streaming events to the host.
+
+    Returns (new_session_id, result_count, closed_during_query).
+    """
+    log(f"Starting query (session: {session_id or 'new'})...")
+
+    result_count = 0
+    closed_during_query = False
+    new_session_id: str | None = None
+
+    async for event in core.query(prompt):
+        # Check for close during query
+        if should_close():
+            log("Close sentinel detected during query")
+            closed_during_query = True
+            break
+
+        # Track session ID from system init events
+        if event.type == "system":
+            subtype = event.data.get("system_subtype")
+            if subtype == "init":
+                sid = event.data.get("system_data", {}).get("session_id")
+                if sid:
+                    new_session_id = sid
+                    log(f"Session initialized: {new_session_id}")
+
+        # Track results
+        if event.type == "result":
+            result_count += 1
+
+        # Convert event to output and write
+        output = event_to_output(event, new_session_id or session_id)
+        write_output(output)
+
+    return new_session_id, result_count, closed_during_query
+
+
+async def _run_conversation_loop(core: AgentCore, prompt: str, session_id: str | None) -> None:
+    """Drive query → wait-for-next-message cycles until the host signals close."""
     try:
         while True:
-            log(f"Starting query (session: {session_id or 'new'})...")
-
-            result_count = 0
-            closed_during_query = False
-            new_session_id: str | None = None
-
-            async for event in core.query(prompt):
-                # Check for close during query
-                if should_close():
-                    log("Close sentinel detected during query")
-                    closed_during_query = True
-                    break
-
-                # Track session ID from system init events
-                if event.type == "system":
-                    subtype = event.data.get("system_subtype")
-                    if subtype == "init":
-                        sid = event.data.get("system_data", {}).get("session_id")
-                        if sid:
-                            new_session_id = sid
-                            log(f"Session initialized: {new_session_id}")
-
-                # Track results
-                if event.type == "result":
-                    result_count += 1
-
-                # Convert event to output and write
-                output = event_to_output(event, new_session_id or session_id)
-                write_output(output)
+            new_session_id, result_count, closed_during_query = await _run_single_query(
+                core, prompt, session_id
+            )
 
             # Update session ID from core after query
             if core.session_id:
@@ -337,13 +343,7 @@ async def main() -> None:
                 break
 
             # Emit session update so host can track it
-            write_output(
-                ContainerOutput(
-                    status="success",
-                    result=None,
-                    new_session_id=session_id,
-                )
-            )
+            write_output(ContainerOutput(status="success", result=None, new_session_id=session_id))
 
             log("Query ended, waiting for next IPC message...")
 
@@ -359,16 +359,24 @@ async def main() -> None:
         error_message = str(exc)
         log(f"Agent error: {error_message}")
         write_output(
-            ContainerOutput(
-                status="error",
-                new_session_id=session_id,
-                error=error_message,
-            )
+            ContainerOutput(status="error", new_session_id=session_id, error=error_message)
         )
         sys.exit(1)
     finally:
-        # Clean up core
         try:
             await core.stop()
         except Exception as exc:  # allow: exception-handling — cleanup; logged via log()
             log(f"Error stopping core: {exc}")
+
+
+async def main() -> None:
+    container_input = _read_container_input()
+
+    # Clean up stale _close sentinel
+    IPC_INPUT_DIR.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        IPC_INPUT_CLOSE_SENTINEL.unlink()
+
+    prompt = _build_initial_prompt(container_input)
+    core = await _create_and_start_core(container_input)
+    await _run_conversation_loop(core, prompt, container_input.session_id)

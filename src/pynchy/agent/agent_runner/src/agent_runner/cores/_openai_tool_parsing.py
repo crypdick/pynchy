@@ -9,6 +9,7 @@ tuple so the streaming loop in ``openai.py`` stays clean.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -61,13 +62,8 @@ _UNKNOWN_NAMES = (None, "", "unknown_tool")
 # ---------------------------------------------------------------------------
 
 
-def extract_tool_call(item: Any) -> tuple[str, Any]:
-    """Extract (tool_name, tool_input) from an OpenAI SDK tool_call_item.
-
-    Tries every known attribute path in priority order and falls back to
-    heuristics on the raw type name or input contents.
-    """
-    raw = getattr(item, "raw_item", item)
+def _initial_name_and_input(item: Any, raw: Any) -> tuple[str | None, Any]:
+    """First-pass tool_name/tool_input guess from direct SDK attributes."""
     tool_name: str | None = (
         getattr(item, "tool_name", None)
         or getattr(item, "name", None)
@@ -79,15 +75,24 @@ def extract_tool_call(item: Any) -> tuple[str, Any]:
         or getattr(item, "input", None)
         or getattr(raw, "arguments", None)
     )
+    return tool_name, tool_input
 
-    # function / call sub-objects
+
+def _fill_from_function_or_call_subobject(
+    raw: Any, tool_name: str | None, tool_input: Any
+) -> tuple[str | None, Any]:
     for attr in ("function", "call"):
         sub = getattr(raw, attr, None)
         if sub is not None:
             tool_name = tool_name or getattr(sub, "name", None)
             tool_input = tool_input or getattr(sub, "arguments", None)
+    return tool_name, tool_input
 
-    # action sub-object (may be nested under raw.data)
+
+def _fill_from_shell_action(
+    raw: Any, tool_name: str | None, tool_input: Any
+) -> tuple[str | None, Any]:
+    """Shell action may be nested under raw.data instead of directly on raw."""
     action = getattr(raw, "action", None)
     if action is None:
         data_obj = getattr(raw, "data", None)
@@ -98,6 +103,30 @@ def extract_tool_call(item: Any) -> tuple[str, Any]:
             tool_name = "shell"
         if tool_input is None:
             tool_input = action_map
+    return tool_name, tool_input
+
+
+def _normalize_tool_input(raw: Any, tool_input: Any) -> Any:
+    if tool_input is None:
+        tool_input = getattr(raw, "input", None)
+    if isinstance(tool_input, str):
+        try:
+            tool_input = json.loads(tool_input)
+        except (json.JSONDecodeError, TypeError):
+            tool_input = {"raw": tool_input}
+    return tool_input
+
+
+def extract_tool_call(item: Any) -> tuple[str, Any]:
+    """Extract (tool_name, tool_input) from an OpenAI SDK tool_call_item.
+
+    Tries every known attribute path in priority order and falls back to
+    heuristics on the raw type name or input contents.
+    """
+    raw = getattr(item, "raw_item", item)
+    tool_name, tool_input = _initial_name_and_input(item, raw)
+    tool_name, tool_input = _fill_from_function_or_call_subobject(raw, tool_name, tool_input)
+    tool_name, tool_input = _fill_from_shell_action(raw, tool_name, tool_input)
 
     # Type-specific extraction based on raw_type
     raw_map = _as_mapping(raw)
@@ -116,14 +145,7 @@ def extract_tool_call(item: Any) -> tuple[str, Any]:
     if tool_name in _UNKNOWN_NAMES:
         tool_name = _guess_from_input(tool_input)
 
-    # Normalize tool_input to a dict
-    if tool_input is None:
-        tool_input = getattr(raw, "input", None)
-    if isinstance(tool_input, str):
-        try:
-            tool_input = json.loads(tool_input)
-        except (json.JSONDecodeError, TypeError):
-            tool_input = {"raw": tool_input}
+    tool_input = _normalize_tool_input(raw, tool_input)
 
     return tool_name or "unknown_tool", tool_input
 
@@ -148,6 +170,65 @@ def extract_tool_result(item: Any) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 
+def _extract_shell_call(
+    raw: Any, raw_map: dict[str, Any] | None, tool_name: str | None, tool_input: Any
+) -> tuple[str | None, Any]:
+    tool_name = tool_name or "shell"
+    if tool_input is None:
+        am = (
+            _normalize_shell_action(raw_map.get("action")) if raw_map else None
+        ) or _normalize_shell_action(getattr(raw, "action", None))
+        if am:
+            tool_input = am
+    return tool_name, tool_input
+
+
+def _extract_apply_patch_call(
+    raw: Any, raw_map: dict[str, Any] | None, tool_name: str | None, tool_input: Any
+) -> tuple[str | None, Any]:
+    tool_name = tool_name or "apply_patch"
+    if tool_input is None:
+        operation = (raw_map.get("operation") if raw_map else None) or getattr(
+            raw, "operation", None
+        )
+        tool_input = _as_mapping(operation) or operation
+    return tool_name, tool_input
+
+
+def _extract_web_search_call(
+    raw: Any, raw_map: dict[str, Any] | None, tool_name: str | None, tool_input: Any
+) -> tuple[str | None, Any]:
+    tool_name = tool_name or "web_search"
+    if tool_input is None:
+        action = raw_map.get("action") if raw_map else getattr(raw, "action", None)
+        tool_input = _as_mapping(action) or action
+    return tool_name, tool_input
+
+
+def _extract_function_or_mcp_call(
+    raw: Any, raw_map: dict[str, Any] | None, tool_name: str | None, tool_input: Any
+) -> tuple[str | None, Any]:
+    if tool_name in _UNKNOWN_NAMES:
+        tool_name = (raw_map.get("name") if raw_map and raw_map.get("name") else None) or getattr(
+            raw, "name", None
+        )
+    if tool_input is None and raw_map:
+        tool_input = raw_map.get("arguments") or raw_map.get("input")
+    return tool_name, tool_input
+
+
+_RAW_TYPE_EXTRACTORS: dict[
+    str, Callable[[Any, dict[str, Any] | None, str | None, Any], tuple[str | None, Any]]
+] = {
+    "shell_call": _extract_shell_call,
+    "local_shell_call": _extract_shell_call,
+    "apply_patch_call": _extract_apply_patch_call,
+    "web_search_call": _extract_web_search_call,
+    "function_call": _extract_function_or_mcp_call,
+    "mcp_call": _extract_function_or_mcp_call,
+}
+
+
 def _extract_by_raw_type(
     raw_type: str | None,
     raw: Any,
@@ -156,38 +237,10 @@ def _extract_by_raw_type(
     tool_input: Any,
 ) -> tuple[str | None, Any]:
     """Refine tool_name/tool_input based on the ``raw_type`` field."""
-    if raw_type in ("shell_call", "local_shell_call"):
-        tool_name = tool_name or "shell"
-        if tool_input is None:
-            am = (
-                _normalize_shell_action(raw_map.get("action")) if raw_map else None
-            ) or _normalize_shell_action(getattr(raw, "action", None))
-            if am:
-                tool_input = am
-
-    elif raw_type == "apply_patch_call":
-        tool_name = tool_name or "apply_patch"
-        if tool_input is None:
-            operation = (raw_map.get("operation") if raw_map else None) or getattr(
-                raw, "operation", None
-            )
-            tool_input = _as_mapping(operation) or operation
-
-    elif raw_type == "web_search_call":
-        tool_name = tool_name or "web_search"
-        if tool_input is None:
-            action = raw_map.get("action") if raw_map else getattr(raw, "action", None)
-            tool_input = _as_mapping(action) or action
-
-    elif raw_type in ("function_call", "mcp_call"):
-        if tool_name in _UNKNOWN_NAMES:
-            tool_name = (
-                raw_map.get("name") if raw_map and raw_map.get("name") else None
-            ) or getattr(raw, "name", None)
-        if tool_input is None and raw_map:
-            tool_input = raw_map.get("arguments") or raw_map.get("input")
-
-    return tool_name, tool_input
+    extractor = _RAW_TYPE_EXTRACTORS.get(raw_type) if raw_type else None
+    if extractor is None:
+        return tool_name, tool_input
+    return extractor(raw, raw_map, tool_name, tool_input)
 
 
 def _fallback_mapping_scan(

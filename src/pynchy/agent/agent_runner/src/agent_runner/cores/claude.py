@@ -213,6 +213,99 @@ def _wrap_before_tool_use(hook_fn):
 
 
 # ---------------------------------------------------------------------------
+# start() setup helpers
+# ---------------------------------------------------------------------------
+
+
+def _build_system_prompt(config: AgentCoreConfig) -> dict[str, Any] | None:
+    if not config.system_prompt_append:
+        return None
+    return {
+        "type": "preset",
+        "preset": "claude_code",
+        "append": config.system_prompt_append,
+    }
+
+
+def _build_claude_hooks(config: AgentCoreConfig) -> dict[str, list]:
+    """Convert plugin-agnostic hooks to Claude SDK hook matchers.
+
+    PreCompact gets a built-in transcript-archival hook appended. PreToolUse
+    gets built-in security hooks first, then plugin hooks (first deny wins).
+    """
+    agnostic_hooks = load_hooks(config.plugin_hooks)
+    claude_hooks: dict[str, list] = {}
+
+    for event, funcs in agnostic_hooks.items():
+        # BEFORE_TOOL_USE is handled separately below (needs _wrap_before_tool_use
+        # adapter to translate between agnostic and Claude SDK signatures).
+        if event == HookEvent.BEFORE_TOOL_USE:
+            continue
+        if event in AGNOSTIC_TO_CLAUDE:
+            claude_hook_name = AGNOSTIC_TO_CLAUDE[event]
+            if funcs:
+                claude_hooks[claude_hook_name] = [HookMatcher(hooks=[func]) for func in funcs]
+
+    if "PreCompact" not in claude_hooks:
+        claude_hooks["PreCompact"] = []
+    claude_hooks["PreCompact"].append(HookMatcher(hooks=[_create_pre_compact_hook()]))
+
+    pre_tool_hooks = [
+        *builtin_before_tool_hooks(),
+        *agnostic_hooks.get(HookEvent.BEFORE_TOOL_USE, []),
+    ]
+    all_pre_tool_hooks = [_wrap_before_tool_use(fn) for fn in pre_tool_hooks]
+    if all_pre_tool_hooks:
+        if "PreToolUse" not in claude_hooks:
+            claude_hooks["PreToolUse"] = []
+        # Single HookMatcher that matches all tools — hooks run in order,
+        # first deny wins.
+        claude_hooks["PreToolUse"].append(HookMatcher(hooks=all_pre_tool_hooks))
+
+    return claude_hooks
+
+
+def _build_allowed_tools(config: AgentCoreConfig) -> list[str]:
+    allowed_tools = [
+        "Bash",
+        "BashOutput",
+        "KillBash",
+        "Read",
+        "Write",
+        "Edit",
+        "Glob",
+        "Grep",
+        "WebSearch",
+        "Task",
+        "TaskOutput",
+        "TaskStop",
+        "TeamCreate",
+        "TeamDelete",
+        "SendMessage",
+        "TodoWrite",
+        "ToolSearch",
+        "Skill",
+        "NotebookEdit",
+        "mcp__pynchy__*",
+    ]
+    if "tools" in config.mcp_servers:
+        allowed_tools.append("mcp__tools__*")
+    for server_name in config.mcp_servers:
+        pattern = f"mcp__{server_name}__*"
+        if pattern not in allowed_tools:
+            allowed_tools.append(pattern)
+    return allowed_tools
+
+
+def _discover_container_plugins() -> list[dict[str, str]]:
+    """Discover Claude Code plugins baked into the container image."""
+    plugins_dir = Path("/opt/plugins")
+    if not plugins_dir.is_dir():
+        return []
+    return [{"type": "local", "path": str(p)} for p in sorted(plugins_dir.iterdir()) if p.is_dir()]
+
+
+# ---------------------------------------------------------------------------
 # ClaudeAgentCore
 # ---------------------------------------------------------------------------
 
@@ -227,82 +320,9 @@ class ClaudeAgentCore:
 
     async def start(self) -> None:
         """Initialize Claude SDK client."""
-        # Build system prompt
-        system_prompt: dict[str, Any] | None = None
-        if self.config.system_prompt_append:
-            system_prompt = {
-                "type": "preset",
-                "preset": "claude_code",
-                "append": self.config.system_prompt_append,
-            }
-
-        # Load plugin hooks and convert to Claude SDK format
-        agnostic_hooks = load_hooks(self.config.plugin_hooks)
-        claude_hooks: dict[str, list] = {}
-
-        for event, funcs in agnostic_hooks.items():
-            # BEFORE_TOOL_USE is handled separately below (needs _wrap_before_tool_use
-            # adapter to translate between agnostic and Claude SDK signatures).
-            if event == HookEvent.BEFORE_TOOL_USE:
-                continue
-            if event in AGNOSTIC_TO_CLAUDE:
-                claude_hook_name = AGNOSTIC_TO_CLAUDE[event]
-                if funcs:
-                    claude_hooks[claude_hook_name] = [HookMatcher(hooks=[func]) for func in funcs]
-
-        # Add built-in PreCompact hook for transcript archival
-        if "PreCompact" not in claude_hooks:
-            claude_hooks["PreCompact"] = []
-        claude_hooks["PreCompact"].append(HookMatcher(hooks=[_create_pre_compact_hook()]))
-
-        # Register BEFORE_TOOL_USE hooks as PreToolUse matchers.
-        # Built-in security hooks run first, then plugin hooks.
-        pre_tool_hooks = [
-            *builtin_before_tool_hooks(),
-            *agnostic_hooks.get(HookEvent.BEFORE_TOOL_USE, []),
-        ]
-        all_pre_tool_hooks = [_wrap_before_tool_use(fn) for fn in pre_tool_hooks]
-
-        if all_pre_tool_hooks:
-            if "PreToolUse" not in claude_hooks:
-                claude_hooks["PreToolUse"] = []
-            # Single HookMatcher that matches all tools — hooks run in order,
-            # first deny wins.
-            claude_hooks["PreToolUse"].append(HookMatcher(hooks=all_pre_tool_hooks))
-
-        # Build allowed tools list
-        allowed_tools = [
-            "Bash",
-            "BashOutput",
-            "KillBash",
-            "Read",
-            "Write",
-            "Edit",
-            "Glob",
-            "Grep",
-            "WebSearch",
-            "Task",
-            "TaskOutput",
-            "TaskStop",
-            "TeamCreate",
-            "TeamDelete",
-            "SendMessage",
-            "TodoWrite",
-            "ToolSearch",
-            "Skill",
-            "NotebookEdit",
-            "mcp__pynchy__*",
-        ]
-
-        # Add remote MCP tools if configured
-        if "tools" in self.config.mcp_servers:
-            allowed_tools.append("mcp__tools__*")
-
-        # Allow tools from all configured MCP servers
-        for server_name in self.config.mcp_servers:
-            pattern = f"mcp__{server_name}__*"
-            if pattern not in allowed_tools:
-                allowed_tools.append(pattern)
+        system_prompt = _build_system_prompt(self.config)
+        claude_hooks = _build_claude_hooks(self.config)
+        allowed_tools = _build_allowed_tools(self.config)
 
         _log(f"MCP servers config: {list(self.config.mcp_servers.keys())}")
         mcp_details = {
@@ -312,17 +332,10 @@ class ClaudeAgentCore:
         _log(f"MCP servers details: {json.dumps(mcp_details)}")
         _log(f"Allowed tools: {allowed_tools}")
 
-        # Discover Claude Code plugins baked into the container image
-        plugins_dir = Path("/opt/plugins")
-        plugins = (
-            [{"type": "local", "path": str(p)} for p in sorted(plugins_dir.iterdir()) if p.is_dir()]
-            if plugins_dir.is_dir()
-            else []
-        )
+        plugins = _discover_container_plugins()
         if plugins:
             _log(f"Loading plugins: {[p['path'] for p in plugins]}")
 
-        # Build options
         options = ClaudeAgentOptions(
             model="opus",
             cwd=self.config.cwd,

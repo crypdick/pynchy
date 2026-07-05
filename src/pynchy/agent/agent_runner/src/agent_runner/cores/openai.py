@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from agents import Agent, ApplyPatchTool, Runner, ShellTool, WebSearchTool
@@ -172,6 +172,79 @@ class _ContainerPatchEditor(ApplyPatchEditor):
 
 
 # ---------------------------------------------------------------------------
+# Stream event → AgentEvent translation
+# ---------------------------------------------------------------------------
+
+
+def _handle_raw_response_event(event: Any) -> AgentEvent | None:
+    """Token-level text deltas, or reasoning/thinking content (o-series models)."""
+    delta = getattr(event.data, "delta", None)
+    if delta and isinstance(delta, str):
+        return AgentEvent(type="text", data={"text": delta})
+    if hasattr(event.data, "type") and "reasoning" in str(getattr(event.data, "type", "")):
+        text = getattr(event.data, "text", None) or getattr(event.data, "summary", None)
+        if text:
+            return AgentEvent(type="thinking", data={"thinking": text})
+    return None
+
+
+def _handle_tool_call_item(item: Any) -> AgentEvent:
+    tool_name, tool_input = extract_tool_call(item)
+    if not tool_input:
+        _log(f"Tool call parsed without input: tool={tool_name}")
+    return AgentEvent(
+        type="tool_use",
+        data={"tool_name": tool_name, "tool_input": tool_input or {}},
+    )
+
+
+def _handle_tool_call_output_item(item: Any) -> AgentEvent:
+    tool_result_id, output = extract_tool_result(item)
+    return AgentEvent(
+        type="tool_result",
+        data={
+            "tool_result_id": tool_result_id,
+            "tool_result_content": output,
+            "tool_result_is_error": False,
+        },
+    )
+
+
+def _handle_message_output_item(item: Any) -> AgentEvent | None:
+    from agents import ItemHelpers
+
+    text = ItemHelpers.text_message_output(item)
+    if text:
+        return AgentEvent(type="text", data={"text": text})
+    return None
+
+
+def _handle_reasoning_item(item: Any) -> AgentEvent | None:
+    text = getattr(item, "text", None) or ""
+    summary_parts = getattr(item, "summary", None)
+    if summary_parts and isinstance(summary_parts, list):
+        text = "\n".join(getattr(s, "text", str(s)) for s in summary_parts)
+    if text:
+        return AgentEvent(type="thinking", data={"thinking": text})
+    return None
+
+
+_RUN_ITEM_HANDLERS: dict[str, Callable[[Any], AgentEvent | None]] = {
+    "tool_call_item": _handle_tool_call_item,
+    "tool_call_output_item": _handle_tool_call_output_item,
+    "message_output_item": _handle_message_output_item,
+    "reasoning_item": _handle_reasoning_item,
+}
+
+
+def _handle_run_item_stream_event(event: Any) -> AgentEvent | None:
+    handler = _RUN_ITEM_HANDLERS.get(event.item.type)
+    if handler is None:
+        return None
+    return handler(event.item)
+
+
+# ---------------------------------------------------------------------------
 # OpenAIAgentCore
 # ---------------------------------------------------------------------------
 
@@ -332,62 +405,16 @@ class OpenAIAgentCore:
         )
 
         async for event in result.stream_events():
+            agent_event: AgentEvent | None = None
             if event.type == "raw_response_event":
-                # Token-level text deltas
-                delta = getattr(event.data, "delta", None)
-                if delta and isinstance(delta, str):
-                    yield AgentEvent(type="text", data={"text": delta})
-                # Reasoning/thinking content (o-series models)
-                elif hasattr(event.data, "type") and "reasoning" in str(
-                    getattr(event.data, "type", "")
-                ):
-                    text = getattr(event.data, "text", None) or getattr(event.data, "summary", None)
-                    if text:
-                        yield AgentEvent(type="thinking", data={"thinking": text})
-
+                agent_event = _handle_raw_response_event(event)
             elif event.type == "run_item_stream_event":
-                item = event.item
-
-                if item.type == "tool_call_item":
-                    tool_name, tool_input = extract_tool_call(item)
-                    if not tool_input:
-                        _log(f"Tool call parsed without input: tool={tool_name}")
-                    yield AgentEvent(
-                        type="tool_use",
-                        data={
-                            "tool_name": tool_name,
-                            "tool_input": tool_input or {},
-                        },
-                    )
-
-                elif item.type == "tool_call_output_item":
-                    tool_result_id, output = extract_tool_result(item)
-                    yield AgentEvent(
-                        type="tool_result",
-                        data={
-                            "tool_result_id": tool_result_id,
-                            "tool_result_content": output,
-                            "tool_result_is_error": False,
-                        },
-                    )
-
-                elif item.type == "message_output_item":
-                    from agents import ItemHelpers
-
-                    text = ItemHelpers.text_message_output(item)
-                    if text:
-                        yield AgentEvent(type="text", data={"text": text})
-
-                elif item.type == "reasoning_item":
-                    text = getattr(item, "text", None) or ""
-                    summary_parts = getattr(item, "summary", None)
-                    if summary_parts and isinstance(summary_parts, list):
-                        text = "\n".join(getattr(s, "text", str(s)) for s in summary_parts)
-                    if text:
-                        yield AgentEvent(type="thinking", data={"thinking": text})
-
+                agent_event = _handle_run_item_stream_event(event)
             elif event.type == "agent_updated_stream_event":
                 _log(f"Agent updated: {event.new_agent.name}")
+
+            if agent_event is not None:
+                yield agent_event
 
         # After stream completes, capture response ID for session continuity
         self._previous_response_id = result.last_response_id
