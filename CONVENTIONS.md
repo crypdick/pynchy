@@ -133,3 +133,49 @@ class ServiceTrustConfig: ...
   same change. Don't merge code that silently contradicts its own docs.
 - **Editing docs:** if you're restating a concrete value (a list, a table, an
   allowlist), consider whether the code site deserves a `NOTE:` back-pointer.
+
+---
+
+## Test isolation
+
+Each test must pass regardless of what ran before it, what runs alongside it, or how
+many times it runs. No test may depend on the ordering, side effects, or leftover state
+of another. This is non-negotiable here: pynchy runs `-n auto` (`pyproject.toml`
+`addopts`), so pytest-xdist spreads tests across parallel workers in nondeterministic
+order — a test that leans on execution order or mutates shared state doesn't just risk a
+flake, it *will* flake, and the failure lands on whichever unlucky test the scheduler
+paired it with.
+
+The enemy is process-lived mutable state that outlives one test: the config singleton
+(`pynchy.config.settings._settings`), the DB connection (`pynchy.state.connection._db`),
+leaked environment variables, module-level caches, and files written to fixed paths.
+pynchy already neutralizes the common ones via autouse fixtures in `tests/conftest.py` —
+**follow those patterns, don't defeat them:**
+
+- `reset_settings` rebuilds the `Settings` singleton from pure defaults before every test
+  (no `config.toml`, no `.env`, no file I/O). Never reach around it to poke real config.
+- The DB is in-memory and torn down at session end; drive setup through
+  `init_test_database()`, not a private production symbol.
+- `_clean_git_env` strips leaked `GIT_*` vars so temp-repo tests don't inherit them.
+
+For new state, the rules:
+
+```python
+# Reset a global singleton via the autouse fixture pattern — monkeypatch auto-undoes it.
+monkeypatch.setattr("pynchy.some_module._cache", fresh_value)
+
+# Filesystem writes go under tmp_path, never a hardcoded /tmp or ~/.cache path
+# (two xdist workers on the same fixed path clobber each other — the same collision
+# the per-worktree isolation rule guards against, one level down).
+out = tmp_path / "state.db"
+
+# A port/socket/name that must be unique: derive it, don't hardcode.
+# See tests/test_mcp_port_allocation.py for the allocation pattern.
+```
+
+**Caveat:** shared *read-only* setup is fine and often right — a session-scoped fixture
+that builds an immutable fixture object, a frozen constant, a pure factory like
+`make_settings()` or `make_msg()`. Isolation is about mutable state that leaks *between*
+tests, not about rebuilding genuinely-constant data for every one. And `live`/`parity`
+tests that talk to real services (deselected by default) have their own constraints —
+isolate them from each other, but they can't be as hermetic as unit tests.
