@@ -10,6 +10,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from typing import Any
 
 from pynchy.logger import logger
 from pynchy.plugins.integrations.google_setup._paths import (
@@ -73,7 +74,7 @@ def start_callback_server() -> tuple[threading.Event, list[str], HTTPServer]:
     return done, auth_codes, server
 
 
-def exchange_code_for_tokens(code: str, client_id: str, client_secret: str) -> dict:
+def exchange_code_for_tokens(code: str, client_id: str, client_secret: str) -> dict[str, Any]:
     """Exchange the authorization code for access + refresh tokens."""
     data = urllib.parse.urlencode(
         {
@@ -91,7 +92,7 @@ def exchange_code_for_tokens(code: str, client_id: str, client_secret: str) -> d
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     with urllib.request.urlopen(req) as resp:
-        tokens = json.loads(resp.read())
+        tokens: dict[str, Any] = json.loads(resp.read())
 
     if "error" in tokens:
         raise RuntimeError(f"Token exchange failed: {tokens['error']}")
@@ -103,7 +104,7 @@ def exchange_code_for_tokens(code: str, client_id: str, client_secret: str) -> d
     return tokens
 
 
-def save_credentials_to_profile(tokens: dict, profile_name: str) -> Path:
+def save_credentials_to_profile(tokens: dict[str, Any], profile_name: str) -> Path:
     """Write credentials.json to the chrome profile directory."""
     dest = credentials_path(profile_name)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -117,7 +118,7 @@ def save_credentials_to_profile(tokens: dict, profile_name: str) -> Path:
     return dest
 
 
-async def run_oauth_flow(page, kp: Path, scopes: str) -> dict:
+async def run_oauth_flow(page, kp: Path, scopes: str) -> dict[str, Any]:
     """Run the OAuth consent + token exchange flow."""
     client_id, client_secret = parse_client_credentials(kp)
     done_event, auth_codes, callback_server = start_callback_server()

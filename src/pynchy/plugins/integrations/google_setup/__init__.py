@@ -49,7 +49,7 @@ class GoogleMcpPlugin:
     """
 
     @hookimpl
-    def pynchy_mcp_server_spec(self) -> list[dict]:
+    def pynchy_mcp_server_spec(self) -> list[dict[str, Any]]:
         return [
             {
                 "name": "gdrive",
@@ -86,7 +86,7 @@ class GoogleSetupPlugin:
         tools: dict[str, Any] = {}
         for profile in get_settings().chrome_profiles:
             # Closure captures profile by value via default arg
-            async def _handler(data: dict, _profile: str = profile) -> dict:
+            async def _handler(data: dict[str, Any], _profile: str = profile) -> dict[str, Any]:
                 data["chrome_profile"] = _profile
                 return await handle_setup_google(data)
 

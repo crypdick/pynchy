@@ -46,7 +46,7 @@ from pynchy.plugins.integrations.google_setup._rest_api import (
 )
 
 
-def _check_workspace_access(profile_name: str, source_group: str | None) -> dict | None:
+def _check_workspace_access(profile_name: str, source_group: str | None) -> dict[str, Any] | None:
     """Return an error dict if source_group lacks access to profile_name, else None.
 
     Non-admin workspaces can only set up profiles attached to their MCP servers.
@@ -91,7 +91,9 @@ def _resolve_scopes(profile_name: str) -> tuple[str, list[str]]:
     return scopes, api_ids
 
 
-def _try_fast_path(profile_name: str, kp: Path, cp: Path, api_ids: list[str]) -> dict | None:
+def _try_fast_path(
+    profile_name: str, kp: Path, cp: Path, api_ids: list[str]
+) -> dict[str, Any] | None:
     """Return an 'already_configured' result if valid tokens already exist, else None."""
     if not (kp.exists() and cp.exists()):
         return None
@@ -139,15 +141,15 @@ async def _ensure_oauth_credentials(page: Any, project_id: str, kp: Path, profil
 
 
 async def _run_interactive_setup(
-    profile_name: str, kp: Path, api_ids: list[str], scopes: str, data: dict
-) -> dict:
+    profile_name: str, kp: Path, api_ids: list[str], scopes: str, data: dict[str, Any]
+) -> dict[str, Any]:
     """Drive the browser through GCP project/API/OAuth setup for profile_name."""
     from playwright.async_api import async_playwright
 
     steps_done: list[str] = []
     project_id = data.get("project_id") or read_project_id(kp) or DEFAULT_PROJECT_ID
     profile = profile_dir("google")
-    vnc_procs: list[subprocess.Popen] = []
+    vnc_procs: list[subprocess.Popen[bytes]] = []
     original_display = os.environ.get("DISPLAY")
 
     try:
@@ -215,7 +217,7 @@ async def _run_interactive_setup(
             del os.environ["DISPLAY"]
 
 
-async def handle_setup_google(data: dict) -> dict:
+async def handle_setup_google(data: dict[str, Any]) -> dict[str, Any]:
     """Idempotent Google setup for a chrome profile.
 
     Checks state and does only what's missing:

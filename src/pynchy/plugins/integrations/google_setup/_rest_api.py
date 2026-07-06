@@ -30,7 +30,7 @@ def get_project_number(kp: Path) -> str | None:
             data = json.load(f)
         client = data.get("installed") or data.get("web")
         if client and client.get("client_id"):
-            return client["client_id"].split("-", 1)[0]
+            return str(client["client_id"]).split("-", 1)[0]
     except (OSError, ValueError, KeyError) as exc:
         logger.debug("Could not extract project number from credentials", error=str(exc))
     return None
@@ -45,7 +45,7 @@ def read_project_id(kp: Path) -> str | None:
             data = json.load(f)
         client = data.get("installed") or data.get("web")
         if client and client.get("project_id"):
-            return client["project_id"]
+            return str(client["project_id"])
     except (OSError, ValueError, KeyError) as exc:
         logger.debug("Could not read project id from credentials", error=str(exc))
     return None
@@ -95,7 +95,8 @@ def refresh_access_token(profile_name: str) -> str | None:
     try:
         with urllib.request.urlopen(req) as resp:
             tokens = json.loads(resp.read())
-        return tokens.get("access_token")
+        access_token = tokens.get("access_token")
+        return access_token if isinstance(access_token, str) else None
     except (urllib.error.URLError, ValueError) as exc:
         logger.debug("Access token refresh failed", error=str(exc))
         return None

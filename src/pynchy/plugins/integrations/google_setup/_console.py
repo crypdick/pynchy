@@ -170,7 +170,7 @@ async def ensure_api(page, project_id: str, api_id: str) -> None:
 
     async def _api_enabled(p) -> bool:
         btn = p.get_by_role("button", name=re.compile(r"^enable$", re.I))
-        return await btn.count() == 0
+        return bool(await btn.count() == 0)
 
     await try_step(
         page,

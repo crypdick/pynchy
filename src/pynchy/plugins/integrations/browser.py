@@ -219,12 +219,12 @@ def _resolve_novnc_url() -> str:
     return f"http://{host}:{_NOVNC_PORT}/vnc.html?autoconnect=true"
 
 
-def ensure_vnc_stack_alive() -> list[subprocess.Popen]:
+def ensure_vnc_stack_alive() -> list[subprocess.Popen[bytes]]:
     """Restart x11vnc and/or websockify if they died while Xvfb is still up.
 
     Returns list of newly started processes (caller should track for cleanup).
     """
-    procs: list[subprocess.Popen] = []
+    procs: list[subprocess.Popen[bytes]] = []
 
     if not _is_process_running("x11vnc"):
         p = subprocess.Popen(
@@ -255,7 +255,7 @@ def ensure_vnc_stack_alive() -> list[subprocess.Popen]:
     return procs
 
 
-def start_virtual_display() -> tuple[list[subprocess.Popen], str]:
+def start_virtual_display() -> tuple[list[subprocess.Popen[bytes]], str]:
     """Start Xvfb + x11vnc + noVNC.  Returns (processes, novnc_url).
 
     If display :99 is already running, reuses it and repairs the VNC stack
@@ -278,7 +278,7 @@ def start_virtual_display() -> tuple[list[subprocess.Popen], str]:
         repair_procs = ensure_vnc_stack_alive()
         return repair_procs, novnc_url
 
-    procs: list[subprocess.Popen] = []
+    procs: list[subprocess.Popen[bytes]] = []
     try:
         xvfb = subprocess.Popen(
             ["Xvfb", _XVFB_DISPLAY, "-screen", "0", "1280x720x24"],
@@ -335,7 +335,7 @@ def start_virtual_display() -> tuple[list[subprocess.Popen], str]:
 # ---------------------------------------------------------------------------
 
 
-def stop_procs(procs: list[subprocess.Popen]) -> None:
+def stop_procs(procs: list[subprocess.Popen[bytes]]) -> None:
     """Terminate processes gracefully, then force-kill stragglers."""
     for proc in reversed(procs):
         if proc.poll() is None:

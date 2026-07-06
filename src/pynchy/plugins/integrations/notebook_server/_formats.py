@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime
 from pathlib import Path
+from typing import cast
 
 import nbformat
 from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
@@ -40,7 +41,7 @@ def parse_qmd(text: str) -> nbformat.NotebookNode:
     Code fences with ``{python}`` become code cells; everything else becomes
     markdown cells.
     """
-    nb = new_notebook()
+    nb: nbformat.NotebookNode = new_notebook()
     nb.metadata["kernelspec"] = {
         "display_name": "Python 3",
         "language": "python",
@@ -103,7 +104,7 @@ def load_notebook(path: Path) -> nbformat.NotebookNode:
     """Load a notebook from disk (.ipynb or .qmd)."""
     if path.suffix == ".qmd":
         return parse_qmd(path.read_text())
-    return nbformat.read(str(path), as_version=4)
+    return cast("nbformat.NotebookNode", nbformat.read(str(path), as_version=4))
 
 
 def save_notebook(nb: nbformat.NotebookNode, path: Path) -> None:
