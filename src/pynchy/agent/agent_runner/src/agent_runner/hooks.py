@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import importlib.util
 import sys
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 
 class HookEvent(StrEnum):
@@ -71,7 +72,16 @@ class HookDecision:
     reason: str | None = None
 
 
-def load_hooks(plugin_hooks: list[dict[str, str]]) -> dict[HookEvent, list[Callable]]:
+# A plugin-provided lifecycle hook. Signature varies by event (compact hooks
+# take (input_data, tool_use_id, context); before-tool hooks take the pair
+# below), so the general load_hooks map holds the permissive form.
+HookFn = Callable[..., Any]
+
+# A BEFORE_TOOL_USE gate: (tool_name, tool_input) -> HookDecision.
+BeforeToolUseHook = Callable[[str, dict[str, Any]], Awaitable[HookDecision]]
+
+
+def load_hooks(plugin_hooks: list[dict[str, str]]) -> dict[HookEvent, list[HookFn]]:
     """Load hook functions from plugin module paths.
 
     Args:
@@ -87,7 +97,7 @@ def load_hooks(plugin_hooks: list[dict[str, str]]) -> dict[HookEvent, list[Calla
         after_compact(input_data, tool_use_id, context) -> dict
         etc.
     """
-    hooks: dict[HookEvent, list[Callable]] = {event: [] for event in HookEvent}
+    hooks: dict[HookEvent, list[HookFn]] = {event: [] for event in HookEvent}
 
     for spec in plugin_hooks:
         name = spec.get("name", "unknown")
@@ -144,7 +154,7 @@ def load_hooks(plugin_hooks: list[dict[str, str]]) -> dict[HookEvent, list[Calla
     return hooks
 
 
-def builtin_before_tool_hooks() -> list[Callable]:
+def builtin_before_tool_hooks() -> list[BeforeToolUseHook]:
     """Return the built-in BEFORE_TOOL_USE security hooks, in enforcement order.
 
     Built-ins run before any plugin-provided BEFORE_TOOL_USE hooks. Callers
@@ -157,7 +167,9 @@ def builtin_before_tool_hooks() -> list[Callable]:
     return [bash_security_hook, guard_git_hook]
 
 
-def before_tool_use_roster(agnostic_hooks: dict[HookEvent, list[Callable]]) -> list[Callable]:
+def before_tool_use_roster(
+    agnostic_hooks: dict[HookEvent, list[HookFn]],
+) -> list[BeforeToolUseHook]:
     """The complete BEFORE_TOOL_USE gate every core must enforce, in order.
 
     Built-in security hooks first, then plugin-provided BEFORE_TOOL_USE hooks;

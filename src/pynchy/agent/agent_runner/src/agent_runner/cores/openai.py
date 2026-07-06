@@ -5,13 +5,22 @@ from __future__ import annotations
 import asyncio
 import sys
 from collections.abc import AsyncIterator, Callable
-from typing import Any
+from typing import Any, cast
 
 from agents import Agent, ApplyPatchTool, Runner, ShellTool, WebSearchTool
 from agents.editor import ApplyPatchEditor, ApplyPatchOperation, ApplyPatchResult
-from agents.mcp import MCPServerSse, MCPServerStdio, MCPServerStreamableHttp
+from agents.mcp import (
+    MCPServer,
+    MCPServerSse,
+    MCPServerSseParams,
+    MCPServerStdio,
+    MCPServerStdioParams,
+    MCPServerStreamableHttp,
+    MCPServerStreamableHttpParams,
+)
 
 from ..core import AgentCoreConfig, AgentEvent
+from ..hooks import BeforeToolUseHook
 from ._openai_tool_parsing import extract_tool_call, extract_tool_result
 
 
@@ -53,7 +62,7 @@ def _is_model_not_found(exc: Exception) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _make_shell_executor(cwd: str, before_tool_hooks: list | None = None):
+def _make_shell_executor(cwd: str, before_tool_hooks: list[BeforeToolUseHook] | None = None):
     """Create a shell executor bound to a specific working directory.
 
     Args:
@@ -258,8 +267,8 @@ class OpenAIAgentCore:
         self._instructions: str | None = None
         self._model_primary: str | None = None
         self._model_fallback: str | None = None
-        self._before_tool_hooks: list = []
-        self._mcp_servers: list[MCPServerStdio | MCPServerSse | MCPServerStreamableHttp] = []
+        self._before_tool_hooks: list[BeforeToolUseHook] = []
+        self._mcp_servers: list[MCPServer] = []
         self._mcp_contexts: list[Any] = []
         previous = _normalize_response_id(config.session_id)
         self._previous_response_id: str | None = previous
@@ -275,7 +284,7 @@ class OpenAIAgentCore:
                 params["args"] = spec.get("args", [])
             if "env" in spec and spec["env"] is not None:
                 params["env"] = spec["env"]
-            return MCPServerStdio(params=params, name=name)
+            return MCPServerStdio(params=cast(MCPServerStdioParams, params), name=name)
 
         transport = spec.get("type") or spec.get("transport")
         if transport is None and "url" in spec:
@@ -285,13 +294,15 @@ class OpenAIAgentCore:
             params = {"url": spec["url"]}
             if spec.get("headers"):
                 params["headers"] = spec["headers"]
-            return MCPServerSse(params=params, name=name)
+            return MCPServerSse(params=cast(MCPServerSseParams, params), name=name)
 
         if transport in ("streamable_http", "http"):
             params = {"url": spec["url"]}
             if spec.get("headers"):
                 params["headers"] = spec["headers"]
-            return MCPServerStreamableHttp(params=params, name=name)
+            return MCPServerStreamableHttp(
+                params=cast(MCPServerStreamableHttpParams, params), name=name
+            )
 
         _log(f"Skipping MCP server '{name}': unsupported spec {spec}")
         return None
@@ -321,9 +332,9 @@ class OpenAIAgentCore:
         _disable_tracing()
         # Convert config.mcp_servers dict → MCPServer* instances
         for name, spec in self.config.mcp_servers.items():
-            server = self._build_mcp_server(name, spec)
-            if server is not None:
-                self._mcp_servers.append(server)
+            built = self._build_mcp_server(name, spec)
+            if built is not None:
+                self._mcp_servers.append(built)
 
         # Enter MCP server async contexts
         for server in self._mcp_servers:

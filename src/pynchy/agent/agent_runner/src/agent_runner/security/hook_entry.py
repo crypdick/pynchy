@@ -19,9 +19,14 @@ import asyncio
 import json
 import os
 import sys
-from collections.abc import Callable
+from typing import Any
 
-from agent_runner.hooks import HookDecision, before_tool_use_roster, load_hooks
+from agent_runner.hooks import (
+    BeforeToolUseHook,
+    HookDecision,
+    before_tool_use_roster,
+    load_hooks,
+)
 
 # Env var the claude-cli core (cores/claude_cli.py) uses to hand plugin
 # BEFORE_TOOL_USE specs to this subprocess. See _load_roster.
@@ -32,7 +37,7 @@ def _log(message: str) -> None:
     print(f"[claude-cli-hook] {message}", file=sys.stderr, flush=True)  # allow: print-statements
 
 
-def _load_roster() -> tuple[Callable, ...]:
+def _load_roster() -> tuple[BeforeToolUseHook, ...]:
     """Compose the exact BEFORE_TOOL_USE gate the SDK core enforces.
 
     This subprocess is spawned fresh by the ``claude`` binary per tool call, so
@@ -52,7 +57,7 @@ def _load_roster() -> tuple[Callable, ...]:
 
 
 async def _evaluate(
-    hooks: tuple[Callable, ...], tool_name: str, tool_input: dict
+    hooks: tuple[BeforeToolUseHook, ...], tool_name: str, tool_input: dict[str, Any]
 ) -> HookDecision | None:
     """Run the gate; return the first denying decision, else None."""
     for hook in hooks:

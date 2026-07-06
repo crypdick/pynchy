@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -126,8 +127,9 @@ class _InputEventHandler(FileSystemEventHandler):
         self._loop = loop
         self._event = event
 
-    def _signal_if_relevant(self, path_str: str) -> None:
-        p = Path(path_str)
+    def _signal_if_relevant(self, path_str: str | bytes) -> None:
+        # watchdog types event paths as str | bytes; normalize to str.
+        p = Path(os.fsdecode(path_str))
         # Wake up for .json message files or the _close sentinel
         if p.suffix == ".json" or p.name == "_close":
             self._loop.call_soon_threadsafe(self._event.set)

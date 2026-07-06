@@ -6,7 +6,7 @@ import json
 import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -20,6 +20,12 @@ from claude_agent_sdk import (
     ThinkingBlock,
     ToolResultBlock,
     ToolUseBlock,
+)
+from claude_agent_sdk.types import HookEvent as SdkHookEvent
+from claude_agent_sdk.types import (
+    McpServerConfig,
+    SdkPluginConfig,
+    SystemPromptPreset,
 )
 
 from ..core import AgentCoreConfig, AgentEvent
@@ -97,7 +103,7 @@ def _wrap_before_tool_use(hook_fn):
 # ---------------------------------------------------------------------------
 
 
-def _build_system_prompt(config: AgentCoreConfig) -> dict[str, Any] | None:
+def _build_system_prompt(config: AgentCoreConfig) -> SystemPromptPreset | None:
     if not config.system_prompt_append:
         return None
     return {
@@ -107,14 +113,14 @@ def _build_system_prompt(config: AgentCoreConfig) -> dict[str, Any] | None:
     }
 
 
-def _build_claude_hooks(config: AgentCoreConfig) -> dict[str, list]:
+def _build_claude_hooks(config: AgentCoreConfig) -> dict[str, list[HookMatcher]]:
     """Convert plugin-agnostic hooks to Claude SDK hook matchers.
 
     PreCompact gets a built-in transcript-archival hook appended. PreToolUse
     gets built-in security hooks first, then plugin hooks (first deny wins).
     """
     agnostic_hooks = load_hooks(config.plugin_hooks)
-    claude_hooks: dict[str, list] = {}
+    claude_hooks: dict[str, list[HookMatcher]] = {}
 
     for event, funcs in agnostic_hooks.items():
         # BEFORE_TOOL_USE is handled separately below (needs _wrap_before_tool_use
@@ -154,12 +160,16 @@ def _build_allowed_tools(config: AgentCoreConfig) -> list[str]:
     return allowed_tools
 
 
-def _discover_container_plugins() -> list[dict[str, str]]:
+def _discover_container_plugins() -> list[SdkPluginConfig]:
     """Discover Claude Code plugins baked into the container image."""
     plugins_dir = Path("/opt/plugins")
     if not plugins_dir.is_dir():
         return []
-    return [{"type": "local", "path": str(p)} for p in sorted(plugins_dir.iterdir()) if p.is_dir()]
+    return [
+        SdkPluginConfig(type="local", path=str(p))
+        for p in sorted(plugins_dir.iterdir())
+        if p.is_dir()
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -205,8 +215,14 @@ class ClaudeAgentCore:
             permission_mode="bypassPermissions",
             settings='{"attribution": {"commit": "", "pr": ""}}',
             setting_sources=["project", "user"],
-            mcp_servers=self.config.mcp_servers,
-            hooks=claude_hooks if claude_hooks else None,
+            # config.mcp_servers is a generic dict[str, dict[str, Any]]; the SDK
+            # narrows it to its own McpServerConfig union at runtime.
+            mcp_servers=cast("dict[str, McpServerConfig]", self.config.mcp_servers),
+            # Agnostic hook names (from AGNOSTIC_TO_CLAUDE) are a superset of the
+            # SDK's HookEvent literals, so the dict is typed str-keyed and cast here.
+            hooks=cast(dict[SdkHookEvent, list[HookMatcher]], claude_hooks)
+            if claude_hooks
+            else None,
             plugins=plugins,
         )
 

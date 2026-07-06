@@ -5,6 +5,8 @@ Discovers tools from the registry instead of hardcoding them.
 
 from __future__ import annotations
 
+from typing import Any
+
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import CallToolResult, TextContent, Tool
@@ -26,13 +28,16 @@ from agent_runner.agent_tools._registry import all_tools, get_handler
 server = Server("pynchy")
 
 
-@server.list_tools()
+# mcp's Server.list_tools()/call_tool() decorators are themselves untyped, so
+# mypy flags the wrapped handlers as untyped-decorator; nothing in our code
+# consumes these functions directly (the server registers them).
+@server.list_tools()  # type: ignore[untyped-decorator]
 async def list_tools() -> list[Tool]:
     return all_tools()
 
 
-@server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolResult:
+@server.call_tool()  # type: ignore[untyped-decorator]
+async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
     handler = get_handler(name)
     if handler:
         return await handler(arguments)
