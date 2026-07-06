@@ -95,15 +95,9 @@ repos:
         language: system
         types: [python]
         files: ^tests/
-
-  # Informational-only gates (pragmatic ratchet): report violations without
-  # blocking commits. Existing debt in these categories has not been audited
-  # or fixed yet, so `|| true` keeps them non-blocking until it has been.
-  - repo: local
-    hooks:
       - id: mypy
-        name: "[informational] Strict type check"
-        entry: bash -c 'uv run mypy src tests || true'
+        name: Strict type check
+        entry: uv run mypy src tests
         language: system
         pass_filenames: false
         types: [python]
