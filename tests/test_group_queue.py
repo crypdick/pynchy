@@ -365,7 +365,7 @@ class TestRegisterProcess:
         queue.enqueue_message_check("group1@g.us")
         await asyncio.sleep(0.02)
 
-        mock_proc = object()
+        mock_proc = AsyncMock(spec=asyncio.subprocess.Process)
         queue.register_process("group1@g.us", mock_proc, "my-container", "my-folder")
 
         state = queue._groups["group1@g.us"]
@@ -720,7 +720,7 @@ class TestStopActiveProcess:
         await asyncio.sleep(0.02)
 
         # Register a mock process
-        mock_proc = AsyncMock()
+        mock_proc = AsyncMock(spec=asyncio.subprocess.Process)
         mock_proc.returncode = None
         queue.register_process("group1@g.us", mock_proc, "my-container", "test-group")
 
@@ -753,7 +753,7 @@ class TestStopActiveProcess:
         queue.enqueue_task("group1@g.us", "task-1", task_fn)
         await asyncio.sleep(0.02)
 
-        mock_proc = AsyncMock()
+        mock_proc = AsyncMock(spec=asyncio.subprocess.Process)
         mock_proc.returncode = 0  # already exited
         queue.register_process("group1@g.us", mock_proc, "my-container", "test-group")
 

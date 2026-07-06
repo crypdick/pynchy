@@ -78,8 +78,6 @@ Single source of truth for all pynchy work items.
 ### 4 - In Progress
 *Being implemented.*
 
-- [Clean up beartype violation warnings](4-in-progress/beartype-violation-warnings-cleanup.md) — ~1500 UserWarnings surfaced by beartype re-enablement (test doubles not satisfying Protocols, a few int/float mismatches); no test failures, just signal to ratchet on later.
-
 
 ### Completed
 We don't track completed items here. Completed plans are deleted — git history is the archive — and the line is removed.

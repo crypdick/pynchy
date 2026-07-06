@@ -526,7 +526,9 @@ class TestRunAgent:
             _patch_test_settings(tmp_path),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
-            result = await app.run_agent(group, "test prompt", "group@g.us")
+            result = await app.run_agent(
+                group, "group@g.us", [{"message_type": "user", "content": "test prompt"}]
+            )
 
         await driver
         assert result == "success"
@@ -543,7 +545,9 @@ class TestRunAgent:
             _patch_test_settings(tmp_path),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
-            result = await app.run_agent(group, "test prompt", "group@g.us")
+            result = await app.run_agent(
+                group, "group@g.us", [{"message_type": "user", "content": "test prompt"}]
+            )
 
         assert result == "error"
 

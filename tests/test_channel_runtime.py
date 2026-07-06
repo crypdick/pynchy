@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 from unittest.mock import patch
 
 import pluggy
+from conftest import NullChannel
 
 from pynchy.plugins import channel_runtime
 
 
-@dataclass
-class _FakeChannel:
-    name: str
+class _FakeChannel(NullChannel):
+    def __init__(self, name: str) -> None:
+        self.name = name
 
 
 class _Hook:

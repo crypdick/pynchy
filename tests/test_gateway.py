@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from aiohttp import web
 from conftest import make_settings
 from pydantic import SecretStr
 
@@ -346,7 +347,7 @@ class TestBuiltinGatewayOAuthHeader:
 
     @staticmethod
     def _make_request(headers: dict[str, str] | None = None) -> MagicMock:
-        request = MagicMock()
+        request = MagicMock(spec=web.Request)
         request.headers = headers or {}
         return request
 

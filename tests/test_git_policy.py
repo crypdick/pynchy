@@ -604,7 +604,7 @@ class TestMergeWorktreeWithPolicy:
 class TestBackgroundMergePolicy:
     def test_delegates_to_merge_worktree_with_policy(self):
         """background_merge_worktree wraps merge_worktree_with_policy in a background task."""
-        group = MagicMock()
+        group = MagicMock(spec=WorkspaceProfile)
         group.folder = "agent-1"
 
         with patch("pynchy.utils.create_background_task") as mock_task:
@@ -619,7 +619,7 @@ class TestBackgroundMergePolicy:
 
     def test_no_repo_folder_passes_through(self):
         """background_merge_worktree passes the group folder through to the coroutine."""
-        group = MagicMock()
+        group = MagicMock(spec=WorkspaceProfile)
         group.folder = "no-repo"
 
         with patch("pynchy.utils.create_background_task") as mock_task:

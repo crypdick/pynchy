@@ -10,10 +10,10 @@ import json
 import subprocess
 from contextlib import ExitStack
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import make_settings
+from conftest import NullIpcDeps, make_settings
 
 from pynchy.host.container_manager.ipc.write import write_ipc_response
 from pynchy.host.git_ops import sync_poll
@@ -176,8 +176,8 @@ class TestHostSyncWorktree:
 
 
 class TestHostNotifyWorktreeUpdates:
-    def _make_deps(self, groups: dict, *, active_sessions: set[str] | None = None) -> Mock:
-        """Create a mock deps.
+    def _make_deps(self, groups: dict, *, active_sessions: set[str] | None = None) -> NullIpcDeps:
+        """Create a fake deps satisfying WorktreeNotifyDeps.
 
         Args:
             active_sessions: Group folders with active sessions. Defaults to
@@ -185,11 +185,11 @@ class TestHostNotifyWorktreeUpdates:
         """
         if active_sessions is None:
             active_sessions = {g.folder for g in groups.values()}
-        deps = Mock()
+        deps = NullIpcDeps()
         deps.broadcast_host_message = AsyncMock()
         deps.broadcast_system_notice = AsyncMock()
         deps.has_active_session = lambda folder: folder in active_sessions
-        deps.workspaces.return_value = groups
+        deps.workspaces = lambda: groups
         return deps
 
     @pytest.mark.asyncio

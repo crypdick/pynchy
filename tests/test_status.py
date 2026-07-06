@@ -10,7 +10,6 @@ from __future__ import annotations
 import contextlib
 import subprocess
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -20,6 +19,7 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
 
+from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.orchestrator.http_server import status_deps_key
 from pynchy.host.orchestrator.status import collect_status, record_start_time
 from pynchy.types import HostJob, ScheduledTask
@@ -186,13 +186,7 @@ class TestCollectRepos:
     async def test_repo_status(self, tmp_path: Path):
         """A tracked repo surfaces its head/dirty/unpushed status."""
 
-        @dataclass
-        class FakeRepoCtx:
-            slug: str = "owner/repo"
-            root: Path = tmp_path
-            worktrees_dir: Path = tmp_path / "worktrees"
-
-        ctx = FakeRepoCtx()
+        ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=tmp_path / "worktrees")
         deps = MockStatusDeps()
 
         with (
@@ -218,13 +212,7 @@ class TestCollectRepos:
         wt_dir.mkdir()
         (wt_dir / "code-improver").mkdir()
 
-        @dataclass
-        class FakeRepoCtx:
-            slug: str = "owner/repo"
-            root: Path = tmp_path
-            worktrees_dir: Path = wt_dir
-
-        ctx = FakeRepoCtx()
+        ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=wt_dir)
         mock_git = Mock(returncode=0, stdout="3\n")
         mock_git_dir = Mock(returncode=0, stdout=str(tmp_path / ".git/worktrees/code-improver"))
         deps = MockStatusDeps()
@@ -256,18 +244,13 @@ class TestCollectRepos:
 
 class TestWorktreeStatus:
     @staticmethod
-    def _repo_ctx(tmp_path: Path) -> tuple[Any, Path]:
+    def _repo_ctx(tmp_path: Path) -> tuple[RepoContext, Path]:
         wt_dir = tmp_path / "worktrees"
         wt_dir.mkdir()
         (wt_dir / "wt1").mkdir()
 
-        @dataclass
-        class FakeRepoCtx:
-            slug: str = "owner/repo"
-            root: Path = tmp_path
-            worktrees_dir: Path = wt_dir
-
-        return FakeRepoCtx(), wt_dir
+        ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=wt_dir)
+        return ctx, wt_dir
 
     @pytest.mark.asyncio
     async def test_conflict_detection(self, tmp_path: Path):
