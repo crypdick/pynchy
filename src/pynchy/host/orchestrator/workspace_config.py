@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from pynchy.config import get_settings, reset_settings
 from pynchy.config.models import WorkspaceConfig
@@ -327,6 +327,7 @@ async def _reconcile_periodic_task(
     s: Settings,
 ) -> None:
     """Create or update the scheduled task backing a periodic-agent workspace."""
+    assert config.schedule is not None, "caller must guard with config.is_periodic"
     existing_task = await get_active_task_for_group(folder)
 
     if existing_task is None:
@@ -465,6 +466,7 @@ def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
     from pathlib import Path
 
     import tomlkit
+    from tomlkit.items import Table
 
     toml_path = Path("config.toml")
     doc = tomlkit.parse(toml_path.read_text()) if toml_path.exists() else tomlkit.document()
@@ -485,24 +487,24 @@ def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
         if "connection" not in doc:
             logger.warning("Config missing [connection] section; chat not added", chat=config.chat)
         else:
-            connection_tbl = doc["connection"]
+            connection_tbl = cast(Table, doc["connection"])
             if chat_ref.platform not in connection_tbl:
                 logger.warning(
                     "Config missing connection platform; chat not added",
                     platform=chat_ref.platform,
                 )
             else:
-                platform_tbl = connection_tbl[chat_ref.platform]
+                platform_tbl = cast(Table, connection_tbl[chat_ref.platform])
                 if chat_ref.name not in platform_tbl:
                     logger.warning(
                         "Config missing connection; chat not added",
                         connection=connection_ref_from_parts(chat_ref.platform, chat_ref.name),
                     )
                 else:
-                    conn_tbl = platform_tbl[chat_ref.name]
+                    conn_tbl = cast(Table, platform_tbl[chat_ref.name])
                     if "chat" not in conn_tbl:
                         conn_tbl.add("chat", tomlkit.table(is_super_table=True))
-                    chat_tbl = conn_tbl["chat"]
+                    chat_tbl = cast(Table, conn_tbl["chat"])
                     if chat_ref.chat not in chat_tbl:
                         chat_tbl.add(chat_ref.chat, tomlkit.table())
 

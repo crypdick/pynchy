@@ -34,8 +34,8 @@ from pynchy.types import NewMessage
 _start_time = time.monotonic()
 
 # Typed app key avoids aiohttp NotAppKeyWarning from plain-string lookups.
-deps_key = web.AppKey("deps", "HttpDeps")
-status_deps_key = web.AppKey("status_deps", "StatusDeps")
+deps_key: web.AppKey[HttpDeps] = web.AppKey("deps")
+status_deps_key: web.AppKey[StatusDeps] = web.AppKey("status_deps")
 
 
 def _write_boot_warning(message: str) -> None:

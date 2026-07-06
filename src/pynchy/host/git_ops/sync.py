@@ -57,7 +57,7 @@ class _WorktreeContext:
     worktree_path: Path
     branch_name: str
     main_branch: str
-    env: dict[str, str]
+    env: dict[str, str] | None
     ahead: int
 
 

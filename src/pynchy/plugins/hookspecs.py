@@ -69,6 +69,7 @@ class PynchySpec:
                 - host_source_path: Optional path to plugin source on host
                   (for mounting into container)
         """
+        raise NotImplementedError
 
     @hookspec
     def pynchy_skill_paths(self) -> list[str]:
@@ -81,6 +82,7 @@ class PynchySpec:
         Returns:
             List of absolute paths to skill directories
         """
+        raise NotImplementedError
 
     @hookspec
     def pynchy_create_channel(self, context: Any) -> Any | None:
@@ -109,6 +111,7 @@ class PynchySpec:
                 - tools: dict mapping tool_name → async handler function
                   Each handler takes (data: dict) and returns dict with "result" or "error"
         """
+        raise NotImplementedError
 
     @hookspec
     def pynchy_observer(self) -> Any | None:
@@ -166,6 +169,7 @@ class PynchySpec:
                 - volumes: Volume mounts as "host_path:container_path" strings;
                   supports ``{key}`` placeholders expanded from instance kwargs
         """
+        raise NotImplementedError
 
     @hookspec
     def pynchy_workspace_spec(self) -> dict[str, Any]:
@@ -180,3 +184,4 @@ class PynchySpec:
                 - config: dict matching the WorkspaceConfig schema (schedule, prompt, etc.)
                 - claude_md: Optional CLAUDE.md content to seed on first run
         """
+        raise NotImplementedError

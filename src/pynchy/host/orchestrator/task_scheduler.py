@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from pynchy.host.container_manager import OnOutput
@@ -41,7 +41,7 @@ class SchedulerDependencies(Protocol):
         self,
         group: WorkspaceProfile,
         chat_jid: str,
-        messages: list[dict],
+        messages: list[dict[str, Any]],
         on_output: OnOutput | None = None,
         extra_system_notices: list[str] | None = None,
         *,
@@ -156,6 +156,7 @@ async def _poll_host_cron_jobs() -> None:
         next_run = _cron_job_next_runs.get(job_name)
         if next_run is None:
             next_run = compute_next_run("cron", job.schedule, timezone)
+            assert next_run is not None, "compute_next_run only returns None for 'once' schedules"
             _cron_job_next_runs[job_name] = next_run
 
         due_at = datetime.fromisoformat(next_run).astimezone(UTC)
@@ -163,7 +164,9 @@ async def _poll_host_cron_jobs() -> None:
             continue
 
         # Set next run before execution to avoid repeat-triggering in tight loops.
-        _cron_job_next_runs[job_name] = compute_next_run("cron", job.schedule, timezone)
+        following_run = compute_next_run("cron", job.schedule, timezone)
+        assert following_run is not None, "compute_next_run only returns None for 'once' schedules"
+        _cron_job_next_runs[job_name] = following_run
         await _run_host_cron_job(job_name)
 
 
