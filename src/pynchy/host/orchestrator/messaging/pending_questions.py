@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
@@ -45,7 +46,7 @@ def create_pending_question(
     chat_jid: str,
     channel_name: str,
     session_id: str,
-    questions: list[dict],
+    questions: list[dict[str, Any]],
     message_id: str | None = None,
 ) -> None:
     """Write a pending question file atomically (tmp+rename).
@@ -81,7 +82,7 @@ def create_pending_question(
     )
 
 
-def find_pending_question(request_id: str) -> dict | None:
+def find_pending_question(request_id: str) -> dict[str, Any] | None:
     """Find a pending question by exact request_id, searching across all groups."""
     s = get_settings()
     ipc_dir = s.data_dir / "ipc"
@@ -94,13 +95,13 @@ def find_pending_question(request_id: str) -> dict | None:
         filepath = group_dir / "pending_questions" / f"{request_id}.json"
         if filepath.exists():
             try:
-                return json.loads(filepath.read_text())
+                return cast("dict[str, Any]", json.loads(filepath.read_text()))
             except (json.JSONDecodeError, OSError):
                 continue
     return None
 
 
-def find_pending_for_jid(chat_jid: str) -> dict | None:
+def find_pending_for_jid(chat_jid: str) -> dict[str, Any] | None:
     """Find a pending question by chat_jid, searching across all groups.
 
     Returns the first match (there should only be one pending question
@@ -124,7 +125,7 @@ def find_pending_for_jid(chat_jid: str) -> dict | None:
             continue
         for filepath in pq_dir.glob("*.json"):
             try:
-                data = json.loads(filepath.read_text())
+                data = cast("dict[str, Any]", json.loads(filepath.read_text()))
                 if data.get("chat_jid") == chat_jid:
                     return data
             except (json.JSONDecodeError, OSError):
@@ -195,7 +196,7 @@ def update_message_id(request_id: str, source_group: str, message_id: str) -> No
 # -- Startup sweep -------------------------------------------------------------
 
 
-async def sweep_expired_questions() -> list[dict]:
+async def sweep_expired_questions() -> list[dict[str, Any]]:
     """Find and auto-expire stale pending questions (crash recovery).
 
     Called on startup alongside ``sweep_expired_approvals()``.  Writes an
@@ -214,7 +215,7 @@ async def sweep_expired_questions() -> list[dict]:
         return []
 
     now = datetime.now(UTC)
-    expired: list[dict] = []
+    expired: list[dict[str, Any]] = []
 
     groups = [f.name for f in ipc_dir.iterdir() if f.is_dir() and f.name != "errors"]
 

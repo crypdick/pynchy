@@ -102,7 +102,7 @@ class MessageHandlerDeps(Protocol):
         self,
         group: WorkspaceProfile,
         chat_jid: str,
-        messages: list[dict],
+        messages: list[dict[str, Any]],
         on_output: OnOutput | None = None,
         extra_system_notices: list[str] | None = None,
         *,
@@ -324,8 +324,17 @@ def _check_dirty_repo(group_name: str, dirty_check_file: Path) -> list[str]:
     return notices
 
 
+class CursorDeps(Protocol):
+    """Minimal dependencies for cursor persistence — the actual subset advance_cursor uses."""
+
+    @property
+    def last_agent_timestamp(self) -> dict[str, str]: ...
+
+    async def save_state(self) -> None: ...
+
+
 async def advance_cursor(
-    deps: MessageHandlerDeps,
+    deps: CursorDeps,
     chat_jid: str,
     new_cursor: str,
 ) -> None:

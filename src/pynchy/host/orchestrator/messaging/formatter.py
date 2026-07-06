@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from pynchy.types import NewMessage
@@ -13,7 +13,7 @@ _INTERNAL_TAG_RE = re.compile(r"<internal>([\s\S]*?)</internal>")
 _HOST_TAG_RE = re.compile(r"^\s*<host>([\s\S]*?)</host>\s*$")
 
 
-def _format_internal_match(m: re.Match) -> str:
+def _format_internal_match(m: re.Match[str]) -> str:
     """Format <internal>...</internal> as 🧠 _thought_ (italic)."""
     thought = m.group(1).strip()
     if not thought:
@@ -21,7 +21,7 @@ def _format_internal_match(m: re.Match) -> str:
     return f"\U0001f9e0 _{thought}_\n"
 
 
-def format_messages_for_sdk(messages: list[NewMessage]) -> list[dict]:
+def format_messages_for_sdk(messages: list[NewMessage]) -> list[dict[str, Any]]:
     """Format messages as SDK message list, filtering out non-conversation messages.
 
     Returns a list of dicts that can be passed to the container/SDK.
@@ -88,21 +88,21 @@ def _truncate_path(path: str, max_len: int = 150) -> str:
     return path
 
 
-def _preview_bash(tool_input: dict) -> str:
+def _preview_bash(tool_input: dict[str, Any]) -> str:
     cmd = tool_input.get("command", "")
     if cmd:
         return f"Bash:\n```\n{cmd}\n```"
     return "Bash"
 
 
-def _preview_read(tool_input: dict) -> str:
+def _preview_read(tool_input: dict[str, Any]) -> str:
     path = tool_input.get("file_path", "")
     if path:
         return f"Read: {_truncate_path(path)}"
     return "Read"
 
 
-def _preview_edit(tool_input: dict) -> str:
+def _preview_edit(tool_input: dict[str, Any]) -> str:
     path = tool_input.get("file_path", "")
     if not path:
         return "Edit"
@@ -119,7 +119,7 @@ def _preview_edit(tool_input: dict) -> str:
     return header + "\n```\n" + "\n".join(diff_lines) + "\n```"
 
 
-def _preview_write(tool_input: dict) -> str:
+def _preview_write(tool_input: dict[str, Any]) -> str:
     path = tool_input.get("file_path", "")
     if not path:
         return "Write"
@@ -130,7 +130,7 @@ def _preview_write(tool_input: dict) -> str:
     return header + "\n```\n" + _format_lines(content.splitlines(), prefix="+") + "\n```"
 
 
-def _preview_grep(tool_input: dict) -> str:
+def _preview_grep(tool_input: dict[str, Any]) -> str:
     pattern = tool_input.get("pattern", "")
     path = tool_input.get("path", "")
     parts = ["Grep"]
@@ -141,14 +141,14 @@ def _preview_grep(tool_input: dict) -> str:
     return " ".join(parts)
 
 
-def _preview_glob(tool_input: dict) -> str:
+def _preview_glob(tool_input: dict[str, Any]) -> str:
     pattern = tool_input.get("pattern", "")
     if pattern:
         return f"Glob: {pattern}"
     return "Glob"
 
 
-def _preview_truncated_field(tool_name: str, tool_input: dict, key: str) -> str:
+def _preview_truncated_field(tool_name: str, tool_input: dict[str, Any], key: str) -> str:
     """Shared by WebFetch/WebSearch: show a length-capped field value."""
     value = tool_input.get(key, "")
     if not value:
@@ -158,14 +158,14 @@ def _preview_truncated_field(tool_name: str, tool_input: dict, key: str) -> str:
     return f"{tool_name}: {value}"
 
 
-def _preview_task(tool_input: dict) -> str:
+def _preview_task(tool_input: dict[str, Any]) -> str:
     desc = tool_input.get("description", "")
     if desc:
         return f"Task: {desc}"
     return "Task"
 
 
-def _preview_ask_user_question(tool_input: dict) -> str:
+def _preview_ask_user_question(tool_input: dict[str, Any]) -> str:
     questions = tool_input.get("questions", [])
     if questions:
         parts = []
@@ -178,7 +178,7 @@ def _preview_ask_user_question(tool_input: dict) -> str:
     return "AskUserQuestion"
 
 
-def _preview_fallback(tool_name: str, tool_input: dict) -> str:
+def _preview_fallback(tool_name: str, tool_input: dict[str, Any]) -> str:
     """Show the first 150 chars of the raw input for tools with no dedicated formatter."""
     preview = str(tool_input)
     if len(preview) > 150:
@@ -186,7 +186,7 @@ def _preview_fallback(tool_name: str, tool_input: dict) -> str:
     return f"{tool_name}: {preview}" if tool_input else tool_name
 
 
-_TOOL_PREVIEW_FORMATTERS: dict[str, Callable[[dict], str]] = {
+_TOOL_PREVIEW_FORMATTERS: dict[str, Callable[[dict[str, Any]], str]] = {
     "Bash": _preview_bash,
     "Read": _preview_read,
     "Edit": _preview_edit,
@@ -200,7 +200,7 @@ _TOOL_PREVIEW_FORMATTERS: dict[str, Callable[[dict], str]] = {
 }
 
 
-def format_tool_preview(tool_name: str, tool_input: dict) -> str:
+def format_tool_preview(tool_name: str, tool_input: dict[str, Any]) -> str:
     """Format a one-line preview of a tool invocation for channel messages.
 
     Extracts the most relevant detail per tool type so messaging channel

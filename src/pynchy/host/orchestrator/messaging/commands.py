@@ -44,7 +44,7 @@ def _is_magic_command(
 
 def _word_sets(w: object) -> tuple[set[str], set[str], set[str]]:
     """Return (verbs, nouns, aliases) as frozen sets, avoiding repeated conversion."""
-    return set(w.verbs), set(w.nouns), set(w.aliases)  # type: ignore[attr-defined]
+    return set(w.verbs), set(w.nouns), set(w.aliases)
 
 
 def is_context_reset(text: str) -> bool:

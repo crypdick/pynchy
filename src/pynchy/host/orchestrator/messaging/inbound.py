@@ -255,7 +255,7 @@ async def start_message_loop(
                 logger.info("message_loop_trace", step="save_state_done")
 
                 # Group by chat JID and route each group independently
-                messages_by_group: dict[str, list] = {}
+                messages_by_group: dict[str, list[NewMessage]] = {}
                 for msg in messages:
                     messages_by_group.setdefault(msg.chat_jid, []).append(msg)
 

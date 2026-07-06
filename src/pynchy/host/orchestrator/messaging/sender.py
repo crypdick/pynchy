@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Protocol
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
-    from pynchy.types import Channel, OutboundEvent
+    from pynchy.types import Channel, OutboundEvent, WorkspaceProfile
 
 
 class BusDeps(Protocol):
@@ -28,7 +28,7 @@ class BusDeps(Protocol):
     def channels(self) -> list[Channel]: ...
 
     @property
-    def workspaces(self) -> dict: ...
+    def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
 
 # ---------------------------------------------------------------------------

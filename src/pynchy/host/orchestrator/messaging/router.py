@@ -140,7 +140,7 @@ async def broadcast_trace(
 async def broadcast_agent_input(
     deps: OutputDeps,
     chat_jid: str,
-    messages: list[dict],
+    messages: list[dict[str, Any]],
     *,
     source: str = "user",
 ) -> None:
