@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from itertools import count
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pynchy.config import get_settings
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
@@ -31,10 +31,8 @@ from pynchy.host.orchestrator.messaging.streaming import (
 )
 from pynchy.logger import logger
 from pynchy.state import store_message_direct
+from pynchy.types import ContainerOutput, OutboundEvent, WorkspaceProfile
 from pynchy.utils import generate_message_id
-
-if TYPE_CHECKING:
-    from pynchy.types import ContainerOutput, OutboundEvent, WorkspaceProfile
 
 # Re-export for consumers that import from this module (app.py uses these)
 __all__ = [

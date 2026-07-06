@@ -28,7 +28,14 @@ def service_tool(handler: ServiceHandler) -> ServiceHandler:
 
     op = handler.__name__.removeprefix("_handle_")
 
-    @functools.wraps(handler)
+    # Excludes __name__/__qualname__ from the copied attributes (unlike plain
+    # functools.wraps): beartype's claw decorates this nested `wrapper` closure
+    # using its true name and qualname (``wrapper`` / ``service_tool.<locals>.wrapper``)
+    # to resolve forward references via the enclosing frame, and cross-checks that
+    # the last segment of __qualname__ matches __name__. Overwriting either with
+    # the handler's identity (e.g. ``handle_x_post``) breaks that check and raises
+    # BeartypeDecorHintForwardRefException on every call.
+    @functools.wraps(handler, assigned=("__module__", "__annotations__", "__doc__"))
     async def wrapper(data: dict[str, Any]) -> dict[str, Any]:
         try:
             return await handler(data)

@@ -13,7 +13,7 @@ import signal
 import subprocess
 import time
 from collections.abc import Callable, Coroutine
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from aiohttp import web
 
@@ -51,6 +51,7 @@ def _write_boot_warning(message: str) -> None:
     path.write_text(json.dumps(warnings))
 
 
+@runtime_checkable
 class HttpDeps(Protocol):
     """Dependencies injected by app.py."""
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import time as _time
-from typing import TYPE_CHECKING
+from collections.abc import Callable
 
 from pynchy.config import get_settings
 from pynchy.host.orchestrator.messaging.commands import is_any_magic_command
@@ -23,12 +23,8 @@ from pynchy.host.orchestrator.messaging.pipeline import (
 )
 from pynchy.logger import logger
 from pynchy.state import get_messages_since, get_new_messages
+from pynchy.types import NewMessage, WorkspaceProfile
 from pynchy.utils import create_background_task
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from pynchy.types import NewMessage, WorkspaceProfile
 
 
 async def _route_incoming_group(

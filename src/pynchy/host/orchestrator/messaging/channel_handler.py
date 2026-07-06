@@ -7,7 +7,7 @@ for channel iteration, JID resolution, and error handling.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
 from pynchy.logger import logger
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from pynchy.types import Channel
 
 
+@runtime_checkable
 class ChannelDeps(Protocol):
     """Dependencies for channel communication."""
 

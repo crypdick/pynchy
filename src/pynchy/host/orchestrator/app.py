@@ -12,10 +12,9 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import pluggy
 
-    from pynchy.host.container_manager import OnOutput
-
 from pynchy.config import get_settings
 from pynchy.event_bus import EventBus
+from pynchy.host.container_manager import OnOutput
 from pynchy.host.orchestrator import session_handler
 from pynchy.host.orchestrator.adapters import HostMessageBroadcaster, MessageBroadcaster
 from pynchy.host.orchestrator.concurrency import GroupQueue

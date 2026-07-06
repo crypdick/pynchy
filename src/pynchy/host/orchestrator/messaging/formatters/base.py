@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from pynchy.types import OutboundEvent
+from pynchy.types import OutboundEvent
 
 
 @dataclass

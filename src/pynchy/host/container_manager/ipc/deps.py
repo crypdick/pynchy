@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from pynchy.types import Channel, OutboundEvent, WorkspaceProfile
 
 
+@runtime_checkable
 class IpcDeps(Protocol):
     """Dependencies for IPC processing."""
 

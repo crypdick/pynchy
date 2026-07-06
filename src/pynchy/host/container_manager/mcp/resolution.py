@@ -9,17 +9,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from pynchy.config import Settings
+from pynchy.config.mcp import McpServerConfig
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    import subprocess
-
-    from pynchy.config import Settings
-    from pynchy.config.mcp import McpServerConfig
-    from pynchy.types import ServiceTrustConfig
+from pynchy.types import ServiceTrustConfig
 
 _MCP_CONTAINER_PREFIX = "pynchy-mcp"
 

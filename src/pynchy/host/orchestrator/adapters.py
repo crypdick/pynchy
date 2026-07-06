@@ -8,15 +8,12 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Coroutine
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from pynchy.event_bus import EventBus
 from pynchy.state import clear_session, get_active_task_for_group, get_chat_history
-from pynchy.types import OutboundEventType
+from pynchy.types import Channel, NewMessage, OutboundEvent, OutboundEventType, WorkspaceProfile
 from pynchy.utils import create_background_task, generate_message_id
-
-if TYPE_CHECKING:
-    from pynchy.event_bus import EventBus
-    from pynchy.types import Channel, NewMessage, OutboundEvent, WorkspaceProfile
 
 # Type aliases for callback signatures used across adapters
 StoreMessageFn = Callable[..., Awaitable[None]]

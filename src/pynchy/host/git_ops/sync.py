@@ -12,7 +12,7 @@ from __future__ import annotations
 import dataclasses
 import subprocess
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from pynchy.config import get_settings
 from pynchy.host.git_ops.repo import RepoContext
@@ -31,6 +31,7 @@ GIT_POLICY_MERGE = "merge-to-main"
 GIT_POLICY_PR = "pull-request"
 
 
+@runtime_checkable
 class GitSyncDeps(Protocol):
     """Dependencies for the git sync loop."""
 

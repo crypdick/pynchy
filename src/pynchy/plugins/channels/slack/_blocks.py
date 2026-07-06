@@ -17,16 +17,14 @@ The ``text`` field on RenderedMessage is always populated with plain text
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 from pynchy.host.orchestrator.messaging.formatter import (
     format_internal_tags,
     format_tool_preview,
 )
 from pynchy.host.orchestrator.messaging.formatters.base import BaseFormatter, RenderedMessage
-
-if TYPE_CHECKING:
-    from pynchy.types import OutboundEvent
+from pynchy.types import OutboundEvent
 
 # Slack limits messages to 50 blocks.
 _MAX_BLOCKS_PER_MESSAGE = 50

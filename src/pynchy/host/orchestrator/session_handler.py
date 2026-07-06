@@ -6,7 +6,7 @@ Extracted from app.py to keep the orchestrator focused on wiring.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pynchy.event_bus import ChatClearedEvent, MessageEvent
 from pynchy.host.container_manager.session import destroy_session
@@ -15,13 +15,14 @@ from pynchy.host.orchestrator.messaging.pipeline import advance_cursor
 from pynchy.host.orchestrator.messaging.sender import broadcast
 from pynchy.logger import logger
 from pynchy.state import clear_session, set_chat_cleared_at, store_message
+from pynchy.types import Channel, NewMessage, WorkspaceProfile
 from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
     from pynchy.host.orchestrator.concurrency import GroupQueue
-    from pynchy.types import Channel, NewMessage, WorkspaceProfile
 
 
+@runtime_checkable
 class SessionDeps(Protocol):
     """Dependencies for session lifecycle operations."""
 

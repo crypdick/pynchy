@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager import (
@@ -35,13 +35,12 @@ from pynchy.host.git_ops.repo import get_repo_context
 from pynchy.host.git_ops.utils import count_unpushed_commits, is_repo_dirty
 from pynchy.logger import logger
 from pynchy.state import clear_session, get_all_host_jobs, get_all_tasks, set_session
-from pynchy.types import ContainerInput, ContainerOutput
+from pynchy.types import ContainerInput, ContainerOutput, WorkspaceProfile
 
 if TYPE_CHECKING:
     import pluggy
 
     from pynchy.host.orchestrator.concurrency import GroupQueue
-    from pynchy.types import WorkspaceProfile
 
 
 @dataclass
@@ -60,6 +59,7 @@ class _PreContainerResult:
     snapshot_ms: float
 
 
+@runtime_checkable
 class AgentRunnerDeps(Protocol):
     """Dependencies for agent execution."""
 

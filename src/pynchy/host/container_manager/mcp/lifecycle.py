@@ -13,8 +13,8 @@ import os
 import signal
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+from pynchy.config.mcp import McpServerConfig
 from pynchy.host.container_manager.docker import (
     ensure_image,
     ensure_network,
@@ -24,11 +24,8 @@ from pynchy.host.container_manager.docker import (
     stop_container,
     wait_healthy,
 )
+from pynchy.host.container_manager.mcp.resolution import McpInstance
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    from pynchy.config.mcp import McpServerConfig
-    from pynchy.host.container_manager.mcp.resolution import McpInstance
 
 _NETWORK_NAME = "pynchy-litellm-net"
 

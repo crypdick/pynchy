@@ -15,16 +15,12 @@ self-contained.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from pynchy.host.orchestrator.messaging.formatter import (
     format_internal_tags,
     format_tool_preview,
 )
 from pynchy.host.orchestrator.messaging.formatters.base import BaseFormatter, RenderedMessage
-
-if TYPE_CHECKING:
-    from pynchy.types import OutboundEvent
+from pynchy.types import OutboundEvent
 
 # Channel broadcast truncation threshold for tool results.
 # Mirrors ``_MAX_TOOL_OUTPUT`` in router.py — full content is always persisted

@@ -10,21 +10,19 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
 from pynchy.logger import logger
+from pynchy.types import Channel, OutboundEvent, WorkspaceProfile
 from pynchy.utils import create_background_task
-
-if TYPE_CHECKING:
-    from pynchy.types import Channel, OutboundEvent, WorkspaceProfile
-
 
 # ---------------------------------------------------------------------------
 # OutputDeps protocol — dependency interface for output handling
 # ---------------------------------------------------------------------------
 
 
+@runtime_checkable
 class OutputDeps(Protocol):
     """Dependencies for output handling."""
 

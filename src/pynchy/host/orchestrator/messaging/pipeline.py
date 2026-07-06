@@ -13,11 +13,14 @@ import json
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from pynchy.config import get_settings
+from pynchy.config.settings import Settings
 from pynchy.event_bus import AgentActivityEvent, MessageEvent
+from pynchy.host.container_manager import OnOutput
 from pynchy.host.git_ops.utils import is_repo_dirty
+from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.messaging.approval_handler import (
     handle_approval_command,
     handle_pending_query,
@@ -32,15 +35,11 @@ from pynchy.host.orchestrator.messaging.commands import (
 from pynchy.host.orchestrator.messaging.router import pop_last_result_ids
 from pynchy.logger import logger
 from pynchy.state import get_messages_since, store_message_direct
+from pynchy.types import Channel, ContainerOutput, NewMessage, OutboundEvent, WorkspaceProfile
 from pynchy.utils import generate_message_id, run_shell_command
 
-if TYPE_CHECKING:
-    from pynchy.config.settings import Settings
-    from pynchy.host.container_manager import OnOutput
-    from pynchy.host.orchestrator.concurrency import GroupQueue
-    from pynchy.types import Channel, ContainerOutput, NewMessage, OutboundEvent, WorkspaceProfile
 
-
+@runtime_checkable
 class MessageHandlerDeps(Protocol):
     """Dependencies for message processing."""
 
@@ -324,6 +323,7 @@ def _check_dirty_repo(group_name: str, dirty_check_file: Path) -> list[str]:
     return notices
 
 
+@runtime_checkable
 class CursorDeps(Protocol):
     """Minimal dependencies for cursor persistence — the actual subset advance_cursor uses."""
 

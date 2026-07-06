@@ -7,7 +7,7 @@ import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pynchy.config import get_settings
 from pynchy.host.git_ops.utils import get_head_commit_message, get_head_sha, is_repo_dirty, run_git
@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from pynchy.host.orchestrator.concurrency import GroupQueue
 
 
+@runtime_checkable
 class StartupDeps(Protocol):
     @property
     def workspaces(self) -> dict[str, WorkspaceProfile]: ...

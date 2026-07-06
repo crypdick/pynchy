@@ -9,12 +9,12 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from typing import cast
+from typing import Any
 
 import structlog
 
 
-def _setup_logging() -> structlog.stdlib.BoundLogger:
+def _setup_logging() -> Any:
     level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
 
@@ -37,7 +37,7 @@ def _setup_logging() -> structlog.stdlib.BoundLogger:
         cache_logger_on_first_use=True,
     )
 
-    return cast(structlog.stdlib.BoundLogger, structlog.get_logger())
+    return structlog.get_logger()
 
 
 logger = _setup_logging()

@@ -28,6 +28,14 @@ from pynchy.plugins.integrations.x_integration._display import ensure_xvfb, star
 
 if TYPE_CHECKING:
     from playwright.async_api import Page
+else:
+    # See _browser.py for why this falls back to Any instead of staying
+    # TYPE_CHECKING-only: beartype needs a real runtime binding to resolve
+    # the ``page: Page`` forward ref in the nested ``action`` closures below.
+    try:
+        from playwright.async_api import Page
+    except ImportError:
+        Page = Any
 
 
 async def handle_setup_x_session(data: dict[str, Any]) -> dict[str, Any]:

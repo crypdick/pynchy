@@ -7,7 +7,7 @@ writing decision files that the IPC watcher picks up.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from pynchy.host.container_manager.security.approval import (
     _approval_decisions_dir,
@@ -18,6 +18,7 @@ from pynchy.logger import logger
 from pynchy.utils import write_json_atomic
 
 
+@runtime_checkable
 class ApprovalDeps(Protocol):
     """Minimal deps needed by approval handlers."""
 

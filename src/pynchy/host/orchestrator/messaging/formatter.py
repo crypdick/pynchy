@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from pynchy.types import NewMessage
+from pynchy.types import NewMessage
 
 _INTERNAL_TAG_RE = re.compile(r"<internal>([\s\S]*?)</internal>")
 _HOST_TAG_RE = re.compile(r"^\s*<host>([\s\S]*?)</host>\s*$")

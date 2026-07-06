@@ -18,7 +18,7 @@ See docs/plans/2026-02-22-ask-user-blocking-design.md
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.container_manager.session import get_session
@@ -29,6 +29,7 @@ from pynchy.host.orchestrator.messaging.pending_questions import (
 from pynchy.logger import logger
 
 
+@runtime_checkable
 class AskUserDeps(Protocol):
     """Dependencies for ask_user answer delivery.
 

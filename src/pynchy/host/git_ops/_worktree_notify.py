@@ -10,7 +10,7 @@ ipc/_handlers_lifecycle.py (after a sync_worktree_to_main merge).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.git_ops.utils import count_commits, detect_main_branch, get_head_sha, run_git
@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from pynchy.types import WorkspaceProfile
 
 
+@runtime_checkable
 class WorktreeNotifyDeps(Protocol):
     """Narrow dependency protocol for worktree rebase notifications.
 

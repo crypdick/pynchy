@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from pynchy.host.container_manager import OnOutput
@@ -27,6 +27,7 @@ from pynchy.types import ContainerOutput, OutboundEvent, ScheduledTask, TaskRunL
 from pynchy.utils import IdleTimer, compute_next_run, log_shell_result, run_shell_command
 
 
+@runtime_checkable
 class SchedulerDependencies(Protocol):
     """Dependencies for the task scheduler."""
 

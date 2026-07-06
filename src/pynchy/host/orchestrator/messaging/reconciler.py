@@ -8,7 +8,7 @@ the canonical JID are skipped.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from pynchy.logger import logger
 from pynchy.state import (
@@ -20,9 +20,7 @@ from pynchy.state import (
     message_exists,
     prune_stale_cursors,
 )
-
-if TYPE_CHECKING:
-    from pynchy.types import Channel, NewMessage, WorkspaceProfile
+from pynchy.types import Channel, NewMessage, WorkspaceProfile
 
 RECONCILE_COOLDOWN = timedelta(seconds=30)
 _INITIAL_LOOKBACK = timedelta(hours=24)
@@ -32,6 +30,7 @@ _EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
 _last_reconciled: dict[tuple[str, str], datetime] = {}
 
 
+@runtime_checkable
 class ReconcilerDeps(Protocol):
     """Minimal dependencies for the reconciler."""
 

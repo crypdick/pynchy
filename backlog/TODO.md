@@ -17,6 +17,7 @@ Single source of truth for all pynchy work items.
 *ideas awaiting human review - to be discussed.*
 
 - convert setup into pyinfra deployments for repeatable deployments.
+- [Clean up beartype violation warnings](0-proposed/beartype-violation-warnings-cleanup.md) — ~1500 UserWarnings surfaced by beartype re-enablement (test doubles not satisfying Protocols, a few int/float mismatches); no test failures, just signal to ratchet on later.
 - **Deputy agent for worktree contributions** — Ephemeral agent that inspects commits from worktrees before they enter main. Reviews for malicious code, security issues, and project conventions. Spawned by `host_sync_worktree()` before the merge step.
 - **Automated repo token refresh via GitHub App** — Replace manually-created fine-grained PATs with a GitHub App that auto-generates short-lived, repo-scoped installation tokens. Eliminates manual rotation. Builds on repo-scoped tokens (Phase 1 complete).
 - [Reintroduce Teams with session isolation](0-proposed/reintroduce-teams-session-isolation.md) — Teams tools (`TeamCreate`/`SendMessage`) are unlisted to prevent transcript branching; re-enabling needs per-teammate session isolation first.

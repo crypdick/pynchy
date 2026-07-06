@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
-from pynchy.host.orchestrator.messaging.formatters.base import BaseFormatter
+if TYPE_CHECKING:
+    from pynchy.host.orchestrator.messaging.formatters.base import BaseFormatter
 
 
 @dataclass

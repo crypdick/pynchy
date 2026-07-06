@@ -18,13 +18,14 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import TYPE_CHECKING
 
-from pynchy.config import get_settings
+from pynchy.config import Settings, get_settings
+from pynchy.config.mcp import McpServerConfig
 from pynchy.host.container_manager.docker import (
     is_container_running,
     stop_container,
 )
+from pynchy.host.container_manager.gateway import LiteLLMGateway
 from pynchy.host.container_manager.mcp.lifecycle import (
     ensure_docker_running,
     ensure_script_running,
@@ -46,14 +47,8 @@ from pynchy.host.container_manager.mcp.resolution import (
     resolve_all_instances,
 )
 from pynchy.logger import logger
+from pynchy.types import ServiceTrustConfig
 from pynchy.utils import create_background_task
-
-if TYPE_CHECKING:
-    from pynchy.config import Settings
-    from pynchy.config.mcp import McpServerConfig
-    from pynchy.host.container_manager.gateway import LiteLLMGateway
-    from pynchy.types import ServiceTrustConfig
-
 
 # ---------------------------------------------------------------------------
 # Data structures

@@ -12,6 +12,16 @@ from pynchy.plugins.integrations.x_integration._display import ensure_xvfb
 
 if TYPE_CHECKING:
     from playwright.async_api import Page
+else:
+    # playwright is an optional dependency (the "browser" extra) — this module
+    # must stay importable without it.  Fall back to Any so beartype's runtime
+    # forward-ref resolution degrades to a no-op instead of crashing every call
+    # when playwright is absent; when it IS installed, Page resolves to the
+    # real class and calls get genuine runtime validation.
+    try:
+        from playwright.async_api import Page
+    except ImportError:
+        Page = Any
 
 # X UI selectors (data-testid based).  These match X's React component
 # test IDs and are the same ones the archived TS implementation used.

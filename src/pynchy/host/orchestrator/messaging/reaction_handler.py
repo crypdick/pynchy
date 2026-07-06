@@ -6,7 +6,7 @@ without sending a follow-up text message.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pynchy.logger import logger
 
@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from pynchy.types import OutboundEvent
 
 
+@runtime_checkable
 class ReactionDeps(Protocol):
     """Dependencies for reaction processing."""
 

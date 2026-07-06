@@ -168,11 +168,8 @@ ignore_missing_imports = true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # coverage — ratchet floor set at the measured baseline (68.93%, via
-# `uv run pytest --cov=pynchy`). The xdist collection issue that previously
-# blocked measurement was actually beartype's whole-package instrumentation
-# crashing on TYPE_CHECKING-only forward refs (see src/pynchy/__init__.py);
-# with that disabled the suite collects and measures cleanly. Ratchet this
-# number up as coverage improves — never down.
+# `uv run pytest --cov=pynchy`). Ratchet this number up as coverage improves —
+# never down.
 # ─────────────────────────────────────────────────────────────────────────────
 [tool.coverage.run]
 source = ["pynchy"]

@@ -7,8 +7,6 @@ reconciliation) to keep each module focused on a single concern.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.git_ops.utils import (
     count_commits,
@@ -19,9 +17,7 @@ from pynchy.host.git_ops.utils import (
 )
 from pynchy.host.git_ops.worktree import _safe_rebase
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    from pynchy.types import WorkspaceProfile
+from pynchy.types import WorkspaceProfile
 
 
 def merge_worktree(group_folder: str, repo_ctx: RepoContext) -> bool:

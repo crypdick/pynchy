@@ -12,7 +12,7 @@ import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.docker import run_docker
@@ -50,6 +50,7 @@ def record_start_time() -> None:
 # ---------------------------------------------------------------------------
 
 
+@runtime_checkable
 class StatusDeps(Protocol):
     """Dependencies injected from app state for status collection."""
 

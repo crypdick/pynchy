@@ -27,7 +27,7 @@ Implementation lives in:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pynchy.config import get_settings
 
@@ -58,6 +58,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 
+@runtime_checkable
 class GatewayProto(Protocol):
     port: int
     key: str

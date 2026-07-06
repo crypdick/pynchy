@@ -16,8 +16,9 @@ semantics).  Layers 4-5 apply connection and chat security overrides on top.
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from pynchy.config.merge import ResolvedSandboxConfig, merge_sandbox_config
 from pynchy.config.models import OwnerConfig, WorkspaceConfig
 from pynchy.config.refs import (
     channel_platform_from_name,
@@ -25,10 +26,7 @@ from pynchy.config.refs import (
     parse_chat_ref,
 )
 from pynchy.config.settings import get_settings
-
-if TYPE_CHECKING:
-    from pynchy.config.merge import ResolvedSandboxConfig
-    from pynchy.types import NewMessage
+from pynchy.types import NewMessage
 
 # The fields that participate in the connection/chat override cascade
 # (layers 4-5).  The sandbox merge (layers 1-3) handles these fields
@@ -79,8 +77,6 @@ def resolve_channel_config(
     and chat-level overrides (layers 1-2) are then applied on top of the
     resulting :class:`ResolvedSandboxConfig`.
     """
-    from pynchy.config.merge import merge_sandbox_config
-
     s = get_settings()
     ws = s.workspaces.get(workspace_name)
 

@@ -14,8 +14,10 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from pynchy.config import get_settings, reset_settings
+from pynchy.config.merge import ResolvedSandboxConfig
 from pynchy.config.models import WorkspaceConfig
 from pynchy.config.refs import connection_ref_from_parts, parse_chat_ref
+from pynchy.config.settings import Settings
 from pynchy.logger import logger
 from pynchy.state import (
     create_task,
@@ -24,14 +26,11 @@ from pynchy.state import (
     set_workspace_profile,
     update_task,
 )
+from pynchy.types import Channel, WorkspaceProfile
 from pynchy.utils import compute_next_run
 
 if TYPE_CHECKING:
     import pluggy
-
-    from pynchy.config.merge import ResolvedSandboxConfig
-    from pynchy.config.settings import Settings
-    from pynchy.types import Channel, WorkspaceProfile
 
 
 @dataclass(frozen=True)

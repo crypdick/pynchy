@@ -13,14 +13,13 @@ proceeds fire-and-forget — the same behaviour as before the ledger existed.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol, runtime_checkable
 
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    from pynchy.types import Channel, OutboundEvent, WorkspaceProfile
+from pynchy.types import Channel, OutboundEvent, WorkspaceProfile
 
 
+@runtime_checkable
 class BusDeps(Protocol):
     """Minimal dependencies for the message bus."""
 
