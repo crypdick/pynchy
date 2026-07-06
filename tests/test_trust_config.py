@@ -4,8 +4,29 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from pynchy.host.container_manager.mcp.resolution import build_trust_map
+import pluggy
+
+from pynchy.config.mcp import McpServerConfig
+from pynchy.host.container_manager.mcp.resolution import McpInstance, build_trust_map
 from pynchy.types import ServiceTrustConfig
+
+
+class _FakePM(pluggy.PluginManager):
+    """Real-class stand-in so isinstance(pm, pluggy.PluginManager) succeeds."""
+
+    def __init__(self, hook: MagicMock) -> None:
+        self.hook = hook
+
+
+def _make_instance(server_name: str) -> McpInstance:
+    """Minimal real McpInstance — build_trust_map only reads .server_name."""
+    return McpInstance(
+        server_name=server_name,
+        server_config=McpServerConfig(type="script", command="noop", port=0),
+        kwargs={},
+        instance_id=server_name,
+        container_name=server_name,
+    )
 
 
 class TestPluginTrustExtraction:
@@ -13,8 +34,8 @@ class TestPluginTrustExtraction:
         """Plugin specs with 'trust' should have it extracted before McpServerConfig validation."""
         from pynchy.host.container_manager.gateway import collect_plugin_mcp_servers
 
-        fake_pm = MagicMock()
-        fake_pm.hook.pynchy_mcp_server_spec.return_value = [
+        hook = MagicMock()
+        hook.pynchy_mcp_server_spec.return_value = [
             {
                 "name": "browser",
                 "command": "npx",
@@ -29,6 +50,7 @@ class TestPluginTrustExtraction:
                 },
             }
         ]
+        fake_pm = _FakePM(hook)
 
         servers, trust_defaults = collect_plugin_mcp_servers(fake_pm)
         assert "browser" in servers
@@ -40,8 +62,8 @@ class TestPluginTrustExtraction:
         """Specs without a trust key should not appear in trust_defaults."""
         from pynchy.host.container_manager.gateway import collect_plugin_mcp_servers
 
-        fake_pm = MagicMock()
-        fake_pm.hook.pynchy_mcp_server_spec.return_value = [
+        hook = MagicMock()
+        hook.pynchy_mcp_server_spec.return_value = [
             {
                 "name": "notebook",
                 "command": "uv",
@@ -50,6 +72,7 @@ class TestPluginTrustExtraction:
                 "transport": "streamable_http",
             }
         ]
+        fake_pm = _FakePM(hook)
 
         servers, trust_defaults = collect_plugin_mcp_servers(fake_pm)
         assert "notebook" in servers
@@ -59,8 +82,8 @@ class TestPluginTrustExtraction:
         """The trust key must be popped before McpServerConfig.model_validate (extra=forbid)."""
         from pynchy.host.container_manager.gateway import collect_plugin_mcp_servers
 
-        fake_pm = MagicMock()
-        fake_pm.hook.pynchy_mcp_server_spec.return_value = [
+        hook = MagicMock()
+        hook.pynchy_mcp_server_spec.return_value = [
             {
                 "name": "risky",
                 "command": "node",
@@ -70,6 +93,7 @@ class TestPluginTrustExtraction:
                 "trust": {"public_source": True},
             }
         ]
+        fake_pm = _FakePM(hook)
 
         # Should not raise ValidationError from extra="forbid"
         servers, _trust_defaults = collect_plugin_mcp_servers(fake_pm)
@@ -79,8 +103,8 @@ class TestPluginTrustExtraction:
         """Multiple specs: some with trust, some without."""
         from pynchy.host.container_manager.gateway import collect_plugin_mcp_servers
 
-        fake_pm = MagicMock()
-        fake_pm.hook.pynchy_mcp_server_spec.return_value = [
+        hook = MagicMock()
+        hook.pynchy_mcp_server_spec.return_value = [
             {
                 "name": "a",
                 "command": "cmd_a",
@@ -97,6 +121,7 @@ class TestPluginTrustExtraction:
                 "transport": "sse",
             },
         ]
+        fake_pm = _FakePM(hook)
 
         servers, trust_defaults = collect_plugin_mcp_servers(fake_pm)
         assert "a" in servers and "b" in servers
@@ -109,7 +134,7 @@ class TestBuildTrustMapWithPluginDefaults:
     def test_uses_plugin_trust_defaults(self):
         """build_trust_map should use plugin trust defaults for matching servers."""
         instances = {
-            "browser_abc": MagicMock(server_name="browser"),
+            "browser_abc": _make_instance("browser"),
         }
         plugin_trust_defaults = {
             "browser": ServiceTrustConfig(public_source=True, secret_data=False),
@@ -122,7 +147,7 @@ class TestBuildTrustMapWithPluginDefaults:
     def test_falls_back_to_safe_default(self):
         """Instances without plugin trust should get safe defaults."""
         instances = {
-            "unknown_xyz": MagicMock(server_name="unknown"),
+            "unknown_xyz": _make_instance("unknown"),
         }
 
         trust_map = build_trust_map(instances, {})
@@ -131,7 +156,7 @@ class TestBuildTrustMapWithPluginDefaults:
     def test_trust_map_includes_all_fields(self):
         """When plugin trust is present, all four trust fields should be in the map."""
         instances = {
-            "email_srv": MagicMock(server_name="email"),
+            "email_srv": _make_instance("email"),
         }
         plugin_trust_defaults = {
             "email": ServiceTrustConfig(
@@ -152,8 +177,8 @@ class TestBuildTrustMapWithPluginDefaults:
     def test_multiple_instances_same_server(self):
         """Multiple instances of the same server should all get the same plugin trust."""
         instances = {
-            "browser_ws1": MagicMock(server_name="browser"),
-            "browser_ws2": MagicMock(server_name="browser"),
+            "browser_ws1": _make_instance("browser"),
+            "browser_ws2": _make_instance("browser"),
         }
         plugin_trust_defaults = {
             "browser": ServiceTrustConfig(public_source=True, secret_data=False),

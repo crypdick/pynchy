@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
+import pluggy
+
 import pynchy.plugins.tunnels as _tunnels_impl
 import pynchy.plugins.tunnels.tailscale as _tailscale_impl
 from pynchy.plugins.tunnels import TunnelProvider, check_tunnels
@@ -158,14 +160,21 @@ class TestTailscaleTunnel:
 # ---------------------------------------------------------------------------
 
 
+class _FakePM(pluggy.PluginManager):
+    """Real-class stand-in so isinstance(pm, pluggy.PluginManager) succeeds."""
+
+    def __init__(self, hook: MagicMock) -> None:
+        self.hook = hook
+
+
 class TestCheckTunnels:
     """Test the check_tunnels() consumer function."""
 
     @staticmethod
-    def _make_pm(tunnel_returns: list) -> MagicMock:
-        pm = MagicMock()
-        pm.hook.pynchy_tunnel.return_value = tunnel_returns
-        return pm
+    def _make_pm(tunnel_returns: list) -> _FakePM:
+        hook = MagicMock()
+        hook.pynchy_tunnel.return_value = tunnel_returns
+        return _FakePM(hook)
 
     @staticmethod
     def _make_tunnel(
@@ -220,8 +229,9 @@ class TestCheckTunnels:
         valid.is_connected.assert_called_once()
 
     def test_hook_exception_handled(self):
-        pm = MagicMock()
-        pm.hook.pynchy_tunnel.side_effect = RuntimeError("plugin crash")
+        hook = MagicMock()
+        hook.pynchy_tunnel.side_effect = RuntimeError("plugin crash")
+        pm = _FakePM(hook)
         check_tunnels(pm)  # Should not raise
 
 

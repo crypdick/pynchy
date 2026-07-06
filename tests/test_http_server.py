@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import contextlib
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
@@ -21,6 +22,13 @@ from pynchy.host.git_ops.utils import (
 from pynchy.host.orchestrator import http_server
 from pynchy.host.orchestrator.http_server import deps_key
 from pynchy.types import NewMessage
+
+
+def _cp(
+    returncode: int = 0, stdout: str = "", stderr: str = ""
+) -> subprocess.CompletedProcess[str]:
+    """Fake a run_git() return value with a real CompletedProcess."""
+    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
 @contextlib.contextmanager
@@ -38,7 +46,7 @@ def _patch_settings(*, data_dir: Path):
 def test_get_head_sha_success():
     """get_head_sha returns SHA when git succeeds."""
     with patch("pynchy.host.git_ops.utils.run_git") as mock_run:
-        mock_run.return_value = Mock(
+        mock_run.return_value = _cp(
             returncode=0,
             stdout="head-sha-001\n",
         )
@@ -48,21 +56,21 @@ def test_get_head_sha_success():
 def test_get_head_sha_failure():
     """get_head_sha returns 'unknown' when git fails."""
     with patch("pynchy.host.git_ops.utils.run_git") as mock_run:
-        mock_run.return_value = Mock(returncode=1, stdout="")
+        mock_run.return_value = _cp(returncode=1, stdout="")
         assert get_head_sha() == "unknown"
 
 
 def test_is_repo_dirty_clean():
     """is_repo_dirty returns False when no uncommitted changes."""
     with patch("pynchy.host.git_ops.utils.run_git") as mock_run:
-        mock_run.return_value = Mock(returncode=0, stdout="")
+        mock_run.return_value = _cp(returncode=0, stdout="")
         assert is_repo_dirty() is False
 
 
 def test_is_repo_dirty_has_changes():
     """is_repo_dirty returns True when uncommitted changes exist."""
     with patch("pynchy.host.git_ops.utils.run_git") as mock_run:
-        mock_run.return_value = Mock(
+        mock_run.return_value = _cp(
             returncode=0,
             stdout=" M src/pynchy/app.py\n?? newfile.txt\n",
         )
@@ -72,14 +80,14 @@ def test_is_repo_dirty_has_changes():
 def test_is_repo_dirty_failure():
     """is_repo_dirty returns False when git fails."""
     with patch("pynchy.host.git_ops.utils.run_git") as mock_run:
-        mock_run.return_value = Mock(returncode=1, stdout="")
+        mock_run.return_value = _cp(returncode=1, stdout="")
         assert is_repo_dirty() is False
 
 
 def test_get_head_commit_message_success():
     """get_head_commit_message returns commit subject."""
     with patch("subprocess.run") as mock_run:
-        mock_run.return_value = Mock(
+        mock_run.return_value = _cp(
             returncode=0,
             stdout="Add feature X\n",
         )
@@ -90,7 +98,7 @@ def test_get_head_commit_message_truncation():
     """get_head_commit_message truncates long subjects."""
     long_msg = "A" * 80
     with patch("subprocess.run") as mock_run:
-        mock_run.return_value = Mock(returncode=0, stdout=f"{long_msg}\n")
+        mock_run.return_value = _cp(returncode=0, stdout=f"{long_msg}\n")
         result = get_head_commit_message(max_length=72)
         assert len(result) == 72
         assert result.endswith("…")
@@ -99,7 +107,7 @@ def test_get_head_commit_message_truncation():
 def test_get_head_commit_message_failure():
     """get_head_commit_message returns empty string on failure."""
     with patch("subprocess.run") as mock_run:
-        mock_run.return_value = Mock(returncode=1, stdout="")
+        mock_run.return_value = _cp(returncode=1, stdout="")
         assert get_head_commit_message() == ""
 
 
@@ -118,9 +126,9 @@ def testpush_local_commits_nothing_to_push():
     """push_local_commits returns True when no local commits exist."""
     with patch("subprocess.run") as mock_run:
         mock_run.side_effect = [
-            Mock(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
-            Mock(returncode=0),  # fetch
-            Mock(returncode=0, stdout="0\n"),  # rev-list
+            _cp(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
+            _cp(returncode=0),  # fetch
+            _cp(returncode=0, stdout="0\n"),  # rev-list
         ]
         assert push_local_commits() is True
 
@@ -129,11 +137,11 @@ def testpush_local_commits_success():
     """push_local_commits returns True when push succeeds."""
     with patch("subprocess.run") as mock_run:
         mock_run.side_effect = [
-            Mock(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
-            Mock(returncode=0),  # fetch
-            Mock(returncode=0, stdout="3\n"),  # rev-list (3 commits)
-            Mock(returncode=0),  # rebase
-            Mock(returncode=0),  # push
+            _cp(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
+            _cp(returncode=0),  # fetch
+            _cp(returncode=0, stdout="3\n"),  # rev-list (3 commits)
+            _cp(returncode=0),  # rebase
+            _cp(returncode=0),  # push
         ]
         assert push_local_commits() is True
 
@@ -141,7 +149,7 @@ def testpush_local_commits_success():
 def testpush_local_commits_fetch_failure():
     """push_local_commits returns False when fetch fails."""
     with patch("subprocess.run") as mock_run:
-        mock_run.return_value = Mock(returncode=1, stderr="network error", stdout="")
+        mock_run.return_value = _cp(returncode=1, stderr="network error", stdout="")
         assert push_local_commits() is False
 
 
@@ -149,14 +157,14 @@ def testpush_local_commits_rebase_failure_retries_and_fails():
     """push_local_commits retries once after rebase failure, then gives up."""
     with patch("subprocess.run") as mock_run:
         mock_run.side_effect = [
-            Mock(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
-            Mock(returncode=0),  # fetch
-            Mock(returncode=0, stdout="2\n"),  # rev-list
-            Mock(returncode=1, stderr="CONFLICT"),  # rebase fails (attempt 1)
-            Mock(returncode=0),  # rebase --abort
-            Mock(returncode=0),  # retry fetch
-            Mock(returncode=1, stderr="CONFLICT"),  # rebase fails (attempt 2)
-            Mock(returncode=0),  # rebase --abort
+            _cp(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
+            _cp(returncode=0),  # fetch
+            _cp(returncode=0, stdout="2\n"),  # rev-list
+            _cp(returncode=1, stderr="CONFLICT"),  # rebase fails (attempt 1)
+            _cp(returncode=0),  # rebase --abort
+            _cp(returncode=0),  # retry fetch
+            _cp(returncode=1, stderr="CONFLICT"),  # rebase fails (attempt 2)
+            _cp(returncode=0),  # rebase --abort
         ]
         assert push_local_commits() is False
 
@@ -165,14 +173,14 @@ def testpush_local_commits_rebase_retry_succeeds():
     """push_local_commits succeeds on retry when origin advanced mid-push."""
     with patch("subprocess.run") as mock_run:
         mock_run.side_effect = [
-            Mock(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
-            Mock(returncode=0),  # fetch
-            Mock(returncode=0, stdout="2\n"),  # rev-list
-            Mock(returncode=1, stderr="CONFLICT"),  # rebase fails (attempt 1)
-            Mock(returncode=0),  # rebase --abort
-            Mock(returncode=0),  # retry fetch
-            Mock(returncode=0),  # rebase succeeds (attempt 2)
-            Mock(returncode=0),  # push
+            _cp(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
+            _cp(returncode=0),  # fetch
+            _cp(returncode=0, stdout="2\n"),  # rev-list
+            _cp(returncode=1, stderr="CONFLICT"),  # rebase fails (attempt 1)
+            _cp(returncode=0),  # rebase --abort
+            _cp(returncode=0),  # retry fetch
+            _cp(returncode=0),  # rebase succeeds (attempt 2)
+            _cp(returncode=0),  # push
         ]
         assert push_local_commits() is True
 
@@ -181,11 +189,11 @@ def testpush_local_commits_push_failure():
     """push_local_commits returns False when push is rejected."""
     with patch("subprocess.run") as mock_run:
         mock_run.side_effect = [
-            Mock(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
-            Mock(returncode=0),  # fetch
-            Mock(returncode=0, stdout="1\n"),  # rev-list
-            Mock(returncode=0),  # rebase
-            Mock(returncode=1, stderr="rejected"),  # push fails
+            _cp(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
+            _cp(returncode=0),  # fetch
+            _cp(returncode=0, stdout="1\n"),  # rev-list
+            _cp(returncode=0),  # rebase
+            _cp(returncode=1, stderr="rejected"),  # push fails
         ]
         assert push_local_commits() is False
 
@@ -194,8 +202,8 @@ def testpush_local_commits_skip_fetch():
     """push_local_commits skips fetch when skip_fetch=True."""
     with patch("subprocess.run") as mock_run:
         mock_run.side_effect = [
-            Mock(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
-            Mock(returncode=0, stdout="0\n"),  # rev-list
+            _cp(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
+            _cp(returncode=0, stdout="0\n"),  # rev-list
         ]
         assert push_local_commits(skip_fetch=True) is True
 

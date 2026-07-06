@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import Any
 from unittest.mock import patch
 
+import pluggy
+
 from pynchy.plugins import channel_runtime
 
 
@@ -20,7 +22,9 @@ class _Hook:
         return self._channels
 
 
-class _PM:
+class _PM(pluggy.PluginManager):
+    """Real-class stand-in so isinstance(pm, pluggy.PluginManager) succeeds."""
+
     def __init__(self, channels: list[Any]) -> None:
         self.hook = _Hook(channels)
 

@@ -6,6 +6,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from conftest import make_settings
+from pydantic import SecretStr
 
 import pynchy.host.container_manager.gateway as _gw_mod
 from pynchy.host.container_manager.gateway import (
@@ -407,15 +409,20 @@ class TestGatewayModeSelection:
         cfg = tmp_path / "litellm_config.yaml"
         cfg.write_text("model_list: []\n")
 
-        mock_settings = MagicMock()
-        mock_settings.gateway.litellm_config = str(cfg)
-        mock_settings.gateway.port = 4000
-        mock_settings.gateway.container_host = "host.docker.internal"
-        mock_settings.gateway.litellm_image = "ghcr.io/berriai/litellm:main-latest"
-        mock_settings.gateway.postgres_image = "postgres:17-alpine"
-        mock_settings.gateway.master_key.get_secret_value.return_value = "test-key"
-        mock_settings.data_dir = tmp_path
-        mock_settings.mcp_servers = {}  # No MCP servers → skip McpManager
+        from pynchy.config.models import GatewayConfig
+
+        mock_settings = make_settings(
+            gateway=GatewayConfig(
+                litellm_config=str(cfg),
+                port=4000,
+                container_host="host.docker.internal",
+                litellm_image="ghcr.io/berriai/litellm:main-latest",
+                postgres_image="postgres:17-alpine",
+                master_key=SecretStr("test-key"),
+            ),
+            data_dir=tmp_path,
+            mcp_servers={},  # No MCP servers → skip McpManager
+        )
 
         with (
             patch(f"{_GATEWAY_MOD}.get_settings", return_value=mock_settings),
@@ -426,11 +433,16 @@ class TestGatewayModeSelection:
 
     @pytest.mark.asyncio
     async def test_builtin_mode_when_no_config(self, tmp_path: Path):
-        mock_settings = MagicMock()
-        mock_settings.gateway.litellm_config = None
-        mock_settings.gateway.port = 4010
-        mock_settings.gateway.host = "0.0.0.0"
-        mock_settings.gateway.container_host = "host.docker.internal"
+        from pynchy.config.models import GatewayConfig
+
+        mock_settings = make_settings(
+            gateway=GatewayConfig(
+                litellm_config=None,
+                port=4010,
+                host="0.0.0.0",
+                container_host="host.docker.internal",
+            )
+        )
 
         with (
             patch(f"{_GATEWAY_MOD}.get_settings", return_value=mock_settings),

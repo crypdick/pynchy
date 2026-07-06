@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pluggy
 from conftest import make_settings
 
 from pynchy.config import WorkspaceConfig
@@ -15,6 +16,13 @@ from pynchy.host.orchestrator.workspace_config import (
     get_repo_access_groups,
     load_workspace_config,
 )
+
+
+class _FakePM(pluggy.PluginManager):
+    """Real-class stand-in so isinstance(pm, pluggy.PluginManager) succeeds."""
+
+    def __init__(self, hook: SimpleNamespace) -> None:
+        self.hook = hook
 
 
 def _settings_with_workspaces(
@@ -75,8 +83,8 @@ class TestLoadWorkspaceConfig:
 
     def test_loads_workspace_from_plugin_spec(self):
         s = _settings_with_workspaces(workspaces={})
-        fake_pm = SimpleNamespace(
-            hook=SimpleNamespace(
+        fake_pm = _FakePM(
+            SimpleNamespace(
                 pynchy_workspace_spec=lambda: [
                     {
                         "folder": "code-improver",

@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pluggy
 import pytest
 from conftest import init_test_database, make_settings
 
@@ -20,7 +21,14 @@ from pynchy.host.orchestrator.workspace_config import (
     reconcile_workspaces,
 )
 from pynchy.state import create_task, get_active_task_for_group, get_all_tasks
-from pynchy.types import WorkspaceProfile
+from pynchy.types import Channel, WorkspaceProfile
+
+
+class _FakePM(pluggy.PluginManager):
+    """Real-class stand-in so isinstance(pm, pluggy.PluginManager) succeeds."""
+
+    def __init__(self, hook: SimpleNamespace) -> None:
+        self.hook = hook
 
 
 def _write_workspace_yaml(workspaces, folder_name, data):
@@ -264,7 +272,7 @@ class TestReconcileWorkspaces:
             },
         )
 
-        mock_channel = AsyncMock()
+        mock_channel = AsyncMock(spec=Channel)
         mock_channel.name = conn_ref
         mock_channel.resolve_chat_jid = AsyncMock(return_value=None)
         mock_channel.create_group = AsyncMock(return_value="new-agent@g.us")
@@ -305,8 +313,9 @@ class TestReconcileWorkspaces:
             },
         )
 
-        # Channel matches connection but lacks create_group
-        mock_channel = AsyncMock(spec=["send_message", "connect", "disconnect"])
+        # Channel matches connection but lacks create_group (not part of the
+        # Channel protocol — spec=Channel naturally omits it).
+        mock_channel = AsyncMock(spec=Channel)
         mock_channel.name = conn_ref
 
         registered: dict[str, WorkspaceProfile] = {}
@@ -624,8 +633,8 @@ class TestReconcileWorkspaces:
         unregister_fn.assert_not_called()
 
     async def test_plugin_workspace_creates_task(self, db, groups_dir, tmp_path):
-        fake_pm = SimpleNamespace(
-            hook=SimpleNamespace(
+        fake_pm = _FakePM(
+            SimpleNamespace(
                 pynchy_workspace_spec=lambda: [
                     {
                         "folder": "code-improver",

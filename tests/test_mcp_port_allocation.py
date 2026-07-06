@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 from conftest import make_settings
 
 from pynchy.config.mcp import McpServerConfig
+from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
 from pynchy.host.container_manager.mcp.lifecycle import (
     _build_placeholders,  # allow: private-test-imports
     expand_arg_placeholders,
@@ -106,7 +107,7 @@ class TestResolveAllInstancesPortOffset:
             workspaces=ws_configs,
             mcp_servers={name: McpServerConfig(**spec) for name, spec in mcp_servers.items()},
         )
-        gateway = MagicMock()
+        gateway = MagicMock(spec=LiteLLMGateway)
         return McpManager(settings, gateway)
 
     def test_inject_workspace_two_workspaces_get_different_ports(self):

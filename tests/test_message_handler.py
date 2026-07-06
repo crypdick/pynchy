@@ -11,10 +11,12 @@ Covers:
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from conftest import make_settings
 
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
 from pynchy.host.orchestrator.messaging.pipeline import (
@@ -23,7 +25,7 @@ from pynchy.host.orchestrator.messaging.pipeline import (
     intercept_special_command,
     process_group_messages,
 )
-from pynchy.types import NewMessage, WorkspaceProfile
+from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
 
 # Commonly patched module paths — avoids repeating long strings and keeps
 # line lengths under 100 chars.
@@ -388,14 +390,18 @@ class TestExecuteDirectCommand:
 
 
 def _settings_mock(tmp_path, **overrides):
-    """Create a Settings mock with common defaults."""
-    m = MagicMock()
-    m.data_dir = tmp_path
-    m.trigger_pattern = MagicMock()
-    m.idle_timeout = 300
-    for k, v in overrides.items():
-        setattr(m, k, v)
-    return m
+    """Create a real Settings instance with common test defaults.
+
+    trigger_pattern matches everything (equivalent to the old MagicMock
+    stand-in's always-truthy .search()) so trigger-gating tests are unaffected.
+    """
+    defaults = {
+        "data_dir": tmp_path,
+        "trigger_pattern": re.compile(".*"),
+        "idle_timeout": 300,
+    }
+    defaults.update(overrides)
+    return make_settings(**defaults)
 
 
 class TestProcessGroupMessages:
@@ -421,7 +427,7 @@ class TestProcessGroupMessages:
             patch(_P_SETTINGS) as ms,
             _patch_msgs_since([]),
         ):
-            ms.return_value.data_dir = tmp_path
+            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is True
@@ -450,7 +456,7 @@ class TestProcessGroupMessages:
             patch(_P_SETTINGS) as ms,
             _patch_msgs_since([]),
         ):
-            ms.return_value.data_dir = tmp_path
+            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is True
@@ -471,7 +477,7 @@ class TestProcessGroupMessages:
             patch(_P_SETTINGS) as ms,
             _patch_msgs_since([]),
         ):
-            ms.return_value.data_dir = tmp_path
+            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is True
@@ -488,7 +494,7 @@ class TestProcessGroupMessages:
             patch(_P_SETTINGS) as ms,
             _patch_msgs_since([]),
         ):
-            ms.return_value.data_dir = tmp_path
+            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is True
@@ -505,8 +511,7 @@ class TestProcessGroupMessages:
             patch(_P_SETTINGS) as ms,
             _patch_msgs_since([msg]),
         ):
-            ms.return_value = _settings_mock(tmp_path)
-            ms.return_value.trigger_pattern.search.return_value = None
+            ms.return_value = _settings_mock(tmp_path, trigger_pattern=re.compile(r"(?!)"))
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is True
@@ -579,7 +584,7 @@ class TestProcessGroupMessages:
         # output being sent before error.
         async def mock_run_agent(group, jid, msgs, on_output=None, notices=None):
             if on_output:
-                output = MagicMock(type="result", result="hello", status="error")
+                output = ContainerOutput(type="result", result="hello", status="error")
                 await on_output(output)
             return "error"
 
@@ -616,7 +621,6 @@ class TestProcessGroupMessages:
             patch("pynchy.host.git_ops._worktree_merge.background_merge_worktree") as mock_bg_merge,
         ):
             ms.return_value = _settings_mock(tmp_path)
-            ms.return_value.trigger_pattern.search.return_value = True
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is True
@@ -751,7 +755,7 @@ class TestProcessGroupMessages:
             _patch_msgs_since([msg1, msg2]),
             _patch_intercept(return_value=True),
         ):
-            ms.return_value.data_dir = tmp_path
+            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is True
@@ -769,7 +773,7 @@ class TestProcessGroupMessages:
 
         # run_agent must invoke the on_output callback so output_sent_to_user
         # is set to True inside process_group_messages.
-        fake_result = MagicMock(status="success")
+        fake_result = ContainerOutput(status="success")
 
         async def _run_agent_with_callback(_group, _jid, _msgs, on_output=None, *a, **kw):
             if on_output:
@@ -1125,12 +1129,14 @@ class TestHandleResetHandoff:
 
 
 def _loop_settings_mock():
-    """Settings mock suitable for start_message_loop tests."""
-    s = MagicMock()
-    s.agent.name = "Pynchy"
-    s.intervals.message_poll = 0  # no sleep between iterations
-    s.trigger_pattern.search.return_value = True
-    return s
+    """Settings instance suitable for start_message_loop tests."""
+    from pynchy.config import AgentConfig, IntervalsConfig
+
+    return make_settings(
+        agent=AgentConfig(name="Pynchy"),
+        intervals=IntervalsConfig(message_poll=0.0),  # no sleep between iterations
+        trigger_pattern=re.compile(".*"),
+    )
 
 
 def _run_loop_once(deps):

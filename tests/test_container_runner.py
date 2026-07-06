@@ -20,6 +20,7 @@ from pynchy.host.container_manager.credentials import (
     read_oauth_token,
     shell_quote,
 )
+from pynchy.host.container_manager.gateway_builtin import BuiltinGateway
 from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 from pynchy.host.container_manager.mounts import build_container_args, build_volume_mounts
 from pynchy.host.container_manager.orchestrator import (
@@ -75,13 +76,21 @@ _CR_ORCH = "pynchy.host.container_manager.orchestrator"
 _GATEWAY = "pynchy.host.container_manager.gateway"
 
 
-class _MockGateway:
-    """Lightweight stand-in for ``gateway.Gateway`` in credential tests."""
+class _MockGateway(BuiltinGateway):
+    """Lightweight stand-in for ``gateway.Gateway`` in credential tests.
+
+    Subclasses the real ``BuiltinGateway`` (without calling its ``__init__``)
+    so it satisfies the ``LiteLLMGateway | BuiltinGateway | None`` isinstance
+    check without pulling in real gateway startup behavior.
+    """
 
     def __init__(self, providers: set[str] | None = None) -> None:
-        self.base_url = "http://host.docker.internal:4010"
         self.key = "gw-test-key"
         self._providers = providers or set()
+
+    @property
+    def base_url(self) -> str:
+        return "http://host.docker.internal:4010"
 
     def has_provider(self, name: str) -> bool:
         return name in self._providers
@@ -950,13 +959,8 @@ class TestResolveAgentCore:
     """
 
     def test_returns_defaults_when_no_plugin_manager(self):
+        """Covers the `if plugin_manager:` guard for the None case."""
         module, cls = resolve_agent_core(None)
-        assert module == "agent_runner.cores.claude"
-        assert cls == "ClaudeAgentCore"
-
-    def test_returns_defaults_when_plugin_manager_is_falsy(self):
-        """Covers the `if plugin_manager:` guard for falsy values like False/0."""
-        module, cls = resolve_agent_core(False)
         assert module == "agent_runner.cores.claude"
         assert cls == "ClaudeAgentCore"
 

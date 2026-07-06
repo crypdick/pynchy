@@ -5,22 +5,34 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from conftest import make_settings
 
+from pynchy.config.mcp import McpServerConfig
+from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
 from pynchy.host.container_manager.mcp.proxy import McpProxy
-from pynchy.host.container_manager.mcp.resolution import build_trust_map
+from pynchy.host.container_manager.mcp.resolution import McpInstance, build_trust_map
+
+
+def _make_instance(server_name: str) -> McpInstance:
+    """Minimal real McpInstance — build_trust_map only reads .server_name."""
+    return McpInstance(
+        server_name=server_name,
+        server_config=McpServerConfig(type="script", command="noop", port=0),
+        kwargs={},
+        instance_id=server_name,
+        container_name=server_name,
+    )
 
 
 class TestMcpManagerHasProxy:
     """McpManager should own an McpProxy instance."""
 
-    def test_init_creates_proxy(self):
+    def test_init_creates_proxy(self, tmp_path):
         """McpManager.__init__ should create an McpProxy instance."""
         from pynchy.host.container_manager.mcp.manager import McpManager
 
-        settings = MagicMock()
-        settings.data_dir = MagicMock()
-        settings.data_dir.__truediv__ = MagicMock(return_value=MagicMock())
-        gateway = MagicMock()
+        settings = make_settings(data_dir=tmp_path)
+        gateway = MagicMock(spec=LiteLLMGateway)
 
         mgr = McpManager(settings, gateway)
         assert isinstance(mgr._proxy, McpProxy)
@@ -33,8 +45,8 @@ class TestBuildTrustMap:
     def test_defaults_to_not_public(self):
         """Default trust map should mark all instances as not public_source."""
         instances = {
-            "browser_abc": MagicMock(server_name="browser"),
-            "notebook_def": MagicMock(server_name="notebook"),
+            "browser_abc": _make_instance("browser"),
+            "notebook_def": _make_instance("notebook"),
         }
 
         trust_map = build_trust_map(instances, {})
@@ -44,9 +56,9 @@ class TestBuildTrustMap:
     def test_keys_match_instances(self):
         """Trust map keys should exactly match instance IDs."""
         instances = {
-            "a": MagicMock(server_name="a"),
-            "b": MagicMock(server_name="b"),
-            "c": MagicMock(server_name="c"),
+            "a": _make_instance("a"),
+            "b": _make_instance("b"),
+            "c": _make_instance("c"),
         }
 
         trust_map = build_trust_map(instances, {})

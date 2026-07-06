@@ -307,8 +307,8 @@ async def _sync_workspace_profile(
     changed: dict[str, Any] = {}
     if profile.name != display_name:
         changed["name"] = display_name
-    if profile.is_admin != config.is_admin:
-        changed["is_admin"] = config.is_admin
+    if profile.is_admin != (config.is_admin or False):
+        changed["is_admin"] = config.is_admin or False
     if not changed:
         return
     updated = replace(profile, **changed)

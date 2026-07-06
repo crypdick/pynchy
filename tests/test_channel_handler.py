@@ -11,6 +11,7 @@ from pynchy.host.orchestrator.messaging.channel_handler import (
     send_reaction_to_outbound,
     set_typing_on_channels,
 )
+from pynchy.host.orchestrator.messaging.sender import BusDeps
 from pynchy.host.orchestrator.messaging.sender import broadcast as broadcast_to_channels
 from pynchy.types import Channel, OutboundEvent, OutboundEventType
 
@@ -45,9 +46,9 @@ def _make_channel(
 
 
 def _make_deps(channels: list | None = None) -> MagicMock:
-    deps = MagicMock()
+    deps = MagicMock(spec=BusDeps)
     deps.channels = channels or []
-    deps.event_bus = MagicMock()
+    deps.workspaces = {}
     return deps
 
 
