@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from typing import cast
 
 from pynchy.config import get_settings
 from pynchy.config.settings import Settings
@@ -34,7 +35,7 @@ def read_oauth_token() -> str | None:
             data = json.loads(creds_file.read_text())
             token = data.get("claudeAiOauth", {}).get("accessToken")
             if token:
-                return token
+                return cast(str, token)
         except (json.JSONDecodeError, OSError) as exc:
             logger.debug("Failed to read legacy credentials file", err=str(exc))
 
@@ -54,7 +55,7 @@ def _read_oauth_from_keychain() -> str | None:
         if result.returncode != 0:
             return None
         data = json.loads(result.stdout.strip())
-        return data.get("claudeAiOauth", {}).get("accessToken")
+        return cast("str | None", data.get("claudeAiOauth", {}).get("accessToken"))
     except (json.JSONDecodeError, FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
 

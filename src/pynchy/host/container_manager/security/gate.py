@@ -10,6 +10,8 @@ concurrent containers for the same group.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pynchy.host.container_manager.security.middleware import PolicyDecision, SecurityPolicy
 from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
 
@@ -33,7 +35,7 @@ class SecurityGate:
         """Evaluate a read operation. Delegates to SecurityPolicy."""
         return self._policy.evaluate_read(service)
 
-    def evaluate_write(self, service: str, data: dict) -> PolicyDecision:
+    def evaluate_write(self, service: str, data: dict[str, Any]) -> PolicyDecision:
         """Evaluate a write operation. Delegates to SecurityPolicy."""
         return self._policy.evaluate_write(service, data)
 

@@ -272,7 +272,9 @@ async def _seed_channel_cursors(database: aiosqlite.Connection) -> None:
     processed agent timestamp.  Only runs when channel_cursors is empty.
     """
     cursor = await database.execute("SELECT COUNT(*) FROM channel_cursors")
-    (count,) = await cursor.fetchone()
+    row = await cursor.fetchone()
+    assert row is not None  # COUNT(*) always returns exactly one row
+    (count,) = row
     if count > 0:
         return  # already seeded
 

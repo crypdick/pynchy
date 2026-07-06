@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 from pathlib import Path
 from typing import Any
 
@@ -420,12 +421,12 @@ class _IpcEventHandler(FileSystemEventHandler):
 
     def on_created(self, event: Any) -> None:
         if isinstance(event, FileCreatedEvent):
-            self._enqueue_if_ipc(event.src_path)
+            self._enqueue_if_ipc(os.fsdecode(event.src_path))
 
     def on_moved(self, event: Any) -> None:
         # Atomic writes (tmp → .json rename) generate moved events, not created
         if isinstance(event, FileMovedEvent):
-            self._enqueue_if_ipc(event.dest_path)
+            self._enqueue_if_ipc(os.fsdecode(event.dest_path))
 
 
 async def _process_queue(

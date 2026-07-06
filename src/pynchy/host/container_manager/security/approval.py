@@ -25,6 +25,7 @@ import random
 import string
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.write import (
@@ -143,7 +144,7 @@ def create_pending_approval(
     tool_name: str,
     source_group: str,
     chat_jid: str,
-    request_data: dict,
+    request_data: dict[str, Any],
     handler_type: str = "service",
 ) -> str:
     """Write a pending approval file (PENDING state).
@@ -186,7 +187,7 @@ def create_pending_approval(
     return short_id
 
 
-def list_pending_approvals(group: str | None = None) -> list[dict]:
+def list_pending_approvals(group: str | None = None) -> list[dict[str, Any]]:
     """List all pending approval files, optionally filtered by group.
 
     Returns parsed dicts sorted by timestamp (oldest first).
@@ -197,7 +198,7 @@ def list_pending_approvals(group: str | None = None) -> list[dict]:
     if not ipc_dir.exists():
         return []
 
-    results: list[dict] = []
+    results: list[dict[str, Any]] = []
 
     groups = (
         [group]
@@ -224,7 +225,7 @@ def list_pending_approvals(group: str | None = None) -> list[dict]:
     return results
 
 
-def find_pending_by_short_id(short_id: str) -> dict | None:
+def find_pending_by_short_id(short_id: str) -> dict[str, Any] | None:
     """Find a pending approval matching the given short ID.
 
     Scans file contents for the ``short_id`` field. With typically 0-3
@@ -245,13 +246,13 @@ def find_pending_by_short_id(short_id: str) -> dict | None:
             try:
                 data = json.loads(filepath.read_text())
                 if data.get("short_id") == short_id:
-                    return data
+                    return cast("dict[str, Any]", data)
             except (json.JSONDecodeError, OSError):
                 continue
     return None
 
 
-async def sweep_expired_approvals() -> list[dict]:
+async def sweep_expired_approvals() -> list[dict[str, Any]]:
     """Find and auto-deny expired pending approvals. Clean orphaned decisions.
 
     Called on startup (crash recovery) and optionally on a slow timer.
@@ -263,7 +264,7 @@ async def sweep_expired_approvals() -> list[dict]:
         return []
 
     now = datetime.now(UTC)
-    expired: list[dict] = []
+    expired: list[dict[str, Any]] = []
 
     groups = [f.name for f in ipc_dir.iterdir() if f.is_dir() and f.name != "errors"]
 
@@ -329,7 +330,7 @@ async def sweep_expired_approvals() -> list[dict]:
 
 def format_approval_notification(
     tool_name: str,
-    request_data: dict,
+    request_data: dict[str, Any],
     short_id: str,
 ) -> str:
     """Format a user-facing approval notification message.

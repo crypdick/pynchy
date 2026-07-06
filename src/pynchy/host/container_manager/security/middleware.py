@@ -12,6 +12,7 @@ full gating matrix and design rationale.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from pynchy.host.container_manager.security.secrets_scanner import scan_payload_for_secrets
 from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
@@ -96,7 +97,7 @@ class SecurityPolicy:
 
         return PolicyDecision(allowed=True)
 
-    def evaluate_write(self, service: str, data: dict) -> PolicyDecision:
+    def evaluate_write(self, service: str, data: dict[str, Any]) -> PolicyDecision:
         """Evaluate a write operation on a service.
 
         Checks forbidden first, then derives gating from the matrix:

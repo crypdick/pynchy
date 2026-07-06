@@ -41,7 +41,7 @@ class McpInstance:
     container_name: str  # Docker container name (for type=docker)
     port: int | None = None  # host-side port (auto-assigned for inject_workspace scripts)
     last_activity: float = 0.0  # monotonic timestamp
-    process: subprocess.Popen | None = None  # tracked subprocess (for type=script)
+    process: subprocess.Popen[bytes] | None = None  # tracked subprocess (for type=script)
 
     @property
     def endpoint_url(self) -> str:

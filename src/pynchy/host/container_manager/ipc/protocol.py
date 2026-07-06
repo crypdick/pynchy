@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 # Tier 1: Signal-only IPC types (no payload crosses the boundary)
 SIGNAL_TYPES = frozenset(
@@ -80,7 +80,7 @@ def validate_signal(data: dict[str, Any]) -> str | None:
             "Signals must be payload-free."
         )
 
-    return signal
+    return cast(str, signal)
 
 
 def parse_ipc_file(file_path: Path) -> dict[str, Any]:
@@ -89,7 +89,7 @@ def parse_ipc_file(file_path: Path) -> dict[str, Any]:
     Returns the parsed data dict.
     Raises json.JSONDecodeError or OSError on failure.
     """
-    return json.loads(file_path.read_text())
+    return cast("dict[str, Any]", json.loads(file_path.read_text()))
 
 
 def make_signal(signal_type: str) -> dict[str, str]:

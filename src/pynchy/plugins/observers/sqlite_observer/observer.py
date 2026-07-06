@@ -78,7 +78,7 @@ class SqliteEventObserver:
     # Storage
     # ------------------------------------------------------------------
 
-    async def _store(self, event_type: str, chat_jid: str | None, payload: dict) -> None:
+    async def _store(self, event_type: str, chat_jid: str | None, payload: dict[str, Any]) -> None:
         try:
             from pynchy.state import store_event
 

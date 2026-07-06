@@ -35,7 +35,7 @@ from pynchy.logger import logger
 # construction time.  Signature: (group_folder, tool_name, request_data,
 # request_id) -> None.  The implementation writes the pending file and
 # broadcasts the notification to chat channels.
-ApprovalRequestFn = Callable[[str, str, dict, str], Awaitable[None]]
+ApprovalRequestFn = Callable[[str, str, dict[str, Any], str], Awaitable[None]]
 
 
 @dataclass
@@ -192,7 +192,7 @@ async def _await_human_approval(
     state: _ProxyState,
     group_folder: str,
     instance_id: str,
-    rpc: dict,
+    rpc: dict[str, Any],
     reason: str,
 ) -> web.Response | None:
     """Block the HTTP connection until the human approves or denies.
@@ -340,7 +340,7 @@ class McpProxy:
         site = web.TCPSite(self._runner, "localhost", port)
         await site.start()
         # Extract the actual bound port from the socket
-        self._port = site._server.sockets[0].getsockname()[1]  # type: ignore[union-attr]
+        self._port = site._server.sockets[0].getsockname()[1]
         logger.info("MCP proxy started", port=self._port)
         return self._port
 

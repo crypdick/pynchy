@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal, cast
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.deps import IpcDeps
@@ -35,7 +35,13 @@ def _compute_next_run_from_ipc(
         scheduled = datetime.fromisoformat(schedule_value)
         return scheduled.isoformat()
 
-    return compute_next_run(schedule_type, schedule_value, get_settings().timezone)
+    # 'once' handled above; remaining values are validated by compute_next_run,
+    # which returns None for anything other than 'cron'/'interval'.
+    return compute_next_run(
+        cast(Literal["cron", "interval", "once"], schedule_type),
+        schedule_value,
+        get_settings().timezone,
+    )
 
 
 async def _handle_schedule_task(

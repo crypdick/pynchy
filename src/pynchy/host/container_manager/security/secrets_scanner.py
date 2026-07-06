@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from typing import Any
 
 from detect_secrets.core.scan import scan_line
 from detect_secrets.settings import transient_settings
@@ -51,7 +52,7 @@ class ScanResult:
     detected: list[str] = field(default_factory=list)  # types of secrets found
 
 
-def _payload_to_text(payload: str | dict | None) -> str:
+def _payload_to_text(payload: str | dict[str, Any] | None) -> str:
     """Convert a payload to scannable text."""
     if payload is None:
         return ""
@@ -60,7 +61,7 @@ def _payload_to_text(payload: str | dict | None) -> str:
     return str(payload)
 
 
-def scan_payload_for_secrets(payload: str | dict | None) -> ScanResult:
+def scan_payload_for_secrets(payload: str | dict[str, Any] | None) -> ScanResult:
     """Scan a payload for secrets using detect-secrets.
 
     Returns a ScanResult indicating whether secrets were found

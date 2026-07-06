@@ -38,6 +38,7 @@ import os
 import re
 import secrets
 from pathlib import Path
+from typing import Any
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.docker import (
@@ -187,7 +188,9 @@ class LiteLLMGateway:
 
         dotenv_path = config_path.parent / ".env"
         dotenv_vars = dotenv_values(dotenv_path) if dotenv_path.exists() else {}
-        return {**dotenv_vars, **os.environ}
+        merged: dict[str, str] = {k: v for k, v in dotenv_vars.items() if v is not None}
+        merged.update(os.environ)
+        return merged
 
     @staticmethod
     def _collect_yaml_env_refs(config_path: Path, env: dict[str, str]) -> list[tuple[str, str]]:
@@ -243,7 +246,7 @@ class LiteLLMGateway:
             return out
 
         original_count = len(config["model_list"])
-        kept: list[dict] = []
+        kept: list[dict[str, Any]] = []
         for entry in config["model_list"]:
             api_key = (entry.get("litellm_params") or {}).get("api_key", "")
             m = re.match(r"os\.environ/(\w+)", str(api_key))
