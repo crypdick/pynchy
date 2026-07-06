@@ -57,7 +57,7 @@ def _update_dotenv_var(dotenv_path: Path, key: str, value: str) -> None:
     dotenv.set_key(str(dotenv_path), key, value)
 
 
-def _launch_kwargs(profile: Path, *, headless: bool) -> dict:
+def _launch_kwargs(profile: Path, *, headless: bool) -> dict[str, Any]:
     """Build kwargs for ``launch_persistent_context``.
 
     Always uses the system Chrome binary (``CHROME_PATH``).
@@ -146,7 +146,7 @@ async def _extract_tokens(
 # ---------------------------------------------------------------------------
 
 
-async def _handle_refresh_slack_tokens(data: dict) -> dict:
+async def _handle_refresh_slack_tokens(data: dict[str, Any]) -> dict[str, Any]:
     """Extract fresh Slack browser tokens and write to .env."""
     workspace_name = data.get("workspace_name", "")
     if not workspace_name:
@@ -180,7 +180,7 @@ async def _handle_refresh_slack_tokens(data: dict) -> dict:
     }
 
 
-async def _handle_setup_slack_session(data: dict) -> dict:
+async def _handle_setup_slack_session(data: dict[str, Any]) -> dict[str, Any]:
     """Launch a headed browser for manual Slack login. Saves the session."""
     from playwright.async_api import async_playwright
 
@@ -191,7 +191,7 @@ async def _handle_setup_slack_session(data: dict) -> dict:
     workspace_url = data.get("workspace_url", "https://app.slack.com")
     timeout_seconds = data.get("timeout_seconds", 120)
     profile = profile_dir(workspace_name)
-    vnc_procs: list[subprocess.Popen] = []
+    vnc_procs: list[subprocess.Popen[Any]] = []
     original_display = os.environ.get("DISPLAY")
 
     try:

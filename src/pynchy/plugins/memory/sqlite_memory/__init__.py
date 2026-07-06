@@ -28,7 +28,7 @@ def _get_backend() -> SqliteMemoryBackend:
 # ---------------------------------------------------------------------------
 
 
-async def _handle_save_memory(data: dict) -> dict:
+async def _handle_save_memory(data: dict[str, Any]) -> dict[str, Any]:
     source_group = data.get("source_group")
     if not source_group:
         return {"error": "Missing source_group"}
@@ -49,7 +49,7 @@ async def _handle_save_memory(data: dict) -> dict:
     return {"result": result}
 
 
-async def _handle_recall_memories(data: dict) -> dict:
+async def _handle_recall_memories(data: dict[str, Any]) -> dict[str, Any]:
     source_group = data.get("source_group")
     if not source_group:
         return {"error": "Missing source_group"}
@@ -68,7 +68,7 @@ async def _handle_recall_memories(data: dict) -> dict:
     return {"result": {"memories": results, "count": len(results)}}
 
 
-async def _handle_forget_memory(data: dict) -> dict:
+async def _handle_forget_memory(data: dict[str, Any]) -> dict[str, Any]:
     source_group = data.get("source_group")
     if not source_group:
         return {"error": "Missing source_group"}
@@ -82,7 +82,7 @@ async def _handle_forget_memory(data: dict) -> dict:
     return {"result": result}
 
 
-async def _handle_list_memories(data: dict) -> dict:
+async def _handle_list_memories(data: dict[str, Any]) -> dict[str, Any]:
     source_group = data.get("source_group")
     if not source_group:
         return {"error": "Missing source_group"}

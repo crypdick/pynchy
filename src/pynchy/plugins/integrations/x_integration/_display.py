@@ -21,7 +21,7 @@ _NOVNC_WEB_DIR = "/usr/share/novnc"
 
 # Module-level Xvfb process.  X tools use headed mode to avoid bot detection,
 # so Xvfb persists for the lifetime of this plugin on headless hosts.
-_xvfb_proc: subprocess.Popen | None = None
+_xvfb_proc: subprocess.Popen[bytes] | None = None
 
 
 def ensure_xvfb() -> None:
@@ -55,7 +55,7 @@ def ensure_xvfb() -> None:
     os.environ["DISPLAY"] = XVFB_DISPLAY
 
 
-def start_vnc_layer() -> tuple[list[subprocess.Popen], str]:
+def start_vnc_layer() -> tuple[list[subprocess.Popen[bytes]], str]:
     """Start x11vnc + noVNC on the existing Xvfb display.
 
     Returns (processes, novnc_url).  Call ``ensure_xvfb()`` first.
@@ -65,7 +65,7 @@ def start_vnc_layer() -> tuple[list[subprocess.Popen], str]:
         raise RuntimeError(
             f"VNC layer requires: {', '.join(missing)}. Install with: apt install x11vnc novnc"
         )
-    procs: list[subprocess.Popen] = []
+    procs: list[subprocess.Popen[bytes]] = []
     try:
         x11vnc = subprocess.Popen(
             [

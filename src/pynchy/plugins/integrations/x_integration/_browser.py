@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from pynchy.plugins.integrations.browser import chrome_path, cleanup_lock_files, profile_dir
 from pynchy.plugins.integrations.x_integration._display import ensure_xvfb
@@ -57,7 +57,7 @@ _BROWSER_ARGS = [
 async def is_visible(locator) -> bool:
     """Check locator visibility without raising on detached elements."""
     try:
-        return await locator.is_visible()
+        return cast(bool, await locator.is_visible())
     except Exception:  # allow: exception-handling — detached element treated as not visible
         return False
 
@@ -94,7 +94,7 @@ async def navigate_to_tweet(page: Page, tweet_url: str) -> str | None:
     return None
 
 
-def launch_kwargs(profile_path: Path) -> dict:
+def launch_kwargs(profile_path: Path) -> dict[str, Any]:
     """Build kwargs for ``launch_persistent_context``.
 
     Always uses the system Chrome binary (``CHROME_PATH``) for a genuine
@@ -110,8 +110,8 @@ def launch_kwargs(profile_path: Path) -> dict:
 
 
 async def with_browser(
-    fn: Callable[[Page], Awaitable[dict]],
-) -> dict:
+    fn: Callable[[Page], Awaitable[dict[str, Any]]],
+) -> dict[str, Any]:
     """Run *fn(page)* inside a persistent browser context.
 
     Manages Xvfb display, lock-file cleanup, Playwright lifecycle.

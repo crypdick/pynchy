@@ -36,7 +36,7 @@ class ContainerConfig:
     timeout: float | None = None  # Seconds (default: 300)
 
     @classmethod
-    def from_dict(cls, raw: dict) -> ContainerConfig:
+    def from_dict(cls, raw: dict[str, Any]) -> ContainerConfig:
         return cls(
             additional_mounts=[AdditionalMount(**m) for m in raw.get("additional_mounts", [])],
             timeout=raw.get("timeout"),
@@ -129,7 +129,7 @@ class NewMessage:
     timestamp: str
     is_from_me: bool | None = None
     message_type: str = "user"  # 'user', 'assistant', 'system', 'host', 'tool_result'
-    metadata: dict | None = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass
@@ -228,7 +228,7 @@ class HostJob:
 
 @dataclass
 class ContainerInput:
-    messages: list[dict]  # SDK message list with message types
+    messages: list[dict[str, Any]]  # SDK message list with message types
     group_folder: str
     chat_jid: str
     is_admin: bool
@@ -238,14 +238,14 @@ class ContainerInput:
     repo_access: str | None = None  # GitHub slug (owner/repo); None = no worktree
     agent_core_module: str = "agent_runner.cores.claude"  # Module path for agent core
     agent_core_class: str = "ClaudeAgentCore"  # Class name for agent core
-    agent_core_config: dict | None = None  # Core-specific settings
+    agent_core_config: dict[str, Any] | None = None  # Core-specific settings
     system_prompt_append: str | None = None  # Resolved directives for agent system prompt
     invocation_ts: float = 0.0  # Monotonic timestamp of container spawn (for SecurityGate keying)
     mcp_gateway_url: str | None = None  # LiteLLM MCP gateway URL (SSE transport)
     mcp_gateway_key: str | None = None  # LiteLLM virtual key for workspace's MCP team
     # Direct MCP server connections (bypass LiteLLM gateway).
     # Each entry: {"name": str, "url": str, "transport": "sse"|"http"}
-    mcp_direct_servers: list[dict] | None = None
+    mcp_direct_servers: list[dict[str, Any]] | None = None
 
 
 @dataclass
@@ -257,15 +257,15 @@ class ContainerOutput:
     type: str = "result"
     thinking: str | None = None
     tool_name: str | None = None
-    tool_input: dict | None = None
+    tool_input: dict[str, Any] | None = None
     text: str | None = None
     # Transparent token stream fields
     system_subtype: str | None = None
-    system_data: dict | None = None
+    system_data: dict[str, Any] | None = None
     tool_result_id: str | None = None
     tool_result_content: str | None = None
     tool_result_is_error: bool | None = None
-    result_metadata: dict | None = None
+    result_metadata: dict[str, Any] | None = None
 
 
 class OutboundEventType(Enum):

@@ -58,7 +58,7 @@ async def authenticate() -> None:
     done = asyncio.Event()
     exit_code = 0
 
-    @client.event.qr
+    @client.event.qr  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
     async def on_qr(_client: NewAClient, qr_data: bytes) -> None:
         qr = qrcode.QRCode(border=1)
         qr.add_data(qr_data)
@@ -67,7 +67,7 @@ async def authenticate() -> None:
         qr.print_ascii(out=buf, invert=True)
         print(buf.getvalue(), flush=True)  # allow: print-statements
 
-    @client.event(ConnectedEv)
+    @client.event(ConnectedEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
     async def on_connected(_client: NewAClient, _ev: ConnectedEv) -> None:
         print()  # allow: print-statements
         print("[OK] Successfully authenticated with WhatsApp")  # allow: print-statements
@@ -75,11 +75,11 @@ async def authenticate() -> None:
         print("     You can now run pynchy.")  # allow: print-statements
         done.set()
 
-    @client.event(PairStatusEv)
+    @client.event(PairStatusEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
     async def on_pair_status(_client: NewAClient, ev: PairStatusEv) -> None:
         print(f"  Paired as {ev.ID.User}")  # allow: print-statements
 
-    @client.event(LoggedOutEv)
+    @client.event(LoggedOutEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
     async def on_logged_out(_client: NewAClient, _ev: LoggedOutEv) -> None:
         nonlocal exit_code
         print()  # allow: print-statements
@@ -89,7 +89,7 @@ async def authenticate() -> None:
         exit_code = 1
         done.set()
 
-    @client.event(ConnectFailureEv)
+    @client.event(ConnectFailureEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
     async def on_connect_failure(_client: NewAClient, _ev: ConnectFailureEv) -> None:
         nonlocal exit_code
         print()  # allow: print-statements

@@ -30,12 +30,12 @@ if TYPE_CHECKING:
     from playwright.async_api import Page
 
 
-async def handle_setup_x_session(data: dict) -> dict:
+async def handle_setup_x_session(data: dict[str, Any]) -> dict[str, Any]:
     """Launch a headed browser for manual X login. Saves the session."""
     from playwright.async_api import async_playwright
 
     timeout_seconds = data.get("timeout_seconds", 120)
-    vnc_procs: list[subprocess.Popen] = []
+    vnc_procs: list[subprocess.Popen[bytes]] = []
     novnc_url: str | None = None
 
     try:
@@ -106,14 +106,14 @@ async def handle_setup_x_session(data: dict) -> dict:
 
 
 @service_tool
-async def handle_x_post(data: dict) -> dict:
+async def handle_x_post(data: dict[str, Any]) -> dict[str, Any]:
     """Post a tweet on X (Twitter)."""
     content = data.get("content", "")
     error = validate_content(content)
     if error:
         return {"error": error}
 
-    async def action(page: Page) -> dict:
+    async def action(page: Page) -> dict[str, Any]:
         await page.goto(
             "https://x.com/home",
             timeout=TIMEOUTS["navigation"],
@@ -147,13 +147,13 @@ async def handle_x_post(data: dict) -> dict:
 
 
 @service_tool
-async def handle_x_like(data: dict) -> dict:
+async def handle_x_like(data: dict[str, Any]) -> dict[str, Any]:
     """Like a tweet on X (Twitter)."""
     tweet_url = data.get("tweet_url", "")
     if not tweet_url:
         return {"error": "Please provide a tweet URL"}
 
-    async def action(page: Page) -> dict:
+    async def action(page: Page) -> dict[str, Any]:
         nav_err = await navigate_to_tweet(page, tweet_url)
         if nav_err:
             return {"error": nav_err}
@@ -182,7 +182,7 @@ async def handle_x_like(data: dict) -> dict:
 
 
 @service_tool
-async def handle_x_reply(data: dict) -> dict:
+async def handle_x_reply(data: dict[str, Any]) -> dict[str, Any]:
     """Reply to a tweet on X (Twitter)."""
     tweet_url = data.get("tweet_url", "")
     if not tweet_url:
@@ -192,7 +192,7 @@ async def handle_x_reply(data: dict) -> dict:
     if error:
         return {"error": error}
 
-    async def action(page: Page) -> dict:
+    async def action(page: Page) -> dict[str, Any]:
         nav_err = await navigate_to_tweet(page, tweet_url)
         if nav_err:
             return {"error": nav_err}
@@ -228,13 +228,13 @@ async def handle_x_reply(data: dict) -> dict:
 
 
 @service_tool
-async def handle_x_retweet(data: dict) -> dict:
+async def handle_x_retweet(data: dict[str, Any]) -> dict[str, Any]:
     """Retweet a tweet on X (Twitter)."""
     tweet_url = data.get("tweet_url", "")
     if not tweet_url:
         return {"error": "Please provide a tweet URL"}
 
-    async def action(page: Page) -> dict:
+    async def action(page: Page) -> dict[str, Any]:
         nav_err = await navigate_to_tweet(page, tweet_url)
         if nav_err:
             return {"error": nav_err}
@@ -268,7 +268,7 @@ async def handle_x_retweet(data: dict) -> dict:
 
 
 @service_tool
-async def handle_x_quote(data: dict) -> dict:
+async def handle_x_quote(data: dict[str, Any]) -> dict[str, Any]:
     """Quote tweet with a comment on X (Twitter)."""
     tweet_url = data.get("tweet_url", "")
     if not tweet_url:
@@ -278,7 +278,7 @@ async def handle_x_quote(data: dict) -> dict:
     if error:
         return {"error": error}
 
-    async def action(page: Page) -> dict:
+    async def action(page: Page) -> dict[str, Any]:
         nav_err = await navigate_to_tweet(page, tweet_url)
         if nav_err:
             return {"error": nav_err}
