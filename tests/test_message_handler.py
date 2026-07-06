@@ -18,11 +18,12 @@ import pytest
 
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
 from pynchy.host.orchestrator.messaging.pipeline import (
+    MessageHandlerDeps,
     execute_direct_command,
     intercept_special_command,
     process_group_messages,
 )
-from pynchy.types import NewMessage
+from pynchy.types import NewMessage, WorkspaceProfile
 
 # Commonly patched module paths — avoids repeating long strings and keeps
 # line lengths under 100 chars.
@@ -55,7 +56,7 @@ def _make_deps(
     last_timestamp: str = "",
 ) -> MagicMock:
     """Build a MessageHandlerDeps mock with sensible defaults."""
-    deps = MagicMock()
+    deps = MagicMock(spec=MessageHandlerDeps)
     deps.workspaces = groups or {}
     deps.last_agent_timestamp = last_agent_ts if last_agent_ts is not None else {}
     deps._dispatched_through = {}
@@ -94,7 +95,7 @@ def _make_group(
     folder: str = "test-group",
     is_admin: bool = False,
 ) -> MagicMock:
-    group = MagicMock()
+    group = MagicMock(spec=WorkspaceProfile)
     group.name = name
     group.folder = folder
     group.is_admin = is_admin

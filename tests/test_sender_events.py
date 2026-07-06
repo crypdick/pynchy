@@ -11,11 +11,11 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock
 import pytest
 
 from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
-from pynchy.types import OutboundEvent, OutboundEventType
+from pynchy.types import Channel, OutboundEvent, OutboundEventType
 
 
 def _make_channel(name: str, jid_prefix: str = "slack:"):
-    ch = MagicMock()
+    ch = MagicMock(spec=Channel)
     ch.name = name
     ch.is_connected.return_value = True
     ch.owns_jid.side_effect = lambda j: j.startswith(jid_prefix)

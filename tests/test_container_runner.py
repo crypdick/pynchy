@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pluggy
 import pytest
 from conftest import make_settings
 from pydantic import SecretStr
@@ -131,7 +132,7 @@ def _patch_settings(
         yield
 
 
-class FakeProcess:
+class FakeProcess(asyncio.subprocess.Process):
     """Simulates asyncio.subprocess.Process for testing.
 
     No stdin — the host writes initial input via IPC files, not a pipe.
@@ -966,8 +967,11 @@ class TestResolveAgentCore:
             def pynchy_agent_core_info(self):
                 return []
 
-        class FakePM:
+        class FakePM(pluggy.PluginManager):
             hook = FakeHook()
+
+            def __init__(self):
+                pass
 
         module, cls = resolve_agent_core(FakePM())
         assert module == "agent_runner.cores.claude"
@@ -983,8 +987,11 @@ class TestResolveAgentCore:
                     {"name": "claude", "module": "cores.claude_v2", "class_name": "ClaudeV2Core"},
                 ]
 
-        class FakePM:
+        class FakePM(pluggy.PluginManager):
             hook = FakeHook()
+
+            def __init__(self):
+                pass
 
         with _patch_settings(core="claude"):
             module, cls = resolve_agent_core(FakePM())
@@ -1002,8 +1009,11 @@ class TestResolveAgentCore:
                     {"name": "gemini", "module": "cores.gemini", "class_name": "GeminiCore"},
                 ]
 
-        class FakePM:
+        class FakePM(pluggy.PluginManager):
             hook = FakeHook()
+
+            def __init__(self):
+                pass
 
         with _patch_settings(core="claude"):
             module, cls = resolve_agent_core(FakePM())
@@ -1021,8 +1031,11 @@ class TestResolveAgentCore:
                     {"name": "custom", "module": "cores.custom", "class_name": "CustomCore"},
                 ]
 
-        class FakePM:
+        class FakePM(pluggy.PluginManager):
             hook = FakeHook()
+
+            def __init__(self):
+                pass
 
         with _patch_settings(core="custom"):
             module, cls = resolve_agent_core(FakePM())
@@ -1082,8 +1095,11 @@ class TestSyncSkills:
             def pynchy_skill_paths(self):
                 return [[str(plugin_skill)]]
 
-        class FakePM:
+        class FakePM(pluggy.PluginManager):
             hook = FakeHook()
+
+            def __init__(self):
+                pass
 
         with _patch_settings(tmp_path):
             _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
@@ -1111,8 +1127,11 @@ class TestSyncSkills:
             def pynchy_skill_paths(self):
                 return [[str(plugin_skill)]]
 
-        class FakePM:
+        class FakePM(pluggy.PluginManager):
             hook = FakeHook()
+
+            def __init__(self):
+                pass
 
         with (
             _patch_settings(tmp_path),
@@ -1129,8 +1148,11 @@ class TestSyncSkills:
             def pynchy_skill_paths(self):
                 return [[str(tmp_path / "nonexistent-skill")]]
 
-        class FakePM:
+        class FakePM(pluggy.PluginManager):
             hook = FakeHook()
+
+            def __init__(self):
+                pass
 
         with _patch_settings(tmp_path):
             # Should not crash
@@ -1353,8 +1375,11 @@ class TestSyncSkillsFiltering:
             def pynchy_skill_paths(self):
                 return [[str(plugin_skill)]]
 
-        class FakePM:
+        class FakePM(pluggy.PluginManager):
             hook = FakeHook()
+
+            def __init__(self):
+                pass
 
         with _patch_settings(tmp_path):
             _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["core"])
@@ -1377,8 +1402,11 @@ class TestSyncSkillsFiltering:
             def pynchy_skill_paths(self):
                 return [[str(plugin_skill)]]
 
-        class FakePM:
+        class FakePM(pluggy.PluginManager):
             hook = FakeHook()
+
+            def __init__(self):
+                pass
 
         with _patch_settings(tmp_path):
             _sync_skills(

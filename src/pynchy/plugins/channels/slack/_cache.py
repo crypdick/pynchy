@@ -12,7 +12,7 @@ class TtlCache:
     entries to bound memory regardless of TTL.
     """
 
-    def __init__(self, ttl_seconds: float = 3600, max_size: int = 500) -> None:
+    def __init__(self, ttl_seconds: float = 3600.0, max_size: int = 500) -> None:
         self._ttl = ttl_seconds
         self._max_size = max_size
         self._data: dict[str, tuple[str, float]] = {}  # key → (value, expiry_mono)

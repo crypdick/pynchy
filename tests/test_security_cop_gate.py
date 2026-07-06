@@ -6,12 +6,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.host.container_manager.security.cop import CopVerdict
 
 
 @pytest.fixture
 def mock_deps():
-    deps = MagicMock()
+    deps = MagicMock(spec=IpcDeps)
     deps.workspaces.return_value = {"jid-1": MagicMock(folder="admin-1")}
     deps.broadcast_to_channels = AsyncMock()
     deps.broadcast_host_message = AsyncMock()

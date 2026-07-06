@@ -8,9 +8,9 @@ import pytest
 from pydantic import BaseModel, SecretStr
 
 from pynchy.state import init_test_database
-from pynchy.types import NewMessage
+from pynchy.types import InboundFetchResult, NewMessage
 
-__all__ = ["init_test_database"]
+__all__ = ["NullChannel", "NullIpcDeps", "init_test_database"]
 
 # ---------------------------------------------------------------------------
 # Shared helpers (plain functions, not fixtures — importable by test files)
@@ -90,6 +90,85 @@ def make_settings(**overrides):
         s.__dict__[key] = value
 
     return s
+
+
+class NullIpcDeps:
+    """No-op stand-in for every method on ``IpcDeps``.
+
+    ``beartype_this_package()`` validates fake/mock arguments against the real
+    ``IpcDeps`` Protocol at call time — structurally, by attribute name, not
+    by behavior. Subclass this and override only the methods your test
+    actually exercises; the rest are satisfied for free instead of each fake
+    class hand-rolling all fifteen methods.
+    """
+
+    async def broadcast_to_channels(self, jid, event) -> None: ...
+
+    async def broadcast_host_message(self, jid, text) -> None: ...
+
+    async def broadcast_system_notice(self, jid, text) -> None: ...
+
+    def workspaces(self) -> dict:
+        return {}
+
+    def register_workspace(self, profile) -> None: ...
+
+    async def sync_group_metadata(self, force) -> None: ...
+
+    async def get_available_groups(self) -> list:
+        return []
+
+    def write_groups_snapshot(
+        self, group_folder, is_admin, available_groups, registered_jids
+    ) -> None: ...
+
+    def has_active_session(self, group_folder) -> bool:
+        return False
+
+    async def clear_session(self, group_folder) -> None: ...
+
+    def get_active_sessions(self) -> dict:
+        return {}
+
+    async def clear_chat_history(self, chat_jid) -> None: ...
+
+    def enqueue_message_check(self, group_jid) -> None: ...
+
+    def channels(self) -> list:
+        return []
+
+    async def trigger_deploy(self, previous_sha, rebuild=True) -> None: ...
+
+
+class NullChannel:
+    """No-op stand-in for every method on ``Channel``.
+
+    Same rationale as ``NullIpcDeps``: satisfies the ``Channel`` Protocol's
+    isinstance check structurally so fakes only need to override the
+    handful of members a given test actually exercises.
+    """
+
+    name = "null-channel"
+    formatter = None
+
+    async def connect(self) -> None: ...
+
+    async def send_event(self, jid, event) -> None: ...
+
+    def is_connected(self) -> bool:
+        return True
+
+    def owns_jid(self, jid) -> bool:
+        return False
+
+    async def disconnect(self) -> None: ...
+
+    async def reconnect(self) -> None: ...
+
+    def prepare_shutdown(self) -> None: ...
+
+    async def fetch_inbound_since(self, channel_jid, since) -> InboundFetchResult:
+        return InboundFetchResult(messages=[])
 
 
 # ---------------------------------------------------------------------------

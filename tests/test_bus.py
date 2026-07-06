@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from pynchy.host.orchestrator.messaging.sender import broadcast, finalize_stream_or_broadcast
-from pynchy.types import OutboundEvent, OutboundEventType
+from pynchy.types import Channel, OutboundEvent, OutboundEventType
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -24,7 +24,7 @@ def _make_channel(
     connected: bool = True,
     has_update: bool = False,
 ) -> MagicMock:
-    ch = MagicMock()
+    ch = MagicMock(spec=Channel)
     ch.name = name
     ch.is_connected.return_value = connected
     ch.send_event = AsyncMock()

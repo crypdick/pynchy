@@ -130,7 +130,7 @@ async def run_shell_command(
     command: str,
     *,
     cwd: str,
-    timeout_seconds: float = 600,
+    timeout_seconds: int | float = 600,
 ) -> ShellResult:
     """Run a shell command asynchronously with timeout and structured result.
 

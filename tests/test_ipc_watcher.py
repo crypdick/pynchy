@@ -9,11 +9,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import make_settings
+from conftest import NullIpcDeps, make_settings
 
 from pynchy.host.container_manager.ipc.watcher import (
     _move_to_error_dir,  # allow: private-test-imports
@@ -44,7 +43,7 @@ def _test_settings(*, data_dir=None):
     return make_settings(**({"data_dir": data_dir} if data_dir is not None else {}))
 
 
-class MockDeps:
+class MockDeps(NullIpcDeps):
     """Mock IPC dependencies for watcher testing."""
 
     def __init__(self, groups: dict[str, WorkspaceProfile]):
@@ -72,21 +71,6 @@ class MockDeps:
     def register_workspace(self, profile: WorkspaceProfile) -> None:
         self._groups[profile.jid] = profile
 
-    async def sync_group_metadata(self, force: bool) -> None:
-        pass
-
-    async def get_available_groups(self) -> list[Any]:
-        return []
-
-    def write_groups_snapshot(
-        self,
-        group_folder: str,
-        is_admin: bool,
-        available_groups: list[Any],
-        registered_jids: set[str],
-    ) -> None:
-        pass
-
     async def clear_session(self, group_folder: str) -> None:
         self.cleared_sessions.append(group_folder)
 
@@ -95,12 +79,6 @@ class MockDeps:
 
     def enqueue_message_check(self, group_jid: str) -> None:
         self.enqueued_checks.append(group_jid)
-
-    def get_active_sessions(self) -> dict[str, str]:
-        return {}
-
-    def channels(self) -> list:
-        return []
 
 
 @pytest.fixture

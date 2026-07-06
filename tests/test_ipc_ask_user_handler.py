@@ -10,8 +10,9 @@ import pytest
 from conftest import make_settings
 
 from pynchy.host.container_manager.ipc import dispatch
+from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.host.container_manager.ipc.registry import PREFIX_HANDLERS
-from pynchy.types import WorkspaceProfile
+from pynchy.types import Channel, WorkspaceProfile
 
 
 @pytest.fixture
@@ -26,7 +27,7 @@ def _make_deps(
     active_sessions: dict[str, str] | None = None,
 ) -> MagicMock:
     """Build a mock IpcDeps with the fields the ask_user handler needs."""
-    deps = MagicMock()
+    deps = MagicMock(spec=IpcDeps)
     deps.workspaces.return_value = workspaces or {}
     deps.channels.return_value = channels or []
     deps.get_active_sessions.return_value = active_sessions or {}
@@ -48,7 +49,7 @@ def _make_channel(
     send_ask_user_return: str | None = "msg-42",
 ) -> MagicMock:
     """Build a mock channel."""
-    ch = MagicMock()
+    ch = MagicMock(spec=Channel)
     ch.name = name
     ch.owns_jid.return_value = owns_jid
     if has_send_ask_user:

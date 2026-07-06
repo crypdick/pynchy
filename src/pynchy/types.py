@@ -34,7 +34,7 @@ class MountAllowlist:
 @dataclass
 class ContainerConfig:
     additional_mounts: list[AdditionalMount] = field(default_factory=list)
-    timeout: float | None = None  # Seconds (default: 300)
+    timeout: int | float | None = None  # Seconds (default: 300)
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> ContainerConfig:
@@ -185,7 +185,7 @@ class ScheduledTask:
 class TaskRunLog:
     task_id: str
     run_at: str
-    duration_ms: float
+    duration_ms: int | float
     status: Literal["success", "error"]
     result: str | None = None
     error: str | None = None

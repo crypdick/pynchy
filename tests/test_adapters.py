@@ -12,6 +12,8 @@ import asyncio
 from typing import Any
 from unittest.mock import AsyncMock
 
+from conftest import NullChannel
+
 from pynchy.event_bus import (
     AgentActivityEvent,
     AgentTraceEvent,
@@ -47,7 +49,7 @@ def _group(
     )
 
 
-class FakeChannel:
+class FakeChannel(NullChannel):
     """Minimal channel for adapter tests."""
 
     def __init__(self, *, connected: bool = True):

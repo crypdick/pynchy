@@ -11,7 +11,7 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import init_test_database, make_settings
+from conftest import NullIpcDeps, init_test_database, make_settings
 
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.watcher import (
@@ -21,7 +21,7 @@ from pynchy.state import get_all_tasks
 from pynchy.types import WorkspaceProfile
 
 
-class MockDeps:
+class MockDeps(NullIpcDeps):
     """Mock IPC dependencies."""
 
     def __init__(self, groups: dict[str, WorkspaceProfile] | None = None):
@@ -49,21 +49,6 @@ class MockDeps:
 
     def register_workspace(self, profile: WorkspaceProfile) -> None:
         self._groups[profile.jid] = profile
-
-    async def sync_group_metadata(self, force: bool) -> None:
-        pass
-
-    async def get_available_groups(self) -> list[Any]:
-        return []
-
-    def write_groups_snapshot(
-        self,
-        group_folder: str,
-        is_admin: bool,
-        available_groups: list[Any],
-        registered_jids: set[str],
-    ) -> None:
-        pass
 
     async def clear_session(self, group_folder: str) -> None:
         self.cleared_sessions.append(group_folder)

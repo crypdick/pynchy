@@ -16,7 +16,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from conftest import init_test_database, make_settings
+from conftest import NullIpcDeps, init_test_database, make_settings
 
 from pynchy.config import WorkspaceConfig
 from pynchy.host.container_manager.ipc import dispatch
@@ -325,7 +325,7 @@ class TestHostCreatePrFromWorktree:
 # ---------------------------------------------------------------------------
 
 
-class MockDeps:
+class MockDeps(NullIpcDeps):
     """Mock IPC dependencies for handler tests."""
 
     def __init__(self, groups: dict[str, WorkspaceProfile]):

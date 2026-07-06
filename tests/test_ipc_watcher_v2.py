@@ -13,7 +13,7 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import init_test_database, make_settings
+from conftest import NullIpcDeps, init_test_database, make_settings
 
 from pynchy.host.container_manager.ipc import watcher
 from pynchy.types import WorkspaceProfile
@@ -40,7 +40,7 @@ def _test_settings(*, data_dir: Path):
     return make_settings(data_dir=data_dir)
 
 
-class MockDeps:
+class MockDeps(NullIpcDeps):
     """Mock IPC dependencies for watcher testing."""
 
     def __init__(self, groups: dict[str, WorkspaceProfile]):
@@ -94,12 +94,6 @@ class MockDeps:
 
     def enqueue_message_check(self, group_jid: str) -> None:
         self.enqueued_checks.append(group_jid)
-
-    def channels(self) -> list:
-        return []
-
-    def get_active_sessions(self) -> dict[str, str]:
-        return {}
 
 
 @pytest.fixture

@@ -13,8 +13,14 @@ from pynchy.host.orchestrator.messaging.router import (
     init_trace_batcher,
     pop_last_result_ids,
 )
-from pynchy.host.orchestrator.messaging.streaming import StreamState, stream_states
-from pynchy.types import OutboundEvent, OutboundEventType
+from pynchy.host.orchestrator.messaging.streaming import OutputDeps, StreamState, stream_states
+from pynchy.types import (
+    Channel,
+    ContainerOutput,
+    OutboundEvent,
+    OutboundEventType,
+    WorkspaceProfile,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -31,12 +37,13 @@ def _clean_trace_batcher():
 
 
 def _make_deps() -> MagicMock:
-    deps = MagicMock()
+    deps = MagicMock(spec=OutputDeps)
+    deps.workspaces = {}
     deps.broadcast_to_channels = AsyncMock()
     deps.emit = MagicMock()
     # Provide a mock channel so finalize_stream_or_broadcast (bus) can work.
     # The bus iterates deps.channels directly for result finalization.
-    ch = MagicMock()
+    ch = MagicMock(spec=Channel)
     ch.name = "test"
     ch.is_connected.return_value = True
     ch.send_event = AsyncMock()
@@ -46,14 +53,15 @@ def _make_deps() -> MagicMock:
 
 
 def _make_group(*, name: str = "test-group", is_admin: bool = False) -> MagicMock:
-    group = MagicMock()
+    group = MagicMock(spec=WorkspaceProfile)
     group.name = name
+    group.folder = name
     group.is_admin = is_admin
     return group
 
 
-def _make_output(**overrides) -> MagicMock:
-    """Create a ContainerOutput-like object with sensible defaults."""
+def _make_output(**overrides) -> ContainerOutput:
+    """Create a ContainerOutput with sensible defaults."""
     defaults = {
         "type": "result",
         "result": None,
@@ -67,13 +75,10 @@ def _make_output(**overrides) -> MagicMock:
         "system_subtype": None,
         "system_data": None,
         "text": None,
-        "status": "ok",
+        "status": "success",
     }
     defaults.update(overrides)
-    mock = MagicMock()
-    for k, v in defaults.items():
-        setattr(mock, k, v)
-    return mock
+    return ContainerOutput(**defaults)
 
 
 def _get_broadcast_content(deps: MagicMock) -> str:
@@ -127,7 +132,7 @@ class TestNextTraceId:
 class TestInitTraceBatcher:
     def test_init_creates_batcher(self):
         deps = _make_deps()
-        init_trace_batcher(deps, cooldown=999)
+        init_trace_batcher(deps, cooldown=999.0)
         from pynchy.host.orchestrator.messaging import streaming
 
         batcher = streaming.get_trace_batcher()

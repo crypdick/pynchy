@@ -9,6 +9,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from conftest import NullIpcDeps
 
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
@@ -38,7 +39,7 @@ TEST_GROUP = WorkspaceProfile(
 )
 
 
-class FakeDeps:
+class FakeDeps(NullIpcDeps):
     """Minimal IpcDeps for testing."""
 
     def __init__(self, groups: dict[str, WorkspaceProfile] | None = None):

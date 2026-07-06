@@ -9,6 +9,7 @@ import pytest
 from conftest import init_test_database
 
 from pynchy.host.container_manager.ipc import dispatch
+from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.host.orchestrator.task_scheduler import (
     _poll_database_host_jobs,  # allow: private-test-imports
 )
@@ -27,7 +28,7 @@ async def _setup_db():
 @pytest.fixture
 def mock_ipc_deps():
     """Mock IPC dependencies."""
-    deps = MagicMock()
+    deps = MagicMock(spec=IpcDeps)
     deps.workspaces.return_value = {
         "admin-jid": MagicMock(folder="admin-1", is_admin=True),
     }

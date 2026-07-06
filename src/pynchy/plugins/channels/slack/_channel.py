@@ -87,8 +87,8 @@ class SlackChannel(
         self._seen_ts_max = 500
         # Cache resolved Slack user/channel names to avoid redundant API calls.
         # TTL of 1 hour — names change rarely; bounded to 500 entries.
-        self._user_name_cache = TtlCache(ttl_seconds=3600, max_size=500)
-        self._channel_name_cache = TtlCache(ttl_seconds=3600, max_size=500)
+        self._user_name_cache = TtlCache(ttl_seconds=3600.0, max_size=500)
+        self._channel_name_cache = TtlCache(ttl_seconds=3600.0, max_size=500)
 
     # ------------------------------------------------------------------
     # Channel protocol

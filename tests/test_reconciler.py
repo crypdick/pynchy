@@ -15,7 +15,7 @@ from pynchy.state import (
     set_channel_cursor,
     store_chat_metadata,
 )
-from pynchy.types import InboundFetchResult, NewMessage, WorkspaceProfile
+from pynchy.types import Channel, InboundFetchResult, NewMessage, WorkspaceProfile
 from tests.conftest import init_test_database, make_settings
 
 # ---------------------------------------------------------------------------
@@ -39,7 +39,7 @@ def _make_channel(
     inbound: list[NewMessage] | None = None,
     high_water_mark: str = "",
 ) -> MagicMock:
-    ch = MagicMock()
+    ch = MagicMock(spec=Channel)
     ch.name = name
     ch.is_connected.return_value = connected
     ch.owns_jid = MagicMock(return_value=owns)

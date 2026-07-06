@@ -14,7 +14,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-from conftest import init_test_database, make_settings
+from conftest import NullChannel, init_test_database, make_settings
 
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.host.orchestrator.app import PynchyApp
@@ -81,7 +81,7 @@ def _patch_test_settings(tmp_path: Path):
         yield
 
 
-class FakeChannel:
+class FakeChannel(NullChannel):
     """Minimal Channel implementation for testing."""
 
     def __init__(self) -> None:
@@ -107,7 +107,7 @@ class FakeChannel:
         self.connected = False
 
 
-class FakeProcess:
+class FakeProcess(asyncio.subprocess.Process):
     """Simulates asyncio.subprocess.Process for integration tests.
 
     Output is delivered via the session's public API (simulating the IPC

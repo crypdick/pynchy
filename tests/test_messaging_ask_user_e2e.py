@@ -18,7 +18,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import make_settings
+from conftest import NullIpcDeps, make_settings
 
 from pynchy.state import init_test_database
 from pynchy.types import WorkspaceProfile
@@ -78,7 +78,7 @@ class BasicChannel:
         return True
 
 
-class FakeIpcDeps:
+class FakeIpcDeps(NullIpcDeps):
     """Minimal IpcDeps for ask_user handler tests."""
 
     def __init__(

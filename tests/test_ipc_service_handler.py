@@ -6,6 +6,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from conftest import NullIpcDeps
 
 from pynchy import state
 from pynchy.config.models import WorkspaceConfig
@@ -40,7 +41,7 @@ def register_gate():
     return _make
 
 
-class FakeDeps:
+class FakeDeps(NullIpcDeps):
     """Minimal IpcDeps for testing."""
 
     def __init__(self, groups: dict[str, WorkspaceProfile] | None = None):

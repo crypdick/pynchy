@@ -137,7 +137,7 @@ class TestReconnectShutdownRace:
         # Patch connect to detect if it gets called
         ch.connect = AsyncMock()
 
-        await ch._reconnect_with_backoff(delay=0)
+        await ch._reconnect_with_backoff(delay=0.0)
 
         ch.connect.assert_not_awaited()
 
@@ -153,7 +153,7 @@ class TestReconnectShutdownRace:
 
         ch.connect = AsyncMock(side_effect=fake_connect)
 
-        await ch._reconnect_with_backoff(delay=0)
+        await ch._reconnect_with_backoff(delay=0.0)
 
         ch.connect.assert_awaited_once()
 
@@ -166,7 +166,7 @@ class TestReconnectShutdownRace:
 
         ch.connect = AsyncMock()
 
-        await ch._reconnect_with_backoff(delay=0)
+        await ch._reconnect_with_backoff(delay=0.0)
 
         ch.connect.assert_not_awaited()
 

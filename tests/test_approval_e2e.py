@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from conftest import make_settings
+from conftest import NullIpcDeps, make_settings
 
 from pynchy import state
 from pynchy.host.container_manager.ipc import registry
@@ -45,7 +45,7 @@ TEST_GROUP = WorkspaceProfile(
 )
 
 
-class FakeDeps:
+class FakeDeps(NullIpcDeps):
     """Minimal IpcDeps supporting both service handler and approval handler tests."""
 
     def __init__(self, groups: dict[str, WorkspaceProfile] | None = None):

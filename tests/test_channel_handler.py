@@ -12,7 +12,7 @@ from pynchy.host.orchestrator.messaging.channel_handler import (
     set_typing_on_channels,
 )
 from pynchy.host.orchestrator.messaging.sender import broadcast as broadcast_to_channels
-from pynchy.types import OutboundEvent, OutboundEventType
+from pynchy.types import Channel, OutboundEvent, OutboundEventType
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -26,7 +26,7 @@ def _make_channel(
     has_reaction: bool = False,
     has_typing: bool = False,
 ) -> MagicMock:
-    ch = MagicMock()
+    ch = MagicMock(spec=Channel)
     ch.name = name
     ch.is_connected.return_value = connected
     ch.send_event = AsyncMock()

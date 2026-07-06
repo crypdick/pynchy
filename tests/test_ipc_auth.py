@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import init_test_database, make_settings
+from conftest import NullIpcDeps, init_test_database, make_settings
 
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.state import (
@@ -49,7 +48,7 @@ def _test_settings(*, data_dir=None):
     return make_settings(**({"data_dir": data_dir} if data_dir is not None else {}))
 
 
-class MockDeps:
+class MockDeps(NullIpcDeps):
     """Mock IPC dependencies."""
 
     def __init__(self, groups: dict[str, WorkspaceProfile]):
@@ -85,21 +84,6 @@ class MockDeps:
         # racing against pytest's per-test event-loop teardown.
         self._groups[profile.jid] = profile
 
-    async def sync_group_metadata(self, force: bool) -> None:
-        pass
-
-    async def get_available_groups(self) -> list[Any]:
-        return []
-
-    def write_groups_snapshot(
-        self,
-        group_folder: str,
-        is_admin: bool,
-        available_groups: list[Any],
-        registered_jids: set[str],
-    ) -> None:
-        pass
-
     async def clear_session(self, group_folder: str) -> None:
         self.cleared_sessions.append(group_folder)
 
@@ -108,12 +92,6 @@ class MockDeps:
 
     def enqueue_message_check(self, group_jid: str) -> None:
         self.enqueued_checks.append(group_jid)
-
-    def channels(self) -> list:
-        return []
-
-    def get_active_sessions(self) -> dict[str, str]:
-        return {}
 
 
 @pytest.fixture

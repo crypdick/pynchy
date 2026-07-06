@@ -15,11 +15,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import init_test_database, make_settings
+from conftest import NullIpcDeps, init_test_database, make_settings
 
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.git_ops.repo import RepoContext
@@ -52,7 +51,7 @@ def _test_settings(*, data_dir=None, project_root=None):
     return make_settings(**overrides)
 
 
-class MockDeps:
+class MockDeps(NullIpcDeps):
     """Mock IPC dependencies."""
 
     def __init__(self, groups: dict[str, WorkspaceProfile]):
@@ -81,21 +80,6 @@ class MockDeps:
     def register_workspace(self, profile: WorkspaceProfile) -> None:
         self._groups[profile.jid] = profile
 
-    async def sync_group_metadata(self, force: bool) -> None:
-        pass
-
-    async def get_available_groups(self) -> list[Any]:
-        return []
-
-    def write_groups_snapshot(
-        self,
-        group_folder: str,
-        is_admin: bool,
-        available_groups: list[Any],
-        registered_jids: set[str],
-    ) -> None:
-        pass
-
     async def clear_session(self, group_folder: str) -> None:
         self.cleared_sessions.append(group_folder)
 
@@ -104,12 +88,6 @@ class MockDeps:
 
     def enqueue_message_check(self, group_jid: str) -> None:
         self.enqueued_checks.append(group_jid)
-
-    def channels(self) -> list:
-        return []
-
-    def get_active_sessions(self) -> dict[str, str]:
-        return {}
 
     async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
         self.deploy_calls.append((previous_sha, rebuild))

@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+from conftest import NullIpcDeps
 
 from pynchy.config.models import (
     CalDAVConfig,
@@ -46,7 +47,7 @@ async def _setup():
     destroy_gate("test-ws", 1000.0)
 
 
-class FakeDeps:
+class FakeDeps(NullIpcDeps):
     def __init__(self, groups=None):
         self._groups = groups or {}
 
