@@ -17,7 +17,7 @@ The ``text`` field on RenderedMessage is always populated with plain text
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from pynchy.host.orchestrator.messaging.formatter import (
     format_internal_tags,
@@ -32,12 +32,12 @@ if TYPE_CHECKING:
 _MAX_BLOCKS_PER_MESSAGE = 50
 
 
-def _markdown_block(text: str) -> dict:
+def _markdown_block(text: str) -> dict[str, Any]:
     """Build a Slack ``markdown`` block — natively renders standard markdown."""
     return {"type": "markdown", "text": text}
 
 
-def _context_block(text: str) -> dict:
+def _context_block(text: str) -> dict[str, Any]:
     """Build a Slack ``context`` block with mrkdwn element — small muted line."""
     return {
         "type": "context",
@@ -45,7 +45,7 @@ def _context_block(text: str) -> dict:
     }
 
 
-def _rich_text_preformatted_block(code: str) -> dict:
+def _rich_text_preformatted_block(code: str) -> dict[str, Any]:
     """Build a ``rich_text`` block containing a ``rich_text_preformatted`` section."""
     return {
         "type": "rich_text",
@@ -101,7 +101,7 @@ class SlackBlocksFormatter(BaseFormatter):
         if not events:
             return RenderedMessage(text="", blocks=[])
 
-        all_blocks: list[dict] = []
+        all_blocks: list[dict[str, Any]] = []
         all_texts: list[str] = []
 
         for event in events:
@@ -136,7 +136,7 @@ class SlackBlocksFormatter(BaseFormatter):
         if cursor:
             content += " \u258c"
             fallback += " \u258c"
-        blocks: list[dict] = [_markdown_block(content)]
+        blocks: list[dict[str, Any]] = [_markdown_block(content)]
 
         if cursor and event.metadata.get("group_name"):
             group = event.metadata["group_name"]
@@ -195,7 +195,7 @@ class SlackBlocksFormatter(BaseFormatter):
 
         if verbose and content:
             # Verbose tools show full content
-            blocks: list[dict] = [header, _rich_text_preformatted_block(content)]
+            blocks: list[dict[str, Any]] = [header, _rich_text_preformatted_block(content)]
             fallback = f"\U0001f4cb {label}:\n{content}"
         elif content:
             # Non-verbose with content: full output in blocks, compact notification text
@@ -227,7 +227,7 @@ class SlackBlocksFormatter(BaseFormatter):
         The Slack interaction handler routes button clicks to the existing
         approval decision pipeline.
         """
-        blocks: list[dict] = [_context_block(f"\U0001f3e0 {event.content}")]
+        blocks: list[dict[str, Any]] = [_context_block(f"\U0001f3e0 {event.content}")]
 
         if event.metadata.get("approval"):
             short_id = event.metadata.get("short_id", "")
@@ -265,12 +265,12 @@ class SlackBlocksFormatter(BaseFormatter):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _extract_tool_code(tool_name: str, tool_input: dict) -> str:
+    def _extract_tool_code(tool_name: str, tool_input: dict[str, Any]) -> str:
         """Extract the most relevant code/input string for preformatted display."""
         if tool_name == "Bash":
-            return tool_input.get("command", tool_name)
+            return cast(str, tool_input.get("command", tool_name))
         if tool_name == "Read":
-            return tool_input.get("file_path", tool_name)
+            return cast(str, tool_input.get("file_path", tool_name))
         if tool_name == "Edit":
             path = tool_input.get("file_path", "")
             old = tool_input.get("old_string", "")
@@ -291,7 +291,7 @@ class SlackBlocksFormatter(BaseFormatter):
             path = tool_input.get("path", "")
             return f"/{pattern}/ {path}".strip() if pattern else tool_name
         if tool_name == "Glob":
-            return tool_input.get("pattern", tool_name)
+            return cast(str, tool_input.get("pattern", tool_name))
         # Default: stringify the input
         preview = str(tool_input)
         return preview if tool_input else tool_name

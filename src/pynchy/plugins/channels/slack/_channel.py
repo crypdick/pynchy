@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 from pynchy.logger import logger
 from pynchy.plugins.channels.slack._blocks import SlackBlocksFormatter
@@ -51,7 +51,7 @@ class SlackChannel(
         on_message: Callable[[str, NewMessage], None],
         on_chat_metadata: Callable[[str, str, str | None], None],
         on_reaction: Callable[[str, str, str, str], None] | None = None,
-        on_ask_user_answer: Callable[[str, dict], None] | None = None,
+        on_ask_user_answer: Callable[[str, dict[str, Any]], None] | None = None,
         on_approval_decision: Callable[[str, str, str, str], None] | None = None,
         on_agent_stop: Callable[[str, str], None] | None = None,
     ) -> None:
@@ -119,7 +119,7 @@ class SlackChannel(
         if rendered.blocks:
             kwargs["blocks"] = rendered.blocks
         resp = await self._app.client.chat_postMessage(**kwargs)
-        return resp.get("ts")
+        return cast("str | None", resp.get("ts"))
 
     async def update_event(self, jid: str, message_id: str, event: OutboundEvent) -> None:
         """Update an existing Slack message in-place with a rendered event."""
@@ -187,7 +187,9 @@ class SlackChannel(
         except Exception as exc:
             logger.debug("Slack reaction failed", err=str(exc))
 
-    async def send_ask_user(self, jid: str, request_id: str, questions: list[dict]) -> str | None:
+    async def send_ask_user(
+        self, jid: str, request_id: str, questions: list[dict[str, Any]]
+    ) -> str | None:
         """Post an interactive question widget and return the message ``ts``.
 
         Builds a Block Kit payload with:
@@ -211,7 +213,7 @@ class SlackChannel(
         resp = await self._app.client.chat_postMessage(
             channel=channel_id, blocks=blocks, text=fallback
         )
-        return resp.get("ts")
+        return cast("str | None", resp.get("ts"))
 
     # ------------------------------------------------------------------
     # History catch-up (reconnect recovery)
@@ -249,7 +251,7 @@ class SlackChannel(
                 logger.warning("Failed to fetch Slack history for catch-up", channel=channel_id)
                 return [], high_water_mark
 
-            raw_messages: list[dict] = resp.get("messages", [])
+            raw_messages: list[dict[str, Any]] = resp.get("messages", [])
             if not raw_messages:
                 return [], high_water_mark
 
@@ -381,7 +383,7 @@ class SlackChannel(
         try:
             resp = await self._app.client.conversations_info(channel=channel_id)
             channel = resp.get("channel", {})
-            name = channel.get("name", channel_id)
+            name: str = channel.get("name", channel_id)
             self._channel_name_cache.put(channel_id, name)
             return name
         except Exception as exc:

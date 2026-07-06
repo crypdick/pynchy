@@ -9,7 +9,7 @@ behavior-preserving.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from pynchy.logger import logger
 
@@ -19,6 +19,11 @@ from ._ui import normalize_chat_name
 
 class SlackAllowlistMixin:
     """Chat allowlist resolution and channel creation for :class:`SlackChannel`."""
+
+    # Declared here so mypy knows the types when analysing this mixin in
+    # isolation; the concrete instances are created in ``SlackChannel.__init__``.
+    _chat_name_to_id: dict[str, str]
+    _allowed_channel_ids: set[str]
 
     def _register_allowed_channel(self, name: str, channel_id: str) -> None:
         normalized = normalize_chat_name(name)
@@ -138,7 +143,7 @@ class SlackAllowlistMixin:
             resp = await self._app.client.conversations_list(**kwargs)
             for ch in resp.get("channels", []):
                 if ch.get("name") == name:
-                    return ch["id"]
+                    return cast(str, ch["id"])
             cursor = resp.get("response_metadata", {}).get("next_cursor")
             if not cursor:
                 break

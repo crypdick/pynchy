@@ -18,6 +18,11 @@ from pynchy.logger import logger
 class SlackLifecycleMixin:
     """Connection lifecycle for :class:`SlackChannel`."""
 
+    # Declared here so mypy knows the types when analysing this mixin in
+    # isolation; the concrete instances are created in ``SlackChannel.__init__``.
+    _handler_task: asyncio.Task[None] | None
+    _reconnect_task: asyncio.Task[None] | None
+
     async def connect(self) -> None:
         from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
         from slack_bolt.async_app import AsyncApp

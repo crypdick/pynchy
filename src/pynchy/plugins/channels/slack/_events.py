@@ -25,23 +25,31 @@ from ._ui import AGENT_STOP_ACTION_RE, ASK_USER_ACTION_RE, COP_APPROVAL_ACTION_R
 class SlackEventsMixin:
     """Inbound event ingestion for :class:`SlackChannel`."""
 
+    # Declared here so mypy knows the type when analysing this mixin in
+    # isolation; the concrete instance is created in ``SlackChannel.__init__``.
+    _seen_ts: dict[str, float]
+
     def _register_handlers(self) -> None:
         assert self._app is not None
 
-        @self._app.event("message")
+        # slack_bolt is untyped to mypy (ignore_missing_imports), so ``self._app``
+        # is ``Any`` and its ``.event()``/``.action()`` decorators register as
+        # untyped — hence the per-handler ``untyped-decorator`` ignores below.
+
+        @self._app.event("message")  # type: ignore[untyped-decorator]
         async def _handle_message(event: dict[str, Any], say: Any) -> None:
             await self._on_slack_message(event)
 
-        @self._app.event("app_mention")
+        @self._app.event("app_mention")  # type: ignore[untyped-decorator]
         async def _handle_mention(event: dict[str, Any], say: Any) -> None:
             await self._on_slack_message(event)
 
-        @self._app.event("reaction_added")
+        @self._app.event("reaction_added")  # type: ignore[untyped-decorator]
         async def _handle_reaction(event: dict[str, Any]) -> None:
             await self._on_slack_reaction(event)
 
         # --- ask_user interaction handlers (Block Kit buttons & text submit) ---
-        @self._app.action(ASK_USER_ACTION_RE)
+        @self._app.action(ASK_USER_ACTION_RE)  # type: ignore[untyped-decorator]
         async def _handle_ask_user_action(
             ack: Any, body: dict[str, Any], action: dict[str, Any]
         ) -> None:
@@ -49,7 +57,7 @@ class SlackEventsMixin:
             await self._on_ask_user_interaction(body, action)
 
         # --- Approval button handlers (Approve/Deny from approval gate) ---
-        @self._app.action(COP_APPROVAL_ACTION_RE)
+        @self._app.action(COP_APPROVAL_ACTION_RE)  # type: ignore[untyped-decorator]
         async def _handle_approval_action(
             ack: Any, body: dict[str, Any], action: dict[str, Any]
         ) -> None:
@@ -57,7 +65,7 @@ class SlackEventsMixin:
             await self._on_approval_interaction(body, action)
 
         # --- Agent stop button handler ---
-        @self._app.action(AGENT_STOP_ACTION_RE)
+        @self._app.action(AGENT_STOP_ACTION_RE)  # type: ignore[untyped-decorator]
         async def _handle_agent_stop(
             ack: Any, body: dict[str, Any], action: dict[str, Any]
         ) -> None:
@@ -74,7 +82,7 @@ class SlackEventsMixin:
 
         assistant = AsyncAssistant()
 
-        @assistant.thread_started
+        @assistant.thread_started  # type: ignore[untyped-decorator]
         async def _on_thread_started(
             say: Any,
             set_suggested_prompts: Any,
@@ -87,7 +95,7 @@ class SlackEventsMixin:
                 ],
             )
 
-        @assistant.user_message
+        @assistant.user_message  # type: ignore[untyped-decorator]
         async def _on_user_message(
             payload: dict[str, Any],
             context: AsyncBoltContext,
