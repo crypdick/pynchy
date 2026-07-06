@@ -1,18 +1,16 @@
 """TextFormatter -- default plain-text renderer.
 
-Captures the existing rendering logic from formatter.py and router.py as a
-reusable BaseFormatter implementation.  New channel plugins can use this as-is
-for their MVP; richer channels (e.g. Slack) subclass or replace it with
-block-based formatters.
+A reusable BaseFormatter implementation. Channel plugins can use this as-is;
+richer channels (e.g. Slack) subclass it or provide their own block-based
+formatters.
 
-Imports utility functions from the existing ``formatter`` module rather than
+Imports utility functions from the ``formatter`` module rather than
 duplicating them:
   - ``format_internal_tags``  -- converts ``<internal>`` tags to italicised thoughts
   - ``format_tool_preview``   -- one-line preview of a tool invocation
 
-The ``_truncate_output`` helper was originally in ``router.py`` (line ~80);
-it is re-implemented here as a module-level function so TextFormatter is
-self-contained and the old router code can eventually delegate to it.
+The ``_truncate_output`` helper is a module-level function so TextFormatter is
+self-contained.
 """
 
 from __future__ import annotations
@@ -47,11 +45,10 @@ def _truncate_output(content: str) -> str:
 
 
 class TextFormatter(BaseFormatter):
-    """Default plain-text renderer -- the reference implementation for new channels.
+    """Default plain-text renderer -- the reference implementation for channels.
 
-    Each ``OutboundEventType`` maps to a rendering path that mirrors what
-    ``router.py`` currently produces inline.  Extracting it here lets us
-    share the logic across channels and test it without async infrastructure.
+    Each ``OutboundEventType`` maps to a rendering path. Keeping it here lets
+    channels share the logic and test it without async infrastructure.
     """
 
     def render(self, event: OutboundEvent) -> RenderedMessage:

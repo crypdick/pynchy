@@ -8,6 +8,7 @@ import os
 import random
 import time
 from pathlib import Path
+from typing import Any, NoReturn
 
 from mcp.types import CallToolResult, TextContent
 
@@ -29,7 +30,7 @@ from agent_runner.agent_tools._registry import tool, tool_error
     ),
     {"type": "object", "properties": {}},
 )
-async def _sync_worktree_handle(arguments: dict) -> list[TextContent] | CallToolResult:
+async def _sync_worktree_handle(arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
     request_id = f"{int(time.time() * 1000)}-{random.randbytes(3).hex()}"
     _ipc.write_ipc_file(
         _ipc.TASKS_DIR,
@@ -61,7 +62,7 @@ async def _sync_worktree_handle(arguments: dict) -> list[TextContent] | CallTool
     return tool_error("Timed out (120s). Retry or check with the host.")
 
 
-def _exit_container() -> None:
+def _exit_container() -> NoReturn:
     """Write the close sentinel and terminate the container process."""
     close_sentinel = Path("/workspace/ipc/input/_close")
     close_sentinel.parent.mkdir(parents=True, exist_ok=True)
@@ -89,7 +90,7 @@ def _exit_container() -> None:
     {"type": "object", "properties": {}},
     visible=lambda: _ipc.is_scheduled_task,
 )
-async def _finished_work_handle(arguments: dict) -> list[TextContent]:
+async def _finished_work_handle(arguments: dict[str, Any]) -> list[TextContent]:
     _ipc.write_ipc_file(
         _ipc.TASKS_DIR,
         {
@@ -140,7 +141,7 @@ async def _finished_work_handle(arguments: dict) -> list[TextContent]:
         },
     },
 )
-async def _reset_context_handle(arguments: dict) -> list[TextContent]:
+async def _reset_context_handle(arguments: dict[str, Any]) -> list[TextContent]:
     data: dict[str, str] = {
         "type": "reset_context",
         "chatJid": _ipc.chat_jid,

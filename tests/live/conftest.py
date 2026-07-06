@@ -19,7 +19,7 @@ from conftest import make_settings
 
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.host.orchestrator.app import PynchyApp
-from pynchy.state import _init_test_database
+from pynchy.state import init_test_database
 from pynchy.types import NewMessage, WorkspaceProfile
 
 # ---------------------------------------------------------------------------
@@ -276,7 +276,7 @@ def make_test_message(
 @pytest.fixture
 async def live_app(tmp_path: Path) -> PynchyApp:
     """Create a PynchyApp configured for live testing."""
-    await _init_test_database()
+    await init_test_database()
     app = PynchyApp()
     app.workspaces = {
         "group@g.us": WorkspaceProfile(

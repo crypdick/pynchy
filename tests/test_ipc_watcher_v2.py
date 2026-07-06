@@ -13,16 +13,9 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import make_settings
+from conftest import init_test_database, make_settings
 
-from pynchy.host.container_manager.ipc.watcher import (
-    _handle_signal,
-    _IpcEventHandler,
-    _process_message_file,
-    _process_task_file,
-    _sweep_directory,
-)
-from pynchy.state import _init_test_database
+from pynchy.host.container_manager.ipc import watcher
 from pynchy.types import WorkspaceProfile
 
 ADMIN_GROUP = WorkspaceProfile(
@@ -111,7 +104,7 @@ class MockDeps:
 
 @pytest.fixture
 async def deps():
-    await _init_test_database()
+    await init_test_database()
     return MockDeps(
         {
             "admin-1@g.us": ADMIN_GROUP,
@@ -151,7 +144,7 @@ class TestStartupSweep:
             "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            processed = await _sweep_directory(ipc_dir, deps)
+            processed = await watcher._sweep_directory(ipc_dir, deps)
 
         assert processed == 1
         assert len(deps.broadcast_messages) == 1
@@ -177,7 +170,7 @@ class TestStartupSweep:
             "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            processed = await _sweep_directory(ipc_dir, deps)
+            processed = await watcher._sweep_directory(ipc_dir, deps)
 
         assert processed == 1
         assert "new@g.us" in deps.workspaces()
@@ -198,7 +191,7 @@ class TestStartupSweep:
         ):
             deps.sync_group_metadata = AsyncMock()
             deps.get_available_groups = AsyncMock(return_value=[])
-            processed = await _sweep_directory(ipc_dir, deps)
+            processed = await watcher._sweep_directory(ipc_dir, deps)
 
         assert processed == 1
         deps.sync_group_metadata.assert_called_once_with(True)
@@ -208,7 +201,7 @@ class TestStartupSweep:
         ipc_dir = tmp_path / "ipc"
         ipc_dir.mkdir()
 
-        processed = await _sweep_directory(ipc_dir, deps)
+        processed = await watcher._sweep_directory(ipc_dir, deps)
         assert processed == 0
 
     async def test_sweep_skips_errors_directory(self, deps, tmp_path: Path):
@@ -218,7 +211,7 @@ class TestStartupSweep:
         error_dir.mkdir(parents=True)
         (error_dir / "test.json").write_text(json.dumps({"type": "bad"}))
 
-        processed = await _sweep_directory(ipc_dir, deps)
+        processed = await watcher._sweep_directory(ipc_dir, deps)
         assert processed == 0
 
     async def test_sweep_cleans_up_processed_files(self, deps, tmp_path: Path):
@@ -235,7 +228,7 @@ class TestStartupSweep:
             "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            await _sweep_directory(ipc_dir, deps)
+            await watcher._sweep_directory(ipc_dir, deps)
 
         assert not file_path.exists()
 
@@ -267,7 +260,7 @@ class TestStartupSweep:
                 new_callable=AsyncMock,
             ) as mock_process,
         ):
-            handled = await _sweep_directory(ipc_dir, deps)
+            handled = await watcher._sweep_directory(ipc_dir, deps)
 
         # File should be deleted without calling _process_output_file
         mock_process.assert_not_called()
@@ -286,7 +279,7 @@ class TestStartupSweep:
             "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            handled = await _sweep_directory(ipc_dir, deps)
+            handled = await watcher._sweep_directory(ipc_dir, deps)
 
         assert handled == 1
         assert not initial_file.exists()
@@ -316,7 +309,7 @@ class TestStartupSweep:
             "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            handled = await _sweep_directory(ipc_dir, deps)
+            handled = await watcher._sweep_directory(ipc_dir, deps)
 
         # 1 processed + 2 output cleaned + 1 initial cleaned = 4
         assert handled == 4
@@ -336,7 +329,7 @@ class TestStartupSweep:
             "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            await _sweep_directory(ipc_dir, deps)
+            await watcher._sweep_directory(ipc_dir, deps)
 
         assert not bad_file.exists()
         assert (ipc_dir / "errors" / "admin-1-bad.json").exists()
@@ -355,7 +348,7 @@ class TestSignalHandling:
         deps.sync_group_metadata = AsyncMock()
         deps.get_available_groups = AsyncMock(return_value=[])
 
-        await _handle_signal("refresh_groups", "admin-1", True, deps)
+        await watcher._handle_signal("refresh_groups", "admin-1", True, deps)
 
         deps.sync_group_metadata.assert_called_once_with(True)
         assert len(deps.snapshot_calls) == 1
@@ -364,14 +357,14 @@ class TestSignalHandling:
         """Non-admin groups should not be able to trigger refresh_groups."""
         deps.sync_group_metadata = AsyncMock()
 
-        await _handle_signal("refresh_groups", "other-group", False, deps)
+        await watcher._handle_signal("refresh_groups", "other-group", False, deps)
 
         deps.sync_group_metadata.assert_not_called()
 
     async def test_unknown_signal_is_logged(self, deps):
         """Unknown signals should be handled gracefully (logged but not crash)."""
         # This shouldn't raise — the watcher should log and continue
-        await _handle_signal("unknown_future_signal", "admin-1", True, deps)
+        await watcher._handle_signal("unknown_future_signal", "admin-1", True, deps)
 
 
 # ---------------------------------------------------------------------------
@@ -394,7 +387,7 @@ class TestTaskFileProcessing:
             "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            await _process_task_file(file_path, "admin-1", True, ipc_dir, deps)
+            await watcher._process_task_file(file_path, "admin-1", True, ipc_dir, deps)
 
         deps.sync_group_metadata.assert_called_once()
         assert not file_path.exists()  # File should be cleaned up
@@ -415,7 +408,7 @@ class TestTaskFileProcessing:
             },
         )
 
-        await _process_task_file(file_path, "admin-1", True, ipc_dir, deps)
+        await watcher._process_task_file(file_path, "admin-1", True, ipc_dir, deps)
 
         assert "test@g.us" in deps.workspaces()
         assert not file_path.exists()
@@ -430,7 +423,7 @@ class TestTaskFileProcessing:
             {"signal": "refresh_groups", "extra_payload": "bad"},
         )
 
-        await _process_task_file(file_path, "admin-1", True, ipc_dir, deps)
+        await watcher._process_task_file(file_path, "admin-1", True, ipc_dir, deps)
 
         # Should have been moved to errors
         assert not file_path.exists()
@@ -459,7 +452,7 @@ class TestMessageFileProcessing:
             "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            await _process_message_file(file_path, "admin-1", True, ipc_dir, deps)
+            await watcher._process_message_file(file_path, "admin-1", True, ipc_dir, deps)
 
         assert len(deps.broadcast_messages) == 1
         assert "hello" in deps.broadcast_messages[0][1]
@@ -479,7 +472,7 @@ class TestMessageFileProcessing:
             "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            await _process_message_file(file_path, "other-group", False, ipc_dir, deps)
+            await watcher._process_message_file(file_path, "other-group", False, ipc_dir, deps)
 
         assert len(deps.broadcast_messages) == 0
         # File should still be cleaned up (not retried)
@@ -504,7 +497,7 @@ class TestMessageFileProcessing:
             "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            await _process_message_file(file_path, "admin-1", True, ipc_dir, deps)
+            await watcher._process_message_file(file_path, "admin-1", True, ipc_dir, deps)
 
         assert deps.broadcast_messages[0][1] == "Researcher: update"
 
@@ -520,7 +513,7 @@ class TestMessageFileProcessing:
             "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            await _process_message_file(file_path, "admin-1", True, ipc_dir, deps)
+            await watcher._process_message_file(file_path, "admin-1", True, ipc_dir, deps)
 
         assert not file_path.exists()
         assert (ipc_dir / "errors" / "admin-1-broken.json").exists()
@@ -549,7 +542,7 @@ class TestIpcEventHandler:
         queue: asyncio.Queue[Path] = asyncio.Queue()
         ipc_dir = Path("/tmp/test-ipc")
 
-        handler = _IpcEventHandler(ipc_dir, loop, queue)
+        handler = watcher._IpcEventHandler(ipc_dir, loop, queue)
 
         from watchdog.events import FileCreatedEvent
 
@@ -571,7 +564,7 @@ class TestIpcEventHandler:
         queue: asyncio.Queue[Path] = asyncio.Queue()
         ipc_dir = Path("/tmp/test-ipc")
 
-        handler = _IpcEventHandler(ipc_dir, loop, queue)
+        handler = watcher._IpcEventHandler(ipc_dir, loop, queue)
 
         from watchdog.events import FileCreatedEvent
 
@@ -598,7 +591,7 @@ class TestIpcEventHandler:
         queue: asyncio.Queue[Path] = asyncio.Queue()
         ipc_dir = Path("/tmp/test-ipc")
 
-        handler = _IpcEventHandler(ipc_dir, loop, queue)
+        handler = watcher._IpcEventHandler(ipc_dir, loop, queue)
 
         from watchdog.events import FileCreatedEvent
 
@@ -618,7 +611,7 @@ class TestIpcEventHandler:
         queue: asyncio.Queue[Path] = asyncio.Queue()
         ipc_dir = Path("/tmp/test-ipc")
 
-        handler = _IpcEventHandler(ipc_dir, loop, queue)
+        handler = watcher._IpcEventHandler(ipc_dir, loop, queue)
 
         from watchdog.events import FileMovedEvent
 

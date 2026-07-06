@@ -16,16 +16,11 @@ import pytest
 from conftest import make_settings
 
 from pynchy.host.container_manager.ipc.write import write_ipc_response
+from pynchy.host.git_ops import sync_poll
 from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.git_ops.sync import host_sync_worktree
-from pynchy.host.git_ops.sync_poll import (
-    _hash_config_files,
-    _host_container_files_changed,
-    _host_get_origin_main_sha,
-    needs_container_rebuild,
-    needs_deploy,
-)
+from pynchy.host.git_ops.sync_poll import needs_container_rebuild, needs_deploy
 from pynchy.host.git_ops.worktree import ensure_worktree
 
 # ---------------------------------------------------------------------------
@@ -504,26 +499,26 @@ class TestPollingHelpers:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=0, stdout="main-sha-001\trefs/heads/main\n"
             )
-            sha = _host_get_origin_main_sha(tmp_path)
+            sha = sync_poll._host_get_origin_main_sha(tmp_path)
             assert sha == "main-sha-001"
 
     def test_host_get_origin_main_sha_failure(self, tmp_path: Path):
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=1, stdout="")
-            sha = _host_get_origin_main_sha(tmp_path)
+            sha = sync_poll._host_get_origin_main_sha(tmp_path)
             assert sha is None
 
-    def test_host_container_files_changed_true(self):
+    def test_container_files_change_triggers_rebuild(self):
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=0, stdout="src/pynchy/agent/Dockerfile\n"
             )
-            assert _host_container_files_changed("abc", "def") is True
+            assert needs_container_rebuild("abc", "def") is True
 
-    def test_host_container_files_changed_false(self):
+    def test_no_container_files_change_skips_rebuild(self):
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
-            assert _host_container_files_changed("abc", "def") is False
+            assert needs_container_rebuild("abc", "def") is False
 
 
 # ---------------------------------------------------------------------------
@@ -584,10 +579,10 @@ class TestHashConfigFiles:
         config_path = project / "config.toml"
 
         config_path.write_text("[agent]\nname = 'test'\n")
-        hash1 = _hash_config_files()
+        hash1 = sync_poll._hash_config_files()
 
         config_path.write_text("[agent]\nname = 'changed'\n")
-        hash2 = _hash_config_files()
+        hash2 = sync_poll._hash_config_files()
 
         assert hash1 != hash2
 
@@ -597,7 +592,7 @@ class TestHashConfigFiles:
         config_path = project / "config.toml"
         config_path.write_text("[agent]\nname = 'test'\n")
 
-        hash1 = _hash_config_files()
-        hash2 = _hash_config_files()
+        hash1 = sync_poll._hash_config_files()
+        hash2 = sync_poll._hash_config_files()
 
         assert hash1 == hash2

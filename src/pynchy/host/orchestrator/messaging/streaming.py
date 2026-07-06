@@ -17,7 +17,7 @@ from pynchy.logger import logger
 from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
-    from pynchy.types import Channel, OutboundEvent
+    from pynchy.types import Channel, OutboundEvent, WorkspaceProfile
 
 
 # ---------------------------------------------------------------------------
@@ -30,6 +30,9 @@ class OutputDeps(Protocol):
 
     @property
     def channels(self) -> list[Channel]: ...
+
+    @property
+    def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
     async def broadcast_to_channels(
         self, chat_jid: str, event: OutboundEvent, *, suppress_errors: bool = True
@@ -74,7 +77,7 @@ async def stream_text_to_channels(
 ) -> None:
     """Push the current OutboundEvent to channels that support update_event.
 
-    On first call, posts a new message via ``post_event``.  Subsequent calls
+    On first call, posts a message via ``post_event``.  Subsequent calls
     update it in-place via ``update_event``.  Throttled to _STREAM_THROTTLE
     unless ``final`` is True.
 
@@ -187,7 +190,7 @@ class TraceBatcher:
         loop = asyncio.get_running_loop()
         self._timers[chat_jid] = loop.call_later(
             self._cooldown,
-            lambda jid=chat_jid: create_background_task(self.flush(jid), name="trace-flush"),
+            lambda: create_background_task(self.flush(chat_jid), name="trace-flush"),
         )
 
     def _cancel_timer(self, chat_jid: str) -> None:

@@ -9,13 +9,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.plugins.channels.slack import (
-    SlackChannel,
-    SlackChannelPlugin,
-    _channel_id_from_jid,
-    _jid,
-    _split_text,
-)
+import pynchy.plugins.channels.slack._ids as slack_ids
+from pynchy.plugins.channels.slack import SlackChannel, SlackChannelPlugin
+from pynchy.plugins.channels.slack._ui import split_text
 
 # ------------------------------------------------------------------
 # JID helpers
@@ -24,13 +20,13 @@ from pynchy.plugins.channels.slack import (
 
 class TestJidHelpers:
     def test_jid_prefixes_channel_id(self) -> None:
-        assert _jid("C12345") == "slack:C12345"
+        assert slack_ids._jid("C12345") == "slack:C12345"
 
     def test_channel_id_from_jid_strips_prefix(self) -> None:
-        assert _channel_id_from_jid("slack:C12345") == "C12345"
+        assert slack_ids._channel_id_from_jid("slack:C12345") == "C12345"
 
     def test_roundtrip(self) -> None:
-        assert _channel_id_from_jid(_jid("C999")) == "C999"
+        assert slack_ids._channel_id_from_jid(slack_ids._jid("C999")) == "C999"
 
 
 # ------------------------------------------------------------------
@@ -40,22 +36,22 @@ class TestJidHelpers:
 
 class TestSplitText:
     def test_short_text_returns_single_chunk(self) -> None:
-        assert _split_text("hello", max_len=100) == ["hello"]
+        assert split_text("hello", max_len=100) == ["hello"]
 
     def test_exact_boundary(self) -> None:
         text = "a" * 100
-        assert _split_text(text, max_len=100) == [text]
+        assert split_text(text, max_len=100) == [text]
 
     def test_splits_on_newline(self) -> None:
         text = "a" * 50 + "\n" + "b" * 50
-        chunks = _split_text(text, max_len=60)
+        chunks = split_text(text, max_len=60)
         assert len(chunks) == 2
         assert chunks[0] == "a" * 50
         assert chunks[1] == "b" * 50
 
     def test_hard_split_when_no_newline(self) -> None:
         text = "a" * 200
-        chunks = _split_text(text, max_len=100)
+        chunks = split_text(text, max_len=100)
         assert len(chunks) == 2
         assert chunks[0] == "a" * 100
         assert chunks[1] == "a" * 100

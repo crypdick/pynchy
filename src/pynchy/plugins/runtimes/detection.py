@@ -49,7 +49,7 @@ def detect_runtime() -> RuntimeProvider:
     Priority:
     1) settings.container.runtime override (if available)
     2) platform-aware auto-detect (darwin prefers apple plugin, then docker)
-    3) first available plugin runtime, then docker fallback
+    3) first available plugin runtime, else docker
     """
     from pynchy.config import get_settings
 
@@ -112,7 +112,7 @@ _runtime: RuntimeProvider | None = None
 
 def get_runtime() -> RuntimeProvider:
     """Lazy singleton — caches the result of detect_runtime()."""
-    global _runtime  # noqa: PLW0603
+    global _runtime
     if _runtime is None:
         _runtime = detect_runtime()
         logger.info("Container runtime detected", name=_runtime.name, cli=_runtime.cli)

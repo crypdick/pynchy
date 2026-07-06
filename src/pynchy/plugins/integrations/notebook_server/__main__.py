@@ -115,17 +115,17 @@ _sessions: dict[str, KernelSession] = {}
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]  # fastmcp ships no type stubs
 async def start_kernel(name: str | None = None) -> dict[str, Any]:
     """Start an IPython kernel, optionally loading an existing notebook.
 
     If ``name`` refers to an existing notebook on disk, loads it and
     re-executes all code cells to restore kernel state. If omitted, creates
-    a new notebook with an auto-generated name.
+    a notebook with an auto-generated name.
 
     Args:
         name: Notebook name (without path). If the notebook exists on disk,
-              its cells are re-executed to restore state. If omitted, a new
+              its cells are re-executed to restore state. If omitted, a
               name is auto-generated.
 
     Returns:
@@ -191,7 +191,7 @@ async def start_kernel(name: str | None = None) -> dict[str, Any]:
     return result
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]  # fastmcp ships no type stubs
 async def execute_cell(kernel_id: str, code: str) -> dict[str, Any]:
     """Execute Python code in a running kernel.
 
@@ -230,7 +230,7 @@ async def execute_cell(kernel_id: str, code: str) -> dict[str, Any]:
     }
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]  # fastmcp ships no type stubs
 async def add_markdown(kernel_id: str, content: str) -> dict[str, Any]:
     """Add a markdown cell to the notebook.
 
@@ -256,16 +256,16 @@ async def add_markdown(kernel_id: str, content: str) -> dict[str, Any]:
     }
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]  # fastmcp ships no type stubs
 async def save_as(kernel_id: str, name: str) -> dict[str, Any]:
     """Save the current notebook under a different name.
 
     Args:
         kernel_id: Kernel identifier from ``start_kernel``.
-        name: New notebook name (without path).
+        name: Notebook name to save under (without path).
 
     Returns:
-        Confirmation with new filename and cell count.
+        Confirmation with the saved filename and cell count.
     """
 
     session = _sessions.get(kernel_id)
@@ -285,7 +285,7 @@ async def save_as(kernel_id: str, name: str) -> dict[str, Any]:
     }
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]  # fastmcp ships no type stubs
 async def read_notebook(name: str) -> dict[str, Any]:
     """Read an existing notebook without starting a kernel.
 
@@ -324,7 +324,7 @@ async def read_notebook(name: str) -> dict[str, Any]:
     }
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]  # fastmcp ships no type stubs
 async def list_notebooks() -> dict[str, Any]:
     """List saved notebooks in the notebook directory.
 
@@ -347,7 +347,7 @@ async def list_notebooks() -> dict[str, Any]:
     return {"notebooks": notebooks, "count": len(notebooks), "directory": str(NOTEBOOK_DIR)}
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]  # fastmcp ships no type stubs
 async def list_kernels() -> dict[str, Any]:
     """List active kernels and their notebook names.
 
@@ -368,7 +368,7 @@ async def list_kernels() -> dict[str, Any]:
     return {"kernels": kernels, "count": len(kernels)}
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]  # fastmcp ships no type stubs
 async def shutdown_kernel(kernel_id: str) -> dict[str, Any]:
     """Save and shut down a kernel.
 

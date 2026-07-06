@@ -15,27 +15,25 @@ from pydantic import SecretStr
 
 from pynchy.config import GatewayConfig
 from pynchy.host.container_manager.credentials import (
-    _read_gh_token,
-    _read_git_identity,
-    _read_oauth_token,
-    _shell_quote,
-    _write_env_file,
+    _write_env_file,  # allow: private-test-imports
+    read_oauth_token,
+    shell_quote,
 )
 from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
-from pynchy.host.container_manager.mounts import _build_container_args, _build_volume_mounts
+from pynchy.host.container_manager.mounts import build_container_args, build_volume_mounts
 from pynchy.host.container_manager.orchestrator import (
-    _write_initial_input,
+    _write_initial_input,  # allow: private-test-imports
     resolve_agent_core,
 )
-from pynchy.host.container_manager.serialization import _input_to_dict, _parse_container_output
+from pynchy.host.container_manager.serialization import input_to_dict, parse_container_output
 from pynchy.host.container_manager.session_prep import (
-    _is_skill_selected,
-    _parse_skill_tier,
-    _sync_skills,
-    _write_settings_json,
+    _sync_skills,  # allow: private-test-imports
+    _write_settings_json,  # allow: private-test-imports
+    is_skill_selected,
+    parse_skill_tier,
 )
 from pynchy.host.container_manager.snapshots import write_groups_snapshot, write_tasks_snapshot
-from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.git_ops.repo import RepoContext, get_repo_token
 from pynchy.types import (
     ContainerInput,
     VolumeMount,
@@ -186,7 +184,7 @@ class TestInputSerialization:
             chat_jid="chat@g.us",
             is_admin=True,
         )
-        d = _input_to_dict(inp)
+        d = input_to_dict(inp)
         assert d == {
             "messages": [{"message_type": "user", "content": "hi"}],
             "group_folder": "my-group",
@@ -207,7 +205,7 @@ class TestInputSerialization:
             session_id="sess-1",
             is_scheduled_task=True,
         )
-        d = _input_to_dict(inp)
+        d = input_to_dict(inp)
         assert d["session_id"] == "sess-1"
         assert d["is_scheduled_task"] is True
 
@@ -218,7 +216,7 @@ class TestInputSerialization:
             chat_jid="c",
             is_admin=False,
         )
-        d = _input_to_dict(inp)
+        d = input_to_dict(inp)
         assert "session_id" not in d  # None → omitted
         assert d["is_scheduled_task"] is False  # False → included (non-None)
 
@@ -353,7 +351,7 @@ class TestCleanIpcInputDir:
 
 class TestOutputParsing:
     def test_parses_snake_case_json(self):
-        out = _parse_container_output(
+        out = parse_container_output(
             json.dumps(
                 {
                     "status": "success",
@@ -367,7 +365,7 @@ class TestOutputParsing:
         assert out.new_session_id == "s1"
 
     def test_parses_error_output(self):
-        out = _parse_container_output(json.dumps({"status": "error", "error": "boom"}))
+        out = parse_container_output(json.dumps({"status": "error", "error": "boom"}))
         assert out.status == "error"
         assert out.error == "boom"
         assert out.result is None
@@ -376,19 +374,19 @@ class TestOutputParsing:
 class TestContainerArgs:
     def test_readonly_uses_mount_flag(self):
         mounts = [VolumeMount("/host/path", "/container/path", readonly=True)]
-        args = _build_container_args(mounts, "test-container")
+        args = build_container_args(mounts, "test-container")
         assert "--mount" in args
         assert any("readonly" in a for a in args)
         assert "-v" not in args[args.index("--mount") :]  # no -v after --mount for this mount
 
     def test_readwrite_uses_v_flag(self):
         mounts = [VolumeMount("/host/path", "/container/path", readonly=False)]
-        args = _build_container_args(mounts, "test-container")
+        args = build_container_args(mounts, "test-container")
         assert "-v" in args
         assert "/host/path:/container/path" in args
 
     def test_includes_name_and_image(self):
-        args = _build_container_args([], "my-container")
+        args = build_container_args([], "my-container")
         assert args[:3] == ["run", "--name", "my-container"]
         # Last arg is the image
         assert args[-1].endswith("-agent:latest")
@@ -417,7 +415,7 @@ class TestMountBuilding:
                 trigger="always",
                 added_at="2024-01-01",
             )
-            mounts = _build_volume_mounts(
+            mounts = build_volume_mounts(
                 group, is_admin=True, repo_ctx=repo_ctx, worktree_path=worktree_path
             )
 
@@ -445,7 +443,7 @@ class TestMountBuilding:
                 trigger="@pynchy",
                 added_at="2024-01-01",
             )
-            mounts = _build_volume_mounts(group, is_admin=False)
+            mounts = build_volume_mounts(group, is_admin=False)
 
             paths = [m.container_path for m in mounts]
             assert "/workspace/project" not in paths
@@ -471,7 +469,7 @@ class TestMountBuilding:
                 trigger="@pynchy",
                 added_at="2024-01-01",
             )
-            mounts = _build_volume_mounts(
+            mounts = build_volume_mounts(
                 group, is_admin=False, repo_ctx=repo_ctx, worktree_path=worktree_path
             )
 
@@ -501,7 +499,7 @@ class TestMountBuilding:
                 trigger="always",
                 added_at="2024-01-01",
             )
-            mounts = _build_volume_mounts(
+            mounts = build_volume_mounts(
                 group, is_admin=True, repo_ctx=repo_ctx, worktree_path=worktree_path
             )
 
@@ -525,7 +523,7 @@ class TestMountBuilding:
                 trigger="always",
                 added_at="2024-01-01",
             )
-            mounts = _build_volume_mounts(
+            mounts = build_volume_mounts(
                 group, is_admin=True, repo_ctx=repo_ctx, worktree_path=worktree_path
             )
 
@@ -553,7 +551,7 @@ class TestMountBuilding:
                 trigger="@pynchy",
                 added_at="2024-01-01",
             )
-            mounts = _build_volume_mounts(
+            mounts = build_volume_mounts(
                 group, is_admin=False, repo_ctx=repo_ctx, worktree_path=worktree_path
             )
 
@@ -571,7 +569,7 @@ class TestMountBuilding:
                 trigger="always",
                 added_at="2024-01-01",
             )
-            mounts = _build_volume_mounts(group, is_admin=True)
+            mounts = build_volume_mounts(group, is_admin=True)
 
             paths = [m.container_path for m in mounts]
             assert "/workspace/project/config.toml" not in paths
@@ -588,14 +586,14 @@ class TestReadOauthToken:
         creds.parent.mkdir(parents=True)
         creds.write_text(json.dumps({"claudeAiOauth": {"accessToken": "test-token-123"}}))
         with patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path):
-            assert _read_oauth_token() == "test-token-123"
+            assert read_oauth_token() == "test-token-123"
 
     def test_returns_none_when_no_file_and_no_keychain(self, tmp_path: Path):
         with (
             patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
             patch(f"{_CR_CREDS}._read_oauth_from_keychain", return_value=None),
         ):
-            assert _read_oauth_token() is None
+            assert read_oauth_token() is None
 
 
 class TestWriteEnvFile:
@@ -771,60 +769,95 @@ class TestWriteEnvFile:
 
 
 class TestReadGhToken:
+    """gh-CLI token discovery, driven through the public get_repo_token().
+
+    With no per-repo token and no configured gh_token secret, get_repo_token()
+    falls through to the gh CLI, so these exercise that discovery path.
+    """
+
     def test_returns_token_from_gh_cli(self):
         mock_result = type("Result", (), {"returncode": 0, "stdout": "gho_test123\n"})()
         with patch(f"{_CR_CREDS}.subprocess.run", return_value=mock_result):
-            assert _read_gh_token() == "gho_test123"
+            assert get_repo_token("owner/repo") == "gho_test123"
 
     def test_returns_none_on_failure(self):
         mock_result = type("Result", (), {"returncode": 1, "stdout": ""})()
         with patch(f"{_CR_CREDS}.subprocess.run", return_value=mock_result):
-            assert _read_gh_token() is None
+            assert get_repo_token("owner/repo") is None
 
     def test_returns_none_when_gh_not_installed(self):
         with patch(f"{_CR_CREDS}.subprocess.run", side_effect=FileNotFoundError):
-            assert _read_gh_token() is None
+            assert get_repo_token("owner/repo") is None
 
     def test_returns_none_on_timeout(self):
         with patch(
             f"{_CR_CREDS}.subprocess.run",
             side_effect=subprocess.TimeoutExpired("gh", 5),
         ):
-            assert _read_gh_token() is None
+            assert get_repo_token("owner/repo") is None
 
 
 class TestReadGitIdentity:
-    def test_returns_name_and_email(self):
+    """Git identity discovery, observed via the env file _write_env_file writes.
+
+    A gateway provider is present so the env file is written; git config is
+    faked via subprocess.run so the GIT_* vars reflect the discovered identity.
+    """
+
+    def test_returns_name_and_email(self, tmp_path: Path):
         def mock_run(cmd, **kwargs):
             key = cmd[-1]
             if key == "user.name":
                 return type("R", (), {"returncode": 0, "stdout": "Alice\n"})()
-            elif key == "user.email":
+            if key == "user.email":
                 return type("R", (), {"returncode": 0, "stdout": "alice@test.com\n"})()
             return type("R", (), {"returncode": 1, "stdout": ""})()
 
-        with patch(f"{_CR_CREDS}.subprocess.run", side_effect=mock_run):
-            name, email = _read_git_identity()
-            assert name == "Alice"
-            assert email == "alice@test.com"
+        gw = _MockGateway(providers={"anthropic"})
+        with (
+            _patch_settings(tmp_path),
+            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
+            patch(f"{_CR_CREDS}.subprocess.run", side_effect=mock_run),
+        ):
+            env_dir = _write_env_file(is_admin=True, group_folder="test")
+            assert env_dir is not None
+            content = (env_dir / "env").read_text()
+            assert "GIT_AUTHOR_NAME='Alice'" in content
+            assert "GIT_COMMITTER_NAME='Alice'" in content
+            assert "GIT_AUTHOR_EMAIL='alice@test.com'" in content
+            assert "GIT_COMMITTER_EMAIL='alice@test.com'" in content
 
-    def test_returns_none_when_not_configured(self):
+    def test_returns_none_when_not_configured(self, tmp_path: Path):
         mock_result = type("R", (), {"returncode": 1, "stdout": ""})()
-        with patch(f"{_CR_CREDS}.subprocess.run", return_value=mock_result):
-            name, email = _read_git_identity()
-            assert name is None
-            assert email is None
+        gw = _MockGateway(providers={"anthropic"})
+        with (
+            _patch_settings(tmp_path),
+            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
+            patch(f"{_CR_CREDS}.subprocess.run", return_value=mock_result),
+        ):
+            env_dir = _write_env_file(is_admin=True, group_folder="test")
+            assert env_dir is not None
+            content = (env_dir / "env").read_text()
+            assert "GIT_AUTHOR_NAME" not in content
+            assert "GIT_AUTHOR_EMAIL" not in content
 
-    def test_returns_partial_when_only_name_set(self):
+    def test_returns_partial_when_only_name_set(self, tmp_path: Path):
         def mock_run(cmd, **kwargs):
             if cmd[-1] == "user.name":
                 return type("R", (), {"returncode": 0, "stdout": "Bob\n"})()
             return type("R", (), {"returncode": 1, "stdout": ""})()
 
-        with patch(f"{_CR_CREDS}.subprocess.run", side_effect=mock_run):
-            name, email = _read_git_identity()
-            assert name == "Bob"
-            assert email is None
+        gw = _MockGateway(providers={"anthropic"})
+        with (
+            _patch_settings(tmp_path),
+            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
+            patch(f"{_CR_CREDS}.subprocess.run", side_effect=mock_run),
+        ):
+            env_dir = _write_env_file(is_admin=True, group_folder="test")
+            assert env_dir is not None
+            content = (env_dir / "env").read_text()
+            assert "GIT_AUTHOR_NAME='Bob'" in content
+            assert "GIT_AUTHOR_EMAIL" not in content
 
 
 # ---------------------------------------------------------------------------
@@ -1131,7 +1164,7 @@ class TestParseSkillTier:
         skill_dir = tmp_path / "my-skill"
         skill_dir.mkdir()
         (skill_dir / "SKILL.md").write_text("---\nname: my-skill\ntier: core\n---\n# My Skill\n")
-        name, tier = _parse_skill_tier(skill_dir)
+        name, tier = parse_skill_tier(skill_dir)
         assert name == "my-skill"
         assert tier == "core"
 
@@ -1139,14 +1172,14 @@ class TestParseSkillTier:
         skill_dir = tmp_path / "my-skill"
         skill_dir.mkdir()
         (skill_dir / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill\n")
-        name, tier = _parse_skill_tier(skill_dir)
+        name, tier = parse_skill_tier(skill_dir)
         assert name == "my-skill"
         assert tier == "community"
 
     def test_no_skill_md_defaults(self, tmp_path: Path):
         skill_dir = tmp_path / "my-skill"
         skill_dir.mkdir()
-        name, tier = _parse_skill_tier(skill_dir)
+        name, tier = parse_skill_tier(skill_dir)
         assert name == "my-skill"
         assert tier == "community"
 
@@ -1154,7 +1187,7 @@ class TestParseSkillTier:
         skill_dir = tmp_path / "my-skill"
         skill_dir.mkdir()
         (skill_dir / "SKILL.md").write_text("# Just a heading\nNo frontmatter here.\n")
-        name, tier = _parse_skill_tier(skill_dir)
+        name, tier = parse_skill_tier(skill_dir)
         assert name == "my-skill"
         assert tier == "community"
 
@@ -1164,7 +1197,7 @@ class TestParseSkillTier:
         (skill_dir / "SKILL.md").write_text(
             "---\nname: code-improver\ntier: dev\n---\n# Code Improver\n"
         )
-        name, tier = _parse_skill_tier(skill_dir)
+        name, tier = parse_skill_tier(skill_dir)
         assert name == "code-improver"
         assert tier == "dev"
 
@@ -1173,7 +1206,7 @@ class TestParseSkillTier:
         skill_dir = tmp_path / "web-search"
         skill_dir.mkdir()
         (skill_dir / "SKILL.md").write_text("---\ntier: core\n---\n# Web Search\n")
-        name, tier = _parse_skill_tier(skill_dir)
+        name, tier = parse_skill_tier(skill_dir)
         assert name == "web-search"
         assert tier == "core"
 
@@ -1183,39 +1216,39 @@ class TestIsSkillSelected:
 
     def test_none_is_core_only(self):
         """skills=None means core-only (safe default)."""
-        assert _is_skill_selected("any-skill", "community", None) is False
-        assert _is_skill_selected("browser", "core", None) is True
+        assert is_skill_selected("any-skill", "community", None) is False
+        assert is_skill_selected("browser", "core", None) is True
 
     def test_star_includes_everything(self):
-        assert _is_skill_selected("any-skill", "community", ["*"]) is True
+        assert is_skill_selected("any-skill", "community", ["*"]) is True
 
     def test_tier_match(self):
-        assert _is_skill_selected("my-skill", "dev", ["dev"]) is True
+        assert is_skill_selected("my-skill", "dev", ["dev"]) is True
 
     def test_name_match(self):
-        assert _is_skill_selected("web-search", "community", ["web-search"]) is True
+        assert is_skill_selected("web-search", "community", ["web-search"]) is True
 
     def test_core_always_included_when_filtering_active(self):
         """Core tier is implicit when any filtering is set."""
-        assert _is_skill_selected("browser", "core", ["dev"]) is True
+        assert is_skill_selected("browser", "core", ["dev"]) is True
 
     def test_community_excluded_when_not_listed(self):
-        assert _is_skill_selected("some-skill", "community", ["core"]) is False
+        assert is_skill_selected("some-skill", "community", ["core"]) is False
 
     def test_dev_excluded_when_not_listed(self):
-        assert _is_skill_selected("code-improver", "dev", ["core"]) is False
+        assert is_skill_selected("code-improver", "dev", ["core"]) is False
 
     def test_union_of_tier_and_name(self):
         """Tiers and names are unioned."""
         ws = ["core", "web-search"]
-        assert _is_skill_selected("web-search", "community", ws) is True
-        assert _is_skill_selected("python-heredoc", "core", ws) is True
-        assert _is_skill_selected("code-improver", "dev", ws) is False
+        assert is_skill_selected("web-search", "community", ws) is True
+        assert is_skill_selected("python-heredoc", "core", ws) is True
+        assert is_skill_selected("code-improver", "dev", ws) is False
 
     def test_empty_list_still_includes_core(self):
         """Even an empty skills list includes core (filtering is active)."""
-        assert _is_skill_selected("browser", "core", []) is True
-        assert _is_skill_selected("other", "community", []) is False
+        assert is_skill_selected("browser", "core", []) is True
+        assert is_skill_selected("other", "community", []) is False
 
 
 class TestSyncSkillsFiltering:
@@ -1446,22 +1479,22 @@ class TestShellQuote:
     """Test shell quoting for env file values."""
 
     def test_simple_string(self):
-        assert _shell_quote("hello") == "'hello'"
+        assert shell_quote("hello") == "'hello'"
 
     def test_string_with_spaces(self):
-        assert _shell_quote("hello world") == "'hello world'"
+        assert shell_quote("hello world") == "'hello world'"
 
     def test_string_with_single_quotes(self):
         # O'Brien → 'O'\''Brien'
-        result = _shell_quote("O'Brien")
+        result = shell_quote("O'Brien")
         assert result == "'" + "O" + "'\\''" + "Brien" + "'"
 
     def test_empty_string(self):
-        assert _shell_quote("") == "''"
+        assert shell_quote("") == "''"
 
     def test_string_with_special_chars(self):
         """Special shell chars should be safely quoted."""
-        result = _shell_quote("$HOME && rm -rf /")
+        result = shell_quote("$HOME && rm -rf /")
         assert result.startswith("'")
         assert result.endswith("'")
         assert "$HOME" in result
@@ -1473,11 +1506,11 @@ class TestShellQuote:
 
 
 class TestOutputParsingEdgeCases:
-    """Edge cases for _parse_container_output."""
+    """Edge cases for parse_container_output."""
 
     def test_parses_all_output_fields(self):
         """Verify all ContainerOutput fields are correctly parsed."""
-        out = _parse_container_output(
+        out = parse_container_output(
             json.dumps(
                 {
                     "status": "success",
@@ -1509,12 +1542,12 @@ class TestOutputParsingEdgeCases:
 
 
 # ---------------------------------------------------------------------------
-# _input_to_dict edge case tests
+# input_to_dict edge case tests
 # ---------------------------------------------------------------------------
 
 
 class TestInputToDictEdgeCases:
-    """Tests for _input_to_dict with various combinations of optional fields."""
+    """Tests for input_to_dict with various combinations of optional fields."""
 
     def test_minimal_input(self):
         """Only required fields, all optionals at defaults."""
@@ -1524,7 +1557,7 @@ class TestInputToDictEdgeCases:
             chat_jid="test@g.us",
             is_admin=False,
         )
-        d = _input_to_dict(inp)
+        d = input_to_dict(inp)
         assert d["messages"] == [{"content": "hi"}]
         assert d["group_folder"] == "test"
         assert d["chat_jid"] == "test@g.us"
@@ -1549,7 +1582,7 @@ class TestInputToDictEdgeCases:
             system_notices=["notice 1"],
             repo_access="owner/pynchy",
         )
-        d = _input_to_dict(inp)
+        d = input_to_dict(inp)
         assert d["session_id"] == "s-1"
         assert d["is_scheduled_task"] is True
         assert d["system_notices"] == ["notice 1"]
@@ -1564,7 +1597,7 @@ class TestInputToDictEdgeCases:
             is_admin=False,
             is_scheduled_task=False,
         )
-        d = _input_to_dict(inp)
+        d = input_to_dict(inp)
         assert d["is_scheduled_task"] is False
 
     def test_repo_access_none_omitted(self):
@@ -1576,7 +1609,7 @@ class TestInputToDictEdgeCases:
             is_admin=False,
             repo_access=None,
         )
-        d = _input_to_dict(inp)
+        d = input_to_dict(inp)
         assert "repo_access" not in d
 
     def test_agent_core_fields_always_present(self):
@@ -1587,7 +1620,7 @@ class TestInputToDictEdgeCases:
             chat_jid="j@g.us",
             is_admin=False,
         )
-        d = _input_to_dict(inp)
+        d = input_to_dict(inp)
         assert "agent_core_module" in d
         assert "agent_core_class" in d
 
@@ -1600,7 +1633,7 @@ class TestInputToDictEdgeCases:
             is_admin=False,
             agent_core_config={"model": "opus"},
         )
-        d = _input_to_dict(inp)
+        d = input_to_dict(inp)
         assert d["agent_core_config"] == {"model": "opus"}
 
     def test_agent_core_config_omitted_when_none(self):
@@ -1612,7 +1645,7 @@ class TestInputToDictEdgeCases:
             is_admin=False,
             agent_core_config=None,
         )
-        d = _input_to_dict(inp)
+        d = input_to_dict(inp)
         assert "agent_core_config" not in d
 
 
@@ -1671,17 +1704,15 @@ class TestContainerSessionSignalQueryDone:
     async def test_idle_callback_called_on_expiry(self):
         """When the idle timer expires, the on_idle_expire callback should
         be called before the session is destroyed."""
-        from pynchy.host.container_manager.session import ContainerSession, _sessions
+        from pynchy.host.container_manager.session import ContainerSession
 
         session = ContainerSession("idle-cb-test", "pynchy-idle-cb-test")
         callback = AsyncMock()
         session.set_idle_callback(callback)
 
-        # Register in the session registry so destroy_session can find it
         mock_proc = MagicMock()
         mock_proc.returncode = None
         session.proc = mock_proc
-        _sessions["idle-cb-test"] = session
 
         with patch(
             "pynchy.host.container_manager.session.destroy_session", new_callable=AsyncMock
@@ -1718,7 +1749,7 @@ class TestGetSessionOutputHandler:
         """Should return the session's _on_output when an active session exists."""
         from pynchy.host.container_manager.session import (
             ContainerSession,
-            _sessions,
+            _sessions,  # allow: private-test-imports
             get_session_output_handler,
         )
 
@@ -1747,7 +1778,7 @@ class TestGetSessionOutputHandler:
         """Should return None when session exists but no handler is set."""
         from pynchy.host.container_manager.session import (
             ContainerSession,
-            _sessions,
+            _sessions,  # allow: private-test-imports
             get_session_output_handler,
         )
 

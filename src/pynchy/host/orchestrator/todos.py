@@ -17,7 +17,7 @@ import json
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pynchy.config import get_settings
 from pynchy.utils import write_json_atomic
@@ -32,7 +32,7 @@ def _read_todos(group_folder: str) -> list[dict[str, Any]]:
     if not path.exists():
         return []
     try:
-        return json.loads(path.read_text())
+        return cast("list[dict[str, Any]]", json.loads(path.read_text()))
     except (json.JSONDecodeError, OSError):
         return []
 

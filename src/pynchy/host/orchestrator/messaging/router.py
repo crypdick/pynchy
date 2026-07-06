@@ -140,7 +140,7 @@ async def broadcast_trace(
 async def broadcast_agent_input(
     deps: OutputDeps,
     chat_jid: str,
-    messages: list[dict],
+    messages: list[dict[str, Any]],
     *,
     source: str = "user",
 ) -> None:
@@ -330,7 +330,7 @@ async def _handle_text(deps: OutputDeps, chat_jid: str, result: ContainerOutput)
     if delta:
         state = stream_states.get(chat_jid)
         if state is None:
-            # Starting a new text stream — flush any pending traces first
+            # Starting a text stream — flush any pending traces first
             # so tool messages appear before this text in the channel.
             batcher = get_trace_batcher()
             if batcher is not None:

@@ -10,6 +10,8 @@ image — they never load in the main pynchy process.
 
 from __future__ import annotations
 
+from typing import Any
+
 try:
     import pluggy
 
@@ -18,12 +20,12 @@ except ModuleNotFoundError:
     # Running inside the Docker container where only the MCP server is needed,
     # not the plugin registration machinery.
     pluggy = None  # type: ignore[assignment]
-    hookimpl = lambda f: f  # noqa: E731 — no-op decorator
+    hookimpl = lambda f: f  # type: ignore[assignment]  # noqa: E731 — no-op decorator when pluggy is unavailable
 
 
 class NotebookServerPlugin:
     @hookimpl
-    def pynchy_mcp_server_spec(self) -> dict:
+    def pynchy_mcp_server_spec(self) -> dict[str, Any]:
         return {
             "name": "notebook",
             "type": "docker",

@@ -108,7 +108,7 @@ async def wait_healthy(
     poll_interval: float = 1.0,
     headers: dict[str, str] | None = None,
     any_non_5xx: bool = False,
-    process: subprocess.Popen | None = None,
+    process: subprocess.Popen[bytes] | None = None,
 ) -> None:
     """Poll an HTTP endpoint until it responds healthy, or raise on timeout.
 

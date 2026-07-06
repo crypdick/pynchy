@@ -257,7 +257,7 @@ class TestPluginErrors:
 
         class BadPlugin:
             @hookimpl
-            def pynchy_agent_core_info(self, invalid_param):
+            def pynchy_agent_core_info(self, _invalid_param):
                 # This signature doesn't match the hookspec
                 return {"name": "bad"}
 

@@ -7,8 +7,8 @@ focused on composition and validation.  Follows the same pattern as
 ARCHITECTURE NOTE: Plugin-specific config models belong in the plugin's own
 source file, not here. This file should only contain models for pynchy core
 settings (agent, container, gateway, connections, etc.). Built-in plugins
-(CalDAV, Slack) have their models here for historical reasons; migrate them
-to their respective plugin files when refactoring.
+(CalDAV, Slack) keep their models here as an exception; they ideally belong
+in their respective plugin files.
 """
 
 from __future__ import annotations
@@ -153,7 +153,7 @@ class ConnectionsConfig(_StrictModel):
     ) -> SlackConnectionConfig | WhatsAppConnectionConfig | None:
         """Look up a connection config by platform and name.
 
-        Uses ``getattr`` so new platform fields work automatically without
+        Uses ``getattr`` so any platform field works automatically without
         callers needing ``if/elif`` chains for each platform.
         """
         platform_dict = getattr(self, platform, None)

@@ -14,7 +14,8 @@ import os
 import signal
 import socket
 import threading
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from pynchy.config import get_settings
 from pynchy.host.orchestrator import startup_handler
@@ -27,10 +28,12 @@ from pynchy.plugins.channel_runtime import (
     resolve_default_channel,
 )
 from pynchy.state import init_database, store_chat_metadata
+from pynchy.types import OutboundEvent, OutboundEventType
 from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
     from pynchy.host.orchestrator.app import PynchyApp
+    from pynchy.types import NewMessage
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +65,7 @@ async def shutdown_app(app: PynchyApp, sig_name: str) -> None:
         logger.debug("Shutdown notification failed", exc_info=True)
 
     # Cancel subsystem tasks first — prevents scheduler/IPC from creating
-    # new work while we're shutting down.
+    # more work while we're shutting down.
     for task in app._subsystem_tasks:
         task.cancel()
     app._subsystem_tasks.clear()
@@ -135,21 +138,39 @@ async def _initialize_core(app: PynchyApp) -> None:
 
 async def _setup_channels(app: PynchyApp) -> None:
     """Create channel context, load channels, validate, connect."""
-    context = ChannelPluginContext(
-        on_message_callback=lambda jid, msg: create_background_task(
-            app._on_inbound(jid, msg), name="on-inbound"
-        ),
-        on_chat_metadata_callback=lambda jid, ts, name=None: create_background_task(
-            store_chat_metadata(jid, ts, name), name="store-metadata"
-        ),
-        workspaces=lambda: app.workspaces,
-        send_message=app.broadcast_to_channels,
-        on_reaction_callback=lambda jid, ts, user, emoji: create_background_task(
-            app._on_reaction(jid, ts, user, emoji), name="on-reaction"
-        ),
-        on_ask_user_answer_callback=lambda request_id, answer: create_background_task(
+
+    def dispatch_inbound(jid: str, msg: NewMessage) -> None:
+        create_background_task(app._on_inbound(jid, msg), name="on-inbound")
+
+    def dispatch_chat_metadata(jid: str, ts: str, name: str | None = None) -> None:
+        create_background_task(store_chat_metadata(jid, ts, name), name="store-metadata")
+
+    async def send_text_message(jid: str, text: str) -> None:
+        """Adapter for the documented plugin contract (docs/plugins/hooks.md):
+        send_message takes plain text, not the internal OutboundEvent type.
+        """
+        await app.broadcast_to_channels(
+            jid, OutboundEvent(type=OutboundEventType.TEXT, content=text)
+        )
+
+    def dispatch_reaction(jid: str, ts: str, user: str, emoji: str) -> None:
+        create_background_task(app._on_reaction(jid, ts, user, emoji), name="on-reaction")
+
+    def dispatch_ask_user_answer(request_id: str, answer: dict[str, Any]) -> None:
+        create_background_task(
             app._on_ask_user_answer(request_id, answer), name="on-ask-user-answer"
-        ),
+        )
+
+    context = ChannelPluginContext(
+        on_message_callback=dispatch_inbound,
+        on_chat_metadata_callback=dispatch_chat_metadata,
+        workspaces=lambda: app.workspaces,
+        send_message=send_text_message,
+        on_reaction_callback=dispatch_reaction,
+        on_ask_user_answer_callback=dispatch_ask_user_answer,
+    )
+    assert app.plugin_manager is not None, (
+        "phase 1 (_initialize_core) must run before _setup_channels"
     )
     app.channels = load_channels(app.plugin_manager, context)
     for ch in app.channels:
@@ -246,6 +267,9 @@ async def _start_subsystems(app: PynchyApp, repo_groups: dict[str, list[str]]) -
             )
     app.queue.set_process_messages_fn(app._process_group_messages)
 
+    assert app.plugin_manager is not None, (
+        "phase 1 (_initialize_core) must run before _start_subsystems"
+    )
     check_tunnels(app.plugin_manager)
     record_start_time()
     app._http_runner = await start_http_server(
@@ -286,12 +310,15 @@ async def run_app(app: PynchyApp) -> None:
             await startup_handler.auto_rollback(continuation_path, exc)
         raise
 
+    def make_shutdown_handler(s: signal.Signals) -> Callable[[], None]:
+        def handler() -> None:
+            create_background_task(shutdown_app(app, s.name), name=f"shutdown-{s.name}")
+
+        return handler
+
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(
-            sig,
-            lambda s=sig: asyncio.ensure_future(shutdown_app(app, s.name)),
-        )
+        loop.add_signal_handler(sig, make_shutdown_handler(sig))
 
     try:
         await _setup_channels(app)

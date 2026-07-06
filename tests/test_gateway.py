@@ -11,10 +11,13 @@ import pynchy.host.container_manager.gateway as _gw_mod
 from pynchy.host.container_manager.gateway import (
     BuiltinGateway,
     LiteLLMGateway,
-    _load_or_create_persistent_key,
+    _load_or_create_persistent_key,  # allow: private-test-imports
     start_gateway,
 )
-from pynchy.host.container_manager.gateway_builtin import _ANTHROPIC_OAUTH_BETA
+
+# The anthropic-beta value is an external Anthropic API contract (OAuth token
+# requests 401 without it). Pin the literal so a production change trips the test.
+_ANTHROPIC_OAUTH_BETA = "oauth-2025-04-20"
 
 # ---------------------------------------------------------------------------
 # LiteLLMGateway — unit tests (Docker calls mocked)
@@ -24,13 +27,13 @@ _GATEWAY_MOD = "pynchy.host.container_manager.gateway"
 _LITELLM_MOD = "pynchy.host.container_manager.gateway_litellm"
 _DOCKER_MOD = "pynchy.host.container_manager.docker"
 
-_LITELLM_KWARGS = dict(
-    port=4000,
-    container_host="host.docker.internal",
-    image="ghcr.io/berriai/litellm:main-latest",
-    postgres_image="postgres:17-alpine",
-    master_key="test-master-key",
-)
+_LITELLM_KWARGS = {
+    "port": 4000,
+    "container_host": "host.docker.internal",
+    "image": "ghcr.io/berriai/litellm:main-latest",
+    "postgres_image": "postgres:17-alpine",
+    "master_key": "test-master-key",
+}
 
 
 class TestPersistentKey:

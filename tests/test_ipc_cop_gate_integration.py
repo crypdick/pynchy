@@ -18,18 +18,10 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import make_settings
+from conftest import init_test_database, make_settings
 
-from pynchy.host.container_manager.ipc.handlers_groups import (
-    _handle_create_periodic_agent,
-    _handle_register_group,
-)
-from pynchy.host.container_manager.ipc.handlers_lifecycle import _handle_sync_worktree_to_main
-from pynchy.host.container_manager.ipc.handlers_tasks import (
-    _handle_schedule_host_job,
-    _handle_schedule_task,
-)
-from pynchy.state import _init_test_database, get_all_host_jobs, get_all_tasks
+from pynchy.host.container_manager.ipc import dispatch
+from pynchy.state import get_all_host_jobs, get_all_tasks
 from pynchy.types import WorkspaceProfile
 
 # ---------------------------------------------------------------------------
@@ -121,7 +113,7 @@ class MockDeps:
 
 @pytest.fixture
 async def deps():
-    await _init_test_database()
+    await init_test_database()
     return MockDeps(
         {
             "admin-1@g.us": ADMIN_GROUP,
@@ -151,7 +143,7 @@ class TestSyncWorktreeCopGate:
                 return_value=make_settings(data_dir=tmp_path / "data"),
             ),
         ):
-            await _handle_sync_worktree_to_main(
+            await dispatch(
                 {"type": "sync_worktree_to_main", "requestId": "req-1"},
                 "admin-1",
                 True,
@@ -178,7 +170,7 @@ class TestSyncWorktreeCopGate:
                 return_value=make_settings(data_dir=tmp_path / "data"),
             ),
         ):
-            await _handle_sync_worktree_to_main(
+            await dispatch(
                 {"type": "sync_worktree_to_main", "requestId": "req-42"},
                 "admin-1",
                 True,
@@ -204,7 +196,7 @@ class TestSyncWorktreeCopGate:
             ),
             patch("pynchy.host.container_manager.ipc.handlers_lifecycle.write_ipc_response"),
         ):
-            await _handle_sync_worktree_to_main(
+            await dispatch(
                 {
                     "type": "sync_worktree_to_main",
                     "requestId": "req-ok",
@@ -233,7 +225,7 @@ class TestRegisterGroupCopGate:
             new_callable=AsyncMock,
             return_value=False,
         ) as mock_cop:
-            await _handle_register_group(
+            await dispatch(
                 {
                     "type": "register_group",
                     "jid": "new@g.us",
@@ -258,7 +250,7 @@ class TestRegisterGroupCopGate:
             "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
         ) as mock_cop:
-            await _handle_register_group(
+            await dispatch(
                 {
                     "type": "register_group",
                     "jid": "approved@g.us",
@@ -283,7 +275,7 @@ class TestRegisterGroupCopGate:
             new_callable=AsyncMock,
             return_value=False,
         ) as mock_cop:
-            await _handle_register_group(
+            await dispatch(
                 {
                     "type": "register_group",
                     "jid": "new@g.us",
@@ -317,7 +309,7 @@ class TestCreatePeriodicAgentCopGate:
             new_callable=AsyncMock,
             return_value=False,
         ) as mock_cop:
-            await _handle_create_periodic_agent(
+            await dispatch(
                 {
                     "type": "create_periodic_agent",
                     "name": "evil-agent",
@@ -343,7 +335,7 @@ class TestCreatePeriodicAgentCopGate:
             new_callable=AsyncMock,
             return_value=False,
         ) as mock_cop:
-            await _handle_create_periodic_agent(
+            await dispatch(
                 {
                     "type": "create_periodic_agent",
                     "name": "briefing-bot",
@@ -384,7 +376,7 @@ class TestCreatePeriodicAgentCopGate:
             ),
             patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
         ):
-            await _handle_create_periodic_agent(
+            await dispatch(
                 {
                     "type": "create_periodic_agent",
                     "name": "approved-agent",
@@ -418,7 +410,7 @@ class TestScheduleTaskCopGate:
             new_callable=AsyncMock,
             return_value=False,
         ) as mock_cop:
-            await _handle_schedule_task(
+            await dispatch(
                 {
                     "type": "schedule_task",
                     "prompt": "run evil command",
@@ -442,7 +434,7 @@ class TestScheduleTaskCopGate:
             new_callable=AsyncMock,
             return_value=False,
         ) as mock_cop:
-            await _handle_schedule_task(
+            await dispatch(
                 {
                     "type": "schedule_task",
                     "prompt": "delete all files",
@@ -466,7 +458,7 @@ class TestScheduleTaskCopGate:
             "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
         ) as mock_cop:
-            await _handle_schedule_task(
+            await dispatch(
                 {
                     "type": "schedule_task",
                     "prompt": "approved task",
@@ -500,7 +492,7 @@ class TestScheduleHostJobCopGate:
             new_callable=AsyncMock,
             return_value=False,
         ) as mock_cop:
-            await _handle_schedule_host_job(
+            await dispatch(
                 {
                     "type": "schedule_host_job",
                     "name": "evil-job",
@@ -524,7 +516,7 @@ class TestScheduleHostJobCopGate:
             new_callable=AsyncMock,
             return_value=False,
         ) as mock_cop:
-            await _handle_schedule_host_job(
+            await dispatch(
                 {
                     "type": "schedule_host_job",
                     "name": "backup-job",
@@ -548,7 +540,7 @@ class TestScheduleHostJobCopGate:
             "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
         ) as mock_cop:
-            await _handle_schedule_host_job(
+            await dispatch(
                 {
                     "type": "schedule_host_job",
                     "name": "approved-job",

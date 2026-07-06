@@ -82,22 +82,22 @@ class TestOpenAICoreInstantiation:
     """Test OpenAI core can be created via registry."""
 
     def _make_config(self, **overrides) -> AgentCoreConfig:
-        defaults = dict(
-            cwd="/workspace/project",
-            session_id=None,
-            group_folder="admin-1",
-            chat_jid="test@g.us",
-            is_admin=True,
-            is_scheduled_task=False,
-            mcp_servers={
+        defaults = {
+            "cwd": "/workspace/project",
+            "session_id": None,
+            "group_folder": "admin-1",
+            "chat_jid": "test@g.us",
+            "is_admin": True,
+            "is_scheduled_task": False,
+            "mcp_servers": {
                 "pynchy": {
                     "command": "python",
                     "args": ["-m", "agent_runner.agent_tools"],
                     "env": {"PYNCHY_CHAT_JID": "test@g.us"},
                 }
             },
-            extra={"model": "gpt-5.2"},
-        )
+            "extra": {"model": "gpt-5.2"},
+        }
         defaults.update(overrides)
         return AgentCoreConfig(**defaults)
 

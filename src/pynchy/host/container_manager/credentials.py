@@ -9,8 +9,11 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from typing import cast
 
 from pynchy.config import get_settings
+from pynchy.config.settings import Settings
+from pynchy.host.container_manager.gateway import BuiltinGateway, LiteLLMGateway
 from pynchy.logger import logger
 
 # ---------------------------------------------------------------------------
@@ -18,21 +21,21 @@ from pynchy.logger import logger
 # ---------------------------------------------------------------------------
 
 
-def _read_oauth_token() -> str | None:
+def read_oauth_token() -> str | None:
     """Read the OAuth access token from Claude Code's credentials.
 
     Checks (in order):
-    1. Legacy ~/.claude/.credentials.json file
+    1. ~/.claude/.credentials.json file
     2. macOS keychain (service "Claude Code-credentials")
     """
-    # 1. Legacy JSON file
+    # 1. JSON credentials file
     creds_file = Path.home() / ".claude" / ".credentials.json"
     if creds_file.exists():
         try:
             data = json.loads(creds_file.read_text())
             token = data.get("claudeAiOauth", {}).get("accessToken")
             if token:
-                return token
+                return cast(str, token)
         except (json.JSONDecodeError, OSError) as exc:
             logger.debug("Failed to read legacy credentials file", err=str(exc))
 
@@ -52,7 +55,7 @@ def _read_oauth_from_keychain() -> str | None:
         if result.returncode != 0:
             return None
         data = json.loads(result.stdout.strip())
-        return data.get("claudeAiOauth", {}).get("accessToken")
+        return cast("str | None", data.get("claudeAiOauth", {}).get("accessToken"))
     except (json.JSONDecodeError, FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
 
@@ -94,7 +97,7 @@ def _read_git_identity() -> tuple[str | None, str | None]:
     return name, email
 
 
-def _shell_quote(value: str) -> str:
+def shell_quote(value: str) -> str:
     """Quote a value for safe inclusion in a shell env file."""
     return "'" + value.replace("'", "'\\''") + "'"
 
@@ -116,12 +119,86 @@ def has_api_credentials() -> bool:
     return gateway is not None and gateway.has_provider("anthropic")
 
 
+def _gateway_env_vars(gateway: LiteLLMGateway | BuiltinGateway | None) -> dict[str, str]:
+    """LLM credentials, routed through the gateway (real keys never enter the container)."""
+    env_vars: dict[str, str] = {}
+    if gateway is None:
+        return env_vars
+    if gateway.has_provider("anthropic"):
+        env_vars["ANTHROPIC_BASE_URL"] = gateway.base_url
+        env_vars["ANTHROPIC_AUTH_TOKEN"] = gateway.key
+    if gateway.has_provider("openai"):
+        env_vars["OPENAI_BASE_URL"] = gateway.base_url
+        env_vars["OPENAI_API_KEY"] = gateway.key
+    return env_vars
+
+
+def _gh_token_env_var(s: Settings, *, is_admin: bool, group_folder: str) -> dict[str, str]:
+    """GH_TOKEN — admin gets a broad token, non-admin gets a repo-scoped token."""
+    if is_admin:
+        if s.secrets.gh_token:
+            return {"GH_TOKEN": s.secrets.gh_token.get_secret_value()}
+        if gh_token := _read_gh_token():
+            logger.debug("Using GitHub token from gh CLI")
+            return {"GH_TOKEN": gh_token}
+        return {}
+
+    # Non-admin: inject repo-scoped token if this workspace has repo_access
+    from pynchy.host.orchestrator.workspace_config import load_resolved_config
+
+    resolved = load_resolved_config(group_folder)
+    if resolved and resolved.repo_access:
+        repo_cfg = s.repos.get(resolved.repo_access)
+        if repo_cfg and repo_cfg.token:
+            return {"GH_TOKEN": repo_cfg.token.get_secret_value()}
+    return {}
+
+
+def _git_identity_env_vars() -> dict[str, str]:
+    git_name, git_email = _read_git_identity()
+    env_vars: dict[str, str] = {}
+    if git_name:
+        env_vars["GIT_AUTHOR_NAME"] = git_name
+        env_vars["GIT_COMMITTER_NAME"] = git_name
+    if git_email:
+        env_vars["GIT_AUTHOR_EMAIL"] = git_email
+        env_vars["GIT_COMMITTER_EMAIL"] = git_email
+    return env_vars
+
+
+def _chrome_profiles_env_var(s: Settings, *, is_admin: bool, group_folder: str) -> dict[str, str]:
+    """Chrome profiles — extract from workspace's mcp_servers list.
+
+    If a workspace has mcp_servers = ["gdrive.mycompany", "gcal.work"], the
+    profiles are {"mycompany", "work"} (extracted from instance names
+    matching templates that have declared instances). Admin gets all
+    chrome_profiles; non-admin gets only its attached ones.
+    """
+    if is_admin:
+        chrome_profiles = s.chrome_profiles
+    else:
+        ws_cfg = s.workspaces.get(group_folder)
+        chrome_profiles_set: set[str] = set()
+        if ws_cfg and ws_cfg.mcp_servers:
+            for entry in ws_cfg.mcp_servers:
+                if "." in entry:
+                    # "gdrive.mycompany" → check if "mycompany" is a chrome profile
+                    _, inst_name = entry.split(".", 1)
+                    if inst_name in s.chrome_profiles:
+                        chrome_profiles_set.add(inst_name)
+        chrome_profiles = sorted(chrome_profiles_set)
+
+    if chrome_profiles:
+        return {"PYNCHY_CHROME_PROFILES": ",".join(chrome_profiles)}
+    return {}
+
+
 def _write_env_file(*, is_admin: bool, group_folder: str) -> Path | None:
     """Write credential env vars for a specific group's container.
 
     Returns the per-group env dir, or ``None`` if no credentials were found.
 
-    LLM credentials are replaced by gateway URL + ephemeral key.
+    LLM credentials are swapped for a gateway URL + ephemeral key.
     Real API keys never enter the container.
 
     Non-LLM credentials (GH_TOKEN, git identity) are written directly —
@@ -134,70 +211,10 @@ def _write_env_file(*, is_admin: bool, group_folder: str) -> Path | None:
     env_dir.mkdir(parents=True, exist_ok=True)
 
     env_vars: dict[str, str] = {}
-    gateway = get_gateway()
-
-    # ------------------------------------------------------------------
-    # LLM credentials — routed through the gateway
-    # ------------------------------------------------------------------
-
-    if gateway is not None:
-        if gateway.has_provider("anthropic"):
-            env_vars["ANTHROPIC_BASE_URL"] = gateway.base_url
-            env_vars["ANTHROPIC_AUTH_TOKEN"] = gateway.key
-        if gateway.has_provider("openai"):
-            env_vars["OPENAI_BASE_URL"] = gateway.base_url
-            env_vars["OPENAI_API_KEY"] = gateway.key
-
-    # ------------------------------------------------------------------
-    # Non-LLM credentials (not proxied)
-    # ------------------------------------------------------------------
-
-    # GH_TOKEN — admin gets broad token, non-admin gets repo-scoped token
-    if is_admin:
-        if s.secrets.gh_token:
-            env_vars["GH_TOKEN"] = s.secrets.gh_token.get_secret_value()
-        elif gh_token := _read_gh_token():
-            env_vars["GH_TOKEN"] = gh_token
-            logger.debug("Using GitHub token from gh CLI")
-    else:
-        # Non-admin: inject repo-scoped token if this workspace has repo_access
-        from pynchy.host.orchestrator.workspace_config import load_resolved_config
-
-        resolved = load_resolved_config(group_folder)
-        if resolved and resolved.repo_access:
-            repo_cfg = s.repos.get(resolved.repo_access)
-            if repo_cfg and repo_cfg.token:
-                env_vars["GH_TOKEN"] = repo_cfg.token.get_secret_value()
-
-    # Git identity
-    git_name, git_email = _read_git_identity()
-    if git_name:
-        env_vars["GIT_AUTHOR_NAME"] = git_name
-        env_vars["GIT_COMMITTER_NAME"] = git_name
-    if git_email:
-        env_vars["GIT_AUTHOR_EMAIL"] = git_email
-        env_vars["GIT_COMMITTER_EMAIL"] = git_email
-
-    # Chrome profiles — extract from workspace's mcp_servers list.
-    # If a workspace has mcp_servers = ["gdrive.mycompany", "gcal.work"],
-    # the profiles are {"mycompany", "work"} (extracted from instance names
-    # matching templates that have declared instances).
-    ws_cfg = s.workspaces.get(group_folder) if not is_admin else None
-    # For admin: expose all chrome_profiles. For non-admin: only attached ones.
-    if is_admin:
-        chrome_profiles = s.chrome_profiles
-    else:
-        chrome_profiles_set: set[str] = set()
-        if ws_cfg and ws_cfg.mcp_servers:
-            for entry in ws_cfg.mcp_servers:
-                if "." in entry:
-                    # "gdrive.mycompany" → check if "mycompany" is a chrome profile
-                    _, inst_name = entry.split(".", 1)
-                    if inst_name in s.chrome_profiles:
-                        chrome_profiles_set.add(inst_name)
-        chrome_profiles = sorted(chrome_profiles_set)
-    if chrome_profiles:
-        env_vars["PYNCHY_CHROME_PROFILES"] = ",".join(chrome_profiles)
+    env_vars.update(_gateway_env_vars(get_gateway()))
+    env_vars.update(_gh_token_env_var(s, is_admin=is_admin, group_folder=group_folder))
+    env_vars.update(_git_identity_env_vars())
+    env_vars.update(_chrome_profiles_env_var(s, is_admin=is_admin, group_folder=group_folder))
 
     if not env_vars:
         logger.warning(
@@ -212,6 +229,6 @@ def _write_env_file(*, is_admin: bool, group_folder: str) -> Path | None:
         is_admin=is_admin,
         vars=list(env_vars.keys()),
     )
-    lines = [f"{k}={_shell_quote(v)}" for k, v in env_vars.items()]
+    lines = [f"{k}={shell_quote(v)}" for k, v in env_vars.items()]
     (env_dir / "env").write_text("\n".join(lines) + "\n")
     return env_dir

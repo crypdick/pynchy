@@ -34,7 +34,7 @@ async def handle_approval_command(
     """Process an approve/deny command by writing a decision file.
 
     The IPC watcher picks up the decision file and executes or
-    denies the original request.
+    denies the pending request.
     """
     pending = find_pending_by_short_id(short_id)
 

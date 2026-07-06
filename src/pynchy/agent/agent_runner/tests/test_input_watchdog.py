@@ -53,9 +53,10 @@ class TestReturnsMessageOnJsonFile:
             await asyncio.sleep(0.1)
             _write_message(input_dir, "hello world")
 
-        asyncio.create_task(write_after_delay())
+        writer_task = asyncio.create_task(write_after_delay())
         result = await asyncio.wait_for(wait_for_ipc_message(), timeout=5.0)
         assert result == "hello world"
+        await writer_task
 
     @pytest.mark.asyncio
     async def test_message_already_present(self, input_dir: Path) -> None:
@@ -76,9 +77,10 @@ class TestReturnsNoneOnClose:
             await asyncio.sleep(0.1)
             (input_dir / "_close").touch()
 
-        asyncio.create_task(close_after_delay())
+        closer_task = asyncio.create_task(close_after_delay())
         result = await asyncio.wait_for(wait_for_ipc_message(), timeout=5.0)
         assert result is None
+        await closer_task
 
     @pytest.mark.asyncio
     async def test_close_sentinel_already_present(self, input_dir: Path) -> None:
@@ -99,7 +101,7 @@ class TestDrainsMultipleMessages:
             _write_message(input_dir, "second", index=1)
             _write_message(input_dir, "third", index=2)
 
-        asyncio.create_task(write_batch_after_delay())
+        writer_task = asyncio.create_task(write_batch_after_delay())
         result = await asyncio.wait_for(wait_for_ipc_message(), timeout=5.0)
         assert result is not None
         parts = result.split("\n")
@@ -107,3 +109,4 @@ class TestDrainsMultipleMessages:
         assert "first" in parts
         assert "second" in parts
         assert "third" in parts
+        await writer_task

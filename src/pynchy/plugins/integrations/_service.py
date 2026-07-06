@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import functools
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from pynchy.logger import logger
 
-ServiceHandler = Callable[[dict], Awaitable[dict]]
+ServiceHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
 
 def service_tool(handler: ServiceHandler) -> ServiceHandler:
@@ -28,11 +29,11 @@ def service_tool(handler: ServiceHandler) -> ServiceHandler:
     op = handler.__name__.removeprefix("_handle_")
 
     @functools.wraps(handler)
-    async def wrapper(data: dict) -> dict:
+    async def wrapper(data: dict[str, Any]) -> dict[str, Any]:
         try:
             return await handler(data)
         except Exception as exc:
-            logger.error(f"{op} failed", error=str(exc))
+            logger.error("service tool failed", op=op, error=str(exc))
             return {"error": str(exc)}
 
     return wrapper

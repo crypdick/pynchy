@@ -87,7 +87,7 @@ def count_commits(range_expr: str, *, cwd: Path | None = None) -> int | None:
 
 
 def detect_main_branch(cwd: Path | None = None) -> str:
-    """Detect the main branch name via origin/HEAD, fallback to 'main'."""
+    """Detect the main branch name via origin/HEAD, defaulting to 'main'."""
     result = run_git("symbolic-ref", "refs/remotes/origin/HEAD", cwd=cwd)
     if result.returncode == 0:
         # Output like "refs/remotes/origin/main"

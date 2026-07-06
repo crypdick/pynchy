@@ -138,7 +138,7 @@ class PynchyApp:
         await self._catch_up_channel_history()
 
     async def broadcast_agent_input(
-        self, chat_jid: str, messages: list[dict], *, source: str = "user"
+        self, chat_jid: str, messages: list[dict[str, Any]], *, source: str = "user"
     ) -> None:
         await output_handler.broadcast_agent_input(self, chat_jid, messages, source=source)
 
@@ -146,7 +146,7 @@ class PynchyApp:
         self,
         group: WorkspaceProfile,
         chat_jid: str,
-        messages: list[dict],
+        messages: list[dict[str, Any]],
         on_output: OnOutput | None = None,
         extra_system_notices: list[str] | None = None,
         *,
@@ -221,7 +221,7 @@ class PynchyApp:
     # ------------------------------------------------------------------
 
     async def _register_workspace(self, profile: WorkspaceProfile) -> None:
-        """Register a new workspace and persist it."""
+        """Register a workspace and persist it."""
         self.workspaces[profile.jid] = profile
         await set_workspace_profile(profile)
 
@@ -291,7 +291,7 @@ class PynchyApp:
 
         await handle_reaction(self, jid, message_ts, user_id, emoji)
 
-    async def _on_ask_user_answer(self, request_id: str, answer: dict) -> None:
+    async def _on_ask_user_answer(self, request_id: str, answer: dict[str, Any]) -> None:
         """Handle an ask_user answer from a channel interaction callback."""
         from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
 

@@ -57,7 +57,7 @@ class _WorktreeContext:
     worktree_path: Path
     branch_name: str
     main_branch: str
-    env: dict[str, str]
+    env: dict[str, str] | None
     ahead: int
 
 
@@ -280,7 +280,7 @@ def host_create_pr_from_worktree(
             "message": f"Pushed {ctx.ahead} commit(s) to {ctx.branch_name}. PR updated: {pr_url}",
         }
 
-    # 3. Create a new PR
+    # 3. Create a PR
     title_result = run_git("log", "-1", "--format=%s", cwd=ctx.worktree_path)
     pr_title = (
         title_result.stdout.strip()

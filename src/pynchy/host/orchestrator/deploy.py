@@ -68,7 +68,7 @@ async def finalize_deploy(
         broadcast_host_message: async callable(jid, text) to store, send,
             and emit a host message to all UIs.
         chat_jid: JID of the chat to notify.
-        commit_sha: The new HEAD after deploy.
+        commit_sha: The HEAD after deploy.
         previous_sha: The HEAD before deploy (for rollback).
         session_id: Optional session ID to preserve across restart.
         resume_prompt: Message injected into the agent on restart.

@@ -7,6 +7,7 @@ sync_worktree_to_main MCP tool instead.
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from agent_runner.hooks import HookDecision
 
@@ -20,7 +21,7 @@ _REASON = (
 )
 
 
-async def guard_git_hook(tool_name: str, tool_input: dict) -> HookDecision:
+async def guard_git_hook(tool_name: str, tool_input: dict[str, Any]) -> HookDecision:
     """Block git push/pull/rebase in Bash. Allow everything else."""
     if tool_name != "Bash":
         return HookDecision(allowed=True)

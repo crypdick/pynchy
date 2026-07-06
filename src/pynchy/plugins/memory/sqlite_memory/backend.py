@@ -10,6 +10,7 @@ import json
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import aiosqlite
 
@@ -97,8 +98,8 @@ class SqliteMemoryBackend:
         key: str,
         content: str,
         category: str = "core",
-        metadata: dict | None = None,
-    ) -> dict:
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         db = await self._conn()
         now = datetime.now(tz=UTC).isoformat()
         meta_json = json.dumps(metadata or {})
@@ -133,7 +134,7 @@ class SqliteMemoryBackend:
         query: str,
         category: str | None = None,
         limit: int = 5,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         if not query or not query.strip():
             return []
 
@@ -142,7 +143,7 @@ class SqliteMemoryBackend:
         # Tier 1: BM25 via FTS5
         results = await self._fts_search(db, group_folder, query, category, limit)
 
-        # Tier 2: LIKE fallback if FTS5 returns nothing
+        # Tier 2: LIKE search when FTS5 returns nothing
         if not results:
             results = await self._like_search(db, group_folder, query, category, limit)
 
@@ -155,7 +156,7 @@ class SqliteMemoryBackend:
         query: str,
         category: str | None,
         limit: int,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         # Quote each word and join with OR for inclusive matching
         words = query.split()
         if not words:
@@ -205,7 +206,7 @@ class SqliteMemoryBackend:
         query: str,
         category: str | None,
         limit: int,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         like_pattern = f"%{query}%"
 
         if category:
@@ -241,7 +242,7 @@ class SqliteMemoryBackend:
             for r in rows
         ]
 
-    async def forget(self, group_folder: str, key: str) -> dict:
+    async def forget(self, group_folder: str, key: str) -> dict[str, Any]:
         db = await self._conn()
         cursor = await db.execute(
             "DELETE FROM memories WHERE group_folder = ? AND key = ?",
@@ -254,7 +255,7 @@ class SqliteMemoryBackend:
         self,
         group_folder: str,
         category: str | None = None,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         db = await self._conn()
 
         if category:

@@ -6,7 +6,7 @@ HTTP server, and IPC watcher. Reduces boilerplate delegation code in PynchyApp.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -34,21 +34,23 @@ class MessageBroadcaster:
     code path (JID resolution, ownership check, error handling).
 
     Uses a callable for channel list so the broadcaster always reads the
-    current state (channels may be replaced at runtime or in tests).
+    current state (channels may be swapped at runtime or in tests).
     """
 
     def __init__(
         self,
         channels: Callable[[], list[Channel]] | list[Channel],
-        workspaces: Callable[[], dict] | dict | None = None,
+        workspaces: Callable[[], dict[str, WorkspaceProfile]]
+        | dict[str, WorkspaceProfile]
+        | None = None,
     ) -> None:
         # Accept either a list or a callable returning a list.
         # Callable form ensures the broadcaster always reads the current channels
-        # (important when the channel list may be replaced, e.g. in tests).
+        # (important when the channel list may be swapped, e.g. in tests).
         self._get_channels: Callable[[], list[Channel]] = (
             channels if callable(channels) else lambda: channels
         )
-        self._get_workspaces: Callable[[], dict] = (
+        self._get_workspaces: Callable[[], dict[str, WorkspaceProfile]] = (
             workspaces if callable(workspaces) else lambda: workspaces or {}
         )
 
@@ -60,7 +62,7 @@ class MessageBroadcaster:
         return self._get_channels()
 
     @property
-    def workspaces(self) -> dict:
+    def workspaces(self) -> dict[str, WorkspaceProfile]:
         """Return current workspaces dict (satisfies BusDeps protocol)."""
         return self._get_workspaces()
 
@@ -420,7 +422,7 @@ class GroupRegistrationManager:
     def __init__(
         self,
         groups_dict: dict[str, WorkspaceProfile],
-        register_workspace_fn: Callable[..., Awaitable[None]],
+        register_workspace_fn: Callable[[WorkspaceProfile], Coroutine[Any, Any, None]],
         send_clear_confirmation_fn: Callable[[str], Awaitable[None]],
     ) -> None:
         self._groups = groups_dict
@@ -432,7 +434,7 @@ class GroupRegistrationManager:
         return self._groups
 
     def register_workspace(self, profile: WorkspaceProfile) -> None:
-        """Register a new workspace (async operation scheduled)."""
+        """Register a workspace (async operation scheduled)."""
         create_background_task(
             self._register_workspace(profile),
             name=f"register-workspace-{profile.folder}",

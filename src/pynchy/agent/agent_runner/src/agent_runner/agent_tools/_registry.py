@@ -84,7 +84,7 @@ def register_ipc_tool(
         if "default" in prop_def:
             defaults[prop_name] = prop_def["default"]
 
-    async def handler(arguments: dict) -> list[TextContent]:
+    async def handler(arguments: dict[str, Any]) -> list[TextContent]:
         request = {**defaults, **arguments}
         return await ipc_service_request(name, request)
 

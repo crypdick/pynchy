@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from croniter import croniter
 from mcp.types import CallToolResult, TextContent, Tool
@@ -147,7 +148,7 @@ def _schedule_task_definition() -> Tool:
     )
 
 
-async def _schedule_task_handle(arguments: dict) -> list[TextContent] | CallToolResult:
+async def _schedule_task_handle(arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
     task_type = arguments.get("task_type", "agent")
 
     if task_type not in ("agent", "host"):
@@ -266,7 +267,7 @@ def _validate_schedule(schedule_type: str, schedule_value: str) -> CallToolResul
     ),
     {"type": "object", "properties": {}},
 )
-async def _list_tasks_handle(arguments: dict) -> list[TextContent]:
+async def _list_tasks_handle(arguments: dict[str, Any]) -> list[TextContent]:
     tasks_file = _ipc.IPC_DIR / "current_tasks.json"
 
     try:
@@ -351,17 +352,17 @@ def _task_action(action: str, task_id: str) -> list[TextContent]:
     "Pause a scheduled task or host job. It will not run until resumed.",
     _TASK_ID_SCHEMA,
 )
-async def _pause_task_handle(arguments: dict) -> list[TextContent]:
+async def _pause_task_handle(arguments: dict[str, Any]) -> list[TextContent]:
     return _task_action("pause_task", arguments["task_id"])
 
 
 @tool("resume_task", "Resume a paused task or host job.", _TASK_ID_SCHEMA)
-async def _resume_task_handle(arguments: dict) -> list[TextContent]:
+async def _resume_task_handle(arguments: dict[str, Any]) -> list[TextContent]:
     return _task_action("resume_task", arguments["task_id"])
 
 
 @tool("cancel_task", "Cancel and delete a scheduled task or host job.", _TASK_ID_SCHEMA)
-async def _cancel_task_handle(arguments: dict) -> list[TextContent]:
+async def _cancel_task_handle(arguments: dict[str, Any]) -> list[TextContent]:
     return _task_action("cancel_task", arguments["task_id"])
 
 

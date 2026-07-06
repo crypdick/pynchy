@@ -73,7 +73,7 @@ def _is_network_command(command: str) -> bool:
     return first_token in _NETWORK_SINGLE
 
 
-async def evaluate_bash_command(gate: SecurityGate, command: str) -> dict:
+async def evaluate_bash_command(gate: SecurityGate, command: str) -> dict[str, str]:
     """Evaluate a bash command against taint state and classification.
 
     Three-tier cascade:

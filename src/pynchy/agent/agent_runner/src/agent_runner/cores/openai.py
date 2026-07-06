@@ -4,20 +4,29 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from collections.abc import AsyncIterator
-from typing import Any
+from collections.abc import AsyncIterator, Callable
+from typing import Any, cast
 
 from agents import Agent, ApplyPatchTool, Runner, ShellTool, WebSearchTool
 from agents.editor import ApplyPatchEditor, ApplyPatchOperation, ApplyPatchResult
-from agents.mcp import MCPServerSse, MCPServerStdio, MCPServerStreamableHttp
+from agents.mcp import (
+    MCPServer,
+    MCPServerSse,
+    MCPServerSseParams,
+    MCPServerStdio,
+    MCPServerStdioParams,
+    MCPServerStreamableHttp,
+    MCPServerStreamableHttpParams,
+)
 
 from ..core import AgentCoreConfig, AgentEvent
+from ..hooks import BeforeToolUseHook
 from ._openai_tool_parsing import extract_tool_call, extract_tool_result
 
 
 def _log(message: str) -> None:
     """Log to stderr (captured by host container runner)."""
-    print(f"[openai-core] {message}", file=sys.stderr, flush=True)
+    print(f"[openai-core] {message}", file=sys.stderr, flush=True)  # allow: print-statements
 
 
 def _normalize_response_id(value: str | None) -> str | None:
@@ -34,7 +43,7 @@ def _disable_tracing() -> None:
 
         set_tracing_disabled(disabled=True)
         _log("Tracing disabled")
-    except Exception as exc:
+    except Exception as exc:  # allow: exception-handling — best-effort; logged via _log()
         _log(f"Tracing disable skipped: {exc}")
 
 
@@ -53,7 +62,7 @@ def _is_model_not_found(exc: Exception) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _make_shell_executor(cwd: str, before_tool_hooks: list | None = None):
+def _make_shell_executor(cwd: str, before_tool_hooks: list[BeforeToolUseHook] | None = None):
     """Create a shell executor bound to a specific working directory.
 
     Args:
@@ -124,7 +133,7 @@ def _make_shell_executor(cwd: str, before_tool_hooks: list | None = None):
         except TimeoutError:
             proc.kill()
             return f"Command timed out after {timeout_s}s"
-        except Exception as exc:
+        except Exception as exc:  # allow: exception-handling — returned to agent as output
             return f"Shell error: {exc}"
 
     return executor
@@ -146,7 +155,7 @@ class _ContainerPatchEditor(ApplyPatchEditor):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(op.new_content or "")
             return ApplyPatchResult(status="completed")
-        except Exception as exc:
+        except Exception as exc:  # allow: exception-handling — surfaced as failed result
             return ApplyPatchResult(status="failed", output=str(exc))
 
     async def update_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
@@ -158,7 +167,7 @@ class _ContainerPatchEditor(ApplyPatchEditor):
                 return ApplyPatchResult(status="failed", output=f"File not found: {op.path}")
             path.write_text(op.new_content or "")
             return ApplyPatchResult(status="completed")
-        except Exception as exc:
+        except Exception as exc:  # allow: exception-handling — surfaced as failed result
             return ApplyPatchResult(status="failed", output=str(exc))
 
     async def delete_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
@@ -167,8 +176,81 @@ class _ContainerPatchEditor(ApplyPatchEditor):
         try:
             Path(op.path).unlink(missing_ok=True)
             return ApplyPatchResult(status="completed")
-        except Exception as exc:
+        except Exception as exc:  # allow: exception-handling — surfaced as failed result
             return ApplyPatchResult(status="failed", output=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Stream event → AgentEvent translation
+# ---------------------------------------------------------------------------
+
+
+def _handle_raw_response_event(event: Any) -> AgentEvent | None:
+    """Token-level text deltas, or reasoning/thinking content (o-series models)."""
+    delta = getattr(event.data, "delta", None)
+    if delta and isinstance(delta, str):
+        return AgentEvent(type="text", data={"text": delta})
+    if hasattr(event.data, "type") and "reasoning" in str(getattr(event.data, "type", "")):
+        text = getattr(event.data, "text", None) or getattr(event.data, "summary", None)
+        if text:
+            return AgentEvent(type="thinking", data={"thinking": text})
+    return None
+
+
+def _handle_tool_call_item(item: Any) -> AgentEvent:
+    tool_name, tool_input = extract_tool_call(item)
+    if not tool_input:
+        _log(f"Tool call parsed without input: tool={tool_name}")
+    return AgentEvent(
+        type="tool_use",
+        data={"tool_name": tool_name, "tool_input": tool_input or {}},
+    )
+
+
+def _handle_tool_call_output_item(item: Any) -> AgentEvent:
+    tool_result_id, output = extract_tool_result(item)
+    return AgentEvent(
+        type="tool_result",
+        data={
+            "tool_result_id": tool_result_id,
+            "tool_result_content": output,
+            "tool_result_is_error": False,
+        },
+    )
+
+
+def _handle_message_output_item(item: Any) -> AgentEvent | None:
+    from agents import ItemHelpers
+
+    text = ItemHelpers.text_message_output(item)
+    if text:
+        return AgentEvent(type="text", data={"text": text})
+    return None
+
+
+def _handle_reasoning_item(item: Any) -> AgentEvent | None:
+    text = getattr(item, "text", None) or ""
+    summary_parts = getattr(item, "summary", None)
+    if summary_parts and isinstance(summary_parts, list):
+        text = "\n".join(getattr(s, "text", str(s)) for s in summary_parts)
+    if text:
+        return AgentEvent(type="thinking", data={"thinking": text})
+    return None
+
+
+_RUN_ITEM_HANDLERS: dict[str, Callable[[Any], AgentEvent | None]] = {
+    "tool_call_item": _handle_tool_call_item,
+    "tool_call_output_item": _handle_tool_call_output_item,
+    "message_output_item": _handle_message_output_item,
+    "reasoning_item": _handle_reasoning_item,
+}
+
+
+def _handle_run_item_stream_event(event: Any) -> AgentEvent | None:
+    handler = _RUN_ITEM_HANDLERS.get(event.item.type)
+    if handler is None:
+        return None
+    return handler(event.item)
 
 
 # ---------------------------------------------------------------------------
@@ -185,8 +267,8 @@ class OpenAIAgentCore:
         self._instructions: str | None = None
         self._model_primary: str | None = None
         self._model_fallback: str | None = None
-        self._before_tool_hooks: list = []
-        self._mcp_servers: list[MCPServerStdio | MCPServerSse | MCPServerStreamableHttp] = []
+        self._before_tool_hooks: list[BeforeToolUseHook] = []
+        self._mcp_servers: list[MCPServer] = []
         self._mcp_contexts: list[Any] = []
         previous = _normalize_response_id(config.session_id)
         self._previous_response_id: str | None = previous
@@ -202,7 +284,7 @@ class OpenAIAgentCore:
                 params["args"] = spec.get("args", [])
             if "env" in spec and spec["env"] is not None:
                 params["env"] = spec["env"]
-            return MCPServerStdio(params=params, name=name)
+            return MCPServerStdio(params=cast(MCPServerStdioParams, params), name=name)
 
         transport = spec.get("type") or spec.get("transport")
         if transport is None and "url" in spec:
@@ -210,15 +292,17 @@ class OpenAIAgentCore:
 
         if transport in ("sse",):
             params = {"url": spec["url"]}
-            if "headers" in spec and spec["headers"]:
+            if spec.get("headers"):
                 params["headers"] = spec["headers"]
-            return MCPServerSse(params=params, name=name)
+            return MCPServerSse(params=cast(MCPServerSseParams, params), name=name)
 
         if transport in ("streamable_http", "http"):
             params = {"url": spec["url"]}
-            if "headers" in spec and spec["headers"]:
+            if spec.get("headers"):
                 params["headers"] = spec["headers"]
-            return MCPServerStreamableHttp(params=params, name=name)
+            return MCPServerStreamableHttp(
+                params=cast(MCPServerStreamableHttpParams, params), name=name
+            )
 
         _log(f"Skipping MCP server '{name}': unsupported spec {spec}")
         return None
@@ -248,9 +332,9 @@ class OpenAIAgentCore:
         _disable_tracing()
         # Convert config.mcp_servers dict → MCPServer* instances
         for name, spec in self.config.mcp_servers.items():
-            server = self._build_mcp_server(name, spec)
-            if server is not None:
-                self._mcp_servers.append(server)
+            built = self._build_mcp_server(name, spec)
+            if built is not None:
+                self._mcp_servers.append(built)
 
         # Enter MCP server async contexts
         for server in self._mcp_servers:
@@ -329,62 +413,16 @@ class OpenAIAgentCore:
         )
 
         async for event in result.stream_events():
+            agent_event: AgentEvent | None = None
             if event.type == "raw_response_event":
-                # Token-level text deltas
-                delta = getattr(event.data, "delta", None)
-                if delta and isinstance(delta, str):
-                    yield AgentEvent(type="text", data={"text": delta})
-                # Reasoning/thinking content (o-series models)
-                elif hasattr(event.data, "type") and "reasoning" in str(
-                    getattr(event.data, "type", "")
-                ):
-                    text = getattr(event.data, "text", None) or getattr(event.data, "summary", None)
-                    if text:
-                        yield AgentEvent(type="thinking", data={"thinking": text})
-
+                agent_event = _handle_raw_response_event(event)
             elif event.type == "run_item_stream_event":
-                item = event.item
-
-                if item.type == "tool_call_item":
-                    tool_name, tool_input = extract_tool_call(item)
-                    if not tool_input:
-                        _log(f"Tool call parsed without input: tool={tool_name}")
-                    yield AgentEvent(
-                        type="tool_use",
-                        data={
-                            "tool_name": tool_name,
-                            "tool_input": tool_input or {},
-                        },
-                    )
-
-                elif item.type == "tool_call_output_item":
-                    tool_result_id, output = extract_tool_result(item)
-                    yield AgentEvent(
-                        type="tool_result",
-                        data={
-                            "tool_result_id": tool_result_id,
-                            "tool_result_content": output,
-                            "tool_result_is_error": False,
-                        },
-                    )
-
-                elif item.type == "message_output_item":
-                    from agents import ItemHelpers
-
-                    text = ItemHelpers.text_message_output(item)
-                    if text:
-                        yield AgentEvent(type="text", data={"text": text})
-
-                elif item.type == "reasoning_item":
-                    text = getattr(item, "text", None) or ""
-                    summary_parts = getattr(item, "summary", None)
-                    if summary_parts and isinstance(summary_parts, list):
-                        text = "\n".join(getattr(s, "text", str(s)) for s in summary_parts)
-                    if text:
-                        yield AgentEvent(type="thinking", data={"thinking": text})
-
+                agent_event = _handle_run_item_stream_event(event)
             elif event.type == "agent_updated_stream_event":
                 _log(f"Agent updated: {event.new_agent.name}")
+
+            if agent_event is not None:
+                yield agent_event
 
         # After stream completes, capture response ID for session continuity
         self._previous_response_id = result.last_response_id
@@ -410,7 +448,7 @@ class OpenAIAgentCore:
         for server in reversed(self._mcp_servers):
             try:
                 await server.__aexit__(None, None, None)
-            except Exception as exc:
+            except Exception as exc:  # allow: exception-handling — cleanup; logged via _log()
                 _log(f"Error closing MCP server: {exc}")
         self._mcp_servers.clear()
         self._mcp_contexts.clear()

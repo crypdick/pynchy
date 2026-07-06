@@ -8,12 +8,10 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-from pynchy.host.container_manager.security.approval import (
-    _mcp_proxy_futures,
-    resolve_mcp_proxy_approval,
-)
+from pynchy.host.container_manager.security import approval, gate
+from pynchy.host.container_manager.security.approval import resolve_mcp_proxy_approval
 from pynchy.host.container_manager.security.cop import CopVerdict
-from pynchy.host.container_manager.security.gate import _gates, create_gate
+from pynchy.host.container_manager.security.gate import create_gate
 from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
 
 # Fully safe trust config — passes outbound gating without triggering needs_human
@@ -26,8 +24,8 @@ _SAFE_TRUST = ServiceTrustConfig(
 def _cleanup_gates():
     """Ensure no gates or approval futures leak between tests."""
     yield
-    _gates.clear()
-    _mcp_proxy_futures.clear()
+    gate._gates.clear()
+    approval._mcp_proxy_futures.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -541,39 +539,40 @@ class TestMcpProxyLifecycle:
         assert proxy.port == port
         await proxy.stop()
 
-    async def test_routes_resolve_dynamically(self, mock_backend):
-        """An unmapped instance 404s until its route is added to proxy state.
+    async def test_routes_resolve_from_instance_map(self, mock_backend):
+        """An instance 404s when unmapped and 200s when its route is configured.
 
         Uses TestClient (in-process) instead of real TCP to avoid
         port-binding issues under pytest-xdist workers.
         """
-        from pynchy.host.container_manager.mcp.proxy import _STATE_KEY, create_proxy_app
+        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
 
         security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
         create_gate("test-ws", 1000.0, security)
 
-        # Start with empty routes via the app directly (TestClient, no real TCP)
+        # No routes configured -- should 404
         app = create_proxy_app({})
         client = TestClient(TestServer(app))
         await client.start_server()
-
         try:
-            # Initially no routes -- should 404
             resp = await client.post(
                 "/mcp/test-ws/1000.0/browser",
                 json={"jsonrpc": "2.0", "method": "tools/call", "id": 1},
             )
             assert resp.status == 404
+        finally:
+            await client.close()
 
-            # Add a route by mutating the proxy's _ProxyState in place
-            backend_url = f"http://localhost:{mock_backend.port}/mcp"
-            app[_STATE_KEY].instance_urls = {"browser": backend_url}
-
-            # Now should succeed
-            resp = await client.post(
+        # Route configured -- should succeed
+        backend_url = f"http://localhost:{mock_backend.port}/mcp"
+        mapped_app = create_proxy_app({"browser": backend_url})
+        mapped_client = TestClient(TestServer(mapped_app))
+        await mapped_client.start_server()
+        try:
+            resp = await mapped_client.post(
                 "/mcp/test-ws/1000.0/browser",
                 json={"jsonrpc": "2.0", "method": "tools/call", "id": 1},
             )
             assert resp.status == 200
         finally:
-            await client.close()
+            await mapped_client.close()

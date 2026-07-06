@@ -7,7 +7,7 @@ Two modes, selected by ``[gateway].litellm_config`` in config.toml:
     (models, keys, budgets, load balancing) lives in the user-managed
     ``litellm_config.yaml`` — pynchy doesn't translate or duplicate it.
 
-**Builtin mode** (fallback)
+**Builtin mode** (default when LiteLLM is unconfigured)
     Simple aiohttp reverse proxy for single-key setups.  Used when
     ``litellm_config`` is not set.  Reads keys from ``[secrets]``.
 
@@ -41,7 +41,7 @@ from pynchy.host.container_manager.gateway_litellm import (
 from pynchy.logger import logger
 from pynchy.types import ServiceTrustConfig
 
-# Re-export for backwards compatibility with existing imports
+# Public gateway API re-exported from this module
 __all__ = [
     "BuiltinGateway",
     "GatewayProto",
@@ -81,7 +81,7 @@ def get_gateway() -> LiteLLMGateway | BuiltinGateway | None:
     return _gateway
 
 
-def _collect_plugin_mcp_servers(
+def collect_plugin_mcp_servers(
     plugin_manager: pluggy.PluginManager | None,
 ) -> tuple[dict[str, Any], dict[str, ServiceTrustConfig]]:
     """Collect MCP server specs from plugins.
@@ -173,7 +173,7 @@ async def start_gateway(
 
     # Sync MCP state to LiteLLM after gateway is ready (LiteLLM mode only).
     # Collect plugin-provided MCP server specs and merge with config.toml.
-    plugin_mcp_servers, plugin_trust_defaults = _collect_plugin_mcp_servers(plugin_manager)
+    plugin_mcp_servers, plugin_trust_defaults = collect_plugin_mcp_servers(plugin_manager)
     has_servers = s.mcp_servers or s.mcp_server_instances or plugin_mcp_servers
     if isinstance(_gateway, LiteLLMGateway) and has_servers:
         from pynchy.host.container_manager.mcp.manager import McpManager, set_mcp_manager

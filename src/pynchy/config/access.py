@@ -28,6 +28,7 @@ from pynchy.config.settings import get_settings
 
 if TYPE_CHECKING:
     from pynchy.config.merge import ResolvedSandboxConfig
+    from pynchy.types import NewMessage
 
 # The fields that participate in the connection/chat override cascade
 # (layers 4-5).  The sandbox merge (layers 1-3) handles these fields
@@ -189,10 +190,10 @@ def _resolve_owner(owner_config: OwnerConfig, channel_plugin_name: str | None) -
 
 
 def filter_allowed_messages(
-    messages: list,
+    messages: list[NewMessage],
     group: object,
     channel_plugin_name: str | None,
-) -> list:
+) -> list[NewMessage]:
     """Filter messages to only those from allowed senders.
 
     Admin groups bypass the filter entirely (return all messages unchanged).

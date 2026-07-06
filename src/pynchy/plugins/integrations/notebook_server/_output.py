@@ -106,5 +106,5 @@ def save_cell_images(
         png_bytes = base64.b64decode(data["image/png"])
         filepath.write_bytes(png_bytes)
 
-        # Add file path — keep original base64 in notebook for JupyterLab rendering
+        # Add file path — keep the base64 in the notebook for JupyterLab rendering
         data["_image_path"] = str(filepath.relative_to(notebook_dir))

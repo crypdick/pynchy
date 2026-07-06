@@ -35,7 +35,7 @@ from pynchy.logger import logger
 # construction time.  Signature: (group_folder, tool_name, request_data,
 # request_id) -> None.  The implementation writes the pending file and
 # broadcasts the notification to chat channels.
-ApprovalRequestFn = Callable[[str, str, dict, str], Awaitable[None]]
+ApprovalRequestFn = Callable[[str, str, dict[str, Any], str], Awaitable[None]]
 
 
 @dataclass
@@ -68,7 +68,7 @@ def create_proxy_app(
     Args:
         instance_urls: Mapping of instance_id -> backend URL.
         trust_map: Mapping of instance_id -> trust properties dict.
-            Used to decide whether to apply fencing (public_source=True).
+            Determines whether to apply fencing (public_source=True).
         approval_fn: Callback for human approval requests.  When a tools/call
             triggers needs_human, the proxy calls this to write the pending
             file and broadcast to chat, then blocks until the human responds.
@@ -192,7 +192,7 @@ async def _await_human_approval(
     state: _ProxyState,
     group_folder: str,
     instance_id: str,
-    rpc: dict,
+    rpc: dict[str, Any],
     reason: str,
 ) -> web.Response | None:
     """Block the HTTP connection until the human approves or denies.
@@ -265,7 +265,7 @@ async def _apply_fencing(
     For each text content block in the MCP result:
     1. Record the read on the SecurityGate (sets corruption taint)
     2. Run Cop inspection for prompt injection detection
-    3. If Cop flags the content, replace it with a warning
+    3. If Cop flags the content, substitute a warning
     4. Otherwise, wrap with fence markers via fence_untrusted_content
     """
     try:
@@ -340,7 +340,7 @@ class McpProxy:
         site = web.TCPSite(self._runner, "localhost", port)
         await site.start()
         # Extract the actual bound port from the socket
-        self._port = site._server.sockets[0].getsockname()[1]  # type: ignore[union-attr]
+        self._port = site._server.sockets[0].getsockname()[1]
         logger.info("MCP proxy started", port=self._port)
         return self._port
 

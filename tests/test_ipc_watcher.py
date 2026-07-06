@@ -15,9 +15,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.host.container_manager.ipc.watcher import _move_to_error_dir
+from pynchy.host.container_manager.ipc.watcher import (
+    _move_to_error_dir,  # allow: private-test-imports
+)
 from pynchy.host.git_ops.repo import RepoContext
-from pynchy.state import _init_test_database
+from pynchy.state import init_test_database
 from pynchy.types import WorkspaceProfile
 
 ADMIN_GROUP = WorkspaceProfile(
@@ -103,7 +105,7 @@ class MockDeps:
 
 @pytest.fixture
 async def deps():
-    await _init_test_database()
+    await init_test_database()
     return MockDeps(
         {
             "admin-1@g.us": ADMIN_GROUP,
@@ -250,14 +252,15 @@ class TestIpcDeployEdgeCases:
 
     async def test_deploy_without_chat_jid_uses_admin_group(self, deps):
         """Deploy request missing chatJid should fall back to admin group's JID."""
-        from pynchy.host.container_manager.ipc.handlers_deploy import _handle_deploy
+        from pynchy.host.container_manager.ipc import dispatch
 
         with patch(
             "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy",
             new_callable=AsyncMock,
         ) as mock_finalize:
-            await _handle_deploy(
+            await dispatch(
                 {
+                    "type": "deploy",
                     "rebuildContainer": False,
                     "resumePrompt": "Done.",
                     "headSha": "abc123",
@@ -273,7 +276,7 @@ class TestIpcDeployEdgeCases:
 
     async def test_deploy_without_chat_jid_and_no_admin_group(self, deps):
         """Deploy request with no chatJid and no admin group should not finalize."""
-        from pynchy.host.container_manager.ipc.handlers_deploy import _handle_deploy
+        from pynchy.host.container_manager.ipc import dispatch
 
         # Remove admin group from deps
         no_admin_deps = MockDeps(
@@ -281,14 +284,15 @@ class TestIpcDeployEdgeCases:
                 "other@g.us": OTHER_GROUP,
             }
         )
-        await _init_test_database()
+        await init_test_database()
 
         with patch(
             "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy",
             new_callable=AsyncMock,
         ) as mock_finalize:
-            await _handle_deploy(
+            await dispatch(
                 {
+                    "type": "deploy",
                     "rebuildContainer": False,
                     "headSha": "abc123",
                 },

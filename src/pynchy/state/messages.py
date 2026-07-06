@@ -101,7 +101,7 @@ async def message_exists(msg_id: str, chat_jid: str) -> bool:
 
 
 async def get_new_messages(jids: list[str], last_timestamp: str) -> tuple[list[NewMessage], str]:
-    """Get new messages across multiple groups since a timestamp."""
+    """Get messages across multiple groups since a timestamp."""
     if not jids:
         return [], last_timestamp
 
@@ -228,4 +228,4 @@ async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
         )
     rows = await cursor.fetchall()
 
-    return [_row_to_message(row) for row in reversed(rows)]
+    return [_row_to_message(row) for row in reversed(list(rows))]

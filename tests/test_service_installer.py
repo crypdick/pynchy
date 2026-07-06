@@ -3,8 +3,8 @@
 Tests critical business logic:
 - is_launchd_managed() detection
 - is_launchd_loaded() subprocess check
-- _install_launchd_service() file diffing, unload/copy/load logic
-- _install_systemd_service() unit file generation and idempotency
+- install_service() file diffing, unload/copy/load logic
+- install_service() unit file generation and idempotency
 - install_service() platform dispatch
 """
 
@@ -13,11 +13,10 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import pytest
 from conftest import make_settings
 
 from pynchy.host.orchestrator.service_installer import (
-    _install_launchd_service,
-    _install_systemd_service,
     install_service,
     is_launchd_loaded,
     is_launchd_managed,
@@ -115,7 +114,16 @@ class TestInstallService:
 
 
 class TestInstallLaunchdService:
-    """Test macOS launchd service installation logic."""
+    """Test macOS launchd service installation logic.
+
+    Drives the public ``install_service()`` entry point with the platform
+    forced to darwin so dispatch routes to the launchd installer.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _force_darwin(self):
+        with patch("pynchy.host.orchestrator.service_installer.sys.platform", "darwin"):
+            yield
 
     def test_skips_when_plist_source_does_not_exist(self, tmp_path: Path):
         """Should log warning and return when source plist is missing."""
@@ -124,7 +132,7 @@ class TestInstallLaunchdService:
             return_value=_test_settings(project_root=tmp_path),
         ):
             # Source file does not exist
-            _install_launchd_service()
+            install_service()
             # No error, just skipped
 
     def test_copies_plist_when_dest_does_not_exist(self, tmp_path: Path):
@@ -151,7 +159,7 @@ class TestInstallLaunchdService:
             ),
             patch("subprocess.run") as mock_run,
         ):
-            _install_launchd_service()
+            install_service()
 
         dest_file = dest_dir / "com.pynchy.plist"
         assert dest_file.exists()
@@ -182,7 +190,7 @@ class TestInstallLaunchdService:
             ),
             patch("subprocess.run") as mock_run,
         ):
-            _install_launchd_service()
+            install_service()
 
         # No subprocess calls because nothing changed
         mock_run.assert_not_called()
@@ -211,7 +219,7 @@ class TestInstallLaunchdService:
             ),
             patch("subprocess.run") as mock_run,
         ):
-            _install_launchd_service()
+            install_service()
 
         # Should have unloaded, then loaded
         calls = mock_run.call_args_list
@@ -244,7 +252,7 @@ class TestInstallLaunchdService:
             ),
             patch("subprocess.run") as mock_run,
         ):
-            _install_launchd_service()
+            install_service()
 
         load_calls = [c for c in mock_run.call_args_list if "load" in str(c)]
         assert len(load_calls) == 1
@@ -256,13 +264,22 @@ class TestInstallLaunchdService:
 
 
 class TestInstallSystemdService:
-    """Test Linux systemd service installation logic."""
+    """Test Linux systemd service installation logic.
+
+    Drives the public ``install_service()`` entry point with the platform
+    forced to linux so dispatch routes to the systemd installer.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _force_linux(self):
+        with patch("pynchy.host.orchestrator.service_installer.sys.platform", "linux"):
+            yield
 
     def test_skips_when_uv_not_found(self):
         """Should warn and return when uv is not in PATH."""
         with patch("shutil.which", return_value=None):
             # Should not raise
-            _install_systemd_service()
+            install_service()
 
     def test_creates_service_file(self, tmp_path: Path):
         """Should create systemd unit file with correct content."""
@@ -275,7 +292,7 @@ class TestInstallSystemdService:
             patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
             patch("subprocess.run"),
         ):
-            _install_systemd_service()
+            install_service()
 
         unit_file = tmp_path / ".config" / "systemd" / "user" / "pynchy.service"
         assert unit_file.exists()
@@ -297,7 +314,7 @@ class TestInstallSystemdService:
             patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
             patch("subprocess.run") as mock_run,
         ):
-            _install_systemd_service()
+            install_service()
 
         # Should have run daemon-reload, enable, and enable-linger
         cmd_strs = [" ".join(c.args[0]) for c in mock_run.call_args_list]
@@ -317,11 +334,11 @@ class TestInstallSystemdService:
             patch("subprocess.run") as mock_run,
         ):
             # First install creates the file
-            _install_systemd_service()
+            install_service()
 
             # Second install should detect no change and skip
             mock_run.reset_mock()
-            _install_systemd_service()
+            install_service()
             assert mock_run.call_count == 0
 
     def test_overwrites_outdated_unit_file(self, tmp_path: Path):
@@ -339,7 +356,7 @@ class TestInstallSystemdService:
             patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
             patch("subprocess.run") as mock_run,
         ):
-            _install_systemd_service()
+            install_service()
 
         content = (unit_dir / "pynchy.service").read_text()
         assert "Description=Pynchy personal assistant" in content

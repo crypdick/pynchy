@@ -6,14 +6,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from pynchy.plugins.memory import _is_valid_provider, get_memory_provider
-from pynchy.plugins.memory.sqlite_memory import (
-    SqliteMemoryPlugin,
-    _handle_forget_memory,
-    _handle_list_memories,
-    _handle_recall_memories,
-    _handle_save_memory,
-)
+from pynchy.plugins.memory import MemoryProvider, get_memory_provider
+from pynchy.plugins.memory.sqlite_memory import SqliteMemoryPlugin
 from pynchy.plugins.memory.sqlite_memory.backend import SqliteMemoryBackend
 
 
@@ -21,12 +15,12 @@ class TestMemoryProvider:
     def test_backend_satisfies_protocol(self):
         """SqliteMemoryBackend passes structural typing checks."""
         backend = SqliteMemoryBackend()
-        assert _is_valid_provider(backend)
+        assert isinstance(backend, MemoryProvider)
 
     def test_invalid_provider_rejected(self):
         """Objects missing required methods are rejected."""
-        assert not _is_valid_provider(object())
-        assert not _is_valid_provider({"name": "fake"})
+        assert not isinstance(object(), MemoryProvider)
+        assert not isinstance({"name": "fake"}, MemoryProvider)
 
     def test_plugin_provides_memory_hook(self):
         """SqliteMemoryPlugin returns a backend via pynchy_memory."""
@@ -51,24 +45,29 @@ class TestMcpHandlers:
 
     @pytest.fixture(autouse=True)
     def _mock_backend(self, tmp_path):
-        """Replace the module-level backend singleton with a mock."""
+        """Replace the module-level backend singleton with a mock.
+
+        Handlers are driven through the plugin's public service-handler hook
+        (``pynchy_service_handler`` exposes them keyed by tool name).
+        """
         mock = AsyncMock(spec=SqliteMemoryBackend)
         mock.name = "sqlite"
         with patch("pynchy.plugins.memory.sqlite_memory._backend", mock):
             self.mock_backend = mock
+            self.tools = SqliteMemoryPlugin().pynchy_service_handler()["tools"]
             yield
 
     async def test_save_requires_source_group(self):
-        result = await _handle_save_memory({"key": "k", "content": "c"})
+        result = await self.tools["save_memory"]({"key": "k", "content": "c"})
         assert "error" in result
 
     async def test_save_requires_key_and_content(self):
-        result = await _handle_save_memory({"source_group": "g"})
+        result = await self.tools["save_memory"]({"source_group": "g"})
         assert "error" in result
 
     async def test_save_delegates_to_backend(self):
         self.mock_backend.save.return_value = {"key": "k", "status": "created"}
-        result = await _handle_save_memory(
+        result = await self.tools["save_memory"](
             {
                 "source_group": "g",
                 "key": "k",
@@ -86,16 +85,16 @@ class TestMcpHandlers:
         )
 
     async def test_recall_requires_source_group(self):
-        result = await _handle_recall_memories({"query": "test"})
+        result = await self.tools["recall_memories"]({"query": "test"})
         assert "error" in result
 
     async def test_recall_requires_query(self):
-        result = await _handle_recall_memories({"source_group": "g"})
+        result = await self.tools["recall_memories"]({"source_group": "g"})
         assert "error" in result
 
     async def test_recall_delegates_to_backend(self):
         self.mock_backend.recall.return_value = [{"key": "k", "content": "c"}]
-        result = await _handle_recall_memories(
+        result = await self.tools["recall_memories"](
             {
                 "source_group": "g",
                 "query": "test",
@@ -111,21 +110,21 @@ class TestMcpHandlers:
         )
 
     async def test_forget_requires_source_group(self):
-        result = await _handle_forget_memory({"key": "k"})
+        result = await self.tools["forget_memory"]({"key": "k"})
         assert "error" in result
 
     async def test_forget_delegates_to_backend(self):
         self.mock_backend.forget.return_value = {"removed": True}
-        result = await _handle_forget_memory({"source_group": "g", "key": "k"})
+        result = await self.tools["forget_memory"]({"source_group": "g", "key": "k"})
         assert result == {"result": {"removed": True}}
 
     async def test_list_requires_source_group(self):
-        result = await _handle_list_memories({})
+        result = await self.tools["list_memories"]({})
         assert "error" in result
 
     async def test_list_delegates_to_backend(self):
         self.mock_backend.list_keys.return_value = [{"key": "k1"}]
-        result = await _handle_list_memories({"source_group": "g", "category": "core"})
+        result = await self.tools["list_memories"]({"source_group": "g", "category": "core"})
         assert result["result"]["count"] == 1
         self.mock_backend.list_keys.assert_called_once_with(
             group_folder="g",
@@ -141,4 +140,4 @@ class TestDiscovery:
         # but when it loads it should be valid.
         if provider is not None:
             assert provider.name == "sqlite"
-            assert _is_valid_provider(provider)
+            assert isinstance(provider, MemoryProvider)

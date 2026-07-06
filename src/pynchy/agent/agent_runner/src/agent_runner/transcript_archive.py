@@ -25,7 +25,7 @@ CONVERSATIONS_DIR = Path("/workspace/group/conversations")
 
 def _log(message: str) -> None:
     """Log to stderr (captured by the host container runner)."""
-    print(f"[transcript-archive] {message}", file=sys.stderr, flush=True)
+    print(f"[transcript-archive] {message}", file=sys.stderr, flush=True)  # allow: print-statements
 
 
 def _sanitize_filename(summary: str) -> str:
@@ -102,7 +102,8 @@ def _get_session_summary(session_id: str, transcript_path: str) -> str | None:
         index = json.loads(index_path.read_text())
         for entry in index.get("entries", []):
             if entry.get("sessionId") == session_id:
-                return entry.get("summary")
+                summary = entry.get("summary")
+                return summary if isinstance(summary, str) else None
     except (json.JSONDecodeError, OSError) as exc:
         _log(f"Failed to read sessions index: {exc}")
 
@@ -153,11 +154,11 @@ async def archive_transcript(transcript_path: str, session_id: str) -> Path | No
                     "category": "conversation",
                 },
             )
-        except Exception as exc:
+        except Exception as exc:  # allow: exception-handling — best-effort; logged via _log()
             _log(f"save_memory IPC failed (non-fatal): {exc}")
 
         return file_path
-    except Exception as exc:
+    except Exception as exc:  # allow: exception-handling — best-effort; logged via _log()
         _log(f"Failed to archive transcript: {exc}")
         return None
 
@@ -182,7 +183,7 @@ def main() -> None:
 
     try:
         asyncio.run(archive_transcript(transcript_path, session_id))
-    except Exception as exc:  # noqa: BLE001 - archival must never break compaction
+    except Exception as exc:  # allow: exception-handling — gate fails open; logged via _log()
         _log(f"archive error, skipping: {exc}")
 
     sys.exit(0)

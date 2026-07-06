@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from conftest import init_test_database
 
 from pynchy.state import (
-    _init_test_database,
     advance_cursors_atomic,
     get_channel_cursor,
     prune_stale_cursors,
@@ -15,7 +15,7 @@ from pynchy.state import (
 
 @pytest.fixture()
 async def _db():
-    await _init_test_database()
+    await init_test_database()
 
 
 @pytest.mark.usefixtures("_db")

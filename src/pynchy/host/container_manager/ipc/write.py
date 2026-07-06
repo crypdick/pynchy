@@ -65,8 +65,8 @@ def write_ipc_response(path: Path, data: dict[str, Any]) -> None:
 def clean_ipc_input_dir(group_folder: str | None, *, preserve_initial: bool = False) -> None:
     """Remove stale IPC input files for a group.
 
-    Cleans up message files and the ``_close`` sentinel from previous
-    sessions. Used by session creation (preserve initial.json since the
+    Cleans up stale message files and the ``_close`` sentinel. Used by
+    session creation (preserve initial.json since the
     container is still reading it) and post-task cleanup (delete
     everything since the container has exited).
 

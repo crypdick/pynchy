@@ -7,10 +7,11 @@ import contextlib
 import re
 import sys
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 from neonize.aioze import client as neonize_client
 from neonize.aioze import events as neonize_events
@@ -60,7 +61,7 @@ class WhatsAppChannel:
         on_message: Callable[[str, NewMessage], None],
         on_chat_metadata: Callable[[str, str, str | None], None],
         workspaces: Callable[[], dict[str, WorkspaceProfile]],
-        on_ask_user_answer: Callable[[str, dict], None] | None = None,
+        on_ask_user_answer: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> None:
         self.name = connection_name
         self.formatter = TextFormatter()
@@ -76,6 +77,10 @@ class WhatsAppChannel:
         self._flushing = False
         self._group_sync_task: asyncio.Task[None] | None = None
         self._idle_task: asyncio.Task[None] | None = None
+        # One-shot fire-and-forget tasks (flush, initial group sync) — tracked
+        # here so the event loop can't GC them mid-flight, and so disconnect()
+        # can cancel any still in progress.
+        self._background_tasks: set[asyncio.Task[None]] = set()
         self._first_connect: asyncio.Event = asyncio.Event()
 
         loop = asyncio.get_running_loop()
@@ -87,8 +92,15 @@ class WhatsAppChannel:
         self._client = NewAClient(auth_db)
         self._register_events()
 
+    def _spawn(self, coro: Coroutine[Any, Any, None]) -> asyncio.Task[None]:
+        """Fire-and-forget a coroutine, tracking it so it can't be GC'd or leaked."""
+        task = asyncio.ensure_future(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+        return task
+
     def _register_events(self) -> None:
-        @self._client.event(ConnectedEv)
+        @self._client.event(ConnectedEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
         async def on_connected(_client: NewAClient, _ev: ConnectedEv) -> None:
             self._connected = True
             logger.info("Connected to WhatsApp")
@@ -99,17 +111,17 @@ class WhatsAppChannel:
                 if jid and lid and lid.User:
                     self._lid_to_phone[lid.User] = f"{jid.User}@s.whatsapp.net"
 
-            asyncio.ensure_future(self._flush_outgoing_queue())
-            asyncio.ensure_future(self._sync_group_metadata())
+            self._spawn(self._flush_outgoing_queue())
+            self._spawn(self._sync_group_metadata())
             if self._group_sync_task is None:
                 self._group_sync_task = asyncio.ensure_future(self._periodic_group_sync())
             self._first_connect.set()
 
-        @self._client.event(DisconnectedEv)
+        @self._client.event(DisconnectedEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
         async def on_disconnected(_client: NewAClient, _ev: DisconnectedEv) -> None:
             self._connected = False
 
-        @self._client.event(LoggedOutEv)
+        @self._client.event(LoggedOutEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
         async def on_logged_out(_client: NewAClient, _ev: LoggedOutEv) -> None:
             self._connected = False
             logger.error(
@@ -117,16 +129,16 @@ class WhatsAppChannel:
             )
             sys.exit(0)
 
-        @self._client.event(ConnectFailureEv)
+        @self._client.event(ConnectFailureEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
         async def on_connect_failure(_client: NewAClient, _ev: ConnectFailureEv) -> None:
             self._connected = False
             logger.error("WhatsApp connection failed")
 
-        @self._client.event(PairStatusEv)
+        @self._client.event(PairStatusEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
         async def on_pair_status(_client: NewAClient, ev: PairStatusEv) -> None:
             logger.info("WhatsApp paired", user=ev.ID.User)
 
-        @self._client.event(MessageEv)
+        @self._client.event(MessageEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
         async def on_message(_client: NewAClient, message: MessageEv) -> None:
             try:
                 await self._handle_message(message)
@@ -137,7 +149,7 @@ class WhatsAppChannel:
                 )
 
     async def connect(self) -> None:
-        @self._client.event.qr
+        @self._client.event.qr  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
         async def on_qr(_client: NewAClient, qr_data: bytes) -> None:
             logger.error("WhatsApp authentication required. Run: uv run pynchy-whatsapp-auth")
             await asyncio.sleep(1)
@@ -175,6 +187,8 @@ class WhatsAppChannel:
             self._group_sync_task.cancel()
         if self._idle_task:
             self._idle_task.cancel()
+        for task in self._background_tasks:
+            task.cancel()
         with contextlib.suppress(Exception):
             await self._client.disconnect()
 
@@ -207,7 +221,7 @@ class WhatsAppChannel:
 
     async def create_group(self, name: str) -> str:
         group_info = await self._client.create_group(name)
-        return Jid2String(group_info.JID)
+        return cast(str, Jid2String(group_info.JID))
 
     async def resolve_chat_jid(self, chat_name: str) -> str | None:
         """Resolve a WhatsApp chat name to a JID using stored metadata."""
@@ -270,7 +284,9 @@ class WhatsAppChannel:
         finally:
             self._flushing = False
 
-    async def send_ask_user(self, jid: str, request_id: str, questions: list[dict]) -> str | None:
+    async def send_ask_user(
+        self, jid: str, request_id: str, questions: list[dict[str, Any]]
+    ) -> str | None:
         """Post a numbered-text question and return a tracking message ID.
 
         WhatsApp doesn't support interactive widgets, so we format the
@@ -301,7 +317,7 @@ class WhatsAppChannel:
         # doesn't return a message ID we can use.
         return request_id
 
-    def _resolve_answer(self, content: str, pending: dict) -> dict:
+    def _resolve_answer(self, content: str, pending: dict[str, Any]) -> dict[str, Any]:
         """Match user reply to pending question options.
 
         Only resolves numeric option selection against the first question's
@@ -418,8 +434,8 @@ class WhatsAppChannel:
 
     async def fetch_inbound_since(
         self,
-        channel_jid: str,  # noqa: ARG002
-        since: str,  # noqa: ARG002
+        channel_jid: str,
+        since: str,
     ) -> InboundFetchResult:
         # WhatsApp has no "fetch history since timestamp" API.  Neonize
         # exposes HistorySyncEv (bootstrap + on-demand via

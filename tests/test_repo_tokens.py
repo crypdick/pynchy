@@ -3,7 +3,7 @@
 Covers:
 - get_repo_token() resolution chain
 - ensure_repo_cloned() with token authentication
-- _sanitize_token() credential scrubbing
+- token scrubbing in clone-failure logs
 - Container credential injection (scoped vs broad)
 - git_env_with_token() environment building
 - check_token_expiry() API header parsing
@@ -19,10 +19,11 @@ from conftest import make_settings
 from pydantic import SecretStr
 
 from pynchy.config import RepoConfig, WorkspaceConfig
+from pynchy.host.container_manager import credentials
 from pynchy.host.git_ops.repo import (
     RepoContext,
-    _sanitize_token,
     check_token_expiry,
+    ensure_repo_cloned,
     get_repo_token,
 )
 from pynchy.host.git_ops.utils import git_env_with_token
@@ -123,26 +124,41 @@ class TestGetRepoToken:
 
 
 # ---------------------------------------------------------------------------
-# _sanitize_token
+# Token scrubbing in clone-failure logs (observed via ensure_repo_cloned)
 # ---------------------------------------------------------------------------
 
 
-class TestSanitizeToken:
-    def test_strips_token_from_text(self):
-        text = (
+class TestTokenScrubbingInLogs:
+    """A failed clone must never leak the token into the logged stderr."""
+
+    def _run_failing_clone(self, tmp_path: Path, token: str | None, stderr: str):
+        repo_ctx = RepoContext(
+            slug=REPO_SLUG, root=tmp_path / "repo", worktrees_dir=tmp_path / "wt"
+        )
+        with (
+            patch("pynchy.host.git_ops.repo.get_repo_token", return_value=token),
+            patch("subprocess.run", side_effect=lambda *a, **k: _fail(stderr)),
+            patch("pynchy.host.git_ops.repo.logger") as mock_logger,
+        ):
+            assert ensure_repo_cloned(repo_ctx) is False
+        return str(mock_logger.error.call_args)
+
+    def test_token_scrubbed_from_error_log(self, tmp_path: Path):
+        stderr = (
             f"fatal: Authentication failed for 'https://x-access-token:{SCOPED_TOKEN}@github.com/'"
         )
-        result = _sanitize_token(text, SCOPED_TOKEN)
-        assert SCOPED_TOKEN not in result
-        assert "***" in result
+        logged = self._run_failing_clone(tmp_path, SCOPED_TOKEN, stderr)
+        assert SCOPED_TOKEN not in logged
+        assert "***" in logged
 
-    def test_no_token_returns_original(self):
-        text = "fatal: repository not found"
-        assert _sanitize_token(text, None) == text
+    def test_no_token_logs_stderr_verbatim(self, tmp_path: Path):
+        logged = self._run_failing_clone(tmp_path, None, "fatal: repository not found")
+        assert "repository not found" in logged
 
-    def test_no_match_returns_original(self):
-        text = "fatal: repository not found"
-        assert _sanitize_token(text, SCOPED_TOKEN) == text
+    def test_stderr_without_token_left_intact(self, tmp_path: Path):
+        logged = self._run_failing_clone(tmp_path, SCOPED_TOKEN, "fatal: repository not found")
+        assert "repository not found" in logged
+        assert "***" not in logged
 
 
 # ---------------------------------------------------------------------------
@@ -243,8 +259,6 @@ class TestEnsureRepoCloned:
 class TestContainerCredentialInjection:
     def test_admin_gets_broad_token(self, tmp_path: Path):
         """Admin container gets the broad gh_token."""
-        from pynchy.host.container_manager.credentials import _write_env_file
-
         s = make_settings(
             data_dir=tmp_path,
             secrets=MagicMock(gh_token=SecretStr(BROAD_TOKEN)),
@@ -257,7 +271,7 @@ class TestContainerCredentialInjection:
                 return_value=(None, None),
             ),
         ):
-            env_dir = _write_env_file(is_admin=True, group_folder="admin")
+            env_dir = credentials._write_env_file(is_admin=True, group_folder="admin")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert BROAD_TOKEN in content
@@ -265,8 +279,6 @@ class TestContainerCredentialInjection:
 
     def test_non_admin_with_repo_access_gets_scoped_token(self, tmp_path: Path):
         """Non-admin container with repo_access gets the repo-scoped token."""
-        from pynchy.host.container_manager.credentials import _write_env_file
-
         s = make_settings(
             data_dir=tmp_path,
             repos={REPO_SLUG: RepoConfig(token=SecretStr(SCOPED_TOKEN))},
@@ -292,7 +304,7 @@ class TestContainerCredentialInjection:
                 return_value=fake_resolved,
             ),
         ):
-            env_dir = _write_env_file(is_admin=False, group_folder="code-improver")
+            env_dir = credentials._write_env_file(is_admin=False, group_folder="code-improver")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             # Gets the scoped token, not the broad one
@@ -301,8 +313,6 @@ class TestContainerCredentialInjection:
 
     def test_non_admin_without_repo_access_gets_no_token(self, tmp_path: Path):
         """Non-admin container without repo_access gets no GH_TOKEN."""
-        from pynchy.host.container_manager.credentials import _write_env_file
-
         s = make_settings(
             data_dir=tmp_path,
             workspaces={
@@ -326,7 +336,7 @@ class TestContainerCredentialInjection:
                 return_value=fake_resolved,
             ),
         ):
-            env_dir = _write_env_file(is_admin=False, group_folder="basic-group")
+            env_dir = credentials._write_env_file(is_admin=False, group_folder="basic-group")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert "GH_TOKEN" not in content
@@ -334,8 +344,6 @@ class TestContainerCredentialInjection:
 
     def test_non_admin_with_repo_access_no_token_configured(self, tmp_path: Path):
         """Non-admin with repo_access but no token configured gets no GH_TOKEN."""
-        from pynchy.host.container_manager.credentials import _write_env_file
-
         s = make_settings(
             data_dir=tmp_path,
             repos={REPO_SLUG: RepoConfig()},  # no token
@@ -361,7 +369,7 @@ class TestContainerCredentialInjection:
                 return_value=fake_resolved,
             ),
         ):
-            env_dir = _write_env_file(is_admin=False, group_folder="code-improver")
+            env_dir = credentials._write_env_file(is_admin=False, group_folder="code-improver")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             # No token injected — repo_access without a scoped token

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal, cast
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.deps import IpcDeps
@@ -35,7 +35,13 @@ def _compute_next_run_from_ipc(
         scheduled = datetime.fromisoformat(schedule_value)
         return scheduled.isoformat()
 
-    return compute_next_run(schedule_type, schedule_value, get_settings().timezone)
+    # 'once' handled above; remaining values are validated by compute_next_run,
+    # which returns None for anything other than 'cron'/'interval'.
+    return compute_next_run(
+        cast(Literal["cron", "interval", "once"], schedule_type),
+        schedule_value,
+        get_settings().timezone,
+    )
 
 
 async def _handle_schedule_task(
@@ -95,7 +101,8 @@ async def _handle_schedule_task(
         next_run = _compute_next_run_from_ipc(schedule_type, schedule_value)
     except (ValueError, TypeError, KeyError):
         logger.warning(
-            f"Invalid {schedule_type} value",
+            "invalid schedule value",
+            schedule_type=schedule_type,
             schedule_value=schedule_value,
         )
         return
@@ -167,7 +174,8 @@ async def _handle_schedule_host_job(
         next_run = _compute_next_run_from_ipc(schedule_type, schedule_value)
     except (ValueError, TypeError, KeyError):
         logger.warning(
-            f"Invalid {schedule_type} value for host job",
+            "invalid schedule value for host job",
+            schedule_type=schedule_type,
             schedule_value=schedule_value,
         )
         return
@@ -265,7 +273,8 @@ async def _authorized_task_action(
     if is_host_job:
         if not is_admin:
             logger.warning(
-                f"Unauthorized host job {action_name} attempt",
+                "unauthorized host job action attempt",
+                action=action_name,
                 task_id=task_id,
                 source_group=source_group,
             )
@@ -275,7 +284,8 @@ async def _authorized_task_action(
         if job:
             await action(task_id)
             logger.info(
-                f"Host job {action_name}d via IPC",
+                "host job action via IPC",
+                action=action_name,
                 task_id=task_id,
                 source_group=source_group,
             )
@@ -286,13 +296,15 @@ async def _authorized_task_action(
         if task and (is_admin or task.group_folder == source_group):
             await action(task_id)
             logger.info(
-                f"Task {action_name}d via IPC",
+                "task action via IPC",
+                action=action_name,
                 task_id=task_id,
                 source_group=source_group,
             )
         else:
             logger.warning(
-                f"Unauthorized task {action_name} attempt",
+                "unauthorized task action attempt",
+                action=action_name,
                 task_id=task_id,
                 source_group=source_group,
             )

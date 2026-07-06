@@ -330,4 +330,4 @@ class TestEventBus:
 
         assert len(received) == 10
         # All events should have been received (order not guaranteed)
-        assert set(e.content for e in received) == {f"Message {i}" for i in range(10)}
+        assert {e.content for e in received} == {f"Message {i}" for i in range(10)}

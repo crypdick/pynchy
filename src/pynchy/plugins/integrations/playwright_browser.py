@@ -10,6 +10,7 @@ The MCP proxy applies content fencing and Cop inspection automatically.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pluggy
 
@@ -22,7 +23,7 @@ class PlaywrightBrowserPlugin:
     """Playwright browser plugin — wraps playwright-mcp for agent browser control."""
 
     @hookimpl
-    def pynchy_mcp_server_spec(self) -> dict:
+    def pynchy_mcp_server_spec(self) -> dict[str, Any]:
         """Register playwright-mcp as a script-type MCP server.
 
         The ``{port}`` placeholder is expanded at launch time to each

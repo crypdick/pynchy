@@ -2,7 +2,7 @@
 
 Provides:
   - is_query_done_pulse() — detects query-done events in the IPC output stream
-  - _graceful_stop() — stops a container gracefully with fallback to kill
+  - _graceful_stop() — stops a container gracefully, killing it if it times out
   - _docker_rm_force() — async force-remove a container by name
   - OnOutput type alias — callback for output events
 """
@@ -37,7 +37,7 @@ def is_query_done_pulse(output: ContainerOutput) -> bool:
 
 
 async def _graceful_stop(proc: asyncio.subprocess.Process, container_name: str) -> None:
-    """Stop container gracefully with short timeout, fallback to kill."""
+    """Stop container gracefully with a short timeout, killing it if it doesn't exit."""
     try:
         stop_proc = await asyncio.create_subprocess_exec(
             get_runtime().cli,

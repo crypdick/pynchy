@@ -8,6 +8,7 @@ import random
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 IPC_DIR = Path("/workspace/ipc")
 MESSAGES_DIR = IPC_DIR / "messages"
@@ -20,7 +21,7 @@ is_admin = os.environ.get("PYNCHY_IS_ADMIN") == "1"
 is_scheduled_task = os.environ.get("PYNCHY_IS_SCHEDULED_TASK") == "1"
 
 
-def write_ipc_file(directory: Path, data: dict) -> str:
+def write_ipc_file(directory: Path, data: dict[str, Any]) -> str:
     """Write an IPC file atomically (temp file + rename)."""
     directory.mkdir(parents=True, exist_ok=True)
 

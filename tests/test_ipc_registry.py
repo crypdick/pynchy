@@ -16,8 +16,8 @@ sys.path.insert(
     0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src")
 )
 
-from agent_runner.core import AgentCore, AgentCoreConfig  # noqa: E402
-from agent_runner.registry import create_agent_core  # noqa: E402
+from agent_runner.core import AgentCore, AgentCoreConfig
+from agent_runner.registry import create_agent_core
 
 
 def _make_config(**overrides: object) -> AgentCoreConfig:
@@ -44,7 +44,7 @@ class TestImportFailures:
     def test_nonexistent_module_raises_import_error(self):
         """Completely made-up module path should raise ImportError with context."""
         config = _make_config()
-        with pytest.raises(ImportError, match="Failed to import.*nonexistent"):
+        with pytest.raises(ImportError, match=r"Failed to import.*nonexistent"):
             create_agent_core("nonexistent.module.path", "SomeClass", config)
 
     def test_import_error_preserves_original_cause(self):
@@ -72,13 +72,13 @@ class TestAttributeFailures:
     def test_nonexistent_class_raises_attribute_error(self):
         """Existing module but wrong class name should raise AttributeError."""
         config = _make_config()
-        with pytest.raises(AttributeError, match="has no class.*DoesNotExist"):
+        with pytest.raises(AttributeError, match=r"has no class.*DoesNotExist"):
             create_agent_core("agent_runner.core", "DoesNotExist", config)
 
     def test_attribute_error_includes_module_name(self):
         """Error message should include the module path for debugging."""
         config = _make_config()
-        with pytest.raises(AttributeError, match="agent_runner.core"):
+        with pytest.raises(AttributeError, match=r"agent_runner.core"):
             create_agent_core("agent_runner.core", "MissingClass", config)
 
     def test_attribute_error_preserves_original_cause(self):
@@ -110,7 +110,7 @@ class TestInstantiationFailures:
         monkeypatch.setattr(core_mod, "BrokenCore", BrokenCore, raising=False)
 
         config = _make_config()
-        with pytest.raises(TypeError, match="Failed to instantiate.*BrokenCore"):
+        with pytest.raises(TypeError, match=r"Failed to instantiate.*BrokenCore"):
             create_agent_core("agent_runner.core", "BrokenCore", config)
 
     def test_instantiation_error_preserves_original_cause(self, monkeypatch: pytest.MonkeyPatch):

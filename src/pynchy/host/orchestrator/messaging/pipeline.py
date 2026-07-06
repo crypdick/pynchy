@@ -35,6 +35,7 @@ from pynchy.state import get_messages_since, store_message_direct
 from pynchy.utils import generate_message_id, run_shell_command
 
 if TYPE_CHECKING:
+    from pynchy.config.settings import Settings
     from pynchy.host.container_manager import OnOutput
     from pynchy.host.orchestrator.concurrency import GroupQueue
     from pynchy.types import Channel, ContainerOutput, NewMessage, OutboundEvent, WorkspaceProfile
@@ -101,7 +102,7 @@ class MessageHandlerDeps(Protocol):
         self,
         group: WorkspaceProfile,
         chat_jid: str,
-        messages: list[dict],
+        messages: list[dict[str, Any]],
         on_output: OnOutput | None = None,
         extra_system_notices: list[str] | None = None,
         *,
@@ -323,14 +324,23 @@ def _check_dirty_repo(group_name: str, dirty_check_file: Path) -> list[str]:
     return notices
 
 
+class CursorDeps(Protocol):
+    """Minimal dependencies for cursor persistence — the actual subset advance_cursor uses."""
+
+    @property
+    def last_agent_timestamp(self) -> dict[str, str]: ...
+
+    async def save_state(self) -> None: ...
+
+
 async def advance_cursor(
-    deps: MessageHandlerDeps,
+    deps: CursorDeps,
     chat_jid: str,
     new_cursor: str,
 ) -> None:
     """Commit the agent timestamp cursor, rolling back on save failure.
 
-    The single place cursor writes are persisted — captures the prior value
+    The single place cursor writes are persisted — captures the pre-write value
     so any ``save_state`` failure leaves the in-memory cursor consistent with
     what's on disk (preventing message reprocessing / duplicate responses).
     """
@@ -357,32 +367,15 @@ def _mark_dispatched(deps: MessageHandlerDeps, chat_jid: str, new_timestamp: str
     deps._dispatched_through[chat_jid] = new_timestamp
 
 
-async def process_group_messages(
+async def _should_skip_batch(
     deps: MessageHandlerDeps,
     chat_jid: str,
+    group: WorkspaceProfile,
+    missed_messages: list[NewMessage],
+    is_admin_group: bool,
+    s: Settings,
 ) -> bool:
-    """Process all pending messages for a group. Called by GroupQueue."""
-    s = get_settings()
-    group = deps.workspaces.get(chat_jid)
-    if not group:
-        return True
-
-    # Check for agent-initiated context reset prompt
-    reset_file = s.data_dir / "ipc" / group.folder / "reset_prompt.json"
-    reset_result = await _handle_reset_handoff(deps, chat_jid, group, reset_file)
-    if reset_result is False:
-        # Handoff failed — return False so GroupQueue will retry.
-        return False
-    # reset_result is None (no file) or True (handoff ran) — fall through to
-    # process any pending user messages in the same cycle.  The old code
-    # returned True on a successful handoff, silently dropping the message
-    # that triggered this run (e.g. the user's first message after a context
-    # reset could sit unprocessed until the next incoming message).
-
-    is_admin_group = group.is_admin
-    since_timestamp = deps.last_agent_timestamp.get(chat_jid, "")
-    missed_messages = await get_messages_since(chat_jid, since_timestamp)
-
+    """True if this batch needs no agent activation (already handled or gated)."""
     if not missed_messages:
         return True
 
@@ -406,9 +399,13 @@ async def process_group_messages(
             return True
 
     # Access check: if workspace-level access is "read", skip activation (still stored)
-    if resolved.access == "read":
-        return True
+    return resolved.access == "read"
 
+
+def _prepare_message_context(
+    s: Settings, group: WorkspaceProfile, missed_messages: list[NewMessage], is_admin_group: bool
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Format messages for the agent SDK and compute any dirty-repo system notices."""
     from pynchy.host.orchestrator.messaging.formatter import format_messages_for_sdk
 
     messages = format_messages_for_sdk(missed_messages)
@@ -416,13 +413,21 @@ async def process_group_messages(
     # Check if we need to add dirty repo warning after context reset
     dirty_check_file = s.data_dir / "ipc" / group.folder / "needs_dirty_check.json"
     reset_system_notices = _check_dirty_repo(group.name, dirty_check_file) if is_admin_group else []
+    return messages, reset_system_notices
 
+
+async def _announce_processing_start(
+    deps: MessageHandlerDeps,
+    chat_jid: str,
+    group: WorkspaceProfile,
+    missed_messages: list[NewMessage],
+) -> None:
+    """Mark dispatched, log, and signal 'agent is working' to the user."""
     # Mark dispatched (in-memory only).  last_agent_timestamp stays at its pre-run value
     # until the container finishes — on an unexpected kill the DB retains the pre-run
     # value so recover_pending_messages can re-find the boundary message on restart.
     _mark_dispatched(deps, chat_jid, missed_messages[-1].timestamp)
 
-    process_start = time.monotonic()
     logger.info(
         "Processing messages",
         group=group.name,
@@ -439,50 +444,46 @@ async def process_group_messages(
 
     deps.emit(AgentActivityEvent(chat_jid=chat_jid, active=True))
 
-    had_error = False
-    output_sent_to_user = False
 
-    async def on_output(result: ContainerOutput) -> None:
-        nonlocal had_error, output_sent_to_user
-
-        sent = await deps.handle_streamed_output(chat_jid, group, result)
-        if sent:
-            output_sent_to_user = True
-        if result.status == "error":
-            had_error = True
-
-    agent_result = await deps.run_agent(
-        group, chat_jid, messages, on_output, reset_system_notices or None
-    )
-
-    process_ms = (time.monotonic() - process_start) * 1000
-    await deps.set_typing_on_channels(chat_jid, False)
-    deps.emit(AgentActivityEvent(chat_jid=chat_jid, active=False))
-
-    # Register zzz reaction to fire when the container actually hibernates
-    # (idle timeout), not immediately after the query finishes.
+def _register_idle_zzz_callback(
+    deps: MessageHandlerDeps, chat_jid: str, group: WorkspaceProfile, output_sent_to_user: bool
+) -> None:
+    """Register a zzz reaction to fire when the container actually hibernates
+    (idle timeout), not immediately after the query finishes.
+    """
     outbound_ids = pop_last_result_ids(chat_jid)
-    if outbound_ids and output_sent_to_user:
-        from pynchy.host.container_manager.session import get_session
+    if not (outbound_ids and output_sent_to_user):
+        return
 
-        session = get_session(group.folder)
-        if session is not None:
-            # Capture ids by value — the session may outlive these locals.
-            _ids = dict(outbound_ids)
+    from pynchy.host.container_manager.session import get_session
 
-            async def _send_zzz() -> None:
-                await deps.send_reaction_to_outbound(chat_jid, _ids, "zzz")
+    session = get_session(group.folder)
+    if session is None:
+        return
 
-            session.set_idle_callback(_send_zzz)
+    # Capture ids by value — the session may outlive these locals.
+    _ids = dict(outbound_ids)
 
-    logger.info(
-        "Message processing complete",
-        group=group.name,
-        process_ms=round(process_ms),
-        had_error=had_error,
-        output_sent=output_sent_to_user,
-    )
+    async def _send_zzz() -> None:
+        await deps.send_reaction_to_outbound(chat_jid, _ids, "zzz")
 
+    session.set_idle_callback(_send_zzz)
+
+
+async def _finalize_cursor_and_retry(
+    deps: MessageHandlerDeps,
+    chat_jid: str,
+    group: WorkspaceProfile,
+    missed_messages: list[NewMessage],
+    agent_result: str,
+    had_error: bool,
+    output_sent_to_user: bool,
+) -> bool:
+    """Advance the cursor (or signal retry) based on how the agent run went.
+
+    Returns True once the batch is considered handled, False if GroupQueue
+    should retry it.
+    """
     # Pop the dispatched marker; include any follow-ups piped while this
     # container was running (tracked by the routing loop via _mark_dispatched).
     dispatched = deps._dispatched_through.pop(chat_jid, missed_messages[-1].timestamp)
@@ -516,3 +517,73 @@ async def process_group_messages(
     background_merge_worktree(group)
 
     return True
+
+
+async def process_group_messages(
+    deps: MessageHandlerDeps,
+    chat_jid: str,
+) -> bool:
+    """Process all pending messages for a group. Called by GroupQueue."""
+    s = get_settings()
+    group = deps.workspaces.get(chat_jid)
+    if not group:
+        return True
+
+    # Check for agent-initiated context reset prompt
+    reset_file = s.data_dir / "ipc" / group.folder / "reset_prompt.json"
+    reset_result = await _handle_reset_handoff(deps, chat_jid, group, reset_file)
+    if reset_result is False:
+        # Handoff failed — return False so GroupQueue will retry.
+        return False
+    # reset_result is None (no file) or True (handoff ran) — fall through to
+    # process any pending user messages in the same cycle.  Falling through
+    # ensures the message that triggered this run (e.g. the user's first
+    # message after a context reset) is processed now rather than sitting
+    # unprocessed until the next incoming message.
+
+    is_admin_group = group.is_admin
+    since_timestamp = deps.last_agent_timestamp.get(chat_jid, "")
+    missed_messages = await get_messages_since(chat_jid, since_timestamp)
+
+    if await _should_skip_batch(deps, chat_jid, group, missed_messages, is_admin_group, s):
+        return True
+
+    messages, reset_system_notices = _prepare_message_context(
+        s, group, missed_messages, is_admin_group
+    )
+
+    process_start = time.monotonic()
+    await _announce_processing_start(deps, chat_jid, group, missed_messages)
+
+    had_error = False
+    output_sent_to_user = False
+
+    async def on_output(result: ContainerOutput) -> None:
+        nonlocal had_error, output_sent_to_user
+
+        sent = await deps.handle_streamed_output(chat_jid, group, result)
+        if sent:
+            output_sent_to_user = True
+        if result.status == "error":
+            had_error = True
+
+    agent_result = await deps.run_agent(
+        group, chat_jid, messages, on_output, reset_system_notices or None
+    )
+
+    process_ms = (time.monotonic() - process_start) * 1000
+    await deps.set_typing_on_channels(chat_jid, False)
+    deps.emit(AgentActivityEvent(chat_jid=chat_jid, active=False))
+    _register_idle_zzz_callback(deps, chat_jid, group, output_sent_to_user)
+
+    logger.info(
+        "Message processing complete",
+        group=group.name,
+        process_ms=round(process_ms),
+        had_error=had_error,
+        output_sent=output_sent_to_user,
+    )
+
+    return await _finalize_cursor_and_retry(
+        deps, chat_jid, group, missed_messages, agent_result, had_error, output_sent_to_user
+    )

@@ -57,6 +57,12 @@ Treat the user as a peer, not someone to serve: push back directly on inelegant 
 
 Use `uv run python` (never bare `python`/`python3`) and `uvx` for CLI tools (`uvx ruff`, `uvx pytest`) — never `pip install` a tool globally. See the [pynchy-dev skill](.claude/skills/pynchy-dev/SKILL.md) for the full command set and development workflow.
 
+## Pre-commit Hooks
+
+`.pre-commit-config.yaml` runs custom lint checks (banned `print()`, broad exception handling, file-length budget, dead code, complexity, temporal language in `src/` comments, tests importing private first-party symbols) plus strict mypy type checking — all blocking.
+
+Exempt a specific line from a *blocking* custom check with `# allow: <hook-id>`, e.g. `# allow: print-statements`, `# allow: exception-handling`, or `# allow: private-test-imports`. Always justify the exemption inline (why the violation is intentional here), and prefer fixing the underlying issue over exempting it.
+
 ## Diligence and curiousity
 
 When you notice unexpected or fishy-looking code, make sure to document it. For example, `TODO: this function is hard-coded to returns an empty list, but in the other implementation it doesn't. Investigate why this is`. It's ok if you don't plan to solve it yourself, just make sure not to lose the insight-- false positives are better than false negatives. If you find the answer, make sure to circle back and document it. To continue this example: `Returns an empty list because this method is meaningless for this subclass`. That way, it doesn't confuse you next time you encounter the suspicuous code.

@@ -18,9 +18,6 @@ import pytest
 
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
 from pynchy.host.orchestrator.messaging.pipeline import (
-    _check_dirty_repo,
-    _handle_reset_handoff,
-    _mark_dispatched,
     execute_direct_command,
     intercept_special_command,
     process_group_messages,
@@ -815,157 +812,308 @@ class TestProcessGroupMessages:
 
 
 # ---------------------------------------------------------------------------
-# _check_dirty_repo (extracted helper)
+# Dirty-repo notices (observed through process_group_messages)
 # ---------------------------------------------------------------------------
+
+
+def _dirty_notice_present(deps) -> bool:
+    """True if run_agent received an 'uncommitted changes' system notice."""
+    notices = deps.run_agent.call_args[0][4]
+    return notices is not None and any("uncommitted" in n.lower() for n in notices)
 
 
 class TestCheckDirtyRepo:
-    def test_no_file_returns_empty(self, tmp_path):
-        """No dirty_check file → empty notices list."""
-        marker = tmp_path / "needs_dirty_check.json"
-        result = _check_dirty_repo("test-group", marker)
-        assert result == []
+    """After a context reset the pipeline drops a needs_dirty_check.json marker.
 
-    def test_clean_repo_returns_empty(self, tmp_path):
-        """Marker file + clean repo → empty notices, file consumed."""
-        marker = tmp_path / "needs_dirty_check.json"
+    On the next run process_group_messages checks the repo and, if dirty,
+    prepends an 'uncommitted changes' system notice for the agent. The marker
+    is always consumed, and a check failure must not crash the run.
+    """
+
+    @pytest.mark.asyncio
+    async def test_no_marker_no_notice(self, tmp_path):
+        """No marker file → no dirty notice passed to the agent."""
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
+        deps.handle_streamed_output = AsyncMock(return_value=False)
+        msg = _make_message("hello", timestamp="new-ts")
+
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([msg]),
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+            patch(_P_GET_RA, return_value=None),
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            await process_group_messages(deps, "g@g.us")
+
+        assert not _dirty_notice_present(deps)
+
+    @pytest.mark.asyncio
+    async def test_clean_repo_no_notice_marker_consumed(self, tmp_path):
+        """Marker file + clean repo → no notice, marker consumed."""
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
+        deps.handle_streamed_output = AsyncMock(return_value=False)
+        marker = tmp_path / "ipc" / "test-group" / "needs_dirty_check.json"
+        marker.parent.mkdir(parents=True)
         marker.write_text("{}")
+        msg = _make_message("hello", timestamp="new-ts")
 
-        with patch(_P_DIRTY, return_value=False):
-            result = _check_dirty_repo("test-group", marker)
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([msg]),
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+            patch(_P_DIRTY, return_value=False),
+            patch(_P_GET_RA, return_value=None),
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            await process_group_messages(deps, "g@g.us")
 
-        assert result == []
+        assert not _dirty_notice_present(deps)
         assert not marker.exists()
 
-    def test_dirty_repo_returns_warning(self, tmp_path):
-        """Marker file + dirty repo → warning notice."""
-        marker = tmp_path / "needs_dirty_check.json"
+    @pytest.mark.asyncio
+    async def test_dirty_repo_adds_notice_marker_consumed(self, tmp_path):
+        """Marker file + dirty repo → warning notice, marker consumed."""
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
+        deps.handle_streamed_output = AsyncMock(return_value=False)
+        marker = tmp_path / "ipc" / "test-group" / "needs_dirty_check.json"
+        marker.parent.mkdir(parents=True)
         marker.write_text("{}")
+        msg = _make_message("hello", timestamp="new-ts")
 
-        with patch(_P_DIRTY, return_value=True):
-            result = _check_dirty_repo("test-group", marker)
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([msg]),
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+            patch(_P_DIRTY, return_value=True),
+            patch(_P_GET_RA, return_value=None),
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            await process_group_messages(deps, "g@g.us")
 
-        assert len(result) == 1
-        assert "uncommitted" in result[0].lower()
+        assert _dirty_notice_present(deps)
         assert not marker.exists()
 
-    def test_oserror_during_check_cleans_up(self, tmp_path):
-        """OSError during check → file cleaned up, empty result."""
-        marker = tmp_path / "needs_dirty_check.json"
+    @pytest.mark.asyncio
+    async def test_oserror_during_check_consumes_marker(self, tmp_path):
+        """OSError during the dirty check → no crash, marker consumed, no notice."""
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
+        deps.handle_streamed_output = AsyncMock(return_value=False)
+        marker = tmp_path / "ipc" / "test-group" / "needs_dirty_check.json"
+        marker.parent.mkdir(parents=True)
         marker.write_text("{}")
+        msg = _make_message("hello", timestamp="new-ts")
 
-        with patch(_P_DIRTY, side_effect=OSError("permission denied")):
-            result = _check_dirty_repo("test-group", marker)
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([msg]),
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+            patch(_P_DIRTY, side_effect=OSError("permission denied")),
+            patch(_P_GET_RA, return_value=None),
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            # Should not raise
+            await process_group_messages(deps, "g@g.us")
 
-        assert result == []
+        assert not _dirty_notice_present(deps)
         assert not marker.exists()
 
 
 # ---------------------------------------------------------------------------
-# _mark_dispatched (extracted helper)
+# Dispatch tracking (observed through process_group_messages)
 # ---------------------------------------------------------------------------
+
+
+def _observe_at_run(deps):
+    """Install a run_agent side effect that snapshots state at dispatch time.
+
+    process_group_messages marks the batch dispatched *before* invoking the
+    agent and only advances/persists the cursor after it returns — so a
+    run_agent side effect observes the in-flight dispatch state directly.
+    """
+    observed: dict = {}
+
+    async def _capture(*_args, **_kwargs):
+        observed["dispatched"] = deps._dispatched_through.get("g@g.us")
+        observed["cursor"] = deps.last_agent_timestamp.get("g@g.us")
+        observed["saves"] = deps.save_state.await_count
+        return "success"
+
+    deps.run_agent = AsyncMock(side_effect=_capture)
+    return observed
+
+
+async def _run_with_observer(tmp_path, deps):
+    msg = _make_message("hello", timestamp="new-ts")
+    with (
+        patch(_P_SETTINGS) as ms,
+        _patch_msgs_since([msg]),
+        _patch_intercept(),
+        _patch_fmt_sdk(),
+        patch(_P_GET_RA, return_value=None),
+    ):
+        ms.return_value = _settings_mock(tmp_path)
+        await process_group_messages(deps, "g@g.us")
 
 
 class TestMarkDispatched:
-    def test_sets_dispatched_through(self):
-        """Records the dispatched timestamp in-memory."""
-        deps = _make_deps(last_agent_ts={"g@g.us": "old-ts"})
-        _mark_dispatched(deps, "g@g.us", "new-ts")
+    @pytest.mark.asyncio
+    async def test_records_dispatched_timestamp(self, tmp_path):
+        """The furthest message timestamp is recorded in-memory before the run."""
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
+        deps.handle_streamed_output = AsyncMock(return_value=False)
+        observed = _observe_at_run(deps)
 
-        assert deps._dispatched_through["g@g.us"] == "new-ts"
+        await _run_with_observer(tmp_path, deps)
 
-    def test_does_not_touch_last_agent_timestamp(self):
-        """last_agent_timestamp is not changed — only advances on completion."""
-        deps = _make_deps(last_agent_ts={"g@g.us": "old-ts"})
-        _mark_dispatched(deps, "g@g.us", "new-ts")
+        assert observed["dispatched"] == "new-ts"
 
-        assert deps.last_agent_timestamp["g@g.us"] == "old-ts"
+    @pytest.mark.asyncio
+    async def test_does_not_advance_cursor_before_completion(self, tmp_path):
+        """last_agent_timestamp is untouched at dispatch — it advances only after."""
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
+        deps.handle_streamed_output = AsyncMock(return_value=False)
+        observed = _observe_at_run(deps)
 
-    def test_does_not_save_state(self):
-        """Dispatch tracking is in-memory only — no DB write."""
-        deps = _make_deps()
-        _mark_dispatched(deps, "g@g.us", "new-ts")
+        await _run_with_observer(tmp_path, deps)
 
-        deps.save_state.assert_not_awaited()
+        assert observed["cursor"] == "old-ts"
+
+    @pytest.mark.asyncio
+    async def test_does_not_save_state_before_run(self, tmp_path):
+        """Dispatch tracking is in-memory only — no DB write before the run."""
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
+        deps.handle_streamed_output = AsyncMock(return_value=False)
+        observed = _observe_at_run(deps)
+
+        await _run_with_observer(tmp_path, deps)
+
+        assert observed["saves"] == 0
 
 
 # ---------------------------------------------------------------------------
-# _handle_reset_handoff (extracted helper)
+# Reset handoff (observed through process_group_messages)
 # ---------------------------------------------------------------------------
+
+
+def _reset_file(tmp_path):
+    """Path to the reset_prompt.json the pipeline looks for (folder=test-group)."""
+    path = tmp_path / "ipc" / "test-group" / "reset_prompt.json"
+    path.parent.mkdir(parents=True)
+    return path
 
 
 class TestHandleResetHandoff:
-    @pytest.mark.asyncio
-    async def test_no_file_returns_none(self, tmp_path):
-        """No reset_prompt.json → returns None (not handled)."""
-        group = _make_group()
-        deps = _make_deps()
-        reset_file = tmp_path / "reset_prompt.json"
-
-        result = await _handle_reset_handoff(deps, "g@g.us", group, reset_file)
-        assert result is None
+    """process_group_messages consumes an agent-written reset_prompt.json before
+    handling normal traffic: a valid prompt runs a handoff turn, an empty/absent
+    prompt falls through, a malformed prompt is discarded, and a handoff error
+    signals GroupQueue to retry (process returns False).
+    """
 
     @pytest.mark.asyncio
-    async def test_valid_file_runs_agent(self, tmp_path):
-        """Valid reset prompt → agent runs with handoff message."""
-        group = _make_group()
-        deps = _make_deps()
+    async def test_no_reset_file_processes_normally(self, tmp_path):
+        """No reset_prompt.json → falls through to normal message processing."""
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
+        deps.handle_streamed_output = AsyncMock(return_value=False)
+        msg = _make_message("hello", timestamp="new-ts")
 
-        reset_file = tmp_path / "reset_prompt.json"
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([msg]),
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+            patch(_P_GET_RA, return_value=None),
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            result = await process_group_messages(deps, "g@g.us")
+
+        assert result is True
+        deps.run_agent.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_valid_reset_runs_handoff(self, tmp_path):
+        """Valid reset prompt → handoff agent runs, file consumed."""
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
+        reset_file = _reset_file(tmp_path)
         reset_file.write_text(json.dumps({"message": "Continue after reset"}))
 
-        with patch(_P_SETTINGS) as ms:
-            ms.return_value.data_dir = tmp_path
-            result = await _handle_reset_handoff(deps, "g@g.us", group, reset_file)
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([]),
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            result = await process_group_messages(deps, "g@g.us")
 
         assert result is True
         deps.run_agent.assert_awaited_once()
         assert not reset_file.exists()
 
     @pytest.mark.asyncio
-    async def test_empty_message_returns_true_without_agent(self, tmp_path):
-        """Empty message → skip agent, return True."""
-        group = _make_group()
-        deps = _make_deps()
-
-        reset_file = tmp_path / "reset_prompt.json"
+    async def test_empty_message_skips_agent(self, tmp_path):
+        """Empty reset message → no handoff run, file consumed, run continues."""
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
+        reset_file = _reset_file(tmp_path)
         reset_file.write_text(json.dumps({"message": ""}))
 
-        with patch(_P_SETTINGS) as ms:
-            ms.return_value.data_dir = tmp_path
-            result = await _handle_reset_handoff(deps, "g@g.us", group, reset_file)
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([]),
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            result = await process_group_messages(deps, "g@g.us")
 
         assert result is True
-        deps.run_agent.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_malformed_json_returns_none(self, tmp_path):
-        """Malformed JSON → clean up and return None so normal processing proceeds."""
-        group = _make_group()
-        deps = _make_deps()
-
-        reset_file = tmp_path / "reset_prompt.json"
-        reset_file.write_text("NOT VALID JSON")
-
-        result = await _handle_reset_handoff(deps, "g@g.us", group, reset_file)
-
-        assert result is None
         deps.run_agent.assert_not_awaited()
         assert not reset_file.exists()
 
     @pytest.mark.asyncio
-    async def test_agent_error_returns_false(self, tmp_path):
-        """Agent returning 'error' → returns False."""
-        group = _make_group()
-        deps = _make_deps()
-        deps.run_agent = AsyncMock(return_value="error")
+    async def test_malformed_json_falls_through(self, tmp_path):
+        """Malformed reset_prompt.json → discarded, normal processing proceeds."""
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
+        reset_file = _reset_file(tmp_path)
+        reset_file.write_text("NOT VALID JSON")
 
-        reset_file = tmp_path / "reset_prompt.json"
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([]),
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            result = await process_group_messages(deps, "g@g.us")
+
+        assert result is True
+        deps.run_agent.assert_not_awaited()
+        assert not reset_file.exists()
+
+    @pytest.mark.asyncio
+    async def test_handoff_agent_error_signals_retry(self, tmp_path):
+        """Handoff agent returning 'error' → process returns False (retry)."""
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
+        deps.run_agent = AsyncMock(return_value="error")
+        reset_file = _reset_file(tmp_path)
         reset_file.write_text(json.dumps({"message": "Hello"}))
 
-        with patch(_P_SETTINGS) as ms:
-            ms.return_value.data_dir = tmp_path
-            result = await _handle_reset_handoff(deps, "g@g.us", group, reset_file)
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([]),
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            result = await process_group_messages(deps, "g@g.us")
 
         assert result is False
 

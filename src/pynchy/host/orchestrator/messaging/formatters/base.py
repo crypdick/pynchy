@@ -15,7 +15,7 @@ class RenderedMessage:
     """Output of a formatter -- what gets sent to the channel transport."""
 
     text: str
-    blocks: list[dict] | None = None
+    blocks: list[dict[str, Any]] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

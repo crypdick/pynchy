@@ -26,10 +26,10 @@ from pynchy.logger import logger
 def write_json_atomic(path: Path, data: Any, *, indent: int | None = None) -> None:
     """Write JSON data to a file using atomic rename (tmp → final).
 
-    Ensures the target file is never partially written — readers either
-    see the old content or the complete new content.  Used for IPC files
-    watched by filesystem events and any other write where partial reads
-    must be avoided.
+    Ensures the target file is never partially written — a reader sees
+    either the complete existing contents or the complete updated
+    contents.  Used for IPC files watched by filesystem events and any
+    other write where partial reads must be avoided.
 
     Creates parent directories if they don't exist.
     """
@@ -157,7 +157,7 @@ async def run_shell_command(
         with contextlib.suppress(Exception):
             await process.communicate()
         return ShellResult(returncode=None, stdout="", stderr="", timed_out=True)
-    except Exception as exc:
+    except Exception as exc:  # allow: exception-handling — failure captured into ShellResult.start_error and logged by the caller via log_shell_result
         return ShellResult(returncode=None, stdout="", stderr="", start_error=str(exc))
 
     return ShellResult(
@@ -175,19 +175,21 @@ def log_shell_result(
 ) -> None:
     """Log the outcome of a shell command execution."""
     if result.start_error:
-        logger.error(f"Failed to start {label}", err=result.start_error, **extra)
+        logger.error("failed to start command", label=label, err=result.start_error, **extra)
     elif result.timed_out:
-        logger.error(f"{label} timed out", **extra)
+        logger.error("command timed out", label=label, **extra)
     elif result.returncode == 0:
         logger.info(
-            f"{label} completed",
+            "command completed",
+            label=label,
             exit_code=result.returncode,
             stdout_tail=result.stdout[-500:] if result.stdout else "",
             **extra,
         )
     else:
         logger.error(
-            f"{label} failed",
+            "command failed",
+            label=label,
             exit_code=result.returncode,
             stdout_tail=result.stdout[-500:] if result.stdout else "",
             stderr_tail=result.stderr[-500:] if result.stderr else "",

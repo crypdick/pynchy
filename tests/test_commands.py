@@ -7,68 +7,65 @@ used for context reset, end session, and redeploy actions.
 from __future__ import annotations
 
 from pynchy.host.orchestrator.messaging.commands import (
-    _is_magic_command,
     is_context_reset,
     is_end_session,
     is_redeploy,
 )
 
 # ---------------------------------------------------------------------------
-# _is_magic_command (generic matcher)
+# verb+noun / alias matching, exercised through the public is_context_reset.
+# Default reset config: verbs include reset/clear, nouns include context/session,
+# aliases are boom/c.
 # ---------------------------------------------------------------------------
 
 
 class TestIsMagicCommand:
-    verbs = {"reset", "clear"}
-    nouns = {"context", "session"}
-    aliases = {"boom", "c"}
-
     def test_single_word_alias(self):
-        assert _is_magic_command("boom", self.verbs, self.nouns, self.aliases)
+        assert is_context_reset("boom")
 
     def test_single_word_alias_case_insensitive(self):
-        assert _is_magic_command("BOOM", self.verbs, self.nouns, self.aliases)
+        assert is_context_reset("BOOM")
 
     def test_single_word_alias_short(self):
-        assert _is_magic_command("c", self.verbs, self.nouns, self.aliases)
+        assert is_context_reset("c")
 
     def test_verb_noun_pair(self):
-        assert _is_magic_command("reset context", self.verbs, self.nouns, self.aliases)
+        assert is_context_reset("reset context")
 
     def test_noun_verb_pair(self):
         """Either word order should match."""
-        assert _is_magic_command("context reset", self.verbs, self.nouns, self.aliases)
+        assert is_context_reset("context reset")
 
     def test_verb_noun_case_insensitive(self):
-        assert _is_magic_command("RESET Context", self.verbs, self.nouns, self.aliases)
+        assert is_context_reset("RESET Context")
 
     def test_whitespace_trimmed(self):
-        assert _is_magic_command("  boom  ", self.verbs, self.nouns, self.aliases)
-        assert _is_magic_command("  reset context  ", self.verbs, self.nouns, self.aliases)
+        assert is_context_reset("  boom  ")
+        assert is_context_reset("  reset context  ")
 
     def test_single_word_verb_no_match(self):
         """A verb alone (without a noun) should NOT match."""
-        assert not _is_magic_command("reset", self.verbs, self.nouns, self.aliases)
+        assert not is_context_reset("reset")
 
     def test_single_word_noun_no_match(self):
         """A noun alone should NOT match."""
-        assert not _is_magic_command("context", self.verbs, self.nouns, self.aliases)
+        assert not is_context_reset("context")
 
     def test_three_words_no_match(self):
-        assert not _is_magic_command("reset my context", self.verbs, self.nouns, self.aliases)
+        assert not is_context_reset("reset my context")
 
     def test_empty_string_no_match(self):
-        assert not _is_magic_command("", self.verbs, self.nouns, self.aliases)
+        assert not is_context_reset("")
 
     def test_whitespace_only_no_match(self):
-        assert not _is_magic_command("   ", self.verbs, self.nouns, self.aliases)
+        assert not is_context_reset("   ")
 
     def test_unrelated_text_no_match(self):
-        assert not _is_magic_command("hello world", self.verbs, self.nouns, self.aliases)
+        assert not is_context_reset("hello world")
 
     def test_partial_match_no_match(self):
         """A verb paired with a non-noun should NOT match."""
-        assert not _is_magic_command("reset everything", self.verbs, self.nouns, self.aliases)
+        assert not is_context_reset("reset everything")
 
 
 # ---------------------------------------------------------------------------

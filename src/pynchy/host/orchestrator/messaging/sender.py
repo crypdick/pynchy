@@ -1,8 +1,6 @@
 """Unified message bus — single broadcast path for ALL outbound channel messages.
 
-Every outbound message to channels routes through this module. This replaces
-the 4+ scattered broadcast loops that previously lived in channel_handler,
-session_handler, output_handler, and message_handler.
+Every outbound message to channels routes through this module.
 
 The IPC stdin path (message_handler.py formatting ``sender_name: content`` for
 the container) is intentionally separate — it formats messages for the Claude
@@ -20,7 +18,7 @@ from typing import TYPE_CHECKING, Protocol
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
-    from pynchy.types import Channel, OutboundEvent
+    from pynchy.types import Channel, OutboundEvent, WorkspaceProfile
 
 
 class BusDeps(Protocol):
@@ -30,7 +28,7 @@ class BusDeps(Protocol):
     def channels(self) -> list[Channel]: ...
 
     @property
-    def workspaces(self) -> dict: ...
+    def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +216,7 @@ async def finalize_stream_or_broadcast(
 
     For channels that were actively streaming (have a message_id in
     ``stream_message_ids``), update the existing message in-place with
-    the final event. For all other connected channels, send a new message.
+    the final event. For all other connected channels, send a separate message.
 
     Args:
         deps: Provides ``channels`` and ``workspaces``.
@@ -265,7 +263,7 @@ async def finalize_stream_or_broadcast(
     ledger_id = await _record_to_ledger(chat_jid, event.content, "agent", all_target_names)
 
     # Deliver: update streamed messages in-place, falling back to send_event.
-    # update_event failures always trigger fallback (catch Exception);
+    # update_event failures always fall back to send_event (catch Exception);
     # send_event failures respect suppress_errors via `caught`.
     for ch, msg_id, target_jid in stream_targets:
         try:

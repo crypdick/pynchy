@@ -1,7 +1,7 @@
 """Tests for git_sync helper functions.
 
-Tests _build_rebase_notice(), _get_local_head_sha(), _host_update_main(), and
-_host_source_files_changed() — functions with branching logic that aren't
+Tests build_rebase_notice(), get_local_head_sha(), host_update_main(), and
+host_source_files_changed() — functions with branching logic that aren't
 covered by the existing integration tests.
 """
 
@@ -13,11 +13,11 @@ from unittest.mock import patch
 
 from conftest import make_settings
 
-from pynchy.host.git_ops._worktree_notify import _build_rebase_notice
+from pynchy.host.git_ops._worktree_notify import build_rebase_notice
 from pynchy.host.git_ops.sync_poll import (
-    _get_local_head_sha,
-    _host_source_files_changed,
-    _host_update_main,
+    get_local_head_sha,
+    host_source_files_changed,
+    host_update_main,
 )
 
 # ---------------------------------------------------------------------------
@@ -49,7 +49,7 @@ def _make_repo(tmp_path: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# _build_rebase_notice tests
+# build_rebase_notice tests
 # ---------------------------------------------------------------------------
 
 
@@ -63,7 +63,7 @@ class TestBuildRebaseNotice:
         _git(repo, "add", "feature.txt")
         _git(repo, "commit", "-m", "Add cool feature")
 
-        notice = _build_rebase_notice(repo, old_head, 1)
+        notice = build_rebase_notice(repo, old_head, 1)
         assert "Auto-rebased 1 commit(s)" in notice
         assert "Add cool feature" in notice
         assert "--oneline" not in notice
@@ -78,7 +78,7 @@ class TestBuildRebaseNotice:
             _git(repo, "add", f"file{i}.txt")
             _git(repo, "commit", "-m", f"Change {i}")
 
-        notice = _build_rebase_notice(repo, old_head, 3)
+        notice = build_rebase_notice(repo, old_head, 3)
         assert "Auto-rebased 3 commit(s)" in notice
         assert "--oneline" in notice
 
@@ -92,7 +92,7 @@ class TestBuildRebaseNotice:
         _git(repo, "add", "a.txt", "b.txt")
         _git(repo, "commit", "-m", "Add two files")
 
-        notice = _build_rebase_notice(repo, old_head, 1)
+        notice = build_rebase_notice(repo, old_head, 1)
         # Should contain diff stats like "2 files changed"
         assert "file" in notice.lower()
         assert "changed" in notice.lower()
@@ -102,12 +102,12 @@ class TestBuildRebaseNotice:
         repo = _make_repo(tmp_path)
         head = _git(repo, "rev-parse", "HEAD").stdout.strip()
 
-        notice = _build_rebase_notice(repo, head, 0)
+        notice = build_rebase_notice(repo, head, 0)
         assert "Auto-rebased 0 commit(s)" in notice
 
 
 # ---------------------------------------------------------------------------
-# _get_local_head_sha tests
+# get_local_head_sha tests
 # ---------------------------------------------------------------------------
 
 
@@ -119,18 +119,18 @@ class TestGetLocalHeadSha:
 
         s = make_settings(project_root=repo)
         with patch("pynchy.host.git_ops.utils.get_settings", return_value=s):
-            result = _get_local_head_sha()
+            result = get_local_head_sha()
             assert result == expected
 
     def test_returns_empty_string_on_failure(self):
         """Should return empty string when get_head_sha returns 'unknown'."""
         with patch("pynchy.host.git_ops.sync_poll.get_head_sha", return_value="unknown"):
-            result = _get_local_head_sha()
+            result = get_local_head_sha()
             assert result == ""
 
 
 # ---------------------------------------------------------------------------
-# _host_update_main tests
+# host_update_main tests
 # ---------------------------------------------------------------------------
 
 
@@ -141,7 +141,7 @@ class TestHostUpdateMain:
             args=[], returncode=1, stdout="", stderr="network error"
         )
         with patch("subprocess.run", return_value=mock_result):
-            result = _host_update_main(tmp_path)
+            result = host_update_main(tmp_path)
             assert result is False
 
     def test_returns_false_on_rebase_failure(self, tmp_path: Path):
@@ -168,7 +168,7 @@ class TestHostUpdateMain:
             patch("subprocess.run", side_effect=mock_run),
             patch("pynchy.host.git_ops.sync_poll.detect_main_branch", return_value="main"),
         ):
-            result = _host_update_main(tmp_path)
+            result = host_update_main(tmp_path)
             assert result is False
             # Should have called status, fetch, rebase, and rebase --abort
             assert call_count >= 3
@@ -187,7 +187,7 @@ class TestHostUpdateMain:
             patch("subprocess.run", side_effect=mock_run),
             patch("pynchy.host.git_ops.sync_poll.detect_main_branch", return_value="main"),
         ):
-            result = _host_update_main(tmp_path)
+            result = host_update_main(tmp_path)
 
         assert result is True
         flat = [" ".join(c) for c in commands]
@@ -214,7 +214,7 @@ class TestHostUpdateMain:
             patch("pynchy.host.git_ops.sync_poll.detect_main_branch", return_value="main"),
             patch("pynchy.host.git_ops.sync_poll.push_local_commits", return_value=True),
         ):
-            result = _host_update_main(tmp_path)
+            result = host_update_main(tmp_path)
 
         assert result is True
         flat = [" ".join(c) for c in commands]
@@ -244,7 +244,7 @@ class TestHostUpdateMain:
             patch("subprocess.run", side_effect=mock_run),
             patch("pynchy.host.git_ops.sync_poll.detect_main_branch", return_value="main"),
         ):
-            result = _host_update_main(tmp_path)
+            result = host_update_main(tmp_path)
 
         assert result is True
         flat = [" ".join(c) for c in commands]
@@ -255,7 +255,7 @@ class TestHostUpdateMain:
 
 
 # ---------------------------------------------------------------------------
-# _host_source_files_changed tests
+# host_source_files_changed tests
 # ---------------------------------------------------------------------------
 
 
@@ -266,10 +266,10 @@ class TestHostSourceFilesChanged:
             args=[], returncode=0, stdout="src/pynchy/app.py\n"
         )
         with patch("subprocess.run", return_value=mock_result):
-            assert _host_source_files_changed("abc", "def") is True
+            assert host_source_files_changed("abc", "def") is True
 
     def test_no_source_changes(self):
         """Should return False when no src/ files changed."""
         mock_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
         with patch("subprocess.run", return_value=mock_result):
-            assert _host_source_files_changed("abc", "def") is False
+            assert host_source_files_changed("abc", "def") is False

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.host.orchestrator.messaging.reaction_handler import _REACTION_ACTIONS, handle_reaction
+from pynchy.host.orchestrator.messaging.reaction_handler import handle_reaction
 from pynchy.types import WorkspaceProfile
 
 # ---------------------------------------------------------------------------
@@ -41,25 +41,6 @@ class FakeReactionDeps:
         self, chat_jid: str, text: str, *, suppress_errors: bool = True
     ) -> None:
         pass  # pragma: no cover — overridden by AsyncMock
-
-
-# ---------------------------------------------------------------------------
-# Reaction mapping tests
-# ---------------------------------------------------------------------------
-
-
-class TestReactionActionMapping:
-    """Verify the emoji → action mapping is correct."""
-
-    def test_eyes_maps_to_retry(self):
-        assert _REACTION_ACTIONS["eyes"] == "retry"
-
-    def test_x_maps_to_interrupt(self):
-        assert _REACTION_ACTIONS["x"] == "interrupt"
-
-    def test_unknown_emoji_not_in_mapping(self):
-        assert "thumbsup" not in _REACTION_ACTIONS
-        assert "heart" not in _REACTION_ACTIONS
 
 
 # ---------------------------------------------------------------------------

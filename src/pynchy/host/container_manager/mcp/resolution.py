@@ -41,7 +41,7 @@ class McpInstance:
     container_name: str  # Docker container name (for type=docker)
     port: int | None = None  # host-side port (auto-assigned for inject_workspace scripts)
     last_activity: float = 0.0  # monotonic timestamp
-    process: subprocess.Popen | None = None  # tracked subprocess (for type=script)
+    process: subprocess.Popen[bytes] | None = None  # tracked subprocess (for type=script)
 
     @property
     def endpoint_url(self) -> str:
@@ -91,14 +91,14 @@ def merged_mcp_servers(
     """Config.toml servers + plugin-provided servers, with instance expansion.
 
     Instance expansion: for each template in ``mcp_server_instances``,
-    the bare template is consumed (removed from result) and replaced by
+    the bare template is consumed (dropped from result) and expanded into
     one entry per instance with auto-assigned port, chrome-profile volume
     mount, and PORT env var.
     """
     result = dict(plugin_mcp_servers)
     result.update(settings.mcp_servers)  # config.toml flat overrides
 
-    # Expand template × instance pairs
+    # Expand template x instance pairs
     for template, instances in settings.mcp_server_instances.items():
         base = result.pop(template, None)
         if base is None:
@@ -118,7 +118,7 @@ def merged_mcp_servers(
 
             if chrome_profile:
                 vol = f"data/chrome-profiles/{chrome_profile}:/home/chrome"
-                updates["volumes"] = list(base.volumes) + [vol]
+                updates["volumes"] = [*base.volumes, vol]
 
             merged_env = dict(base.env)
             merged_env["PORT"] = str(port)
@@ -183,7 +183,7 @@ def resolve_kwargs(settings: Settings, group_folder: str, server_name: str) -> d
     # Explicit kwargs override/append to presets
     for key, value in raw_kwargs.items():
         if key in merged:
-            merged[key] = f"{merged[key]};{str(value)}"
+            merged[key] = f"{merged[key]};{value!s}"
         else:
             merged[key] = str(value)
 
@@ -270,7 +270,7 @@ def build_trust_map(
 ) -> dict[str, dict[str, Any]]:
     """Build trust metadata for each instance (used by proxy for fencing decisions).
 
-    Priority: plugin defaults > safe fallback.
+    Priority: plugin defaults, else a safe default.
     """
     trust_map: dict[str, dict[str, Any]] = {}
     for iid, instance in instances.items():

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any, cast
 
 from mcp.types import CallToolResult, TextContent
 
@@ -19,16 +20,16 @@ from agent_runner.agent_tools._registry import tool, tool_error
 _TODOS_FILE = Path("/workspace/ipc/todos.json")
 
 
-def _read_todos() -> list[dict]:
+def _read_todos() -> list[dict[str, Any]]:
     if not _TODOS_FILE.exists():
         return []
     try:
-        return json.loads(_TODOS_FILE.read_text())
+        return cast("list[dict[str, Any]]", json.loads(_TODOS_FILE.read_text()))
     except (json.JSONDecodeError, OSError):
         return []
 
 
-def _write_todos(todos: list[dict]) -> None:
+def _write_todos(todos: list[dict[str, Any]]) -> None:
     _TODOS_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = _TODOS_FILE.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(todos, indent=2))
@@ -56,7 +57,7 @@ def _write_todos(todos: list[dict]) -> None:
         },
     },
 )
-async def _list_todos_handle(arguments: dict) -> list[TextContent]:
+async def _list_todos_handle(arguments: dict[str, Any]) -> list[TextContent]:
     todos = _read_todos()
     include_done = arguments.get("include_done", False)
     if not include_done:
@@ -90,7 +91,7 @@ async def _list_todos_handle(arguments: dict) -> list[TextContent]:
         "required": ["todo_id"],
     },
 )
-async def _complete_todo_handle(arguments: dict) -> list[TextContent] | CallToolResult:
+async def _complete_todo_handle(arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
     todo_id = arguments.get("todo_id", "")
     todos = _read_todos()
 

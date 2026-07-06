@@ -6,16 +6,17 @@ import asyncio
 import json
 import re
 from datetime import UTC, datetime
+from typing import Any, ClassVar, cast
 
 import aiohttp
 from textual.app import App, ComposeResult
-from textual.binding import Binding
+from textual.binding import Binding, BindingType
 from textual.containers import Horizontal
 from textual.selection import Selection
 from textual.widgets import Footer, Header, Input, ListItem, ListView, RichLog, Static
 
 
-class PynchyTUI(App):
+class PynchyTUI(App[None]):
     """Textual app that connects to a running pynchy HTTP server."""
 
     TITLE = "🦞 pynchy"
@@ -47,7 +48,7 @@ class PynchyTUI(App):
     }
     """
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         Binding("ctrl+n", "next_group", "Next Group"),
         Binding("ctrl+p", "prev_group", "Prev Group"),
         Binding("ctrl+q", "quit", "Quit"),
@@ -57,9 +58,9 @@ class PynchyTUI(App):
         super().__init__()
         self._base_url = base_url.rstrip("/")
         self._session: aiohttp.ClientSession | None = None
-        self._groups: list[dict] = []
+        self._groups: list[dict[str, Any]] = []
         self._active_jid: str | None = None
-        self._sse_task: asyncio.Task | None = None
+        self._sse_task: asyncio.Task[None] | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -90,15 +91,15 @@ class PynchyTUI(App):
     # HTTP helpers
     # ------------------------------------------------------------------
 
-    async def _get(self, path: str, **params: str) -> dict | list:
+    async def _get(self, path: str, **params: str) -> dict[str, Any] | list[Any]:
         async with self._session.get(f"{self._base_url}{path}", params=params) as resp:
             resp.raise_for_status()
-            return await resp.json()
+            return cast("dict[str, Any] | list[Any]", await resp.json())
 
-    async def _post(self, path: str, data: dict) -> dict:
+    async def _post(self, path: str, data: dict[str, Any]) -> dict[str, Any]:
         async with self._session.post(f"{self._base_url}{path}", json=data) as resp:
             resp.raise_for_status()
-            return await resp.json()
+            return cast("dict[str, Any]", await resp.json())
 
     async def _update_status(self) -> None:
         """Fetch /health and show connection status in the sub-title."""
@@ -115,7 +116,7 @@ class PynchyTUI(App):
     # ------------------------------------------------------------------
 
     async def _load_groups(self) -> None:
-        self._groups = await self._get("/api/groups")
+        self._groups = cast("list[dict[str, Any]]", await self._get("/api/groups"))
         group_list = self.query_one("#group-list", ListView)
         group_list.clear()
         for g in self._groups:
@@ -132,7 +133,9 @@ class PynchyTUI(App):
 
         chat_log = self.query_one(ChatLog)
         chat_log.clear()
-        messages = await self._get("/api/messages", jid=jid, limit="100")
+        messages = cast(
+            "list[dict[str, Any]]", await self._get("/api/messages", jid=jid, limit="100")
+        )
         for msg in messages:
             _render_message(chat_log, msg["sender_name"], msg["content"], msg["timestamp"])
 
@@ -200,7 +203,7 @@ class PynchyTUI(App):
             except asyncio.CancelledError:
                 return
 
-    def _handle_sse_event(self, event: dict) -> None:
+    def _handle_sse_event(self, event: dict[str, Any]) -> None:
         if event.get("type") == "message":
             if event.get("chat_jid") == self._active_jid:
                 # Skip messages from TUI user (already rendered locally)
@@ -267,7 +270,7 @@ class ChatLog(RichLog):
     """
 
     @property
-    def allow_select(self) -> bool:  # noqa: D102
+    def allow_select(self) -> bool:
         return True
 
     def get_selection(self, selection: Selection) -> tuple[str, str] | None:

@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 import pytest
+from conftest import init_test_database
 
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.messaging.formatter import format_messages_for_sdk
-from pynchy.state import _init_test_database, store_chat_metadata
+from pynchy.state import store_chat_metadata
 from pynchy.types import NewMessage, WorkspaceProfile
 
 
 @pytest.fixture
 async def app():
     """Create a PynchyApp with a fresh in-memory database."""
-    await _init_test_database()
+    await init_test_database()
     return PynchyApp()
 
 

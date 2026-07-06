@@ -8,6 +8,7 @@ requires-python = ">=3.13"
 dependencies = [
     "aiohttp>=3.13.3",
     "aiosqlite>=0.22.1",
+    "beartype>=0.22.9",
     "croniter>=6.0.0",
     "detect-secrets>=1.5.0",
     "mcp>=1.26.0",
@@ -43,6 +44,7 @@ pynchy-whatsapp-auth = "pynchy.plugins.channels.whatsapp.auth:main"
 [dependency-groups]
 dev = [
     "coverage>=7.13.4",
+    "flynt>=1.0.6",
     "freezegun>=1.5.5",
     "mkdocs>=1.6.1",
     "mkdocs-awesome-pages-plugin>=2.10.1",
@@ -51,6 +53,7 @@ dev = [
     "mkdocs-linkcheck>=1.0.6",
     "mkdocs-material>=9.7.1",
     "mkdocs-minify-plugin>=0.8.0",
+    "mypy>=2.1.0",
     "nbformat>=5.10.4",
     "pre-commit>=4.5.1",
     "pytest>=9.0.2",
@@ -59,7 +62,13 @@ dev = [
     "pytest-mock>=3.15.1",
     "pytest-timeout>=2.4.0",
     "pytest-xdist>=3.8.0",
+    "pyupgrade>=3.21.2",
     "ruff>=0.15.0",
+    "types-croniter>=6.2.3.20260704",
+    "types-pyyaml>=6.0.12.20260518",
+    "types-qrcode>=8.2.0.20260518",
+    "vulture>=2.16",
+    "xenon>=0.9.3",
 ]
 
 [build-system]
@@ -73,7 +82,7 @@ packages = ["src/pynchy"]
 testpaths = ["tests"]
 pythonpath = ["tests"]
 asyncio_mode = "auto"
-addopts = "-n auto --tb=short -q --no-header -m 'not live' --durations=0 --durations-min=2.0"
+addopts = "-n auto --tb=short -q --no-header -m 'not live' --durations=0 --durations-min=2.0 --failed-first"
 timeout = 30
 markers = [
     "live: live integration tests that require real service connections (deselected by default)",
@@ -87,5 +96,118 @@ line-length = 100
 src = ["src"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+select = ["E", "W", "F", "I", "B", "UP", "C4", "SIM", "RUF"]
+# E501 (line length) is enforced by the formatter, not the linter, to avoid double-reporting.
+# NOTE: `preview` is intentionally off — on this mature codebase preview rules are churn, not
+# signal.
 ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests legitimately capture unused returns and use high-complexity parameterized setup.
+# RUF012: test-only fixture/template dicts don't carry the shared-mutable-state
+# risk that motivates ClassVar in production code.
+"tests/**/*.py" = ["F841", "C901", "PLR0912", "PLR0913", "PLR0915", "RUF012"]
+"scripts/**/*.py" = ["C901", "PLR0912", "PLR0913", "PLR0915"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# mypy — strict static type checking.
+# Introduced in INFORMATIONAL mode: the pre-commit `mypy` hook is non-blocking
+# (see .pre-commit-config.yaml). This codebase is largely untyped, so `strict`
+# surfaces a ratchet target rather than a gate. Tighten to blocking once the
+# baseline is clean.
+# ─────────────────────────────────────────────────────────────────────────────
+[tool.mypy]
+strict = true
+# agent_runner is a separate uv sub-project (own venv, own dependency set) that
+# runs inside the agent container, not the host. Its package root is
+# src/pynchy/agent/agent_runner/src, so mypy invoked from here can never resolve
+# its internal imports correctly regardless of config; it's checked on its own
+# via src/pynchy/agent/agent_runner/pyproject.toml's mirrored [tool.mypy].
+exclude = "^src/pynchy/agent/agent_runner/"
+warn_return_any = true
+warn_unused_configs = true
+show_error_codes = true
+pretty = true
+# Pragmatic exceptions for this project's frameworks:
+#   no-untyped-def/no-untyped-call — codebase is only partially annotated (ratchet later)
+#   attr-defined/union-attr/override — Textual widgets + pluggy hooks use dynamic attrs
+#   call-arg — Pydantic model constructors trip false positives
+disable_error_code = [
+    "no-untyped-def",
+    "no-untyped-call",
+    "attr-defined",
+    "union-attr",
+    "override",
+    "call-arg",
+]
+
+# Tests should never block on type strictness (fixtures, mocks, parameterization).
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+check_untyped_defs = false
+ignore_errors = true
+
+# Optional plugin dependencies (see [project.optional-dependencies]): not installed
+# in the base dev environment, and none ship type stubs or a `types-*` package.
+[[tool.mypy.overrides]]
+module = [
+    "caldav.*",
+    "fastmcp.*",
+    "jupyter_client.*",
+    "neonize.*",
+    "playwright.*",
+    "slack_bolt.*",
+    "ubuntu_namer.*",
+]
+ignore_missing_imports = true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# coverage — ratchet floor set at the measured baseline (68.93%, via
+# `uv run pytest --cov=pynchy`). The xdist collection issue that previously
+# blocked measurement was actually beartype's whole-package instrumentation
+# crashing on TYPE_CHECKING-only forward refs (see src/pynchy/__init__.py);
+# with that disabled the suite collects and measures cleanly. Ratchet this
+# number up as coverage improves — never down.
+# ─────────────────────────────────────────────────────────────────────────────
+[tool.coverage.run]
+source = ["pynchy"]
+skip_empty = true
+omit = ["*/tests/*", "*/test_*.py", "*/__pycache__/*", "*/conftest.py"]
+
+[tool.coverage.report]
+fail_under = 68
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+    "@abc.abstractmethod",
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# vulture — dead-code detection. Runs informationally (min_confidence 80).
+# `ignore_names` covers framework "magic" names: pluggy hooks, Textual handlers,
+# Pydantic config/validators.
+# ─────────────────────────────────────────────────────────────────────────────
+[tool.vulture]
+min_confidence = 80
+paths = ["src", "tests"]
+exclude = [".venv/"]
+ignore_names = [
+    "pynchy_*",      # pluggy hook implementations (hookimpl-decorated)
+    "on_*",          # Textual message handlers
+    "watch_*",       # Textual reactive watchers
+    "action_*",      # Textual action methods
+    "compose",       # Textual compose()
+    "model_config",  # Pydantic
+    "field_validator",
+    "model_validator",
+]

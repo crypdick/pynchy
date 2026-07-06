@@ -28,7 +28,7 @@ def _row_to_host_job(row) -> HostJob:
 
 
 async def create_host_job(job: dict[str, Any]) -> None:
-    """Create a new host job."""
+    """Create a host job."""
     db = _get_db()
     await db.execute(
         """
@@ -74,7 +74,7 @@ async def get_due_host_jobs() -> list[HostJob]:
 
 
 async def update_host_job_after_run(job_id: str, next_run: str | None, exit_code: int) -> None:
-    """Update a host job after it has been run."""
+    """Update a host job after a run."""
     db = _get_db()
     now = datetime.now(UTC).isoformat()
     await db.execute(

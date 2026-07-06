@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-# action_id prefixes used to match interaction callbacks:
+# action_id prefixes for matching interaction callbacks:
 #   ask_user_checkbox_{request_id}_{q_idx} — checkbox toggle (state only, ignored)
 #   ask_user_submit_{request_id}           — submit button (collects checkbox + text)
 #   ask_user_text_{request_id}_{q_idx}     — plain_text_input element (state only)
@@ -55,7 +55,7 @@ def split_text(text: str, *, max_len: int = 3000) -> list[str]:
     return chunks
 
 
-def build_ask_user_blocks(request_id: str, questions: list[dict]) -> list[dict]:
+def build_ask_user_blocks(request_id: str, questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Build Block Kit blocks for an ask_user widget.
 
     Each question gets:
@@ -66,7 +66,7 @@ def build_ask_user_blocks(request_id: str, questions: list[dict]) -> list[dict]:
     After all questions, a free-text ``input`` block and a single Submit
     button.  The submit handler reads checkbox state from ``state.values``.
     """
-    blocks: list[dict] = []
+    blocks: list[dict[str, Any]] = []
 
     for q_idx, q in enumerate(questions):
         question_text = q.get("question", "")
@@ -148,7 +148,7 @@ def build_ask_user_blocks(request_id: str, questions: list[dict]) -> list[dict]:
     return blocks
 
 
-def extract_text_input_value(body: dict, request_id: str) -> str:
+def extract_text_input_value(body: dict[str, Any], request_id: str) -> str:
     """Extract the plain_text_input value from a block_actions ``state.values``.
 
     Slack nests input values under ``state.values.<block_id>.<action_id>.value``.
@@ -165,7 +165,7 @@ def extract_text_input_value(body: dict, request_id: str) -> str:
     return ""
 
 
-def extract_checkbox_values(body: dict, request_id: str) -> str:
+def extract_checkbox_values(body: dict[str, Any], request_id: str) -> str:
     """Extract selected checkbox values from ``state.values``.
 
     Scans all ``ask_user_actions_{request_id}_*`` blocks and collects

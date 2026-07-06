@@ -84,7 +84,7 @@ async def handle_ask_user_answer(
     resolve_pending_question(request_id, source_group)
 
 
-def _format_answer_context(pending: dict, answer: dict[str, Any]) -> str:
+def _format_answer_context(pending: dict[str, Any], answer: dict[str, Any]) -> str:
     """Format the Q&A as context text for cold-start message injection.
 
     Produces text like:

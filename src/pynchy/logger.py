@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from typing import cast
 
 import structlog
 
@@ -36,7 +37,7 @@ def _setup_logging() -> structlog.stdlib.BoundLogger:
         cache_logger_on_first_use=True,
     )
 
-    return structlog.get_logger()
+    return cast(structlog.stdlib.BoundLogger, structlog.get_logger())
 
 
 logger = _setup_logging()

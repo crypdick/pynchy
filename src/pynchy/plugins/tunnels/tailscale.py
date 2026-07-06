@@ -47,7 +47,7 @@ class _TailscaleTunnel:
             self._backend_state = status.get("BackendState", "unknown")
         except FileNotFoundError:
             self._error = "CLI not found"
-        except Exception as exc:
+        except Exception as exc:  # allow: exception-handling — error collected in self._error
             self._error = str(exc)
 
     def is_available(self) -> bool:

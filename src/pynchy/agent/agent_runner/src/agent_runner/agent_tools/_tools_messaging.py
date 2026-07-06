@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from mcp.types import TextContent
 
 from agent_runner.agent_tools import _ipc
@@ -37,7 +39,7 @@ from agent_runner.agent_tools._registry import tool
         "required": ["text"],
     },
 )
-async def _handle(arguments: dict) -> list[TextContent]:
+async def _handle(arguments: dict[str, Any]) -> list[TextContent]:
     data = {
         "type": "message",
         "chatJid": _ipc.chat_jid,

@@ -12,14 +12,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from conftest import make_settings
+from conftest import init_test_database, make_settings
 
 from pynchy.config import CommandCenterConfig, WorkspaceConfig
 from pynchy.host.orchestrator.workspace_config import (
     configure_plugin_workspaces,
     reconcile_workspaces,
 )
-from pynchy.state import _init_test_database, create_task, get_active_task_for_group, get_all_tasks
+from pynchy.state import create_task, get_active_task_for_group, get_all_tasks
 from pynchy.types import WorkspaceProfile
 
 
@@ -35,7 +35,7 @@ class TestReconcileWorkspaces:
 
     @pytest.fixture
     async def db(self):
-        await _init_test_database()
+        await init_test_database()
 
     @pytest.fixture
     def groups_dir(self, monkeypatch, tmp_path):

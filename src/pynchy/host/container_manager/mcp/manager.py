@@ -5,7 +5,7 @@ pushes MCP state to LiteLLM via its HTTP API.  Docker-based MCP containers and
 script-based MCP subprocesses start on-demand when an agent first needs them
 and stop after an idle timeout.
 
-Adding a new MCP is as simple as adding a ``[mcp_servers.<name>]`` section to
+Adding an MCP is as simple as adding a ``[mcp_servers.<name>]`` section to
 ``config.toml`` — no policy files, no editing ``litellm_config.yaml``.  Plugins
 can also provide MCP servers via the ``pynchy_mcp_server_spec()`` hook.
 
@@ -273,7 +273,7 @@ class McpManager:
 
     def get_direct_server_configs(
         self, group_folder: str, invocation_ts: float = 0.0
-    ) -> list[dict]:
+    ) -> list[dict[str, str]]:
         """Get MCP connection configs for a workspace (routes through proxy).
 
         Returns a list of dicts suitable for the agent runner's MCP config.
@@ -284,7 +284,7 @@ class McpManager:
             return []
 
         host = get_settings().gateway.container_host
-        configs: list[dict] = []
+        configs: list[dict[str, str]] = []
         for iid in instance_ids:
             instance = self._instances.get(iid)
             if instance is None:

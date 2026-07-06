@@ -81,7 +81,7 @@ class AgentRunnerDeps(Protocol):
     async def get_available_groups(self) -> list[dict[str, Any]]: ...
 
     async def broadcast_agent_input(
-        self, chat_jid: str, messages: list[dict], *, source: str = "user"
+        self, chat_jid: str, messages: list[dict[str, Any]], *, source: str = "user"
     ) -> None: ...
 
 
@@ -94,7 +94,9 @@ def _escape_xml(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
-def _format_messages_for_ipc(messages: list[dict], system_notices: list[str] | None = None) -> str:
+def _format_messages_for_ipc(
+    messages: list[dict[str, Any]], system_notices: list[str] | None = None
+) -> str:
     """Format messages as XML for IPC delivery to a warm container.
 
     Replicates the container's build_sdk_messages() format so the agent
@@ -127,7 +129,7 @@ def _format_messages_for_ipc(messages: list[dict], system_notices: list[str] | N
 
 
 def _build_container_input(
-    messages: list[dict],
+    messages: list[dict[str, Any]],
     ctx: _PreContainerResult,
     chat_jid: str,
     group: WorkspaceProfile,
@@ -158,7 +160,7 @@ async def _pre_container_setup(
     deps: AgentRunnerDeps,
     group: WorkspaceProfile,
     chat_jid: str,
-    messages: list[dict],
+    messages: list[dict[str, Any]],
     on_output: OnOutput | None,
     extra_system_notices: list[str] | None,
     input_source: str,
@@ -278,11 +280,11 @@ async def _await_query(
     try:
         await session.wait_for_query_done(timeout=timeout)
     except TimeoutError:
-        logger.error(f"{label} timed out, destroying session", group=group.name)
+        logger.error("query timed out, destroying session", label=label, group=group.name)
         await destroy_session(group.folder)
         return "error"
     except SessionDiedError:
-        logger.error(f"Container died during {label}", group=group.name)
+        logger.error("container died during query", label=label, group=group.name)
         return "error"
     return "success"
 
@@ -340,7 +342,7 @@ async def _warm_query(
     group: WorkspaceProfile,
     chat_jid: str,
     session: ContainerSession,
-    messages: list[dict],
+    messages: list[dict[str, Any]],
     ctx: _PreContainerResult,
 ) -> str:
     """Send messages to an existing session via IPC and wait for completion."""
@@ -365,7 +367,7 @@ async def _warm_query(
 
 
 # ---------------------------------------------------------------------------
-# Cold path — spawn new container and create session
+# Cold path — spawn container and create session
 # ---------------------------------------------------------------------------
 
 
@@ -373,10 +375,10 @@ async def _cold_start(
     deps: AgentRunnerDeps,
     group: WorkspaceProfile,
     chat_jid: str,
-    messages: list[dict],
+    messages: list[dict[str, Any]],
     ctx: _PreContainerResult,
 ) -> str:
-    """Spawn a new container, create a persistent session, and wait for the first query."""
+    """Spawn a container, create a persistent session, and wait for the first query."""
     container_name = stable_container_name(group.folder)
     input_data = _build_container_input(messages, ctx, chat_jid, group)
 
@@ -418,7 +420,7 @@ async def run_agent(
     deps: AgentRunnerDeps,
     group: WorkspaceProfile,
     chat_jid: str,
-    messages: list[dict],
+    messages: list[dict[str, Any]],
     on_output: OnOutput | None = None,
     extra_system_notices: list[str] | None = None,
     *,
@@ -430,7 +432,7 @@ async def run_agent(
 
     This is the single public entry point for all agent invocations.
     Uses persistent sessions for interactive messages (warm path reuses an
-    existing container, cold path spawns a new one).  Scheduled tasks always
+    existing container, cold path spawns one).  Scheduled tasks always
     use one-shot containers.
 
     Args:
@@ -483,7 +485,7 @@ async def run_agent(
     )
 
     try:
-        if is_warm:
+        if session is not None and session.is_alive:
             return await _warm_query(deps, group, chat_jid, session, messages, ctx)
         else:
             return await _cold_start(deps, group, chat_jid, messages, ctx)
@@ -501,7 +503,7 @@ async def _run_scheduled_task(
     deps: AgentRunnerDeps,
     group: WorkspaceProfile,
     chat_jid: str,
-    messages: list[dict],
+    messages: list[dict[str, Any]],
     ctx: _PreContainerResult,
 ) -> str:
     """Run a scheduled task in a one-shot container with real-time output streaming.

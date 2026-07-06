@@ -12,13 +12,14 @@ from __future__ import annotations
 
 import json
 import sys
+from typing import Any
 
 from agent_runner.hooks import HookDecision
 from agent_runner.security.classify import CommandClass, classify_command
 
 
 def _log(message: str) -> None:
-    print(f"[bash-gate] {message}", file=sys.stderr, flush=True)
+    print(f"[bash-gate] {message}", file=sys.stderr, flush=True)  # allow: print-statements
 
 
 async def _ipc_bash_check(command: str) -> HookDecision:
@@ -62,7 +63,7 @@ async def _ipc_bash_check(command: str) -> HookDecision:
     return HookDecision(allowed=True)
 
 
-async def bash_security_hook(tool_name: str, tool_input: dict) -> HookDecision:
+async def bash_security_hook(tool_name: str, tool_input: dict[str, Any]) -> HookDecision:
     """BEFORE_TOOL_USE hook for bash command security gating.
 
     Only gates the "Bash" tool. All other tools pass through.

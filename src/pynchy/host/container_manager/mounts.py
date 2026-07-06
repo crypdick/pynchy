@@ -17,7 +17,7 @@ from pynchy.host.orchestrator.workspace_config import load_resolved_config
 from pynchy.types import VolumeMount, WorkspaceProfile
 
 
-def _build_volume_mounts(
+def build_volume_mounts(
     group: WorkspaceProfile,
     is_admin: bool,
     plugin_manager: pluggy.PluginManager | None = None,
@@ -114,7 +114,7 @@ def _build_volume_mounts(
     return mounts
 
 
-def _build_container_args(mounts: list[VolumeMount], container_name: str) -> list[str]:
+def build_container_args(mounts: list[VolumeMount], container_name: str) -> list[str]:
     """Build CLI args for `container run`."""
     from pynchy.host.container_manager.gateway import get_gateway
     from pynchy.plugins.runtimes.detection import get_runtime

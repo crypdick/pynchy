@@ -54,7 +54,7 @@ def _install_launchd_service() -> None:
     if not file_changed and already_loaded:
         return  # already up to date and loaded
     if file_changed:
-        # Unload before overwriting so launchd picks up the new version
+        # Unload before overwriting so launchd picks up the updated version
         if already_loaded:
             subprocess.run(["launchctl", "unload", str(dest)], capture_output=True)
         dest.parent.mkdir(parents=True, exist_ok=True)

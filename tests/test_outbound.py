@@ -2,29 +2,27 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from unittest.mock import patch
+
 import pytest
+from conftest import init_test_database
 
 from pynchy.state import (
-    _init_test_database,
     gc_delivered,
     get_pending_outbound,
     mark_delivered,
     mark_delivery_error,
     record_outbound,
+    store_chat_metadata,
 )
-from pynchy.state.connection import _get_db
 
 
 @pytest.fixture()
 async def _db():
-    await _init_test_database()
+    await init_test_database()
     # record_outbound has a FOREIGN KEY on chats(jid), seed a chat row
-    db = _get_db()
-    await db.execute(
-        "INSERT INTO chats (jid, last_message_time) VALUES (?, ?)",
-        ("group@g.us", "2024-01-01T00:00:00"),
-    )
-    await db.commit()
+    await store_chat_metadata("group@g.us", "2024-01-01T00:00:00")
 
 
 @pytest.mark.usefixtures("_db")
@@ -114,15 +112,10 @@ class TestGcDelivered:
         lid = await record_outbound("group@g.us", "msg", "broadcast", ["slack"])
         await mark_delivered(lid, "slack")
 
-        # Backdate the timestamp so gc picks it up
-        db = _get_db()
-        await db.execute(
-            "UPDATE outbound_ledger SET timestamp = '2020-01-01T00:00:00' WHERE id = ?",
-            (lid,),
-        )
-        await db.commit()
-
-        deleted = await gc_delivered(max_age_hours=1)
+        # Advance gc's clock so the just-recorded entry is past max_age
+        with patch("pynchy.state.outbound.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2030, 1, 1, tzinfo=UTC)
+            deleted = await gc_delivered(max_age_hours=1)
         assert deleted == 1
 
     @pytest.mark.asyncio
@@ -136,15 +129,10 @@ class TestGcDelivered:
 
     @pytest.mark.asyncio
     async def test_preserves_pending_entries(self):
-        lid = await record_outbound("group@g.us", "msg", "broadcast", ["slack"])
+        await record_outbound("group@g.us", "msg", "broadcast", ["slack"])
 
-        # Backdate but leave undelivered
-        db = _get_db()
-        await db.execute(
-            "UPDATE outbound_ledger SET timestamp = '2020-01-01T00:00:00' WHERE id = ?",
-            (lid,),
-        )
-        await db.commit()
-
-        deleted = await gc_delivered(max_age_hours=1)
+        # Old enough for gc, but undelivered — must be preserved
+        with patch("pynchy.state.outbound.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2030, 1, 1, tzinfo=UTC)
+            deleted = await gc_delivered(max_age_hours=1)
         assert deleted == 0

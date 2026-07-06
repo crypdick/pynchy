@@ -1,6 +1,6 @@
 """ask_user tool — routes questions to the user via the host messaging channel.
 
-Replaces the built-in ``AskUserQuestion`` tool.  The agent calls this to
+Used in place of the SDK's built-in ``AskUserQuestion`` tool.  The agent calls this to
 ask the user one or more questions; the host forwards them to the messaging
 channel (Slack/WhatsApp) and blocks until a reply arrives.
 
@@ -9,6 +9,8 @@ Uses its own IPC type prefix (``ask_user:``) instead of the generic
 """
 
 from __future__ import annotations
+
+from typing import Any
 
 from mcp.types import CallToolResult, TextContent
 
@@ -69,7 +71,7 @@ ASK_USER_TIMEOUT = 1800  # 30 minutes — user may take a while to reply
         "required": ["questions"],
     },
 )
-async def _ask_user_handle(arguments: dict) -> list[TextContent] | CallToolResult:
+async def _ask_user_handle(arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
     questions = arguments.get("questions")
     if not questions:
         return tool_error("questions list must be non-empty")

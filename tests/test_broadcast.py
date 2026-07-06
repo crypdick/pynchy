@@ -9,19 +9,18 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
 import pytest
-from conftest import make_settings
+from conftest import init_test_database, make_settings
 
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.messaging.formatter import format_tool_preview
-from pynchy.state import _init_test_database, store_message
-from pynchy.types import NewMessage, WorkspaceProfile
+from pynchy.state import store_message
+from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
 
 _CR_ORCH = "pynchy.host.container_manager.orchestrator"
 
@@ -101,7 +100,7 @@ class FakeChannel:
     def is_connected(self) -> bool:
         return self.connected
 
-    def owns_jid(self, jid: str) -> bool:  # noqa: ARG002
+    def owns_jid(self, jid: str) -> bool:
         return True
 
     async def disconnect(self) -> None:
@@ -179,7 +178,7 @@ class EventCapture:
 
 @pytest.fixture
 async def app(tmp_path: Path):
-    await _init_test_database()
+    await init_test_database()
     a = PynchyApp()
     a.workspaces = {
         "group@g.us": WorkspaceProfile(
@@ -206,7 +205,6 @@ async def _run_with_trace_sequence(
     Returns (channel, event_capture) for assertions.
     """
     from pynchy.host.container_manager.process import is_query_done_pulse
-    from pynchy.host.container_manager.serialization import _parse_container_output
     from pynchy.host.container_manager.session import get_session
 
     msg = _make_message(content="@pynchy do something")
@@ -225,7 +223,7 @@ async def _run_with_trace_sequence(
 
         for output_dict in trace_outputs:
             await asyncio.sleep(0.01)
-            parsed = _parse_container_output(json.dumps(output_dict))
+            parsed = ContainerOutput(**output_dict)
             if session._on_output:
                 await session._on_output(parsed)
             if is_query_done_pulse(parsed):
@@ -233,9 +231,7 @@ async def _run_with_trace_sequence(
 
         # Append query-done pulse if not already signaled
         if not session._query_done.is_set():
-            pulse = _parse_container_output(
-                json.dumps({"status": "success", "result": None, "new_session_id": "test-session"})
-            )
+            pulse = ContainerOutput(status="success", result=None, new_session_id="test-session")
             if session._on_output:
                 await session._on_output(pulse)
             session.signal_query_done()

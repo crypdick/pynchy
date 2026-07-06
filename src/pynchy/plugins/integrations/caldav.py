@@ -71,7 +71,7 @@ def _is_calendar_visible(cal_name: str, server_cfg: CalDAVServerConfig) -> bool:
     return True
 
 
-def _filter_calendars(calendars: list, server_cfg: CalDAVServerConfig) -> list:
+def _filter_calendars(calendars: list[Any], server_cfg: CalDAVServerConfig) -> list[Any]:
     """Filter a list of CalDAV calendar objects by allow/ignore rules."""
     return [c for c in calendars if c.name and _is_calendar_visible(c.name, server_cfg)]
 
@@ -91,6 +91,7 @@ def _resolve_server(
     """
     cal = calendar_str or "primary"
 
+    cal_name: str | None
     if "/" in cal:
         server_name, cal_name = cal.split("/", 1)
     else:
@@ -139,7 +140,7 @@ def _resolve_calendar(server_name: str, server_cfg: CalDAVServerConfig, calendar
     raise ValueError(msg)
 
 
-def _parse_event(component) -> dict:
+def _parse_event(component) -> dict[str, Any]:
     """Extract event fields from an iCalendar VEVENT component."""
 
     def _get(key: str) -> str | None:
@@ -150,7 +151,7 @@ def _parse_event(component) -> dict:
         if hasattr(val, "dt"):
             dt = val.dt
             if hasattr(dt, "isoformat"):
-                return dt.isoformat()
+                return str(dt.isoformat())
             return str(dt)
         return str(val)
 
@@ -170,7 +171,7 @@ def _parse_event(component) -> dict:
 
 
 @service_tool
-async def _handle_list_calendars(data: dict) -> dict:
+async def _handle_list_calendars(data: dict[str, Any]) -> dict[str, Any]:
     """Discover all visible calendars across all configured servers."""
     cfg = get_settings().caldav
     if err := _check_configured(cfg):
@@ -188,7 +189,7 @@ async def _handle_list_calendars(data: dict) -> dict:
 
 
 @service_tool
-async def _handle_list_calendar(data: dict) -> dict:
+async def _handle_list_calendar(data: dict[str, Any]) -> dict[str, Any]:
     """List calendar events within a date range."""
     cfg = get_settings().caldav
     if err := _check_configured(cfg):
@@ -222,7 +223,7 @@ async def _handle_list_calendar(data: dict) -> dict:
 
 
 @service_tool
-async def _handle_create_event(data: dict) -> dict:
+async def _handle_create_event(data: dict[str, Any]) -> dict[str, Any]:
     """Create a calendar event."""
     cfg = get_settings().caldav
     if err := _check_configured(cfg):
@@ -254,7 +255,7 @@ async def _handle_create_event(data: dict) -> dict:
 
 
 @service_tool
-async def _handle_delete_event(data: dict) -> dict:
+async def _handle_delete_event(data: dict[str, Any]) -> dict[str, Any]:
     """Delete a calendar event by UID."""
     cfg = get_settings().caldav
     if err := _check_configured(cfg):

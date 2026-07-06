@@ -2,7 +2,7 @@
 
 When a decision file appears in approval_decisions/, this handler:
 - Reads the decision and corresponding pending approval
-- Executes the original request (if approved) or writes error (if denied)
+- Executes the pending request (if approved) or writes error (if denied)
 - Writes the IPC response file so the container unblocks
 - Cleans up pending and decision files
 
@@ -30,7 +30,7 @@ from pynchy.logger import logger
 async def process_approval_decision(
     decision_file: Path, source_group: str, *, deps: Any = None
 ) -> None:
-    """Process an approval decision file — execute or deny the original request."""
+    """Process an approval decision file — execute or deny the pending request."""
     try:
         decision = json.loads(decision_file.read_text())
     except (json.JSONDecodeError, OSError) as exc:

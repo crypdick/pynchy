@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from typing import Any
 
 from pynchy.state.connection import _get_db
 
@@ -11,7 +12,7 @@ from pynchy.state.connection import _get_db
 async def store_event(
     event_type: str,
     chat_jid: str | None,
-    payload: dict,
+    payload: dict[str, Any],
 ) -> None:
     """Insert an event row into the ``events`` table.
 

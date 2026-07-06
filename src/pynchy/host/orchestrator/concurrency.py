@@ -77,7 +77,7 @@ class GroupQueue:
         return self._groups[group_jid]
 
     def set_process_messages_fn(self, fn: Callable[[str], Awaitable[bool]]) -> None:
-        """Register the callback used to process pending messages for a group."""
+        """Register the callback that processes pending messages for a group."""
         self._process_messages_fn = fn
 
     def enqueue_message_check(self, group_jid: str) -> None:
@@ -249,7 +249,7 @@ class GroupQueue:
         """Force-stop the active container for a group.
 
         Destroys any persistent session first, then writes the cooperative
-        _close sentinel and calls ``docker stop`` with a 15s fallback to kill.
+        _close sentinel and calls ``docker stop`` with a 15s timeout before killing.
         """
         state = self._get_group(group_jid)
 
@@ -342,7 +342,7 @@ class GroupQueue:
             )
         finally:
             # Clean up stale IPC input files before drain may start a
-            # new container — prevents the next container from seeing
+            # container — prevents the next container from seeing
             # duplicates of "btw " messages that were best-effort
             # forwarded but never read by the now-dead task container.
             clean_ipc_input_dir(state.group_folder)

@@ -18,10 +18,12 @@ repos:
       - id: check-merge-conflict
       - id: check-yaml
       - id: check-toml
+      - id: check-json
       - id: end-of-file-fixer
       - id: trailing-whitespace
       - id: detect-private-key
       - id: check-case-conflict
+      - id: debug-statements
 
   # Detect secrets/credentials
   - repo: https://github.com/Yelp/detect-secrets
@@ -30,6 +32,76 @@ repos:
       - id: detect-secrets
         args: [--baseline, .secrets.baseline]
         exclude: uv\.lock
+
+  # Syntax modernization (auto-fix, blocking: re-stage and re-commit if it edits files)
+  - repo: local
+    hooks:
+      - id: fix-future-annotations
+        name: Fix 'from __future__ import annotations' placement
+        entry: uv run python scripts/pre_commit_hooks/fix_future_annotations.py
+        language: system
+        types: [python]
+      - id: pyupgrade
+        name: Upgrade syntax to target Python version
+        entry: uv run pyupgrade --py313-plus
+        language: system
+        types: [python]
+      - id: flynt
+        name: Convert to f-strings
+        entry: uv run flynt --line-length=100
+        language: system
+        types: [python]
+
+  # Custom blocking lint checks (see AGENTS.md for the '# allow: <hook-name>' exemption convention)
+  - repo: local
+    hooks:
+      - id: check-print-statements
+        name: Ban print() in favor of structured logging
+        entry: uv run python scripts/pre_commit_hooks/check_print_statements.py
+        language: system
+        types: [python]
+      - id: check-exception-handling
+        name: Ban bare/broad exception handling
+        entry: uv run python scripts/pre_commit_hooks/check_exception_handling.py
+        language: system
+        types: [python]
+      - id: check-file-length
+        name: Enforce 400-logical-line file budget
+        entry: uv run python scripts/pre_commit_hooks/check_file_length.py
+        language: system
+        types: [python]
+        files: ^src/
+      - id: vulture
+        name: Detect dead code
+        entry: uv run vulture src tests --min-confidence 80
+        language: system
+        pass_filenames: false
+        types: [python]
+      - id: xenon
+        name: Check cyclomatic complexity
+        entry: uv run xenon --max-absolute C --max-modules C --max-average B src
+        language: system
+        pass_filenames: false
+        types: [python]
+      - id: check-timeless-comments
+        name: Flag temporal language in comments (legacy/old/refactor/...)
+        entry: uv run python scripts/pre_commit_hooks/check_timeless_comments.py
+        language: system
+        types: [python]
+        files: ^src/
+      - id: check-private-test-imports
+        name: Flag tests importing private first-party symbols
+        entry: uv run python scripts/pre_commit_hooks/check_private_test_imports.py
+        language: system
+        types: [python]
+        files: ^tests/
+      - id: mypy
+        name: Strict type check
+        entry: uv run mypy src tests
+        language: system
+        pass_filenames: false
+        types: [python]
+        verbose: true
 
   # Documentation link validation
   - repo: local

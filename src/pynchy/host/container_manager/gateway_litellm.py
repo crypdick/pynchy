@@ -38,6 +38,7 @@ import os
 import re
 import secrets
 from pathlib import Path
+from typing import Any
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.docker import (
@@ -187,7 +188,9 @@ class LiteLLMGateway:
 
         dotenv_path = config_path.parent / ".env"
         dotenv_vars = dotenv_values(dotenv_path) if dotenv_path.exists() else {}
-        return {**dotenv_vars, **os.environ}
+        merged: dict[str, str] = {k: v for k, v in dotenv_vars.items() if v is not None}
+        merged.update(os.environ)
+        return merged
 
     @staticmethod
     def _collect_yaml_env_refs(config_path: Path, env: dict[str, str]) -> list[tuple[str, str]]:
@@ -198,7 +201,7 @@ class LiteLLMGateway:
         placeholder vars produce a warning and are skipped.
 
         Callers should pass the **filtered** config path so that env vars
-        belonging to removed model entries are not forwarded.
+        belonging to filtered-out model entries are not forwarded.
         """
         text = config_path.read_text()
         var_names = set(re.findall(r"os\.environ/(\w+)", text))
@@ -243,7 +246,7 @@ class LiteLLMGateway:
             return out
 
         original_count = len(config["model_list"])
-        kept: list[dict] = []
+        kept: list[dict[str, Any]] = []
         for entry in config["model_list"]:
             api_key = (entry.get("litellm_params") or {}).get("api_key", "")
             m = re.match(r"os\.environ/(\w+)", str(api_key))
@@ -378,7 +381,7 @@ class LiteLLMGateway:
 
         await ensure_image(self._image)
 
-        # Remove stale LiteLLM container from previous run
+        # Remove any stale LiteLLM container before starting
         await remove_container(_LITELLM_CONTAINER)
 
         # Resolve env vars once — shared by config filtering and env-var forwarding.
@@ -405,7 +408,7 @@ class LiteLLMGateway:
         ]
 
         # Forward env vars referenced in the *filtered* config so we don't
-        # forward vars for model entries that were already removed.
+        # forward vars for model entries that were filtered out.
         for var_name, value in self._collect_yaml_env_refs(filtered_config, env):
             env_vars.extend(["-e", f"{var_name}={value}"])
 

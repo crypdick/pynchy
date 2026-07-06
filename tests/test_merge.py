@@ -282,6 +282,6 @@ class TestMixedScenarios:
         # frozen dataclass raises on attribute assignment
         try:
             result.mode = "chat"  # type: ignore[misc]
-            raise AssertionError("Expected FrozenInstanceError")  # noqa: TRY301
+            raise AssertionError("Expected FrozenInstanceError")
         except AttributeError:
             pass  # expected -- frozen

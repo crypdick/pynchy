@@ -66,7 +66,7 @@ async def advance_cursors_atomic(
 
 
 async def prune_stale_cursors(active_channel_names: set[str]) -> int:
-    """Delete cursors for channels no longer in the active set.
+    """Delete cursors for channels absent from the active set.
 
     Returns the number of rows deleted.
     """

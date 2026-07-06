@@ -43,7 +43,7 @@ class WorktreeNotifyDeps(Protocol):
 last_notified_sha: dict[str, str] = {}
 
 
-def _build_rebase_notice(worktree_path: Path, old_head: str, commit_count: int) -> str:
+def build_rebase_notice(worktree_path: Path, old_head: str, commit_count: int) -> str:
     """Build a descriptive auto-rebase notification for an agent.
 
     Shows commit count, files changed, and — for single commits — the full
@@ -170,7 +170,7 @@ async def host_notify_worktree_updates(
                 error=rebase.stderr.strip(),
             )
         else:
-            notice = _build_rebase_notice(entry, head_before, behind_count)
+            notice = build_rebase_notice(entry, head_before, behind_count)
             await notify(jid, notice)
             logger.info("Auto-rebased worktree", group=group_folder)
 

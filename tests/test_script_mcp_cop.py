@@ -1,4 +1,3 @@
-# tests/test_script_mcp_cop.py
 """Tests for script-type MCP auto-classification as host-mutating.
 
 Script-type MCP servers run as host subprocesses, so any tool call targeting
@@ -11,21 +10,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.host.container_manager.ipc.handlers_service import (
-    _handle_service_request,
-    clear_plugin_handler_cache,
-)
-from pynchy.host.container_manager.security.gate import _gates, create_gate
-from pynchy.state import _init_test_database
+from pynchy.host.container_manager.ipc import dispatch
+from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
+from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
+from pynchy.state import init_test_database
 from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
 
 
 @pytest.fixture(autouse=True)
 async def _setup():
-    await _init_test_database()
+    await init_test_database()
     clear_plugin_handler_cache()
     yield
-    _gates.clear()
+    destroy_gate("test-ws", 1000.0)
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +103,7 @@ def _make_fake_plugin_manager(*tool_names: str, handler_fn=None):
     fn = handler_fn or _stub_handler
     fake_pm = MagicMock()
     fake_pm.hook.pynchy_service_handler.return_value = [
-        {"tools": {name: fn for name in tool_names}},
+        {"tools": dict.fromkeys(tool_names, fn)},
     ]
     return fake_pm
 
@@ -142,7 +139,7 @@ async def test_script_mcp_triggers_cop_gate(tmp_path):
         ) as mock_cop,
     ):
         data = _make_request(tool, some_param="value")
-        await _handle_service_request(data, "test-ws", False, deps)
+        await dispatch(data, "test-ws", False, deps)
 
     mock_cop.assert_called_once()
     # Verify operation name follows the "script_mcp:<tool>" convention
@@ -175,7 +172,7 @@ async def test_non_script_mcp_skips_cop_gate(tmp_path):
         ) as mock_cop,
     ):
         data = _make_request(tool)
-        await _handle_service_request(data, "test-ws", False, deps)
+        await dispatch(data, "test-ws", False, deps)
 
     mock_cop.assert_not_called()
     # Handler should still have been called (no cop gate blocking)
@@ -208,7 +205,7 @@ async def test_script_mcp_blocked_by_cop(tmp_path):
         ),
     ):
         data = _make_request(tool, some_param="value")
-        await _handle_service_request(data, "test-ws", False, deps)
+        await dispatch(data, "test-ws", False, deps)
 
     # Handler must NOT be called when cop blocks
     mock_handler.assert_not_awaited()
@@ -243,7 +240,7 @@ async def test_script_mcp_allowed_by_cop(tmp_path):
         ),
     ):
         data = _make_request(tool, some_param="value")
-        await _handle_service_request(data, "test-ws", False, deps)
+        await dispatch(data, "test-ws", False, deps)
 
     mock_handler.assert_awaited_once()
 
@@ -274,7 +271,7 @@ async def test_cop_approved_skips_gate(tmp_path):
         ) as mock_cop,
     ):
         data = _make_request(tool, _cop_approved=True, some_param="value")
-        await _handle_service_request(data, "test-ws", False, deps)
+        await dispatch(data, "test-ws", False, deps)
 
     # cop_gate must NOT be called when _cop_approved is set
     mock_cop.assert_not_called()

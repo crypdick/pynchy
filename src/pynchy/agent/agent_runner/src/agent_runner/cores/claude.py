@@ -6,7 +6,7 @@ import json
 import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -21,6 +21,12 @@ from claude_agent_sdk import (
     ToolResultBlock,
     ToolUseBlock,
 )
+from claude_agent_sdk.types import HookEvent as SdkHookEvent
+from claude_agent_sdk.types import (
+    McpServerConfig,
+    SdkPluginConfig,
+    SystemPromptPreset,
+)
 
 from ..core import AgentCoreConfig, AgentEvent
 from ..hooks import AGNOSTIC_TO_CLAUDE, HookEvent, before_tool_use_roster, load_hooks
@@ -30,7 +36,7 @@ from ._tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 
 def _log(message: str) -> None:
     """Log to stderr (captured by host container runner)."""
-    print(f"[claude-core] {message}", file=sys.stderr, flush=True)
+    print(f"[claude-core] {message}", file=sys.stderr, flush=True)  # allow: print-statements
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +99,80 @@ def _wrap_before_tool_use(hook_fn):
 
 
 # ---------------------------------------------------------------------------
+# start() setup helpers
+# ---------------------------------------------------------------------------
+
+
+def _build_system_prompt(config: AgentCoreConfig) -> SystemPromptPreset | None:
+    if not config.system_prompt_append:
+        return None
+    return {
+        "type": "preset",
+        "preset": "claude_code",
+        "append": config.system_prompt_append,
+    }
+
+
+def _build_claude_hooks(config: AgentCoreConfig) -> dict[str, list[HookMatcher]]:
+    """Convert plugin-agnostic hooks to Claude SDK hook matchers.
+
+    PreCompact gets a built-in transcript-archival hook appended. PreToolUse
+    gets built-in security hooks first, then plugin hooks (first deny wins).
+    """
+    agnostic_hooks = load_hooks(config.plugin_hooks)
+    claude_hooks: dict[str, list[HookMatcher]] = {}
+
+    for event, funcs in agnostic_hooks.items():
+        # BEFORE_TOOL_USE is handled separately below (needs _wrap_before_tool_use
+        # adapter to translate between agnostic and Claude SDK signatures).
+        if event == HookEvent.BEFORE_TOOL_USE:
+            continue
+        if event in AGNOSTIC_TO_CLAUDE:
+            claude_hook_name = AGNOSTIC_TO_CLAUDE[event]
+            if funcs:
+                claude_hooks[claude_hook_name] = [HookMatcher(hooks=[func]) for func in funcs]
+
+    if "PreCompact" not in claude_hooks:
+        claude_hooks["PreCompact"] = []
+    claude_hooks["PreCompact"].append(HookMatcher(hooks=[_create_pre_compact_hook()]))
+
+    all_pre_tool_hooks = [
+        _wrap_before_tool_use(fn) for fn in before_tool_use_roster(agnostic_hooks)
+    ]
+    if all_pre_tool_hooks:
+        if "PreToolUse" not in claude_hooks:
+            claude_hooks["PreToolUse"] = []
+        # Single HookMatcher that matches all tools — hooks run in order,
+        # first deny wins.
+        claude_hooks["PreToolUse"].append(HookMatcher(hooks=all_pre_tool_hooks))
+
+    return claude_hooks
+
+
+def _build_allowed_tools(config: AgentCoreConfig) -> list[str]:
+    allowed_tools = list(BUILTIN_ALLOWED_TOOLS)
+    if "tools" in config.mcp_servers:
+        allowed_tools.append("mcp__tools__*")
+    for server_name in config.mcp_servers:
+        pattern = f"mcp__{server_name}__*"
+        if pattern not in allowed_tools:
+            allowed_tools.append(pattern)
+    return allowed_tools
+
+
+def _discover_container_plugins() -> list[SdkPluginConfig]:
+    """Discover Claude Code plugins baked into the container image."""
+    plugins_dir = Path("/opt/plugins")
+    if not plugins_dir.is_dir():
+        return []
+    return [
+        SdkPluginConfig(type="local", path=str(p))
+        for p in sorted(plugins_dir.iterdir())
+        if p.is_dir()
+    ]
+
+
+# ---------------------------------------------------------------------------
 # ClaudeAgentCore
 # ---------------------------------------------------------------------------
 
@@ -107,61 +187,9 @@ class ClaudeAgentCore:
 
     async def start(self) -> None:
         """Initialize Claude SDK client."""
-        # Build system prompt
-        system_prompt: dict[str, Any] | None = None
-        if self.config.system_prompt_append:
-            system_prompt = {
-                "type": "preset",
-                "preset": "claude_code",
-                "append": self.config.system_prompt_append,
-            }
-
-        # Load plugin hooks and convert to Claude SDK format
-        agnostic_hooks = load_hooks(self.config.plugin_hooks)
-        claude_hooks: dict[str, list] = {}
-
-        for event, funcs in agnostic_hooks.items():
-            # BEFORE_TOOL_USE is handled separately below (needs _wrap_before_tool_use
-            # adapter to translate between agnostic and Claude SDK signatures).
-            if event == HookEvent.BEFORE_TOOL_USE:
-                continue
-            if event in AGNOSTIC_TO_CLAUDE:
-                claude_hook_name = AGNOSTIC_TO_CLAUDE[event]
-                if funcs:
-                    claude_hooks[claude_hook_name] = [HookMatcher(hooks=[func]) for func in funcs]
-
-        # Add built-in PreCompact hook for transcript archival
-        if "PreCompact" not in claude_hooks:
-            claude_hooks["PreCompact"] = []
-        claude_hooks["PreCompact"].append(HookMatcher(hooks=[_create_pre_compact_hook()]))
-
-        # Register BEFORE_TOOL_USE hooks as PreToolUse matchers. The roster
-        # (built-ins first, then plugin hooks) is composed by the shared
-        # before_tool_use_roster so this core enforces exactly what the OpenAI
-        # and claude-cli cores do.
-        all_pre_tool_hooks = [
-            _wrap_before_tool_use(fn) for fn in before_tool_use_roster(agnostic_hooks)
-        ]
-
-        if all_pre_tool_hooks:
-            if "PreToolUse" not in claude_hooks:
-                claude_hooks["PreToolUse"] = []
-            # Single HookMatcher that matches all tools — hooks run in order,
-            # first deny wins.
-            claude_hooks["PreToolUse"].append(HookMatcher(hooks=all_pre_tool_hooks))
-
-        # Build allowed tools list from the shared roster (cores/_tools.py).
-        allowed_tools = list(BUILTIN_ALLOWED_TOOLS)
-
-        # Add remote MCP tools if configured
-        if "tools" in self.config.mcp_servers:
-            allowed_tools.append("mcp__tools__*")
-
-        # Allow tools from all configured MCP servers
-        for server_name in self.config.mcp_servers:
-            pattern = f"mcp__{server_name}__*"
-            if pattern not in allowed_tools:
-                allowed_tools.append(pattern)
+        system_prompt = _build_system_prompt(self.config)
+        claude_hooks = _build_claude_hooks(self.config)
+        allowed_tools = _build_allowed_tools(self.config)
 
         _log(f"MCP servers config: {list(self.config.mcp_servers.keys())}")
         mcp_details = {
@@ -171,17 +199,10 @@ class ClaudeAgentCore:
         _log(f"MCP servers details: {json.dumps(mcp_details)}")
         _log(f"Allowed tools: {allowed_tools}")
 
-        # Discover Claude Code plugins baked into the container image
-        plugins_dir = Path("/opt/plugins")
-        plugins = (
-            [{"type": "local", "path": str(p)} for p in sorted(plugins_dir.iterdir()) if p.is_dir()]
-            if plugins_dir.is_dir()
-            else []
-        )
+        plugins = _discover_container_plugins()
         if plugins:
             _log(f"Loading plugins: {[p['path'] for p in plugins]}")
 
-        # Build options
         options = ClaudeAgentOptions(
             model="opus",
             cwd=self.config.cwd,
@@ -194,8 +215,14 @@ class ClaudeAgentCore:
             permission_mode="bypassPermissions",
             settings='{"attribution": {"commit": "", "pr": ""}}',
             setting_sources=["project", "user"],
-            mcp_servers=self.config.mcp_servers,
-            hooks=claude_hooks if claude_hooks else None,
+            # config.mcp_servers is a generic dict[str, dict[str, Any]]; the SDK
+            # narrows it to its own McpServerConfig union at runtime.
+            mcp_servers=cast("dict[str, McpServerConfig]", self.config.mcp_servers),
+            # Agnostic hook names (from AGNOSTIC_TO_CLAUDE) are a superset of the
+            # SDK's HookEvent literals, so the dict is typed str-keyed and cast here.
+            hooks=cast(dict[SdkHookEvent, list[HookMatcher]], claude_hooks)
+            if claude_hooks
+            else None,
             plugins=plugins,
         )
 
@@ -303,7 +330,7 @@ class ClaudeAgentCore:
                     },
                 )
 
-        # Update session ID if we got a new one
+        # Update session ID if one was issued
         if new_session_id:
             self._session_id = new_session_id
 
@@ -314,7 +341,7 @@ class ClaudeAgentCore:
         if self._client is not None:
             try:
                 await self._client.__aexit__(None, None, None)
-            except Exception as exc:
+            except Exception as exc:  # allow: exception-handling — cleanup; logged via _log()
                 _log(f"Error during client cleanup: {exc}")
             finally:
                 self._client = None

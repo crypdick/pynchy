@@ -24,17 +24,17 @@ from pynchy.logger import logger
 from pynchy.plugins import get_plugin_manager
 
 # Lazily populated mapping of tool_name -> async handler from plugins.
-_plugin_handlers: dict[str, Callable[[dict], Awaitable[dict]]] | None = None
+_plugin_handlers: dict[str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]] | None = None
 
 
-def _get_plugin_handlers() -> dict[str, Callable[[dict], Awaitable[dict]]]:
+def _get_plugin_handlers() -> dict[str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]]:
     """Collect and cache tool handlers from all MCP server plugins."""
-    global _plugin_handlers  # noqa: PLW0603
+    global _plugin_handlers
     if _plugin_handlers is not None:
         return _plugin_handlers
 
     pm = get_plugin_manager()
-    merged: dict[str, Callable[[dict], Awaitable[dict]]] = {}
+    merged: dict[str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]] = {}
     for result in pm.hook.pynchy_service_handler():
         tools = result.get("tools", {})
         merged.update(tools)
@@ -45,11 +45,11 @@ def _get_plugin_handlers() -> dict[str, Callable[[dict], Awaitable[dict]]]:
 
 def clear_plugin_handler_cache() -> None:
     """Clear the cached plugin handler mapping (for tests or config reload)."""
-    global _plugin_handlers  # noqa: PLW0603
+    global _plugin_handlers
     _plugin_handlers = None
 
 
-def _write_response(source_group: str, request_id: str, response: dict) -> None:
+def _write_response(source_group: str, request_id: str, response: dict[str, Any]) -> None:
     """Write a response file for the container to pick up."""
     write_ipc_response(ipc_response_path(source_group, request_id), response)
 

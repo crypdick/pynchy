@@ -1,7 +1,7 @@
 """Database schema definition and migrations.
 
 ``_SCHEMA`` is the source of truth for the latest table definitions.
-``CREATE TABLE IF NOT EXISTS`` handles brand-new databases.
+``CREATE TABLE IF NOT EXISTS`` handles freshly created databases.
 ``_ensure_columns`` handles existing databases where tables predate newly
 added columns -- it parses the schema string and issues ``ALTER TABLE ADD
 COLUMN`` for anything missing.  No numbered migration files needed.
@@ -195,9 +195,9 @@ async def _ensure_columns(database: aiosqlite.Connection) -> None:
 
 
 async def _migrate_renamed_columns(database: aiosqlite.Connection) -> None:
-    """Copy old column values to new renamed columns (idempotent).
+    """Copy source column values into their renamed counterparts (idempotent).
 
-    Only copies where new column is 0 and old is 1, so re-running is safe.
+    Only copies where the destination is 0 and the source is 1, so re-running is safe.
     """
     migrations = [
         ("registered_groups", "is_god", "is_admin"),
@@ -213,9 +213,9 @@ async def _migrate_renamed_columns(database: aiosqlite.Connection) -> None:
 
 
 async def _drop_is_god_column(database: aiosqlite.Connection) -> None:
-    """Drop the legacy is_god column from registered_groups (idempotent).
+    """Drop the is_god column from registered_groups (idempotent).
 
-    Values were already migrated to is_admin by _migrate_renamed_columns.
+    is_admin already holds these values (copied by _migrate_renamed_columns).
     """
     cursor = await database.execute("PRAGMA table_info(registered_groups)")
     cols = {row[1] for row in await cursor.fetchall()}
@@ -231,7 +231,7 @@ async def _drop_is_god_column(database: aiosqlite.Connection) -> None:
 
 
 async def _migrate_repo_access_column(database: aiosqlite.Connection) -> None:
-    """Migrate pynchy_repo_access INTEGER -> repo_access TEXT (idempotent).
+    """Convert pynchy_repo_access INTEGER -> repo_access TEXT (idempotent).
 
     1. If pynchy_repo_access column exists: copy truthy rows to repo_access.
     2. Drop pynchy_repo_access column.
@@ -241,7 +241,7 @@ async def _migrate_repo_access_column(database: aiosqlite.Connection) -> None:
     cols = {row[1] for row in await cursor.fetchall()}
 
     if "pynchy_repo_access" in cols:
-        # Migrate truthy rows -- use 'pynchy' as a migration placeholder slug.
+        # Copy truthy rows using 'pynchy' as a placeholder slug.
         # Users must update their config.toml to set the real slug.
         if "repo_access" in cols:
             await database.execute(
@@ -268,11 +268,13 @@ async def _seed_channel_cursors(database: aiosqlite.Connection) -> None:
     """Seed channel_cursors from existing last_agent_timestamp (one-time migration).
 
     Reads the JSON-encoded per-group agent timestamps from router_state and
-    creates inbound cursor rows so the new reconciler starts from where the
-    old catch-up left off.  Only runs when channel_cursors is empty.
+    creates inbound cursor rows so the reconciler resumes from the last
+    processed agent timestamp.  Only runs when channel_cursors is empty.
     """
     cursor = await database.execute("SELECT COUNT(*) FROM channel_cursors")
-    (count,) = await cursor.fetchone()
+    row = await cursor.fetchone()
+    assert row is not None  # COUNT(*) always returns exactly one row
+    (count,) = row
     if count > 0:
         return  # already seeded
 

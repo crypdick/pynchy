@@ -6,11 +6,10 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import make_settings
+from conftest import init_test_database, make_settings
 
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.state import (
-    _init_test_database,
     create_host_job,
     create_task,
     get_all_tasks,
@@ -119,7 +118,7 @@ class MockDeps:
 
 @pytest.fixture
 async def deps():
-    await _init_test_database()
+    await init_test_database()
 
     groups = {
         "admin-1@g.us": ADMIN_GROUP,

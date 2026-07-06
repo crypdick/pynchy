@@ -9,7 +9,7 @@ import pytest
 
 slack_bolt = pytest.importorskip("slack_bolt", reason="slack optional extra not installed")
 
-from pynchy.plugins.channels.slack import SlackChannel, _jid  # noqa: E402
+from pynchy.plugins.channels.slack import SlackChannel  # noqa: E402
 from pynchy.plugins.channels.slack._ui import ASK_USER_ACTION_RE  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -17,7 +17,7 @@ from pynchy.plugins.channels.slack._ui import ASK_USER_ACTION_RE  # noqa: E402
 # ---------------------------------------------------------------------------
 
 CHANNEL_ID = "C12345"
-JID = _jid(CHANNEL_ID)
+JID = f"slack:{CHANNEL_ID}"
 REQUEST_ID = "req-abc-123"
 
 

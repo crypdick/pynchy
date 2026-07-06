@@ -66,11 +66,11 @@ def get_repo_context(slug: str) -> RepoContext | None:
 
 
 def get_repo_token(slug: str) -> str | None:
-    """Resolve the git token for a repo, walking the fallback chain.
+    """Resolve the git token for a repo, trying each source in priority order.
 
     Resolution order:
     1. repos."owner/repo".token — explicit per-repo token (highest priority)
-    2. secrets.gh_token — host's broad token (fallback)
+    2. secrets.gh_token — host's broad token (medium priority)
     3. gh auth token — auto-discovered from gh CLI (lowest priority)
     """
     from pynchy.config import get_settings

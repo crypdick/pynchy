@@ -5,34 +5,39 @@ Discovers tools from the registry instead of hardcoding them.
 
 from __future__ import annotations
 
+from typing import Any
+
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import CallToolResult, TextContent, Tool
 
 # Import tool modules to trigger self-registration
-import agent_runner.agent_tools._tools_admin  # noqa: F401
-import agent_runner.agent_tools._tools_ask_user  # noqa: F401
-import agent_runner.agent_tools._tools_calendar  # noqa: F401
-import agent_runner.agent_tools._tools_google_setup  # noqa: F401
-import agent_runner.agent_tools._tools_lifecycle  # noqa: F401
-import agent_runner.agent_tools._tools_memory  # noqa: F401
-import agent_runner.agent_tools._tools_messaging  # noqa: F401
-import agent_runner.agent_tools._tools_slack_tokens  # noqa: F401
-import agent_runner.agent_tools._tools_tasks  # noqa: F401
-import agent_runner.agent_tools._tools_todos  # noqa: F401
+import agent_runner.agent_tools._tools_admin
+import agent_runner.agent_tools._tools_ask_user
+import agent_runner.agent_tools._tools_calendar
+import agent_runner.agent_tools._tools_google_setup
+import agent_runner.agent_tools._tools_lifecycle
+import agent_runner.agent_tools._tools_memory
+import agent_runner.agent_tools._tools_messaging
+import agent_runner.agent_tools._tools_slack_tokens
+import agent_runner.agent_tools._tools_tasks
+import agent_runner.agent_tools._tools_todos
 import agent_runner.agent_tools._tools_x  # noqa: F401
 from agent_runner.agent_tools._registry import all_tools, get_handler
 
 server = Server("pynchy")
 
 
-@server.list_tools()
+# mcp's Server.list_tools()/call_tool() decorators are themselves untyped, so
+# mypy flags the wrapped handlers as untyped-decorator; nothing in our code
+# consumes these functions directly (the server registers them).
+@server.list_tools()  # type: ignore[untyped-decorator]
 async def list_tools() -> list[Tool]:
     return all_tools()
 
 
-@server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolResult:
+@server.call_tool()  # type: ignore[untyped-decorator]
+async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
     handler = get_handler(name)
     if handler:
         return await handler(arguments)

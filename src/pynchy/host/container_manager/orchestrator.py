@@ -15,8 +15,8 @@ if TYPE_CHECKING:
     import pluggy
 
 from pynchy.config import get_settings
-from pynchy.host.container_manager.mounts import _build_container_args, _build_volume_mounts
-from pynchy.host.container_manager.serialization import _input_to_dict
+from pynchy.host.container_manager.mounts import build_container_args, build_volume_mounts
+from pynchy.host.container_manager.serialization import input_to_dict
 from pynchy.logger import logger
 from pynchy.plugins.runtimes.detection import get_runtime
 from pynchy.types import ContainerInput, VolumeMount, WorkspaceProfile
@@ -43,7 +43,7 @@ def resolve_container_timeout(group: WorkspaceProfile) -> float:
 
 
 def _sanitize_folder(group_folder: str) -> str:
-    """Replace non-alphanumeric/non-dash chars with dashes for container names."""
+    """Convert non-alphanumeric/non-dash chars to dashes for container names."""
     return "".join(c if c.isalnum() or c == "-" else "-" for c in group_folder)
 
 
@@ -51,7 +51,7 @@ def stable_container_name(group_folder: str) -> str:
     """Deterministic container name for persistent sessions.
 
     Using a stable name means we can docker rm -f the stale container
-    before spawning a new one for the same group.
+    before spawning a fresh one for the same group.
     """
     return f"pynchy-{_sanitize_folder(group_folder)}"
 
@@ -98,7 +98,7 @@ def _write_initial_input(input_data: ContainerInput, input_dir: Path) -> None:
     """
     from pynchy.utils import write_json_atomic
 
-    write_json_atomic(input_dir / "initial.json", _input_to_dict(input_data))
+    write_json_atomic(input_dir / "initial.json", input_to_dict(input_data))
 
 
 # ---------------------------------------------------------------------------
@@ -154,7 +154,7 @@ async def _spawn_container(
 
     # --- Build mounts ---
     phase_start = time.monotonic()
-    mounts = _build_volume_mounts(
+    mounts = build_volume_mounts(
         group, input_data.is_admin, plugin_manager, repo_ctx, worktree_path
     )
     mounts_ms = (time.monotonic() - phase_start) * 1000
@@ -179,7 +179,7 @@ async def _spawn_container(
     mcp_ms = (time.monotonic() - phase_start) * 1000
 
     # --- Build args ---
-    container_args = _build_container_args(mounts, container_name)
+    container_args = build_container_args(mounts, container_name)
 
     # --- Write initial input as file (container reads on startup) ---
     ipc_input_dir = s.data_dir / "ipc" / group.folder / "input"

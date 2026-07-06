@@ -14,16 +14,17 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
+from pynchy.host.container_manager.security import gate as _gate_module
 from pynchy.host.container_manager.security.cop import CopVerdict
-from pynchy.host.container_manager.security.gate import _gates, create_gate, destroy_gate, get_gate
+from pynchy.host.container_manager.security.gate import create_gate, destroy_gate, get_gate
 from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
 
 
 @pytest.fixture(autouse=True)
 def _cleanup_gates():
-    """Ensure no gates leak between tests."""
+    """Ensure no gates leak between tests (reset the module-global registry)."""
     yield
-    _gates.clear()
+    _gate_module._gates.clear()
 
 
 @pytest.fixture(autouse=True)
