@@ -10,6 +10,8 @@ Uses its own IPC type prefix (``ask_user:``) instead of the generic
 
 from __future__ import annotations
 
+from typing import Any
+
 from mcp.types import CallToolResult, TextContent
 
 from agent_runner.agent_tools._ipc_request import ipc_service_request
@@ -69,7 +71,7 @@ ASK_USER_TIMEOUT = 1800  # 30 minutes — user may take a while to reply
         "required": ["questions"],
     },
 )
-async def _ask_user_handle(arguments: dict) -> list[TextContent] | CallToolResult:
+async def _ask_user_handle(arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
     questions = arguments.get("questions")
     if not questions:
         return tool_error("questions list must be non-empty")

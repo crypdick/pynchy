@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import uuid
 from pathlib import Path
 from typing import Any
@@ -43,8 +44,8 @@ class _ResponseWatcher(FileSystemEventHandler):
         self._loop = loop
         self._event = event
 
-    def _signal_if_match(self, path_str: str) -> None:
-        if Path(path_str).name == self._target:
+    def _signal_if_match(self, path: str | bytes) -> None:
+        if Path(os.fsdecode(path)).name == self._target:
             self._loop.call_soon_threadsafe(self._event.set)
 
     def on_created(self, event: Any) -> None:
@@ -77,7 +78,7 @@ def _read_response(response_file: Path) -> list[TextContent]:
 
 async def ipc_service_request(
     tool_name: str,
-    request: dict,
+    request: dict[str, Any],
     timeout: float = 300,
     *,
     type_override: str | None = None,

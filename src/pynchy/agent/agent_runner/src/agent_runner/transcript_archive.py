@@ -102,7 +102,8 @@ def _get_session_summary(session_id: str, transcript_path: str) -> str | None:
         index = json.loads(index_path.read_text())
         for entry in index.get("entries", []):
             if entry.get("sessionId") == session_id:
-                return entry.get("summary")
+                summary = entry.get("summary")
+                return summary if isinstance(summary, str) else None
     except (json.JSONDecodeError, OSError) as exc:
         _log(f"Failed to read sessions index: {exc}")
 
