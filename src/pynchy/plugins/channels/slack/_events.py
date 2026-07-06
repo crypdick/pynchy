@@ -82,7 +82,7 @@ class SlackEventsMixin:
 
         assistant = AsyncAssistant()
 
-        @assistant.thread_started  # type: ignore[untyped-decorator]
+        @assistant.thread_started
         async def _on_thread_started(
             say: Any,
             set_suggested_prompts: Any,
@@ -95,7 +95,7 @@ class SlackEventsMixin:
                 ],
             )
 
-        @assistant.user_message  # type: ignore[untyped-decorator]
+        @assistant.user_message
         async def _on_user_message(
             payload: dict[str, Any],
             context: AsyncBoltContext,

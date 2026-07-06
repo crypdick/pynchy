@@ -11,8 +11,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from typing import TYPE_CHECKING
 
 from pynchy.logger import logger
+
+if TYPE_CHECKING:
+    from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 
 
 class SlackLifecycleMixin:
@@ -20,6 +24,7 @@ class SlackLifecycleMixin:
 
     # Declared here so mypy knows the types when analysing this mixin in
     # isolation; the concrete instances are created in ``SlackChannel.__init__``.
+    _handler: AsyncSocketModeHandler | None
     _handler_task: asyncio.Task[None] | None
     _reconnect_task: asyncio.Task[None] | None
 
