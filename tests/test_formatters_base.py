@@ -1,6 +1,7 @@
-"""Tests for OutboundEvent types and BaseFormatter protocol."""
+"""Tests for OutboundEvent types and the Formatter protocol."""
 
-from pynchy.host.orchestrator.messaging.formatters.base import BaseFormatter, RenderedMessage
+from pynchy.host.orchestrator.messaging.formatters.base import Formatter, RenderedMessage
+from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
 from pynchy.types import OutboundEvent, OutboundEventType
 
 
@@ -32,8 +33,12 @@ def test_rendered_message_with_blocks():
     assert msg.blocks == blocks
 
 
-def test_base_formatter_is_abstract():
-    import pytest
+def test_text_formatter_satisfies_protocol():
+    assert isinstance(TextFormatter(), Formatter)
 
-    with pytest.raises(TypeError):
-        BaseFormatter()  # type: ignore[abstract]
+
+def test_non_conforming_object_is_not_a_formatter():
+    class NotAFormatter:
+        pass
+
+    assert not isinstance(NotAFormatter(), Formatter)

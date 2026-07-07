@@ -7,7 +7,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from pynchy.host.orchestrator.messaging.formatters.base import BaseFormatter
+    from pynchy.host.orchestrator.messaging.formatters.base import Formatter
 
 
 @dataclass
@@ -48,6 +48,9 @@ class ContainerConfig:
 TrustLevel = Literal[False, True, "forbidden"]
 
 
+# NOTE: Update docs/architecture/security.md § 5 (Service Trust Policy) and
+# docs/usage/security.md (Four Properties Per Service) if you change these
+# properties or their defaults — both restate this model in prose.
 @dataclass
 class ServiceTrustConfig:
     """Four trust properties per service — the user-facing security model.
@@ -319,7 +322,7 @@ class VolumeMount:
 @runtime_checkable
 class Channel(Protocol):
     name: str
-    formatter: BaseFormatter
+    formatter: Formatter
 
     async def connect(self) -> None: ...
 

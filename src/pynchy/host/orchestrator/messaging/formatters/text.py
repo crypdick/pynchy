@@ -1,8 +1,8 @@
 """TextFormatter -- default plain-text renderer.
 
-A reusable BaseFormatter implementation. Channel plugins can use this as-is;
-richer channels (e.g. Slack) subclass it or provide their own block-based
-formatters.
+A reusable ``Formatter`` implementation. Channel plugins can use this as-is;
+richer channels (e.g. Slack) provide their own block-based formatters that
+satisfy the same Protocol.
 
 Imports utility functions from the ``formatter`` module rather than
 duplicating them:
@@ -19,7 +19,7 @@ from pynchy.host.orchestrator.messaging.formatter import (
     format_internal_tags,
     format_tool_preview,
 )
-from pynchy.host.orchestrator.messaging.formatters.base import BaseFormatter, RenderedMessage
+from pynchy.host.orchestrator.messaging.formatters.base import RenderedMessage
 from pynchy.types import OutboundEvent
 
 # Channel broadcast truncation threshold for tool results.
@@ -40,7 +40,7 @@ def _truncate_output(content: str) -> str:
     return f"{head}\n\n... ({omitted} chars omitted) ...\n\n{tail}"
 
 
-class TextFormatter(BaseFormatter):
+class TextFormatter:
     """Default plain-text renderer -- the reference implementation for channels.
 
     Each ``OutboundEventType`` maps to a rendering path. Keeping it here lets

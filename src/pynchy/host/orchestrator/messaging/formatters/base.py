@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from pynchy.types import OutboundEvent
 
@@ -18,15 +17,14 @@ class RenderedMessage:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-class BaseFormatter(ABC):
-    """Abstract base for channel message formatters."""
+@runtime_checkable
+class Formatter(Protocol):
+    """Structural interface for channel message formatters."""
 
-    @abstractmethod
     def render(self, event: OutboundEvent) -> RenderedMessage:
         """Convert an outbound event into a channel-ready message."""
         ...
 
-    @abstractmethod
     def render_batch(self, events: list[OutboundEvent]) -> RenderedMessage:
         """Render multiple events as a single message (for trace batching)."""
         ...
