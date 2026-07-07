@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import subprocess
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -15,6 +16,7 @@ from conftest import make_settings
 from pydantic import SecretStr
 
 from pynchy.config import GatewayConfig
+from pynchy.config.models import LearningConfig, ObsidianLearningConfig, WorkspaceConfig
 from pynchy.host.container_manager.credentials import (
     _write_env_file,  # allow: private-test-imports
     shell_quote,
@@ -36,6 +38,7 @@ from pynchy.host.container_manager.session_prep import (
 )
 from pynchy.host.container_manager.snapshots import write_groups_snapshot, write_tasks_snapshot
 from pynchy.host.git_ops.repo import RepoContext, get_repo_token
+from pynchy.host.learning.paths import LearningConfigError
 from pynchy.host.orchestrator.agent_runner import (
     _build_container_input,  # allow: private-test-imports
     _PreContainerResult,  # allow: private-test-imports
@@ -112,6 +115,9 @@ _SETTINGS_MODULES = [
     "pynchy.host.container_manager.session_prep",
     _CR_ORCH,
     "pynchy.host.container_manager.snapshots",
+    "pynchy.host.learning.paths",
+    "pynchy.host.learning.skills",
+    "pynchy.host.orchestrator.workspace_config",
 ]
 
 
@@ -123,10 +129,16 @@ def _patch_settings(
     container_timeout: float | None = None,
     idle_timeout: float | None = None,
     max_output_size: int | None = None,
+    learning: LearningConfig | None = None,
+    workspaces: dict[str, WorkspaceConfig] | None = None,
     secret_overrides: dict[str, str] | None = None,
 ):
     """Patch get_settings() across all container_runner submodules."""
-    overrides: dict = {"gateway": GatewayConfig()}
+    overrides: dict = {
+        "gateway": GatewayConfig(),
+        "learning": learning or LearningConfig(),
+        "workspaces": workspaces or {},
+    }
     if tmp_path is not None:
         overrides.update(
             project_root=tmp_path,
@@ -432,6 +444,101 @@ class TestContainerArgs:
 
 
 class TestMountBuilding:
+    def test_learning_disabled_does_not_add_vault_mount(self, tmp_path: Path):
+        with _patch_settings(tmp_path, learning=LearningConfig(enabled=False)):
+            (tmp_path / "groups" / "test-group").mkdir(parents=True)
+
+            mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
+
+        assert all(m.container_path != "/workspace/vault" for m in mounts)
+
+    def test_learning_enabled_mounts_vault_readwrite(self, tmp_path: Path):
+        vault = tmp_path / "vault"
+        vault.mkdir()
+        learning = LearningConfig(
+            enabled=True,
+            obsidian=ObsidianLearningConfig(
+                vault_root=str(vault),
+                mount_path="/mnt/obsidian",
+            ),
+        )
+
+        with _patch_settings(tmp_path, learning=learning):
+            (tmp_path / "groups" / "test-group").mkdir(parents=True)
+
+            mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
+
+        vault_mount = next(
+            (m for m in mounts if m.container_path == "/mnt/obsidian"),
+            None,
+        )
+        assert vault_mount is not None, "expected vault mount"
+        assert vault_mount.host_path == str(vault.resolve())
+        assert vault_mount.readonly is False
+
+    def test_learning_mount_creates_profile_fallback_dirs(self, tmp_path: Path):
+        vault = tmp_path / "vault"
+        vault.mkdir()
+        learning = LearningConfig(
+            enabled=True,
+            obsidian=ObsidianLearningConfig(vault_root=str(vault)),
+        )
+        workspaces = {"test-group": WorkspaceConfig(profile="Deep Work!!")}
+
+        with _patch_settings(tmp_path, learning=learning, workspaces=workspaces):
+            (tmp_path / "groups" / "test-group").mkdir(parents=True)
+
+            build_volume_mounts(TEST_GROUP, is_admin=False)
+
+        profile_root = vault.resolve() / "systems/pynchy/profiles/deep-work"
+        assert (profile_root / "memory").is_dir()
+        assert (profile_root / "skills").is_dir()
+
+    def test_learning_mount_syncs_vault_profile_skill_when_learned_selected(
+        self,
+        tmp_path: Path,
+    ):
+        vault = tmp_path / "vault"
+        learned_skill = vault / "systems/pynchy/profiles/deep-work/skills/remember-routing"
+        learned_skill.mkdir(parents=True)
+        (learned_skill / "SKILL.md").write_text(
+            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
+        )
+        learning = LearningConfig(
+            enabled=True,
+            obsidian=ObsidianLearningConfig(vault_root=str(vault)),
+        )
+        workspaces = {"test-group": WorkspaceConfig(profile="Deep Work!!", skills=["learned"])}
+
+        with _patch_settings(tmp_path, learning=learning, workspaces=workspaces):
+            (tmp_path / "groups" / "test-group").mkdir(parents=True)
+
+            build_volume_mounts(TEST_GROUP, is_admin=False)
+
+        skill_dst = tmp_path / "data/sessions/test-group/.claude/skills/remember-routing/SKILL.md"
+        assert skill_dst.exists()
+
+    @pytest.mark.parametrize("vault_state", ["missing", "file"])
+    def test_learning_enabled_requires_existing_vault_directory(
+        self,
+        tmp_path: Path,
+        vault_state: str,
+    ):
+        vault = tmp_path / "vault"
+        if vault_state == "file":
+            vault.write_text("not a directory")
+        learning = LearningConfig(
+            enabled=True,
+            obsidian=ObsidianLearningConfig(vault_root=str(vault)),
+        )
+
+        with (
+            _patch_settings(tmp_path, learning=learning),
+            pytest.raises(LearningConfigError, match=r"vault_root.*directory"),
+        ):
+            (tmp_path / "groups" / "test-group").mkdir(parents=True)
+            build_volume_mounts(TEST_GROUP, is_admin=False)
+
     def test_admin_group_has_project_mount(self, tmp_path: Path):
         worktree_path = tmp_path / "worktrees" / "admin-1"
         worktree_path.mkdir(parents=True)
@@ -1304,6 +1411,96 @@ class TestSyncSkills:
 
         # Only the skills/ directory should exist, no README.md copied
         assert not (session_dir / "skills" / "README.md").exists()
+
+    def test_learned_skills_are_synced_when_learned_tier_selected(self, tmp_path: Path):
+        learned_skill = tmp_path / "vault-skills" / "remember-routing"
+        learned_skill.mkdir(parents=True)
+        (learned_skill / "SKILL.md").write_text(
+            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
+        )
+        (learned_skill / "notes.md").write_text("Use the right queue.")
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with _patch_settings(tmp_path):
+            _sync_skills(
+                session_dir,
+                workspace_skills=["learned"],
+                learned_skill_paths=[learned_skill],
+            )
+
+        skill_dst = session_dir / "skills" / "remember-routing"
+        assert (skill_dst / "SKILL.md").exists()
+        assert (skill_dst / "notes.md").read_text() == "Use the right queue."
+
+    def test_learned_skills_are_synced_when_all_skills_selected(self, tmp_path: Path):
+        learned_skill = tmp_path / "vault-skills" / "obsidian-filer"
+        learned_skill.mkdir(parents=True)
+        (learned_skill / "SKILL.md").write_text(
+            "---\nname: obsidian-filer\ntier: learned\n---\n# Obsidian Filer\n"
+        )
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with _patch_settings(tmp_path):
+            _sync_skills(
+                session_dir,
+                workspace_skills=["*"],
+                learned_skill_paths=[learned_skill],
+            )
+
+        assert (session_dir / "skills" / "obsidian-filer" / "SKILL.md").exists()
+
+    def test_learned_skills_are_not_synced_when_workspace_skills_is_none(
+        self,
+        tmp_path: Path,
+    ):
+        learned_skill = tmp_path / "vault-skills" / "remember-routing"
+        learned_skill.mkdir(parents=True)
+        (learned_skill / "SKILL.md").write_text(
+            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
+        )
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with _patch_settings(tmp_path):
+            _sync_skills(
+                session_dir,
+                workspace_skills=None,
+                learned_skill_paths=[learned_skill],
+            )
+
+        assert not (session_dir / "skills" / "remember-routing").exists()
+
+    def test_learned_skill_collision_is_skipped_and_logged(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ):
+        builtin_skill = tmp_path / "src" / "pynchy" / "agent" / "skills" / "shared-name"
+        builtin_skill.mkdir(parents=True)
+        (builtin_skill / "SKILL.md").write_text("built-in")
+
+        learned_skill = tmp_path / "vault-skills" / "shared-name"
+        learned_skill.mkdir(parents=True)
+        (learned_skill / "SKILL.md").write_text(
+            "---\nname: shared-name\ntier: learned\n---\nlearned"
+        )
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        caplog.set_level(logging.WARNING)
+        with _patch_settings(tmp_path):
+            _sync_skills(
+                session_dir,
+                workspace_skills=["*"],
+                learned_skill_paths=[learned_skill],
+            )
+
+        copied_skill = session_dir / "skills" / "shared-name" / "SKILL.md"
+        assert copied_skill.read_text() == "built-in"
+        assert "Skipping learned skill" in caplog.text
+        assert "collision" in caplog.text
 
 
 # ---------------------------------------------------------------------------

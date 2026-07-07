@@ -88,6 +88,7 @@ def _sync_skills(
     plugin_manager: pluggy.PluginManager | None = None,
     *,
     workspace_skills: list[str] | None = None,
+    learned_skill_paths: list[Path] | None = None,
 ) -> None:
     """Copy agent/skills/ and plugin skills into the session's .claude/skills/ directory.
 
@@ -95,6 +96,7 @@ def _sync_skills(
         session_dir: Path to the .claude directory for this session
         plugin_manager: Optional pluggy.PluginManager for plugin skills
         workspace_skills: Skill tier/name filter from workspace config; None = core only
+        learned_skill_paths: Optional learned skill directories from the Obsidian vault
     """
     s = get_settings()
     skills_dst = session_dir / "skills"
@@ -111,10 +113,7 @@ def _sync_skills(
                 logger.debug("Skipping skill (not selected)", skill=name, tier=tier)
                 continue
             dst_dir = skills_dst / skill_dir.name
-            dst_dir.mkdir(parents=True, exist_ok=True)
-            for f in skill_dir.iterdir():
-                if f.is_file():
-                    shutil.copy2(f, dst_dir / f.name)
+            _copy_direct_skill_files(skill_dir, dst_dir)
 
     # Copy plugin skills
     if plugin_manager:
@@ -153,6 +152,51 @@ def _sync_skills(
                 raise  # Re-raise name collisions — these must not be silenced
             except (OSError, TypeError):
                 logger.exception("Failed to sync plugin skills")
+
+    if learned_skill_paths and workspace_skills is not None:
+        _sync_learned_skills(skills_dst, learned_skill_paths, workspace_skills)
+
+
+def _copy_direct_skill_files(skill_dir: Path, dst_dir: Path) -> None:
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    for f in skill_dir.iterdir():
+        if f.is_file():
+            shutil.copy2(f, dst_dir / f.name)
+
+
+def _sync_learned_skills(
+    skills_dst: Path,
+    learned_skill_paths: list[Path],
+    workspace_skills: list[str],
+) -> None:
+    # Learned skill collisions are non-fatal because vault content should not
+    # be able to break startup.
+    for skill_path in learned_skill_paths:
+        if not skill_path.exists() or not skill_path.is_dir():
+            logger.warning(
+                "Skipping learned skill",
+                path=str(skill_path),
+                reason="not a directory",
+            )
+            continue
+
+        name, tier = parse_skill_tier(skill_path)
+        if not is_skill_selected(name, tier, workspace_skills):
+            logger.debug("Skipping learned skill (not selected)", skill=name, tier=tier)
+            continue
+
+        dst_dir = skills_dst / skill_path.name
+        if dst_dir.exists():
+            logger.warning(
+                "Skipping learned skill",
+                skill=skill_path.name,
+                path=str(skill_path),
+                reason="collision",
+            )
+            continue
+
+        _copy_direct_skill_files(skill_path, dst_dir)
+        logger.info("Synced learned skill", skill=skill_path.name)
 
 
 def _write_settings_json(session_dir: Path) -> None:
