@@ -398,8 +398,12 @@ class CommandWordsConfig(_StrictModel):
 
 
 class SchedulerConfig(_StrictModel):
+    # NOTE: Update docs/usage/scheduled-tasks.md § Temporal Scheduler if you change these fields.
     poll_interval: float = 60.0  # seconds
     timezone: str = ""  # empty → auto-detect
+    temporal_address: str = "localhost:7233"
+    temporal_namespace: str = "default"
+    temporal_task_queue: str = "pynchy-scheduler"
 
 
 class CronJobConfig(_StrictModel):

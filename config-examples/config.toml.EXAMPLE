@@ -122,6 +122,11 @@
 # Timezone for scheduled tasks (auto-detected from system if empty)
 # timezone = "America/New_York"
 
+# Temporal service used for scheduled agent task workflows
+# temporal_address = "localhost:7233"
+# temporal_namespace = "default"
+# temporal_task_queue = "pynchy-scheduler"
+
 [intervals]
 # Message polling interval (seconds)
 # message_poll = 2.0

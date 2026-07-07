@@ -10,6 +10,8 @@ Install Pynchy on macOS or Linux — desktop or headless server.
 - **Python 3.13+**
 - **[uv](https://docs.astral.sh/uv/)** - Python package manager
 - **LLM API key** - OpenAI by default, or another provider configured through LiteLLM
+- **Temporal service** reachable from the Pynchy host for scheduled agent tasks
+  (default: `localhost:7233`)
 - **Container runtime:**
   - macOS: [Apple Container](https://github.com/apple/container) (preferred) or [Docker Desktop](https://docker.com/products/docker-desktop)
   - Linux: [Docker](https://docs.docker.com/engine/install/)
@@ -75,6 +77,7 @@ Common configurations:
 
 - **OpenAI API key:** Set `[secrets].openai_api_key`, or reference `OPENAI_API_KEY` from `litellm_config.yaml`
 - **Anthropic API key:** Set `[secrets].anthropic_api_key`, or add an Anthropic API-key deployment to `litellm_config.yaml`
+- **Temporal scheduler:** Run a Temporal service and set `[scheduler].temporal_address` if it does not listen on `localhost:7233`.
 - **Claude SDK core:** Set `[agent] core = "claude"` and provide a valid Anthropic API key; Claude Code OAuth tokens are not supported as provider credentials.
 - **Codex CLI core:** Configure a Codex-capable model in `litellm_config.yaml`, then set `[agent] core = "codex"` and `[agent] model` to that LiteLLM `model_name`. Codex model traffic routes through the same gateway as the OpenAI core.
 

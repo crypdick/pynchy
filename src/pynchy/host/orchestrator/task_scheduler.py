@@ -59,6 +59,24 @@ class SchedulerDependencies(Protocol):
 _scheduler_lock = asyncio.Lock()
 _scheduler_running = False
 _cron_job_next_runs: dict[str, str] = {}
+TemporalSchedulerRuntime: Any | None = None
+
+
+@runtime_checkable
+class TemporalRuntime(Protocol):
+    async def start_scheduled_agent_task(self, task: ScheduledTask) -> None: ...
+
+
+def _build_temporal_runtime(deps: SchedulerDependencies, scheduler_config: Any) -> Any:
+    """Build the Temporal runtime lazily to avoid a scheduler module import cycle."""
+    global TemporalSchedulerRuntime
+    if TemporalSchedulerRuntime is None:
+        from pynchy.host.orchestrator.temporal.scheduler import (
+            TemporalSchedulerRuntime as _TemporalSchedulerRuntime,
+        )
+
+        TemporalSchedulerRuntime = _TemporalSchedulerRuntime
+    return TemporalSchedulerRuntime(deps, scheduler_config)
 
 
 async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
@@ -69,8 +87,21 @@ async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
             logger.debug("Scheduler loop already running, skipping duplicate start")
             return
         _scheduler_running = True
-    logger.info("Scheduler loop started")
+    scheduler_config = get_settings().scheduler
+    logger.info("Scheduler loop started", backend="temporal")
 
+    try:
+        async with _build_temporal_runtime(deps, scheduler_config) as temporal_runtime:
+            await _run_scheduler_loop(deps, temporal_runtime)
+    finally:
+        async with _scheduler_lock:
+            _scheduler_running = False
+
+
+async def _run_scheduler_loop(
+    deps: SchedulerDependencies, temporal_runtime: TemporalRuntime
+) -> None:
+    """Poll due work and dispatch scheduled agent tasks through Temporal."""
     while True:
         try:
             await _poll_host_cron_jobs()
@@ -86,24 +117,24 @@ async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
             if due_tasks:
                 logger.info("Found due tasks", count=len(due_tasks))
 
-            for task in due_tasks:
-                # Re-check task status (may have been paused/cancelled)
-                current_task = await get_task_by_id(task.id)
-                if not current_task or current_task.status != "active":
-                    continue
-
-                async def _make_task_runner(t: ScheduledTask = current_task) -> None:
-                    await _run_scheduled_agent(t, deps)
-
-                deps.queue.enqueue_task(
-                    current_task.chat_jid,
-                    current_task.id,
-                    _make_task_runner,
-                )
+            await _dispatch_due_agent_tasks(due_tasks, temporal_runtime)
         except Exception:
             logger.exception("Error in scheduler loop")
 
         await asyncio.sleep(get_settings().scheduler.poll_interval)
+
+
+async def _dispatch_due_agent_tasks(
+    due_tasks: list[ScheduledTask],
+    temporal_runtime: TemporalRuntime,
+) -> None:
+    for task in due_tasks:
+        # Re-check task status (may have been paused/cancelled)
+        current_task = await get_task_by_id(task.id)
+        if not current_task or current_task.status != "active":
+            continue
+
+        await temporal_runtime.start_scheduled_agent_task(current_task)
 
 
 def _resolve_cron_job_cwd(cwd: str | None) -> str:

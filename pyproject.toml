@@ -16,6 +16,7 @@ dependencies = [
     "pydantic>=2.12.5",
     "pydantic-settings[toml]>=2.9",
     "structlog>=25.5.0",
+    "temporalio>=1.30.0",
     "textual>=7.5.0",
     "tomlkit>=0.13",
     "watchdog>=6.0.0",
