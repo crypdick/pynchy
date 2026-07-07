@@ -9,7 +9,7 @@ Day-to-day operation of Pynchy — managing groups, scheduling tasks, talking to
 - **Admin channel** — Your private channel (self-chat) for admin control; every other group is completely isolated
 - **[Persistent memory](memory.md)** — Agents save and recall facts across sessions using structured memory tools with ranked search (plugin-provided backend)
 - **[Scheduled tasks](scheduled-tasks.md)** — Recurring jobs that run Claude and can message you back
-- **[Agent cores](agent-cores.md)** — Choose which LLM powers your agents — Claude SDK or OpenAI SDK (plugin-provided — more can be added)
+- **[Agent cores](agent-cores.md)** — Choose which LLM powers your agents — Claude SDK, OpenAI SDK, Codex CLI, or plugin-provided cores
 - **Web access** — Search and fetch content
 - **Container isolation** — Agents sandboxed in Apple Container (macOS) or Docker (macOS/Linux)
 - **Agent Swarms** — Spin up teams of specialized agents that collaborate on complex tasks

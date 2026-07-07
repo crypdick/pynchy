@@ -1,10 +1,10 @@
-"""Tests for the claude-cli ``PreToolUse`` subprocess entrypoint.
+"""Tests for the shared CLI ``PreToolUse`` subprocess entrypoint.
 
-The claude binary runs the security gate as a fresh subprocess per tool call
+Claude Code and Codex run the security gate as a fresh subprocess per tool call
 (security/hook_entry.py). These tests pin the invariant that this subprocess
-enforces the *same* BEFORE_TOOL_USE roster as the SDK core -- built-in hooks
-plus any plugin hooks handed over via the ``PYNCHY_PLUGIN_HOOKS`` env var -- so
-the gate can never silently differ by which core is selected.
+enforces the *same* BEFORE_TOOL_USE roster as SDK cores -- built-in hooks plus
+any plugin hooks handed over via the ``PYNCHY_PLUGIN_HOOKS`` env var -- so the
+gate can never silently differ by which core is selected.
 """
 
 from __future__ import annotations
@@ -107,3 +107,15 @@ def test_main_allows_tool_the_plugin_permits(monkeypatch, capsys, tmp_path):
 
     # Read passes the plugin gate and both builtins (non-Bash -> allow).
     assert _run_main(monkeypatch, capsys, tool_name="Read") == ""
+
+
+def test_extract_tool_call_accepts_codex_camel_case_payload():
+    payload = {"toolName": "Bash", "toolInput": {"command": "git status"}}
+
+    assert hook_entry._extract_tool_call(payload) == ("Bash", {"command": "git status"})
+
+
+def test_extract_tool_call_accepts_codex_nested_tool_payload():
+    payload = {"tool": {"name": "Bash", "input": {"command": "git diff"}}}
+
+    assert hook_entry._extract_tool_call(payload) == ("Bash", {"command": "git diff"})

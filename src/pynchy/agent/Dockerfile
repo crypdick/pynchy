@@ -1,5 +1,5 @@
 # Pynchy Agent Container
-# Runs agent cores (Claude SDK, OpenAI Agents SDK) in isolated Linux VM
+# Runs agent cores (Claude SDK, OpenAI Agents SDK, Codex CLI) in isolated Linux VM
 
 FROM python:3.13-slim
 
@@ -29,8 +29,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Disable Python stdout buffering so stderr log lines reach the host immediately
 ENV PYTHONUNBUFFERED=1
 
-# Install claude-code globally
+# Install CLI agent backends globally
 RUN npm install -g @anthropic-ai/claude-code && npm cache clean --force
+RUN curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 CODEX_INSTALL_DIR=/usr/local/bin sh
 
 # Install Claude Code plugins (loaded via Agent SDK's plugins option at runtime)
 RUN git clone --depth 1 https://github.com/obra/superpowers.git /opt/plugins/superpowers

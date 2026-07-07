@@ -76,6 +76,7 @@ Common configurations:
 - **OpenAI API key:** Set `[secrets].openai_api_key`, or reference `OPENAI_API_KEY` from `litellm_config.yaml`
 - **Anthropic API key:** Set `[secrets].anthropic_api_key`, or add an Anthropic API-key deployment to `litellm_config.yaml`
 - **Claude SDK core:** Set `[agent] core = "claude"` and provide a valid Anthropic API key; Claude Code OAuth tokens are not supported as provider credentials.
+- **Codex subscription instead of API billing:** Run `codex login` on the host, then set `[agent] core = "codex"`. Pynchy copies `~/.codex/auth.json` into each group's isolated container Codex home the first time that group runs.
 
 #### LiteLLM Gateway (recommended)
 

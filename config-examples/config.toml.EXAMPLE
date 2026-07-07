@@ -20,7 +20,7 @@
 # Trigger aliases (used in addition to agent name for @mentions)
 # trigger_aliases = ["ghost"]
 
-# Agent core: "openai" (default) or "claude"
+# Agent core: "openai" (default), "claude", "claude-cli", or "codex"
 # core = "openai"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -28,6 +28,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Secrets (API keys, tokens, passwords) belong in .env, not here.
 # See config-examples/.env.EXAMPLE for the template.
+#
+# For Codex subscription auth, run `codex login` on the host. Pynchy seeds the
+# per-group container Codex home from ~/.codex/auth.json when that file exists.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Container Configuration

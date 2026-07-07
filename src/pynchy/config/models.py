@@ -59,7 +59,7 @@ class AgentConfig(_StrictModel):
     name: str = "pynchy"
     # NOTE: Update docs/architecture/message-routing.md § Trigger Pattern if you change this
     trigger_aliases: list[str] = ["ghost"]
-    core: str = "openai"  # "openai" or "claude"
+    core: str = "openai"  # built-in: "openai", "claude", "claude-cli", or "codex"
 
 
 class ContainerConfig(_StrictModel):

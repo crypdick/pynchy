@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -15,6 +16,26 @@ from pynchy.host.container_manager.session_prep import _sync_skills, _write_sett
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.orchestrator.workspace_config import load_resolved_config
 from pynchy.types import VolumeMount, WorkspaceProfile
+
+
+def _prepare_codex_home(group_folder: str) -> Path:
+    """Create per-group Codex CLI state and seed host auth when available.
+
+    Codex CLI subscription auth lives in ``CODEX_HOME/auth.json``. Pynchy keeps
+    that state per group so Codex threads and token refreshes do not share a
+    mutable ``~/.codex`` directory across sandboxes.
+    """
+    s = get_settings()
+    codex_home = s.data_dir / "sessions" / group_folder / ".codex"
+    codex_home.mkdir(parents=True, exist_ok=True)
+
+    group_auth = codex_home / "auth.json"
+    host_auth = Path.home() / ".codex" / "auth.json"
+    if not group_auth.exists() and host_auth.exists():
+        shutil.copy2(host_auth, group_auth)
+        group_auth.chmod(0o600)
+
+    return codex_home
 
 
 def build_volume_mounts(
@@ -63,6 +84,9 @@ def build_volume_mounts(
         workspace_skills=resolved.skills if resolved else None,
     )
     mounts.append(VolumeMount(str(session_dir), "/home/agent/.claude", readonly=False))
+
+    codex_home = _prepare_codex_home(group.folder)
+    mounts.append(VolumeMount(str(codex_home), "/home/agent/.codex", readonly=False))
 
     # Per-group IPC namespace
     group_ipc_dir = s.data_dir / "ipc" / group.folder

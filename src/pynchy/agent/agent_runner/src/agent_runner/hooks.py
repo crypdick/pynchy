@@ -175,10 +175,11 @@ def before_tool_use_roster(
     Built-in security hooks first, then plugin-provided BEFORE_TOOL_USE hooks;
     first deny wins. This is the *single source of truth* for the security
     roster: every core composes its gate here -- the SDK core (cores/claude.py),
-    the OpenAI core (cores/openai.py), and the claude-cli ``PreToolUse``
-    subprocess (security/hook_entry.py). Routing all three through one function
-    makes it impossible for a core to silently enforce a different set than the
-    others (the exact drift that let the CLI subprocess run builtins-only).
+    the OpenAI core (cores/openai.py), the claude-cli ``PreToolUse`` subprocess,
+    and the Codex CLI hook (security/hook_entry.py). Routing them all through
+    one function makes it impossible for a core to silently enforce a different
+    set than the others (the exact drift that let the CLI subprocess run
+    builtins-only).
 
     ``agnostic_hooks`` is the already-loaded :func:`load_hooks` map; callers that
     only have raw specs pass ``load_hooks(specs)``.

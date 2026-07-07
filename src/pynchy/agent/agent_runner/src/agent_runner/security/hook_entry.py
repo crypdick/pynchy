@@ -1,16 +1,15 @@
-"""CLI ``PreToolUse`` hook entrypoint for the claude-cli agent core.
+"""CLI ``PreToolUse`` hook entrypoint for CLI-backed agent cores.
 
-The Claude Code CLI runs ``PreToolUse`` hooks as shell commands: it passes the
-tool call as JSON on the command's **stdin** and reads a decision JSON from its
-**stdout**. This module bridges that protocol back to pynchy's in-Python
-BEFORE_TOOL_USE security functions (``bash_security_hook``, ``guard_git_hook``),
-so the claude-cli core enforces the exact same gate as the SDK core
-(cores/claude.py, ``_wrap_before_tool_use``).
+Claude Code and Codex run ``PreToolUse`` hooks as shell commands: they pass the
+tool call as JSON on the command's **stdin** and read a decision JSON from the
+command's **stdout**. This module bridges that protocol back to pynchy's
+in-Python BEFORE_TOOL_USE security functions (``bash_security_hook``,
+``guard_git_hook``), so CLI cores enforce the exact same gate as SDK cores.
 
 The gate itself is stateless in the container -- ``bash_security_hook``
 delegates taint/Cop decisions to the host over file IPC -- so evaluating it from
-this short-lived subprocess is functionally identical to the SDK's in-process
-call. Invoked as ``python -m agent_runner.security.hook_entry``.
+this short-lived subprocess is functionally identical to in-process evaluation.
+Invoked as ``python -m agent_runner.security.hook_entry``.
 """
 
 from __future__ import annotations
@@ -28,13 +27,13 @@ from agent_runner.hooks import (
     load_hooks,
 )
 
-# Env var the claude-cli core (cores/claude_cli.py) uses to hand plugin
-# BEFORE_TOOL_USE specs to this subprocess. See _load_roster.
+# Env var CLI-backed cores use to hand plugin BEFORE_TOOL_USE specs to this
+# subprocess. See _load_roster.
 _PLUGIN_HOOKS_ENV = "PYNCHY_PLUGIN_HOOKS"
 
 
 def _log(message: str) -> None:
-    print(f"[claude-cli-hook] {message}", file=sys.stderr, flush=True)  # allow: print-statements
+    print(f"[cli-hook] {message}", file=sys.stderr, flush=True)  # allow: print-statements
 
 
 def _load_roster() -> tuple[BeforeToolUseHook, ...]:
@@ -67,6 +66,25 @@ async def _evaluate(
     return None
 
 
+def _extract_tool_call(data: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """Extract tool name/input from Claude- and Codex-shaped hook payloads."""
+    tool_name = data.get("tool_name") or data.get("toolName") or ""
+    tool_input = data.get("tool_input") or data.get("toolInput") or {}
+
+    tool = data.get("tool")
+    if isinstance(tool, dict):
+        tool_name = tool_name or tool.get("name") or tool.get("toolName") or ""
+        tool_input = tool_input or tool.get("input") or tool.get("toolInput") or {}
+
+    if not isinstance(tool_input, dict):
+        tool_input = {"input": tool_input}
+
+    if "command" in data and "command" not in tool_input:
+        tool_input["command"] = data["command"]
+
+    return str(tool_name), tool_input
+
+
 def main() -> None:
     raw = sys.stdin.read()
     try:
@@ -78,8 +96,7 @@ def main() -> None:
         _log(f"unparseable hook input, allowing by default: {raw[:200]}")
         sys.exit(0)
 
-    tool_name = data.get("tool_name", "")
-    tool_input = data.get("tool_input", {}) or {}
+    tool_name, tool_input = _extract_tool_call(data)
 
     hooks = _load_roster()
     try:
