@@ -240,6 +240,7 @@ class TestInstallLaunchdService:
         (src_dir / "com.pynchy.plist").write_text(
             "<string>$HOME/.local/bin/uv</string>\n"
             "<string>$HOME/src/PERSONAL/pynchy</string>\n"
+            "<string>$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin</string>\n"
             "<string>$HOME</string>\n"
         )
 
@@ -263,6 +264,7 @@ class TestInstallLaunchdService:
         content = (tmp_path / "Library" / "LaunchAgents" / "com.pynchy.plist").read_text()
         assert "$HOME" not in content
         assert "/opt/homebrew/bin/uv" in content
+        assert "/opt/homebrew/bin:" in content
         assert str(tmp_path) in content
 
     def test_loads_when_running_under_launchd(self, tmp_path: Path):

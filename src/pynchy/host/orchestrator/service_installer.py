@@ -24,6 +24,27 @@ def is_launchd_loaded(label: str) -> bool:
     return result.returncode == 0
 
 
+def _launchd_path(home: Path, uv_path: str) -> str:
+    """Build a launchd PATH that can find uv and Homebrew-installed runtimes."""
+    parts = [
+        home / ".local" / "bin",
+        Path(uv_path).parent,
+        Path("/opt/homebrew/bin"),
+        Path("/usr/local/bin"),
+        Path("/usr/bin"),
+        Path("/bin"),
+    ]
+    seen: set[str] = set()
+    path_values: list[str] = []
+    for path in parts:
+        value = str(path)
+        if value in seen:
+            continue
+        seen.add(value)
+        path_values.append(value)
+    return ":".join(path_values)
+
+
 def install_service() -> None:
     """Install the platform service file so the process auto-restarts on exit.
 
@@ -58,6 +79,10 @@ def _install_launchd_service() -> None:
         .replace("$HOME/src/PERSONAL/pynchy", str(project_root))
         .replace("$HOME/.local/bin/uv", uv_path)
         .replace("$HOME", str(home))
+    )
+    rendered = rendered.replace(
+        f"{home}/.local/bin:/usr/local/bin:/usr/bin:/bin",
+        _launchd_path(home, uv_path),
     )
     already_loaded = is_launchd_loaded(label)
     file_changed = not dest.exists() or dest.read_text() != rendered

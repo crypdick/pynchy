@@ -20,7 +20,13 @@ Install Pynchy on macOS or Linux — desktop or headless server.
 ```bash
 brew install libmagic              # Required by neonize (WhatsApp) for MIME detection
 brew install container             # Apple Container (recommended) — or install Docker Desktop
+brew services start container
+container system kernel set --recommended
 ```
+
+If you enable the LiteLLM gateway, also install and start Docker Desktop or
+Colima. The agent runtime can use Apple Container, but the gateway currently
+uses Docker networking.
 
 **Linux (Debian/Ubuntu):**
 ```bash
@@ -124,10 +130,28 @@ Docker MCP containers start on-demand and stop after `idle_timeout`. See [MCP se
 ### 3. Build Container Image
 
 ```bash
-./container/build.sh                         # Build the agent container image
+./src/pynchy/agent/build.sh                  # Build the agent container image
 ```
 
-### 4. Authenticate WhatsApp
+### 4. Migrate an Existing Install
+
+For a migration, stop the old service before copying files. Copy the persistent
+state into the same relative paths in the new checkout:
+
+- `data/`
+- `config.toml`
+- `litellm_config.yaml`
+- `.env`, if it stores gateway, channel, or model-provider secrets
+
+Do not copy `data/deploy_continuation.json`. It only tracks an in-progress
+deploy and can trigger a rollback to an old commit on the new host.
+
+If `data/neonize.db` comes across, skip WhatsApp QR authentication unless the
+session has expired. Do not blindly transplant `data/litellm/postgres` between
+Linux Docker and macOS Apple Container deployments; let the gateway recreate
+its database from config unless you explicitly need LiteLLM internal history.
+
+### 5. Authenticate WhatsApp
 
 ```bash
 uv run pynchy-whatsapp-auth                 # Authenticate WhatsApp (scan QR code)
@@ -138,7 +162,7 @@ uv run pynchy-whatsapp-auth                 # Authenticate WhatsApp (scan QR cod
 3. Scan the QR code displayed in the terminal
 4. Wait for "Successfully authenticated" before pressing Ctrl+C
 
-### 5. Run Pynchy
+### 6. Run Pynchy
 
 ```bash
 uv run pynchy                                # Start Pynchy
@@ -204,7 +228,7 @@ cd ~/src/pynchy
 uv sync
 
 # Build the agent container image
-sg docker -c './container/build.sh'
+sg docker -c './src/pynchy/agent/build.sh'
 ```
 
 ### 3. Authenticate WhatsApp
@@ -379,7 +403,7 @@ systemctl --user restart pynchy
 - If not, run `sudo usermod -aG docker $USER` and log out/in
 - **"BuildKit is enabled but the buildx component is missing"**: Install the buildx plugin: `sudo apt-get install docker-buildx` (Debian/Ubuntu) or `sudo dnf install docker-buildx-plugin` (Fedora/RHEL). BuildKit is required for container builds.
 
-Then rebuild: `./container/build.sh`
+Then rebuild: `./src/pynchy/agent/build.sh`
 
 ### Port 8484 not reachable over Tailscale
 
