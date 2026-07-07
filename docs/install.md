@@ -151,6 +151,14 @@ session has expired. Do not blindly transplant `data/litellm/postgres` between
 Linux Docker and macOS Apple Container deployments; let the gateway recreate
 its database from config unless you explicitly need LiteLLM internal history.
 
+The migrated `data/` directory can also contain runtime-only host state such as
+`data/worktrees/`, `data/repos/`, and old `messages.db` rows. If startup hangs
+on `git fetch` or repo-access workspaces because the new host cannot reach
+GitHub over SSH yet, move those runtime directories aside or temporarily remove
+the affected `repo_access` entries from `config.toml`. Old message history is
+useful but not required for a successful cutover; prioritize one healthy service
+instance over perfectly preserving historical rows.
+
 ### 5. Authenticate WhatsApp
 
 ```bash
@@ -410,7 +418,38 @@ Then rebuild: `./src/pynchy/agent/build.sh`
 - Verify Tailscale is connected: `tailscale status`
 <!-- Source of truth for the default port: ServerConfig.port in src/pynchy/config/models.py — keep the 8484 references in this file in sync. -->
 - The HTTP server binds to `0.0.0.0:8484` by default, which is accessible over Tailscale without any additional configuration
+- On macOS, if raw tailnet access to `:8484` is unreliable and you use Tailscale
+  Serve, do not bind Serve and Pynchy to the same local port. Set Pynchy to a
+  different local port, for example:
+
+  ```toml
+  [server]
+  port = 8485
+  ```
+
+  Then expose the stable tailnet URL with:
+
+  ```bash
+  tailscale serve --bg --http 8484 8485
+  ```
+
 - Check firewall rules if on a cloud provider
+
+### macOS launchd service does not stay loaded
+
+If `uv run pynchy` works manually but the LaunchAgent exits immediately:
+
+- Validate the installed plist: `plutil -lint ~/Library/LaunchAgents/com.pynchy.plist`
+- Check for quarantine/provenance metadata and remove it if present:
+  `xattr -l ~/Library/LaunchAgents/com.pynchy.plist` then
+  `xattr -d com.apple.provenance ~/Library/LaunchAgents/com.pynchy.plist`
+- Confirm launchd is using resolved paths, not literal `$HOME` strings:
+  `launchctl print gui/$(id -u)/com.pynchy`
+- If `launchctl print` briefly shows `/opt/homebrew/bin/uv run pynchy` and then
+  the label disappears with empty logs, run the same command in a foreground
+  shell or tmux to separate launchd issues from application startup issues.
+  GitHub SSH hangs from migrated `repo_access` workspaces can look like service
+  startup failures.
 
 ### Service won't start after reboot
 
