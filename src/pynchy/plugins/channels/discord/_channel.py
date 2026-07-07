@@ -24,7 +24,7 @@ from pynchy.logger import logger
 from pynchy.types import InboundFetchResult, NewMessage, OutboundEvent, WorkspaceProfile
 
 from ._access import DiscordAccess
-from ._chunk import chunk_discord_text
+from ._chunk import DISCORD_LIMIT, chunk_discord_text
 from ._events import DiscordEvents
 from ._ids import is_discord_jid, parse_jid
 from ._lifecycle import DiscordLifecycle
@@ -132,6 +132,48 @@ class DiscordChannel:
             logger.warning(
                 "Discord send forbidden (missing permission or DM blocked)", err=str(exc)
             )
+
+    async def post_event(self, jid: str, event: OutboundEvent) -> str | None:
+        """Post a streaming preview message and return its id for in-place updates.
+
+        Returns ``None`` when there is nothing to show or the text is too large
+        for a single editable message; core then routes it through the chunked
+        :meth:`send_event` path instead.
+        """
+        if self.client is None or not self.owns_jid(jid):
+            return None
+        text = self.formatter.render(event).text
+        if not text.strip() or len(text) > DISCORD_LIMIT:
+            return None
+        try:
+            channel = await self._resolve_channel(jid)
+            message = await channel.send(
+                text,
+                allowed_mentions=discord.AllowedMentions.none(),
+                suppress_embeds=True,
+            )
+        except discord.DiscordException as exc:
+            logger.warning("Discord post_event failed", jid=jid, err=str(exc))
+            return None
+        return f"{_MESSAGE_ID_PREFIX}{message.id}"
+
+    async def update_event(self, jid: str, message_id: str, event: OutboundEvent) -> None:
+        """Edit a previously posted streaming message in place.
+
+        Raises when the text exceeds the single-message limit so ``sender.py``
+        falls back to the chunked :meth:`send_event` path.
+        """
+        if self.client is None or not self.owns_jid(jid):
+            return
+        if not message_id.startswith(_MESSAGE_ID_PREFIX):
+            return
+        text = self.formatter.render(event).text
+        if len(text) > DISCORD_LIMIT:
+            raise ValueError("Discord message exceeds 2000 chars; falling back to chunked send")
+        raw_id = message_id.removeprefix(_MESSAGE_ID_PREFIX)
+        channel = await self._resolve_channel(jid)
+        message = await channel.fetch_message(int(raw_id))
+        await message.edit(content=text, allowed_mentions=discord.AllowedMentions.none())
 
     async def send_reaction(self, jid: str, message_id: str, sender: str, emoji: str) -> None:
         if self.client is None or not self.owns_jid(jid):

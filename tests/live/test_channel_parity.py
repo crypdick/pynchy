@@ -35,6 +35,7 @@ from pynchy.types import ContainerOutput, OutboundEvent, OutboundEventType, Work
 
 from .conftest import (
     RecordingChannel,
+    make_discord_channel,
     make_slack_channel,
     make_tui_channel,
     make_whatsapp_channel,
@@ -96,7 +97,12 @@ class TestBroadcastRawTextParity:
 
     @pytest.fixture
     def channels(self) -> list[RecordingChannel]:
-        return [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        return [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
 
     async def test_simple_text_reaches_all_channels(self, channels):
         """Plain text broadcasts should arrive identically at every channel."""
@@ -190,7 +196,12 @@ class TestHostMessageParity:
 
     async def test_host_message_emoji_prefix_consistent(self):
         """broadcast_host_message should prepend 🏠 for all channels."""
-        channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        channels = [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
         host_broadcaster = self._make_host_broadcaster(channels)
 
         await host_broadcaster.broadcast_host_message(CHAT_JID, "⚠️ Agent error occurred")
@@ -203,7 +214,12 @@ class TestHostMessageParity:
 
     async def test_host_message_text_identical_across_channels(self):
         """All channels should receive the exact same host message text."""
-        channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        channels = [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
         host_broadcaster = self._make_host_broadcaster(channels)
 
         messages = [
@@ -237,7 +253,12 @@ class TestReactionAndTypingParity:
 
     async def test_typing_sent_to_channels_that_support_it(self):
         """set_typing should be called on channels with set_typing, skipped for others."""
-        channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        channels = [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
         deps = _make_deps(channels)
 
         await set_typing_on_channels(deps, CHAT_JID, True)
@@ -249,7 +270,12 @@ class TestReactionAndTypingParity:
 
     async def test_reaction_sent_to_channels_that_support_it(self):
         """send_reaction should be called on channels with send_reaction."""
-        channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        channels = [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
         deps = _make_deps(channels)
 
         await send_reaction_to_channels(deps, CHAT_JID, "msg-1", "user@s", "👍")
@@ -285,7 +311,12 @@ class TestAgentOutputParity:
 
     async def test_agent_text_result_parity(self):
         """Agent result text should reach all channels (with prefix differences)."""
-        channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        channels = [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
         deps = self._make_output_deps(channels)
         group = WorkspaceProfile(
             jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
@@ -320,7 +351,12 @@ class TestAgentOutputParity:
 
     async def test_host_tagged_result_parity(self):
         """<host>...</host> wrapped results should get 🏠 prefix on all channels."""
-        channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        channels = [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
         deps = self._make_output_deps(channels)
         group = WorkspaceProfile(
             jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
@@ -359,7 +395,12 @@ class TestAgentOutputParity:
 
     async def test_thinking_trace_parity(self):
         """Thinking trace events should broadcast consistently."""
-        channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        channels = [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
         deps = self._make_output_deps(channels)
         group = WorkspaceProfile(
             jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
@@ -395,7 +436,12 @@ class TestAgentOutputParity:
 
     async def test_tool_use_trace_parity(self):
         """Tool use trace events should broadcast consistently."""
-        channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        channels = [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
         deps = self._make_output_deps(channels)
         group = WorkspaceProfile(
             jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
@@ -446,7 +492,12 @@ class TestAgentOutputParity:
 
     async def test_tool_result_trace_parity(self):
         """Tool result trace events should broadcast consistently."""
-        channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        channels = [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
         deps = self._make_output_deps(channels)
         group = WorkspaceProfile(
             jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
@@ -481,7 +532,12 @@ class TestAgentOutputParity:
 
     async def test_system_event_parity(self):
         """System events (non-init) should broadcast consistently."""
-        channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        channels = [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
         deps = self._make_output_deps(channels)
         group = WorkspaceProfile(
             jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
@@ -513,7 +569,12 @@ class TestAgentOutputParity:
 
     async def test_system_init_suppressed_on_all_channels(self):
         """System init events should be suppressed from ALL channels equally."""
-        channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        channels = [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
         deps = self._make_output_deps(channels)
         group = WorkspaceProfile(
             jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
@@ -549,7 +610,12 @@ class TestAgentInputBroadcastParity:
 
     async def test_scheduled_task_input_parity(self):
         """Scheduled task inputs should broadcast identically to all channels."""
-        channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        channels = [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
         deps = _make_deps(channels)
 
         # Wire up broadcast_to_channels to actually call channels
@@ -581,7 +647,12 @@ class TestAgentInputBroadcastParity:
 
     async def test_user_input_not_broadcast(self):
         """Normal user inputs should NOT be broadcast (they're already visible)."""
-        channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        channels = [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
         deps = _make_deps(channels)
         deps.broadcast_to_channels = AsyncMock()
         deps.emit = lambda *a, **kw: None
@@ -600,7 +671,12 @@ class TestAgentInputBroadcastParity:
 
     async def test_reset_handoff_input_parity(self):
         """Context handoff inputs should broadcast identically."""
-        channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        channels = [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
         deps = _make_deps(channels)
 
         async def mock_broadcast(jid, event, **kwargs):
@@ -638,7 +714,12 @@ class TestFullTraceSequenceParity:
     async def test_complete_agent_interaction_parity(self):
         """Run a complete thinking → tool_use → tool_result → result sequence
         and verify all channels receive equivalent output at each step."""
-        channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        channels = [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
 
         deps_mock = _make_deps(channels)
 
@@ -731,7 +812,12 @@ class TestEdgeCaseParity:
 
     async def test_internal_tags_in_result_stripped_for_all(self):
         """<internal> content in agent results should be stripped for ALL channels."""
-        channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        channels = [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
 
         deps = _make_deps(channels)
 
@@ -768,7 +854,12 @@ class TestEdgeCaseParity:
 
     async def test_empty_result_parity(self):
         """Empty results should be handled the same across all channels."""
-        channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        channels = [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
         deps = _make_deps(channels)
 
         async def mock_broadcast(jid, event, **kwargs):
@@ -806,7 +897,12 @@ class TestEdgeCaseParity:
 
     async def test_result_metadata_parity(self):
         """Cost/usage metadata should be broadcast identically."""
-        channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        channels = [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
         deps = _make_deps(channels)
 
         async def mock_broadcast(jid, event, **kwargs):
@@ -860,7 +956,12 @@ class TestEdgeCaseParity:
 
     async def test_verbose_tool_result_parity(self):
         """ExitPlanMode tool results should show content on all channels."""
-        channels = [make_tui_channel(), make_whatsapp_channel(), make_slack_channel()]
+        channels = [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
         deps = _make_deps(channels)
 
         async def mock_broadcast(jid, event, **kwargs):

@@ -35,6 +35,34 @@ class _FakeSendChannel:
         self.sends.append((content, kwargs))
 
 
+class _FakeMessage:
+    def __init__(self, message_id: int) -> None:
+        self.id = message_id
+        self.edits: list[tuple[str, dict]] = []
+
+    async def edit(self, *, content: str, **kwargs) -> None:
+        self.edits.append((content, kwargs))
+
+
+class _FakeStreamChannel:
+    """A channel whose ``send`` returns a message and that can fetch it back."""
+
+    def __init__(self) -> None:
+        self.sends: list[tuple[str, dict]] = []
+        self.messages: dict[int, _FakeMessage] = {}
+        self._next_id = 100
+
+    async def send(self, content: str, **kwargs) -> _FakeMessage:
+        self._next_id += 1
+        msg = _FakeMessage(self._next_id)
+        self.messages[msg.id] = msg
+        self.sends.append((content, kwargs))
+        return msg
+
+    async def fetch_message(self, message_id: int) -> _FakeMessage:
+        return self.messages[message_id]
+
+
 def test_satisfies_channel_protocol():
     assert isinstance(_channel(), Channel)
 
@@ -151,3 +179,103 @@ async def test_fetch_inbound_since_filters_bot_and_self():
 
 def test_plugin_returns_none_without_context():
     assert DiscordChannelPlugin().pynchy_create_channel(context=None) is None
+
+
+# ---------------------------------------------------------------------------
+# Streaming (post_event / update_event)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_post_event_sends_preview_and_returns_message_id():
+    ch = _channel()
+    ch.client = object()
+    fake = _FakeStreamChannel()
+
+    async def _resolve(_jid: str) -> _FakeStreamChannel:
+        return fake
+
+    ch._resolve_channel = _resolve  # type: ignore[method-assign]
+    msg_id = await ch.post_event(
+        "discord:channel:1", OutboundEvent(type=OutboundEventType.TEXT, content="hi there")
+    )
+    assert msg_id == "discord-101"
+    assert fake.sends[0][0] == "hi there"
+    # streamed previews must also use safe mention defaults
+    assert fake.sends[0][1]["allowed_mentions"] is not None
+
+
+@pytest.mark.asyncio
+async def test_post_event_returns_none_for_empty_text():
+    ch = _channel()
+    ch.client = object()
+    ch._resolve_channel = lambda _jid: (_ for _ in ()).throw(  # type: ignore[method-assign]
+        AssertionError("should not resolve for empty text")
+    )
+    result = await ch.post_event(
+        "discord:channel:1", OutboundEvent(type=OutboundEventType.TEXT, content="   ")
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_post_event_returns_none_when_too_large_to_stream():
+    # A message over the single-message limit can't be an editable preview;
+    # returning None makes core route it through chunked send_event instead.
+    ch = _channel()
+    ch.client = object()
+    ch._resolve_channel = lambda _jid: (_ for _ in ()).throw(  # type: ignore[method-assign]
+        AssertionError("should not resolve when text exceeds the limit")
+    )
+    result = await ch.post_event(
+        "discord:channel:1",
+        OutboundEvent(type=OutboundEventType.TEXT, content="x" * 2001),
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_update_event_edits_message_in_place():
+    ch = _channel()
+    ch.client = object()
+    fake = _FakeStreamChannel()
+    msg = await fake.send("initial", allowed_mentions=None)
+
+    async def _resolve(_jid: str) -> _FakeStreamChannel:
+        return fake
+
+    ch._resolve_channel = _resolve  # type: ignore[method-assign]
+    await ch.update_event(
+        "discord:channel:1",
+        f"discord-{msg.id}",
+        OutboundEvent(type=OutboundEventType.TEXT, content="updated text"),
+    )
+    assert msg.edits[-1][0] == "updated text"
+
+
+@pytest.mark.asyncio
+async def test_update_event_raises_when_too_large_so_core_falls_back():
+    # Discord can't edit a message beyond the limit; raising lets sender.py
+    # fall back to chunked send_event.
+    ch = _channel()
+    ch.client = object()
+    fake = _FakeStreamChannel()
+
+    async def _resolve(_jid: str) -> _FakeStreamChannel:
+        return fake
+
+    ch._resolve_channel = _resolve  # type: ignore[method-assign]
+    with pytest.raises(Exception):  # noqa: B017 -- any raise triggers the fallback
+        await ch.update_event(
+            "discord:channel:1",
+            "discord-101",
+            OutboundEvent(type=OutboundEventType.TEXT, content="x" * 2001),
+        )
+
+
+@pytest.mark.asyncio
+async def test_streaming_channel_satisfies_protocol_and_is_detected():
+    ch = _channel()
+    # core detects streaming targets via hasattr on both methods
+    assert hasattr(ch, "post_event")
+    assert hasattr(ch, "update_event")

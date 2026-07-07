@@ -140,6 +140,15 @@ def make_slack_channel() -> StreamingChannel:
     return StreamingChannel(name="slack", prefix_assistant_name=False)
 
 
+def make_discord_channel() -> StreamingChannel:
+    """Discord channel stub.
+
+    Like Slack, Discord shows the bot identity itself (no assistant-name
+    prefix) and streams via post_event + update_event (in-place message edits).
+    """
+    return StreamingChannel(name="discord", prefix_assistant_name=False)
+
+
 # ---------------------------------------------------------------------------
 # EventBus capture
 # ---------------------------------------------------------------------------

@@ -104,6 +104,8 @@ uv sync --extra discord
 
 - Guild channel, thread, and DM support
 - Reactions (inbound and outbound)
+- Streaming responses (edits a message in-place as the agent types; falls back
+  to chunked messages when a reply grows past the 2000-character limit)
 - Automatic 2000-character message splitting (preserves code fences)
 - Safe mention defaults (never pings `@everyone` unless asked)
 - History catch-up after reconnect
