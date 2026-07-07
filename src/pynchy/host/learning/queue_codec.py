@@ -20,13 +20,16 @@ CLAIMING_PREVIOUS_ATTEMPTS_KEY = "_claiming_previous_attempts"
 CLAIMING_TRANSITION_KEY = "_claiming_transition"
 CLAIMING_TRANSITION_FRESH_CLAIM = "fresh_claim"
 CLAIMING_TRANSITION_RETURN_TO_PENDING = "return_to_pending"
-CLAIM_METADATA_KEYS = (
+CLAIM_STRING_METADATA_KEYS = (
     "claim_id",
     "claimed_at",
     "lease_until",
+)
+CLAIM_STAGING_METADATA_KEYS = (
     CLAIMING_PREVIOUS_ATTEMPTS_KEY,
     CLAIMING_TRANSITION_KEY,
 )
+CLAIM_METADATA_KEYS = CLAIM_STRING_METADATA_KEYS + CLAIM_STAGING_METADATA_KEYS
 
 
 def job_filename(job_id: str) -> str:
@@ -118,7 +121,7 @@ def copy_claim_metadata(
     source: Mapping[str, Any],
     destination: dict[str, Any],
 ) -> None:
-    for key in CLAIM_METADATA_KEYS:
+    for key in CLAIM_STRING_METADATA_KEYS:
         if value := string_metadata(source, key):
             destination[key] = value
 

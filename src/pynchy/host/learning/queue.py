@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from pynchy.config import get_settings
 from pynchy.host.learning import queue_codec as codec
+from pynchy.host.learning import queue_recovery as recovery
 from pynchy.host.learning.queue_fs import (
     QueueLayout,
     discard_duplicates_with_terminal_winner,
@@ -305,10 +306,7 @@ class LearningQueue:
                 continue
 
             pending_payload = codec.clear_claim_metadata(payload)
-            pending_payload["attempts"] = self._recovered_claiming_attempts(
-                payload,
-                packet.attempts,
-            )
+            pending_payload["attempts"] = recovery.recovered_attempts(payload, packet.attempts)
             write_json_atomic(claiming_path, pending_payload, indent=2)
             try:
                 _rename_no_clobber(claiming_path, pending_path)
@@ -321,36 +319,53 @@ class LearningQueue:
                 continue
             recovered += 1
 
+        recovered += self._recover_claimed_transition_markers()
         return recovered
 
-    def _recovered_claiming_attempts(
+    def _recover_claimed_transition_markers(self) -> int:
+        recovered = 0
+        for claimed_path in sorted(self._claimed_dir.glob("*.json")):
+            pending_path = self._pending_dir / claimed_path.name
+            transition_payload = self._pending_payload_from_claimed_transition(claimed_path)
+            if transition_payload is None:
+                continue
+            if pending_path.exists():
+                claimed_path.unlink(missing_ok=True)
+                continue
+
+            write_json_atomic(claimed_path, transition_payload, indent=2)
+            try:
+                _rename_no_clobber(claimed_path, pending_path)
+            except LearningQueueError as exc:
+                self._move_bad_payload(
+                    claimed_path,
+                    error="claim_collision",
+                    details=str(exc),
+                )
+                continue
+            recovered += 1
+        return recovered
+
+    def _pending_payload_from_claimed_transition(
         self,
-        payload: dict[str, Any],
-        attempts: int,
-    ) -> int:
-        transition = codec.string_metadata(payload, codec.CLAIMING_TRANSITION_KEY)
-        if transition == codec.CLAIMING_TRANSITION_RETURN_TO_PENDING:
-            return attempts
-
-        previous_attempts = payload.get(codec.CLAIMING_PREVIOUS_ATTEMPTS_KEY)
-        if (
-            isinstance(previous_attempts, int)
-            and not isinstance(previous_attempts, bool)
-            and 0 <= previous_attempts <= attempts
-        ):
-            return previous_attempts
-        if transition == codec.CLAIMING_TRANSITION_FRESH_CLAIM:
-            return max(attempts - 1, 0)
-        if self._has_claim_metadata(payload):
-            return max(attempts - 1, 0)
-        return attempts
-
-    @staticmethod
-    def _has_claim_metadata(payload: dict[str, Any]) -> bool:
-        return any(
-            codec.string_metadata(payload, key) is not None
-            for key in ("claim_id", "claimed_at", "lease_until")
-        )
+        claimed_path: Path,
+    ) -> dict[str, Any] | None:
+        try:
+            return recovery.pending_payload_from_claimed_transition(claimed_path)
+        except json.JSONDecodeError as exc:
+            self._move_bad_payload(
+                claimed_path,
+                error="invalid_json",
+                details=str(exc),
+            )
+            return None
+        except (KeyError, TypeError, ValueError) as exc:
+            self._move_bad_payload(
+                claimed_path,
+                error="invalid_payload",
+                details=str(exc),
+            )
+            return None
 
     def _move_claimed_to_errors(self, claimed_path: Path) -> Path:
         destination = self._errors_dir / claimed_path.name
