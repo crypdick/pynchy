@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Replace $HOME with an absolute home directory before installing; launchd
+     does not expand shell variables in plist string values. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.pynchy.temporal</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/temporal</string>
+        <string>server</string>
+        <string>start-dev</string>
+        <string>--ip</string>
+        <string>127.0.0.1</string>
+        <string>--port</string>
+        <string>7233</string>
+        <string>--headless</string>
+        <string>--db-filename</string>
+        <string>$HOME/src/PERSONAL/pynchy/data/temporal.db</string>
+        <string>--log-level</string>
+        <string>warn</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>$HOME/src/PERSONAL/pynchy</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>$HOME/Library/Logs/pynchy/temporal.log</string>
+    <key>StandardErrorPath</key>
+    <string>$HOME/Library/Logs/pynchy/temporal.err.log</string>
+</dict>
+</plist>

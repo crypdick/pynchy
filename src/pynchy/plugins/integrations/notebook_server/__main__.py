@@ -115,7 +115,7 @@ _sessions: dict[str, KernelSession] = {}
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]
 async def start_kernel(name: str | None = None) -> dict[str, Any]:
     """Start an IPython kernel, optionally loading an existing notebook.
 
@@ -191,7 +191,7 @@ async def start_kernel(name: str | None = None) -> dict[str, Any]:
     return result
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]
 async def execute_cell(kernel_id: str, code: str) -> dict[str, Any]:
     """Execute Python code in a running kernel.
 
@@ -230,7 +230,7 @@ async def execute_cell(kernel_id: str, code: str) -> dict[str, Any]:
     }
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]
 async def add_markdown(kernel_id: str, content: str) -> dict[str, Any]:
     """Add a markdown cell to the notebook.
 
@@ -256,7 +256,7 @@ async def add_markdown(kernel_id: str, content: str) -> dict[str, Any]:
     }
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]
 async def save_as(kernel_id: str, name: str) -> dict[str, Any]:
     """Save the current notebook under a different name.
 
@@ -285,7 +285,7 @@ async def save_as(kernel_id: str, name: str) -> dict[str, Any]:
     }
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]
 async def read_notebook(name: str) -> dict[str, Any]:
     """Read an existing notebook without starting a kernel.
 
@@ -324,7 +324,7 @@ async def read_notebook(name: str) -> dict[str, Any]:
     }
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]
 async def list_notebooks() -> dict[str, Any]:
     """List saved notebooks in the notebook directory.
 
@@ -347,7 +347,7 @@ async def list_notebooks() -> dict[str, Any]:
     return {"notebooks": notebooks, "count": len(notebooks), "directory": str(NOTEBOOK_DIR)}
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]
 async def list_kernels() -> dict[str, Any]:
     """List active kernels and their notebook names.
 
@@ -368,7 +368,7 @@ async def list_kernels() -> dict[str, Any]:
     return {"kernels": kernels, "count": len(kernels)}
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]
 async def shutdown_kernel(kernel_id: str) -> dict[str, Any]:
     """Save and shut down a kernel.
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -46,6 +47,23 @@ def temporal_task() -> ScheduledTask:
 
 
 class TestTemporalSchedulerRuntime:
+    def test_scheduler_status_defaults_to_stopped(self):
+        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
+
+        temporal_scheduler.reset_temporal_scheduler_status()
+
+        status = temporal_scheduler.get_temporal_scheduler_status()
+
+        assert status == {
+            "worker_running": False,
+            "last_workflow_id": None,
+            "last_task_id": None,
+            "last_result": None,
+            "last_started_at": None,
+            "last_completed_at": None,
+            "last_error": None,
+        }
+
     def test_scheduler_workflow_runner_passes_through_workflow_module(self):
         import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
@@ -99,6 +117,62 @@ class TestTemporalSchedulerRuntime:
         assert call["id_reuse_policy"].name == "REJECT_DUPLICATE"
 
     @pytest.mark.asyncio
+    async def test_start_scheduled_agent_task_updates_status(self, temporal_task):
+        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
+
+        class FakeClient:
+            async def start_workflow(self, workflow, *args, id, task_queue, id_reuse_policy):
+                return None
+
+        temporal_scheduler.reset_temporal_scheduler_status()
+        scheduler = SchedulerConfig(temporal_task_queue="pynchy-test")
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(), scheduler_config=scheduler
+        )
+        runtime.client = FakeClient()
+
+        await runtime.start_scheduled_agent_task(temporal_task)
+
+        status = temporal_scheduler.get_temporal_scheduler_status()
+        assert status["last_workflow_id"] == (
+            "pynchy-agent-task-task-with-spaces-2026-07-07T09-00-00-00-00"
+        )
+        assert status["last_task_id"] == temporal_task.id
+        assert status["last_result"] == "started"
+        assert status["last_started_at"] is not None
+        assert status["last_completed_at"] is None
+
+    @pytest.mark.asyncio
+    async def test_worker_lifecycle_updates_running_status(self, monkeypatch):
+        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
+
+        class FakeWorker:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return None
+
+        async def fake_connect(*args, **kwargs):
+            return object()
+
+        temporal_scheduler.reset_temporal_scheduler_status()
+        monkeypatch.setattr(temporal_scheduler.Client, "connect", fake_connect)
+        monkeypatch.setattr(temporal_scheduler, "Worker", FakeWorker)
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+        )
+
+        await runtime.__aenter__()
+        assert temporal_scheduler.get_temporal_scheduler_status()["worker_running"] is True
+
+        await runtime.__aexit__(None, None, None)
+        assert temporal_scheduler.get_temporal_scheduler_status()["worker_running"] is False
+
+    @pytest.mark.asyncio
     async def test_startup_failure_unbinds_scheduler_deps(self, monkeypatch):
         import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
@@ -122,6 +196,10 @@ class TestTemporalSchedulerRuntime:
         with pytest.raises(RuntimeError, match="dependencies are not bound"):
             temporal_scheduler._require_scheduler_deps()
 
+        status = temporal_scheduler.get_temporal_scheduler_status()
+        assert status["worker_running"] is False
+        assert status["last_error"] == "temporal unavailable"
+
     @pytest.mark.asyncio
     async def test_run_scheduled_agent_activity_uses_shared_runner(
         self, monkeypatch, temporal_task
@@ -140,12 +218,23 @@ class TestTemporalSchedulerRuntime:
 
         monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
         monkeypatch.setattr(temporal_scheduler, "_run_scheduled_agent", fake_run_scheduled_agent)
+        monkeypatch.setattr(
+            temporal_scheduler.activity,
+            "info",
+            lambda: SimpleNamespace(workflow_id="workflow-completed"),
+        )
+        temporal_scheduler.reset_temporal_scheduler_status()
         temporal_scheduler.bind_scheduler_deps(deps)
 
         result = await temporal_scheduler.run_scheduled_agent_task(temporal_task.id)
 
         assert result == "completed"
         assert called == {"task": temporal_task, "deps": deps}
+        status = temporal_scheduler.get_temporal_scheduler_status()
+        assert status["last_workflow_id"] == "workflow-completed"
+        assert status["last_task_id"] == temporal_task.id
+        assert status["last_result"] == "completed"
+        assert status["last_completed_at"] is not None
 
     @pytest.mark.asyncio
     async def test_run_scheduled_agent_activity_skips_paused_task(self, monkeypatch, temporal_task):
@@ -161,11 +250,20 @@ class TestTemporalSchedulerRuntime:
 
         monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
         monkeypatch.setattr(temporal_scheduler, "_run_scheduled_agent", fake_run_scheduled_agent)
+        monkeypatch.setattr(
+            temporal_scheduler.activity,
+            "info",
+            lambda: SimpleNamespace(workflow_id="workflow-skipped"),
+        )
+        temporal_scheduler.reset_temporal_scheduler_status()
         temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
 
         result = await temporal_scheduler.run_scheduled_agent_task(temporal_task.id)
 
         assert result == "skipped"
+        status = temporal_scheduler.get_temporal_scheduler_status()
+        assert status["last_workflow_id"] == "workflow-skipped"
+        assert status["last_result"] == "skipped"
 
     @pytest.mark.live
     @pytest.mark.asyncio

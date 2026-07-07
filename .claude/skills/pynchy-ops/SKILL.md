@@ -1,11 +1,13 @@
 ---
 name: Pynchy Ops
-description: Use when managing the pynchy service on the server — deploying changes, observing logs, checking service status, restarting the service, setting up GitHub auth, rebuilding the agent container, or running any commands on pynchy-server via SSH. Also use when interacting with the LiteLLM proxy — investigating failed requests, model routing errors, spend tracking, health checks, API gateway diagnostics, or modifying the LiteLLM configuration. Also use when the user mentions the LiteLLM UI, dashboard, proxy errors, or model availability.
+description: Use when managing the pynchy service on the server — deploying changes, observing logs, checking service status, restarting the service, setting up GitHub auth, rebuilding the agent container, or running commands on the live Pynchy host. Also use when interacting with the LiteLLM proxy — investigating failed requests, model routing errors, spend tracking, health checks, API gateway diagnostics, or modifying the LiteLLM configuration. Also use when the user mentions the LiteLLM UI, dashboard, proxy errors, or model availability.
 ---
 
 # Pynchy Ops
 
-The pynchy service runs on `pynchy-server` over Tailscale. SSH: `ssh pynchy-server`.
+The live personal Pynchy service runs on `mac-mini` over Tailscale. SSH: `ssh mac-mini`.
+
+Treat `pynchy-server` as historical unless a fresh status check proves it is serving the live deployment.
 
 ## Auto-deploy: Never Restart Manually
 
@@ -23,20 +25,20 @@ Only use manual commands when the service is unhealthy and needs fixing. See [re
 **Preferred: the `/status` endpoint.** Single command that returns everything:
 
 ```bash
-# On pynchy-server directly:
+# On the live host directly:
 curl -s http://localhost:8484/status | python3 -m json.tool
 
 # Remotely (via Tailscale):
-curl -s http://pynchy-server:8484/status | python3 -m json.tool
+curl -s http://mac-mini:8484/status | python3 -m json.tool
 ```
 
-Returns JSON with: `service` (uptime), `deploy` (SHA, dirty, unpushed), `channels` (slack/whatsapp connected), `gateway` (LiteLLM health, model counts), `queue` (active containers, waiting groups), `repos` (per-repo worktree status — SHA, dirty, ahead/behind, conflicts), `messages` (inbound/outbound counts, last activity), `tasks` (scheduled tasks with status/next run), `host_jobs`, `groups` (total, active sessions).
+Returns JSON with: `service` (uptime), `deploy` (SHA, dirty, unpushed), `channels` (slack/whatsapp connected), `gateway` (LiteLLM health), `temporal` (cluster health, worker state, task queue, last scheduled workflow/result), `queue` (active containers, waiting groups), `repos` (per-repo worktree status — SHA, dirty, ahead/behind, conflicts), `messages` (inbound/outbound counts, last activity), `tasks` (scheduled tasks with status/next run), `host_jobs`, `groups` (total, active sessions).
 
 **Fallback: manual commands** (when the HTTP server is down or you need logs):
 
 ```bash
-# 1. Is the service running?
-systemctl --user status pynchy
+# 1. Is the service running? (macOS live host)
+launchctl print "gui/$(id -u)/com.pynchy"
 
 # 2. Any running containers?
 docker ps --filter name=pynchy
@@ -45,56 +47,80 @@ docker ps --filter name=pynchy
 docker ps -a --filter name=pynchy
 
 # 4. Recent errors in service log?
-journalctl --user -u pynchy -p err -n 20
+tail -n 100 ~/src/PERSONAL/pynchy/logs/pynchy.error.log
 
-# 5. Is WhatsApp connected?
-journalctl --user -u pynchy --grep 'Connected to WhatsApp|Connection closed' -n 5
+# 5. Is Slack/WhatsApp connected?
+tail -n 200 ~/src/PERSONAL/pynchy/logs/pynchy.log | grep -E 'Connected to|Connection closed|Slack'
 
 # 6. Are groups loaded?
-journalctl --user -u pynchy --grep 'groupCount' -n 3
+tail -n 200 ~/src/PERSONAL/pynchy/logs/pynchy.log | grep groupCount
 ```
 
 ## Deploy & Observe
 
 ```bash
 # Trigger a deploy (from HOST — use mcp__pynchy__deploy_changes from containers)
-curl -s -X POST http://pynchy-server:8484/deploy
+curl -s -X POST http://mac-mini:8484/deploy
 
 # Observe (always safe)
-ssh pynchy-server 'systemctl --user status pynchy'
-ssh pynchy-server 'journalctl --user -u pynchy -f'
-ssh pynchy-server 'journalctl --user -u pynchy -n 100'
-ssh pynchy-server 'docker ps --filter name=pynchy'
+ssh mac-mini 'launchctl print gui/$(id -u)/com.pynchy'
+ssh mac-mini 'tail -n 100 ~/src/PERSONAL/pynchy/logs/pynchy.log'
+ssh mac-mini 'tail -n 100 ~/src/PERSONAL/pynchy/logs/pynchy.error.log'
+ssh mac-mini 'docker ps --filter name=pynchy'
 
 # Manual restart — ONLY for unhealthy/stuck service
-ssh pynchy-server 'systemctl --user restart pynchy'
+ssh mac-mini 'launchctl kickstart -k gui/$(id -u)/com.pynchy'
 ```
 
 ## Monitoring Live Agent Activity
 
-**journalctl only shows lifecycle events** (container spawn, session create/destroy, errors). It does NOT show agent output (tool calls, thinking, text broadcasts). To monitor what an agent is actually doing, query SQLite:
+**Service logs only show lifecycle events** (container spawn, session create/destroy, errors). They do NOT show agent output (tool calls, thinking, text broadcasts). To monitor what an agent is actually doing, query SQLite:
 
 ```bash
 # Recent activity for a specific group (replace <JID> with e.g. slack:C0AFR6DB0FK)
-ssh pynchy-server 'sqlite3 data/messages.db "
+ssh mac-mini 'cd ~/src/PERSONAL/pynchy && sqlite3 data/messages.db "
   SELECT timestamp, message_type, substr(content, 1, 120)
   FROM messages WHERE chat_jid = '\''<JID>'\''
   ORDER BY timestamp DESC LIMIT 15;
 "'
 
 # All recent activity across all groups
-ssh pynchy-server 'sqlite3 data/messages.db "
+ssh mac-mini 'cd ~/src/PERSONAL/pynchy && sqlite3 data/messages.db "
   SELECT timestamp, chat_jid, message_type, substr(content, 1, 80)
   FROM messages ORDER BY timestamp DESC LIMIT 15;
 "'
 ```
 
+## Temporal Scheduler
+
+Agent scheduled tasks run as Temporal workflows. Pynchy owns the worker in the host process; Temporal owns workflow durability.
+
+mac-mini service:
+
+| Item | Value |
+|------|-------|
+| LaunchAgent | `~/Library/LaunchAgents/com.pynchy.temporal.plist` |
+| Address | `127.0.0.1:7233` |
+| DB | `~/src/PERSONAL/pynchy/data/temporal.db` |
+| Logs | `~/Library/Logs/pynchy/temporal.log`, `~/Library/Logs/pynchy/temporal.err.log` |
+
+Safe checks:
+
+```bash
+ssh mac-mini 'launchctl print gui/$(id -u)/com.pynchy.temporal'
+ssh mac-mini 'temporal operator cluster health --address 127.0.0.1:7233'
+ssh mac-mini 'lsof -nP -iTCP:7233 -sTCP:LISTEN'
+curl -s http://mac-mini:8484/status | python3 -m json.tool
+```
+
+`data/temporal.db` is durable scheduler state. Make sure host backups include it with the rest of `data/`.
+
 **When to use what:**
 
 | What you need | Tool |
 |---------------|------|
-| Is the service running? | `systemctl --user status pynchy` |
-| Did the container spawn/crash? | `journalctl` or `docker logs` |
+| Is the service running? | `launchctl print gui/$(id -u)/com.pynchy` |
+| Did the container spawn/crash? | launchd logs or `docker logs` |
 | What is the agent doing right now? | **SQLite** `messages` table |
 | Agent tool calls and traces | **SQLite** `events` table |
 | Container startup errors (before DB writes) | `docker logs pynchy-<group>` |
@@ -105,7 +131,7 @@ Use the TUI API to inject messages into any group's chat pipeline (useful for te
 
 ```bash
 # Send a message as if a user typed it
-curl -s -X POST http://pynchy-server:8484/api/send \
+curl -s -X POST http://mac-mini:8484/api/send \
   -H "Content-Type: application/json" \
   -d '{"jid": "<JID>", "content": "your message here"}'
 ```
@@ -136,10 +162,10 @@ Systemd unit template: `config-examples/pynchy.service.EXAMPLE`
 
 ```bash
 # Interactive login (works over SSH with -t for TTY)
-ssh -t pynchy-server 'gh auth login -p ssh'
+ssh -t mac-mini 'gh auth login -p ssh'
 
 # Verify
-ssh pynchy-server 'gh auth status'
+ssh mac-mini 'gh auth status'
 ```
 
 After authenticating, `_write_env_file()` auto-discovers `GH_TOKEN` and git identity on each admin container launch. No manual env configuration needed.
@@ -159,14 +185,14 @@ Verify: `container run -i --rm --entrypoint python pynchy-agent:latest -c "impor
 
 Runs as `pynchy-litellm` Docker container with PostgreSQL sidecar (`pynchy-litellm-db`). Access at `http://localhost:4000` on the pynchy server, or via Tailscale at port 4000.
 
-Master key: `ssh pynchy-server 'grep master_key ~/src/PERSONAL/pynchy/config.toml'`
+Master key: `ssh mac-mini 'grep master_key ~/src/PERSONAL/pynchy/config.toml'`
 Pass as: `Authorization: Bearer <key>`
 
 If `master_key` is not in `config.toml`, it may be injected via `.env` or container env. Prefer a scripted lookup that **does not print the key**, e.g. using it inline for a request (see `references/litellm-diagnostics.md` for examples).
 
 Config: `~/src/PERSONAL/pynchy/litellm_config.yaml`. Editing it triggers an automatic restart (~30–90s). Do not manually restart containers.
 
-Dashboard: `http://pynchy-server:4000/ui/`
+Dashboard: `http://mac-mini:4000/ui/`
 
 - **Diagnostics, spend tracking, failure analysis**: [references/litellm-diagnostics.md](references/litellm-diagnostics.md)
 - **MCP server management API and gotchas**: [references/litellm-mcp-api.md](references/litellm-mcp-api.md)
@@ -176,7 +202,7 @@ Dashboard: `http://pynchy-server:4000/ui/`
 If SSH login reports zombie processes, check whether they live inside the LiteLLM container:
 
 ```bash
-ssh pynchy-server 'docker exec pynchy-litellm ps -eo pid,ppid,stat,args | awk '\''$3 ~ /Z/ {print}'\'''
+ssh mac-mini 'docker exec pynchy-litellm ps -eo pid,ppid,stat,args | awk '\''$3 ~ /Z/ {print}'\'''
 ```
 
 Note: use `args`, not `cmd` — `cmd` can appear empty for zombie processes.
@@ -197,7 +223,7 @@ All databases live in `data/`:
 | `data/neonize.db` | WhatsApp auth state (Neonize credentials) |
 | `data/memories.db` | BM25-ranked memory store (sqlite-memory plugin) |
 
-Quick inspection (run on pynchy-server or prefix with `ssh pynchy-server`):
+Quick inspection (run on the live host or prefix with `ssh mac-mini 'cd ~/src/PERSONAL/pynchy && ...'`):
 
 ```bash
 # List registered groups

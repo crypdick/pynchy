@@ -35,6 +35,17 @@ _EMPTY_STATS = {
 }
 
 
+def _status_settings(*, repos: dict[str, Any] | None = None) -> SimpleNamespace:
+    return SimpleNamespace(
+        repos=repos or {},
+        scheduler=SimpleNamespace(
+            temporal_address="localhost:7233",
+            temporal_namespace="default",
+            temporal_task_queue="pynchy-scheduler",
+        ),
+    )
+
+
 @contextlib.contextmanager
 def _inert_status():
     """Neutralise every I/O-bound status collector via its public deps.
@@ -54,11 +65,33 @@ def _inert_status():
         p("count_unpushed_commits", return_value=0)
         p("get_head_commit_message", return_value="")
         p("get_router_state", new_callable=AsyncMock, return_value=None)
-        p("get_settings", return_value=SimpleNamespace(repos={}))
+        p(
+            "get_settings",
+            return_value=_status_settings(),
+        )
         p("get_messaging_stats", new_callable=AsyncMock, return_value=dict(_EMPTY_STATS))
         p("get_all_tasks", new_callable=AsyncMock, return_value=[])
         p("get_all_host_jobs", new_callable=AsyncMock, return_value=[])
         p("run_docker", new_callable=AsyncMock, return_value=Mock(returncode=1, stdout=""))
+        p(
+            "get_temporal_scheduler_status",
+            create=True,
+            return_value={
+                "worker_running": False,
+                "last_workflow_id": None,
+                "last_task_id": None,
+                "last_result": None,
+                "last_started_at": None,
+                "last_completed_at": None,
+                "last_error": None,
+            },
+        )
+        p(
+            "_check_temporal_cluster_health",
+            create=True,
+            new_callable=AsyncMock,
+            return_value={"healthy": None, "error": None},
+        )
         stack.enter_context(patch("aiohttp.ClientSession", side_effect=Exception("skip")))
         yield
 
@@ -191,7 +224,7 @@ class TestCollectRepos:
 
         with (
             _inert_status(),
-            patch(f"{_S}.get_settings", return_value=SimpleNamespace(repos={"owner/repo": None})),
+            patch(f"{_S}.get_settings", return_value=_status_settings(repos={"owner/repo": None})),
             patch(f"{_S}.get_repo_context", return_value=ctx),
             patch(f"{_S}.get_head_sha", return_value="def456"),
             patch(f"{_S}.is_repo_dirty", return_value=True),
@@ -219,7 +252,7 @@ class TestCollectRepos:
 
         with (
             _inert_status(),
-            patch(f"{_S}.get_settings", return_value=SimpleNamespace(repos={"owner/repo": None})),
+            patch(f"{_S}.get_settings", return_value=_status_settings(repos={"owner/repo": None})),
             patch(f"{_S}.get_repo_context", return_value=ctx),
             patch(f"{_S}.get_head_sha", return_value="aaa111"),
             patch(f"{_S}.is_repo_dirty", return_value=False),
@@ -267,7 +300,7 @@ class TestWorktreeStatus:
 
         with (
             _inert_status(),
-            patch(f"{_S}.get_settings", return_value=SimpleNamespace(repos={"owner/repo": None})),
+            patch(f"{_S}.get_settings", return_value=_status_settings(repos={"owner/repo": None})),
             patch(f"{_S}.get_repo_context", return_value=ctx),
             patch(f"{_S}.get_head_sha", return_value="bbb222"),
             patch(f"{_S}.is_repo_dirty", return_value=True),
@@ -298,7 +331,7 @@ class TestWorktreeStatus:
 
         with (
             _inert_status(),
-            patch(f"{_S}.get_settings", return_value=SimpleNamespace(repos={"owner/repo": None})),
+            patch(f"{_S}.get_settings", return_value=_status_settings(repos={"owner/repo": None})),
             patch(f"{_S}.get_repo_context", return_value=ctx),
             patch(f"{_S}.get_head_sha", return_value="ccc333"),
             patch(f"{_S}.is_repo_dirty", return_value=False),
@@ -322,7 +355,7 @@ class TestWorktreeStatus:
 
         with (
             _inert_status(),
-            patch(f"{_S}.get_settings", return_value=SimpleNamespace(repos={"owner/repo": None})),
+            patch(f"{_S}.get_settings", return_value=_status_settings(repos={"owner/repo": None})),
             patch(f"{_S}.get_repo_context", return_value=ctx),
             patch(f"{_S}.get_head_sha", return_value="ddd444"),
             patch(f"{_S}.is_repo_dirty", return_value=False),
@@ -450,6 +483,93 @@ class TestCollectHostJobs:
         assert jobs[0]["id"] == "j1"
         assert jobs[0]["name"] == "backup-db"
         assert jobs[0]["enabled"] is True
+
+
+# ---------------------------------------------------------------------------
+# temporal section
+# ---------------------------------------------------------------------------
+
+
+class TestCollectTemporal:
+    @pytest.mark.asyncio
+    async def test_surfaces_config_cluster_health_and_worker_state(self):
+        settings = SimpleNamespace(
+            repos={},
+            scheduler=SimpleNamespace(
+                temporal_address="temporal.internal:7233",
+                temporal_namespace="pynchy",
+                temporal_task_queue="pynchy-scheduler-prod",
+            ),
+        )
+        worker = {
+            "worker_running": True,
+            "last_workflow_id": "pynchy-agent-task-health-2026-07-07T17-30-00Z",
+            "last_task_id": "health",
+            "last_result": "completed",
+            "last_started_at": "2026-07-07T17:30:01+00:00",
+            "last_completed_at": "2026-07-07T17:30:05+00:00",
+            "last_error": None,
+        }
+        deps = MockStatusDeps()
+
+        with (
+            _inert_status(),
+            patch(f"{_S}.get_settings", return_value=settings),
+            patch(f"{_S}.get_temporal_scheduler_status", create=True, return_value=worker),
+            patch(
+                f"{_S}._check_temporal_cluster_health",
+                create=True,
+                new_callable=AsyncMock,
+                return_value={"healthy": True, "error": None},
+            ),
+        ):
+            result = await collect_status(deps, time.monotonic())
+
+        temporal = result["temporal"]
+        assert temporal == {
+            "address": "temporal.internal:7233",
+            "namespace": "pynchy",
+            "task_queue": "pynchy-scheduler-prod",
+            "cluster_healthy": True,
+            "cluster_error": None,
+            "worker_running": True,
+            "last_workflow_id": "pynchy-agent-task-health-2026-07-07T17-30-00Z",
+            "last_task_id": "health",
+            "last_result": "completed",
+            "last_started_at": "2026-07-07T17:30:01+00:00",
+            "last_completed_at": "2026-07-07T17:30:05+00:00",
+            "last_error": None,
+        }
+
+    @pytest.mark.asyncio
+    async def test_temporal_cluster_error_keeps_worker_state_visible(self):
+        deps = MockStatusDeps()
+        worker = {
+            "worker_running": True,
+            "last_workflow_id": "wf-1",
+            "last_task_id": "task-1",
+            "last_result": "started",
+            "last_started_at": "2026-07-07T17:31:01+00:00",
+            "last_completed_at": None,
+            "last_error": None,
+        }
+
+        with (
+            _inert_status(),
+            patch(f"{_S}.get_temporal_scheduler_status", create=True, return_value=worker),
+            patch(
+                f"{_S}._check_temporal_cluster_health",
+                create=True,
+                new_callable=AsyncMock,
+                return_value={"healthy": None, "error": "connection refused"},
+            ),
+        ):
+            result = await collect_status(deps, time.monotonic())
+
+        assert result["temporal"]["cluster_healthy"] is None
+        assert result["temporal"]["cluster_error"] == "connection refused"
+        assert result["temporal"]["worker_running"] is True
+        assert result["temporal"]["last_workflow_id"] == "wf-1"
 
 
 # ---------------------------------------------------------------------------
@@ -667,6 +787,7 @@ class TestCollectStatus:
             "messages",
             "tasks",
             "host_jobs",
+            "temporal",
             "groups",
         }
         assert set(result.keys()) == expected_keys

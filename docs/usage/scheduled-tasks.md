@@ -30,6 +30,49 @@ temporal_task_queue = "pynchy-scheduler"
 
 Pynchy requires a reachable Temporal service when the scheduler starts. It does not fall back to local scheduled-agent execution. Host tasks still run through the local scheduler.
 
+The `/status` endpoint includes a `temporal` section:
+
+| Field | Meaning |
+|-------|---------|
+| `address` | Configured Temporal server address |
+| `namespace` | Configured Temporal namespace |
+| `task_queue` | Task queue used by the Pynchy scheduler worker |
+| `cluster_healthy` | Result of the Temporal WorkflowService health check (`true`, `false`, or `null` if unreachable) |
+| `worker_running` | Whether this Pynchy process has an active Temporal worker |
+| `last_workflow_id` | Most recent scheduled-agent workflow started or handled by this process |
+| `last_task_id` | Scheduled task ID for the most recent workflow event |
+| `last_result` | `started`, `already_started`, `completed`, `skipped`, or `error` |
+| `last_error` | Last scheduler dispatch or activity error, if any |
+
+### Single-host macOS service
+
+For a personal macOS deployment, run a local Temporal service bound to loopback with a persisted SQLite database:
+
+```bash
+brew install temporal
+mkdir -p ~/Library/Logs/pynchy data
+cp launchd/com.pynchy.temporal.plist ~/Library/LaunchAgents/com.pynchy.temporal.plist
+```
+
+Before loading the plist, replace `$HOME` in `~/Library/LaunchAgents/com.pynchy.temporal.plist` with your absolute home directory. `launchd` does not expand shell variables inside plist string values.
+
+```bash
+plutil -lint ~/Library/LaunchAgents/com.pynchy.temporal.plist
+launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.pynchy.temporal.plist
+launchctl kickstart "gui/$(id -u)/com.pynchy.temporal"
+```
+
+Useful checks:
+
+```bash
+launchctl print "gui/$(id -u)/com.pynchy.temporal"
+temporal operator cluster health --address 127.0.0.1:7233
+lsof -nP -iTCP:7233 -sTCP:LISTEN
+tail -n 100 ~/Library/Logs/pynchy/temporal.err.log
+```
+
+The local service stores its durable state at `data/temporal.db`. Back up this file with the rest of `data/`; losing it drops Temporal workflow history and idempotency state for scheduled agent tasks. This single-host setup is suitable for a personal Mac deployment. Use Temporal Cloud or a normal self-hosted Temporal cluster when the scheduler needs HA or multi-host durability.
+
 ## Host Tasks
 
 Host tasks run shell commands on the host — no LLM, no container. Use them for maintenance scripts, backups, git operations, or anything that doesn't need an agent. Only the admin group can create and manage host tasks.

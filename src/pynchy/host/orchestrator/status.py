@@ -10,9 +10,11 @@ from __future__ import annotations
 import asyncio
 import subprocess
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
+
+from temporalio.client import Client
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.docker import run_docker
@@ -25,6 +27,7 @@ from pynchy.host.git_ops.utils import (
     is_repo_dirty,
     run_git,
 )
+from pynchy.host.orchestrator.temporal.scheduler import get_temporal_scheduler_status
 from pynchy.logger import logger
 from pynchy.state import (
     get_all_host_jobs,
@@ -93,6 +96,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         tasks,
         host_jobs,
         gateway,
+        temporal,
     ) = await asyncio.gather(
         _collect_deploy(),
         asyncio.to_thread(_collect_repos),
@@ -100,6 +104,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         _collect_tasks(),
         _collect_host_jobs(),
         _collect_gateway(deps.get_gateway_info()),
+        _collect_temporal(),
     )
 
     return {
@@ -112,6 +117,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         "messages": messages,
         "tasks": tasks,
         "host_jobs": host_jobs,
+        "temporal": temporal,
         "groups": groups,
     }
 
@@ -264,6 +270,39 @@ async def _collect_host_jobs() -> list[dict[str, Any]]:
         }
         for j in jobs
     ]
+
+
+async def _collect_temporal() -> dict[str, Any]:
+    """Temporal scheduler status — config, cluster health, and worker state."""
+    scheduler = get_settings().scheduler
+    cluster = await _check_temporal_cluster_health(
+        scheduler.temporal_address,
+        scheduler.temporal_namespace,
+    )
+    return {
+        "address": scheduler.temporal_address,
+        "namespace": scheduler.temporal_namespace,
+        "task_queue": scheduler.temporal_task_queue,
+        "cluster_healthy": cluster["healthy"],
+        "cluster_error": cluster["error"],
+        **get_temporal_scheduler_status(),
+    }
+
+
+async def _check_temporal_cluster_health(address: str, namespace: str) -> dict[str, Any]:
+    """Return WorkflowService health using Temporal's gRPC health service."""
+    try:
+        client = await Client.connect(address, namespace=namespace, lazy=True)
+        healthy = await client.service_client.check_health(timeout=timedelta(seconds=2))
+    except Exception as exc:  # allow: exception-handling - degraded status
+        logger.debug(
+            "Temporal cluster health check failed",
+            address=address,
+            namespace=namespace,
+            err=str(exc),
+        )
+        return {"healthy": None, "error": str(exc)}
+    return {"healthy": healthy, "error": None}
 
 
 async def _collect_gateway(info: dict[str, Any]) -> dict[str, Any]:
