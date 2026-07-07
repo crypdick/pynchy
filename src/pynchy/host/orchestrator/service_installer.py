@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import filecmp
 import shutil
 import subprocess
 import sys
@@ -44,13 +43,24 @@ def install_service() -> None:
 def _install_launchd_service() -> None:
     """Install macOS launchd service."""
     label = "com.pynchy"
-    src = get_settings().project_root / "launchd" / f"{label}.plist"
+    project_root = get_settings().project_root
+    src = project_root / "launchd" / f"{label}.plist"
     dest = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
     if not src.exists():
         logger.warning("launchd plist not found in repo, skipping service install")
         return
+    home = Path.home()
+    uv_path = shutil.which("uv") or str(home / ".local" / "bin" / "uv")
+    # launchd does not expand $HOME (or any env var) inside plist strings, so
+    # the template's placeholders must be substituted before writing.
+    rendered = (
+        src.read_text()
+        .replace("$HOME/src/PERSONAL/pynchy", str(project_root))
+        .replace("$HOME/.local/bin/uv", uv_path)
+        .replace("$HOME", str(home))
+    )
     already_loaded = is_launchd_loaded(label)
-    file_changed = not dest.exists() or not filecmp.cmp(str(src), str(dest), shallow=False)
+    file_changed = not dest.exists() or dest.read_text() != rendered
     if not file_changed and already_loaded:
         return  # already up to date and loaded
     if file_changed:
@@ -58,7 +68,7 @@ def _install_launchd_service() -> None:
         if already_loaded:
             subprocess.run(["launchctl", "unload", str(dest)], capture_output=True)
         dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dest)
+        dest.write_text(rendered)
         logger.info("Installed launchd plist", dest=str(dest))
     # Only load if we're already running under launchd (safe to reload).
     # When running manually, loading would spawn a competing instance

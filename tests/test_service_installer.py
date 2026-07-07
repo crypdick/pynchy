@@ -232,6 +232,39 @@ class TestInstallLaunchdService:
         # File should be updated
         assert (dest_dir / "com.pynchy.plist").read_text() == "<plist>new</plist>"
 
+    def test_substitutes_home_and_project_root_placeholders(self, tmp_path: Path):
+        """launchd does not expand $HOME in plist strings, so the installer
+        must substitute it itself before writing the file."""
+        src_dir = tmp_path / "launchd"
+        src_dir.mkdir()
+        (src_dir / "com.pynchy.plist").write_text(
+            "<string>$HOME/.local/bin/uv</string>\n"
+            "<string>$HOME/src/PERSONAL/pynchy</string>\n"
+            "<string>$HOME</string>\n"
+        )
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.service_installer.get_settings",
+                return_value=_test_settings(project_root=tmp_path),
+            ),
+            patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
+            patch("shutil.which", return_value="/opt/homebrew/bin/uv"),
+            patch(
+                "pynchy.host.orchestrator.service_installer.is_launchd_loaded", return_value=False
+            ),
+            patch(
+                "pynchy.host.orchestrator.service_installer.is_launchd_managed", return_value=False
+            ),
+            patch("subprocess.run"),
+        ):
+            install_service()
+
+        content = (tmp_path / "Library" / "LaunchAgents" / "com.pynchy.plist").read_text()
+        assert "$HOME" not in content
+        assert "/opt/homebrew/bin/uv" in content
+        assert str(tmp_path) in content
+
     def test_loads_when_running_under_launchd(self, tmp_path: Path):
         """Should load the service when the process is managed by launchd."""
         src_dir = tmp_path / "launchd"
