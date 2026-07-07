@@ -16,11 +16,11 @@ The current vault organizes knowledge by path. Examples include `repos/<owner>/<
 This phase adds:
 
 - one global Obsidian-backed memory namespace;
-- one Obsidian-backed learned-skill namespace;
+- one profile-scoped fallback location for learned memory and skills;
 - a durable background learning queue that reviews completed turns without blocking chat replies;
 - a direct vault mount that lets agents and background reviewers read and write vault files through normal filesystem tools.
 
-This phase does not add per-group, per-policy, or per-user access control. All sessions share the same global learning surface. The folder layout stays stable so access control can attach later by narrowing the mounted root or selecting specific subfolders.
+This phase does not add per-group, per-policy, or per-user access control. All sessions can read the same mounted vault, while fallback writes use the workspace's sandbox profile so worker pools can share learned facts and skills. The folder layout stays stable so access control can attach later by narrowing the mounted root or selecting specific subfolders.
 
 ## Approaches Considered
 
@@ -40,7 +40,7 @@ Pynchy can later resolve namespace attachments from workspace/profile/group poli
 
 ## Namespace Model
 
-The first version has two configured namespaces.
+The first version has one mounted global vault namespace and one configured profile fallback path.
 
 ```toml
 [learning]
@@ -50,27 +50,28 @@ review_after_turn = true
 [learning.obsidian]
 vault_root = "~/Documents/obsidian/wiki"
 mount_path = "/workspace/vault"
-default_workspace_root = "systems/pynchy/workspaces/{workspace}"
-skill_root = "systems/pynchy/skills"
+default_profile_root = "systems/pynchy/profiles/{profile}"
 ```
 
 `vault_root` is the global memory namespace. In the first implementation, Pynchy mounts that root directly into each learning-enabled container. A later access-control phase can change `vault_root` to a subdirectory or mount a narrower `vault_mount_root` without changing the folder conventions for memory and skills.
 
-Automatic memory writes follow the current vault pattern by choosing the relevant folder. Repo-associated work can write under `repos/<owner>/<repo>/memory/`; machine work can write under `systems/machines/<host>/memory/`; non-coding workspaces can write under their semantic area of the vault. When no better domain folder is obvious, the reviewer uses the configured workspace fallback:
+Automatic memory writes follow the current vault pattern by choosing the relevant folder. Repo-associated work can write under `repos/<owner>/<repo>/memory/`; machine work can write under `systems/machines/<host>/memory/`; non-coding work can write under its semantic area of the vault. When no better domain folder is obvious, the reviewer uses the configured profile fallback:
 
 ```text
-<vault_root>/systems/pynchy/workspaces/<workspace>/memory/
+<vault_root>/systems/pynchy/profiles/<profile>/memory/
 ├── MEMORY.md
 ├── index.md
 └── <date-or-descriptive-slug>.md
 ```
+
+Pynchy resolves `<profile>` from `workspace.profile`. Workspaces without an explicit profile use `default`. Multiple workspaces with the same profile therefore share fallback memory and learned skills.
 
 Pynchy does not require learning-specific frontmatter. Agents classify information by choosing the correct folder and filename. If the vault linter manages generic `created` or `updated` fields, that remains a vault concern rather than a learning contract.
 
 Learned skills live under:
 
 ```text
-<skill_root>/<skill-name>/SKILL.md
+<vault_root>/systems/pynchy/profiles/<profile>/skills/<skill-name>/SKILL.md
 ```
 
 The folder name is the skill identifier. Optional companion files can live below the same skill folder, but the first implementation validates and activates only skills with a `SKILL.md` entrypoint.
@@ -92,8 +93,8 @@ Pynchy still validates mount configuration before container start:
 - `vault_root` must exist;
 - `vault_root` must resolve to a directory;
 - `mount_path` must be an absolute container path;
-- `default_workspace_root` and `skill_root` must be relative paths under `vault_root`;
-- `default_workspace_root` may contain `{workspace}`, which Pynchy expands from the sanitized workspace folder name.
+- `default_profile_root` must be a relative path under `vault_root`;
+- `default_profile_root` may contain `{profile}`, which Pynchy expands from the sanitized sandbox profile name.
 
 ## Learning Queue
 
@@ -105,7 +106,7 @@ Foreground message handling stays fast:
 4. The worker coalesces recent packets from the same chat during a short idle window.
 5. A deterministic prefilter skips obvious casual turns.
 6. The reviewer model receives only the bounded packet and the mounted vault path.
-7. Accepted outputs write immediately to Obsidian memory or the learned-skill namespace.
+7. Accepted outputs write immediately to the selected vault memory folder or the resolved profile's learned-skill namespace.
 
 The queue uses file-based IPC semantics because Pynchy already depends on atomic filesystem handoff between containers and the host. Durable work units live outside the existing synchronous `tasks/` request-response directory:
 
@@ -141,13 +142,13 @@ Learned skills are stored in Obsidian, but Pynchy activates only validated skill
 
 Validation requires:
 
-- a skill folder below `skill_root`;
+- a skill folder below the resolved profile's `skills/` folder;
 - a `SKILL.md` file with the metadata required by Pynchy's skill loader;
 - a non-empty name and description;
 - file sizes below configured limits;
 - no symlink escapes from the skill folder.
 
-After validation, session preparation treats learned skills as an additional skill source alongside built-in and plugin skill paths. Existing workspace skill selection still applies. In the first phase, learned skills use a single namespace/tier name such as `learned`.
+After validation, session preparation treats learned skills from the resolved profile as an additional skill source alongside built-in and plugin skill paths. Existing workspace skill selection still applies. In the first phase, learned skills use a single namespace/tier name such as `learned`.
 
 ## Error Handling
 
@@ -155,7 +156,7 @@ Vault misconfiguration disables the vault mount and learning writes but does not
 
 - `vault_root` does not exist;
 - `vault_root` is not a directory;
-- `default_workspace_root` or `skill_root` is absolute or escapes `vault_root`;
+- `default_profile_root` is absolute or escapes `vault_root`;
 - the container runtime rejects the vault mount;
 - the worker exhausts retry attempts for a learning packet;
 - a generated skill fails validation.
@@ -168,9 +169,9 @@ Unit tests cover:
 
 - config parsing and path normalization for the Obsidian learning settings;
 - rejection of path traversal, absolute escaped paths, and symlink escapes;
-- memory writes creating notes under the configured workspace fallback when no semantic folder is selected;
+- memory writes creating notes under the configured profile fallback when no semantic folder is selected;
 - vault mount generation for learning-enabled containers;
-- skill validation and active skill source discovery;
+- skill validation and active skill source discovery for workspaces sharing a profile;
 - durable queue claim, lease expiry, retry, done, and error behavior;
 - post-turn enqueue behavior after a successful agent result;
 - prefilter behavior for obvious no-op turns.
