@@ -115,6 +115,26 @@ curl -s http://mac-mini:8484/status | python3 -m json.tool
 
 `data/temporal.db` is durable scheduler state. Make sure host backups include it with the rest of `data/`.
 
+## Runtime DB Backups
+
+mac-mini uses `scripts/backup_runtime_dbs.sh` for SQLite-safe runtime DB snapshots. It backs up `messages.db`, `memories.db`, `neonize.db`, and `temporal.db` into iCloud Drive by default.
+
+Live service:
+
+| Item | Value |
+|------|-------|
+| LaunchAgent | `~/Library/LaunchAgents/com.pynchy.backup.plist` |
+| Destination | `~/Library/Mobile Documents/com~apple~CloudDocs/PynchyBackups` |
+| Logs | `~/Library/Logs/pynchy/backup.log`, `~/Library/Logs/pynchy/backup.err.log` |
+
+Safe checks:
+
+```bash
+ssh mac-mini 'launchctl print gui/$(id -u)/com.pynchy.backup'
+ssh mac-mini 'ls -lt ~/Library/Mobile\ Documents/com~apple~CloudDocs/PynchyBackups | head'
+ssh mac-mini 'tail -n 50 ~/Library/Logs/pynchy/backup.err.log'
+```
+
 **When to use what:**
 
 | What you need | Tool |

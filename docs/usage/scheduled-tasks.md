@@ -73,6 +73,26 @@ tail -n 100 ~/Library/Logs/pynchy/temporal.err.log
 
 The local service stores its durable state at `data/temporal.db`. Back up this file with the rest of `data/`; losing it drops Temporal workflow history and idempotency state for scheduled agent tasks. This single-host setup is suitable for a personal Mac deployment. Use Temporal Cloud or a normal self-hosted Temporal cluster when the scheduler needs HA or multi-host durability.
 
+To back up runtime databases with SQLite-safe snapshots, run:
+
+```bash
+scripts/backup_runtime_dbs.sh
+```
+
+The script backs up `messages.db`, `memories.db`, `neonize.db`, and `temporal.db` into `~/Library/Mobile Documents/com~apple~CloudDocs/PynchyBackups` by default and prunes backups older than 30 days. To run it daily on macOS:
+
+```bash
+cp launchd/com.pynchy.backup.plist ~/Library/LaunchAgents/com.pynchy.backup.plist
+```
+
+Before loading the plist, replace `$HOME` in `~/Library/LaunchAgents/com.pynchy.backup.plist` with your absolute home directory.
+
+```bash
+plutil -lint ~/Library/LaunchAgents/com.pynchy.backup.plist
+launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.pynchy.backup.plist
+launchctl kickstart "gui/$(id -u)/com.pynchy.backup"
+```
+
 ## Host Tasks
 
 Host tasks run shell commands on the host — no LLM, no container. Use them for maintenance scripts, backups, git operations, or anything that doesn't need an agent. Only the admin group can create and manage host tasks.

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Replace $HOME with an absolute home directory before installing; launchd
+     does not expand shell variables in plist string values. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.pynchy.backup</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$HOME/src/PERSONAL/pynchy/scripts/backup_runtime_dbs.sh</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>$HOME/src/PERSONAL/pynchy</string>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>15</integer>
+    </dict>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYNCHY_BACKUP_DIR</key>
+        <string>$HOME/Library/Mobile Documents/com~apple~CloudDocs/PynchyBackups</string>
+        <key>PYNCHY_BACKUP_KEEP_DAYS</key>
+        <string>30</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>$HOME/Library/Logs/pynchy/backup.log</string>
+    <key>StandardErrorPath</key>
+    <string>$HOME/Library/Logs/pynchy/backup.err.log</string>
+</dict>
+</plist>

@@ -78,7 +78,7 @@ Common configurations:
 
 - **OpenAI API key:** Set `[secrets].openai_api_key`, or reference `OPENAI_API_KEY` from `litellm_config.yaml`
 - **Anthropic API key:** Set `[secrets].anthropic_api_key`, or add an Anthropic API-key deployment to `litellm_config.yaml`
-- **Temporal scheduler:** Run a Temporal service and set `[scheduler].temporal_address` if it does not listen on `localhost:7233`. For a single-host macOS service, use the `launchd/com.pynchy.temporal.plist` template and back up `data/temporal.db`; see [Scheduled Tasks](usage/scheduled-tasks.md#single-host-macos-service).
+- **Temporal scheduler:** Run a Temporal service and set `[scheduler].temporal_address` if it does not listen on `localhost:7233`. For a single-host macOS service, use the `launchd/com.pynchy.temporal.plist` template and back up `data/temporal.db` with `scripts/backup_runtime_dbs.sh`; see [Scheduled Tasks](usage/scheduled-tasks.md#single-host-macos-service).
 - **Claude SDK core:** Set `[agent] core = "claude"` and provide a valid Anthropic API key; Claude Code OAuth tokens are not supported as provider credentials.
 - **Codex CLI core:** Configure a Codex-capable model in `litellm_config.yaml`, then set `[agent] core = "codex"` and `[agent] model` to that LiteLLM `model_name`. Codex model traffic routes through the same gateway as the OpenAI core.
 
