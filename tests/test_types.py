@@ -8,6 +8,8 @@ cause silent failures.
 
 from __future__ import annotations
 
+import warnings
+
 from pynchy.types import (
     AdditionalMount,
     AllowedRoot,
@@ -222,6 +224,24 @@ class TestScheduledTask:
         assert task.status == "active"
         assert task.created_at == ""
         assert task.repo_access is None
+
+    def test_cancelled_status_is_valid(self):
+        """Cancelled tasks are persisted in SQLite and shown on /status."""
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            task = ScheduledTask(
+                id="task-cancelled",
+                group_folder="g",
+                chat_jid="j",
+                prompt="p",
+                schedule_type="cron",
+                schedule_value="* * * * *",
+                context_mode="group",
+                status="cancelled",
+            )
+
+        assert task.status == "cancelled"
+        assert caught == []
 
 
 # ---------------------------------------------------------------------------
