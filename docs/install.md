@@ -391,6 +391,15 @@ Short-lived OAuth tokens from `claude` login expire every ~8 hours. Generate a l
 systemctl --user restart pynchy
 ```
 
+### OAuth token rejected by Anthropic organization policy
+
+If LiteLLM logs a 403 like `OAuth authentication is currently not allowed for
+this organization`, the host migration worked but the Claude Code OAuth token
+cannot be used as an Anthropic API credential for that organization. Use a
+sanctioned Anthropic API key in `litellm_config.yaml` / `.env`, or switch the
+active agent core and gateway route to a provider with a valid key. Do not
+treat this as a WhatsApp/session migration failure.
+
 ### WhatsApp QR code not scanning
 
 - Ensure your phone and server can reach each other over the network (or use SSH tunneling)
