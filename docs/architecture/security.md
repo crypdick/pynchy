@@ -198,7 +198,28 @@ OPENAI_API_KEY=gw-<random>
 - A compromised container cannot use the ephemeral key to reach providers directly
 - Docker containers reach the host via `host.docker.internal` (with `--add-host` on Linux)
 
-**Non-LLM credentials** get written directly to per-group env files (`data/env/{group}/env`):
+#### OneCLI Agent Vault
+
+When `[onecli].enabled = true`, Pynchy uses OneCLI as the preferred boundary for
+non-LLM service credentials. Pynchy does not read decrypted secret values from
+OneCLI. Instead, before spawning a container it asks OneCLI for:
+
+- proxy environment variables such as `HTTPS_PROXY`;
+- a gateway CA certificate and the container path where that certificate should
+  be trusted;
+- credential stub files whose contents are placeholders such as
+  `onecli-managed`.
+
+Containers and opt-in MCP sidecars then call normal service URLs. OneCLI matches
+the outbound request, applies its agent/secret/app-connection/rule policy, and
+injects the real credential at request time. Pynchy maps each workspace to a
+stable OneCLI agent identifier so policy remains external to the container.
+
+With OneCLI material present, Pynchy does not write `GH_TOKEN` into the agent env
+file. Native credential injection remains available only when OneCLI is disabled
+or explicitly configured with `fail_closed = false` for migration.
+
+Without OneCLI, **non-LLM credentials** get written directly to per-group env files (`data/env/{group}/env`):
 
 | Credential | Admin | Non-Admin | Rationale |
 |-----------|-----|---------|-----------|

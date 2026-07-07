@@ -10,6 +10,7 @@ from pynchy.config.mcp import McpServerConfig
 from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
 from pynchy.host.container_manager.mcp.lifecycle import (
     _build_placeholders,  # allow: private-test-imports
+    build_env_args,
     expand_arg_placeholders,
 )
 from pynchy.host.container_manager.mcp.manager import McpManager
@@ -85,6 +86,28 @@ class TestBuildPlaceholders:
         inst = self._make_instance(port=None)
         placeholders = _build_placeholders(inst)
         assert "port" not in placeholders
+
+
+class TestMcpOneCliConfig:
+    def test_mcp_server_accepts_onecli_opt_in(self):
+        cfg = McpServerConfig(type="docker", image="img", port=8000, onecli=True)
+
+        assert cfg.onecli is True
+        assert cfg.onecli_agent == "workspace"
+
+    def test_build_env_args_merges_onecli_env(self):
+        cfg = McpServerConfig(
+            type="docker",
+            image="img",
+            port=8000,
+            env={"STATIC": "value"},
+        )
+
+        args = build_env_args(cfg, extra_env={"HTTPS_PROXY": "http://proxy"})
+
+        assert "-e" in args
+        assert "STATIC=value" in args
+        assert "HTTPS_PROXY=http://proxy" in args
 
 
 # ---------------------------------------------------------------------------

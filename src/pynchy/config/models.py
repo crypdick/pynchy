@@ -125,6 +125,17 @@ class GatewayConfig(_StrictModel):
     ui_password: SecretStr | None = None  # LiteLLM UI login password
 
 
+class OneCliConfig(_StrictModel):
+    """OneCLI Agent Vault integration — credential isolation for agent containers."""
+
+    enabled: bool = False
+    url: str = "http://localhost:10254"
+    api_key_env: str = "ONECLI_API_KEY"
+    project_id_env: str = "ONECLI_PROJECT_ID"
+    fail_closed: bool = True
+    agent_identifier_prefix: str = "pynchy"
+
+
 class OwnerConfig(_StrictModel):
     """Owner identity per platform — used for allowed_users = ["owner"] resolution."""
 

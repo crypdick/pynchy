@@ -154,7 +154,13 @@ def _chrome_profiles_env_var(s: Settings, *, is_admin: bool, group_folder: str) 
     return {}
 
 
-def _write_env_file(*, is_admin: bool, group_folder: str) -> Path | None:
+def _write_env_file(
+    *,
+    is_admin: bool,
+    group_folder: str,
+    extra_env_vars: dict[str, str] | None = None,
+    include_gh_token: bool = True,
+) -> Path | None:
     """Write credential env vars for a specific group's container.
 
     Returns the per-group env dir, or ``None`` if no credentials were found.
@@ -163,7 +169,9 @@ def _write_env_file(*, is_admin: bool, group_folder: str) -> Path | None:
     Real API keys never enter the container.
 
     Non-LLM credentials (GH_TOKEN, git identity) are written directly —
-    they are not proxied through the gateway.
+    they are not proxied through the gateway.  OneCLI callers pass proxy env in
+    ``extra_env_vars`` and set ``include_gh_token=False`` so raw GitHub tokens
+    stay out of the container when OneCLI owns that credential boundary.
     """
     from pynchy.host.container_manager.gateway import get_gateway
 
@@ -173,7 +181,10 @@ def _write_env_file(*, is_admin: bool, group_folder: str) -> Path | None:
 
     env_vars: dict[str, str] = {}
     env_vars.update(_gateway_env_vars(get_gateway()))
-    env_vars.update(_gh_token_env_var(s, is_admin=is_admin, group_folder=group_folder))
+    if extra_env_vars:
+        env_vars.update(extra_env_vars)
+    if include_gh_token:
+        env_vars.update(_gh_token_env_var(s, is_admin=is_admin, group_folder=group_folder))
     env_vars.update(_git_identity_env_vars())
     env_vars.update(_chrome_profiles_env_var(s, is_admin=is_admin, group_folder=group_folder))
 

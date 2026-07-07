@@ -44,6 +44,7 @@ from pynchy.config.models import (
     GatewayConfig,
     IntervalsConfig,
     LoggingConfig,
+    OneCliConfig,
     OwnerConfig,
     PluginConfig,
     QueueConfig,
@@ -158,6 +159,7 @@ class Settings(BaseSettings):
     logging: LoggingConfig = LoggingConfig()
     secrets: SecretsConfig = SecretsConfig()
     gateway: GatewayConfig = GatewayConfig()
+    onecli: OneCliConfig = OneCliConfig()
     sandbox_universal: SandboxProfileConfig = SandboxProfileConfig()
     services: dict[str, ServiceTrustTomlConfig] = {}  # [services.<name>]
     repos: dict[str, RepoConfig] = {}  # [repos."owner/repo"]

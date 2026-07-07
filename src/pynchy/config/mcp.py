@@ -72,6 +72,10 @@ class McpServerConfig(BaseModel):
     #   list[str] — identity mapping (host var name = container var name)
     #   dict[str, str] — explicit mapping {container_var: host_var}
     env_forward: dict[str, str] = {}
+    # Route this MCP server through OneCLI Agent Vault.  The server receives
+    # proxy/CA env and placeholder stubs; OneCLI injects real credentials.
+    onecli: bool = False
+    onecli_agent: str = "workspace"
     # Volume mounts passed as -v flags. Each entry is "host_path:container_path".
     # Relative host paths are resolved from project_root.
     volumes: list[str] = []

@@ -22,6 +22,7 @@ from pynchy.host.container_manager.credentials import (
 from pynchy.host.container_manager.gateway_builtin import BuiltinGateway
 from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 from pynchy.host.container_manager.mounts import build_container_args, build_volume_mounts
+from pynchy.host.container_manager.onecli import OneCliMaterial
 from pynchy.host.container_manager.orchestrator import (
     _write_initial_input,  # allow: private-test-imports
     resolve_agent_core,
@@ -582,6 +583,47 @@ class TestMountBuilding:
 
             paths = [m.container_path for m in mounts]
             assert "/workspace/project/config.toml" not in paths
+
+    def test_onecli_material_adds_mounts_env_and_suppresses_gh_token(
+        self,
+        tmp_path: Path,
+    ):
+        """OneCLI material is mounted and raw GitHub tokens stay out of env files."""
+        ca_host_path = tmp_path / "onecli-ca.pem"
+        material = OneCliMaterial(
+            env_vars={
+                "HTTPS_PROXY": "http://proxy",
+                "SSL_CERT_FILE": "/tmp/onecli-ca.pem",
+            },
+            mounts=[VolumeMount(str(ca_host_path), "/tmp/onecli-ca.pem", readonly=True)],
+            warnings=[],
+        )
+        with (
+            _patch_settings(tmp_path, secret_overrides={"gh_token": "explicit-token"}),
+            patch(
+                "pynchy.host.container_manager.mounts.prepare_onecli_material",
+                return_value=material,
+                create=True,
+            ),
+            patch(f"{_GATEWAY}.get_gateway", return_value=None),
+            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
+        ):
+            (tmp_path / "groups" / "admin-1").mkdir(parents=True)
+            group = WorkspaceProfile(
+                jid="admin-1@g.us",
+                name="Admin",
+                folder="admin-1",
+                trigger="always",
+                added_at="2024-01-01",
+            )
+            mounts = build_volume_mounts(group, is_admin=True)
+
+        assert any(m.container_path == "/tmp/onecli-ca.pem" for m in mounts)
+        env_file = tmp_path / "data" / "env" / "admin-1" / "env"
+        content = env_file.read_text()
+        assert "HTTPS_PROXY='http://proxy'" in content
+        assert "SSL_CERT_FILE='/tmp/onecli-ca.pem'" in content
+        assert "GH_TOKEN" not in content
 
 
 # ---------------------------------------------------------------------------

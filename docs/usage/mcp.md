@@ -64,6 +64,14 @@ If a host var is unset, pynchy logs a warning and skips it (the container still 
 
 The `env`/`env_forward` split keeps secrets out of `config.toml` (which is committed) while keeping non-secret config visible and declarative. Changes to `.env` trigger an automatic service restart.
 
+Prefer OneCLI for secrets that leave the host. Set `onecli = true` on a Docker
+MCP server to pass OneCLI proxy env and CA material into the sidecar. If the MCP
+server needs a local credential file to start, create a stub file containing
+`onecli-managed` placeholders and let OneCLI inject the real credential when the
+server makes an outbound HTTP request. Use `env_forward` for native
+compatibility or non-secret host values, not as the first-choice credential
+boundary.
+
 ## Multi-tenant servers
 
 To run the same MCP server image against different accounts (e.g., multiple Slack workspaces), define separate server entries with different `env_forward` mappings:
@@ -75,6 +83,7 @@ image = "example/mcp-server:latest"
 port = 8080
 transport = "http"
 env = { MCP_HOST = "0.0.0.0", MCP_PORT = "8080" }
+onecli = true
 env_forward = { MCP_API_SECRET = "MCP_API_SECRET_ACME" }  # pragma: allowlist secret
 
 [mcp_servers.example_personal]
@@ -83,6 +92,7 @@ image = "example/mcp-server:latest"
 port = 8081
 transport = "http"
 env = { MCP_HOST = "0.0.0.0", MCP_PORT = "8081" }
+onecli = true
 env_forward = { MCP_API_SECRET = "MCP_API_SECRET_PERSONAL" }  # pragma: allowlist secret
 ```
 
