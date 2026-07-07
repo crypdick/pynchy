@@ -39,6 +39,7 @@ from pynchy.state import (
     update_task,
     update_task_after_run,
 )
+from pynchy.state.connection import atomic_write
 from pynchy.types import (
     NewMessage,
     ServiceTrustConfig,
@@ -952,6 +953,29 @@ class TestWorkspaceProfiles:
         assert result is not None
         assert result.security.services == {}
         assert result.security.contains_secrets is False
+
+    async def test_get_workspace_profile_raises_on_corrupt_security(self):
+        """A corrupt security_profile must fail loud, not silently default trust."""
+        async with atomic_write() as db:
+            await db.execute(
+                """INSERT OR REPLACE INTO registered_groups -- temporal-ok
+                    (jid, name, folder, trigger_pattern, added_at,
+                     container_config, security_profile, is_admin)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    "corrupt@g.us",
+                    "Corrupt",
+                    "corrupt",
+                    "@Corrupt",
+                    "2024-01-01T00:00:00Z",
+                    None,
+                    "{not valid json",
+                    0,
+                ),
+            )
+
+        with pytest.raises(ValueError, match="Corrupt security_profile"):
+            await get_workspace_profile("corrupt@g.us")
 
 
 # --- get_chat_history limit ---
