@@ -61,6 +61,8 @@ def observe_container_output(summary: LearningRunSummary, output: ContainerOutpu
             _append_error_snippet(summary, error_text)
         return
 
+    # Cores must mark recovered tool failures with tool_result_is_error=True
+    # or they are indistinguishable from successful tool output here.
     if (
         output.type == "tool_result"
         and output.tool_result_is_error is True

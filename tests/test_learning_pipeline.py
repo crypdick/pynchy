@@ -228,7 +228,7 @@ async def test_learning_packet_includes_follow_up_dispatched_during_active_run(
 
 
 @pytest.mark.asyncio
-async def test_learning_packet_falls_back_when_expanded_fetch_fails(tmp_path: Path) -> None:
+async def test_learning_packet_is_skipped_when_expanded_fetch_fails(tmp_path: Path) -> None:
     group = _make_group()
     deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
     initial = _make_message(
@@ -270,9 +270,11 @@ async def test_learning_packet_falls_back_when_expanded_fetch_fails(tmp_path: Pa
 
     assert result is True
     assert deps.last_agent_timestamp["g@g.us"] == follow_up_timestamp
-    packet = queue_cls.return_value.enqueue.call_args.args[0]
-    assert packet.provenance["final_cursor"] == follow_up_timestamp
-    assert json.loads(packet.provenance["source_message_ids"]) == ["msg-initial"]
+    assert mock_messages_since.await_args_list == [
+        call("g@g.us", "old-ts"),
+        call("g@g.us", initial.timestamp),
+    ]
+    queue_cls.assert_not_called()
 
 
 @pytest.mark.asyncio

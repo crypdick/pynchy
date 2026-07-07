@@ -37,7 +37,7 @@ async def messages_for_learning_packet(
     missed_messages: list[NewMessage],
     final_cursor: str,
     fetch_messages_since: FetchMessagesSince,
-) -> list[NewMessage]:
+) -> list[NewMessage] | None:
     """Return the user turn covered by the final cursor for learning capture."""
     initial_last_timestamp = missed_messages[-1].timestamp
     if final_cursor <= initial_last_timestamp:
@@ -47,12 +47,12 @@ async def messages_for_learning_packet(
         expanded_messages = await fetch_messages_since(chat_jid, initial_last_timestamp)
     except Exception as exc:  # allow: exception-handling - learning fetch is best-effort
         logger.exception(
-            "Failed to fetch expanded learning messages",
+            "Skipped learning packet because expanded message fetch failed",
             group=group.name,
             err=str(exc),
             final_cursor=final_cursor,
         )
-        return missed_messages
+        return None
 
     seen_ids: set[str] = set()
     covered_messages: list[NewMessage] = []
@@ -93,6 +93,8 @@ async def enqueue_completed_turn_learning_packet(
             final_cursor=final_cursor,
             fetch_messages_since=fetch_messages_since,
         )
+        if learning_messages is None:
+            return None
         return learning_packets.enqueue_learning_packet(
             chat_jid=chat_jid,
             group=group,

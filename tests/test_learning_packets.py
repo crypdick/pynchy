@@ -142,6 +142,43 @@ def test_recovered_tool_result_errors_are_captured_without_tool_inputs() -> None
     assert all(len(snippet) < 500 for snippet in summary.error_snippets)
 
 
+def test_observe_container_output_only_treats_marked_tool_results_as_errors() -> None:
+    summary = LearningRunSummary()
+
+    observe_container_output(
+        summary,
+        ContainerOutput(
+            status="success",
+            type="tool_result",
+            tool_result_is_error=False,
+            tool_result_content="recovered failure text",
+        ),
+    )
+    observe_container_output(
+        summary,
+        ContainerOutput(
+            status="success",
+            type="tool_result",
+            tool_result_is_error=True,
+            tool_result_content="marked failure text",
+        ),
+    )
+    observe_container_output(
+        summary,
+        ContainerOutput(
+            status="error",
+            type="tool_result",
+            tool_result_is_error=False,
+            tool_result_content="status failure text",
+        ),
+    )
+
+    assert summary.error_snippets == [
+        "marked failure text",
+        "status failure text",
+    ]
+
+
 def test_build_packet_bounds_user_messages_and_skips_non_user_visible_messages(
     tmp_path: Path,
 ) -> None:
