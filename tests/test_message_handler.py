@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.config.models import LearningConfig
+from pynchy.config.models import LearningConfig, ObsidianLearningConfig
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
 from pynchy.host.orchestrator.messaging.pipeline import (
     MessageHandlerDeps,
@@ -41,6 +41,7 @@ _P_LEARNING_ENQUEUE = (
 )
 _P_LEARNING_QUEUE = "pynchy.host.learning.packets.LearningQueue"
 _P_LEARNING_SETTINGS = "pynchy.host.learning.packets.get_settings"
+_P_LEARNING_PATH_SETTINGS = "pynchy.host.learning.paths.get_settings"
 _P_GET_RA = "pynchy.host.orchestrator.workspace_config.get_repo_access"
 _P_MERGE = "pynchy.host.git_ops._worktree_merge.merge_and_push_worktree"
 
@@ -682,6 +683,118 @@ class TestProcessGroupMessages:
         summary = observed["summary"]
         assert summary.final_answer == "Remembered."
         assert summary.tool_counts == {"Bash": 1}
+
+    @pytest.mark.asyncio
+    async def test_learning_packet_includes_follow_up_dispatched_during_active_run(self, tmp_path):
+        """Learning packets include follow-ups covered by the advanced cursor."""
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
+        initial = _make_message(
+            "first question",
+            id="msg-initial",
+            timestamp="2026-07-07T10:00:01Z",
+        )
+        follow_up = _make_message(
+            "more context",
+            id="msg-follow-up",
+            timestamp="2026-07-07T10:00:02Z",
+        )
+        settings = _settings_mock(
+            tmp_path,
+            learning=LearningConfig(
+                enabled=True,
+                obsidian=ObsidianLearningConfig(vault_root=str(tmp_path / "vault")),
+            ),
+        )
+
+        async def _run_agent(_group, _jid, _msgs, on_output=None, *_args, **_kwargs):
+            deps._dispatched_through["g@g.us"] = follow_up.timestamp
+            if on_output:
+                await on_output(
+                    ContainerOutput(status="success", type="result", result="Remembered.")
+                )
+            return "success"
+
+        deps.run_agent = AsyncMock(side_effect=_run_agent)
+        deps.handle_streamed_output = AsyncMock(return_value=False)
+
+        with (
+            patch(_P_SETTINGS, return_value=settings),
+            patch(_P_LEARNING_SETTINGS, return_value=settings),
+            patch(_P_LEARNING_PATH_SETTINGS, return_value=settings),
+            patch(_P_MSGS_SINCE, new_callable=AsyncMock) as mock_messages_since,
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+            patch(_P_LEARNING_QUEUE) as queue_cls,
+            patch("pynchy.host.git_ops._worktree_merge.background_merge_worktree"),
+        ):
+            mock_messages_since.side_effect = [[initial], [initial, follow_up]]
+            queue_cls.return_value.enqueue.return_value = tmp_path / "packet.json"
+
+            result = await process_group_messages(deps, "g@g.us")
+
+        assert result is True
+        assert deps.last_agent_timestamp["g@g.us"] == follow_up.timestamp
+        packet = queue_cls.return_value.enqueue.call_args.args[0]
+        assert packet.provenance["final_cursor"] == follow_up.timestamp
+        assert json.loads(packet.provenance["source_message_ids"]) == [
+            "msg-initial",
+            "msg-follow-up",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_learning_packet_falls_back_when_expanded_fetch_fails(self, tmp_path):
+        """Expanded learning fetch failures keep the user turn successful."""
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
+        initial = _make_message(
+            "first question",
+            id="msg-initial",
+            timestamp="2026-07-07T10:00:01Z",
+        )
+        follow_up_timestamp = "2026-07-07T10:00:02Z"
+        settings = _settings_mock(
+            tmp_path,
+            learning=LearningConfig(
+                enabled=True,
+                obsidian=ObsidianLearningConfig(vault_root=str(tmp_path / "vault")),
+            ),
+        )
+
+        async def _run_agent(_group, _jid, _msgs, on_output=None, *_args, **_kwargs):
+            deps._dispatched_through["g@g.us"] = follow_up_timestamp
+            if on_output:
+                await on_output(
+                    ContainerOutput(status="success", type="result", result="Remembered.")
+                )
+            return "success"
+
+        deps.run_agent = AsyncMock(side_effect=_run_agent)
+        deps.handle_streamed_output = AsyncMock(return_value=False)
+
+        with (
+            patch(_P_SETTINGS, return_value=settings),
+            patch(_P_LEARNING_SETTINGS, return_value=settings),
+            patch(_P_LEARNING_PATH_SETTINGS, return_value=settings),
+            patch(_P_MSGS_SINCE, new_callable=AsyncMock) as mock_messages_since,
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+            patch(_P_LEARNING_QUEUE) as queue_cls,
+            patch("pynchy.host.git_ops._worktree_merge.background_merge_worktree"),
+        ):
+            mock_messages_since.side_effect = [
+                [initial],
+                RuntimeError("database unavailable"),
+            ]
+            queue_cls.return_value.enqueue.return_value = tmp_path / "packet.json"
+
+            result = await process_group_messages(deps, "g@g.us")
+
+        assert result is True
+        assert deps.last_agent_timestamp["g@g.us"] == follow_up_timestamp
+        packet = queue_cls.return_value.enqueue.call_args.args[0]
+        assert packet.provenance["final_cursor"] == follow_up_timestamp
+        assert json.loads(packet.provenance["source_message_ids"]) == ["msg-initial"]
 
     @pytest.mark.asyncio
     async def test_retryable_failure_does_not_enqueue_learning_packet(self, tmp_path):

@@ -1,4 +1,3 @@
-# allow: file-length - packet logic lives in host.learning.packets; pipeline split is separate work.
 """Message processing pipeline — intercepts commands and processes messages for agents.
 
 Handles command interception (reset, end session, redeploy, !commands),
@@ -10,6 +9,7 @@ Message routing and the polling loop live in :mod:`_message_routing`.
 
 from __future__ import annotations
 
+# allow: file-length - packet logic lives in host.learning.packets; pipeline split is separate work.
 import json
 import time
 from datetime import UTC, datetime
@@ -479,6 +479,49 @@ def _register_idle_zzz_callback(
     session.set_idle_callback(_send_zzz)
 
 
+async def _messages_for_learning_packet(
+    *,
+    chat_jid: str,
+    group: WorkspaceProfile,
+    missed_messages: list[NewMessage],
+    previous_cursor: str,
+    final_cursor: str,
+) -> list[NewMessage]:
+    """Return the user turn covered by the final cursor for learning capture."""
+    initial_last_timestamp = missed_messages[-1].timestamp
+    if final_cursor <= initial_last_timestamp:
+        return missed_messages
+
+    try:
+        expanded_messages = await get_messages_since(chat_jid, previous_cursor)
+    except Exception as exc:  # allow: exception-handling - learning fetch is best-effort
+        logger.exception(
+            "Failed to fetch expanded learning messages",
+            group=group.name,
+            err=str(exc),
+            final_cursor=final_cursor,
+        )
+        return missed_messages
+
+    seen_ids: set[str] = set()
+    covered_messages: list[NewMessage] = []
+    for message in [*missed_messages, *expanded_messages]:
+        if message.timestamp > final_cursor or message.id in seen_ids:
+            continue
+        seen_ids.add(message.id)
+        covered_messages.append(message)
+
+    if not covered_messages:
+        logger.warning(
+            "Expanded learning message fetch returned no covered messages",
+            group=group.name,
+            final_cursor=final_cursor,
+        )
+        return missed_messages
+
+    return sorted(covered_messages, key=lambda message: message.timestamp)
+
+
 async def _finalize_cursor_and_retry(
     deps: MessageHandlerDeps,
     chat_jid: str,
@@ -496,6 +539,7 @@ async def _finalize_cursor_and_retry(
     """
     # Pop the dispatched marker; include any follow-ups piped while this
     # container was running (tracked by the routing loop via _mark_dispatched).
+    previous_cursor = deps.last_agent_timestamp.get(chat_jid, "")
     dispatched = deps._dispatched_through.pop(chat_jid, missed_messages[-1].timestamp)
     final_cursor = max(missed_messages[-1].timestamp, dispatched)
 
@@ -521,10 +565,17 @@ async def _finalize_cursor_and_retry(
         )
         return True
 
-    learning_packets.enqueue_learning_packet(
+    learning_messages = await _messages_for_learning_packet(
         chat_jid=chat_jid,
         group=group,
         missed_messages=missed_messages,
+        previous_cursor=previous_cursor,
+        final_cursor=final_cursor,
+    )
+    learning_packets.enqueue_learning_packet(
+        chat_jid=chat_jid,
+        group=group,
+        missed_messages=learning_messages,
         final_cursor=final_cursor,
         summary=learning_summary,
     )
