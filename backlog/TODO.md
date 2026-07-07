@@ -24,6 +24,7 @@ Single source of truth for all pynchy work items.
 ### 1 - Approved
 *Approved ideas. No plan yet.*
 
+- [Discord channel follow-ups](1-approved/discord-followups.md) — interactive `discord.ui.View` AskUser widget (wire `on_ask_user_answer`, mirror Slack Block Kit); DM pairing flow + approve CLI (the `pairing` access decision seam exists). v1 channel + streaming already shipped
 - [Voice transcription](1-approved/voice-transcription.md) — Transcribe inbound voice notes (WhatsApp, Slack) via Whisper API so agents can read audio messages
 - [X integration port](1-approved/x-integration-port.md) — Port the archived TypeScript X/Twitter skill to Python plugins
 - [Periodic agents ideas](1-approved/periodic-agents-ideas.md) — More periodic agent ideas beyond code-improver (security sweeps, SDK updates, etc.)
