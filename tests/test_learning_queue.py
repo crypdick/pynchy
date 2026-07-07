@@ -54,8 +54,22 @@ def test_enqueue_writes_packet_to_default_pending_dir(tmp_path: Path):
 
     assert path == tmp_path / "data" / "ipc" / "learning" / "pending" / "job-1.json"
     assert _read_json(path) == asdict(_packet())
-    for state in ("pending", "claimed", "done", "errors"):
+    for state in ("pending", "claiming", "claimed", "done", "errors"):
         assert (tmp_path / "data" / "ipc" / "learning" / state).is_dir()
+
+
+def test_explicit_constructor_args_do_not_load_global_settings(tmp_path: Path):
+    with patch(
+        "pynchy.host.learning.queue.get_settings",
+        side_effect=AssertionError("settings should not be loaded"),
+    ):
+        queue = LearningQueue(
+            base_dir=_base_dir(tmp_path),
+            lease_seconds=60,
+            max_attempts=3,
+        )
+
+    assert queue.enqueue(_packet()).exists()
 
 
 def test_claim_next_moves_one_pending_job_to_claimed_and_increments_attempts(
@@ -141,6 +155,81 @@ def test_stale_claim_cannot_fail_reclaimed_job(tmp_path: Path):
     assert not (_base_dir(tmp_path) / "pending" / "job-1.json").exists()
     assert not (_base_dir(tmp_path) / "errors" / "job-1.json").exists()
     assert _read_json(second_claim.path)["claim_id"] == second_claim.claim_id
+
+
+@pytest.mark.parametrize("operation", ["complete", "fail"])
+def test_claim_handle_rejects_current_payload_identity_mismatch(
+    tmp_path: Path,
+    operation: str,
+):
+    queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=60, max_attempts=2)
+    queue.enqueue(_packet())
+    claimed = queue.claim_next(now=datetime(2026, 7, 7, 12, 0, tzinfo=UTC))
+    assert claimed is not None
+    payload = _read_json(claimed.path)
+    payload["chat_jid"] = "slack:DIFFERENT"
+    claimed.path.write_text(json.dumps(payload))
+
+    with pytest.raises(RuntimeError, match="claim"):
+        if operation == "complete":
+            queue.complete(claimed)
+        else:
+            queue.fail(claimed, "stale failure")
+
+    assert claimed.path.exists()
+    assert not (_base_dir(tmp_path) / "done" / "job-1.json").exists()
+    assert not (_base_dir(tmp_path) / "errors" / "job-1.json").exists()
+    assert not (_base_dir(tmp_path) / "pending" / "job-1.json").exists()
+
+
+@pytest.mark.parametrize("operation", ["complete", "fail"])
+def test_claim_handle_rejects_current_payload_filename_mismatch(
+    tmp_path: Path,
+    operation: str,
+):
+    queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=60, max_attempts=2)
+    queue.enqueue(_packet())
+    claimed = queue.claim_next(now=datetime(2026, 7, 7, 12, 0, tzinfo=UTC))
+    assert claimed is not None
+    payload = _read_json(claimed.path)
+    payload["job_id"] = "job-2"
+    claimed.path.write_text(json.dumps(payload))
+
+    with pytest.raises(RuntimeError, match="filename"):
+        if operation == "complete":
+            queue.complete(claimed)
+        else:
+            queue.fail(claimed, "stale failure")
+
+    assert claimed.path.exists()
+    assert not (_base_dir(tmp_path) / "done" / "job-1.json").exists()
+    assert not (_base_dir(tmp_path) / "errors" / "job-1.json").exists()
+    assert not (_base_dir(tmp_path) / "pending" / "job-1.json").exists()
+
+
+@pytest.mark.parametrize("operation", ["complete", "fail"])
+def test_claim_handle_rejects_invalid_current_payload(
+    tmp_path: Path,
+    operation: str,
+):
+    queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=60, max_attempts=2)
+    queue.enqueue(_packet())
+    claimed = queue.claim_next(now=datetime(2026, 7, 7, 12, 0, tzinfo=UTC))
+    assert claimed is not None
+    payload = _read_json(claimed.path)
+    payload["messages"] = ["not a message object"]
+    claimed.path.write_text(json.dumps(payload))
+
+    with pytest.raises(RuntimeError, match="invalid payload"):
+        if operation == "complete":
+            queue.complete(claimed)
+        else:
+            queue.fail(claimed, "stale failure")
+
+    assert claimed.path.exists()
+    assert not (_base_dir(tmp_path) / "done" / "job-1.json").exists()
+    assert not (_base_dir(tmp_path) / "errors" / "job-1.json").exists()
+    assert not (_base_dir(tmp_path) / "pending" / "job-1.json").exists()
 
 
 def test_complete_rejects_done_collision_without_overwriting_claimed_job(
@@ -336,6 +425,29 @@ def test_requeue_expired_moves_exhausted_claim_to_errors(tmp_path: Path):
     error_payload = _read_json(error_path)
     assert error_payload["attempts"] == 2
     assert "max attempts" in error_payload["last_error"]
+
+
+@pytest.mark.parametrize("terminal_state", ["done", "errors"])
+def test_requeue_expired_discards_active_duplicate_when_terminal_state_exists(
+    tmp_path: Path,
+    terminal_state: str,
+):
+    queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=30, max_attempts=3)
+    queue.enqueue(_packet())
+    claimed = queue.claim_next(now=datetime(2026, 7, 7, 12, 0, tzinfo=UTC))
+    assert claimed is not None
+    terminal_path = _base_dir(tmp_path) / terminal_state / "job-1.json"
+    terminal_payload = _read_json(claimed.path)
+    terminal_payload["terminal_marker"] = terminal_state
+    terminal_path.write_text(json.dumps(terminal_payload))
+
+    requeued = queue.requeue_expired(now=datetime(2026, 7, 7, 12, 1, tzinfo=UTC))
+
+    assert requeued == 0
+    assert _read_json(terminal_path)["terminal_marker"] == terminal_state
+    assert not (_base_dir(tmp_path) / "pending" / "job-1.json").exists()
+    assert not (_base_dir(tmp_path) / "claiming" / "job-1.json").exists()
+    assert not (_base_dir(tmp_path) / "claimed" / "job-1.json").exists()
 
 
 def test_requeue_expired_treats_missing_lease_until_as_expired(tmp_path: Path):

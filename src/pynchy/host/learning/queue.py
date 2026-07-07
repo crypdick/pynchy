@@ -1,58 +1,31 @@
-"""Durable filesystem queue for Obsidian learning packets."""  # allow: file-length - approved write scope excludes the module split this queue needs.
+"""Durable filesystem queue for Obsidian learning packets."""
 
 from __future__ import annotations
 
-import fcntl
 import json
-import os
-import threading
-from collections.abc import Iterator, Mapping
-from contextlib import contextmanager, suppress
-from dataclasses import asdict, dataclass, replace
-from datetime import UTC, datetime, timedelta
+from dataclasses import replace
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 from uuid import uuid4
 
 from pynchy.config import get_settings
+from pynchy.host.learning import queue_codec as codec
+from pynchy.host.learning.queue_fs import (
+    QueueLayout,
+    discard_duplicates_with_terminal_winner,
+    ensure_state_dirs,
+    transition_lock,
+)
+from pynchy.host.learning.queue_fs import (
+    rename_no_clobber as _rename_no_clobber,
+)
+from pynchy.host.learning.queue_models import (
+    ClaimedLearningPacket,
+    LearningPacket,
+    LearningQueueError,
+)
 from pynchy.utils import write_json_atomic
-
-_PENDING = "pending"
-_CLAIMING = "claiming"
-_CLAIMED = "claimed"
-_DONE = "done"
-_ERRORS = "errors"
-_ERROR_DETAILS_MAX_CHARS = 200
-_CLAIM_METADATA_KEYS = ("claim_id", "claimed_at", "lease_until")
-_PROCESS_LOCKS_GUARD = threading.Lock()
-_PROCESS_LOCKS: dict[Path, threading.Lock] = {}
-
-
-class LearningQueueError(RuntimeError):
-    """Raised when queue state changes would violate durable ownership."""
-
-
-@dataclass(frozen=True)
-class LearningPacket:
-    job_id: str
-    chat_jid: str
-    group_folder: str
-    profile: str
-    created_at: str
-    messages: list[dict[str, str]]
-    final_answer: str | None
-    tool_counts: dict[str, int]
-    error_snippets: list[str]
-    loaded_skills: list[str]
-    provenance: dict[str, str]
-    attempts: int = 0
-
-
-@dataclass(frozen=True)
-class ClaimedLearningPacket:
-    packet: LearningPacket
-    path: Path
-    claim_id: str
 
 
 class LearningQueue:
@@ -63,40 +36,38 @@ class LearningQueue:
         lease_seconds: int | None = None,
         max_attempts: int | None = None,
     ) -> None:
-        settings = get_settings()
-        self._base_dir = (
-            base_dir if base_dir is not None else settings.data_dir / "ipc" / "learning"
-        )
-        self._lease_seconds = (
-            lease_seconds if lease_seconds is not None else settings.learning.lease_seconds
-        )
-        self._max_attempts = (
-            max_attempts if max_attempts is not None else settings.learning.max_attempts
-        )
+        if base_dir is None or lease_seconds is None or max_attempts is None:
+            settings = get_settings()
+            if base_dir is None:
+                base_dir = settings.data_dir / "ipc" / "learning"
+            if lease_seconds is None:
+                lease_seconds = settings.learning.lease_seconds
+            if max_attempts is None:
+                max_attempts = settings.learning.max_attempts
+
+        self._base_dir = base_dir
+        self._lease_seconds = lease_seconds
+        self._max_attempts = max_attempts
         if self._lease_seconds <= 0:
             raise ValueError("lease_seconds must be positive")
         if self._max_attempts <= 0:
             raise ValueError("max_attempts must be positive")
 
-        for directory in (
-            self._pending_dir,
-            self._claiming_dir,
-            self._claimed_dir,
-            self._done_dir,
-            self._errors_dir,
-        ):
-            directory.mkdir(parents=True, exist_ok=True)
+        self._layout = QueueLayout(self._base_dir)
+        ensure_state_dirs(self._layout)
 
     def enqueue(self, packet: LearningPacket) -> Path:
         with self._transition_lock():
+            self._recover_terminal_duplicates()
             filename = self._ensure_job_id_available(packet.job_id)
             path = self._pending_dir / filename
-            write_json_atomic(path, _packet_to_payload(packet), indent=2)
+            write_json_atomic(path, codec.packet_to_payload(packet), indent=2)
             return path
 
     def claim_next(self, *, now: datetime | None = None) -> ClaimedLearningPacket | None:
-        claim_time = _coerce_utc(now)
+        claim_time = codec.coerce_utc(now)
         with self._transition_lock():
+            self._recover_terminal_duplicates()
             self._recover_interrupted_claims()
             for pending_path in sorted(self._pending_dir.glob("*.json")):
                 claiming_path = self._claiming_dir / pending_path.name
@@ -108,9 +79,9 @@ class LearningQueue:
                     continue
 
                 try:
-                    payload = _load_payload(claiming_path)
-                    packet = _packet_from_payload(payload)
-                    if _job_filename(packet.job_id) != pending_path.name:
+                    payload = codec.load_payload(claiming_path)
+                    packet = codec.packet_from_payload(payload)
+                    if codec.job_filename(packet.job_id) != pending_path.name:
                         raise ValueError("job_id must match queue filename")
                 except json.JSONDecodeError as exc:
                     self._move_bad_payload(
@@ -129,8 +100,8 @@ class LearningQueue:
 
                 claimed_packet = replace(packet, attempts=packet.attempts + 1)
                 claim_id = uuid4().hex
-                claimed_payload = _packet_to_payload(claimed_packet)
-                claimed_payload["last_error"] = _string_metadata(payload, "last_error")
+                claimed_payload = codec.packet_to_payload(claimed_packet)
+                claimed_payload["last_error"] = codec.string_metadata(payload, "last_error")
                 claimed_payload["claim_id"] = claim_id
                 claimed_payload["claimed_at"] = claim_time.isoformat()
                 claimed_payload["lease_until"] = (
@@ -165,11 +136,11 @@ class LearningQueue:
     def fail(self, claimed: ClaimedLearningPacket, reason: str) -> Path:
         with self._transition_lock():
             current_payload = self._current_claim_payload(claimed)
-            payload = _packet_to_payload(claimed.packet)
-            payload["last_error"] = _cap_error(reason)
+            payload = codec.packet_to_payload(claimed.packet)
+            payload["last_error"] = codec.cap_error(reason)
 
             if claimed.packet.attempts >= self._max_attempts:
-                _copy_claim_metadata(current_payload, payload)
+                codec.copy_claim_metadata(current_payload, payload)
                 write_json_atomic(claimed.path, payload, indent=2)
                 destination = self._errors_dir / claimed.path.name
                 _rename_no_clobber(claimed.path, destination)
@@ -178,14 +149,15 @@ class LearningQueue:
             return self._return_claimed_to_pending(claimed.path, payload)
 
     def requeue_expired(self, *, now: datetime | None = None) -> int:
-        check_time = _coerce_utc(now)
+        check_time = codec.coerce_utc(now)
         with self._transition_lock():
+            self._recover_terminal_duplicates()
             requeued = self._recover_interrupted_claims()
             for claimed_path in sorted(self._claimed_dir.glob("*.json")):
                 try:
-                    payload = _load_payload(claimed_path)
-                    packet = _packet_from_payload(payload)
-                    if _job_filename(packet.job_id) != claimed_path.name:
+                    payload = codec.load_payload(claimed_path)
+                    packet = codec.packet_from_payload(payload)
+                    if codec.job_filename(packet.job_id) != claimed_path.name:
                         raise ValueError("job_id must match queue filename")
                 except json.JSONDecodeError as exc:
                     self._move_bad_payload(
@@ -202,11 +174,11 @@ class LearningQueue:
                     )
                     continue
 
-                if not _lease_is_expired(payload, check_time):
+                if not codec.lease_is_expired(payload, check_time):
                     continue
 
                 if packet.attempts >= self._max_attempts:
-                    payload["last_error"] = _cap_error(
+                    payload["last_error"] = codec.cap_error(
                         "lease expired after reaching max attempts "
                         f"({packet.attempts}/{self._max_attempts})"
                     )
@@ -220,14 +192,8 @@ class LearningQueue:
             return requeued
 
     def _ensure_job_id_available(self, job_id: str) -> str:
-        filename = _job_filename(job_id)
-        for directory in (
-            self._pending_dir,
-            self._claiming_dir,
-            self._claimed_dir,
-            self._done_dir,
-            self._errors_dir,
-        ):
+        filename = codec.job_filename(job_id)
+        for directory in self._layout.state_dirs:
             existing_path = directory / filename
             if existing_path.exists():
                 raise LearningQueueError(
@@ -240,16 +206,14 @@ class LearningQueue:
         claimed: ClaimedLearningPacket,
     ) -> dict[str, Any]:
         try:
-            payload = _load_payload(claimed.path)
+            payload = codec.load_payload(claimed.path)
+            codec.validate_claim_payload(payload, filename=claimed.path.name, claimed=claimed)
         except FileNotFoundError as exc:
             raise LearningQueueError("claimed file is missing") from exc
         except json.JSONDecodeError as exc:
             raise LearningQueueError("claimed file contains invalid JSON") from exc
-        except ValueError as exc:
+        except (KeyError, TypeError, ValueError) as exc:
             raise LearningQueueError("claimed file contains an invalid payload") from exc
-
-        if _string_metadata(payload, "claim_id") != claimed.claim_id:
-            raise LearningQueueError("claim ownership mismatch")
         return payload
 
     def _return_claimed_to_pending(
@@ -259,7 +223,7 @@ class LearningQueue:
     ) -> Path:
         claiming_path = self._claiming_dir / claimed_path.name
         _rename_no_clobber(claimed_path, claiming_path)
-        write_json_atomic(claiming_path, _clear_claim_metadata(payload), indent=2)
+        write_json_atomic(claiming_path, codec.clear_claim_metadata(payload), indent=2)
         pending_path = self._pending_dir / claimed_path.name
         _rename_no_clobber(claiming_path, pending_path)
         return pending_path
@@ -268,9 +232,9 @@ class LearningQueue:
         recovered = 0
         for claiming_path in sorted(self._claiming_dir.glob("*.json")):
             try:
-                payload = _load_payload(claiming_path)
-                packet = _packet_from_payload(payload)
-                if _job_filename(packet.job_id) != claiming_path.name:
+                payload = codec.load_payload(claiming_path)
+                packet = codec.packet_from_payload(payload)
+                if codec.job_filename(packet.job_id) != claiming_path.name:
                     raise ValueError("job_id must match queue filename")
             except json.JSONDecodeError as exc:
                 self._move_bad_payload(
@@ -297,7 +261,7 @@ class LearningQueue:
                 )
                 continue
 
-            write_json_atomic(claiming_path, _clear_claim_metadata(payload), indent=2)
+            write_json_atomic(claiming_path, codec.clear_claim_metadata(payload), indent=2)
             try:
                 _rename_no_clobber(claiming_path, pending_path)
             except LearningQueueError as exc:
@@ -311,242 +275,39 @@ class LearningQueue:
 
         return recovered
 
-    @contextmanager
-    def _transition_lock(self) -> Iterator[None]:
-        lock_path = self._base_dir / ".queue.lock"
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        process_lock = _process_lock_for(lock_path)
-        with process_lock, lock_path.open("a+") as lock_file:
-            # POSIX flock releases on process exit, so a crash cannot leave a
-            # permanent queue deadlock.
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+    def _recover_terminal_duplicates(self) -> int:
+        return discard_duplicates_with_terminal_winner(self._layout)
+
+    def _transition_lock(self):
+        return transition_lock(self._base_dir)
 
     @property
     def _pending_dir(self) -> Path:
-        return self._base_dir / _PENDING
+        return self._layout.pending_dir
 
     @property
     def _claiming_dir(self) -> Path:
-        return self._base_dir / _CLAIMING
+        return self._layout.claiming_dir
 
     @property
     def _claimed_dir(self) -> Path:
-        return self._base_dir / _CLAIMED
+        return self._layout.claimed_dir
 
     @property
     def _done_dir(self) -> Path:
-        return self._base_dir / _DONE
+        return self._layout.done_dir
 
     @property
     def _errors_dir(self) -> Path:
-        return self._base_dir / _ERRORS
+        return self._layout.errors_dir
 
     def _move_bad_payload(self, path: Path, *, error: str, details: str) -> Path:
         error_payload = {
             "error": error,
             "filename": path.name,
-            "details": _cap_error(details),
+            "details": codec.cap_error(details),
         }
         write_json_atomic(path, error_payload)
         error_path = self._errors_dir / path.name
         _rename_no_clobber(path, error_path)
         return error_path
-
-
-def _job_filename(job_id: str) -> str:
-    _validate_job_id(job_id)
-    return f"{job_id}.json"
-
-
-def _validate_job_id(job_id: str) -> None:
-    if not job_id or job_id == "." or ".." in job_id or "/" in job_id or "\\" in job_id:
-        raise ValueError("job_id must be a non-empty safe filename component")
-
-
-def _coerce_utc(value: datetime | None) -> datetime:
-    if value is None:
-        return datetime.now(UTC)
-    if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
-
-
-def _packet_to_payload(packet: LearningPacket) -> dict[str, Any]:
-    return asdict(packet)
-
-
-def _load_payload(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text())
-    if not isinstance(payload, dict):
-        raise ValueError("queue payload must be a JSON object")
-    return cast(dict[str, Any], payload)
-
-
-def _packet_from_payload(payload: Mapping[str, Any]) -> LearningPacket:
-    return LearningPacket(
-        job_id=_required_job_id(payload, "job_id"),
-        chat_jid=_required_str(payload, "chat_jid"),
-        group_folder=_required_str(payload, "group_folder"),
-        profile=_required_str(payload, "profile"),
-        created_at=_required_str(payload, "created_at"),
-        messages=_required_message_list(payload, "messages"),
-        final_answer=_optional_str(payload, "final_answer"),
-        tool_counts=_required_int_dict(payload, "tool_counts"),
-        error_snippets=_required_str_list(payload, "error_snippets"),
-        loaded_skills=_required_str_list(payload, "loaded_skills"),
-        provenance=_required_str_dict(payload, "provenance"),
-        attempts=_optional_int(payload, "attempts", default=0),
-    )
-
-
-def _required_job_id(payload: Mapping[str, Any], key: str) -> str:
-    value = _required_str(payload, key)
-    _validate_job_id(value)
-    return value
-
-
-def _required_str(payload: Mapping[str, Any], key: str) -> str:
-    value = payload[key]
-    if not isinstance(value, str):
-        raise ValueError(f"{key} must be a string")
-    return value
-
-
-def _optional_str(payload: Mapping[str, Any], key: str) -> str | None:
-    value = payload[key]
-    if value is None or isinstance(value, str):
-        return value
-    raise ValueError(f"{key} must be a string or null")
-
-
-def _required_str_list(payload: Mapping[str, Any], key: str) -> list[str]:
-    value = payload[key]
-    if not isinstance(value, list):
-        raise ValueError(f"{key} must be a list")
-    result: list[str] = []
-    for item in value:
-        if not isinstance(item, str):
-            raise ValueError(f"{key} items must be strings")
-        result.append(item)
-    return result
-
-
-def _required_message_list(payload: Mapping[str, Any], key: str) -> list[dict[str, str]]:
-    value = payload[key]
-    if not isinstance(value, list):
-        raise ValueError(f"{key} must be a list")
-    result: list[dict[str, str]] = []
-    for item in value:
-        if not isinstance(item, dict):
-            raise ValueError(f"{key} items must be objects")
-        result.append(_str_dict_from_mapping(item, f"{key} item"))
-    return result
-
-
-def _required_str_dict(payload: Mapping[str, Any], key: str) -> dict[str, str]:
-    value = payload[key]
-    if not isinstance(value, dict):
-        raise ValueError(f"{key} must be an object")
-    return _str_dict_from_mapping(value, key)
-
-
-def _required_int_dict(payload: Mapping[str, Any], key: str) -> dict[str, int]:
-    value = payload[key]
-    if not isinstance(value, dict):
-        raise ValueError(f"{key} must be an object")
-    result: dict[str, int] = {}
-    for item_key, item_value in value.items():
-        if not isinstance(item_key, str):
-            raise ValueError(f"{key} keys must be strings")
-        if not isinstance(item_value, int) or isinstance(item_value, bool):
-            raise ValueError(f"{key} values must be integers")
-        result[item_key] = item_value
-    return result
-
-
-def _optional_int(payload: Mapping[str, Any], key: str, *, default: int) -> int:
-    value = payload.get(key, default)
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise ValueError(f"{key} must be an integer")
-    if value < 0:
-        raise ValueError(f"{key} must be non-negative")
-    return value
-
-
-def _str_dict_from_mapping(value: Mapping[Any, Any], field_name: str) -> dict[str, str]:
-    result: dict[str, str] = {}
-    for item_key, item_value in value.items():
-        if not isinstance(item_key, str):
-            raise ValueError(f"{field_name} keys must be strings")
-        if not isinstance(item_value, str):
-            raise ValueError(f"{field_name} values must be strings")
-        result[item_key] = item_value
-    return result
-
-
-def _string_metadata(payload: Mapping[str, Any], key: str) -> str | None:
-    value = payload.get(key)
-    if isinstance(value, str):
-        return value
-    return None
-
-
-def _lease_is_expired(payload: Mapping[str, Any], now: datetime) -> bool:
-    lease_value = payload.get("lease_until")
-    if not isinstance(lease_value, str):
-        return True
-    try:
-        lease_until = datetime.fromisoformat(lease_value)
-    except ValueError:
-        return True
-    return _coerce_utc(lease_until) <= now
-
-
-def _cap_error(value: str) -> str:
-    if len(value) <= _ERROR_DETAILS_MAX_CHARS:
-        return value
-    return f"{value[: _ERROR_DETAILS_MAX_CHARS - 3]}..."
-
-
-def _copy_claim_metadata(
-    source: Mapping[str, Any],
-    destination: dict[str, Any],
-) -> None:
-    for key in _CLAIM_METADATA_KEYS:
-        if value := _string_metadata(source, key):
-            destination[key] = value
-
-
-def _clear_claim_metadata(payload: Mapping[str, Any]) -> dict[str, Any]:
-    cleaned = dict(payload)
-    for key in _CLAIM_METADATA_KEYS:
-        cleaned.pop(key, None)
-    return cleaned
-
-
-def _process_lock_for(lock_path: Path) -> threading.Lock:
-    key = lock_path.absolute()
-    with _PROCESS_LOCKS_GUARD:
-        process_lock = _PROCESS_LOCKS.get(key)
-        if process_lock is None:
-            process_lock = threading.Lock()
-            _PROCESS_LOCKS[key] = process_lock
-        return process_lock
-
-
-def _rename_no_clobber(source: Path, destination: Path) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        os.link(source, destination)
-    except FileExistsError as exc:
-        raise LearningQueueError(f"queue destination already exists: {destination}") from exc
-    try:
-        source.unlink()
-    except OSError:
-        with suppress(FileNotFoundError):
-            destination.unlink()
-        raise
