@@ -51,6 +51,14 @@ def test_codex_plugin_registered_via_static_registry() -> None:
     assert "codex" in core_names
 
 
+def test_agent_dockerfile_installs_codex_as_agent_executable() -> None:
+    """The image must not leave codex as an agent-inaccessible /root symlink."""
+    dockerfile = Path("src/pynchy/agent/Dockerfile").read_text()
+
+    assert "readlink -f /usr/local/bin/codex" in dockerfile
+    assert "chmod 0755 /usr/local/bin/codex" in dockerfile
+
+
 def test_build_volume_mounts_creates_per_group_codex_home(tmp_path: Path) -> None:
     """Each group gets isolated Codex CLI state mounted at ~/.codex."""
     settings = make_settings(
