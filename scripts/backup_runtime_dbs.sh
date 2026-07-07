@@ -38,12 +38,14 @@ if command -v shasum >/dev/null 2>&1; then
   )
 fi
 
-find "$BACKUP_ROOT" \
+if ! find "$BACKUP_ROOT" \
   -mindepth 1 \
   -maxdepth 1 \
   -type d \
   -name '20*T*Z' \
   -mtime "+$KEEP_DAYS" \
-  -exec rm -rf {} +
+  -exec rm -rf {} +; then
+  echo "Warning: backup retention prune failed for $BACKUP_ROOT" >&2
+fi
 
 echo "Backed up runtime DBs to $dest_dir"
