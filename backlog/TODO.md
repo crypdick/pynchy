@@ -16,7 +16,7 @@ Single source of truth for all pynchy work items.
 ### 0 - Proposed
 *ideas awaiting human review - to be discussed.*
 
-- convert setup into pyinfra deployments for repeatable deployments.
+- migrate this planning / backlog system to Linear app.
 - **Deputy agent for worktree contributions** — Ephemeral agent that inspects commits from worktrees before they enter main. Reviews for malicious code, security issues, and project conventions. Spawned by `host_sync_worktree()` before the merge step.
 - **Automated repo token refresh via GitHub App** — Replace manually-created fine-grained PATs with a GitHub App that auto-generates short-lived, repo-scoped installation tokens. Eliminates manual rotation. Builds on repo-scoped tokens (Phase 1 complete).
 - [Reintroduce Teams with session isolation](0-proposed/reintroduce-teams-session-isolation.md) — Teams tools (`TeamCreate`/`SendMessage`) are unlisted to prevent transcript branching; re-enabling needs per-teammate session isolation first.
@@ -26,11 +26,10 @@ Single source of truth for all pynchy work items.
 
 - [Discord channel follow-ups](1-approved/discord-followups.md) — interactive `discord.ui.View` AskUser widget (wire `on_ask_user_answer`, mirror Slack Block Kit); DM pairing flow + approve CLI (the `pairing` access decision seam exists). v1 channel + streaming already shipped
 - [Voice transcription](1-approved/voice-transcription.md) — Transcribe inbound voice notes (WhatsApp, Slack) via Whisper API so agents can read audio messages
-- [X integration port](1-approved/x-integration-port.md) — Port the archived TypeScript X/Twitter skill to Python plugins
+- [X integration port](1-approved/x-integration-port.md) — Port the archived TypeScript X/Twitter skill from Nanoclaw to Python plugins
 - [Periodic agents ideas](1-approved/periodic-agents-ideas.md) — More periodic agent ideas beyond code-improver (security sweeps, SDK updates, etc.)
 - [Project ideas](1-approved/project-ideas.md) — Standalone integration ideas (calendar, voice, Cloudflare, AWS, etc.)
 - [Small improvements](1-approved/small-improvements.md) — Remaining: slack-tools migration check
-- [Ray resource orchestration](1-approved/ray-resource-orchestration.md) — Thin Ray integration for resource-aware container scaling, blocking queues, multi-node distribution, and GPU routing
 - implement 'handoff' tool calls as well as 'delegate' tool calls. handoff causes current agent to cease to exist; it decides what context to give to the next agent. the delegate tool is a blocking call that spawns a new agent to complete a task before passing it back. in reality, this tool call can abstract away a more complex system, like a deep research agent which has many subagents.
 - add support for multiple accounts/subscriptions. allow user to designate different workplaces to different accounts (e.g. corporate claude sub, personal claude sub, etc).
 - add a self-documenting hook to make the agent update its docs as it learns new things. it should run cmds and be sure that they work before writing docs (otherwise it's a hypothesis, not documetnation)
