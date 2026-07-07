@@ -15,17 +15,13 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import aiohttp
 
 from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
-from pynchy.host.container_manager.mcp.resolution import WorkspaceTeam
+from pynchy.host.container_manager.mcp.resolution import McpInstance, WorkspaceTeam
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    from pynchy.host.container_manager.mcp.resolution import McpInstance
-
 
 # ---------------------------------------------------------------------------
 # HTTP helpers

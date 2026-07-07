@@ -107,7 +107,7 @@ class TestLiteLLMSyncRuntimeTypes:
             ),
             patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request),
         ):
-            await litellm.sync_mcp_endpoints(gateway, {})
+            await litellm.sync_mcp_endpoints(gateway, {"gdrive": _make_instance("gdrive")})
 
 
 class TestGetDirectServerConfigsProxy:
