@@ -164,6 +164,13 @@ class ObsidianLearningConfig(_StrictModel):
             raise ValueError("default_profile_root must not contain '..' path components")
         return v
 
+    @field_validator("memory_dir_name", "skills_dir_name")
+    @classmethod
+    def validate_learning_dir_name(cls, v: str) -> str:
+        if not v or "/" in v or v in {".", ".."}:
+            raise ValueError("learning directory names must be a single path component")
+        return v
+
 
 class LearningConfig(_StrictModel):
     enabled: bool = False

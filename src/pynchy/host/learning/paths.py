@@ -6,6 +6,7 @@ import posixpath
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from pynchy.config import get_settings
 
@@ -31,7 +32,11 @@ class LearningConfigError(ValueError):
 
 
 def profile_name_for_group(group_folder: str) -> str:
-    workspace = get_settings().workspaces.get(group_folder)
+    return _profile_name_for_group(get_settings(), group_folder)
+
+
+def _profile_name_for_group(settings: Any, group_folder: str) -> str:
+    workspace = settings.workspaces.get(group_folder)
     if workspace is None or workspace.profile is None:
         return "default"
     return workspace.profile
@@ -53,7 +58,9 @@ def resolve_learning_paths(
 
     vault_root = Path(obsidian.vault_root).expanduser().resolve()
     profile = (
-        profile_override if profile_override is not None else profile_name_for_group(group_folder)
+        profile_override
+        if profile_override is not None
+        else _profile_name_for_group(settings, group_folder)
     )
     profile_slug = _profile_slug(profile)
 
