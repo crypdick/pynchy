@@ -192,6 +192,23 @@ def test_profile_slug_is_path_safe_but_original_profile_is_preserved(tmp_path):
     assert paths.profile_root == vault.resolve() / "systems/pynchy/profiles/shopping-list-2026"
 
 
+def test_profile_override_wins_over_workspace_profile_and_is_slugged(tmp_path):
+    vault = tmp_path / "vault"
+    settings = _settings(
+        tmp_path=tmp_path,
+        learning=_enabled_learning(vault),
+        workspaces={"shopping-group": WorkspaceConfig(profile="shopping")},
+    )
+
+    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+        paths = resolve_learning_paths("shopping-group", profile_override="Deep Work!!")
+
+    assert paths is not None
+    assert paths.profile == "Deep Work!!"
+    assert paths.profile_slug == "deep-work"
+    assert paths.profile_root == vault.resolve() / "systems/pynchy/profiles/deep-work"
+
+
 def test_default_profile_root_must_be_relative_and_stay_inside_vault():
     with pytest.raises(ValidationError, match="relative"):
         ObsidianLearningConfig(default_profile_root="/systems/pynchy/profiles/{profile}")
@@ -239,6 +256,35 @@ def test_learning_dir_names_must_be_single_path_components():
             ObsidianLearningConfig(skills_dir_name=value)
 
 
-def test_mount_path_must_be_absolute_container_path():
+def test_learning_operational_knobs_must_be_positive():
+    invalid_cases = [
+        {"queue_poll_interval_seconds": 0.0},
+        {"queue_poll_interval_seconds": -0.1},
+        {"lease_seconds": 0},
+        {"lease_seconds": -1},
+        {"max_attempts": 0},
+        {"max_attempts": -1},
+        {"packet_max_chars": 0},
+        {"packet_max_chars": -1},
+        {"skill_max_bytes": 0},
+        {"skill_max_bytes": -1},
+    ]
+
+    for kwargs in invalid_cases:
+        with pytest.raises(ValidationError, match="positive"):
+            LearningConfig(**kwargs)
+
+
+def test_mount_path_must_be_absolute_posix_container_path():
     with pytest.raises(ValidationError, match="absolute"):
         ObsidianLearningConfig(mount_path="workspace/vault")
+
+    for mount_path in ("/", "/workspace/../vault", "/workspace\\vault"):
+        with pytest.raises(ValidationError, match="mount_path"):
+            ObsidianLearningConfig(mount_path=mount_path)
+
+
+def test_mount_path_normalizes_repeated_and_trailing_slashes():
+    cfg = ObsidianLearningConfig(mount_path="//workspace//vault//")
+
+    assert cfg.mount_path == "/workspace/vault"

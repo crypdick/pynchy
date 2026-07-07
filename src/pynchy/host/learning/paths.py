@@ -6,9 +6,8 @@ import posixpath
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
-from pynchy.config import get_settings
+from pynchy.config.settings import Settings, get_settings
 
 _PROFILE_SLUG_PATTERN = re.compile(r"[^a-z0-9_.-]+")
 
@@ -35,7 +34,7 @@ def profile_name_for_group(group_folder: str) -> str:
     return _profile_name_for_group(get_settings(), group_folder)
 
 
-def _profile_name_for_group(settings: Any, group_folder: str) -> str:
+def _profile_name_for_group(settings: Settings, group_folder: str) -> str:
     workspace = settings.workspaces.get(group_folder)
     if workspace is None or workspace.profile is None:
         return "default"

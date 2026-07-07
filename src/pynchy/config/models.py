@@ -13,6 +13,7 @@ in their respective plugin files.
 
 from __future__ import annotations
 
+import posixpath
 from pathlib import Path
 from typing import Annotated, Any, Literal, NewType
 
@@ -152,7 +153,16 @@ class ObsidianLearningConfig(_StrictModel):
     def validate_mount_path(cls, v: str) -> str:
         if not v.startswith("/"):
             raise ValueError("mount_path must be an absolute container path")
-        return v
+        if "\\" in v:
+            raise ValueError("mount_path must be an absolute POSIX container path")
+        raw_parts = [part for part in v.split("/") if part]
+        if any(part == ".." for part in raw_parts):
+            raise ValueError("mount_path must not contain '..' path components")
+        normalized = "/" + "/".join(part for part in raw_parts if part != ".")
+        normalized = posixpath.normpath(normalized)
+        if normalized == "/":
+            raise ValueError("mount_path must not mount the vault at '/'")
+        return normalized
 
     @field_validator("default_profile_root")
     @classmethod
@@ -181,6 +191,19 @@ class LearningConfig(_StrictModel):
     packet_max_chars: int = 12_000
     skill_max_bytes: int = 200_000
     obsidian: ObsidianLearningConfig = ObsidianLearningConfig()
+
+    @field_validator(
+        "queue_poll_interval_seconds",
+        "lease_seconds",
+        "max_attempts",
+        "packet_max_chars",
+        "skill_max_bytes",
+    )
+    @classmethod
+    def validate_positive_operational_knobs(cls, v: float | int) -> float | int:
+        if v <= 0:
+            raise ValueError("learning operational values must be positive")
+        return v
 
 
 class OwnerConfig(_StrictModel):
