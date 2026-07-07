@@ -435,7 +435,7 @@ class LiteLLMGateway:
 
         await wait_healthy(
             _LITELLM_CONTAINER,
-            f"http://localhost:{self.port}/health",
+            f"http://localhost:{self.port}/health/readiness",
             timeout=_HEALTH_TIMEOUT,
             poll_interval=_HEALTH_POLL_INTERVAL,
             headers={"Authorization": f"Bearer {self.key}"},
