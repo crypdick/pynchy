@@ -35,6 +35,7 @@ from pynchy.host.container_manager.process import (
     _docker_rm_force,
 )
 from pynchy.logger import logger
+from pynchy.types import GroupFolder
 from pynchy.utils import create_background_task
 
 
@@ -269,7 +270,7 @@ class ContainerSession:
 _sessions: dict[str, ContainerSession] = {}
 
 
-def get_session(group_folder: str) -> ContainerSession | None:
+def get_session(group_folder: GroupFolder) -> ContainerSession | None:
     """Return the alive session for a group, or None.
 
     Cleans up dead sessions on access.
@@ -288,7 +289,7 @@ def get_session(group_folder: str) -> ContainerSession | None:
     return session
 
 
-def get_session_output_handler(group_folder: str) -> OnOutput | None:
+def get_session_output_handler(group_folder: GroupFolder) -> OnOutput | None:
     """Return the output handler for the active session of a group, or None.
 
     Used by the IPC watcher to dispatch output events to the correct callback.

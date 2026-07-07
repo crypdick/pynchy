@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from pynchy.state import (
@@ -42,6 +44,7 @@ from pynchy.state import (
 from pynchy.state.connection import atomic_write
 from pynchy.types import (
     NewMessage,
+    ScheduledTask,
     ServiceTrustConfig,
     TaskRunLog,
     WorkspaceProfile,
@@ -307,18 +310,18 @@ class TestStoreChatMetadata:
 class TestTaskCRUD:
     async def test_creates_and_retrieves_a_task(self):
         await create_task(
-            {
-                "id": "task-1",
-                "group_folder": "main",
-                "chat_jid": "group@g.us",
-                "prompt": "do something",
-                "schedule_type": "once",
-                "schedule_value": "2024-06-01T00:00:00.000Z",
-                "context_mode": "isolated",
-                "next_run": "2024-06-01T00:00:00.000Z",
-                "status": "active",
-                "created_at": "2024-01-01T00:00:00.000Z",
-            }
+            ScheduledTask(
+                id="task-1",
+                group_folder="main",
+                chat_jid="group@g.us",
+                prompt="do something",
+                schedule_type="once",
+                schedule_value="2024-06-01T00:00:00.000Z",
+                context_mode="isolated",
+                next_run="2024-06-01T00:00:00.000Z",
+                status="active",
+                created_at="2024-01-01T00:00:00.000Z",
+            )
         )
 
         task = await get_task_by_id("task-1")
@@ -328,18 +331,18 @@ class TestTaskCRUD:
 
     async def test_updates_task_status(self):
         await create_task(
-            {
-                "id": "task-2",
-                "group_folder": "main",
-                "chat_jid": "group@g.us",
-                "prompt": "test",
-                "schedule_type": "once",
-                "schedule_value": "2024-06-01T00:00:00.000Z",
-                "context_mode": "isolated",
-                "next_run": None,
-                "status": "active",
-                "created_at": "2024-01-01T00:00:00.000Z",
-            }
+            ScheduledTask(
+                id="task-2",
+                group_folder="main",
+                chat_jid="group@g.us",
+                prompt="test",
+                schedule_type="once",
+                schedule_value="2024-06-01T00:00:00.000Z",
+                context_mode="isolated",
+                next_run=None,
+                status="active",
+                created_at="2024-01-01T00:00:00.000Z",
+            )
         )
 
         await update_task("task-2", {"status": "paused"})
@@ -349,18 +352,18 @@ class TestTaskCRUD:
 
     async def test_deletes_task_and_run_logs(self):
         await create_task(
-            {
-                "id": "task-3",
-                "group_folder": "main",
-                "chat_jid": "group@g.us",
-                "prompt": "delete me",
-                "schedule_type": "once",
-                "schedule_value": "2024-06-01T00:00:00.000Z",
-                "context_mode": "isolated",
-                "next_run": None,
-                "status": "active",
-                "created_at": "2024-01-01T00:00:00.000Z",
-            }
+            ScheduledTask(
+                id="task-3",
+                group_folder="main",
+                chat_jid="group@g.us",
+                prompt="delete me",
+                schedule_type="once",
+                schedule_value="2024-06-01T00:00:00.000Z",
+                context_mode="isolated",
+                next_run=None,
+                status="active",
+                created_at="2024-01-01T00:00:00.000Z",
+            )
         )
 
         await delete_task("task-3")
@@ -670,32 +673,33 @@ class TestStoreMessageDirect:
 class TestTaskAdvanced:
     """Tests for task querying and lifecycle functions."""
 
-    _TASK_TEMPLATE = {
-        "group_folder": "main",
-        "chat_jid": "group@g.us",
-        "prompt": "test prompt",
-        "schedule_type": "cron",
-        "schedule_value": "0 * * * *",
-        "context_mode": "isolated",
-        "status": "active",
-        "created_at": "2024-01-01T00:00:00.000Z",
-    }
+    _TASK_TEMPLATE = ScheduledTask(
+        id="",
+        group_folder="main",
+        chat_jid="group@g.us",
+        prompt="test prompt",
+        schedule_type="cron",
+        schedule_value="0 * * * *",
+        context_mode="isolated",
+        status="active",
+        created_at="2024-01-01T00:00:00.000Z",
+    )
 
     async def test_get_tasks_for_group(self):
-        await create_task({**self._TASK_TEMPLATE, "id": "t1", "next_run": None})
+        await create_task(replace(self._TASK_TEMPLATE, id="t1", next_run=None))
         await create_task(
-            {**self._TASK_TEMPLATE, "id": "t2", "group_folder": "other", "next_run": None}
+            replace(self._TASK_TEMPLATE, id="t2", group_folder="other", next_run=None)
         )
-        await create_task({**self._TASK_TEMPLATE, "id": "t3", "next_run": None})
+        await create_task(replace(self._TASK_TEMPLATE, id="t3", next_run=None))
 
         tasks = await get_tasks_for_group("main")
         assert len(tasks) == 2
         assert all(t.group_folder == "main" for t in tasks)
 
     async def test_get_all_tasks(self):
-        await create_task({**self._TASK_TEMPLATE, "id": "t1", "next_run": None})
+        await create_task(replace(self._TASK_TEMPLATE, id="t1", next_run=None))
         await create_task(
-            {**self._TASK_TEMPLATE, "id": "t2", "group_folder": "other", "next_run": None}
+            replace(self._TASK_TEMPLATE, id="t2", group_folder="other", next_run=None)
         )
 
         tasks = await get_all_tasks()
@@ -703,23 +707,21 @@ class TestTaskAdvanced:
 
     async def test_get_due_tasks(self):
         # Due task (next_run in the past)
-        await create_task(
-            {**self._TASK_TEMPLATE, "id": "due-1", "next_run": "2020-01-01T00:00:00Z"}
-        )
+        await create_task(replace(self._TASK_TEMPLATE, id="due-1", next_run="2020-01-01T00:00:00Z"))
         # Not due (next_run in the far future)
         await create_task(
-            {**self._TASK_TEMPLATE, "id": "future-1", "next_run": "2099-01-01T00:00:00Z"}
+            replace(self._TASK_TEMPLATE, id="future-1", next_run="2099-01-01T00:00:00Z")
         )
         # No next_run (should not be due)
-        await create_task({**self._TASK_TEMPLATE, "id": "no-next", "next_run": None})
+        await create_task(replace(self._TASK_TEMPLATE, id="no-next", next_run=None))
         # Paused task (should not be due even if next_run is past)
         await create_task(
-            {
-                **self._TASK_TEMPLATE,
-                "id": "paused-1",
-                "next_run": "2020-01-01T00:00:00Z",
-                "status": "paused",
-            }
+            replace(
+                self._TASK_TEMPLATE,
+                id="paused-1",
+                next_run="2020-01-01T00:00:00Z",
+                status="paused",
+            )
         )
 
         due = await get_due_tasks()
@@ -727,9 +729,9 @@ class TestTaskAdvanced:
         assert due[0].id == "due-1"
 
     async def test_get_active_task_for_group(self):
-        await create_task({**self._TASK_TEMPLATE, "id": "active-1", "next_run": None})
+        await create_task(replace(self._TASK_TEMPLATE, id="active-1", next_run=None))
         await create_task(
-            {**self._TASK_TEMPLATE, "id": "paused-1", "status": "paused", "next_run": None}
+            replace(self._TASK_TEMPLATE, id="paused-1", status="paused", next_run=None)
         )
 
         task = await get_active_task_for_group("main")
@@ -741,7 +743,7 @@ class TestTaskAdvanced:
         assert task is None
 
     async def test_update_task_ignores_disallowed_fields(self):
-        await create_task({**self._TASK_TEMPLATE, "id": "t1", "next_run": None})
+        await create_task(replace(self._TASK_TEMPLATE, id="t1", next_run=None))
 
         # Try updating a field that isn't in the allowed set
         await update_task("t1", {"chat_jid": "hacked@g.us", "status": "paused"})
@@ -751,7 +753,7 @@ class TestTaskAdvanced:
         assert task.chat_jid == "group@g.us"  # unchanged
 
     async def test_update_task_noop_for_empty_fields(self):
-        await create_task({**self._TASK_TEMPLATE, "id": "t1", "next_run": None})
+        await create_task(replace(self._TASK_TEMPLATE, id="t1", next_run=None))
         await update_task("t1", {"invalid_field": "value"})
         task = await get_task_by_id("t1")
         assert task is not None
@@ -759,12 +761,12 @@ class TestTaskAdvanced:
 
     async def test_update_task_after_run_sets_completed_for_once(self):
         await create_task(
-            {
-                **self._TASK_TEMPLATE,
-                "id": "once-task",
-                "schedule_type": "once",
-                "next_run": "2024-06-01T00:00:00Z",
-            }
+            replace(
+                self._TASK_TEMPLATE,
+                id="once-task",
+                schedule_type="once",
+                next_run="2024-06-01T00:00:00Z",
+            )
         )
 
         # next_run=None means 'once' task → should be marked 'completed'
@@ -777,7 +779,7 @@ class TestTaskAdvanced:
 
     async def test_update_task_after_run_preserves_active_for_cron(self):
         await create_task(
-            {**self._TASK_TEMPLATE, "id": "cron-task", "next_run": "2024-06-01T00:00:00Z"}
+            replace(self._TASK_TEMPLATE, id="cron-task", next_run="2024-06-01T00:00:00Z")
         )
 
         # next_run is set → task stays 'active'
@@ -788,7 +790,7 @@ class TestTaskAdvanced:
         assert task.next_run == "2024-06-01T01:00:00Z"
 
     async def test_log_task_run(self):
-        await create_task({**self._TASK_TEMPLATE, "id": "logged-task", "next_run": None})
+        await create_task(replace(self._TASK_TEMPLATE, id="logged-task", next_run=None))
 
         await log_task_run(
             TaskRunLog(
@@ -817,19 +819,19 @@ class TestTaskAdvanced:
 
     async def test_create_task_with_repo_access(self):
         await create_task(
-            {
-                **self._TASK_TEMPLATE,
-                "id": "pa-task",
-                "next_run": None,
-                "repo_access": "owner/pynchy",
-            }
+            replace(
+                self._TASK_TEMPLATE,
+                id="pa-task",
+                next_run=None,
+                repo_access="owner/pynchy",
+            )
         )
         task = await get_task_by_id("pa-task")
         assert task is not None
         assert task.repo_access == "owner/pynchy"
 
     async def test_create_task_without_repo_access(self):
-        await create_task({**self._TASK_TEMPLATE, "id": "no-pa", "next_run": None})
+        await create_task(replace(self._TASK_TEMPLATE, id="no-pa", next_run=None))
         task = await get_task_by_id("no-pa")
         assert task is not None
         assert task.repo_access is None
@@ -1041,19 +1043,19 @@ class TestGetTaskById:
 
     async def test_returns_full_task_fields(self):
         await create_task(
-            {
-                "id": "full-task",
-                "group_folder": "my-group",
-                "chat_jid": "jid@g.us",
-                "prompt": "Do a thing",
-                "schedule_type": "interval",
-                "schedule_value": "3600000",
-                "context_mode": "group",
-                "next_run": "2024-06-01T00:00:00Z",
-                "status": "active",
-                "created_at": "2024-01-01T00:00:00Z",
-                "repo_access": "owner/pynchy",
-            }
+            ScheduledTask(
+                id="full-task",
+                group_folder="my-group",
+                chat_jid="jid@g.us",
+                prompt="Do a thing",
+                schedule_type="interval",
+                schedule_value="3600000",
+                context_mode="group",
+                next_run="2024-06-01T00:00:00Z",
+                status="active",
+                created_at="2024-01-01T00:00:00Z",
+                repo_access="owner/pynchy",
+            )
         )
         task = await get_task_by_id("full-task")
         assert task is not None
@@ -1098,17 +1100,18 @@ class TestUpdateById:
     async def test_update_task_updates_allowed_fields(self):
         """update_task should update fields in the allowlist."""
         await create_task(
-            {
-                "id": "upd-1",
-                "group_folder": "test",
-                "chat_jid": "test@g.us",
-                "prompt": "original",
-                "schedule_type": "once",
-                "schedule_value": "2025-06-01T00:00:00.000Z",
-                "next_run": "2025-06-01T00:00:00.000Z",
-                "status": "active",
-                "created_at": "2024-01-01T00:00:00.000Z",
-            }
+            ScheduledTask(
+                id="upd-1",
+                group_folder="test",
+                chat_jid="test@g.us",
+                prompt="original",
+                schedule_type="once",
+                schedule_value="2025-06-01T00:00:00.000Z",
+                context_mode="isolated",
+                next_run="2025-06-01T00:00:00.000Z",
+                status="active",
+                created_at="2024-01-01T00:00:00.000Z",
+            )
         )
 
         await update_task("upd-1", {"status": "paused", "prompt": "updated"})
@@ -1120,17 +1123,18 @@ class TestUpdateById:
     async def test_update_task_ignores_disallowed_fields(self):
         """update_task should silently skip fields not in the allowlist."""
         await create_task(
-            {
-                "id": "upd-2",
-                "group_folder": "test",
-                "chat_jid": "test@g.us",
-                "prompt": "original",
-                "schedule_type": "once",
-                "schedule_value": "2025-06-01T00:00:00.000Z",
-                "next_run": "2025-06-01T00:00:00.000Z",
-                "status": "active",
-                "created_at": "2024-01-01T00:00:00.000Z",
-            }
+            ScheduledTask(
+                id="upd-2",
+                group_folder="test",
+                chat_jid="test@g.us",
+                prompt="original",
+                schedule_type="once",
+                schedule_value="2025-06-01T00:00:00.000Z",
+                context_mode="isolated",
+                next_run="2025-06-01T00:00:00.000Z",
+                status="active",
+                created_at="2024-01-01T00:00:00.000Z",
+            )
         )
 
         # Try to update group_folder which is not in the allowlist
@@ -1143,17 +1147,18 @@ class TestUpdateById:
     async def test_update_task_noop_with_no_allowed_fields(self):
         """update_task with only disallowed fields should be a safe no-op."""
         await create_task(
-            {
-                "id": "upd-3",
-                "group_folder": "test",
-                "chat_jid": "test@g.us",
-                "prompt": "original",
-                "schedule_type": "once",
-                "schedule_value": "2025-06-01T00:00:00.000Z",
-                "next_run": "2025-06-01T00:00:00.000Z",
-                "status": "active",
-                "created_at": "2024-01-01T00:00:00.000Z",
-            }
+            ScheduledTask(
+                id="upd-3",
+                group_folder="test",
+                chat_jid="test@g.us",
+                prompt="original",
+                schedule_type="once",
+                schedule_value="2025-06-01T00:00:00.000Z",
+                context_mode="isolated",
+                next_run="2025-06-01T00:00:00.000Z",
+                status="active",
+                created_at="2024-01-01T00:00:00.000Z",
+            )
         )
 
         await update_task("upd-3", {"id": "evil", "chat_jid": "evil@g.us"})

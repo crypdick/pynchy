@@ -4,10 +4,25 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Literal, NewType, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from pynchy.host.orchestrator.messaging.formatters.base import Formatter
+
+
+# --- Domain identity types ---
+#
+# Distinct types for the string-shaped identities that thread through the state
+# layer and the plugin Protocols (see CONVENTIONS.md "Semantic types for domain
+# concepts"). Each is a zero-cost NewType over str: assignable wherever a plain
+# str is expected, but passing e.g. a SessionId where a GroupFolder is wanted is
+# a mypy error rather than the silent state corruption it is today. Applied at
+# boundaries — state-layer signatures and Protocol methods — where a positional
+# swap between same-shaped arguments is most costly.
+GroupFolder = NewType("GroupFolder", str)  # workspace identity (folder under groups/)
+SessionId = NewType("SessionId", str)  # agent session handle
+ChatJid = NewType("ChatJid", str)  # canonical chat identifier
+ChannelName = NewType("ChannelName", str)  # channel instance name (e.g. "slack")
 
 
 @dataclass
@@ -38,9 +53,22 @@ class ContainerConfig:
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> ContainerConfig:
+        # Type-check the two known fields at this boundary so a malformed
+        # persisted container_config fails here rather than surfacing later as
+        # a broken timeout calculation or an opaque mount error.
+        timeout = raw.get("timeout")
+        if timeout is not None and not isinstance(timeout, int | float):
+            raise TypeError(
+                f"container_config.timeout: expected number, got {type(timeout).__name__}"
+            )
+        mounts = raw.get("additional_mounts", [])
+        if not isinstance(mounts, list):
+            raise TypeError(
+                f"container_config.additional_mounts: expected list, got {type(mounts).__name__}"
+            )
         return cls(
-            additional_mounts=[AdditionalMount(**m) for m in raw.get("additional_mounts", [])],
-            timeout=raw.get("timeout"),
+            additional_mounts=[AdditionalMount(**m) for m in mounts],
+            timeout=timeout,
         )
 
 

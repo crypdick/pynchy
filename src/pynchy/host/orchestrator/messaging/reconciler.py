@@ -20,7 +20,7 @@ from pynchy.state import (
     message_exists,
     prune_stale_cursors,
 )
-from pynchy.types import Channel, NewMessage, WorkspaceProfile
+from pynchy.types import Channel, ChannelName, ChatJid, NewMessage, WorkspaceProfile
 
 RECONCILE_COOLDOWN = timedelta(seconds=30)
 _INITIAL_LOOKBACK = timedelta(hours=24)
@@ -164,7 +164,7 @@ async def _retry_outbound(
     ch: Channel, canonical_jid: str, target_jid: str, outbound_cursor: str
 ) -> tuple[str, int]:
     """Retry pending outbound deliveries. Returns (new_outbound_cursor, retried_count)."""
-    pending = await get_pending_outbound(ch.name, canonical_jid)
+    pending = await get_pending_outbound(ChannelName(ch.name), ChatJid(canonical_jid))
     new_outbound_cursor = outbound_cursor
     retried = 0
     for row in pending:
@@ -209,7 +209,9 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                 target_jid=target_jid,
             )
 
-            inbound_cursor = await get_channel_cursor(ch.name, canonical_jid, "inbound")
+            inbound_cursor = await get_channel_cursor(
+                ChannelName(ch.name), ChatJid(canonical_jid), "inbound"
+            )
             if not inbound_cursor:
                 # No cursor yet — channel was never reconciled (e.g. a
                 # Slack-native workspace that was never reconciled).
@@ -226,15 +228,17 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
             new_inbound_cursor, pair_recovered = inbound_result
             recovered += pair_recovered
 
-            outbound_cursor = await get_channel_cursor(ch.name, canonical_jid, "outbound")
+            outbound_cursor = await get_channel_cursor(
+                ChannelName(ch.name), ChatJid(canonical_jid), "outbound"
+            )
             new_outbound_cursor, pair_retried = await _retry_outbound(
                 ch, canonical_jid, target_jid, outbound_cursor
             )
             retried += pair_retried
 
             await advance_cursors_atomic(
-                ch.name,
-                canonical_jid,
+                ChannelName(ch.name),
+                ChatJid(canonical_jid),
                 inbound=new_inbound_cursor if new_inbound_cursor != inbound_cursor else None,
                 outbound=new_outbound_cursor if new_outbound_cursor != outbound_cursor else None,
             )
@@ -248,7 +252,7 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
         logger.debug("Reconciliation complete, nothing to recover")
 
     # GC cursors for channels absent from the active set (e.g. after a rename)
-    active_names = {ch.name for ch in deps.channels}
+    active_names = {ChannelName(ch.name) for ch in deps.channels}
     pruned = await prune_stale_cursors(active_names)
     if pruned:
         logger.info("Pruned stale cursors", count=pruned)

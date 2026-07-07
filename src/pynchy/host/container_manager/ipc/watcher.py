@@ -17,11 +17,16 @@ from watchdog.observers import Observer
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.deps import IpcDeps
-from pynchy.host.container_manager.ipc.protocol import parse_ipc_file, validate_signal
+from pynchy.host.container_manager.ipc.protocol import (
+    InboundChatMessage,
+    parse_ipc_file,
+    validate_signal,
+)
 from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.container_manager.process import OnOutput, is_query_done_pulse
 from pynchy.host.container_manager.serialization import parse_container_output
 from pynchy.logger import logger
+from pynchy.types import GroupFolder
 
 _ipc_watcher_lock = asyncio.Lock()
 _ipc_watcher_running = False
@@ -57,30 +62,31 @@ async def _process_message_file(
     """Process a single IPC message file."""
     s = get_settings()
     try:
-        data = parse_ipc_file(file_path)
+        message = InboundChatMessage.from_dict(parse_ipc_file(file_path))
 
-        if data.get("type") == "message" and data.get("chatJid") and data.get("text"):
+        if message is not None:
             workspaces = deps.workspaces()
-            target_group = workspaces.get(data["chatJid"])
+            target_group = workspaces.get(message.chat_jid)
             if is_admin or (target_group and target_group.folder == source_group):
                 from pynchy.types import OutboundEvent, OutboundEventType
 
-                sender = data.get("sender")
-                prefix = f"{sender}" if sender else s.agent.name
-                msg = f"{prefix}: {data['text']}"
+                prefix = message.sender or s.agent.name
                 await deps.broadcast_to_channels(
-                    data["chatJid"],
-                    OutboundEvent(type=OutboundEventType.TEXT, content=msg),
+                    message.chat_jid,
+                    OutboundEvent(
+                        type=OutboundEventType.TEXT,
+                        content=f"{prefix}: {message.text}",
+                    ),
                 )
                 logger.info(
                     "IPC message sent",
-                    chat_jid=data["chatJid"],
+                    chat_jid=message.chat_jid,
                     source_group=source_group,
                 )
             else:
                 logger.warning(
                     "Unauthorized IPC message attempt blocked",
-                    chat_jid=data["chatJid"],
+                    chat_jid=message.chat_jid,
                     source_group=source_group,
                 )
         file_path.unlink()
@@ -135,7 +141,7 @@ def _get_output_handler(group_folder: str) -> OnOutput | None:
     """
     from pynchy.host.container_manager.session import get_session_output_handler
 
-    return get_session_output_handler(group_folder)
+    return get_session_output_handler(GroupFolder(group_folder))
 
 
 def _signal_query_done(group_folder: str) -> None:
@@ -146,7 +152,7 @@ def _signal_query_done(group_folder: str) -> None:
     """
     from pynchy.host.container_manager.session import get_session
 
-    session = get_session(group_folder)
+    session = get_session(GroupFolder(group_folder))
     if session is None:
         return
     session.signal_query_done()

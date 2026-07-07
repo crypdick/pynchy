@@ -27,7 +27,7 @@ def _row_to_task(row) -> ScheduledTask:
     )
 
 
-async def create_task(task: dict[str, Any]) -> None:
+async def create_task(task: ScheduledTask) -> None:
     """Create a scheduled task."""
     db = _get_db()
     await db.execute(
@@ -39,17 +39,17 @@ async def create_task(task: dict[str, Any]) -> None:
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            task["id"],
-            task["group_folder"],
-            task["chat_jid"],
-            task["prompt"],
-            task["schedule_type"],
-            task["schedule_value"],
-            task.get("context_mode", "isolated"),
-            task.get("next_run"),
-            task["status"],
-            task["created_at"],
-            task.get("repo_access") or None,
+            task.id,
+            task.group_folder,
+            task.chat_jid,
+            task.prompt,
+            task.schedule_type,
+            task.schedule_value,
+            task.context_mode,
+            task.next_run,
+            task.status,
+            task.created_at,
+            task.repo_access or None,
         ),
     )
     await db.commit()

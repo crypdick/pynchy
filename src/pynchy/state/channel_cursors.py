@@ -9,9 +9,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from pynchy.state.connection import _get_db, atomic_write
+from pynchy.types import ChannelName, ChatJid
 
 
-async def get_channel_cursor(channel_name: str, chat_jid: str, direction: str) -> str:
+async def get_channel_cursor(channel_name: ChannelName, chat_jid: ChatJid, direction: str) -> str:
     """Return the cursor value, or empty string if not yet tracked."""
     db = _get_db()
     cursor = await db.execute(
@@ -23,7 +24,9 @@ async def get_channel_cursor(channel_name: str, chat_jid: str, direction: str) -
     return row["cursor_value"] if row else ""
 
 
-async def set_channel_cursor(channel_name: str, chat_jid: str, direction: str, value: str) -> None:
+async def set_channel_cursor(
+    channel_name: ChannelName, chat_jid: ChatJid, direction: str, value: str
+) -> None:
     """Upsert a single cursor value."""
     db = _get_db()
     now = datetime.now(UTC).isoformat()
@@ -37,8 +40,8 @@ async def set_channel_cursor(channel_name: str, chat_jid: str, direction: str, v
 
 
 async def advance_cursors_atomic(
-    channel_name: str,
-    chat_jid: str,
+    channel_name: ChannelName,
+    chat_jid: ChatJid,
     *,
     inbound: str | None = None,
     outbound: str | None = None,
@@ -65,7 +68,7 @@ async def advance_cursors_atomic(
                 )
 
 
-async def prune_stale_cursors(active_channel_names: set[str]) -> int:
+async def prune_stale_cursors(active_channel_names: set[ChannelName]) -> int:
     """Delete cursors for channels absent from the active set.
 
     Returns the number of rows deleted.

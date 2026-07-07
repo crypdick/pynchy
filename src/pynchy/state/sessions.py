@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pynchy.state.connection import _get_db, atomic_write
+from pynchy.types import GroupFolder, SessionId
 
 # --- Router state ---
 
@@ -41,17 +42,17 @@ async def save_router_state_batch(pairs: dict[str, str]) -> None:
 # --- Sessions ---
 
 
-async def get_session(group_folder: str) -> str | None:
+async def get_session(group_folder: GroupFolder) -> SessionId | None:
     """Get the session ID for a group."""
     db = _get_db()
     cursor = await db.execute(
         "SELECT session_id FROM sessions WHERE group_folder = ?", (group_folder,)
     )
     row = await cursor.fetchone()
-    return row["session_id"] if row else None
+    return SessionId(row["session_id"]) if row else None
 
 
-async def set_session(group_folder: str, session_id: str) -> None:
+async def set_session(group_folder: GroupFolder, session_id: SessionId) -> None:
     """Set the session ID for a group."""
     db = _get_db()
     await db.execute(
@@ -61,7 +62,7 @@ async def set_session(group_folder: str, session_id: str) -> None:
     await db.commit()
 
 
-async def clear_session(group_folder: str) -> None:
+async def clear_session(group_folder: GroupFolder) -> None:
     """Delete the session for a group, forcing a fresh session on next run."""
     db = _get_db()
     await db.execute("DELETE FROM sessions WHERE group_folder = ?", (group_folder,))

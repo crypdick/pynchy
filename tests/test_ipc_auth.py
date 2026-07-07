@@ -16,7 +16,7 @@ from pynchy.state import (
     get_task_by_id,
     set_workspace_profile,
 )
-from pynchy.types import WorkspaceProfile
+from pynchy.types import ScheduledTask, WorkspaceProfile
 
 ADMIN_GROUP = WorkspaceProfile(
     jid="admin-1@g.us",
@@ -193,32 +193,32 @@ class TestPauseTaskAuth:
     @pytest.fixture(autouse=True)
     async def _create_tasks(self, deps):
         await create_task(
-            {
-                "id": "task-admin",
-                "group_folder": "admin-1",
-                "chat_jid": "admin-1@g.us",
-                "prompt": "admin task",
-                "schedule_type": "once",
-                "schedule_value": "2025-06-01T00:00:00.000Z",
-                "context_mode": "isolated",
-                "next_run": "2025-06-01T00:00:00.000Z",
-                "status": "active",
-                "created_at": "2024-01-01T00:00:00.000Z",
-            }
+            ScheduledTask(
+                id="task-admin",
+                group_folder="admin-1",
+                chat_jid="admin-1@g.us",
+                prompt="admin task",
+                schedule_type="once",
+                schedule_value="2025-06-01T00:00:00.000Z",
+                context_mode="isolated",
+                next_run="2025-06-01T00:00:00.000Z",
+                status="active",
+                created_at="2024-01-01T00:00:00.000Z",
+            )
         )
         await create_task(
-            {
-                "id": "task-other",
-                "group_folder": "other-group",
-                "chat_jid": "other@g.us",
-                "prompt": "other task",
-                "schedule_type": "once",
-                "schedule_value": "2025-06-01T00:00:00.000Z",
-                "context_mode": "isolated",
-                "next_run": "2025-06-01T00:00:00.000Z",
-                "status": "active",
-                "created_at": "2024-01-01T00:00:00.000Z",
-            }
+            ScheduledTask(
+                id="task-other",
+                group_folder="other-group",
+                chat_jid="other@g.us",
+                prompt="other task",
+                schedule_type="once",
+                schedule_value="2025-06-01T00:00:00.000Z",
+                context_mode="isolated",
+                next_run="2025-06-01T00:00:00.000Z",
+                status="active",
+                created_at="2024-01-01T00:00:00.000Z",
+            )
         )
 
     async def test_admin_can_pause_any_task(self, deps):
@@ -257,18 +257,18 @@ class TestResumeTaskAuth:
     @pytest.fixture(autouse=True)
     async def _create_tasks(self, deps):
         await create_task(
-            {
-                "id": "task-paused",
-                "group_folder": "other-group",
-                "chat_jid": "other@g.us",
-                "prompt": "paused task",
-                "schedule_type": "once",
-                "schedule_value": "2025-06-01T00:00:00.000Z",
-                "context_mode": "isolated",
-                "next_run": "2025-06-01T00:00:00.000Z",
-                "status": "paused",
-                "created_at": "2024-01-01T00:00:00.000Z",
-            }
+            ScheduledTask(
+                id="task-paused",
+                group_folder="other-group",
+                chat_jid="other@g.us",
+                prompt="paused task",
+                schedule_type="once",
+                schedule_value="2025-06-01T00:00:00.000Z",
+                context_mode="isolated",
+                next_run="2025-06-01T00:00:00.000Z",
+                status="paused",
+                created_at="2024-01-01T00:00:00.000Z",
+            )
         )
 
     async def test_admin_can_resume_any_task(self, deps):
@@ -306,18 +306,18 @@ class TestResumeTaskAuth:
 class TestCancelTaskAuth:
     async def test_admin_can_cancel_any_task(self, deps):
         await create_task(
-            {
-                "id": "task-to-cancel",
-                "group_folder": "other-group",
-                "chat_jid": "other@g.us",
-                "prompt": "cancel me",
-                "schedule_type": "once",
-                "schedule_value": "2025-06-01T00:00:00.000Z",
-                "context_mode": "isolated",
-                "next_run": None,
-                "status": "active",
-                "created_at": "2024-01-01T00:00:00.000Z",
-            }
+            ScheduledTask(
+                id="task-to-cancel",
+                group_folder="other-group",
+                chat_jid="other@g.us",
+                prompt="cancel me",
+                schedule_type="once",
+                schedule_value="2025-06-01T00:00:00.000Z",
+                context_mode="isolated",
+                next_run=None,
+                status="active",
+                created_at="2024-01-01T00:00:00.000Z",
+            )
         )
 
         await dispatch({"type": "cancel_task", "taskId": "task-to-cancel"}, "admin-1", True, deps)
@@ -325,18 +325,18 @@ class TestCancelTaskAuth:
 
     async def test_non_admin_can_cancel_own_task(self, deps):
         await create_task(
-            {
-                "id": "task-own",
-                "group_folder": "other-group",
-                "chat_jid": "other@g.us",
-                "prompt": "my task",
-                "schedule_type": "once",
-                "schedule_value": "2025-06-01T00:00:00.000Z",
-                "context_mode": "isolated",
-                "next_run": None,
-                "status": "active",
-                "created_at": "2024-01-01T00:00:00.000Z",
-            }
+            ScheduledTask(
+                id="task-own",
+                group_folder="other-group",
+                chat_jid="other@g.us",
+                prompt="my task",
+                schedule_type="once",
+                schedule_value="2025-06-01T00:00:00.000Z",
+                context_mode="isolated",
+                next_run=None,
+                status="active",
+                created_at="2024-01-01T00:00:00.000Z",
+            )
         )
 
         await dispatch(
@@ -349,18 +349,18 @@ class TestCancelTaskAuth:
 
     async def test_non_admin_cannot_cancel_other_groups_task(self, deps):
         await create_task(
-            {
-                "id": "task-foreign",
-                "group_folder": "admin-1",
-                "chat_jid": "admin-1@g.us",
-                "prompt": "not yours",
-                "schedule_type": "once",
-                "schedule_value": "2025-06-01T00:00:00.000Z",
-                "context_mode": "isolated",
-                "next_run": None,
-                "status": "active",
-                "created_at": "2024-01-01T00:00:00.000Z",
-            }
+            ScheduledTask(
+                id="task-foreign",
+                group_folder="admin-1",
+                chat_jid="admin-1@g.us",
+                prompt="not yours",
+                schedule_type="once",
+                schedule_value="2025-06-01T00:00:00.000Z",
+                context_mode="isolated",
+                next_run=None,
+                status="active",
+                created_at="2024-01-01T00:00:00.000Z",
+            )
         )
 
         await dispatch(
@@ -742,18 +742,18 @@ class TestAuthorizedTaskActionEdges:
         """When taskId is missing from the data, nothing happens."""
         # Create a task to verify it stays untouched
         await create_task(
-            {
-                "id": "untouched",
-                "group_folder": "other-group",
-                "chat_jid": "other@g.us",
-                "prompt": "should not change",
-                "schedule_type": "once",
-                "schedule_value": "2025-06-01T00:00:00.000Z",
-                "context_mode": "isolated",
-                "next_run": "2025-06-01T00:00:00.000Z",
-                "status": "active",
-                "created_at": "2024-01-01T00:00:00.000Z",
-            }
+            ScheduledTask(
+                id="untouched",
+                group_folder="other-group",
+                chat_jid="other@g.us",
+                prompt="should not change",
+                schedule_type="once",
+                schedule_value="2025-06-01T00:00:00.000Z",
+                context_mode="isolated",
+                next_run="2025-06-01T00:00:00.000Z",
+                status="active",
+                created_at="2024-01-01T00:00:00.000Z",
+            )
         )
 
         # No taskId in data — should silently return

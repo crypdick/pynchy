@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from pynchy.state.connection import _get_db, atomic_write
+from pynchy.types import ChannelName, ChatJid
 
 
 @dataclass
@@ -25,10 +26,10 @@ class PendingDelivery:
 
 
 async def record_outbound(
-    chat_jid: str,
+    chat_jid: ChatJid,
     content: str,
     source: str,
-    channel_names: list[str],
+    channel_names: list[ChannelName],
 ) -> int:
     """Write an outbound message and create delivery rows for each channel.
 
@@ -73,7 +74,9 @@ async def mark_delivery_error(ledger_id: int, channel_name: str, error: str) -> 
     await db.commit()
 
 
-async def get_pending_outbound(channel_name: str, chat_jid: str) -> list[PendingDelivery]:
+async def get_pending_outbound(
+    channel_name: ChannelName, chat_jid: ChatJid
+) -> list[PendingDelivery]:
     """Get undelivered outbound messages for a (channel, group) pair.
 
     Ordered by ledger ID (creation order) to preserve message ordering.

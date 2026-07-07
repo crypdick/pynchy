@@ -35,7 +35,7 @@ from pynchy.host.git_ops.repo import get_repo_context
 from pynchy.host.git_ops.utils import count_unpushed_commits, is_repo_dirty
 from pynchy.logger import logger
 from pynchy.state import clear_session, get_all_host_jobs, get_all_tasks, set_session
-from pynchy.types import ContainerInput, ContainerOutput, WorkspaceProfile
+from pynchy.types import ContainerInput, ContainerOutput, GroupFolder, SessionId, WorkspaceProfile
 
 if TYPE_CHECKING:
     import pluggy
@@ -210,7 +210,7 @@ async def _pre_container_setup(
     async def wrapped_on_output(output: ContainerOutput) -> None:
         if output.new_session_id and group.folder not in deps._session_cleared:
             deps.sessions[group.folder] = output.new_session_id
-            await set_session(group.folder, output.new_session_id)
+            await set_session(GroupFolder(group.folder), SessionId(output.new_session_id))
         if on_output:
             await on_output(output)
 
@@ -470,7 +470,7 @@ async def run_agent(
         return await _run_scheduled_task(deps, group, chat_jid, messages, ctx)
 
     # --- Interactive messages: warm/cold session path ---
-    session = get_session(group.folder)
+    session = get_session(GroupFolder(group.folder))
 
     pre_container_ms = (time.monotonic() - run_agent_start) * 1000
     is_warm = session is not None and session.is_alive
@@ -544,5 +544,5 @@ async def _run_scheduled_task(
             # Without this, the workspace appears "active" and receives
             # deploy resume messages that trigger unnecessary agent runs.
             await destroy_session(group.folder)
-            await clear_session(group.folder)
+            await clear_session(GroupFolder(group.folder))
             deps.sessions.pop(group.folder, None)

@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any, Protocol, cast, runtime_checkable
 
 from pynchy.logger import logger
+from pynchy.types import GroupFolder
 
 
 @runtime_checkable
@@ -21,7 +22,7 @@ class MemoryProvider(Protocol):
 
     async def save(
         self,
-        group_folder: str,
+        group_folder: GroupFolder,
         key: str,
         content: str,
         category: str = "core",
@@ -30,17 +31,17 @@ class MemoryProvider(Protocol):
 
     async def recall(
         self,
-        group_folder: str,
+        group_folder: GroupFolder,
         query: str,
         category: str | None = None,
         limit: int = 5,
     ) -> list[dict[str, Any]]: ...
 
-    async def forget(self, group_folder: str, key: str) -> dict[str, Any]: ...
+    async def forget(self, group_folder: GroupFolder, key: str) -> dict[str, Any]: ...
 
     async def list_keys(
         self,
-        group_folder: str,
+        group_folder: GroupFolder,
         category: str | None = None,
     ) -> list[dict[str, Any]]: ...
 

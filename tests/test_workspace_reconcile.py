@@ -21,7 +21,7 @@ from pynchy.host.orchestrator.workspace_config import (
     reconcile_workspaces,
 )
 from pynchy.state import create_task, get_active_task_for_group, get_all_tasks
-from pynchy.types import Channel, WorkspaceProfile
+from pynchy.types import Channel, ScheduledTask, WorkspaceProfile
 
 
 class _FakePM(pluggy.PluginManager):
@@ -131,18 +131,18 @@ class TestReconcileWorkspaces:
 
         # Create existing task with old schedule
         await create_task(
-            {
-                "id": "periodic-monitor-abc123",
-                "group_folder": "monitor",
-                "chat_jid": "monitor@g.us",
-                "prompt": "Monitor systems",
-                "schedule_type": "cron",
-                "schedule_value": "*/15 * * * *",  # OLD schedule
-                "context_mode": "group",
-                "next_run": "2025-01-01T00:15:00",
-                "status": "active",
-                "created_at": datetime.now(UTC).isoformat(),
-            }
+            ScheduledTask(
+                id="periodic-monitor-abc123",
+                group_folder="monitor",
+                chat_jid="monitor@g.us",
+                prompt="Monitor systems",
+                schedule_type="cron",
+                schedule_value="*/15 * * * *",  # OLD schedule
+                context_mode="group",
+                next_run="2025-01-01T00:15:00",
+                status="active",
+                created_at=datetime.now(UTC).isoformat(),
+            )
         )
 
         registered = {
@@ -174,18 +174,18 @@ class TestReconcileWorkspaces:
         )
 
         await create_task(
-            {
-                "id": "periodic-monitor-abc123",
-                "group_folder": "monitor",
-                "chat_jid": "monitor@g.us",
-                "prompt": "Old monitoring prompt",  # OLD prompt
-                "schedule_type": "cron",
-                "schedule_value": "0 9 * * *",
-                "context_mode": "group",
-                "next_run": "2025-01-01T09:00:00",
-                "status": "active",
-                "created_at": datetime.now(UTC).isoformat(),
-            }
+            ScheduledTask(
+                id="periodic-monitor-abc123",
+                group_folder="monitor",
+                chat_jid="monitor@g.us",
+                prompt="Old monitoring prompt",  # OLD prompt
+                schedule_type="cron",
+                schedule_value="0 9 * * *",
+                context_mode="group",
+                next_run="2025-01-01T09:00:00",
+                status="active",
+                created_at=datetime.now(UTC).isoformat(),
+            )
         )
 
         registered = {
@@ -217,18 +217,18 @@ class TestReconcileWorkspaces:
         )
 
         await create_task(
-            {
-                "id": "periodic-monitor-abc123",
-                "group_folder": "monitor",
-                "chat_jid": "monitor@g.us",
-                "prompt": "Monitor systems",
-                "schedule_type": "cron",
-                "schedule_value": "0 9 * * *",
-                "context_mode": "group",
-                "next_run": "2025-01-01T09:00:00",
-                "status": "active",
-                "created_at": datetime.now(UTC).isoformat(),
-            }
+            ScheduledTask(
+                id="periodic-monitor-abc123",
+                group_folder="monitor",
+                chat_jid="monitor@g.us",
+                prompt="Monitor systems",
+                schedule_type="cron",
+                schedule_value="0 9 * * *",
+                context_mode="group",
+                next_run="2025-01-01T09:00:00",
+                status="active",
+                created_at=datetime.now(UTC).isoformat(),
+            )
         )
 
         registered = {
@@ -477,18 +477,18 @@ class TestReconcileWorkspaces:
         """Task for a removed workspace should be paused on reconciliation."""
         # Pre-seed a task for a workspace that no longer exists in config
         await create_task(
-            {
-                "id": "periodic-old-agent-abc123",
-                "group_folder": "old-agent",
-                "chat_jid": "old@g.us",
-                "prompt": "Do old things",
-                "schedule_type": "cron",
-                "schedule_value": "0 4 * * *",
-                "context_mode": "isolated",
-                "next_run": "2025-01-01T04:00:00",
-                "status": "active",
-                "created_at": datetime.now(UTC).isoformat(),
-            }
+            ScheduledTask(
+                id="periodic-old-agent-abc123",
+                group_folder="old-agent",
+                chat_jid="old@g.us",
+                prompt="Do old things",
+                schedule_type="cron",
+                schedule_value="0 4 * * *",
+                context_mode="isolated",
+                next_run="2025-01-01T04:00:00",
+                status="active",
+                created_at=datetime.now(UTC).isoformat(),
+            )
         )
 
         # Config has no workspaces — the old-agent workspace was removed
@@ -513,18 +513,18 @@ class TestReconcileWorkspaces:
         )
 
         await create_task(
-            {
-                "id": "periodic-was-periodic-abc123",
-                "group_folder": "was-periodic",
-                "chat_jid": "was@g.us",
-                "prompt": "Old prompt",
-                "schedule_type": "cron",
-                "schedule_value": "0 9 * * *",
-                "context_mode": "isolated",
-                "next_run": "2025-01-01T09:00:00",
-                "status": "active",
-                "created_at": datetime.now(UTC).isoformat(),
-            }
+            ScheduledTask(
+                id="periodic-was-periodic-abc123",
+                group_folder="was-periodic",
+                chat_jid="was@g.us",
+                prompt="Old prompt",
+                schedule_type="cron",
+                schedule_value="0 9 * * *",
+                context_mode="isolated",
+                next_run="2025-01-01T09:00:00",
+                status="active",
+                created_at=datetime.now(UTC).isoformat(),
+            )
         )
 
         registered = {
@@ -547,18 +547,18 @@ class TestReconcileWorkspaces:
     async def test_does_not_pause_already_paused_tasks(self, db, groups_dir):
         """Already-paused tasks should not be touched."""
         await create_task(
-            {
-                "id": "periodic-gone-abc123",
-                "group_folder": "gone-agent",
-                "chat_jid": "gone@g.us",
-                "prompt": "Gone",
-                "schedule_type": "cron",
-                "schedule_value": "0 4 * * *",
-                "context_mode": "isolated",
-                "next_run": "2025-01-01T04:00:00",
-                "status": "paused",  # already paused
-                "created_at": datetime.now(UTC).isoformat(),
-            }
+            ScheduledTask(
+                id="periodic-gone-abc123",
+                group_folder="gone-agent",
+                chat_jid="gone@g.us",
+                prompt="Gone",
+                schedule_type="cron",
+                schedule_value="0 4 * * *",
+                context_mode="isolated",
+                next_run="2025-01-01T04:00:00",
+                status="paused",  # already paused
+                created_at=datetime.now(UTC).isoformat(),
+            )
         )
 
         registered: dict[str, WorkspaceProfile] = {}
