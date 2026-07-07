@@ -10,14 +10,12 @@ from conftest import init_test_database
 
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.deps import IpcDeps
-from pynchy.host.orchestrator.task_scheduler import (
-    _poll_database_host_jobs,  # allow: private-test-imports
-)
 from pynchy.state import (
     create_host_job,
     get_due_host_jobs,
     get_host_job_by_name,
 )
+from pynchy.utils import ShellResult
 
 
 @pytest.fixture(autouse=True)
@@ -166,13 +164,12 @@ class TestHostJobScheduling:
         due_jobs = await get_due_host_jobs()
         assert len(due_jobs) == 0
 
-    @patch("pynchy.host.orchestrator.task_scheduler.asyncio.create_subprocess_shell")
-    async def test_poll_database_host_jobs_executes_command(self, mock_subprocess):
-        """_poll_database_host_jobs executes due job commands."""
-        mock_process = AsyncMock()
-        mock_process.returncode = 0
-        mock_process.communicate.return_value = (b"Success", b"")
-        mock_subprocess.return_value = mock_process
+    @patch("pynchy.host.orchestrator.temporal.scheduler.run_shell_command")
+    async def test_temporal_database_host_job_activity_executes_command(self, mock_shell):
+        """Temporal host-job activity executes due job commands."""
+        from pynchy.host.orchestrator.temporal.scheduler import run_database_host_job
+
+        mock_shell.return_value = ShellResult(returncode=0, stdout="Success", stderr="")
 
         past_time = "2020-01-01T00:00:00"
         await create_host_job(
@@ -192,10 +189,11 @@ class TestHostJobScheduling:
             }
         )
 
-        await _poll_database_host_jobs()
+        result = await run_database_host_job("job-exec")
 
-        mock_subprocess.assert_called_once()
-        call_kwargs = mock_subprocess.call_args[1]
+        assert result == "completed"
+        mock_shell.assert_awaited_once()
+        call_kwargs = mock_shell.await_args.kwargs
         assert call_kwargs["cwd"] == "/tmp"
 
     async def test_host_job_validates_invalid_cron(self, mock_ipc_deps):

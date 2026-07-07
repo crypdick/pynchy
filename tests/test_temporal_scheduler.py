@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from conftest import make_settings
 
-from pynchy.config import SchedulerConfig
+from pynchy.config import CronJobConfig, SchedulerConfig
 from pynchy.host.orchestrator.concurrency import GroupQueue
-from pynchy.types import ScheduledTask
+from pynchy.types import HostJob, ScheduledTask
 
 
 class NullSchedulerDeps:
@@ -29,6 +31,46 @@ class NullSchedulerDeps:
 
     async def handle_streamed_output(self, chat_jid, group, result) -> bool:
         return False
+
+
+class FakeScheduleHandle:
+    def __init__(self, schedule_id: str):
+        self.schedule_id = schedule_id
+        self.updates = []
+        self.deleted = False
+
+    async def update(self, updater):
+        update = updater(SimpleNamespace(description=None))
+        self.updates.append(update)
+
+    async def delete(self):
+        self.deleted = True
+
+
+class FakeScheduleClient:
+    def __init__(self):
+        self.created_schedules = []
+        self.started_workflows = []
+        self.handles = {}
+        self.schedule_ids = []
+
+    async def create_schedule(self, schedule_id, schedule, **kwargs):
+        self.created_schedules.append((schedule_id, schedule, kwargs))
+        handle = self.handles.setdefault(schedule_id, FakeScheduleHandle(schedule_id))
+        return handle
+
+    def get_schedule_handle(self, schedule_id):
+        return self.handles.setdefault(schedule_id, FakeScheduleHandle(schedule_id))
+
+    def list_schedules(self):
+        async def _iter():
+            for schedule_id in self.schedule_ids:
+                yield SimpleNamespace(id=schedule_id)
+
+        return _iter()
+
+    async def start_workflow(self, workflow, *args, **kwargs):
+        self.started_workflows.append((workflow, args, kwargs))
 
 
 @pytest.fixture
@@ -79,6 +121,13 @@ class TestTemporalSchedulerRuntime:
         workflow_id = agent_task_workflow_id(temporal_task)
 
         assert workflow_id == "pynchy-agent-task-task-with-spaces-2026-07-07T09-00-00-00-00"
+
+    def test_agent_task_schedule_id_is_stable_and_temporal_safe(self, temporal_task):
+        from pynchy.host.orchestrator.temporal.scheduler import agent_task_schedule_id
+
+        schedule_id = agent_task_schedule_id(temporal_task)
+
+        assert schedule_id == "pynchy-agent-schedule-task-with-spaces"
 
     @pytest.mark.asyncio
     async def test_start_scheduled_agent_task_uses_configured_task_queue(self, temporal_task):
@@ -141,6 +190,143 @@ class TestTemporalSchedulerRuntime:
         assert status["last_result"] == "started"
         assert status["last_started_at"] is not None
         assert status["last_completed_at"] is None
+
+    @pytest.mark.asyncio
+    async def test_reconcile_creates_temporal_schedule_for_recurring_agent_task(
+        self, monkeypatch, temporal_task
+    ):
+        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
+        import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
+
+        client = FakeScheduleClient()
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+        )
+        runtime.client = client
+        monkeypatch.setattr(
+            temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[temporal_task])
+        )
+        monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
+        settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), cron_jobs={})
+        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
+        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
+
+        await runtime.reconcile_schedules()
+
+        assert len(client.created_schedules) == 1
+        schedule_id, schedule, kwargs = client.created_schedules[0]
+        assert schedule_id == "pynchy-agent-schedule-task-with-spaces"
+        assert schedule.spec.cron_expressions == ["0 9 * * *"]
+        assert schedule.spec.time_zone_name == "UTC"
+        assert schedule.action.workflow == "ScheduledAgentTaskWorkflow"
+        assert schedule.action.args == [temporal_task.id]
+        assert schedule.action.id == "pynchy-agent-schedule-task-with-spaces-workflow"
+        assert kwargs == {}
+
+    @pytest.mark.asyncio
+    async def test_reconcile_starts_once_agent_task_as_delayed_workflow(
+        self, monkeypatch, temporal_task
+    ):
+        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
+        import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
+        from pynchy.host.orchestrator.temporal.workflows import ScheduledAgentTaskWorkflow
+
+        temporal_task.schedule_type = "once"
+        temporal_task.schedule_value = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
+        temporal_task.next_run = temporal_task.schedule_value
+        client = FakeScheduleClient()
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(),
+            scheduler_config=SchedulerConfig(temporal_task_queue="pynchy-test"),
+        )
+        runtime.client = client
+        monkeypatch.setattr(
+            temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[temporal_task])
+        )
+        monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
+        settings = make_settings(timezone="UTC", scheduler=runtime.scheduler_config, cron_jobs={})
+        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
+        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
+
+        await runtime.reconcile_schedules()
+
+        assert client.created_schedules == []
+        assert len(client.started_workflows) == 1
+        workflow, args, kwargs = client.started_workflows[0]
+        assert workflow == ScheduledAgentTaskWorkflow.run
+        assert args == (temporal_task.id,)
+        assert kwargs["id"].startswith("pynchy-agent-task-task-with-spaces-")
+        assert kwargs["task_queue"] == "pynchy-test"
+        assert 0 < kwargs["start_delay"].total_seconds() <= 300
+
+    @pytest.mark.asyncio
+    async def test_reconcile_creates_temporal_schedule_for_database_host_job(self, monkeypatch):
+        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
+        import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
+
+        host_job = HostJob(
+            id="host/job one",
+            name="backup",
+            command="scripts/backup_runtime_dbs.sh",
+            schedule_type="interval",
+            schedule_value="60000",
+            created_by="admin-1",
+            status="active",
+            enabled=True,
+        )
+        client = FakeScheduleClient()
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+        )
+        runtime.client = client
+        monkeypatch.setattr(temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[]))
+        monkeypatch.setattr(
+            temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[host_job])
+        )
+        settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), cron_jobs={})
+        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
+        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
+
+        await runtime.reconcile_schedules()
+
+        schedule_id, schedule, _kwargs = client.created_schedules[0]
+        assert schedule_id == "pynchy-host-job-schedule-host-job-one"
+        assert schedule.spec.intervals[0].every == timedelta(seconds=60)
+        assert schedule.action.workflow == "DatabaseHostJobWorkflow"
+        assert schedule.action.args == [host_job.id]
+
+    @pytest.mark.asyncio
+    async def test_reconcile_creates_temporal_schedule_for_config_cron_job(self, monkeypatch):
+        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
+        import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
+
+        client = FakeScheduleClient()
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+        )
+        runtime.client = client
+        monkeypatch.setattr(temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[]))
+        monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
+        settings = make_settings(
+            timezone="UTC",
+            scheduler=SchedulerConfig(),
+            cron_jobs={
+                "backup_db": CronJobConfig(
+                    schedule="15 3 * * *",
+                    command="scripts/backup_runtime_dbs.sh",
+                )
+            },
+        )
+        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
+        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
+
+        await runtime.reconcile_schedules()
+
+        schedule_id, schedule, _kwargs = client.created_schedules[0]
+        assert schedule_id == "pynchy-host-cron-schedule-backup_db"
+        assert schedule.spec.cron_expressions == ["15 3 * * *"]
+        assert schedule.action.workflow == "ConfigHostCronWorkflow"
+        assert schedule.action.args == ["backup_db"]
 
     @pytest.mark.asyncio
     async def test_worker_lifecycle_updates_running_status(self, monkeypatch):

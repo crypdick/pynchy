@@ -1,4 +1,4 @@
-"""Task scheduler — runs scheduled tasks on their due dates."""
+"""Schedule reconciler for Temporal-owned Pynchy orchestration."""
 
 from __future__ import annotations
 
@@ -15,16 +15,12 @@ from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.workspace_config import load_workspace_config
 from pynchy.logger import logger
 from pynchy.state import (
-    get_due_host_jobs,
-    get_due_tasks,
-    get_task_by_id,
     log_task_run,
-    update_host_job_after_run,
     update_task,
     update_task_after_run,
 )
 from pynchy.types import ContainerOutput, OutboundEvent, ScheduledTask, TaskRunLog, WorkspaceProfile
-from pynchy.utils import IdleTimer, compute_next_run, log_shell_result, run_shell_command
+from pynchy.utils import IdleTimer, compute_next_run
 
 
 @runtime_checkable
@@ -58,13 +54,12 @@ class SchedulerDependencies(Protocol):
 
 _scheduler_lock = asyncio.Lock()
 _scheduler_running = False
-_cron_job_next_runs: dict[str, str] = {}
 TemporalSchedulerRuntime: Any | None = None
 
 
 @runtime_checkable
 class TemporalRuntime(Protocol):
-    async def start_scheduled_agent_task(self, task: ScheduledTask) -> None: ...
+    async def reconcile_schedules(self) -> None: ...
 
 
 def _build_temporal_runtime(deps: SchedulerDependencies, scheduler_config: Any) -> Any:
@@ -101,43 +96,17 @@ async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
 async def _run_scheduler_loop(
     deps: SchedulerDependencies, temporal_runtime: TemporalRuntime
 ) -> None:
-    """Poll due work and dispatch scheduled agent tasks through Temporal."""
+    """Reconcile desired scheduled work into Temporal-owned schedules."""
     while True:
         try:
-            await _poll_host_cron_jobs()
-
-            # Only poll database host jobs if database is available
-            try:
-                await _poll_database_host_jobs()
-            except RuntimeError as exc:
-                if "Database not initialized" not in str(exc):
-                    raise
-
-            due_tasks = await get_due_tasks()
-            if due_tasks:
-                logger.info("Found due tasks", count=len(due_tasks))
-
-            await _dispatch_due_agent_tasks(due_tasks, temporal_runtime)
+            await temporal_runtime.reconcile_schedules()
         except Exception:
             logger.exception("Error in scheduler loop")
 
         await asyncio.sleep(get_settings().scheduler.poll_interval)
 
 
-async def _dispatch_due_agent_tasks(
-    due_tasks: list[ScheduledTask],
-    temporal_runtime: TemporalRuntime,
-) -> None:
-    for task in due_tasks:
-        # Re-check task status (may have been paused/cancelled)
-        current_task = await get_task_by_id(task.id)
-        if not current_task or current_task.status != "active":
-            continue
-
-        await temporal_runtime.start_scheduled_agent_task(current_task)
-
-
-def _resolve_cron_job_cwd(cwd: str | None) -> str:
+def resolve_cron_job_cwd(cwd: str | None) -> str:
     """Resolve optional cron job cwd against project root."""
     project_root = get_settings().project_root
     if not cwd:
@@ -146,88 +115,6 @@ def _resolve_cron_job_cwd(cwd: str | None) -> str:
     if path.is_absolute():
         return str(path)
     return str((project_root / path).resolve())
-
-
-async def _run_host_cron_job(job_name: str) -> None:
-    """Run one host-level cron job command directly (no LLM/container)."""
-    s = get_settings()
-    job = s.cron_jobs.get(job_name)
-    if job is None or not job.enabled:
-        return
-
-    command_cwd = _resolve_cron_job_cwd(job.cwd)
-    logger.info(
-        "Running host cron job",
-        job=job_name,
-        schedule=job.schedule,
-        cwd=command_cwd,
-    )
-
-    result = await run_shell_command(
-        job.command,
-        cwd=command_cwd,
-        timeout_seconds=job.timeout_seconds,
-    )
-    log_shell_result(result, label="Host cron job", job=job_name)
-
-
-async def _poll_host_cron_jobs() -> None:
-    """Run due host cron jobs configured in settings.cron_jobs."""
-    s = get_settings()
-    cron_jobs = s.cron_jobs
-    if not cron_jobs:
-        return
-
-    now = datetime.now(UTC)
-    timezone = s.timezone
-
-    for job_name, job in cron_jobs.items():
-        if not job.enabled:
-            continue
-
-        next_run = _cron_job_next_runs.get(job_name)
-        if next_run is None:
-            next_run = compute_next_run("cron", job.schedule, timezone)
-            assert next_run is not None, "compute_next_run only returns None for 'once' schedules"
-            _cron_job_next_runs[job_name] = next_run
-
-        due_at = datetime.fromisoformat(next_run).astimezone(UTC)
-        if due_at > now:
-            continue
-
-        # Set next run before execution to avoid repeat-triggering in tight loops.
-        following_run = compute_next_run("cron", job.schedule, timezone)
-        assert following_run is not None, "compute_next_run only returns None for 'once' schedules"
-        _cron_job_next_runs[job_name] = following_run
-        await _run_host_cron_job(job_name)
-
-
-async def _poll_database_host_jobs() -> None:
-    """Run due host jobs from the database (created via MCP tool)."""
-    s = get_settings()
-    due_jobs = await get_due_host_jobs()
-
-    for job in due_jobs:
-        logger.info(
-            "Running database host job",
-            job_id=job.id,
-            name=job.name,
-            schedule_type=job.schedule_type,
-        )
-
-        command_cwd = _resolve_cron_job_cwd(job.cwd)
-
-        result = await run_shell_command(
-            job.command,
-            cwd=command_cwd,
-            timeout_seconds=job.timeout_seconds,
-        )
-        log_shell_result(result, label="Database host job", job_id=job.id)
-
-        # Calculate next run
-        next_run = compute_next_run(job.schedule_type, job.schedule_value, s.timezone)
-        exit_code = result.returncode if result.returncode is not None else 1
-        await update_host_job_after_run(job.id, next_run, exit_code)
 
 
 async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies) -> None:
@@ -242,11 +129,10 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
     groups = deps.workspaces()
     group = next((g for g in groups.values() if g.folder == task.group_folder), None)
 
-    # Advance next_run BEFORE execution so subsequent scheduler polls
-    # don't re-queue this task while it's still running.  The definitive
-    # next_run is recalculated AFTER execution (see bottom of function)
-    # based on actual completion time — important for long-running tasks
-    # where the pre-execution value may already be in the past.
+    # Advance next_run BEFORE execution so subsequent Temporal reconciliation
+    # does not start another one-shot workflow while this task is still running.
+    # The definitive next_run is recalculated AFTER execution based on actual
+    # completion time, which matters for long-running tasks.
     next_run = compute_next_run(task.schedule_type, task.schedule_value, s.timezone)
     await update_task(task.id, {"next_run": next_run})
 

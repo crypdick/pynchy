@@ -26,10 +26,10 @@ Only use manual commands when the service is unhealthy and needs fixing. See [re
 
 ```bash
 # On the live host directly:
-curl -s http://localhost:8484/status | python3 -m json.tool
+curl -s http://localhost:8485/status | python3 -m json.tool
 
 # Remotely (via Tailscale):
-curl -s http://mac-mini:8484/status | python3 -m json.tool
+curl -s http://mac-mini:8485/status | python3 -m json.tool
 ```
 
 Returns JSON with: `service` (uptime), `deploy` (SHA, dirty, unpushed), `channels` (slack/whatsapp connected), `gateway` (LiteLLM health), `temporal` (cluster health, worker state, task queue, last scheduled workflow/result), `queue` (active containers, waiting groups), `repos` (per-repo worktree status — SHA, dirty, ahead/behind, conflicts), `messages` (inbound/outbound counts, last activity), `tasks` (scheduled tasks with status/next run), `host_jobs`, `groups` (total, active sessions).
@@ -60,7 +60,7 @@ tail -n 200 ~/src/PERSONAL/pynchy/logs/pynchy.log | grep groupCount
 
 ```bash
 # Trigger a deploy (from HOST — use mcp__pynchy__deploy_changes from containers)
-curl -s -X POST http://mac-mini:8484/deploy
+curl -s -X POST http://mac-mini:8485/deploy
 
 # Observe (always safe)
 ssh mac-mini 'launchctl print gui/$(id -u)/com.pynchy'
@@ -93,7 +93,7 @@ ssh mac-mini 'cd ~/src/PERSONAL/pynchy && sqlite3 data/messages.db "
 
 ## Temporal Scheduler
 
-Agent scheduled tasks run as Temporal workflows. Pynchy owns the worker in the host process; Temporal owns workflow durability.
+Scheduled work runs through Temporal. Pynchy reconciles active agent tasks, database host jobs, and config cron jobs into Temporal schedules or delayed workflows. Pynchy owns the worker in the host process; Temporal owns workflow durability and wake-ups.
 
 mac-mini service:
 
@@ -110,7 +110,7 @@ Safe checks:
 ssh mac-mini 'launchctl print gui/$(id -u)/com.pynchy.temporal'
 ssh mac-mini 'temporal operator cluster health --address 127.0.0.1:7233'
 ssh mac-mini 'lsof -nP -iTCP:7233 -sTCP:LISTEN'
-curl -s http://mac-mini:8484/status | python3 -m json.tool
+curl -s http://mac-mini:8485/status | python3 -m json.tool
 ```
 
 `data/temporal.db` is durable scheduler state. Make sure host backups include it with the rest of `data/`.
@@ -151,7 +151,7 @@ Use the TUI API to inject messages into any group's chat pipeline (useful for te
 
 ```bash
 # Send a message as if a user typed it
-curl -s -X POST http://mac-mini:8484/api/send \
+curl -s -X POST http://mac-mini:8485/api/send \
   -H "Content-Type: application/json" \
   -d '{"jid": "<JID>", "content": "your message here"}'
 ```

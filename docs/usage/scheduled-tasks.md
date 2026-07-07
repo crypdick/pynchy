@@ -19,7 +19,9 @@ Agent tasks can optionally send messages to their group via `send_message`, or f
 
 ## Temporal Scheduler
 
-Pynchy starts each due agent task as a Temporal workflow. The workflow runs an activity in the Pynchy host process, so agent containers, IPC streaming, task logs, and worktree merge behavior stay on the existing host runner path.
+Pynchy reconciles scheduled work into Temporal. Recurring agent tasks, database host jobs, and config-file host cron jobs become Temporal Schedules. One-time agent tasks and one-time host jobs become delayed Temporal workflows.
+
+Temporal fires the workflows. Each workflow runs an activity in the Pynchy host process, so agent containers, IPC streaming, shell execution, task logs, and worktree merge behavior stay on the existing host runner path.
 
 ```toml
 [scheduler]
@@ -28,7 +30,7 @@ temporal_namespace = "default"
 temporal_task_queue = "pynchy-scheduler"
 ```
 
-Pynchy requires a reachable Temporal service when the scheduler starts. It does not fall back to local scheduled-agent execution. Host tasks still run through the local scheduler.
+Pynchy requires a reachable Temporal service when the scheduler starts. It does not fall back to local due-work execution. The local scheduler loop only reconciles desired state from config and SQLite into Temporal; it does not decide that a task is due or run shell commands itself.
 
 The `/status` endpoint includes a `temporal` section:
 
@@ -39,8 +41,8 @@ The `/status` endpoint includes a `temporal` section:
 | `task_queue` | Task queue used by the Pynchy scheduler worker |
 | `cluster_healthy` | Result of the Temporal WorkflowService health check (`true`, `false`, or `null` if unreachable) |
 | `worker_running` | Whether this Pynchy process has an active Temporal worker |
-| `last_workflow_id` | Most recent scheduled-agent workflow started or handled by this process |
-| `last_task_id` | Scheduled task ID for the most recent workflow event |
+| `last_workflow_id` | Most recent scheduled-work workflow started or handled by this process |
+| `last_task_id` | Scheduled task or host job ID for the most recent workflow event |
 | `last_result` | `started`, `already_started`, `completed`, `skipped`, or `error` |
 | `last_error` | Last scheduler dispatch or activity error, if any |
 
@@ -71,7 +73,7 @@ lsof -nP -iTCP:7233 -sTCP:LISTEN
 tail -n 100 ~/Library/Logs/pynchy/temporal.err.log
 ```
 
-The local service stores its durable state at `data/temporal.db`. Back up this file with the rest of `data/`; losing it drops Temporal workflow history and idempotency state for scheduled agent tasks. This single-host setup is suitable for a personal Mac deployment. Use Temporal Cloud or a normal self-hosted Temporal cluster when the scheduler needs HA or multi-host durability.
+The local service stores its durable state at `data/temporal.db`. Back up this file with the rest of `data/`; losing it drops Temporal workflow history, schedule state, delayed starts, and idempotency state for scheduled work. This single-host setup is suitable for a personal Mac deployment. Use Temporal Cloud or a normal self-hosted Temporal cluster when the scheduler needs HA or multi-host durability.
 
 To back up runtime databases with SQLite-safe snapshots, run:
 
@@ -112,7 +114,7 @@ timeout_seconds = 600           # default: 600
 enabled = true                  # default: true
 ```
 
-Config cron jobs only support cron expressions. The scheduler polls them each tick and runs them in the host process. They don't show up in `list_tasks` (static config, not database entries).
+Config cron jobs only support cron expressions. Pynchy reconciles enabled config cron jobs into Temporal Schedules, and Temporal triggers host-process activities for each run. They don't show up in `list_tasks` (static config, not database entries).
 
 ### MCP tool (`schedule_task` with `task_type: "host"`)
 
@@ -144,3 +146,5 @@ Both agent tasks and database host jobs support these schedule types:
 | `once` | ISO timestamp | `2024-12-25T09:00:00Z` |
 
 Config-file host cron jobs only support `cron`.
+
+`cron` and `interval` entries run as Temporal Schedules. `once` entries run as delayed Temporal workflows. Temporal owns the wake-up; Pynchy activities own the actual agent or host-shell execution.

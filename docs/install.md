@@ -10,7 +10,7 @@ Install Pynchy on macOS or Linux — desktop or headless server.
 - **Python 3.13+**
 - **[uv](https://docs.astral.sh/uv/)** - Python package manager
 - **LLM API key** - OpenAI by default, or another provider configured through LiteLLM
-- **Temporal service** reachable from the Pynchy host for scheduled agent tasks
+- **Temporal service** reachable from the Pynchy host for scheduled work
   (default: `localhost:7233`)
 - **Container runtime:**
   - macOS: [Apple Container](https://github.com/apple/container) (preferred) or [Docker Desktop](https://docker.com/products/docker-desktop)

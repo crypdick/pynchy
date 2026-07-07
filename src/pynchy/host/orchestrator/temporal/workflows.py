@@ -25,3 +25,35 @@ class ScheduledAgentTaskWorkflow:
                 start_to_close_timeout=timedelta(hours=12),
             ),
         )
+
+
+@workflow.defn
+class DatabaseHostJobWorkflow:
+    """Run one database-backed host job through a host-side activity."""
+
+    @workflow.run
+    async def run(self, job_id: str) -> str:
+        return cast(
+            str,
+            await workflow.execute_activity(
+                "run_database_host_job",
+                job_id,
+                start_to_close_timeout=timedelta(hours=12),
+            ),
+        )
+
+
+@workflow.defn
+class ConfigHostCronWorkflow:
+    """Run one config-backed host cron job through a host-side activity."""
+
+    @workflow.run
+    async def run(self, job_name: str) -> str:
+        return cast(
+            str,
+            await workflow.execute_activity(
+                "run_config_host_cron_job",
+                job_name,
+                start_to_close_timeout=timedelta(hours=12),
+            ),
+        )
