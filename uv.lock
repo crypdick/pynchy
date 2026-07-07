@@ -3004,6 +3004,7 @@ whatsapp = [
 [package.dev-dependencies]
 dev = [
     { name = "coverage" },
+    { name = "discord-py" },
     { name = "flynt" },
     { name = "freezegun" },
     { name = "mkdocs" },
@@ -3067,6 +3068,7 @@ provides-extras = ["whatsapp", "slack", "discord", "caldav", "browser", "all", "
 [package.metadata.requires-dev]
 dev = [
     { name = "coverage", specifier = ">=7.13.4" },
+    { name = "discord-py", specifier = ">=2.4.0" },
     { name = "flynt", specifier = ">=1.0.6" },
     { name = "freezegun", specifier = ">=1.5.5" },
     { name = "mkdocs", specifier = ">=1.6.1" },

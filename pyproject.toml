@@ -45,6 +45,7 @@ pynchy-whatsapp-auth = "pynchy.plugins.channels.whatsapp.auth:main"
 [dependency-groups]
 dev = [
     "coverage>=7.13.4",
+    "discord-py>=2.4.0",
     "flynt>=1.0.6",
     "freezegun>=1.5.5",
     "mkdocs>=1.6.1",

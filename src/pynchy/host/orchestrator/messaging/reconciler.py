@@ -20,7 +20,15 @@ from pynchy.state import (
     message_exists,
     prune_stale_cursors,
 )
-from pynchy.types import Channel, ChannelName, ChatJid, NewMessage, WorkspaceProfile
+from pynchy.types import (
+    Channel,
+    ChannelName,
+    ChatJid,
+    NewMessage,
+    OutboundEvent,
+    OutboundEventType,
+    WorkspaceProfile,
+)
 
 RECONCILE_COOLDOWN = timedelta(seconds=30)
 _INITIAL_LOOKBACK = timedelta(hours=24)
@@ -169,7 +177,8 @@ async def _retry_outbound(
     retried = 0
     for row in pending:
         try:
-            await ch.send_message(target_jid, row.content)
+            event = OutboundEvent(type=OutboundEventType.TEXT, content=row.content)
+            await ch.send_event(target_jid, event)
             await mark_delivered(row.ledger_id, ch.name)
             if row.timestamp > new_outbound_cursor:
                 new_outbound_cursor = row.timestamp

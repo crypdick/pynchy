@@ -15,7 +15,13 @@ from pynchy.state import (
     set_channel_cursor,
     store_chat_metadata,
 )
-from pynchy.types import Channel, InboundFetchResult, NewMessage, WorkspaceProfile
+from pynchy.types import (
+    Channel,
+    InboundFetchResult,
+    NewMessage,
+    OutboundEventType,
+    WorkspaceProfile,
+)
 from tests.conftest import init_test_database, make_settings
 
 # ---------------------------------------------------------------------------
@@ -43,7 +49,7 @@ def _make_channel(
     ch.name = name
     ch.is_connected.return_value = connected
     ch.owns_jid = MagicMock(return_value=owns)
-    ch.send_message = AsyncMock()
+    ch.send_event = AsyncMock()
     msgs = inbound or []
     # Default high_water_mark to the latest message timestamp if not provided
     hwm = high_water_mark or (msgs[-1].timestamp if msgs else "")
@@ -178,9 +184,11 @@ class TestOutboundRetry:
 
         await reconcile_all_channels(deps)
 
-        ch.send_message.assert_awaited_once()
-        args = ch.send_message.call_args[0]
-        assert args[1] == "retry me"
+        ch.send_event.assert_awaited_once()
+        target_jid, event = ch.send_event.call_args[0]
+        assert target_jid == "group@g.us"
+        assert event.type is OutboundEventType.TEXT
+        assert event.content == "retry me"
 
         # Should be marked as delivered
         pending = await get_pending_outbound("slack", "group@g.us")
@@ -191,7 +199,7 @@ class TestOutboundRetry:
         await record_outbound("group@g.us", "fail me", "broadcast", ["slack"])
 
         ch = _make_channel()
-        ch.send_message.side_effect = OSError("network down")
+        ch.send_event.side_effect = OSError("network down")
         deps = _make_deps(
             channels=[ch],
             workspaces={"group@g.us": TEST_GROUP},
@@ -210,7 +218,7 @@ class TestOutboundRetry:
         await record_outbound("group@g.us", "second", "broadcast", ["slack"])
 
         ch = _make_channel()
-        ch.send_message.side_effect = OSError("network down")
+        ch.send_event.side_effect = OSError("network down")
         deps = _make_deps(
             channels=[ch],
             workspaces={"group@g.us": TEST_GROUP},
@@ -219,7 +227,7 @@ class TestOutboundRetry:
         await reconcile_all_channels(deps)
 
         # Only one send attempted (breaks after first failure)
-        assert ch.send_message.await_count == 1
+        assert ch.send_event.await_count == 1
         # Both still pending
         pending = await get_pending_outbound("slack", "group@g.us")
         assert len(pending) == 2
