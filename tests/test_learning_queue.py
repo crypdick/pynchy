@@ -368,6 +368,56 @@ def test_requeue_expired_recovers_job_stranded_in_claiming_after_failed_claim(
     assert not claiming_path.exists()
 
 
+def test_requeue_expired_removes_claiming_duplicate_and_keeps_pending(
+    tmp_path: Path,
+):
+    queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=30)
+    pending_path = queue.enqueue(_packet())
+    claiming_path = _base_dir(tmp_path) / "claiming" / "job-1.json"
+    claiming_path.write_text(pending_path.read_text())
+
+    first_pass = queue.requeue_expired(now=datetime(2026, 7, 7, 12, 0, tzinfo=UTC))
+
+    error_path = _base_dir(tmp_path) / "errors" / "job-1.json"
+    assert first_pass == 0
+    assert pending_path.exists()
+    assert not claiming_path.exists()
+    assert not error_path.exists()
+
+    second_pass = queue.requeue_expired(now=datetime(2026, 7, 7, 12, 1, tzinfo=UTC))
+
+    assert second_pass == 0
+    assert pending_path.exists()
+    assert not claiming_path.exists()
+    assert not error_path.exists()
+
+
+def test_requeue_expired_removes_claiming_duplicate_and_keeps_claimed(
+    tmp_path: Path,
+):
+    queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=30)
+    queue.enqueue(_packet())
+    claimed = queue.claim_next(now=datetime(2026, 7, 7, 12, 0, tzinfo=UTC))
+    assert claimed is not None
+    claiming_path = _base_dir(tmp_path) / "claiming" / "job-1.json"
+    claiming_path.write_text(claimed.path.read_text())
+
+    first_pass = queue.requeue_expired(now=datetime(2026, 7, 7, 12, 0, 15, tzinfo=UTC))
+
+    error_path = _base_dir(tmp_path) / "errors" / "job-1.json"
+    assert first_pass == 0
+    assert claimed.path.exists()
+    assert not claiming_path.exists()
+    assert not error_path.exists()
+
+    second_pass = queue.requeue_expired(now=datetime(2026, 7, 7, 12, 0, 20, tzinfo=UTC))
+
+    assert second_pass == 0
+    assert claimed.path.exists()
+    assert not claiming_path.exists()
+    assert not error_path.exists()
+
+
 def test_claim_next_recovers_interrupted_claiming_job_before_scanning_pending(
     tmp_path: Path,
 ):

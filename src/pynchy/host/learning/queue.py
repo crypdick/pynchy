@@ -231,6 +231,15 @@ class LearningQueue:
     def _recover_interrupted_claims(self) -> int:
         recovered = 0
         for claiming_path in sorted(self._claiming_dir.glob("*.json")):
+            pending_path = self._pending_dir / claiming_path.name
+            claimed_path = self._claimed_dir / claiming_path.name
+            if pending_path.exists() or claimed_path.exists():
+                # A crash during the hard-link move can leave both source and
+                # destination names. The non-claiming active state is already
+                # the canonical job copy.
+                claiming_path.unlink(missing_ok=True)
+                continue
+
             try:
                 payload = codec.load_payload(claiming_path)
                 packet = codec.packet_from_payload(payload)
@@ -248,16 +257,6 @@ class LearningQueue:
                     claiming_path,
                     error="invalid_payload",
                     details=str(exc),
-                )
-                continue
-
-            pending_path = self._pending_dir / claiming_path.name
-            claimed_path = self._claimed_dir / claiming_path.name
-            if pending_path.exists() or claimed_path.exists():
-                self._move_bad_payload(
-                    claiming_path,
-                    error="claim_collision",
-                    details="interrupted claim collided with an existing queue entry",
                 )
                 continue
 
