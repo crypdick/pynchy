@@ -1,0 +1,113 @@
+"""Resolve host and container paths for Obsidian-backed learning."""
+
+from __future__ import annotations
+
+import posixpath
+import re
+from dataclasses import dataclass
+from pathlib import Path
+
+from pynchy.config import get_settings
+
+_PROFILE_SLUG_PATTERN = re.compile(r"[^a-z0-9_.-]+")
+
+
+@dataclass(frozen=True)
+class LearningPaths:
+    profile: str
+    profile_slug: str
+    vault_root: Path
+    vault_mount_path: str
+    profile_root: Path
+    memory_root: Path
+    skills_root: Path
+    mounted_profile_root: str
+    mounted_memory_root: str
+    mounted_skills_root: str
+
+
+class LearningConfigError(ValueError):
+    pass
+
+
+def profile_name_for_group(group_folder: str) -> str:
+    workspace = get_settings().workspaces.get(group_folder)
+    if workspace is None or workspace.profile is None:
+        return "default"
+    return workspace.profile
+
+
+def resolve_learning_paths(
+    group_folder: str, *, profile_override: str | None = None
+) -> LearningPaths | None:
+    settings = get_settings()
+    config = settings.learning
+    if not config.enabled:
+        return None
+
+    obsidian = config.obsidian
+    if not obsidian.vault_root:
+        raise LearningConfigError(
+            "learning.obsidian.vault_root is required when learning is enabled"
+        )
+
+    vault_root = Path(obsidian.vault_root).expanduser().resolve()
+    profile = (
+        profile_override if profile_override is not None else profile_name_for_group(group_folder)
+    )
+    profile_slug = _profile_slug(profile)
+
+    profile_rel = _render_profile_root(obsidian.default_profile_root, profile_slug)
+    profile_root = _resolve_under_vault(vault_root, profile_rel)
+    memory_root = _resolve_under_vault(vault_root, profile_rel / obsidian.memory_dir_name)
+    skills_root = _resolve_under_vault(vault_root, profile_rel / obsidian.skills_dir_name)
+
+    profile_vault_rel = profile_root.relative_to(vault_root)
+    memory_vault_rel = memory_root.relative_to(vault_root)
+    skills_vault_rel = skills_root.relative_to(vault_root)
+
+    mount_path = obsidian.mount_path
+    return LearningPaths(
+        profile=profile,
+        profile_slug=profile_slug,
+        vault_root=vault_root,
+        vault_mount_path=mount_path,
+        profile_root=profile_root,
+        memory_root=memory_root,
+        skills_root=skills_root,
+        mounted_profile_root=_mounted_path(mount_path, profile_vault_rel),
+        mounted_memory_root=_mounted_path(mount_path, memory_vault_rel),
+        mounted_skills_root=_mounted_path(mount_path, skills_vault_rel),
+    )
+
+
+def _profile_slug(profile: str) -> str:
+    slug = _PROFILE_SLUG_PATTERN.sub("-", profile.lower()).strip("._-")
+    return slug or "default"
+
+
+def _render_profile_root(template: str, profile_slug: str) -> Path:
+    try:
+        return Path(template.format(profile=profile_slug))
+    except (IndexError, KeyError, ValueError) as exc:
+        raise LearningConfigError(
+            "learning.obsidian.default_profile_root must be a valid template"
+        ) from exc
+
+
+def _resolve_under_vault(vault_root: Path, vault_relative_path: Path) -> Path:
+    resolved = (vault_root / vault_relative_path).resolve()
+    try:
+        resolved.relative_to(vault_root)
+    except ValueError as exc:
+        raise LearningConfigError(
+            "learning paths must stay inside learning.obsidian.vault_root"
+        ) from exc
+    return resolved
+
+
+def _mounted_path(mount_path: str, vault_relative_path: Path) -> str:
+    rel = vault_relative_path.as_posix()
+    if rel == ".":
+        return mount_path
+    return posixpath.join(mount_path.rstrip("/") or "/", rel)

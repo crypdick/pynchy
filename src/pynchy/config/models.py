@@ -140,6 +140,42 @@ class OneCliConfig(_StrictModel):
     agent_identifier_prefix: str = "pynchy"
 
 
+class ObsidianLearningConfig(_StrictModel):
+    vault_root: str | None = None
+    mount_path: str = "/workspace/vault"
+    default_profile_root: str = "systems/pynchy/profiles/{profile}"
+    memory_dir_name: str = "memory"
+    skills_dir_name: str = "skills"
+
+    @field_validator("mount_path")
+    @classmethod
+    def validate_mount_path(cls, v: str) -> str:
+        if not v.startswith("/"):
+            raise ValueError("mount_path must be an absolute container path")
+        return v
+
+    @field_validator("default_profile_root")
+    @classmethod
+    def validate_default_profile_root(cls, v: str) -> str:
+        path = Path(v)
+        if path.is_absolute():
+            raise ValueError("default_profile_root must be a relative path template")
+        if any(part == ".." for part in path.parts):
+            raise ValueError("default_profile_root must not contain '..' path components")
+        return v
+
+
+class LearningConfig(_StrictModel):
+    enabled: bool = False
+    review_after_turn: bool = True
+    queue_poll_interval_seconds: float = 5.0
+    lease_seconds: int = 300
+    max_attempts: int = 3
+    packet_max_chars: int = 12_000
+    skill_max_bytes: int = 200_000
+    obsidian: ObsidianLearningConfig = ObsidianLearningConfig()
+
+
 class OwnerConfig(_StrictModel):
     """Owner identity per platform — used for allowed_users = ["owner"] resolution."""
 
