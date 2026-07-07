@@ -196,3 +196,33 @@ def test_iter_skips_skill_when_file_stat_fails(
 
     assert "Skipping learned skill" in caplog.text
     assert "stat denied" in caplog.text
+
+
+def test_iter_skips_skill_when_file_lstat_fails(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+):
+    vault = tmp_path / "vault"
+    skills_root = vault / "systems/pynchy/profiles/default/skills"
+    skill = skills_root / "unreadable-lstat"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("---\nname: unreadable-lstat\ntier: learned\n---\n")
+    payload = skill / "payload.txt"
+    payload.write_text("payload")
+    settings = _settings(tmp_path=tmp_path, learning=_enabled_learning(vault))
+    original_lstat = Path.lstat
+
+    def fail_payload_lstat(path: Path):
+        if path == payload:
+            raise OSError("lstat denied")
+        return original_lstat(path)
+
+    caplog.set_level(logging.WARNING)
+    with (
+        patch("pynchy.host.learning.paths.get_settings", return_value=settings),
+        patch.object(Path, "lstat", fail_payload_lstat),
+    ):
+        assert _iter_learned_skill_dirs("unprofiled") == []
+
+    assert "Skipping learned skill" in caplog.text
+    assert "lstat denied" in caplog.text
