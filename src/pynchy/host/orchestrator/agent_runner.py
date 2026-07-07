@@ -451,7 +451,7 @@ async def run_agent(
         is_scheduled_task: Whether this is a scheduled task run.
         repo_access_override: Explicit repo_access slug; None = auto-detect from workspace config.
         input_source: Source label for input broadcasting
-            ("user", "scheduled_task", "reset_handoff").
+            ("user", "scheduled_task", "reset_handoff", "hidden_learning_review").
     """
     run_agent_start = time.monotonic()
 

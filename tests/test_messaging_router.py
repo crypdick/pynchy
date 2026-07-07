@@ -8,6 +8,7 @@ import pytest
 
 from pynchy.host.orchestrator.messaging import streaming
 from pynchy.host.orchestrator.messaging.router import (
+    broadcast_agent_input,
     broadcast_trace,
     handle_streamed_output,
     init_trace_batcher,
@@ -88,6 +89,22 @@ def _get_broadcast_content(deps: MagicMock) -> str:
     """
     event = deps.broadcast_to_channels.call_args[0][1]
     return event.content
+
+
+@pytest.mark.asyncio
+async def test_hidden_learning_review_input_is_not_broadcast_or_traced():
+    deps = _make_deps()
+    messages = [{"role": "user", "content": "hidden reviewer prompt"}]
+
+    await broadcast_agent_input(
+        deps,
+        "learning-review:default",
+        messages,
+        source="hidden_learning_review",
+    )
+
+    deps.broadcast_to_channels.assert_not_awaited()
+    deps.emit.assert_not_called()
 
 
 def _get_send_event(deps: MagicMock):

@@ -118,15 +118,19 @@ async def broadcast_agent_input(
     """Broadcast agent input messages to channels so users see what the agent was told.
 
     For normal user messages (source="user"), only emits a trace event since
-    users already see their own messages in chat. For synthetic messages
-    (scheduled tasks, reset handoffs, IPC forwards), broadcasts the full
-    prompt to channels so observers understand what triggered the agent.
+    users already see their own messages in chat. Hidden learning reviews emit
+    nothing. Other synthetic messages (scheduled tasks, reset handoffs, IPC
+    forwards) broadcast the full prompt to channels so observers understand
+    what triggered the agent.
     """
     _SOURCE_LABELS = {
         "scheduled_task": "Scheduled Task",
         "reset_handoff": "Context Handoff",
         "ipc_forward": "Forwarded",
     }
+
+    if source == "hidden_learning_review":
+        return
 
     if source == "user":
         # User messages are already visible in chat — just emit trace events

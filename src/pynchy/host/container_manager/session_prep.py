@@ -201,7 +201,7 @@ def _selected_learned_skill_names(
     learned_skill_paths: list[Path] | None,
     workspace_skills: list[str] | None,
 ) -> set[str]:
-    if learned_skill_paths is None or workspace_skills is None:
+    if learned_skill_paths is None or not _learned_skills_selected(workspace_skills):
         return set()
 
     selected_names: set[str] = set()
@@ -209,11 +209,15 @@ def _selected_learned_skill_names(
         if not skill_path.exists() or not skill_path.is_dir():
             continue
 
-        name, _source_tier = parse_skill_tier(skill_path)
-        if is_skill_selected(name, _LEARNED_TIER, workspace_skills):
-            selected_names.add(skill_path.name)
+        selected_names.add(skill_path.name)
 
     return selected_names
+
+
+def _learned_skills_selected(workspace_skills: list[str] | None) -> bool:
+    if workspace_skills is None:
+        return False
+    return _LEARNED_TIER in workspace_skills or "*" in workspace_skills
 
 
 def _prune_stale_learned_skill_copies(skills_dst: Path, desired_names: set[str]) -> None:
@@ -250,9 +254,12 @@ def _sync_learned_skills(
             )
             continue
 
-        name, _source_tier = parse_skill_tier(skill_path)
-        if not is_skill_selected(name, _LEARNED_TIER, workspace_skills):
-            logger.debug("Skipping learned skill (not selected)", skill=name, tier=_LEARNED_TIER)
+        if not _learned_skills_selected(workspace_skills):
+            logger.debug(
+                "Skipping learned skill (not selected)",
+                skill=skill_path.name,
+                tier=_LEARNED_TIER,
+            )
             continue
 
         dst_dir = skills_dst / skill_path.name

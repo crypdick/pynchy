@@ -64,7 +64,7 @@ async def process_one_learning_job(deps: LearningWorkerDeps) -> bool:
             extra_system_notices=None,
             is_scheduled_task=True,
             repo_access_override=None,
-            input_source="user",
+            input_source="hidden_learning_review",
         )
         if result == "success":
             deps.queue.complete(claimed)

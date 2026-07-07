@@ -1551,7 +1551,7 @@ class TestSyncSkills:
 
         assert (session_dir / "skills" / "remember-routing" / "SKILL.md").exists()
 
-    def test_learned_skill_explicit_name_selection_ignores_source_tier(
+    def test_learned_skill_name_alone_does_not_select_learned_namespace(
         self,
         tmp_path: Path,
     ):
@@ -1570,7 +1570,7 @@ class TestSyncSkills:
                 learned_skill_paths=[learned_skill],
             )
 
-        assert (session_dir / "skills" / "remember-routing" / "SKILL.md").exists()
+        assert not (session_dir / "skills" / "remember-routing").exists()
 
     def test_learned_skill_collision_is_skipped_and_logged(
         self,

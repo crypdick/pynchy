@@ -225,7 +225,7 @@ async def test_process_one_runs_hidden_reviewer_and_completes_success(
     assert call.chat_jid == "learning-review:deep-work"
     assert call.chat_jid != claimed.packet.chat_jid
     assert call.is_scheduled_task is True
-    assert call.input_source == "user"
+    assert call.input_source == "hidden_learning_review"
     assert call.repo_access_override is None
     assert call.extra_system_notices is None
     assert len(call.messages) == 1
