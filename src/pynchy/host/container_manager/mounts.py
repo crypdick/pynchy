@@ -156,17 +156,23 @@ def build_container_args(mounts: list[VolumeMount], container_name: str) -> list
     # so containers can reach the host process via ``host.docker.internal``.
     # Docker Desktop sets this automatically; on Linux it requires --add-host.
     gateway = get_gateway()
-    if gateway is not None and get_runtime().name == "docker":
+    runtime = get_runtime()
+    if gateway is not None and runtime.name == "docker":
         args.extend(["--add-host", "host.docker.internal:host-gateway"])
 
     for m in mounts:
         if m.readonly:
-            args.extend(
-                [
-                    "--mount",
-                    f"type=bind,source={m.host_path},target={m.container_path},readonly",
-                ]
-            )
+            # Apple Container rejects file sources with --mount ...,readonly,
+            # but accepts the same file bind through -v ...:ro.
+            if runtime.name == "apple" and Path(m.host_path).is_file():
+                args.extend(["-v", f"{m.host_path}:{m.container_path}:ro"])
+            else:
+                args.extend(
+                    [
+                        "--mount",
+                        f"type=bind,source={m.host_path},target={m.container_path},readonly",
+                    ]
+                )
         else:
             args.extend(["-v", f"{m.host_path}:{m.container_path}"])
     args.append(get_settings().container.image)

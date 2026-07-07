@@ -399,6 +399,20 @@ class TestContainerArgs:
         assert "-v" in args
         assert "/host/path:/container/path" in args
 
+    def test_apple_readonly_file_mount_uses_volume_flag(self, tmp_path: Path):
+        host_file = tmp_path / "onecli-ca.pem"
+        host_file.write_text("ca")
+        mounts = [VolumeMount(str(host_file), "/tmp/onecli-ca.pem", readonly=True)]
+        runtime = MagicMock(name="runtime")
+        runtime.name = "apple"
+
+        with patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime):
+            args = build_container_args(mounts, "test-container")
+
+        assert "-v" in args
+        assert f"{host_file}:/tmp/onecli-ca.pem:ro" in args
+        assert "--mount" not in args
+
     def test_includes_name_and_image(self):
         args = build_container_args([], "my-container")
         assert args[:3] == ["run", "--name", "my-container"]
