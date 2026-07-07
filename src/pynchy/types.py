@@ -190,7 +190,7 @@ class ScheduledTask:
     next_run: str | None = None
     last_run: str | None = None
     last_result: str | None = None
-    status: Literal["active", "paused", "completed"] = "active"
+    status: Literal["active", "paused", "completed", "cancelled"] = "active"
     created_at: str = ""
     repo_access: str | None = None  # GitHub slug (owner/repo); None = no worktree
 

@@ -60,6 +60,10 @@ class AgentConfig(_StrictModel):
     # NOTE: Update docs/architecture/message-routing.md § Trigger Pattern if you change this
     trigger_aliases: list[str] = ["ghost"]
     core: str = "openai"  # built-in: "openai", "claude", "claude-cli", or "codex"
+    # Passed through to the selected core. For LiteLLM routes, use the model_name
+    # from litellm_config.yaml, e.g. "chatgpt/gpt-5.3-codex".
+    model: str | None = "gpt-5.5"
+    fallback_model: str | None = None
 
 
 class ContainerConfig(_StrictModel):
@@ -394,8 +398,12 @@ class CommandWordsConfig(_StrictModel):
 
 
 class SchedulerConfig(_StrictModel):
+    # NOTE: Update docs/usage/scheduled-tasks.md § Temporal Scheduler if you change these fields.
     poll_interval: float = 60.0  # seconds
     timezone: str = ""  # empty → auto-detect
+    temporal_address: str = "localhost:7233"
+    temporal_namespace: str = "default"
+    temporal_task_queue: str = "pynchy-scheduler"
 
 
 class CronJobConfig(_StrictModel):

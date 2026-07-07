@@ -32,6 +32,18 @@
 # Multiple entries with the same model_name are load-balanced automatically.
 
 model_list:
+  # --- Default gpt-5.5 alias via OpenAI Responses API ---
+  # Pynchy's default agent.model is "gpt-5.5". Keep this alias pointed at
+  # whatever provider you want to be the default for OpenAI/Codex cores.
+  - model_name: "gpt-5.5"
+    model_info:
+      mode: responses
+    litellm_params:
+      model: "openai/gpt-5.5"
+      api_key: os.environ/OPENAI_API_KEY
+      budget_duration: 7d
+      custom_llm_provider: openai
+
   # --- OpenAI (default) ---
   - model_name: "openai/*"
     litellm_params:
@@ -41,6 +53,38 @@ model_list:
       custom_llm_provider: openai
     model_info:
       id: openai-default
+
+  # --- Codex core via OpenAI Responses API (optional) ---
+  # The Codex CLI commonly requests bare model names. Add explicit routes for
+  # any Codex model names you ask it to use.
+  # - model_name: "gpt-5.1-codex"
+  #   model_info:
+  #     mode: responses
+  #   litellm_params:
+  #     model: "openai/gpt-5.1-codex"
+  #     api_key: os.environ/OPENAI_API_KEY
+  #     budget_duration: 7d
+  #     custom_llm_provider: openai
+
+  # --- Codex core via ChatGPT Subscription (optional) ---
+  # Requires LiteLLM's ChatGPT provider OAuth setup; see the LiteLLM docs for
+  # CHATGPT_TOKEN_DIR / CHATGPT_AUTH_FILE. To use ChatGPT as the default,
+  # replace the OpenAI "gpt-5.5" alias above with this alias.
+  # - model_name: "gpt-5.5"
+  #   model_info:
+  #     mode: responses
+  #   litellm_params:
+  #     model: "chatgpt/gpt-5.5"
+  # - model_name: "chatgpt/gpt-5.3-codex"
+  #   model_info:
+  #     mode: responses
+  #   litellm_params:
+  #     model: "chatgpt/gpt-5.3-codex"
+  # - model_name: "chatgpt/gpt-5.3-codex-spark"
+  #   model_info:
+  #     mode: responses
+  #   litellm_params:
+  #     model: "chatgpt/gpt-5.3-codex-spark"
 
   # --- Anthropic API key (optional) ---
   # - model_name: "anthropic/*"

@@ -23,14 +23,22 @@
 # Agent core: "openai" (default), "claude", "claude-cli", or "codex"
 # core = "openai"
 
+# Model name passed to the selected core. Default: "gpt-5.5".
+# Use a model_name from litellm_config.yaml; the default expects a
+# "gpt-5.5" alias there.
+# model = "gpt-5.5"
+
+# Optional fallback model for cores that support fallback retries.
+# fallback_model = "gpt-5.5-mini"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # API Credentials
 # ─────────────────────────────────────────────────────────────────────────────
 # Secrets (API keys, tokens, passwords) belong in .env, not here.
 # See config-examples/.env.EXAMPLE for the template.
 #
-# For Codex subscription auth, run `codex login` on the host. Pynchy seeds the
-# per-group container Codex home from ~/.codex/auth.json when that file exists.
+# For the Codex core, configure a Codex-capable model in litellm_config.yaml.
+# Pynchy routes Codex CLI model traffic through the gateway, not host Codex auth.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Container Configuration
@@ -113,6 +121,11 @@
 
 # Timezone for scheduled tasks (auto-detected from system if empty)
 # timezone = "America/New_York"
+
+# Temporal service used for scheduled agent task workflows
+# temporal_address = "localhost:7233"
+# temporal_namespace = "default"
+# temporal_task_queue = "pynchy-scheduler"
 
 [intervals]
 # Message polling interval (seconds)

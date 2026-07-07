@@ -54,7 +54,7 @@ _LITELLM_INTERNAL_PORT = 4000
 _POSTGRES_PORT = 5432
 _POSTGRES_DB = "litellm"
 _POSTGRES_USER = "litellm"
-_HEALTH_TIMEOUT = 90  # seconds; Postgres + LiteLLM migrations need headroom
+_HEALTH_TIMEOUT = 90.0  # seconds; Postgres + LiteLLM migrations need headroom
 _HEALTH_POLL_INTERVAL = 1.0
 _POSTGRES_HEALTH_TIMEOUT = 30
 
@@ -276,6 +276,11 @@ class LiteLLMGateway:
         out.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False))
         return out
 
+    @staticmethod
+    def _uses_chatgpt_provider(config_path: Path) -> bool:
+        """Return True when the filtered config needs ChatGPT OAuth state."""
+        return "chatgpt/" in config_path.read_text()
+
     # Docker helpers are in _docker.py — imported at module level.
 
     # ------------------------------------------------------------------
@@ -397,6 +402,9 @@ class LiteLLMGateway:
             "-e",
             f"DATABASE_URL={self._database_url}",
         ]
+        if self._uses_chatgpt_provider(filtered_config):
+            token_dir = env.get("CHATGPT_TOKEN_DIR") or "/app/data/chatgpt"
+            env_vars.extend(["-e", f"CHATGPT_TOKEN_DIR={token_dir}"])
 
         # Forward env vars referenced in the *filtered* config so we don't
         # forward vars for model entries that were filtered out.
@@ -427,7 +435,7 @@ class LiteLLMGateway:
 
         await wait_healthy(
             _LITELLM_CONTAINER,
-            f"http://localhost:{self.port}/health",
+            f"http://localhost:{self.port}/health/readiness",
             timeout=_HEALTH_TIMEOUT,
             poll_interval=_HEALTH_POLL_INTERVAL,
             headers={"Authorization": f"Bearer {self.key}"},

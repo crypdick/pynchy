@@ -10,6 +10,8 @@ Install Pynchy on macOS or Linux — desktop or headless server.
 - **Python 3.13+**
 - **[uv](https://docs.astral.sh/uv/)** - Python package manager
 - **LLM API key** - OpenAI by default, or another provider configured through LiteLLM
+- **Temporal service** reachable from the Pynchy host for scheduled agent tasks
+  (default: `localhost:7233`)
 - **Container runtime:**
   - macOS: [Apple Container](https://github.com/apple/container) (preferred) or [Docker Desktop](https://docker.com/products/docker-desktop)
   - Linux: [Docker](https://docs.docker.com/engine/install/)
@@ -75,8 +77,9 @@ Common configurations:
 
 - **OpenAI API key:** Set `[secrets].openai_api_key`, or reference `OPENAI_API_KEY` from `litellm_config.yaml`
 - **Anthropic API key:** Set `[secrets].anthropic_api_key`, or add an Anthropic API-key deployment to `litellm_config.yaml`
+- **Temporal scheduler:** Run a Temporal service and set `[scheduler].temporal_address` if it does not listen on `localhost:7233`.
 - **Claude SDK core:** Set `[agent] core = "claude"` and provide a valid Anthropic API key; Claude Code OAuth tokens are not supported as provider credentials.
-- **Codex subscription instead of API billing:** Run `codex login` on the host, then set `[agent] core = "codex"`. Pynchy copies `~/.codex/auth.json` into each group's isolated container Codex home the first time that group runs.
+- **Codex CLI core:** Configure a Codex-capable model in `litellm_config.yaml`, then set `[agent] core = "codex"` and `[agent] model` to that LiteLLM `model_name`. Codex model traffic routes through the same gateway as the OpenAI core.
 
 #### LiteLLM Gateway (recommended)
 
@@ -103,6 +106,21 @@ cp config-examples/litellm_config.yaml.EXAMPLE litellm_config.yaml
 ```
 
 Pynchy starts the LiteLLM container automatically on boot. The admin UI is available at `http://localhost:4000/ui` (login with the `ui_username`/`ui_password` you configured).
+
+To use the Codex CLI core, add a model route that Codex can request. LiteLLM's
+OpenAI provider supports Codex models through the Responses API, and LiteLLM's
+ChatGPT Subscription provider can also expose subscription-backed Codex models.
+Keep those provider credentials in `litellm_config.yaml` / `.env`; do not run
+`codex login` on the Pynchy host for container auth.
+
+For ChatGPT Subscription routing, the model names must match LiteLLM's
+`chatgpt/` provider route:
+
+```toml
+[agent]
+core = "codex"
+model = "chatgpt/gpt-5.3-codex"
+```
 
 #### MCP Server Access (optional)
 

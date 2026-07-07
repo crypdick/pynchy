@@ -203,6 +203,42 @@ class TestCollectYamlEnvRefs:
         litellm_run = " ".join(next(c for c in calls if "LITELLM_MASTER_KEY" in " ".join(c)))
         assert "OPENAI_API_KEY_TEST=sk-test" in litellm_run  # pragma: allowlist secret
 
+    @pytest.mark.asyncio
+    async def test_start_pins_chatgpt_token_dir(self, tmp_path: Path):
+        """ChatGPT subscription OAuth tokens should persist under /app/data."""
+        cfg = tmp_path / "litellm_config.yaml"
+        cfg.write_text(
+            "model_list:\n"
+            "  - model_name: gpt-5.5\n"
+            "    litellm_params:\n"
+            "      model: chatgpt/gpt-5.5\n"
+        )
+
+        gw = LiteLLMGateway(config_path=str(cfg), data_dir=tmp_path, **_LITELLM_KWARGS)
+        calls: list[list[str]] = []
+
+        def fake_docker(*args: str, check: bool = True, timeout: int = 30):
+            calls.append(list(args))
+            result = MagicMock()
+            result.stdout = ""
+            result.returncode = 0
+            return result
+
+        with (
+            patch("pynchy.host.container_manager.docker.docker_available", return_value=True),
+            patch(f"{_LITELLM_MOD}.docker_available", return_value=True),
+            patch(f"{_LITELLM_MOD}.run_docker", new_callable=AsyncMock, side_effect=fake_docker),
+            patch(f"{_DOCKER_MOD}.run_docker", new_callable=AsyncMock, side_effect=fake_docker),
+            patch(f"{_LITELLM_MOD}.ensure_image", new_callable=AsyncMock),
+            patch(f"{_LITELLM_MOD}.ensure_network", new_callable=AsyncMock),
+            patch.object(gw, "_wait_postgres_healthy", new_callable=AsyncMock),
+            patch(f"{_LITELLM_MOD}.wait_healthy", new_callable=AsyncMock),
+        ):
+            await gw.start()
+
+        litellm_run = " ".join(next(c for c in calls if "LITELLM_MASTER_KEY" in " ".join(c)))
+        assert "CHATGPT_TOKEN_DIR=/app/data/chatgpt" in litellm_run
+
 
 class TestLiteLLMGatewayStart:
     @pytest.fixture
@@ -259,7 +295,7 @@ class TestLiteLLMGatewayStart:
             patch(f"{_LITELLM_MOD}.ensure_image", new_callable=AsyncMock),
             patch(f"{_LITELLM_MOD}.ensure_network", new_callable=AsyncMock),
             patch.object(gw, "_wait_postgres_healthy", new_callable=AsyncMock),
-            patch(f"{_LITELLM_MOD}.wait_healthy", new_callable=AsyncMock),
+            patch(f"{_LITELLM_MOD}.wait_healthy", new_callable=AsyncMock) as wait_healthy_mock,
         ):
             await gw.start()
 
@@ -273,6 +309,8 @@ class TestLiteLLMGatewayStart:
         assert "postgresql://" in litellm_run
         assert "LITELLM_SALT_KEY=" in litellm_run
         assert "--network pynchy-litellm-net" in litellm_run
+        assert wait_healthy_mock.await_args.args[1] == "http://localhost:4000/health/readiness"
+        assert isinstance(wait_healthy_mock.await_args.kwargs["timeout"], float)
 
     @pytest.mark.asyncio
     async def test_stop_removes_all_containers_and_network(self, gw: LiteLLMGateway):

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,22 +19,15 @@ from pynchy.types import VolumeMount, WorkspaceProfile
 
 
 def _prepare_codex_home(group_folder: str) -> Path:
-    """Create per-group Codex CLI state and seed host auth when available.
+    """Create per-group Codex CLI state.
 
-    Codex CLI subscription auth lives in ``CODEX_HOME/auth.json``. Pynchy keeps
-    that state per group so Codex threads and token refreshes do not share a
-    mutable ``~/.codex`` directory across sandboxes.
+    Codex still needs a writable home for generated config, sessions, and
+    history, but model authentication comes from the Pynchy gateway env vars.
+    Do not copy host ``~/.codex/auth.json`` into sandboxes.
     """
     s = get_settings()
     codex_home = s.data_dir / "sessions" / group_folder / ".codex"
     codex_home.mkdir(parents=True, exist_ok=True)
-
-    group_auth = codex_home / "auth.json"
-    host_auth = Path.home() / ".codex" / "auth.json"
-    if not group_auth.exists() and host_auth.exists():
-        shutil.copy2(host_auth, group_auth)
-        group_auth.chmod(0o600)
-
     return codex_home
 
 

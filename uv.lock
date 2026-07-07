@@ -2367,6 +2367,18 @@ wheels = [
 ]
 
 [[package]]
+name = "nexus-rpc"
+version = "1.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/35/d5/cd1ffb202b76ebc1b33c1332a3416e55a39929006982adc2b1eb069aaa9b/nexus_rpc-1.4.0.tar.gz", hash = "sha256:3b8b373d4865671789cc43623e3dc0bcbf192562e40e13727e17f1c149050fba", size = 82367, upload-time = "2026-02-25T22:01:34.053Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/11/52/6327a5f4fda01207205038a106a99848a41c83e933cd23ea2cab3d2ebc6c/nexus_rpc-1.4.0-py3-none-any.whl", hash = "sha256:14c953d3519113f8ccec533a9efdb6b10c28afef75d11cdd6d422640c40b3a49", size = 29645, upload-time = "2026-02-25T22:01:33.122Z" },
+]
+
+[[package]]
 name = "niquests"
 version = "3.17.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2952,6 +2964,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings", extra = ["toml"] },
     { name = "structlog" },
+    { name = "temporalio" },
     { name = "textual" },
     { name = "tomlkit" },
     { name = "watchdog" },
@@ -3004,6 +3017,7 @@ whatsapp = [
 [package.dev-dependencies]
 dev = [
     { name = "coverage" },
+    { name = "discord-py" },
     { name = "flynt" },
     { name = "freezegun" },
     { name = "mkdocs" },
@@ -3057,6 +3071,7 @@ requires-dist = [
     { name = "slack-bolt", marker = "extra == 'slack'", specifier = ">=1.27.0" },
     { name = "slack-sdk", marker = "extra == 'slack'", specifier = ">=3.40.0" },
     { name = "structlog", specifier = ">=25.5.0" },
+    { name = "temporalio", specifier = ">=1.30.0" },
     { name = "textual", specifier = ">=7.5.0" },
     { name = "tomlkit", specifier = ">=0.13" },
     { name = "ubuntu-namer", marker = "extra == 'notebook'", specifier = ">=1.1" },
@@ -3067,6 +3082,7 @@ provides-extras = ["whatsapp", "slack", "discord", "caldav", "browser", "all", "
 [package.metadata.requires-dev]
 dev = [
     { name = "coverage", specifier = ">=7.13.4" },
+    { name = "discord-py", specifier = ">=2.4.0" },
     { name = "flynt", specifier = ">=1.0.6" },
     { name = "freezegun", specifier = ">=1.5.5" },
     { name = "mkdocs", specifier = ">=1.6.1" },
@@ -3807,6 +3823,25 @@ wheels = [
 ]
 
 [[package]]
+name = "temporalio"
+version = "1.30.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "nexus-rpc" },
+    { name = "protobuf" },
+    { name = "types-protobuf" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/00/b0/ad8fc3cd7425c6551a637bf23c798e8fdd8eb7a3ec4fee4f46f7678ba8d2/temporalio-1.30.0.tar.gz", hash = "sha256:7c025919511bb465392d547e48ccb85fd560a995db4ebcc82fdb43cddf088e6f", size = 2686876, upload-time = "2026-07-02T21:04:46.713Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/02/39/842fdffe93388dd30ac12a53a698f71cbfb68b3bc938f30f3e5d6a36d4ad/temporalio-1.30.0-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:6773a6b708dee7675fcbb681bf28e48337ce43b8467ceba8f903e78ae68909f8", size = 14520026, upload-time = "2026-07-02T21:04:31.384Z" },
+    { url = "https://files.pythonhosted.org/packages/40/f3/a2237d5265eb29de591abeac7610a48616b590a1b923b4919f60ee81adfa/temporalio-1.30.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:4038c3ce2d9acc12fef31dd16ef9be8cc7f721672da5662aa05e3942d0b5c9d1", size = 14018523, upload-time = "2026-07-02T21:04:34.405Z" },
+    { url = "https://files.pythonhosted.org/packages/e6/57/dc648d812f4c688bd246a616f0d65c5f03b33675df2effb1b480e1df6d21/temporalio-1.30.0-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:108d1a56e174eabc18add58316084cdead230e239d3df22bbe999d6954986591", size = 14330502, upload-time = "2026-07-02T21:04:37.39Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/e1/dbd57de0f5090891850c2ee5490319834a12b704076b11f32a4a149998d4/temporalio-1.30.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:47b156138de30c2cd6723d5bfc06a30abcf680344c5481abb31f2a98a9b1f809", size = 14833364, upload-time = "2026-07-02T21:04:40.454Z" },
+    { url = "https://files.pythonhosted.org/packages/30/2a/6d41289c11465ba276a8b417f31d2e469f0fe4b8afacd61d5244151c5fce/temporalio-1.30.0-cp310-abi3-win_amd64.whl", hash = "sha256:3adee28d5ec47bd6309a5eeef7b00126373f119bc5c1b058a34de098542f4da7", size = 15181893, upload-time = "2026-07-02T21:04:43.609Z" },
+]
+
+[[package]]
 name = "terminado"
 version = "0.18.1"
 source = { registry = "https://pypi.org/simple" }
@@ -3965,6 +4000,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/61/e3/1aa1ba2a3d03cea8434f1eb9802229ce14693e5bedd16a123ddad4a6368f/types_croniter-6.2.3.20260704.tar.gz", hash = "sha256:95e0bf0ff047c7857c59da41ecd786d392e36b923d78b7cceacd8c7e6a68fb3d", size = 12147, upload-time = "2026-07-04T05:34:19.996Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/dc/bc/cfe8926712a1bcdfc201d5cbb1c6153ce0a1506105d45635f7984a9c2945/types_croniter-6.2.3.20260704-py3-none-any.whl", hash = "sha256:1e5524d73222252568cefbc69d42b4c105f5f0b749be5771c4a222d1cf84b837", size = 9744, upload-time = "2026-07-04T05:34:18.995Z" },
+]
+
+[[package]]
+name = "types-protobuf"
+version = "7.34.1.20260518"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/29/59/e2b13b499d15e6720150c4b1a8d91e31fcacf716b432397475b3151ff7e4/types_protobuf-7.34.1.20260518.tar.gz", hash = "sha256:28cfaded25889cb83ebfb63cfb0a43628f0b6f3785767bec17287dc6468795f2", size = 68936, upload-time = "2026-05-18T06:01:47.332Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2a/1f/ec5caf72c2e3b688ca3927e0979a04ddad19e1afc4bf1c199bd743e0f419/types_protobuf-7.34.1.20260518-py3-none-any.whl", hash = "sha256:a0a5337413347166439c0e07cbc26c6164d091401c6f01b1dfd8cdb966c4dd8f", size = 85992, upload-time = "2026-05-18T06:01:45.696Z" },
 ]
 
 [[package]]

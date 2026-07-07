@@ -16,6 +16,7 @@ dependencies = [
     "pydantic>=2.12.5",
     "pydantic-settings[toml]>=2.9",
     "structlog>=25.5.0",
+    "temporalio>=1.30.0",
     "textual>=7.5.0",
     "tomlkit>=0.13",
     "watchdog>=6.0.0",
@@ -45,6 +46,7 @@ pynchy-whatsapp-auth = "pynchy.plugins.channels.whatsapp.auth:main"
 [dependency-groups]
 dev = [
     "coverage>=7.13.4",
+    "discord-py>=2.4.0",
     "flynt>=1.0.6",
     "freezegun>=1.5.5",
     "mkdocs>=1.6.1",

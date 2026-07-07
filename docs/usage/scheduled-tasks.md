@@ -17,6 +17,19 @@ Agent tasks spin up a containerized Claude agent on schedule. The agent gets a p
 
 Agent tasks can optionally send messages to their group via `send_message`, or finish silently. Each run is logged to the database with duration and result. If the task has `pynchy_repo_access`, worktree commits merge and push after a successful run.
 
+## Temporal Scheduler
+
+Pynchy starts each due agent task as a Temporal workflow. The workflow runs an activity in the Pynchy host process, so agent containers, IPC streaming, task logs, and worktree merge behavior stay on the existing host runner path.
+
+```toml
+[scheduler]
+temporal_address = "localhost:7233"
+temporal_namespace = "default"
+temporal_task_queue = "pynchy-scheduler"
+```
+
+Pynchy requires a reachable Temporal service when the scheduler starts. It does not fall back to local scheduled-agent execution. Host tasks still run through the local scheduler.
+
 ## Host Tasks
 
 Host tasks run shell commands on the host — no LLM, no container. Use them for maintenance scripts, backups, git operations, or anything that doesn't need an agent. Only the admin group can create and manage host tasks.

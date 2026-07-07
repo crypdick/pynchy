@@ -284,7 +284,8 @@ async def _collect_gateway(info: dict[str, Any]) -> dict[str, Any]:
     result["litellm_container"] = litellm_state
     result["postgres_container"] = pg_state
 
-    # LiteLLM /health HTTP check
+    # LiteLLM documents /health/readiness as the proxy readiness endpoint;
+    # /health performs provider model calls and can be provider-shape-sensitive.
     port = info.get("port")
     key = info.get("key")
     if port and key:
@@ -293,17 +294,18 @@ async def _collect_gateway(info: dict[str, Any]) -> dict[str, Any]:
 
             async with aiohttp.ClientSession() as session:
                 resp = await session.get(
-                    f"http://localhost:{port}/health",
+                    f"http://localhost:{port}/health/readiness",
                     headers={"Authorization": f"Bearer {key}"},
                     timeout=aiohttp.ClientTimeout(total=5),
                 )
                 data = await resp.json()
-                result["healthy_models"] = data.get("healthy_count", 0)
-                result["unhealthy_models"] = data.get("unhealthy_count", 0)
+                result["ready"] = resp.status == 200 and data.get("status") == "connected"
+                result["database"] = data.get("db")
+                if "litellm_version" in data:
+                    result["litellm_version"] = data["litellm_version"]
         except Exception as exc:
             logger.debug("Gateway health check failed", err=str(exc))
-            result["healthy_models"] = None
-            result["unhealthy_models"] = None
+            result["ready"] = None
 
     return result
 

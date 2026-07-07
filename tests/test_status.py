@@ -470,7 +470,12 @@ class TestCollectGateway:
         deps = MockStatusDeps(gateway={"mode": "litellm", "port": 4000, "key": "sk-test"})
 
         mock_resp = AsyncMock()
-        mock_resp.json.return_value = {"healthy_count": 2, "unhealthy_count": 0}
+        mock_resp.status = 200
+        mock_resp.json.return_value = {
+            "status": "connected",
+            "db": "connected",
+            "litellm_version": "1.2.3",
+        }
         mock_session = AsyncMock()
         mock_session.get.return_value = mock_resp
         mock_session.__aenter__.return_value = mock_session
@@ -493,8 +498,14 @@ class TestCollectGateway:
         gateway = result["gateway"]
         assert gateway["litellm_container"] == "running"
         assert gateway["postgres_container"] == "running"
-        assert gateway["healthy_models"] == 2
-        assert gateway["unhealthy_models"] == 0
+        assert gateway["ready"] is True
+        assert gateway["database"] == "connected"
+        assert gateway["litellm_version"] == "1.2.3"
+        mock_session.get.assert_called_once_with(
+            "http://localhost:4000/health/readiness",
+            headers={"Authorization": "Bearer sk-test"},
+            timeout=mock_session.get.call_args.kwargs["timeout"],
+        )
 
     @pytest.mark.asyncio
     async def test_gateway_health_failure_returns_none(self):
@@ -513,8 +524,7 @@ class TestCollectGateway:
 
         gateway = result["gateway"]
         assert gateway["litellm_container"] == "running"
-        assert gateway["healthy_models"] is None
-        assert gateway["unhealthy_models"] is None
+        assert gateway["ready"] is None
 
     @pytest.mark.asyncio
     async def test_missing_port_skips_health_check(self):

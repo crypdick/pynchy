@@ -44,57 +44,46 @@ def _patch_settings(*, poll_interval: float = 5.0, groups_dir=None, cron_jobs=No
         yield
 
 
-async def _wait_queue_idle(queue: GroupQueue) -> None:
-    """Wait until the queue has drained all active/pending work."""
-    for _ in range(2000):
-        snap = queue.snapshot()
-        meta = snap["_meta"]
-        pending = any(v["pending_tasks"] for k, v in snap.items() if k != "_meta")
-        if meta["active_count"] == 0 and meta["waiting_count"] == 0 and not pending:
-            return
-        await asyncio.sleep(0.005)
-    raise AssertionError("scheduler queue did not drain")
+class RecordingTemporalRuntime:
+    instances = []
+
+    def __init__(self, deps, scheduler_config):
+        self.deps = deps
+        self.scheduler_config = scheduler_config
+        self.started_task_ids = []
+        RecordingTemporalRuntime.instances.append(self)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return None
+
+    async def start_scheduled_agent_task(self, task):
+        self.started_task_ids.append(task.id)
+
+
+@contextlib.contextmanager
+def _patch_scheduler_temporal_runtime(runtime_cls=RecordingTemporalRuntime):
+    runtime_cls.instances = []
+    with patch(
+        "pynchy.host.orchestrator.task_scheduler.TemporalSchedulerRuntime",
+        new=runtime_cls,
+        create=True,
+    ):
+        yield runtime_cls
 
 
 async def _run_due_task_via_scheduler(deps, task: ScheduledTask) -> None:
-    """Drive the public scheduler loop through one poll that yields *task*, then
-    wait for the queued runner (which invokes ``_run_scheduled_agent``) to finish.
+    """Run the scheduled-agent runner directly under the caller's patches.
 
-    Caller must be inside ``_patch_settings(poll_interval=<small>, groups_dir=...)``
-    plus whatever state patches (``log_task_run``, ``update_task`` …) the
-    assertions need — those stay active across the wait so the background runner
-    sees them.
+    The scheduler loop now hands due tasks to Temporal. Runner behavior still
+    has focused tests here; scheduler tests separately prove the Temporal
+    handoff.
     """
     import pynchy.host.orchestrator.task_scheduler as ts_mod
 
-    ts_mod._scheduler_running = False
-
-    poll = [0]
-
-    async def fake_due():
-        poll[0] += 1
-        if poll[0] == 1:
-            return [task]
-        raise asyncio.CancelledError()
-
-    async def fake_by_id(task_id):
-        return task if task.id == task_id else None
-
-    with (
-        patch("pynchy.host.orchestrator.task_scheduler.get_due_tasks", side_effect=fake_due),
-        patch("pynchy.host.orchestrator.task_scheduler.get_task_by_id", side_effect=fake_by_id),
-        patch(
-            "pynchy.host.orchestrator.task_scheduler._poll_host_cron_jobs", new_callable=AsyncMock
-        ),
-        patch(
-            "pynchy.host.orchestrator.task_scheduler._poll_database_host_jobs",
-            new_callable=AsyncMock,
-        ),
-    ):
-        with contextlib.suppress(asyncio.CancelledError):
-            await start_scheduler_loop(deps)
-
-    await _wait_queue_idle(deps.queue)
+    await ts_mod._run_scheduled_agent(task, deps)
 
 
 async def _run_scheduler_cron_once(deps) -> None:
@@ -117,6 +106,7 @@ async def _run_scheduler_cron_once(deps) -> None:
             "pynchy.host.orchestrator.task_scheduler._poll_database_host_jobs",
             new_callable=AsyncMock,
         ),
+        _patch_scheduler_temporal_runtime(),
     ):
         with contextlib.suppress(asyncio.CancelledError):
             await start_scheduler_loop(deps)
@@ -321,6 +311,68 @@ def reset_scheduler_state(monkeypatch):
 class TestStartSchedulerLoop:
     """Test the scheduler loop initialization and duplicate prevention."""
 
+    def test_scheduler_config_defaults_to_temporal_connection(self):
+        """Scheduler config exposes the Temporal connection without a local backend switch."""
+        cfg = SchedulerConfig()
+
+        assert not hasattr(cfg, "backend")
+        assert cfg.temporal_address == "localhost:7233"
+        assert cfg.temporal_namespace == "default"
+        assert cfg.temporal_task_queue == "pynchy-scheduler"
+
+    @pytest.mark.asyncio
+    async def test_scheduler_starts_due_tasks_as_temporal_workflows(self, mock_deps, sample_task):
+        """Due agent tasks start as Temporal workflows instead of GroupQueue tasks."""
+        enqueued = []
+        mock_deps.queue.enqueue_task = lambda group_jid, task_id, fn: enqueued.append(task_id)
+
+        poll_count = [0]
+
+        async def mock_get_due():
+            poll_count[0] += 1
+            if poll_count[0] == 1:
+                return [sample_task]
+            raise asyncio.CancelledError()
+
+        async def mock_get_task(task_id):
+            return sample_task if task_id == sample_task.id else None
+
+        scheduler = SchedulerConfig(
+            poll_interval=0.01,
+            temporal_address="localhost:7233",
+            temporal_namespace="default",
+            temporal_task_queue="pynchy-test",
+        )
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.get_due_tasks", side_effect=mock_get_due
+            ),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.get_task_by_id", side_effect=mock_get_task
+            ),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler._poll_host_cron_jobs",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler._poll_database_host_jobs",
+                new_callable=AsyncMock,
+            ),
+            _patch_scheduler_temporal_runtime() as runtime_cls,
+        ):
+            with _patch_settings(poll_interval=0.01):
+                with patch(
+                    "pynchy.host.orchestrator.task_scheduler.get_settings",
+                    return_value=make_settings(scheduler=scheduler),
+                ):
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await start_scheduler_loop(mock_deps)
+
+        assert enqueued == []
+        assert len(runtime_cls.instances) == 1
+        assert runtime_cls.instances[0].started_task_ids == [sample_task.id]
+
     @pytest.mark.asyncio
     async def test_prevents_duplicate_scheduler_start(self, mock_deps):
         """Should prevent starting multiple scheduler loops."""
@@ -329,26 +381,72 @@ class TestStartSchedulerLoop:
         ) as mock_get_due:
             mock_get_due.return_value = []
 
-            # Start first scheduler
-            task1 = asyncio.create_task(start_scheduler_loop(mock_deps))
-            await asyncio.sleep(0.01)  # Let it start
+            with _patch_scheduler_temporal_runtime():
+                # Start first scheduler
+                task1 = asyncio.create_task(start_scheduler_loop(mock_deps))
+                await asyncio.sleep(0.01)  # Let it start
 
-            # Try to start second scheduler
-            task2 = asyncio.create_task(start_scheduler_loop(mock_deps))
-            await asyncio.sleep(0.01)
+                # Try to start second scheduler
+                task2 = asyncio.create_task(start_scheduler_loop(mock_deps))
+                await asyncio.sleep(0.01)
 
-            # Cancel both
-            task1.cancel()
-            task2.cancel()
+                # Cancel both
+                task1.cancel()
+                task2.cancel()
 
-            with contextlib.suppress(asyncio.CancelledError):
-                await task1
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task1
 
-            with contextlib.suppress(asyncio.CancelledError):
-                await task2
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task2
 
             # Second call should have returned immediately without polling
             # We can't easily test the internal state, but at least it doesn't crash
+
+    @pytest.mark.asyncio
+    async def test_scheduler_start_can_retry_after_temporal_start_failure(self, mock_deps):
+        """A failed Temporal startup should not poison later scheduler starts."""
+
+        class FailingTemporalRuntime:
+            instances = []
+
+            def __init__(self, deps, scheduler_config):
+                FailingTemporalRuntime.instances.append(self)
+
+            async def __aenter__(self):
+                raise RuntimeError("temporal unavailable")
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return None
+
+        async def stop_on_first_poll():
+            raise asyncio.CancelledError()
+
+        with _patch_scheduler_temporal_runtime(FailingTemporalRuntime):
+            with pytest.raises(RuntimeError, match="temporal unavailable"):
+                await start_scheduler_loop(mock_deps)
+
+        with (
+            _patch_scheduler_temporal_runtime() as runtime_cls,
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.get_due_tasks",
+                side_effect=stop_on_first_poll,
+            ),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler._poll_host_cron_jobs",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler._poll_database_host_jobs",
+                new_callable=AsyncMock,
+            ),
+            _patch_settings(poll_interval=0.01),
+        ):
+            with contextlib.suppress(asyncio.CancelledError):
+                await start_scheduler_loop(mock_deps)
+
+        assert len(FailingTemporalRuntime.instances) == 1
+        assert len(runtime_cls.instances) == 1
 
     @pytest.mark.asyncio
     async def test_scheduler_loop_polls_for_due_tasks(self, mock_deps):
@@ -366,9 +464,10 @@ class TestStartSchedulerLoop:
         with patch(
             "pynchy.host.orchestrator.task_scheduler.get_due_tasks", side_effect=mock_get_due
         ):
-            with _patch_settings(poll_interval=0.01):
-                with contextlib.suppress(asyncio.CancelledError):
-                    await start_scheduler_loop(mock_deps)
+            with _patch_scheduler_temporal_runtime():
+                with _patch_settings(poll_interval=0.01):
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await start_scheduler_loop(mock_deps)
 
                 assert poll_count >= 2
 
@@ -389,23 +488,21 @@ class TestStartSchedulerLoop:
         with patch(
             "pynchy.host.orchestrator.task_scheduler.get_due_tasks", side_effect=mock_get_due
         ):
-            with _patch_settings(poll_interval=0.01):
-                with contextlib.suppress(asyncio.CancelledError):
-                    await start_scheduler_loop(mock_deps)
+            with _patch_scheduler_temporal_runtime():
+                with _patch_settings(poll_interval=0.01):
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await start_scheduler_loop(mock_deps)
 
                 # Should have continued after the error
                 assert error_count >= 2
 
     @pytest.mark.asyncio
-    async def test_enqueues_due_tasks_to_group_queue(self, mock_deps, sample_task):
-        """Should enqueue due tasks to the group queue."""
+    async def test_starts_due_tasks_as_temporal_workflows(self, mock_deps, sample_task):
+        """Should start due active tasks through the Temporal runtime."""
         enqueued = []
-
-        original_enqueue = mock_deps.queue.enqueue_task
 
         def track_enqueue(group_jid, task_id, fn):
             enqueued.append((group_jid, task_id))
-            return original_enqueue(group_jid, task_id, fn)
 
         mock_deps.queue.enqueue_task = track_enqueue
 
@@ -426,14 +523,14 @@ class TestStartSchedulerLoop:
             with patch(
                 "pynchy.host.orchestrator.task_scheduler.get_task_by_id", side_effect=mock_get_task
             ):
-                with _patch_settings(poll_interval=0.01):
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await start_scheduler_loop(mock_deps)
+                with _patch_scheduler_temporal_runtime() as runtime_cls:
+                    with _patch_settings(poll_interval=0.01):
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await start_scheduler_loop(mock_deps)
 
-        # Should have enqueued the task
-        assert len(enqueued) == 1
-        assert enqueued[0][0] == sample_task.chat_jid
-        assert enqueued[0][1] == sample_task.id
+        assert enqueued == []
+        assert len(runtime_cls.instances) == 1
+        assert runtime_cls.instances[0].started_task_ids == [sample_task.id]
 
     @pytest.mark.asyncio
     async def test_skips_paused_tasks(self, mock_deps, sample_task):
@@ -478,12 +575,14 @@ class TestStartSchedulerLoop:
             with patch(
                 "pynchy.host.orchestrator.task_scheduler.get_task_by_id", side_effect=mock_get_task
             ):
-                with _patch_settings(poll_interval=0.01):
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await start_scheduler_loop(mock_deps)
+                with _patch_scheduler_temporal_runtime() as runtime_cls:
+                    with _patch_settings(poll_interval=0.01):
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await start_scheduler_loop(mock_deps)
 
-        # Should NOT have enqueued the paused task
-        assert len(enqueued) == 0
+        assert enqueued == []
+        assert len(runtime_cls.instances) == 1
+        assert runtime_cls.instances[0].started_task_ids == []
 
 
 class TestRunScheduledAgent:
