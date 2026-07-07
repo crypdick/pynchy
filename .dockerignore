@@ -1,0 +1,33 @@
+# Runtime state and local deployment data.
+data/
+groups/
+logs/
+
+# Local secrets and host-specific configuration.
+.env
+.env.*
+config.toml
+litellm_config.yaml
+
+# Python environments and tool caches.
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node and package-manager caches.
+node_modules/
+**/node_modules/
+.npm/
+.pnpm-store/
+
+# VCS/editor noise.
+.git/
+.gitignore
+.DS_Store
