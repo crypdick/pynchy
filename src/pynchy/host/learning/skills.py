@@ -31,7 +31,18 @@ def iter_learned_skill_dirs(group_folder: str) -> list[Path]:
     skill_max_bytes = get_settings().learning.skill_max_bytes
     skill_dirs: list[Path] = []
 
-    for candidate in sorted(skills_root.iterdir(), key=lambda path: path.name):
+    try:
+        candidates = sorted(skills_root.iterdir(), key=lambda path: path.name)
+    except OSError as exc:
+        logger.warning(
+            "Skipping learned skills root",
+            path=str(skills_root),
+            reason="unable to list skills root",
+            err=str(exc),
+        )
+        return []
+
+    for candidate in candidates:
         if not candidate.is_dir():
             continue
 

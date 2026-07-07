@@ -1497,6 +1497,81 @@ class TestSyncSkills:
 
         assert not (session_dir / "skills" / "remember-routing").exists()
 
+    @pytest.mark.parametrize(
+        "frontmatter",
+        [
+            "---\nname: remember-routing\n---\n# Remember Routing\n",
+            "---\nname: remember-routing\ntier: community\n---\n# Remember Routing\n",
+        ],
+    )
+    def test_learned_skill_source_tier_does_not_select_from_matching_nonlearned_tier(
+        self,
+        tmp_path: Path,
+        frontmatter: str,
+    ):
+        learned_skill = tmp_path / "vault-skills" / "remember-routing"
+        learned_skill.mkdir(parents=True)
+        (learned_skill / "SKILL.md").write_text(frontmatter)
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with _patch_settings(tmp_path):
+            _sync_skills(
+                session_dir,
+                workspace_skills=["community"],
+                learned_skill_paths=[learned_skill],
+            )
+
+        assert not (session_dir / "skills" / "remember-routing").exists()
+
+    @pytest.mark.parametrize(
+        "frontmatter",
+        [
+            "---\nname: remember-routing\n---\n# Remember Routing\n",
+            "---\nname: remember-routing\ntier: community\n---\n# Remember Routing\n",
+        ],
+    )
+    def test_learned_skill_source_tier_is_normalized_for_learned_selection(
+        self,
+        tmp_path: Path,
+        frontmatter: str,
+    ):
+        learned_skill = tmp_path / "vault-skills" / "remember-routing"
+        learned_skill.mkdir(parents=True)
+        (learned_skill / "SKILL.md").write_text(frontmatter)
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with _patch_settings(tmp_path):
+            _sync_skills(
+                session_dir,
+                workspace_skills=["learned"],
+                learned_skill_paths=[learned_skill],
+            )
+
+        assert (session_dir / "skills" / "remember-routing" / "SKILL.md").exists()
+
+    def test_learned_skill_explicit_name_selection_ignores_source_tier(
+        self,
+        tmp_path: Path,
+    ):
+        learned_skill = tmp_path / "vault-skills" / "remember-routing"
+        learned_skill.mkdir(parents=True)
+        (learned_skill / "SKILL.md").write_text(
+            "---\nname: remember-routing\ntier: ops\n---\n# Remember Routing\n"
+        )
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with _patch_settings(tmp_path):
+            _sync_skills(
+                session_dir,
+                workspace_skills=["remember-routing"],
+                learned_skill_paths=[learned_skill],
+            )
+
+        assert (session_dir / "skills" / "remember-routing" / "SKILL.md").exists()
+
     def test_learned_skill_collision_is_skipped_and_logged(
         self,
         tmp_path: Path,

@@ -69,6 +69,32 @@ def test_iter_returns_empty_when_skills_root_is_missing(tmp_path: Path):
         assert _iter_learned_skill_dirs("shopping") == []
 
 
+def test_iter_returns_empty_when_skills_root_iterdir_fails(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+):
+    vault = tmp_path / "vault"
+    skills_root = vault / "systems/pynchy/profiles/default/skills"
+    skills_root.mkdir(parents=True)
+    settings = _settings(tmp_path=tmp_path, learning=_enabled_learning(vault))
+    original_iterdir = Path.iterdir
+
+    def fail_skills_root_iterdir(path: Path):
+        if path == skills_root.resolve():
+            raise OSError("iterdir denied")
+        return original_iterdir(path)
+
+    caplog.set_level(logging.WARNING)
+    with (
+        _patch_learning_settings(settings),
+        patch.object(Path, "iterdir", fail_skills_root_iterdir),
+    ):
+        assert _iter_learned_skill_dirs("unprofiled") == []
+
+    assert "Skipping learned skills root" in caplog.text
+    assert "iterdir denied" in caplog.text
+
+
 def test_iter_returns_only_skill_dirs_with_skill_md(tmp_path: Path):
     vault = tmp_path / "vault"
     skills_root = vault / "systems/pynchy/profiles/shopping/skills"

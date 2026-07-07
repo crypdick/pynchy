@@ -22,6 +22,7 @@ from pynchy.logger import logger
 # ---------------------------------------------------------------------------
 
 _DEFAULT_TIER = "community"
+_LEARNED_TIER = "learned"
 _LEARNED_SKILL_MARKER = ".pynchy-learned-skill"
 
 
@@ -208,8 +209,8 @@ def _selected_learned_skill_names(
         if not skill_path.exists() or not skill_path.is_dir():
             continue
 
-        name, tier = parse_skill_tier(skill_path)
-        if is_skill_selected(name, tier, workspace_skills):
+        name, _source_tier = parse_skill_tier(skill_path)
+        if is_skill_selected(name, _LEARNED_TIER, workspace_skills):
             selected_names.add(skill_path.name)
 
     return selected_names
@@ -249,9 +250,9 @@ def _sync_learned_skills(
             )
             continue
 
-        name, tier = parse_skill_tier(skill_path)
-        if not is_skill_selected(name, tier, workspace_skills):
-            logger.debug("Skipping learned skill (not selected)", skill=name, tier=tier)
+        name, _source_tier = parse_skill_tier(skill_path)
+        if not is_skill_selected(name, _LEARNED_TIER, workspace_skills):
+            logger.debug("Skipping learned skill (not selected)", skill=name, tier=_LEARNED_TIER)
             continue
 
         dst_dir = skills_dst / skill_path.name
