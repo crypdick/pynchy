@@ -13,7 +13,11 @@ from pynchy.host.container_manager.mcp.lifecycle import (
     expand_arg_placeholders,
 )
 from pynchy.host.container_manager.mcp.manager import McpManager
-from pynchy.host.container_manager.mcp.resolution import McpInstance, resolve_all_instances
+from pynchy.host.container_manager.mcp.resolution import (
+    McpInstance,
+    merged_mcp_servers,
+    resolve_all_instances,
+)
 
 # ---------------------------------------------------------------------------
 # expand_arg_placeholders
@@ -81,6 +85,52 @@ class TestBuildPlaceholders:
         inst = self._make_instance(port=None)
         placeholders = _build_placeholders(inst)
         assert "port" not in placeholders
+
+
+# ---------------------------------------------------------------------------
+# merged_mcp_servers
+# ---------------------------------------------------------------------------
+
+
+class TestMergedMcpServers:
+    def test_config_base_override_preserves_plugin_dockerfile_when_omitted(self):
+        plugin_servers = {
+            "gdrive": McpServerConfig(
+                type="docker",
+                image="pynchy-mcp-gdrive:latest",
+                dockerfile="src/pynchy/agent/mcp/gdrive.Dockerfile",
+                port=3100,
+                transport="streamable_http",
+                env={"GDRIVE_OAUTH_PATH": "/home/chrome/gcp-oauth.keys.json"},
+            )
+        }
+        settings = make_settings(
+            mcp_servers={
+                "gdrive": McpServerConfig(
+                    type="docker",
+                    image="pynchy-mcp-gdrive:latest",
+                    port=3000,
+                    transport="streamable_http",
+                    env={"GDRIVE_CREDENTIALS_PATH": "/gdrive-server/credentials.json"},
+                    volumes=[
+                        "mcp-gdrive:/gdrive-server",
+                        "data/gcp-oauth.keys.json:/app/gcp-oauth.keys.json:ro",
+                    ],
+                )
+            }
+        )
+
+        merged = merged_mcp_servers(settings, plugin_servers)
+
+        assert merged["gdrive"].dockerfile == "src/pynchy/agent/mcp/gdrive.Dockerfile"
+        assert merged["gdrive"].port == 3000
+        assert merged["gdrive"].env == {
+            "GDRIVE_CREDENTIALS_PATH": "/gdrive-server/credentials.json"
+        }
+        assert merged["gdrive"].volumes == [
+            "mcp-gdrive:/gdrive-server",
+            "data/gcp-oauth.keys.json:/app/gcp-oauth.keys.json:ro",
+        ]
 
 
 # ---------------------------------------------------------------------------

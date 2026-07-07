@@ -93,7 +93,14 @@ def merged_mcp_servers(
     mount, and PORT env var.
     """
     result = dict(plugin_mcp_servers)
-    result.update(settings.mcp_servers)  # config.toml flat overrides
+    for name, override in settings.mcp_servers.items():
+        base = result.get(name)
+        if base is None:
+            result[name] = override
+            continue
+        result[name] = base.model_copy(
+            update=override.model_dump(include=override.model_fields_set),
+        )
 
     # Expand template x instance pairs
     for template, instances in settings.mcp_server_instances.items():
