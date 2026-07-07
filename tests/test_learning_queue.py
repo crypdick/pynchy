@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import json
+import os
+import threading
 from dataclasses import asdict, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 from conftest import make_settings
 
 from pynchy.config.models import LearningConfig
+from pynchy.host.learning import queue as learning_queue
 from pynchy.host.learning.queue import LearningPacket, LearningQueue
 
 
@@ -156,6 +160,31 @@ def test_complete_rejects_done_collision_without_overwriting_claimed_job(
     assert claimed.path.exists()
 
 
+def test_complete_rejects_done_collision_created_during_move(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=60)
+    queue.enqueue(_packet())
+    claimed = queue.claim_next(now=datetime(2026, 7, 7, 12, 0, tzinfo=UTC))
+    assert claimed is not None
+    done_path = _base_dir(tmp_path) / "done" / "job-1.json"
+    original_link = os.link
+
+    def create_destination_before_link(src: Any, dst: Any, *args: Any, **kwargs: Any):
+        if Path(dst) == done_path and not done_path.exists():
+            done_path.write_text(json.dumps({"sentinel": True}))
+        return original_link(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(os, "link", create_destination_before_link)
+
+    with pytest.raises(RuntimeError, match="destination"):
+        queue.complete(claimed)
+
+    assert _read_json(done_path) == {"sentinel": True}
+    assert claimed.path.exists()
+
+
 def test_fail_requeues_until_max_attempts_then_moves_to_errors(tmp_path: Path):
     queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=60, max_attempts=2)
     queue.enqueue(_packet())
@@ -218,6 +247,76 @@ def test_requeue_expired_returns_claimed_jobs_to_pending(tmp_path: Path):
     assert "lease_until" not in payload
 
 
+def test_requeue_expired_recovers_job_stranded_in_claiming_after_failed_claim(
+    tmp_path: Path,
+):
+    queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=30)
+    queue.enqueue(_packet())
+    original_write_json_atomic = learning_queue.write_json_atomic
+
+    def fail_claim_metadata_write(path: Path, payload: object, **kwargs: object) -> None:
+        if path.parent.name == "claiming":
+            raise OSError("simulated crash between claiming and claimed")
+        original_write_json_atomic(path, payload, **kwargs)
+
+    with (
+        patch(
+            "pynchy.host.learning.queue.write_json_atomic",
+            side_effect=fail_claim_metadata_write,
+        ),
+        pytest.raises(OSError, match="simulated crash"),
+    ):
+        queue.claim_next(now=datetime(2026, 7, 7, 12, 0, tzinfo=UTC))
+
+    claiming_path = _base_dir(tmp_path) / "claiming" / "job-1.json"
+    assert claiming_path.exists()
+
+    requeued = queue.requeue_expired(now=datetime(2026, 7, 7, 12, 1, tzinfo=UTC))
+
+    pending_path = _base_dir(tmp_path) / "pending" / "job-1.json"
+    assert requeued == 1
+    assert pending_path.exists()
+    assert not claiming_path.exists()
+
+
+def test_claim_next_recovers_interrupted_claiming_job_before_scanning_pending(
+    tmp_path: Path,
+):
+    queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=30)
+    claiming_path = _base_dir(tmp_path) / "claiming" / "job-1.json"
+    claiming_path.write_text(json.dumps(asdict(_packet())))
+
+    claimed = queue.claim_next(now=datetime(2026, 7, 7, 12, 1, tzinfo=UTC))
+
+    assert claimed is not None
+    assert claimed.packet == replace(_packet(), attempts=1)
+    assert claimed.path == _base_dir(tmp_path) / "claimed" / "job-1.json"
+    assert not claiming_path.exists()
+
+
+def test_claim_next_treats_claiming_transition_collision_as_lost_race(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=30)
+    queue.enqueue(_packet("job-1"))
+    queue.enqueue(_packet("job-2"))
+    original_rename_no_clobber = learning_queue._rename_no_clobber
+
+    def lose_first_claiming_race(source: Path, destination: Path) -> None:
+        if source.name == "job-1.json" and destination.parent.name == "claiming":
+            raise learning_queue.LearningQueueError("queue destination already exists")
+        original_rename_no_clobber(source, destination)
+
+    monkeypatch.setattr(learning_queue, "_rename_no_clobber", lose_first_claiming_race)
+
+    claimed = queue.claim_next(now=datetime(2026, 7, 7, 12, 0, tzinfo=UTC))
+
+    assert claimed is not None
+    assert claimed.packet.job_id == "job-2"
+    assert (_base_dir(tmp_path) / "pending" / "job-1.json").exists()
+
+
 def test_requeue_expired_moves_exhausted_claim_to_errors(tmp_path: Path):
     queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=30, max_attempts=2)
     queue.enqueue(_packet())
@@ -253,6 +352,47 @@ def test_requeue_expired_treats_missing_lease_until_as_expired(tmp_path: Path):
     assert requeued == 1
     assert (_base_dir(tmp_path) / "pending" / "job-1.json").exists()
     assert not claimed.path.exists()
+
+
+def test_complete_serializes_claim_verification_with_transition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=30)
+    racing_queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=30)
+    queue.enqueue(_packet())
+    first_claim = queue.claim_next(now=datetime(2026, 7, 7, 12, 0, tzinfo=UTC))
+    assert first_claim is not None
+    original_current_claim_payload = queue._current_claim_payload
+    race_finished = threading.Event()
+    race_claim_ids: list[str] = []
+
+    def current_payload_after_race(claimed):
+        payload = original_current_claim_payload(claimed)
+
+        def requeue_and_reclaim() -> None:
+            try:
+                requeued = racing_queue.requeue_expired(
+                    now=datetime(2026, 7, 7, 12, 0, 31, tzinfo=UTC)
+                )
+                second_claim = racing_queue.claim_next(now=datetime(2026, 7, 7, 12, 1, tzinfo=UTC))
+                if requeued == 1 and second_claim is not None:
+                    race_claim_ids.append(second_claim.claim_id)
+            finally:
+                race_finished.set()
+
+        thread = threading.Thread(target=requeue_and_reclaim)
+        thread.start()
+        race_finished.wait(timeout=0.2)
+        return payload
+
+    monkeypatch.setattr(queue, "_current_claim_payload", current_payload_after_race)
+
+    done_path = queue.complete(first_claim)
+
+    assert _read_json(done_path)["claim_id"] == first_claim.claim_id
+    assert race_finished.wait(timeout=1)
+    assert race_claim_ids == []
 
 
 def test_invalid_pending_json_moves_to_errors_with_compact_note(tmp_path: Path):
