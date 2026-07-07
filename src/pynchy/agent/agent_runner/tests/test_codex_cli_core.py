@@ -165,7 +165,7 @@ def test_build_args_adds_group_workspace_when_mounted(tmp_path, monkeypatch):
 def test_build_args_for_resumed_session(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
     _set_gateway_env(monkeypatch)
-    core = _core(session_id="019c6e27-e55b-73d1-87d8-4e01f1f75043")
+    core = _core(session_id="codex:thread-019c6e27")
     asyncio.run(core.start())
 
     args = core._build_args()
@@ -177,9 +177,22 @@ def test_build_args_for_resumed_session(tmp_path, monkeypatch):
         "--skip-git-repo-check",
         "--model",
         "gpt-5.2-codex",
-        "019c6e27-e55b-73d1-87d8-4e01f1f75043",
+        "thread-019c6e27",
         "-",
     ]
+
+
+def test_build_args_ignores_foreign_session_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    _set_gateway_env(monkeypatch)
+    core = _core(session_id="019c6e27-e55b-73d1-87d8-4e01f1f75043")
+    asyncio.run(core.start())
+
+    args = core._build_args()
+
+    assert "resume" not in args
+    assert core.session_id is None
+    assert args[-6:] == ["exec", "--json", "--skip-git-repo-check", "--model", "gpt-5.2-codex", "-"]
 
 
 def test_build_stdin_includes_system_prompt():
@@ -194,7 +207,7 @@ def test_thread_started_captures_session_id():
     events = core._map_event({"type": "thread.started", "thread_id": "thread-1"})
 
     assert [e.type for e in events] == ["system"]
-    assert core.session_id == "thread-1"
+    assert core.session_id == "codex:thread-1"
 
 
 def test_agent_message_maps_to_text_and_last_result():

@@ -22,6 +22,7 @@ from ..core import AgentCoreConfig, AgentEvent
 from ._codex_config import gateway_base_url_from_env, write_codex_config
 
 _STREAM_LINE_LIMIT = 32 * 1024 * 1024
+_CODEX_SESSION_PREFIX = "codex:"
 
 
 def _log(message: str) -> None:
@@ -45,6 +46,19 @@ def _resolve_codex_path() -> str:
     if installer_path.exists():
         return str(installer_path)
     return "codex"
+
+
+def _codex_thread_id(session_id: str | None) -> str | None:
+    """Return the raw Codex thread id for Pynchy-owned Codex sessions."""
+    if not session_id or not session_id.startswith(_CODEX_SESSION_PREFIX):
+        return None
+    thread_id = session_id.removeprefix(_CODEX_SESSION_PREFIX)
+    return thread_id or None
+
+
+def _pynchy_session_id(thread_id: str) -> str:
+    """Namespace Codex thread ids so other cores never try to resume them."""
+    return f"{_CODEX_SESSION_PREFIX}{thread_id}"
 
 
 def _item_text(item: dict[str, Any]) -> str:
@@ -95,7 +109,9 @@ class CodexCLIAgentCore:
 
     def __init__(self, config: AgentCoreConfig) -> None:
         self.config = config
-        self._session_id: str | None = config.session_id
+        self._session_id: str | None = (
+            config.session_id if _codex_thread_id(config.session_id) else None
+        )
         self._codex_path: str = "codex"
         self._env: dict[str, str] | None = None
         self._proc: asyncio.subprocess.Process | None = None
@@ -126,6 +142,7 @@ class CodexCLIAgentCore:
         """Assemble ``codex exec`` argv for one turn."""
         sandbox = str(self.config.extra.get("sandbox_mode", "workspace-write"))
         approval = str(self.config.extra.get("approval_policy", "never"))
+        thread_id = _codex_thread_id(self._session_id)
 
         args = [
             self._codex_path,
@@ -144,14 +161,14 @@ class CodexCLIAgentCore:
             args += ["--add-dir", "/workspace/group"]
 
         args.append("exec")
-        if self._session_id:
+        if thread_id:
             args.append("resume")
         args += ["--json", "--skip-git-repo-check"]
 
         if model := self.config.extra.get("model"):
             args += ["--model", str(model)]
-        if self._session_id:
-            args.append(self._session_id)
+        if thread_id:
+            args.append(thread_id)
         args.append("-")
         return args
 
@@ -263,7 +280,7 @@ class CodexCLIAgentCore:
     def _map_thread_started(self, obj: dict[str, Any]) -> list[AgentEvent]:
         sid = obj.get("thread_id") or obj.get("threadId")
         if isinstance(sid, str) and sid:
-            self._session_id = sid
+            self._session_id = _pynchy_session_id(sid)
         return [
             AgentEvent(
                 type="system",
