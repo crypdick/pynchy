@@ -114,7 +114,17 @@ def _is_regular_file_without_symlink(path: Path) -> bool:
 
 def _directory_size_bytes(root: Path) -> int | None:
     total = 0
-    for path in root.rglob("*"):
+    try:
+        children = sorted(root.iterdir(), key=lambda path: path.name)
+    except OSError as exc:
+        logger.warning(
+            "Skipping unreadable learned skill directory",
+            path=str(root),
+            err=str(exc),
+        )
+        return None
+
+    for path in children:
         try:
             stat_result = path.lstat()
         except OSError as exc:
@@ -125,6 +135,12 @@ def _directory_size_bytes(root: Path) -> int | None:
             )
             return None
 
+        if stat.S_ISDIR(stat_result.st_mode):
+            logger.warning(
+                "Skipping learned skill nested directory",
+                path=str(path),
+            )
+            return None
         if stat.S_ISLNK(stat_result.st_mode):
             logger.warning(
                 "Skipping learned skill file symlink",

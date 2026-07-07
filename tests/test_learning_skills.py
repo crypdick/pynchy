@@ -178,6 +178,28 @@ def test_iter_skips_skill_md_symlink_escape(
     assert "symlink" in caplog.text
 
 
+def test_iter_skips_skill_with_nested_directory(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+):
+    vault = tmp_path / "vault"
+    skills_root = vault / "systems/pynchy/profiles/default/skills"
+    skill = skills_root / "nested"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("---\nname: nested\ntier: learned\n---\n")
+    nested_dir = skill / "reference"
+    nested_dir.mkdir()
+    (nested_dir / "notes.md").write_text("unsupported v1 nested content")
+    settings = _settings(tmp_path=tmp_path, learning=_enabled_learning(vault))
+
+    caplog.set_level(logging.WARNING)
+    with _patch_learning_settings(settings):
+        assert _iter_learned_skill_dirs("unprofiled") == []
+
+    assert "Skipping learned skill" in caplog.text
+    assert "nested directory" in caplog.text
+
+
 def test_iter_skips_skill_over_byte_budget(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
