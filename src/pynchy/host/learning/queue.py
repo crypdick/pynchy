@@ -107,6 +107,7 @@ class LearningQueue:
                 claimed_payload["lease_until"] = (
                     claim_time + timedelta(seconds=self._lease_seconds)
                 ).isoformat()
+                claimed_payload[codec.CLAIMING_PREVIOUS_ATTEMPTS_KEY] = packet.attempts
                 write_json_atomic(claiming_path, claimed_payload, indent=2)
                 claimed_path = self._claimed_dir / pending_path.name
                 try:
@@ -118,6 +119,8 @@ class LearningQueue:
                         details=str(exc),
                     )
                     continue
+                claimed_payload.pop(codec.CLAIMING_PREVIOUS_ATTEMPTS_KEY, None)
+                write_json_atomic(claimed_path, claimed_payload, indent=2)
                 return ClaimedLearningPacket(
                     packet=claimed_packet,
                     path=claimed_path,
@@ -193,7 +196,7 @@ class LearningQueue:
                         f"({packet.attempts}/{self._max_attempts})"
                     )
                     write_json_atomic(claimed_path, payload, indent=2)
-                    _rename_no_clobber(claimed_path, self._errors_dir / claimed_path.name)
+                    self._move_expired_exhausted_claim_to_errors(claimed_path)
                     continue
 
                 self._return_claimed_to_pending(claimed_path, payload)
@@ -227,13 +230,20 @@ class LearningQueue:
         return payload
 
     def _raise_if_terminal_duplicate_exists(self, filename: str) -> None:
+        terminal_path = self._terminal_duplicate_path(filename)
+        if terminal_path is None:
+            return
+        self._recover_terminal_duplicates()
+        raise LearningQueueError(
+            f"terminal state already exists for claimed job: {terminal_path.parent.name}/{filename}"
+        )
+
+    def _terminal_duplicate_path(self, filename: str) -> Path | None:
         for terminal_dir in self._layout.terminal_dirs:
             terminal_path = terminal_dir / filename
             if terminal_path.exists():
-                self._recover_terminal_duplicates()
-                raise LearningQueueError(
-                    f"terminal state already exists for claimed job: {terminal_dir.name}/{filename}"
-                )
+                return terminal_path
+        return None
 
     def _return_claimed_to_pending(
         self,
@@ -279,7 +289,12 @@ class LearningQueue:
                 )
                 continue
 
-            write_json_atomic(claiming_path, codec.clear_claim_metadata(payload), indent=2)
+            pending_payload = codec.clear_claim_metadata(payload)
+            pending_payload["attempts"] = self._recovered_claiming_attempts(
+                payload,
+                packet.attempts,
+            )
+            write_json_atomic(claiming_path, pending_payload, indent=2)
             try:
                 _rename_no_clobber(claiming_path, pending_path)
             except LearningQueueError as exc:
@@ -292,6 +307,39 @@ class LearningQueue:
             recovered += 1
 
         return recovered
+
+    def _recovered_claiming_attempts(
+        self,
+        payload: dict[str, Any],
+        attempts: int,
+    ) -> int:
+        previous_attempts = payload.get(codec.CLAIMING_PREVIOUS_ATTEMPTS_KEY)
+        if (
+            isinstance(previous_attempts, int)
+            and not isinstance(previous_attempts, bool)
+            and 0 <= previous_attempts <= attempts
+        ):
+            return previous_attempts
+        if self._has_claim_metadata(payload):
+            return max(attempts - 1, 0)
+        return attempts
+
+    @staticmethod
+    def _has_claim_metadata(payload: dict[str, Any]) -> bool:
+        return any(
+            codec.string_metadata(payload, key) is not None
+            for key in ("claim_id", "claimed_at", "lease_until")
+        )
+
+    def _move_expired_exhausted_claim_to_errors(self, claimed_path: Path) -> None:
+        try:
+            _rename_no_clobber(claimed_path, self._errors_dir / claimed_path.name)
+        except LearningQueueError:
+            if self._terminal_duplicate_path(claimed_path.name) is None:
+                raise
+            self._recover_terminal_duplicates()
+            return
+        self._recover_terminal_duplicates()
 
     def _recover_terminal_duplicates(self) -> int:
         return discard_duplicates_with_terminal_winner(self._layout)

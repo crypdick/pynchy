@@ -438,6 +438,30 @@ def test_requeue_expired_recovers_job_stranded_in_claiming_after_failed_claim(
     assert not claiming_path.exists()
 
 
+def test_requeue_expired_rewinds_attempt_from_interrupted_claim_with_metadata(
+    tmp_path: Path,
+):
+    queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=30)
+    claiming_path = _base_dir(tmp_path) / "claiming" / "job-1.json"
+    interrupted_payload = asdict(replace(_packet(), attempts=1))
+    interrupted_payload["claim_id"] = "interrupted-claim"
+    interrupted_payload["claimed_at"] = datetime(2026, 7, 7, 12, 0, tzinfo=UTC).isoformat()
+    interrupted_payload["lease_until"] = datetime(2026, 7, 7, 12, 0, 30, tzinfo=UTC).isoformat()
+    claiming_path.write_text(json.dumps(interrupted_payload))
+
+    requeued = queue.requeue_expired(now=datetime(2026, 7, 7, 12, 1, tzinfo=UTC))
+
+    pending_path = _base_dir(tmp_path) / "pending" / "job-1.json"
+    assert requeued == 1
+    assert pending_path.exists()
+    assert not claiming_path.exists()
+    pending_payload = _read_json(pending_path)
+    assert pending_payload["attempts"] == 0
+    assert "claim_id" not in pending_payload
+    assert "claimed_at" not in pending_payload
+    assert "lease_until" not in pending_payload
+
+
 def test_requeue_expired_removes_claiming_duplicate_and_keeps_pending(
     tmp_path: Path,
 ):
@@ -545,6 +569,42 @@ def test_requeue_expired_moves_exhausted_claim_to_errors(tmp_path: Path):
     error_payload = _read_json(error_path)
     assert error_payload["attempts"] == 2
     assert "max attempts" in error_payload["last_error"]
+
+
+@pytest.mark.parametrize("terminal_state", ["done", "errors"])
+def test_requeue_expired_exhausted_claim_terminal_collision_keeps_terminal_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    terminal_state: str,
+):
+    queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=30, max_attempts=1)
+    queue.enqueue(_packet())
+    exhausted_claim = queue.claim_next(now=datetime(2026, 7, 7, 12, 0, tzinfo=UTC))
+    assert exhausted_claim is not None
+    terminal_path = _base_dir(tmp_path) / terminal_state / "job-1.json"
+    errors_path = _base_dir(tmp_path) / "errors" / "job-1.json"
+    original_rename_no_clobber = learning_queue._rename_no_clobber
+
+    def create_terminal_before_exhausted_move(source: Path, destination: Path) -> None:
+        if source == exhausted_claim.path and destination == errors_path:
+            terminal_path.write_text(json.dumps({"terminal_marker": terminal_state}))
+        original_rename_no_clobber(source, destination)
+
+    monkeypatch.setattr(
+        learning_queue,
+        "_rename_no_clobber",
+        create_terminal_before_exhausted_move,
+    )
+
+    requeued = queue.requeue_expired(now=datetime(2026, 7, 7, 12, 0, 31, tzinfo=UTC))
+
+    assert requeued == 0
+    assert _read_json(terminal_path)["terminal_marker"] == terminal_state
+    assert not (_base_dir(tmp_path) / "pending" / "job-1.json").exists()
+    assert not (_base_dir(tmp_path) / "claiming" / "job-1.json").exists()
+    assert not exhausted_claim.path.exists()
+    if terminal_state == "done":
+        assert not errors_path.exists()
 
 
 @pytest.mark.parametrize("terminal_state", ["done", "errors"])

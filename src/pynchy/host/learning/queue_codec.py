@@ -16,7 +16,13 @@ from pynchy.host.learning.queue_models import (
 )
 
 ERROR_DETAILS_MAX_CHARS = 200
-CLAIM_METADATA_KEYS = ("claim_id", "claimed_at", "lease_until")
+CLAIMING_PREVIOUS_ATTEMPTS_KEY = "_claiming_previous_attempts"
+CLAIM_METADATA_KEYS = (
+    "claim_id",
+    "claimed_at",
+    "lease_until",
+    CLAIMING_PREVIOUS_ATTEMPTS_KEY,
+)
 
 
 def job_filename(job_id: str) -> str:
