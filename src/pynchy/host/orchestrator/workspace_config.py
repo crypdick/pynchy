@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from pynchy.config import get_settings, reset_settings
 from pynchy.config.merge import ResolvedSandboxConfig
@@ -26,7 +26,7 @@ from pynchy.state import (
     set_workspace_profile,
     update_task,
 )
-from pynchy.types import Channel, WorkspaceProfile
+from pynchy.types import Channel, ScheduledTask, WorkspaceProfile
 from pynchy.utils import compute_next_run
 
 if TYPE_CHECKING:
@@ -327,25 +327,27 @@ async def _reconcile_periodic_task(
 ) -> None:
     """Create or update the scheduled task backing a periodic-agent workspace."""
     assert config.schedule is not None, "caller must guard with config.is_periodic"
+    assert config.prompt is not None, "caller must guard with config.is_periodic"
+    assert jid is not None, "caller guards jid is not None before _reconcile_periodic_task"
     existing_task = await get_active_task_for_group(folder)
 
     if existing_task is None:
         next_run = compute_next_run("cron", config.schedule, s.timezone)
         task_id = f"periodic-{folder}-{uuid.uuid4().hex[:8]}"
         await create_task(
-            {
-                "id": task_id,
-                "group_folder": folder,
-                "chat_jid": jid,
-                "prompt": config.prompt,
-                "schedule_type": "cron",
-                "schedule_value": config.schedule,
-                "context_mode": context_mode,
-                "repo_access": resolved_repo_access,
-                "next_run": next_run,
-                "status": "active",
-                "created_at": datetime.now(UTC).isoformat(),
-            }
+            ScheduledTask(
+                id=task_id,
+                group_folder=folder,
+                chat_jid=jid,
+                prompt=config.prompt,
+                schedule_type="cron",
+                schedule_value=config.schedule,
+                context_mode=cast('Literal["group", "isolated"]', context_mode),
+                repo_access=resolved_repo_access,
+                next_run=next_run,
+                status="active",
+                created_at=datetime.now(UTC).isoformat(),
+            )
         )
         logger.info(
             "Created scheduled task for periodic agent",

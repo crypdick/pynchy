@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 
-from pynchy.logger import logger
 from pynchy.state.connection import _get_db
 from pynchy.types import (
     ContainerConfig,
@@ -22,28 +21,27 @@ def _row_to_workspace_profile(row) -> WorkspaceProfile:
         container_config = ContainerConfig.from_dict(json.loads(row["container_config"]))
 
     security = WorkspaceSecurity()
-    try:
-        if row["security_profile"]:
+    if row["security_profile"]:
+        try:
             sec_data = json.loads(row["security_profile"])
-            services = {}
-            for svc_name, svc_data in sec_data.get("services", {}).items():
-                services[svc_name] = ServiceTrustConfig(
-                    public_source=svc_data.get("public_source", True),
-                    secret_data=svc_data.get("secret_data", True),
-                    public_sink=svc_data.get("public_sink", True),
-                    dangerous_writes=svc_data.get("dangerous_writes", True),
+            services = {
+                svc_name: ServiceTrustConfig(
+                    public_source=svc_data["public_source"],
+                    secret_data=svc_data["secret_data"],
+                    public_sink=svc_data["public_sink"],
+                    dangerous_writes=svc_data["dangerous_writes"],
                 )
-
+                for svc_name, svc_data in sec_data["services"].items()
+            }
             security = WorkspaceSecurity(
                 services=services,
-                contains_secrets=sec_data.get("contains_secrets", False),
+                contains_secrets=sec_data["contains_secrets"],
             )
-    except (KeyError, json.JSONDecodeError) as exc:
-        logger.warning(
-            "Failed to parse security profile, using defaults",
-            folder=row["folder"],
-            err=str(exc),
-        )
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as exc:
+            raise ValueError(
+                f"Corrupt security_profile for workspace {row['folder']!r}; "
+                "refusing to load rather than silently defaulting to permissive trust"
+            ) from exc
 
     return WorkspaceProfile(
         jid=row["jid"],

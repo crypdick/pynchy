@@ -3,24 +3,36 @@
 Handles the three interactive widgets pynchy renders into Slack messages:
 ask_user submissions, cop approval buttons, and the agent Stop button.
 
-Split from ``_channel.py`` as a mixin so the channel module stays focused on
-transport and lifecycle.  :class:`SlackChannel` mixes this in; every handler
-uses the channel's own state (``self._app``, ``self._is_allowed_channel``,
-and the ``self._on_*`` callbacks), so the split is behavior-preserving.
+A composed collaborator of :class:`SlackChannel` (not a mixin). The channel
+constructs one of these and the events collaborator routes interaction
+callbacks to it. It holds a back-reference to the channel to reach the live
+``_app`` client, the allowlist collaborator, and the ``_on_*`` callbacks.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pynchy.logger import logger
 
 from ._ids import _jid
 from ._ui import extract_checkbox_values, extract_text_input_value
 
+if TYPE_CHECKING:
+    from ._channel import SlackChannel
+else:
+    # beartype resolves the ``channel: SlackChannel`` forward ref at call time
+    # from this module's globals. ``_channel`` imports this module, so a real
+    # runtime import would be circular — bind a permissive substitute so the
+    # forward ref resolves (mypy uses the real type from the branch above).
+    SlackChannel = object
 
-class SlackInteractionMixin:
+
+class SlackInteractions:
     """Interactive Block Kit callbacks for :class:`SlackChannel`."""
+
+    def __init__(self, channel: SlackChannel) -> None:
+        self._channel = channel
 
     async def _finalize_decision(
         self,
@@ -47,7 +59,7 @@ class SlackInteractionMixin:
             {"type": "context", "elements": [{"type": "mrkdwn", "text": context_text}]}
         )
         try:
-            await self._app.client.chat_update(
+            await self._channel._app.client.chat_update(
                 channel=channel_id, ts=message_ts, text=fallback, blocks=kept_blocks
             )
         except Exception as exc:
@@ -61,11 +73,12 @@ class SlackInteractionMixin:
         reads the final checkbox selections and free-text value from
         ``state.values``.
         """
+        ch = self._channel
         action_id = action.get("action_id", "")
         channel_id = body.get("channel", {}).get("id", "")
 
         # Guard: only process interactions from allowed channels.
-        if channel_id and not self._is_allowed_channel(channel_id):
+        if channel_id and not ch.allowlist._is_allowed_channel(channel_id):
             return
 
         # Ignore bare checkbox toggles — wait for submit.
@@ -94,14 +107,14 @@ class SlackInteractionMixin:
             "message_ts": message_ts,
         }
 
-        if self._on_ask_user_answer:
-            self._on_ask_user_answer(request_id, answer_dict)
+        if ch._on_ask_user_answer:
+            ch._on_ask_user_answer(request_id, answer_dict)
 
         # Update the question message to show the answer and remove interactivity
         if channel_id and message_ts:
             answered_text = f"Answered: *{answer}*"
             try:
-                await self._app.client.chat_update(
+                await ch._app.client.chat_update(
                     channel=channel_id,
                     ts=message_ts,
                     text=answered_text,
@@ -122,10 +135,11 @@ class SlackInteractionMixin:
         ``cop_approve_a1``), invokes the approval callback, and updates the
         prompt message to remove buttons and show the decision.
         """
+        ch = self._channel
         action_id = action.get("action_id", "")
         channel_id = body.get("channel", {}).get("id", "")
 
-        if channel_id and not self._is_allowed_channel(channel_id):
+        if channel_id and not ch.allowlist._is_allowed_channel(channel_id):
             return
 
         # Parse action_id: cop_{approve|deny}_{short_id}
@@ -140,9 +154,9 @@ class SlackInteractionMixin:
         user_name = body.get("user", {}).get("username", user_id)
 
         # Invoke the approval decision callback
-        if self._on_approval_decision and channel_id:
+        if ch._on_approval_decision and channel_id:
             jid = _jid(channel_id)
-            self._on_approval_decision(jid, decision, short_id, user_id)
+            ch._on_approval_decision(jid, decision, short_id, user_id)
 
         verb = "Approved" if decision == "approve" else "Denied"
         await self._finalize_decision(
@@ -170,10 +184,11 @@ class SlackInteractionMixin:
         ``agent_stop_ops``), invokes the stop callback, and updates the
         message to show who stopped the agent.
         """
+        ch = self._channel
         action_id = action.get("action_id", "")
         channel_id = body.get("channel", {}).get("id", "")
 
-        if channel_id and not self._is_allowed_channel(channel_id):
+        if channel_id and not ch.allowlist._is_allowed_channel(channel_id):
             return
 
         # Parse action_id: agent_stop_{group_name}
@@ -186,8 +201,8 @@ class SlackInteractionMixin:
         user_name = body.get("user", {}).get("username", user_id)
 
         # Signal cancellation to the agent execution loop
-        if self._on_agent_stop:
-            self._on_agent_stop(group_name, user_id)
+        if ch._on_agent_stop:
+            ch._on_agent_stop(group_name, user_id)
 
         await self._finalize_decision(
             body,

@@ -14,6 +14,7 @@ Any *two* are manageable. All three together means a prompt injection attack in 
 
 ## Four Properties Per Service
 
+<!-- Source of truth: ServiceTrustConfig in src/pynchy/types.py — keep these properties/defaults in sync. -->
 Each service declares four trust properties in `config.toml`:
 
 ```toml

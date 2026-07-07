@@ -113,20 +113,21 @@ async def _handle_schedule_task(
         context_mode = "isolated"
 
     from pynchy.state import create_task
+    from pynchy.types import ScheduledTask
 
     await create_task(
-        {
-            "id": task_id,
-            "group_folder": target_folder,
-            "chat_jid": target_jid,
-            "prompt": prompt,
-            "schedule_type": schedule_type,
-            "schedule_value": schedule_value,
-            "context_mode": context_mode,
-            "next_run": next_run,
-            "status": "active",
-            "created_at": datetime.now(UTC).isoformat(),
-        }
+        ScheduledTask(
+            id=task_id,
+            group_folder=target_folder,
+            chat_jid=target_jid,
+            prompt=prompt,
+            schedule_type=cast('Literal["cron", "interval", "once"]', schedule_type),
+            schedule_value=schedule_value,
+            context_mode=cast('Literal["group", "isolated"]', context_mode),
+            next_run=next_run,
+            status="active",
+            created_at=datetime.now(UTC).isoformat(),
+        )
     )
     logger.info(
         "Task created via IPC",

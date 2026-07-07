@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from pynchy.logger import logger
-from pynchy.types import Channel, OutboundEvent, WorkspaceProfile
+from pynchy.types import Channel, ChannelName, ChatJid, OutboundEvent, WorkspaceProfile
 
 
 @runtime_checkable
@@ -47,7 +47,9 @@ async def _record_to_ledger(
     try:
         from pynchy.state import record_outbound
 
-        return await record_outbound(chat_jid, text, source, channel_names)
+        return await record_outbound(
+            ChatJid(chat_jid), text, source, [ChannelName(c) for c in channel_names]
+        )
     except Exception:
         logger.debug("Outbound ledger write failed (fire-and-forget fallback)")
         return None

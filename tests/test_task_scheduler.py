@@ -306,15 +306,20 @@ def sample_group():
     )
 
 
+@pytest.fixture(autouse=True)
+def reset_scheduler_state(monkeypatch):
+    """Reset the scheduler's module-level globals before each test.
+
+    ``_scheduler_running`` and ``_cron_job_next_runs`` live for the whole
+    process; a raw rebind would leak across tests and xdist workers. Using
+    ``monkeypatch`` auto-reverts them, keeping tests order-independent.
+    """
+    monkeypatch.setattr("pynchy.host.orchestrator.task_scheduler._scheduler_running", False)
+    monkeypatch.setattr("pynchy.host.orchestrator.task_scheduler._cron_job_next_runs", {})
+
+
 class TestStartSchedulerLoop:
     """Test the scheduler loop initialization and duplicate prevention."""
-
-    def setup_method(self):
-        """Reset scheduler state before each test."""
-        import pynchy.host.orchestrator.task_scheduler
-
-        pynchy.host.orchestrator.task_scheduler._scheduler_running = False
-        pynchy.host.orchestrator.task_scheduler._cron_job_next_runs = {}
 
     @pytest.mark.asyncio
     async def test_prevents_duplicate_scheduler_start(self, mock_deps):
@@ -849,12 +854,11 @@ class TestRunScheduledAgent:
 
 class TestHostCronJobs:
     @pytest.mark.asyncio
-    async def test_runs_due_host_cron_job(self, tmp_path):
-        import pynchy.host.orchestrator.task_scheduler
-
-        pynchy.host.orchestrator.task_scheduler._cron_job_next_runs = {
-            "rebuild_container": datetime.now(UTC).replace(microsecond=0).isoformat()
-        }
+    async def test_runs_due_host_cron_job(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.task_scheduler._cron_job_next_runs",
+            {"rebuild_container": datetime.now(UTC).replace(microsecond=0).isoformat()},
+        )
 
         class FakeProcess:
             returncode = 0
@@ -886,12 +890,11 @@ class TestHostCronJobs:
         assert args.args[0] == "./src/pynchy/agent/build.sh"
 
     @pytest.mark.asyncio
-    async def test_skips_disabled_host_cron_job(self):
-        import pynchy.host.orchestrator.task_scheduler
-
-        pynchy.host.orchestrator.task_scheduler._cron_job_next_runs = {
-            "disabled_job": datetime.now(UTC).replace(microsecond=0).isoformat()
-        }
+    async def test_skips_disabled_host_cron_job(self, monkeypatch):
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.task_scheduler._cron_job_next_runs",
+            {"disabled_job": datetime.now(UTC).replace(microsecond=0).isoformat()},
+        )
 
         with (
             _patch_settings(

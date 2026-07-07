@@ -288,24 +288,27 @@ class Settings(BaseSettings):
         Uses ConnectionsConfig.get_connection() for platform-generic lookups
         so this validator doesn't need to hardcode platform names.
         """
-        # Validate command_center.connection exists (if set)
+        # Validate command_center.connection exists (if set). Well-formedness is already
+        # proven by CommandCenterConfig.connection's validator, so parse only extracts parts.
         if self.command_center.connection:
             ref = parse_connection_ref(self.command_center.connection)
-            if ref is None:
-                raise ValueError("command_center.connection must be connection.<platform>.<name>")
+            assert ref is not None  # guaranteed by ValidatedConnectionRef
             if self.connection.get_connection(ref.platform, ref.name) is None:
                 raise ValueError(
                     f"command_center.connection references unknown connection: "
                     f"{connection_ref_from_parts(ref.platform, ref.name)}"
                 )
 
-        # Validate workspace chat refs point to configured connections/chats
+        # Validate workspace chat refs point to configured connections/chats. The chat
+        # ref is proven well-formed by WorkspaceConfig.chat's validator when present; a
+        # workspace must still declare one, so a missing (None) chat is the only failure.
         for folder, ws in self.workspaces.items():
-            chat_ref = parse_chat_ref(ws.chat)
-            if chat_ref is None:
+            if ws.chat is None:
                 raise ValueError(
                     f"sandbox.{folder}.chat must be connection.<platform>.<name>.chat.<chat>"
                 )
+            chat_ref = parse_chat_ref(ws.chat)
+            assert chat_ref is not None  # guaranteed by ValidatedChatRef
             conn = self.connection.get_connection(chat_ref.platform, chat_ref.name)
             if conn is None:
                 raise ValueError(

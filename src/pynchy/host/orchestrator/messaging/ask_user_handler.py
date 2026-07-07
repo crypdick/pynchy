@@ -27,6 +27,7 @@ from pynchy.host.orchestrator.messaging.pending_questions import (
     resolve_pending_question,
 )
 from pynchy.logger import logger
+from pynchy.types import GroupFolder
 
 
 @runtime_checkable
@@ -52,7 +53,7 @@ async def handle_ask_user_answer(
         return
 
     source_group = pending["source_group"]
-    session = get_session(source_group)
+    session = get_session(GroupFolder(source_group))
 
     if session is not None and session.is_alive:
         # Path A: container alive -- write IPC response file

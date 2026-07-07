@@ -9,11 +9,16 @@ from typing import Any
 from croniter import croniter
 
 from pynchy.config import get_settings
+from pynchy.config.models import ChatRefStr
 from pynchy.host.container_manager.ipc.deps import IpcDeps
+from pynchy.host.container_manager.ipc.protocol import (
+    CreatePeriodicAgentRequest,
+    RegisterGroupRequest,
+)
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.logger import logger
 from pynchy.state import create_task
-from pynchy.types import ContainerConfig, WorkspaceProfile
+from pynchy.types import ScheduledTask, WorkspaceProfile
 from pynchy.utils import compute_next_run
 
 
@@ -30,12 +35,18 @@ async def _handle_register_group(
         )
         return
 
+    request = RegisterGroupRequest.from_dict(data)
+    if request is None:
+        logger.warning(
+            "Invalid register_group request - missing required fields",
+            data=str(data),
+        )
+        return
+
     if not data.get("_cop_approved"):
         from pynchy.host.container_manager.security.cop_gate import cop_gate
 
-        summary = (
-            f"name={data.get('name')}, folder={data.get('folder')}, trigger={data.get('trigger')}"
-        )
+        summary = f"name={request.name}, folder={request.folder}, trigger={request.trigger}"
         allowed = await cop_gate(
             "register_group",
             summary,
@@ -46,29 +57,16 @@ async def _handle_register_group(
         if not allowed:
             return
 
-    jid = data.get("jid")
-    name = data.get("name")
-    folder = data.get("folder")
-    trigger = data.get("trigger")
-
-    if jid and name and folder and trigger:
-        deps.register_workspace(
-            WorkspaceProfile(
-                jid=jid,
-                name=name,
-                folder=folder,
-                trigger=trigger,
-                added_at=datetime.now(UTC).isoformat(),
-                container_config=ContainerConfig.from_dict(data["containerConfig"])
-                if data.get("containerConfig")
-                else None,
-            ),
-        )
-    else:
-        logger.warning(
-            "Invalid register_group request - missing required fields",
-            data=str(data),
-        )
+    deps.register_workspace(
+        WorkspaceProfile(
+            jid=request.jid,
+            name=request.name,
+            folder=request.folder,
+            trigger=request.trigger,
+            added_at=datetime.now(UTC).isoformat(),
+            container_config=request.container_config,
+        ),
+    )
 
 
 async def _handle_create_periodic_agent(
@@ -85,12 +83,20 @@ async def _handle_create_periodic_agent(
         )
         return
 
+    request = CreatePeriodicAgentRequest.from_dict(data)
+    if request is None:
+        logger.warning("create_periodic_agent missing required fields", data=str(data))
+        return
+
+    if not croniter.is_valid(request.schedule):
+        logger.warning("create_periodic_agent invalid cron", schedule=request.schedule)
+        return
+
     if not data.get("_cop_approved"):
         from pynchy.host.container_manager.security.cop_gate import cop_gate
 
-        name = data.get("name", "")
-        prompt_preview = (data.get("prompt") or "")[:500]
-        summary = f"name={name}, schedule={data.get('schedule')}, prompt={prompt_preview}"
+        prompt_preview = request.prompt[:500]
+        summary = f"name={request.name}, schedule={request.schedule}, prompt={prompt_preview}"
         allowed = await cop_gate(
             "create_periodic_agent",
             summary,
@@ -106,24 +112,7 @@ async def _handle_create_periodic_agent(
 
     s = get_settings()
 
-    name = data.get("name")
-    schedule = data.get("schedule")
-    prompt = data.get("prompt")
-    if not name or not schedule or not prompt:
-        logger.warning("create_periodic_agent missing required fields", data=str(data))
-        return
-
-    if not croniter.is_valid(schedule):
-        logger.warning("create_periodic_agent invalid cron", schedule=schedule)
-        return
-
-    context_mode = data.get("context_mode", "group")
-    if context_mode not in ("group", "isolated"):
-        context_mode = "group"
-
-    claude_md = data.get("claude_md", f"You are the {name} periodic agent.")
-
-    group_dir = s.groups_dir / name
+    group_dir = s.groups_dir / request.name
     group_dir.mkdir(parents=True, exist_ok=True)
 
     command_center = s.command_center.connection
@@ -131,22 +120,22 @@ async def _handle_create_periodic_agent(
         logger.warning("create_periodic_agent requires command_center.connection")
         return
 
-    chat_name = data.get("chat") or name
-    chat_ref = f"{command_center}.chat.{chat_name}"
+    chat_name = request.chat or request.name
+    chat_ref = ChatRefStr(f"{command_center}.chat.{chat_name}")
 
     config = WorkspaceConfig(
-        name=name,
+        name=request.name,
         chat=chat_ref,
-        schedule=schedule,
-        prompt=prompt,
-        context_mode=context_mode,
+        schedule=request.schedule,
+        prompt=request.prompt,
+        context_mode=request.context_mode,
         trigger="always",
     )
-    add_workspace_to_toml(name, config)
+    add_workspace_to_toml(request.name, config)
 
     claude_md_path = group_dir / "CLAUDE.md"
     if not claude_md_path.exists():
-        claude_md_path.write_text(claude_md)
+        claude_md_path.write_text(request.claude_md)
 
     channels = deps.channels()
     channel = next(
@@ -163,40 +152,40 @@ async def _handle_create_periodic_agent(
         )
         return
 
-    agent_display_name = name.replace("-", " ").title()
+    agent_display_name = request.name.replace("-", " ").title()
     jid = await channel.create_group(chat_name)
 
     profile = WorkspaceProfile(
         jid=jid,
         name=agent_display_name,
-        folder=name,
+        folder=request.name,
         trigger=f"@{s.agent.name}",
         added_at=datetime.now(UTC).isoformat(),
     )
     deps.register_workspace(profile)
 
-    next_run = compute_next_run("cron", schedule, s.timezone)
-    task_id = f"periodic-{name}-{uuid.uuid4().hex[:8]}"
+    next_run = compute_next_run("cron", request.schedule, s.timezone)
+    task_id = f"periodic-{request.name}-{uuid.uuid4().hex[:8]}"
 
     await create_task(
-        {
-            "id": task_id,
-            "group_folder": name,
-            "chat_jid": jid,
-            "prompt": prompt,
-            "schedule_type": "cron",
-            "schedule_value": schedule,
-            "context_mode": context_mode,
-            "next_run": next_run,
-            "status": "active",
-            "created_at": datetime.now(UTC).isoformat(),
-        }
+        ScheduledTask(
+            id=task_id,
+            group_folder=request.name,
+            chat_jid=jid,
+            prompt=request.prompt,
+            schedule_type="cron",
+            schedule_value=request.schedule,
+            context_mode=request.context_mode,
+            next_run=next_run,
+            status="active",
+            created_at=datetime.now(UTC).isoformat(),
+        )
     )
 
     logger.info(
         "Periodic agent created via IPC",
-        name=name,
-        schedule=schedule,
+        name=request.name,
+        schedule=request.schedule,
         task_id=task_id,
         jid=jid,
     )

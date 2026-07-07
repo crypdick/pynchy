@@ -15,7 +15,7 @@ from pynchy.host.orchestrator.messaging.pipeline import advance_cursor
 from pynchy.host.orchestrator.messaging.sender import broadcast
 from pynchy.logger import logger
 from pynchy.state import clear_session, set_chat_cleared_at, store_message
-from pynchy.types import Channel, NewMessage, WorkspaceProfile
+from pynchy.types import Channel, GroupFolder, NewMessage, WorkspaceProfile
 from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
@@ -80,7 +80,7 @@ async def _teardown_group(
         deps.sessions.pop(group.folder, None)
         deps._session_cleared.add(group.folder)
         logger.info("teardown_trace", step="clear_session_start", group=group.name)
-        await clear_session(group.folder)
+        await clear_session(GroupFolder(group.folder))
         logger.info("teardown_trace", step="clear_session_done", group=group.name)
 
     deps.queue.clear_pending_tasks(chat_jid)

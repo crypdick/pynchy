@@ -35,7 +35,14 @@ from pynchy.host.orchestrator.messaging.commands import (
 from pynchy.host.orchestrator.messaging.router import pop_last_result_ids
 from pynchy.logger import logger
 from pynchy.state import get_messages_since, store_message_direct
-from pynchy.types import Channel, ContainerOutput, NewMessage, OutboundEvent, WorkspaceProfile
+from pynchy.types import (
+    Channel,
+    ContainerOutput,
+    GroupFolder,
+    NewMessage,
+    OutboundEvent,
+    WorkspaceProfile,
+)
 from pynchy.utils import generate_message_id, run_shell_command
 
 
@@ -457,7 +464,7 @@ def _register_idle_zzz_callback(
 
     from pynchy.host.container_manager.session import get_session
 
-    session = get_session(group.folder)
+    session = get_session(GroupFolder(group.folder))
     if session is None:
         return
 

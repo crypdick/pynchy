@@ -173,3 +173,41 @@ class TestContainerInputFields:
         result = read_initial_input()
         assert result.group_folder == "test-group"
         assert not hasattr(result, "unknown_field")
+
+
+class TestContainerInputTypeValidation:
+    """from_dict() type-checks values at the boundary, not just filters keys."""
+
+    def test_scalar_wrong_type_raises(self) -> None:
+        data = _minimal_input(group_folder=123)
+        with pytest.raises(TypeError, match="group_folder"):
+            ContainerInput.from_dict(data)
+
+    def test_bool_field_wrong_type_raises(self) -> None:
+        data = _minimal_input(is_admin="yes")
+        with pytest.raises(TypeError, match="is_admin"):
+            ContainerInput.from_dict(data)
+
+    def test_messages_not_a_list_raises(self) -> None:
+        data = _minimal_input(messages="hello")
+        with pytest.raises(TypeError, match="messages"):
+            ContainerInput.from_dict(data)
+
+    def test_messages_wrong_item_type_raises(self) -> None:
+        data = _minimal_input(messages=["not-a-dict"])
+        with pytest.raises(TypeError, match="messages"):
+            ContainerInput.from_dict(data)
+
+    def test_optional_list_wrong_item_type_raises(self) -> None:
+        data = _minimal_input(system_notices=[1, 2, 3])
+        with pytest.raises(TypeError, match="system_notices"):
+            ContainerInput.from_dict(data)
+
+    def test_optional_field_accepts_none(self) -> None:
+        data = _minimal_input(session_id=None)
+        result = ContainerInput.from_dict(data)
+        assert result.session_id is None
+
+    def test_valid_input_passes(self) -> None:
+        result = ContainerInput.from_dict(_minimal_input())
+        assert isinstance(result, ContainerInput)

@@ -12,8 +12,40 @@ independently so the container has no dependency on the host package.
 from __future__ import annotations
 
 import dataclasses
+import types
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Union, get_args, get_origin, get_type_hints
+
+
+def _matches_hint(value: object, hint: Any) -> bool:
+    """Return True if ``value`` satisfies the type ``hint``.
+
+    Supports only the annotation forms used by ``ContainerInput``: bare classes,
+    ``X | None`` unions, ``list[...]``, ``dict[..., ...]`` and ``Any``.
+    """
+    if hint is Any:
+        return True
+    origin = get_origin(hint)
+    if origin is None:
+        return isinstance(value, hint)
+    if origin is Union or origin is types.UnionType:
+        return any(_matches_hint(value, arg) for arg in get_args(hint))
+    if origin is list:
+        if not isinstance(value, list):
+            return False
+        item_hint = next(iter(get_args(hint)), Any)
+        return all(_matches_hint(item, item_hint) for item in value)
+    if origin is dict:
+        if not isinstance(value, dict):
+            return False
+        args = get_args(hint)
+        if not args:
+            return True
+        key_hint, val_hint = args
+        return all(
+            _matches_hint(k, key_hint) and _matches_hint(v, val_hint) for k, v in value.items()
+        )
+    return isinstance(value, origin)
 
 
 @dataclass
@@ -44,9 +76,21 @@ class ContainerInput:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ContainerInput:
-        """Create from a JSON-parsed dict, ignoring unknown keys."""
+        """Parse a JSON-decoded dict into a ContainerInput.
+
+        Unknown keys are ignored; known keys are type-checked against the
+        dataclass annotations so a malformed ``initial.json`` fails here at the
+        boundary rather than deep in the agent core.
+        """
+        hints = get_type_hints(cls)
         known = {f.name for f in dataclasses.fields(cls)}
-        return cls(**{k: v for k, v in data.items() if k in known})
+        kwargs = {k: v for k, v in data.items() if k in known}
+        for name, value in kwargs.items():
+            if not _matches_hint(value, hints[name]):
+                raise TypeError(
+                    f"ContainerInput.{name}: expected {hints[name]}, got {type(value).__name__}"
+                )
+        return cls(**kwargs)
 
 
 @dataclass

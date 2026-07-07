@@ -23,7 +23,7 @@ from pynchy.host.orchestrator.messaging.formatter import (
     format_internal_tags,
     format_tool_preview,
 )
-from pynchy.host.orchestrator.messaging.formatters.base import BaseFormatter, RenderedMessage
+from pynchy.host.orchestrator.messaging.formatters.base import RenderedMessage
 from pynchy.types import OutboundEvent
 
 # Slack limits messages to 50 blocks.
@@ -56,7 +56,7 @@ def _rich_text_preformatted_block(code: str) -> dict[str, Any]:
     }
 
 
-class SlackBlocksFormatter(BaseFormatter):
+class SlackBlocksFormatter:
     """Slack Block Kit renderer for OutboundEvent objects.
 
     Each event type maps to one or more Block Kit blocks.  The ``render()``

@@ -12,7 +12,14 @@ from typing import Any
 
 from pynchy.event_bus import EventBus
 from pynchy.state import clear_session, get_active_task_for_group, get_chat_history
-from pynchy.types import Channel, NewMessage, OutboundEvent, OutboundEventType, WorkspaceProfile
+from pynchy.types import (
+    Channel,
+    GroupFolder,
+    NewMessage,
+    OutboundEvent,
+    OutboundEventType,
+    WorkspaceProfile,
+)
 from pynchy.utils import create_background_task, generate_message_id
 
 # Type aliases for callback signatures used across adapters
@@ -239,7 +246,7 @@ class SessionManager:
         """Clear session state for a group."""
         self._sessions.pop(group_folder, None)
         self._session_cleared.add(group_folder)
-        await clear_session(group_folder)
+        await clear_session(GroupFolder(group_folder))
 
 
 class EventBusAdapter:

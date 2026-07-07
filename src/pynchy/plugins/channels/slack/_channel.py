@@ -1,14 +1,17 @@
 """SlackChannel — pynchy Channel protocol implementation backed by Slack Socket Mode.
 
-Implementation is split across sibling mixins in this package:
+Implementation is composed from focused collaborator objects in this package,
+each constructed with a back-reference to the channel:
 
 - ``_lifecycle``: connect/disconnect/reconnect and reconnect-on-exit
 - ``_allowlist``: configured chat allowlist, resolution, and creation
 - ``_events``: inbound Slack event routing (messages, mentions, reactions)
 - ``_interactions``: Block Kit interactive-callback handlers (ask_user, approvals, stop)
 
-This module holds the composition root plus the outbound-facing protocol
-methods, history catch-up, and name-resolution helpers used across mixins.
+This module is the composition root: it owns all shared connection state,
+implements the outbound-facing protocol methods, history catch-up, and
+name-resolution helpers, and delegates the lifecycle/allowlist/event surface
+to the collaborators (see ``self.lifecycle``/``allowlist``/``events``/``interactions``).
 """
 
 from __future__ import annotations
@@ -22,21 +25,16 @@ from pynchy.logger import logger
 from pynchy.plugins.channels.slack._blocks import SlackBlocksFormatter
 from pynchy.types import InboundFetchResult, NewMessage, OutboundEvent
 
-from ._allowlist import SlackAllowlistMixin
+from ._allowlist import SlackAllowlist
 from ._cache import TtlCache
-from ._events import SlackEventsMixin
+from ._events import SlackEvents
 from ._ids import JID_PREFIX, _channel_id_from_jid, _jid
-from ._interactions import SlackInteractionMixin
-from ._lifecycle import SlackLifecycleMixin
+from ._interactions import SlackInteractions
+from ._lifecycle import SlackLifecycle
 from ._ui import build_ask_user_blocks, normalize_chat_name, split_text
 
 
-class SlackChannel(
-    SlackLifecycleMixin,
-    SlackAllowlistMixin,
-    SlackEventsMixin,
-    SlackInteractionMixin,
-):
+class SlackChannel:
     """Pynchy ``Channel`` protocol implementation backed by Slack Socket Mode."""
 
     prefix_assistant_name: bool = False  # Slack shows the bot username already
@@ -89,6 +87,71 @@ class SlackChannel(
         # TTL of 1 hour — names change rarely; bounded to 500 entries.
         self._user_name_cache = TtlCache(ttl_seconds=3600.0, max_size=500)
         self._channel_name_cache = TtlCache(ttl_seconds=3600.0, max_size=500)
+
+        # Composed collaborators. Each holds a back-reference to this channel
+        # so it can read/write the shared connection state above (notably the
+        # late-bound ``_app`` client, reassigned on every reconnect).
+        self.lifecycle = SlackLifecycle(self)
+        self.allowlist = SlackAllowlist(self)
+        self.events = SlackEvents(self)
+        self.interactions = SlackInteractions(self)
+
+    # ------------------------------------------------------------------
+    # Lifecycle — delegated to self.lifecycle
+    # ------------------------------------------------------------------
+
+    async def connect(self) -> None:
+        await self.lifecycle.connect()
+
+    def is_connected(self) -> bool:
+        return self.lifecycle.is_connected()
+
+    async def disconnect(self) -> None:
+        await self.lifecycle.disconnect()
+
+    async def reconnect(self) -> None:
+        await self.lifecycle.reconnect()
+
+    def prepare_shutdown(self) -> None:
+        self.lifecycle.prepare_shutdown()
+
+    def _on_handler_done(self, task: asyncio.Task[None]) -> None:
+        self.lifecycle._on_handler_done(task)
+
+    async def _reconnect_with_backoff(self, delay: float = 5.0) -> None:
+        await self.lifecycle._reconnect_with_backoff(delay)
+
+    # ------------------------------------------------------------------
+    # Allowlist — delegated to self.allowlist
+    # ------------------------------------------------------------------
+
+    async def create_group(self, name: str) -> str:
+        return await self.allowlist.create_group(name)
+
+    async def resolve_chat_jid(self, chat_name: str) -> str | None:
+        return await self.allowlist.resolve_chat_jid(chat_name)
+
+    def _register_allowed_channel(self, name: str, channel_id: str) -> None:
+        self.allowlist._register_allowed_channel(name, channel_id)
+
+    def _is_allowed_channel(self, channel_id: str) -> bool:
+        return self.allowlist._is_allowed_channel(channel_id)
+
+    # ------------------------------------------------------------------
+    # Inbound events — delegated to self.events
+    # ------------------------------------------------------------------
+
+    def _register_handlers(self) -> None:
+        self.events._register_handlers()
+
+    async def _on_slack_message(self, event: dict[str, Any]) -> None:
+        await self.events._on_slack_message(event)
+
+    def _dedup_ts(self, ts: str) -> bool:
+        return self.events._dedup_ts(ts)
+
+    def _normalize_bot_mention(self, text: str) -> str:
+        return self.events._normalize_bot_mention(text)
 
     # ------------------------------------------------------------------
     # Channel protocol
