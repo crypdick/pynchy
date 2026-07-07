@@ -32,6 +32,14 @@ On top of the structured tools above, agents have file-based storage:
 - **Per-group memory** — Each group has a folder under `groups/{name}/`. The agent reads files there on every run.
 - **Files** — Groups can create and read files in their folder and reference them in conversations.
 
+## Obsidian Automatic Learning
+
+Automatic learning can use an Obsidian vault as a shared memory and skill namespace. Enable `[learning]` and set `[learning.obsidian].vault_root` to the vault root. Pynchy mounts that root read-write at `/workspace/vault` by default.
+
+The vault root is the global memory namespace. The hidden reviewer chooses existing semantic folders first, then falls back to `systems/pynchy/profiles/{profile}/memory` when no repo, machine, subject, or other existing folder clearly fits.
+
+Learned skills live under `systems/pynchy/profiles/{profile}/skills/<skill-name>/SKILL.md`. To load them into a profile or sandbox, include `skills = ["learned"]` or `skills = ["*"]` in the effective workspace config.
+
 ### Conversation Archives
 
 When a session compacts (context gets too long), the agent archives the conversation to both:

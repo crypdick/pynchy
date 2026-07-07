@@ -25,6 +25,25 @@ The default backend uses SQLite FTS5 for full-text search with BM25 ranking, fal
 
 **Search pipeline:** Query → FTS5 tokenization → BM25 ranking → results. If empty → LIKE fallback → results.
 
+## Obsidian Learning
+
+Automatic learning can mount an Obsidian vault root into agent containers and run a hidden reviewer after successful turns. The configured vault root mounts read-write at `/workspace/vault` by default and acts as the global memory namespace.
+
+The reviewer receives a bounded packet from the completed turn, not the full transcript. It writes immediately when the packet contains durable learning, and it should use the vault's existing folder organization before falling back to profile-scoped paths. Memory notes rely on folder placement, not semantic frontmatter.
+
+Profile fallback paths use the active workspace profile name, or `default` when no profile is configured:
+
+| Purpose | Vault path |
+|---------|------------|
+| Fallback memory notes | `systems/pynchy/profiles/{profile}/memory` |
+| Learned skills | `systems/pynchy/profiles/{profile}/skills` |
+
+Learned skills live under `systems/pynchy/profiles/{profile}/skills/<skill-name>/SKILL.md` and use the existing Pynchy skill format. Skill activation still follows workspace skill selection. Configure `skills = ["learned"]` or `skills = ["*"]` for a profile or sandbox to copy learned skills into future sessions.
+
+Learning packets live in a durable filesystem queue under `data/ipc/learning`. The queue uses pending, claimed, done, and error states so work can survive process restarts and another worker can reclaim expired jobs.
+
+V1 learning deliberately mounts the configured vault root as a broad namespace. Access controls and narrower subdirectory mounts belong to a later policy layer.
+
 ## Session Management
 
 - Each group maintains a conversation session via the agent core SDK

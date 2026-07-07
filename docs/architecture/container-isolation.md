@@ -32,12 +32,14 @@ The default runtime on macOS. Uses Apple's native container framework for lower 
 | `data/ipc/{group}/` | `/workspace/ipc` | Read-write | All (IPC channel) |
 | `data/env/{group}/` | `/workspace/env-dir` | Readonly | All (per-group credentials) |
 | `data/onecli/{group}/` files | OneCLI-provided paths | Readonly | OneCLI-enabled groups |
+| Obsidian vault root | `/workspace/vault` | Read-write | Learning-enabled groups |
 | `config.toml` | `/workspace/project/config.toml` | Read-write | Admin only |
 | `{additional mounts}` | `/workspace/extra/*` | Configurable | Per containerConfig |
 
 **Notes:**
 
 - Groups with `repo_access` receive a worktree mount at `/workspace/project` (see [Worktrees](../usage/worktrees.md))
+- Automatic learning mounts the configured Obsidian vault root at `/workspace/vault` by default. That vault root acts as the global memory namespace.
 - Shared agent instructions are delivered via [directives](../usage/directives.md), not filesystem mounts
 - Apple Container requires `--mount "type=bind,source=...,target=...,readonly"` syntax for readonly mounts (the `:ro` suffix does not work)
 
