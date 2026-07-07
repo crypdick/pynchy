@@ -48,15 +48,16 @@ async def process_one_learning_job(deps: LearningWorkerDeps) -> bool:
         async def on_output(output: Any) -> None:
             reviewer_output.append(output)
 
+        reviewer_jid = f"learning-review:{paths.profile_slug}"
         result = await deps.run_agent(
             WorkspaceProfile(
-                jid=f"learning-review:{paths.profile_slug}",
+                jid=reviewer_jid,
                 name="Learning Reviewer",
                 folder=f"learning-review-{paths.profile_slug}",
                 trigger="",
                 is_admin=False,
             ),
-            claimed.packet.chat_jid,
+            reviewer_jid,
             [{"role": "user", "content": build_review_prompt(claimed.packet, paths)}],
             on_output=on_output,
             extra_system_notices=None,
