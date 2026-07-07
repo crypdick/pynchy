@@ -20,15 +20,6 @@ At startup the gateway scans ``litellm_config.yaml`` for all
 into the Docker container via ``-e``.  The YAML is the single source of
 truth — add model entries there, set the corresponding vars in ``.env``,
 and pynchy picks them up automatically.
-
-OAuth tokens
-~~~~~~~~~~~~
-
-Anthropic OAuth tokens (``sk-ant-oat01-…``) work as ``api_key`` values
-in ``litellm_config.yaml``.  LiteLLM detects the ``sk-ant-oat*`` prefix
-and automatically uses ``Authorization: Bearer`` with the required
-``anthropic-beta: oauth-2025-04-20`` header (server-side, since PR #21039).
-No ``extra_headers`` needed.
 """
 
 from __future__ import annotations

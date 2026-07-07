@@ -9,7 +9,7 @@ Install Pynchy on macOS or Linux — desktop or headless server.
 - **macOS or Linux** (tested on macOS 14+ and Ubuntu 24.04)
 - **Python 3.13+**
 - **[uv](https://docs.astral.sh/uv/)** - Python package manager
-- **[Claude Code](https://claude.ai/download)** - AI development assistant
+- **LLM API key** - OpenAI by default, or another provider configured through LiteLLM
 - **Container runtime:**
   - macOS: [Apple Container](https://github.com/apple/container) (preferred) or [Docker Desktop](https://docker.com/products/docker-desktop)
   - Linux: [Docker](https://docs.docker.com/engine/install/)
@@ -73,10 +73,9 @@ uv sync --extra whatsapp
 
 Common configurations:
 
-- **API key authentication:** Set `[secrets].anthropic_api_key` instead of Claude Code OAuth
-- **OpenAI instead of Claude:** Set `[agent] core = "openai"` and `[secrets].openai_api_key`
-
-> **Note:** For most desktop setups, you can skip this step and authenticate using Claude Code OAuth (see step 4 in Headless Server Deployment).
+- **OpenAI API key:** Set `[secrets].openai_api_key`, or reference `OPENAI_API_KEY` from `litellm_config.yaml`
+- **Anthropic API key:** Set `[secrets].anthropic_api_key`, or add an Anthropic API-key deployment to `litellm_config.yaml`
+- **Claude SDK core:** Set `[agent] core = "claude"` and provide a valid Anthropic API key; Claude Code OAuth tokens are not supported as provider credentials.
 
 #### LiteLLM Gateway (recommended)
 
@@ -196,7 +195,7 @@ On the server:
 
 - Ubuntu/Debian Linux (tested on Ubuntu 24.04)
 - [Tailscale](https://tailscale.com/download) connected to your tailnet
-- [Node.js](https://nodejs.org/) 18+ (for installing Claude Code)
+- An OpenAI API key, or another provider API key configured through LiteLLM
 - A phone with WhatsApp (for QR code authentication)
 
 On your local machine (for remote setup):
@@ -221,8 +220,6 @@ source ~/.local/bin/env  # or restart your shell
 # GitHub CLI (for cloning private repos)
 sudo apt-get install -y gh
 
-# Node.js + npm (for installing Claude Code)
-sudo apt-get install -y npm
 ```
 
 ### 2. Clone and Build
@@ -254,39 +251,19 @@ uv run pynchy-whatsapp-auth
 
 Wait for "Successfully authenticated" before pressing Ctrl+C.
 
-### 4. Authenticate Claude Code
+### 4. Configure LLM Credentials
 
-Pynchy runs agents using the Claude Agent SDK, which requires Claude Code installed and authenticated. Pynchy auto-discovers credentials at startup — no manual config needed.
-
-```bash
-# Install Claude Code on the server
-npm install -g @anthropic-ai/claude-code
-```
-
-**Pro/Max subscribers (recommended):** Generate a long-lived token (~1 year):
-
-1. Run `claude setup-token` on the server
-2. It prints a URL — paste it into a browser (can be on any machine)
-3. Authorize in the browser and copy the code it gives you
-4. Paste the code back into the `setup-token` prompt
-5. Copy the long-lived token it outputs (starts with `sk-ant-oat01-...`)
-6. Create the credentials file on the server:
+Pynchy defaults to the OpenAI agent core. Put provider credentials in `.env`
+and reference them from `litellm_config.yaml`:
 
 ```bash
-mkdir -p ~/.claude
-cat > ~/.claude/.credentials.json << 'EOF'
-{"claudeAiOauth": {"accessToken": "sk-ant-oat01-YOUR_TOKEN_HERE"}}
+cd ~/src/pynchy
+cp config-examples/config.toml.EXAMPLE config.toml
+cp config-examples/litellm_config.yaml.EXAMPLE litellm_config.yaml
+cat >> .env << 'EOF'
+OPENAI_API_KEY=your-openai-api-key
+GATEWAY__MASTER_KEY=change-this-master-key
 EOF
-chmod 600 ~/.claude/.credentials.json
-```
-
-To route LLM requests through the LiteLLM gateway using this token, add it to `.env` as `CLAUDE_OAUTH_TOKEN=sk-ant-oat01-YOUR_TOKEN_HERE` and reference it in `litellm_config.yaml` (see `config-examples/litellm_config.yaml.EXAMPLE` for the OAuth entry). LiteLLM auto-detects the `sk-ant-oat*` prefix and handles auth headers.
-
-**API key (pay-as-you-go):** Get a key from [console.anthropic.com](https://console.anthropic.com), then set it in `config.toml`:
-
-```bash
-cp ~/src/pynchy/config-examples/config.toml.EXAMPLE ~/src/pynchy/config.toml
-# Set [secrets].anthropic_api_key in config.toml
 ```
 
 > **Warning:** Without credentials, Pynchy will start and connect to WhatsApp, but all messages to the agent will fail. The boot notification will warn you if credentials are missing.
@@ -381,24 +358,11 @@ This pulls the latest code, validates the import, and restarts the service. If t
 
 ### "No API credentials found" in boot message
 
-Run `claude setup-token` on the server to generate a long-lived token, or set `[secrets].anthropic_api_key` in `config.toml`. Then restart: `systemctl --user restart pynchy`
-
-### OAuth token expired (401 authentication_error)
-
-Short-lived OAuth tokens from `claude` login expire every ~8 hours. Generate a long-lived token (~1 year) instead — follow the `claude setup-token` steps in [section 4](#4-authenticate-claude-code), then restart:
+Set `OPENAI_API_KEY` in `.env` and make sure `litellm_config.yaml` references it, or set `[secrets].openai_api_key` in `config.toml` for builtin gateway mode. Then restart:
 
 ```bash
 systemctl --user restart pynchy
 ```
-
-### OAuth token rejected by Anthropic organization policy
-
-If LiteLLM logs a 403 like `OAuth authentication is currently not allowed for
-this organization`, the host migration worked but the Claude Code OAuth token
-cannot be used as an Anthropic API credential for that organization. Use a
-sanctioned Anthropic API key in `litellm_config.yaml` / `.env`, or switch the
-active agent core and gateway route to a provider with a valid key. Do not
-treat this as a WhatsApp/session migration failure.
 
 ### WhatsApp QR code not scanning
 
@@ -427,21 +391,6 @@ Then rebuild: `./src/pynchy/agent/build.sh`
 - Verify Tailscale is connected: `tailscale status`
 <!-- Source of truth for the default port: ServerConfig.port in src/pynchy/config/models.py — keep the 8484 references in this file in sync. -->
 - The HTTP server binds to `0.0.0.0:8484` by default, which is accessible over Tailscale without any additional configuration
-- On macOS, if raw tailnet access to `:8484` is unreliable and you use Tailscale
-  Serve, do not bind Serve and Pynchy to the same local port. Set Pynchy to a
-  different local port, for example:
-
-  ```toml
-  [server]
-  port = 8485
-  ```
-
-  Then expose the stable tailnet URL with:
-
-  ```bash
-  tailscale serve --bg --http 8484 8485
-  ```
-
 - Check firewall rules if on a cloud provider
 
 ### macOS launchd service does not stay loaded
@@ -449,16 +398,12 @@ Then rebuild: `./src/pynchy/agent/build.sh`
 If `uv run pynchy` works manually but the LaunchAgent exits immediately:
 
 - Validate the installed plist: `plutil -lint ~/Library/LaunchAgents/com.pynchy.plist`
-- Check for quarantine/provenance metadata and remove it if present:
-  `xattr -l ~/Library/LaunchAgents/com.pynchy.plist` then
-  `xattr -d com.apple.provenance ~/Library/LaunchAgents/com.pynchy.plist`
 - Confirm launchd is using resolved paths, not literal `$HOME` strings:
   `launchctl print gui/$(id -u)/com.pynchy`
-- If `launchctl print` briefly shows `/opt/homebrew/bin/uv run pynchy` and then
-  the label disappears with empty logs, run the same command in a foreground
-  shell or tmux to separate launchd issues from application startup issues.
-  GitHub SSH hangs from migrated `repo_access` workspaces can look like service
-  startup failures.
+- If the label is not loaded, stop the foreground process and bootstrap the
+  LaunchAgent explicitly:
+  `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.pynchy.plist`
+- Check `logs/pynchy.log` and `logs/pynchy.error.log` for application startup errors.
 
 ### Service won't start after reboot
 

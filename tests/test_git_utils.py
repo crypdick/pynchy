@@ -8,6 +8,7 @@ with retry logic and error recovery that warrant thorough testing.
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 from unittest.mock import patch
 
 from pynchy.host.git_ops.utils import (
@@ -18,6 +19,7 @@ from pynchy.host.git_ops.utils import (
     get_head_sha,
     is_repo_dirty,
     push_local_commits,
+    run_git,
 )
 
 
@@ -29,6 +31,26 @@ def _ok(stdout: str = "") -> subprocess.CompletedProcess[str]:
 def _fail(stderr: str = "error") -> subprocess.CompletedProcess[str]:
     """Helper: simulate a failed git command."""
     return subprocess.CompletedProcess([], 1, stdout="", stderr=stderr)
+
+
+# ---------------------------------------------------------------------------
+# run_git
+# ---------------------------------------------------------------------------
+
+
+class TestRunGit:
+    def test_uses_bounded_noninteractive_ssh_defaults(self):
+        with patch("subprocess.run", return_value=_ok("ok\n")) as mock_run:
+            result = run_git("ls-remote", "origin", cwd=Path("/repo"))
+
+        assert result.returncode == 0
+        assert result.stdout == "ok\n"
+        kwargs = mock_run.call_args.kwargs
+        assert kwargs["start_new_session"] is True
+        assert kwargs["timeout"] == 30
+        assert kwargs["env"]["GIT_TERMINAL_PROMPT"] == "0"
+        assert "BatchMode=yes" in kwargs["env"]["GIT_SSH_COMMAND"]
+        assert "ConnectTimeout=10" in kwargs["env"]["GIT_SSH_COMMAND"]
 
 
 # ---------------------------------------------------------------------------

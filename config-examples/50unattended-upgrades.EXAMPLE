@@ -1,6 +1,6 @@
 // Unattended-Upgrade configuration for the pynchy server.
 // Linux only (Ubuntu/Debian) — requires the unattended-upgrades package.
-// Source of truth: /etc/apt/apt.conf.d/50unattended-upgrades on pynchy-server.
+// Source of truth after install: /etc/apt/apt.conf.d/50unattended-upgrades.
 // Reference copy: config-examples/50unattended-upgrades.EXAMPLE in the pynchy repo.
 //
 // Ubuntu defaults handle Allowed-Origins (security updates). These overrides

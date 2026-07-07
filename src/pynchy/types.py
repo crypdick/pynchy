@@ -268,8 +268,8 @@ class ContainerInput:
     is_scheduled_task: bool = False
     system_notices: list[str] | None = None
     repo_access: str | None = None  # GitHub slug (owner/repo); None = no worktree
-    agent_core_module: str = "agent_runner.cores.claude"  # Module path for agent core
-    agent_core_class: str = "ClaudeAgentCore"  # Class name for agent core
+    agent_core_module: str = "agent_runner.cores.openai"  # Module path for agent core
+    agent_core_class: str = "OpenAIAgentCore"  # Class name for agent core
     agent_core_config: dict[str, Any] | None = None  # Core-specific settings
     system_prompt_append: str | None = None  # Resolved directives for agent system prompt
     invocation_ts: float = 0.0  # Monotonic timestamp of container spawn (for SecurityGate keying)

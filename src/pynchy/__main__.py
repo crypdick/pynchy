@@ -57,7 +57,7 @@ def _build() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="pynchy",
-        description="Personal Claude assistant",
+        description="Personal AI assistant",
     )
     parser.add_argument(
         "--tui", action="store_true", help="Attach TUI client to a running pynchy instance"

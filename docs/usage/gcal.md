@@ -51,7 +51,7 @@ On a **headless server**, the agent returns a noVNC URL for browser interaction.
 ## 4. Verify
 
 ```bash
-ssh pynchy-server 'docker ps --filter name=pynchy-mcp-gcal'
+ssh your-server 'docker ps --filter name=pynchy-mcp-gcal'
 ```
 
 ## Multiple accounts

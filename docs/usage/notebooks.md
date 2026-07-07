@@ -156,7 +156,7 @@ Notebooks live inside the workspace folder (`/workspace/group/notebooks/`), so a
 
 ## Viewing notebooks
 
-JupyterLab runs alongside the MCP server on port 8888 (no auth — designed for Tailscale access). Open `http://pynchy-server:8888` to browse and interact with notebooks.
+JupyterLab runs alongside the MCP server on port 8888 (no auth — designed for Tailscale access). Open `http://your-server:8888` to browse and interact with notebooks.
 
 Notebooks auto-save on every `execute_cell` and `add_markdown` call, so JupyterLab always shows the latest state.
 

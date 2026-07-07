@@ -8,7 +8,7 @@ Set the core in `config.toml`:
 
 ```toml
 [agent]
-core = "claude"    # or "openai"
+core = "openai"    # or "claude"
 ```
 
 Or via environment variable (takes priority over config):
@@ -21,17 +21,18 @@ Restart Pynchy after changing the core.
 
 ## Built-in: Claude SDK
 
-The default core. Uses the Claude Agent SDK (Claude Code) to power agents.
+Uses the Claude Agent SDK (Claude Code) to power agents.
 
 - **Model selection:** via the LiteLLM gateway (see below)
 - **Session management:** maintains conversation sessions across messages, auto-compacts when context grows too long
 - **Tools:** Bash, file operations, MCP servers, and all Claude Code capabilities
+- **Activation:** set `core = "claude"` in config and make sure an Anthropic API key is available
 
 ## Built-in: OpenAI Agents SDK
 
-An alternative core using OpenAI's Agents SDK.
+The default core using OpenAI's Agents SDK.
 
-- **Activation:** set `core = "openai"` in config and make sure an OpenAI API key is available
+- **Activation:** selected by default; make sure an OpenAI API key is available
 - **Model selection:** via the LiteLLM gateway
 
 ## Tool Security

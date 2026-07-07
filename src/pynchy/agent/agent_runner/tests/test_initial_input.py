@@ -157,8 +157,8 @@ class TestContainerInputFields:
         assert result.is_scheduled_task is False
         assert result.system_notices is None
         assert result.repo_access is None
-        assert result.agent_core_module == "agent_runner.cores.claude"
-        assert result.agent_core_class == "ClaudeAgentCore"
+        assert result.agent_core_module == "agent_runner.cores.openai"
+        assert result.agent_core_class == "OpenAIAgentCore"
         assert result.agent_core_config is None
         assert result.system_prompt_append is None
         assert result.mcp_gateway_url is None

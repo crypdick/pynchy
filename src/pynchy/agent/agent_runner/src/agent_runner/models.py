@@ -60,8 +60,8 @@ class ContainerInput:
     is_scheduled_task: bool = False
     system_notices: list[str] | None = None
     repo_access: str | None = None
-    agent_core_module: str = "agent_runner.cores.claude"
-    agent_core_class: str = "ClaudeAgentCore"
+    agent_core_module: str = "agent_runner.cores.openai"
+    agent_core_class: str = "OpenAIAgentCore"
     agent_core_config: dict[str, Any] | None = None
     system_prompt_append: str | None = None
     mcp_gateway_url: str | None = None

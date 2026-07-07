@@ -1,7 +1,7 @@
 [project]
 name = "pynchy"
 version = "0.1.0"
-description = "Personal Claude assistant — Python port"
+description = "Personal AI assistant"
 readme = "README.md"
 requires-python = ">=3.13"
 # Do not edit these dependencies manually. Use `uv add` instead.

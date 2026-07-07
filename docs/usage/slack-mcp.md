@@ -146,6 +146,6 @@ When the persistent session expires (Slack rotates sessions periodically), the s
 After the service restarts, trigger a message in the workspace. The Slack MCP Docker container should start on-demand. Check with:
 
 ```bash
-ssh pynchy-server 'docker ps --filter name=pynchy-mcp-slack'
-ssh pynchy-server 'journalctl --user -u pynchy --grep "MCP container ready" -n 5'
+ssh your-server 'docker ps --filter name=pynchy-mcp-slack'
+ssh your-server 'journalctl --user -u pynchy --grep "MCP container ready" -n 5'
 ```

@@ -6,10 +6,8 @@ API credentials.  Real keys never leave the host process.
 
 from __future__ import annotations
 
-import json
 import subprocess
 from pathlib import Path
-from typing import cast
 
 from pynchy.config import get_settings
 from pynchy.config.settings import Settings
@@ -17,47 +15,8 @@ from pynchy.host.container_manager.gateway import BuiltinGateway, LiteLLMGateway
 from pynchy.logger import logger
 
 # ---------------------------------------------------------------------------
-# Auto-discovery helpers (host-side only)
+# Host-side discovery helpers
 # ---------------------------------------------------------------------------
-
-
-def read_oauth_token() -> str | None:
-    """Read the OAuth access token from Claude Code's credentials.
-
-    Checks (in order):
-    1. ~/.claude/.credentials.json file
-    2. macOS keychain (service "Claude Code-credentials")
-    """
-    # 1. JSON credentials file
-    creds_file = Path.home() / ".claude" / ".credentials.json"
-    if creds_file.exists():
-        try:
-            data = json.loads(creds_file.read_text())
-            token = data.get("claudeAiOauth", {}).get("accessToken")
-            if token:
-                return cast(str, token)
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.debug("Failed to read legacy credentials file", err=str(exc))
-
-    # 2. macOS keychain
-    return _read_oauth_from_keychain()
-
-
-def _read_oauth_from_keychain() -> str | None:
-    """Read OAuth token from the macOS keychain."""
-    try:
-        result = subprocess.run(
-            ["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode != 0:
-            return None
-        data = json.loads(result.stdout.strip())
-        return cast("str | None", data.get("claudeAiOauth", {}).get("accessToken"))
-    except (json.JSONDecodeError, FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        return None
 
 
 def _read_gh_token() -> str | None:
@@ -116,7 +75,9 @@ def has_api_credentials() -> bool:
     from pynchy.host.container_manager.gateway import get_gateway
 
     gateway = get_gateway()
-    return gateway is not None and gateway.has_provider("anthropic")
+    return gateway is not None and (
+        gateway.has_provider("anthropic") or gateway.has_provider("openai")
+    )
 
 
 def _gateway_env_vars(gateway: LiteLLMGateway | BuiltinGateway | None) -> dict[str, str]:
@@ -219,7 +180,8 @@ def _write_env_file(*, is_admin: bool, group_folder: str) -> Path | None:
     if not env_vars:
         logger.warning(
             "No credentials found — containers will fail to authenticate. "
-            "Run 'claude' to authenticate or set [secrets].anthropic_api_key in config.toml"
+            "Configure an LLM provider in litellm_config.yaml/.env or set "
+            "[secrets].openai_api_key / [secrets].anthropic_api_key in config.toml"
         )
         return None
 

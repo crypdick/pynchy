@@ -72,8 +72,8 @@ def resolve_agent_core(plugin_manager: pluggy.PluginManager | None) -> tuple[str
     Returns (module_path, class_name) for the configured agent core.
     Falls back to the defaults in ContainerInput if no plugin provides one.
     """
-    module = "agent_runner.cores.claude"
-    class_name = "ClaudeAgentCore"
+    module = "agent_runner.cores.openai"
+    class_name = "OpenAIAgentCore"
     if plugin_manager:
         cores = plugin_manager.hook.pynchy_agent_core_info()
         core_info = next((c for c in cores if c["name"] == get_settings().agent.core), None)

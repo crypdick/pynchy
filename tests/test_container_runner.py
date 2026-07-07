@@ -17,7 +17,6 @@ from pydantic import SecretStr
 from pynchy.config import GatewayConfig
 from pynchy.host.container_manager.credentials import (
     _write_env_file,  # allow: private-test-imports
-    read_oauth_token,
     shell_quote,
 )
 from pynchy.host.container_manager.gateway_builtin import BuiltinGateway
@@ -202,8 +201,8 @@ class TestInputSerialization:
             "is_admin": True,
             "is_scheduled_task": False,
             "invocation_ts": 0.0,
-            "agent_core_module": "agent_runner.cores.claude",
-            "agent_core_class": "ClaudeAgentCore",
+            "agent_core_module": "agent_runner.cores.openai",
+            "agent_core_class": "OpenAIAgentCore",
         }
 
     def test_optional_fields_included_when_set(self):
@@ -590,22 +589,6 @@ class TestMountBuilding:
 # ---------------------------------------------------------------------------
 
 
-class TestReadOauthToken:
-    def test_reads_token_from_credentials_file(self, tmp_path: Path):
-        creds = tmp_path / ".claude" / ".credentials.json"
-        creds.parent.mkdir(parents=True)
-        creds.write_text(json.dumps({"claudeAiOauth": {"accessToken": "test-token-123"}}))
-        with patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path):
-            assert read_oauth_token() == "test-token-123"
-
-    def test_returns_none_when_no_file_and_no_keychain(self, tmp_path: Path):
-        with (
-            patch(f"{_CR_CREDS}.Path.home", return_value=tmp_path),
-            patch(f"{_CR_CREDS}._read_oauth_from_keychain", return_value=None),
-        ):
-            assert read_oauth_token() is None
-
-
 class TestWriteEnvFile:
     """Tests for _write_env_file with auto-discovery of Claude, GitHub, and git credentials."""
 
@@ -961,8 +944,8 @@ class TestResolveAgentCore:
     def test_returns_defaults_when_no_plugin_manager(self):
         """Covers the `if plugin_manager:` guard for the None case."""
         module, cls = resolve_agent_core(None)
-        assert module == "agent_runner.cores.claude"
-        assert cls == "ClaudeAgentCore"
+        assert module == "agent_runner.cores.openai"
+        assert cls == "OpenAIAgentCore"
 
     def test_returns_defaults_when_no_cores_registered(self):
         """Plugin manager exists but no agent core plugins are installed."""
@@ -978,8 +961,8 @@ class TestResolveAgentCore:
                 pass
 
         module, cls = resolve_agent_core(FakePM())
-        assert module == "agent_runner.cores.claude"
-        assert cls == "ClaudeAgentCore"
+        assert module == "agent_runner.cores.openai"
+        assert cls == "OpenAIAgentCore"
 
     def test_uses_matching_core_by_name(self):
         """When a core matches DEFAULT_AGENT_CORE, use it."""

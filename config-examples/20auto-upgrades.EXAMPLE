@@ -1,6 +1,6 @@
 // APT auto-upgrade configuration for the pynchy server.
 // Linux only (Ubuntu/Debian) — requires the unattended-upgrades package.
-// Source of truth: /etc/apt/apt.conf.d/20auto-upgrades on pynchy-server.
+// Source of truth after install: /etc/apt/apt.conf.d/20auto-upgrades.
 // Reference copy: config-examples/20auto-upgrades.EXAMPLE in the pynchy repo.
 //
 // Install:

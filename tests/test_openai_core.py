@@ -96,7 +96,7 @@ class TestOpenAICoreInstantiation:
                     "env": {"PYNCHY_CHAT_JID": "test@g.us"},
                 }
             },
-            "extra": {"model": "gpt-5.2"},
+            "extra": {"model": "gpt-5.5"},
         }
         defaults.update(overrides)
         return AgentCoreConfig(**defaults)
@@ -221,11 +221,11 @@ class TestEventMapping:
 class TestDefaultAgentCoreConfig:
     """Test agent core selection from Settings."""
 
-    def test_default_is_claude(self):
+    def test_default_is_openai(self):
         """Default agent core comes from Settings with valid value."""
         from pynchy.config import get_settings
 
-        assert get_settings().agent.core in ("claude", "openai")
+        assert get_settings().agent.core == "openai"
 
     def test_env_override(self):
         """Nested env override maps to settings.agent.core."""

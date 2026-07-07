@@ -293,8 +293,8 @@ class TestContainerInput:
         assert inp.is_scheduled_task is False
         assert inp.system_notices is None
         assert inp.repo_access is None
-        assert inp.agent_core_module == "agent_runner.cores.claude"
-        assert inp.agent_core_class == "ClaudeAgentCore"
+        assert inp.agent_core_module == "agent_runner.cores.openai"
+        assert inp.agent_core_class == "OpenAIAgentCore"
         assert inp.agent_core_config is None
 
 

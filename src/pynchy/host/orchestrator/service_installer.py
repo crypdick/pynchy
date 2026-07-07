@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -20,8 +21,27 @@ def is_launchd_managed() -> bool:
 
 def is_launchd_loaded(label: str) -> bool:
     """Check if a launchd job is loaded."""
-    result = subprocess.run(["launchctl", "list", label], capture_output=True)
+    result = subprocess.run(
+        ["launchctl", "print", f"{_launchd_domain()}/{label}"],
+        capture_output=True,
+    )
     return result.returncode == 0
+
+
+def _launchd_domain() -> str:
+    """Return the per-user launchd GUI domain for LaunchAgents."""
+    return f"gui/{os.getuid()}"
+
+
+def _remove_launchd_extended_attrs(path: Path) -> None:
+    """Remove file metadata that can keep a LaunchAgent from bootstrapping.
+
+    Plists copied from browsers, AirDrop, or synced folders can carry quarantine
+    or provenance xattrs. launchd treats those as file policy metadata, not app
+    config, so the installer strips them from the rendered service definition.
+    """
+    for attr in ("com.apple.quarantine", "com.apple.provenance"):
+        subprocess.run(["xattr", "-d", attr, str(path)], capture_output=True)
 
 
 def _launchd_path(home: Path, uv_path: str) -> str:
@@ -51,7 +71,7 @@ def install_service() -> None:
     On macOS: copies plist to ~/Library/LaunchAgents/ and loads it into
     launchd if we're already running under launchd (safe reload). When
     running manually, only copies the file to avoid spawning a competing
-    second instance — the user runs launchctl load once to activate.
+    second instance — the user bootstraps the LaunchAgent once to activate.
 
     On Linux: installs systemd user service with auto-restart.
     """
@@ -89,22 +109,30 @@ def _install_launchd_service() -> None:
     if not file_changed and already_loaded:
         return  # already up to date and loaded
     if file_changed:
-        # Unload before overwriting so launchd picks up the updated version
+        # Unload before overwriting so launchd picks up the updated version.
         if already_loaded:
-            subprocess.run(["launchctl", "unload", str(dest)], capture_output=True)
+            subprocess.run(
+                ["launchctl", "bootout", _launchd_domain(), str(dest)],
+                capture_output=True,
+            )
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(rendered)
+        _remove_launchd_extended_attrs(dest)
         logger.info("Installed launchd plist", dest=str(dest))
     # Only load if we're already running under launchd (safe to reload).
     # When running manually, loading would spawn a competing instance
     # that fights over channel websockets and port binding.
     if already_loaded or is_launchd_managed():
-        subprocess.run(["launchctl", "load", str(dest)], capture_output=True)
+        subprocess.run(
+            ["launchctl", "bootstrap", _launchd_domain(), str(dest)],
+            capture_output=True,
+        )
         logger.info("Loaded launchd service", label=label)
     elif not already_loaded:
         logger.info(
             "Launchd plist installed. To enable auto-restart, stop this "
-            "process and run: launchctl load ~/Library/LaunchAgents/com.pynchy.plist"
+            "process and run: launchctl bootstrap gui/$(id -u) "
+            "~/Library/LaunchAgents/com.pynchy.plist"
         )
 
 

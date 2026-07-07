@@ -10,6 +10,19 @@ from pynchy.config import get_settings
 from pynchy.logger import logger
 
 _SUBPROCESS_TIMEOUT = 30
+_DEFAULT_GIT_SSH_COMMAND = (
+    "ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=1"
+)
+
+
+def _git_subprocess_env(env: dict[str, str] | None) -> dict[str, str]:
+    """Return a noninteractive git environment with bounded SSH handshakes."""
+    merged = os.environ.copy()
+    if env:
+        merged.update(env)
+    merged.setdefault("GIT_TERMINAL_PROMPT", "0")
+    merged.setdefault("GIT_SSH_COMMAND", _DEFAULT_GIT_SSH_COMMAND)
+    return merged
 
 
 def run_git(
@@ -30,8 +43,9 @@ def run_git(
         cwd=str(cwd or get_settings().project_root),
         capture_output=True,
         text=True,
+        start_new_session=True,
+        env=_git_subprocess_env(env),
         timeout=timeout,
-        env=env,
     )
 
 

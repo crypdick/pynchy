@@ -1,16 +1,12 @@
 # LiteLLM Proxy Configuration — EXAMPLE
 # =======================================
-# NOTE: This is a reference example checked into the repo. The live config
-# is on pynchy-server (reachable via Tailscale):
-#   ssh pynchy-server cat ~/src/PERSONAL/pynchy/litellm_config.yaml
-#
 # Copy to litellm_config.yaml (project root) and fill in your API keys.
 # This file is the single source of truth for LLM routing — pynchy reads
 # it but never modifies it.
 #
 # How env vars work:
 #   1. Reference API keys with os.environ/VARNAME in this file.
-#   2. Set the matching vars in .env (e.g. ANTHROPIC_TOKEN_EMPLOYEE1=sk-ant-...).
+#   2. Set the matching vars in .env.
 #   3. At startup pynchy scans this file, finds all os.environ/ references,
 #      looks them up on the host, and forwards them into the Docker container.
 #
@@ -31,61 +27,30 @@
 # Model deployments
 # ---------------------------------------------------------------------------
 # Wildcard routing proxies all models from a provider without listing each
-# one individually. When you change the model in the Claude SDK config,
-# it just works — no config update needed here.
+# one individually.
 #
 # Multiple entries with the same model_name are load-balanced automatically.
 
 model_list:
-  # --- Anthropic (primary account) ---
-  - model_name: "anthropic/*"
+  # --- OpenAI (default) ---
+  - model_name: "openai/*"
     litellm_params:
-      model: "anthropic/*"
-      api_key: os.environ/ANTHROPIC_TOKEN_EMPLOYEE1
+      model: "openai/*"
+      api_key: os.environ/OPENAI_API_KEY
       budget_duration: 7d
-      custom_llm_provider: anthropic
+      custom_llm_provider: openai
     model_info:
-      id: anthropic-employee1
-      tags: ["mycompany"]
+      id: openai-default
 
-  # --- Anthropic (secondary account, for load balancing / failover) ---
-  # Set ANTHROPIC_TOKEN_EMPLOYEE2 in .env to enable.  If the env var is
-  # unset or contains a placeholder, pynchy automatically removes this
-  # entry before starting LiteLLM.
-  - model_name: "anthropic/*"
-    litellm_params:
-      model: "anthropic/*"
-      api_key: os.environ/ANTHROPIC_TOKEN_EMPLOYEE2
-      max_budget: 50.0  # USD
-      budget_duration: 7d
-      custom_llm_provider: anthropic
-    model_info:
-      id: anthropic-employee2
-      tags: ["mycompany"]
-
-  # --- Anthropic (OAuth token from `claude setup-token`) ---
-  # OAuth tokens (sk-ant-oat01-...) work as api_key values — LiteLLM
-  # auto-detects the prefix and adds the required beta header.
-  # Set CLAUDE_OAUTH_TOKEN in .env to enable.
+  # --- Anthropic API key (optional) ---
   # - model_name: "anthropic/*"
   #   litellm_params:
   #     model: "anthropic/*"
-  #     api_key: os.environ/CLAUDE_OAUTH_TOKEN
+  #     api_key: os.environ/ANTHROPIC_API_KEY
+  #     budget_duration: 7d
   #     custom_llm_provider: anthropic
   #   model_info:
-  #     id: anthropic-oauth
-  #     tags: ["mycompany"]
-
-  # --- OpenAI ---
-  # - model_name: "openai/*"
-  #   litellm_params:
-  #     model: "openai/*"
-  #     api_key: os.environ/OPENAI_KEY_EMPLOYEE1
-  #     budget_duration: 7d
-  #     custom_llm_provider: openai
-  #   model_info:
-  #     id: openai-employee1
-  #     tags: ["mycompany"]
+  #     id: anthropic-api-key
 
 # ---------------------------------------------------------------------------
 # Router settings  —  failover tuning

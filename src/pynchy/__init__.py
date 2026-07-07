@@ -1,4 +1,4 @@
-"""Pynchy — Personal Claude assistant."""
+"""Pynchy — Personal AI assistant."""
 
 # ---------------------------------------------------------------------------
 # Runtime type checking via beartype.

@@ -192,7 +192,7 @@ class TestContainerInputAgentCore:
         assert input_data.agent_core_config == {"model": "gpt-4"}
 
     def test_container_input_agent_core_defaults(self):
-        """Test ContainerInput agent_core_module defaults to Claude."""
+        """Test ContainerInput agent_core_module defaults to OpenAI."""
         from pynchy.types import ContainerInput
 
         input_data = ContainerInput(
@@ -202,8 +202,8 @@ class TestContainerInputAgentCore:
             is_admin=True,
         )
 
-        assert input_data.agent_core_module == "agent_runner.cores.claude"
-        assert input_data.agent_core_class == "ClaudeAgentCore"
+        assert input_data.agent_core_module == "agent_runner.cores.openai"
+        assert input_data.agent_core_class == "OpenAIAgentCore"
         assert input_data.agent_core_config is None
 
 

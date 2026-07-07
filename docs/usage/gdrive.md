@@ -4,7 +4,7 @@ Gives agents read-only access to your Google Drive files. Agents can search, lis
 
 ## Prerequisites
 
-On the host machine (pynchy-server):
+On the Pynchy host:
 
 ```bash
 # System Chrome — required for GCP Console automation during setup
@@ -57,7 +57,7 @@ On a **headless server**, the agent returns a noVNC URL — open it to interact 
 Trigger a message in a workspace with `gdrive.mycompany` access. The Docker container starts on-demand:
 
 ```bash
-ssh pynchy-server 'docker ps --filter name=pynchy-mcp-gdrive'
+ssh your-server 'docker ps --filter name=pynchy-mcp-gdrive'
 ```
 
 ## Multiple accounts

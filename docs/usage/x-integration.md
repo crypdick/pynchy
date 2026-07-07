@@ -8,7 +8,7 @@ X's official API costs $100+/month for posting. Browser automation rides on your
 
 ## Prerequisites
 
-On the host machine (pynchy-server):
+On the Pynchy host:
 
 ```bash
 # System Chrome — required (Playwright's bundled Chromium is not used because
@@ -62,7 +62,7 @@ noVNC can't forward WebAuthn (YubiKey/FIDO2) challenges. If your X login require
 2. Copy the profile to the server:
 
 ```bash
-rsync -az data/playwright-profiles/x/ pynchy-server:path/to/pynchy/data/playwright-profiles/x/
+rsync -az data/playwright-profiles/x/ your-server:path/to/pynchy/data/playwright-profiles/x/
 ```
 
 ## 4. Using X tools

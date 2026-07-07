@@ -1,10 +1,6 @@
 # ============================================================================
 # Pynchy Configuration — EXAMPLE
 # ============================================================================
-# NOTE: This is a reference example checked into the repo. The live config
-# is on pynchy-server (reachable via Tailscale):
-#   ssh pynchy-server cat ~/src/PERSONAL/pynchy/config.toml
-#
 # Copy this file to config.toml and configure for your setup:
 #   cp config-examples/config.toml.EXAMPLE config.toml
 #
@@ -24,18 +20,14 @@
 # Trigger aliases (used in addition to agent name for @mentions)
 # trigger_aliases = ["ghost"]
 
-# Agent core: "claude" (default) or "openai"
-# core = "claude"
+# Agent core: "openai" (default) or "claude"
+# core = "openai"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # API Credentials
 # ─────────────────────────────────────────────────────────────────────────────
 # Secrets (API keys, tokens, passwords) belong in .env, not here.
 # See config-examples/.env.EXAMPLE for the template.
-#
-# For Claude Code OAuth, run `claude setup-token` to generate a long-lived
-# token (~1 year). Add it to .env as CLAUDE_OAUTH_TOKEN and reference it in
-# litellm_config.yaml via os.environ/CLAUDE_OAUTH_TOKEN.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Container Configuration
@@ -77,7 +69,7 @@
 
 [gateway]
 # Path to LiteLLM config file (enables LiteLLM mode)
-# API keys and OAuth tokens are referenced via os.environ/ in the YAML
+# API keys are referenced via os.environ/ in the YAML
 # and set in .env — pynchy forwards them into the LiteLLM container.
 # See config-examples/litellm_config.yaml.EXAMPLE.
 # If not set, uses builtin mode with credentials from [secrets].

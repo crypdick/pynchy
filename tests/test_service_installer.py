@@ -53,11 +53,11 @@ class TestIsLaunchdLoaded:
     """Test launchd job status check."""
 
     def test_returns_true_when_job_is_loaded(self):
-        with patch("subprocess.run") as mock_run:
+        with patch("os.getuid", return_value=501), patch("subprocess.run") as mock_run:
             mock_run.return_value = Mock(returncode=0)
             assert is_launchd_loaded("com.pynchy") is True
             mock_run.assert_called_once_with(
-                ["launchctl", "list", "com.pynchy"], capture_output=True
+                ["launchctl", "print", "gui/501/com.pynchy"], capture_output=True
             )
 
     def test_returns_false_when_job_is_not_loaded(self):
@@ -164,9 +164,11 @@ class TestInstallLaunchdService:
         dest_file = dest_dir / "com.pynchy.plist"
         assert dest_file.exists()
         assert dest_file.read_text() == plist_content
-        # Should NOT have called launchctl load (not managed, not previously loaded)
-        load_calls = [c for c in mock_run.call_args_list if "load" in str(c)]
-        assert not load_calls
+        # Should NOT have bootstrapped launchd (not managed, not previously loaded).
+        bootstrap_calls = [
+            c for c in mock_run.call_args_list if c.args[0][:2] == ["launchctl", "bootstrap"]
+        ]
+        assert not bootstrap_calls
 
     def test_skips_when_file_unchanged_and_already_loaded(self, tmp_path: Path):
         """Should do nothing when plist is identical and already loaded."""
@@ -221,13 +223,13 @@ class TestInstallLaunchdService:
         ):
             install_service()
 
-        # Should have unloaded, then loaded
+        # Should have booted out the old definition, then bootstrapped the new one.
         calls = mock_run.call_args_list
         cmds = [c.args[0] for c in calls]
-        unload_cmds = [c for c in cmds if "unload" in c]
-        load_cmds = [c for c in cmds if c[1] == "load"]
-        assert len(unload_cmds) == 1
-        assert len(load_cmds) == 1
+        bootout_cmds = [c for c in cmds if c[:2] == ["launchctl", "bootout"]]
+        bootstrap_cmds = [c for c in cmds if c[:2] == ["launchctl", "bootstrap"]]
+        assert len(bootout_cmds) == 1
+        assert len(bootstrap_cmds) == 1
 
         # File should be updated
         assert (dest_dir / "com.pynchy.plist").read_text() == "<plist>new</plist>"
@@ -289,8 +291,10 @@ class TestInstallLaunchdService:
         ):
             install_service()
 
-        load_calls = [c for c in mock_run.call_args_list if "load" in str(c)]
-        assert len(load_calls) == 1
+        bootstrap_calls = [
+            c for c in mock_run.call_args_list if c.args[0][:2] == ["launchctl", "bootstrap"]
+        ]
+        assert len(bootstrap_calls) == 1
 
 
 # ---------------------------------------------------------------------------

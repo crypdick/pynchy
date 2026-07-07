@@ -174,8 +174,8 @@ class TestContainerInput:
             "is_admin": False,
         }
         ci = ContainerInput.from_dict(data)
-        assert ci.agent_core_module == "agent_runner.cores.claude"
-        assert ci.agent_core_class == "ClaudeAgentCore"
+        assert ci.agent_core_module == "agent_runner.cores.openai"
+        assert ci.agent_core_class == "OpenAIAgentCore"
 
     def test_missing_required_field_raises(self):
         with pytest.raises(TypeError):

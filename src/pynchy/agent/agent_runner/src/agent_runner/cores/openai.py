@@ -349,9 +349,9 @@ class OpenAIAgentCore:
         if self.config.system_prompt_append:
             instructions += "\n\n" + self.config.system_prompt_append
 
-        model = self.config.extra.get("model", "openai/gpt-5.3-codex")
+        model = self.config.extra.get("model", "openai/gpt-5.5")
         self._model_primary = model
-        self._model_fallback = self.config.extra.get("fallback_model", "openai/gpt-5.2-codex")
+        self._model_fallback = self.config.extra.get("fallback_model")
         self._instructions = instructions
 
         # Build security hooks list via the shared single-source roster so this

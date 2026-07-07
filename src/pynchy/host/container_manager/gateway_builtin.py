@@ -4,9 +4,6 @@ Used when ``litellm_config`` is not set in config.toml.  Reads keys from
 ``[secrets]``.  Containers get the same env vars as LiteLLM mode
 (``ANTHROPIC_BASE_URL``, ``OPENAI_BASE_URL``, etc.) so they work without
 URL changes.
-
-OAuth tokens (``sk-ant-oat01-…``) are handled automatically — the proxy
-uses ``Authorization: Bearer`` with the required ``anthropic-beta`` header.
 """
 
 from __future__ import annotations
@@ -25,13 +22,6 @@ from pynchy.logger import logger
 
 _ANTHROPIC_BASE = "https://api.anthropic.com"
 _OPENAI_BASE = "https://api.openai.com"
-# Load-bearing: required for the Anthropic API to accept OAuth tokens at all.
-# Without this header, Bearer-auth with a sk-ant-oat01-* token returns 401
-# "OAuth authentication is currently not supported." The misleading error text
-# suggests a feature gap, but it's actually a missing-header gate — this beta
-# flag is what unlocks the subscription-billed OAuth path.
-# Verified empirically 2026-04-24. Do not remove without re-testing.
-_ANTHROPIC_OAUTH_BETA = "oauth-2025-04-20"
 
 _STRIP_REQUEST_HEADERS = frozenset({"authorization", "x-api-key", "host", "content-length"})
 _STRIP_RESPONSE_HEADERS = frozenset(
@@ -87,8 +77,6 @@ class BuiltinGateway:
     # ------------------------------------------------------------------
 
     def _discover_credentials(self) -> None:
-        from pynchy.host.container_manager.credentials import read_oauth_token
-
         s = get_settings()
         providers: dict[str, dict[str, str]] = {}
 
@@ -97,15 +85,6 @@ class BuiltinGateway:
                 "type": "api_key",
                 "value": s.secrets.anthropic_api_key.get_secret_value(),
             }
-        elif s.secrets.claude_code_oauth_token:
-            providers["anthropic"] = {
-                "type": "oauth",
-                "value": s.secrets.claude_code_oauth_token.get_secret_value(),
-            }
-        else:
-            token = read_oauth_token()
-            if token:
-                providers["anthropic"] = {"type": "oauth", "value": token}
 
         if s.secrets.openai_api_key:
             providers["openai"] = {
@@ -138,17 +117,7 @@ class BuiltinGateway:
 
         creds = self._credentials[provider]
         if provider == "anthropic":
-            if creds["type"] == "api_key":
-                headers["x-api-key"] = creds["value"]
-            else:
-                headers["Authorization"] = f"Bearer {creds['value']}"
-                existing_beta = headers.get("anthropic-beta", "")
-                if _ANTHROPIC_OAUTH_BETA not in existing_beta:
-                    headers["anthropic-beta"] = (
-                        f"{existing_beta},{_ANTHROPIC_OAUTH_BETA}"
-                        if existing_beta
-                        else _ANTHROPIC_OAUTH_BETA
-                    )
+            headers["x-api-key"] = creds["value"]
         elif provider == "openai":
             headers["Authorization"] = f"Bearer {creds['value']}"
 
@@ -213,7 +182,7 @@ class BuiltinGateway:
         if not self._credentials:
             logger.warning(
                 "Gateway has no LLM credentials — containers will fail to authenticate. "
-                "Configure [secrets] in config.toml or authenticate via 'claude' CLI."
+                "Configure [secrets].openai_api_key or [secrets].anthropic_api_key in config.toml."
             )
 
         self._session = aiohttp.ClientSession(
