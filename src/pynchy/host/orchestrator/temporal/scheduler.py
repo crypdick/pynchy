@@ -7,6 +7,7 @@ runner so container IPC and streaming behavior stay in one place.
 from __future__ import annotations
 
 import contextlib
+import inspect
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -441,7 +442,10 @@ class TemporalSchedulerRuntime:
     async def _delete_stale_schedules(self, desired_schedule_ids: set[str]) -> None:
         if self.client is None:
             raise RuntimeError("Temporal scheduler runtime has not been started")
-        async for description in self.client.list_schedules():
+        schedule_iter: Any = self.client.list_schedules()
+        if inspect.isawaitable(schedule_iter):
+            schedule_iter = await schedule_iter
+        async for description in schedule_iter:
             schedule_id = description.id
             if not schedule_id.startswith(SCHEDULE_PREFIXES):
                 continue

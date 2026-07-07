@@ -73,6 +73,11 @@ class FakeScheduleClient:
         self.started_workflows.append((workflow, args, kwargs))
 
 
+class AwaitableScheduleListClient(FakeScheduleClient):
+    async def list_schedules(self):
+        return super().list_schedules()
+
+
 @pytest.fixture
 def temporal_task() -> ScheduledTask:
     return ScheduledTask(
@@ -327,6 +332,28 @@ class TestTemporalSchedulerRuntime:
         assert schedule.spec.cron_expressions == ["15 3 * * *"]
         assert schedule.action.workflow == "ConfigHostCronWorkflow"
         assert schedule.action.args == ["backup_db"]
+
+    @pytest.mark.asyncio
+    async def test_reconcile_accepts_awaitable_schedule_list(self, monkeypatch):
+        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
+        import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
+
+        client = AwaitableScheduleListClient()
+        stale_schedule_id = "pynchy-agent-schedule-stale"
+        client.schedule_ids = [stale_schedule_id]
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+        )
+        runtime.client = client
+        settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), cron_jobs={})
+        monkeypatch.setattr(temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[]))
+        monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
+        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
+        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
+
+        await runtime.reconcile_schedules()
+
+        assert client.handles[stale_schedule_id].deleted is True
 
     @pytest.mark.asyncio
     async def test_worker_lifecycle_updates_running_status(self, monkeypatch):
