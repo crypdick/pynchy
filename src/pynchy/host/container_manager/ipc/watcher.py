@@ -178,7 +178,12 @@ async def _process_output_file(
     is left in place for the startup sweep to clean up.
     """
     try:
-        json_str = file_path.read_text()
+        try:
+            json_str = file_path.read_text()
+        except FileNotFoundError:
+            # Watchdog and the periodic runtime sweep can both discover the
+            # same output file. Whichever loses that race should be a no-op.
+            return
         output = parse_container_output(json_str)
 
         # Dispatch to the session's output handler

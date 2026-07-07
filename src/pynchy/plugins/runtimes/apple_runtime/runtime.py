@@ -44,9 +44,11 @@ class AppleContainerRuntime:
         import json
 
         containers = json.loads(result.stdout or "[]")
-        return [
-            c["configuration"]["id"]
-            for c in containers
-            if c.get("status") == "running"
-            and c.get("configuration", {}).get("id", "").startswith(prefix)
-        ]
+        names: list[str] = []
+        for c in containers:
+            status = c.get("status")
+            state = status.get("state") if isinstance(status, dict) else status
+            name = c.get("configuration", {}).get("id", "")
+            if state == "running" and name.startswith(prefix):
+                names.append(name)
+        return names

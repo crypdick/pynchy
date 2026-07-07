@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import sys
 from collections.abc import Callable, Coroutine
 from typing import Any
 
@@ -41,6 +42,33 @@ from pynchy.utils import create_background_task
 
 class SessionDiedError(Exception):
     """Raised when the container process exits unexpectedly."""
+
+
+_RUNTIME_POLL_INTERVAL_SECONDS = 0.5
+
+
+async def _runtime_container_running(container_name: str) -> bool:
+    """Return whether the runtime still reports the named container running."""
+    if sys.platform != "darwin":
+        return False
+
+    from pynchy.plugins.runtimes.detection import get_runtime
+
+    def _check() -> bool:
+        runtime = get_runtime()
+        if runtime.name != "apple":
+            return False
+        return container_name in runtime.list_running_containers(prefix=container_name)
+
+    try:
+        return await asyncio.to_thread(_check)
+    except Exception as exc:
+        logger.debug(
+            "Failed to inspect runtime container state",
+            container=container_name,
+            err=str(exc),
+        )
+        return False
 
 
 class ContainerSession:
@@ -64,13 +92,16 @@ class ContainerSession:
         self._query_done = asyncio.Event()
         self._dead = False
         self._died_before_pulse = False
+        self._runtime_alive_after_proc_exit = False
         self._idle_handle: asyncio.TimerHandle | None = None
         self._idle_timeout: float = get_settings().idle_timeout
         self._on_idle_expire: Callable[[], Coroutine[Any, Any, None]] | None = None
 
     @property
     def is_alive(self) -> bool:
-        return self.proc is not None and self.proc.returncode is None and not self._dead
+        if self.proc is None or self._dead:
+            return False
+        return self.proc.returncode is None or self._runtime_alive_after_proc_exit
 
     def start(self, proc: asyncio.subprocess.Process) -> None:
         """Attach to a spawned container process and start background monitors.
@@ -83,6 +114,7 @@ class ContainerSession:
         """
         self.proc = proc
         self._dead = False
+        self._runtime_alive_after_proc_exit = False
         if proc.stderr is None:
             raise RuntimeError(f"Container {self.container_name} spawned without stderr pipe")
         self._stderr_task = create_background_task(
@@ -215,18 +247,45 @@ class ContainerSession:
     async def _monitor_proc(self, proc: asyncio.subprocess.Process) -> None:
         """Monitor the container process and detect unexpected death.
 
-        Waits for proc.wait() to return.  If the process exits while a query
-        is in-flight (i.e. _query_done is not yet set), sets _dead and
-        _died_before_pulse, then signals _query_done so the caller unblocks.
+        Waits for proc.wait() to return. Docker's ``docker run`` process is a
+        good proxy for the container lifetime, but Apple Container can let the
+        ``container run`` client exit while the VM-backed container keeps
+        running. In that case, use runtime-state polling and keep the
+        session usable for IPC until the actual container stops.
 
         A clean exit (code 0) means the container shut down intentionally
         (reset_context, finished_work) -- NOT a crash.
         """
         exit_code = await proc.wait()
 
+        if await _runtime_container_running(self.container_name):
+            self._runtime_alive_after_proc_exit = True
+            logger.info(
+                "Container CLI process exited while runtime container remains running",
+                group=self.group_folder,
+                container=self.container_name,
+                exit_code=exit_code,
+            )
+            await self._monitor_runtime_container(exit_code)
+            return
+
+        await self._mark_container_exited(exit_code)
+
+    async def _monitor_runtime_container(self, cli_exit_code: int) -> None:
+        """Poll runtime state after the CLI client exits before the container."""
+        while await _runtime_container_running(self.container_name):
+            await asyncio.sleep(_RUNTIME_POLL_INTERVAL_SECONDS)
+        await self._mark_container_exited(cli_exit_code)
+
+    async def _mark_container_exited(self, exit_code: int) -> None:
+        """Record actual container exit and unblock any in-flight query waiter."""
+        was_stopping = self._dead
+        self._runtime_alive_after_proc_exit = False
         self._dead = True
 
-        if not self._query_done.is_set():
+        if was_stopping:
+            self._query_done.set()
+        elif not self._query_done.is_set():
             if exit_code == 0:
                 logger.info(
                     "Container exited cleanly without pulse (likely reset_context)",

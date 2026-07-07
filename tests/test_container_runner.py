@@ -2539,3 +2539,40 @@ class TestSessionStartOnlyStderr:
         assert session._dead is True
         assert session._died_before_pulse is False
         assert session._query_done.is_set()
+
+    async def test_runtime_container_survives_cli_process_exit(self):
+        """Apple Container can keep the container alive after the CLI process exits."""
+        from pynchy.host.container_manager.session import ContainerSession
+
+        session = ContainerSession("apple-cli-test", "pynchy-apple-cli-test")
+        proc = FakeProcess()
+        runtime_running = True
+
+        async def fake_runtime_running(_container_name: str) -> bool:
+            return runtime_running
+
+        with (
+            patch(
+                "pynchy.host.container_manager.session._runtime_container_running",
+                side_effect=fake_runtime_running,
+            ),
+            patch("pynchy.host.container_manager.session._RUNTIME_POLL_INTERVAL_SECONDS", 0.01),
+        ):
+            session.start(proc)  # type: ignore[arg-type]
+            session.set_output_handler(AsyncMock())
+
+            proc.close(code=1)
+            await asyncio.sleep(0.05)
+
+            assert session.is_alive is True
+            assert session._dead is False
+            assert session._died_before_pulse is False
+            assert not session._query_done.is_set()
+
+            session.signal_query_done()
+            runtime_running = False
+            await asyncio.sleep(0.05)
+
+        assert session._dead is True
+        assert session._died_before_pulse is False
+        assert session._query_done.is_set()

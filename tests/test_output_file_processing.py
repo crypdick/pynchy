@@ -301,6 +301,15 @@ class TestQueryDonePulse:
 class TestOutputFileErrors:
     """Tests for error handling during output file processing."""
 
+    async def test_missing_file_is_idempotent(self, _db, tmp_path: Path):
+        """Duplicate watchdog/sweep delivery should not turn a consumed file into an error."""
+        ipc_dir = tmp_path / "ipc"
+        file_path = ipc_dir / "test-group" / "output" / "already-gone.json"
+
+        await _process_output_file(file_path, "test-group", ipc_dir)
+
+        assert not (ipc_dir / "errors").exists()
+
     async def test_malformed_json_moved_to_errors(self, _db, tmp_path: Path):
         """A file with invalid JSON should be moved to errors/."""
         ipc_dir = tmp_path / "ipc"

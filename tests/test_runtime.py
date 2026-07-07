@@ -11,6 +11,7 @@ from conftest import make_settings
 
 import pynchy.plugins.runtimes.detection as runtime_mod
 from pynchy.config import ContainerConfig
+from pynchy.plugins.runtimes.apple_runtime.runtime import AppleContainerRuntime
 from pynchy.plugins.runtimes.detection import detect_runtime
 from pynchy.plugins.runtimes.docker_runtime.runtime import DockerContainerRuntime
 
@@ -150,6 +151,31 @@ class TestDockerRuntime:
         ):
             mock_sys.platform = "linux"
             rt.ensure_running()
+
+
+class TestAppleRuntime:
+    def test_parses_container_status_object_format(self):
+        rt = AppleContainerRuntime()
+        output = json.dumps(
+            [
+                {
+                    "configuration": {"id": "pynchy-admin-1"},
+                    "status": {"state": "running"},
+                },
+                {
+                    "configuration": {"id": "pynchy-admin-2"},
+                    "status": {"state": "stopped"},
+                },
+                {
+                    "configuration": {"id": "other-container"},
+                    "status": {"state": "running"},
+                },
+            ]
+        )
+        with patch("pynchy.plugins.runtimes.apple_runtime.runtime.subprocess.run") as mock_run:
+            mock_run.return_value.stdout = output
+            result = rt.list_running_containers("pynchy-")
+        assert result == ["pynchy-admin-1"]
 
 
 class TestGetRuntime:
