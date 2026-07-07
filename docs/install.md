@@ -159,6 +159,18 @@ the affected `repo_access` entries from `config.toml`. Old message history is
 useful but not required for a successful cutover; prioritize one healthy service
 instance over perfectly preserving historical rows.
 
+If you keep migration safety copies under `data/migration-backups/`, Pynchy
+prunes them after a deploy restart completes successfully and keeps the three
+newest backup directories. To inspect or run the same cleanup manually, use:
+
+```bash
+uv run pynchy prune-migration-backups
+uv run pynchy prune-migration-backups --keep 2 --apply
+```
+
+The command only prunes direct child directories of `data/migration-backups/`;
+it ignores files and symlinks.
+
 ### 5. Authenticate WhatsApp
 
 ```bash

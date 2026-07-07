@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pynchy.config import get_settings
 from pynchy.host.git_ops.utils import get_head_commit_message, get_head_sha, is_repo_dirty, run_git
+from pynchy.host.migration_backups import prune_migration_backups
 from pynchy.logger import logger
 from pynchy.state import get_messages_since
 from pynchy.types import WorkspaceProfile, WorkspaceSecurity
@@ -179,6 +180,7 @@ async def check_deploy_continuation(deps: StartupDeps) -> None:
 
     resume_prompt = continuation.get("resume_prompt", "Deploy complete.")
     commit_sha = continuation.get("commit_sha", "unknown")
+    _prune_migration_backups(get_settings().data_dir)
 
     active_sessions: dict[str, str] = continuation.get("active_sessions", {})
 
@@ -212,6 +214,27 @@ async def check_deploy_continuation(deps: StartupDeps) -> None:
         await deps.broadcast_system_notice(jid, notice)
         deps.queue.enqueue_message_check(jid)
         logger.info("Deploy resume notice sent", chat_jid=jid)
+
+
+def _prune_migration_backups(data_dir: Path) -> None:
+    backups_dir = data_dir / "migration-backups"
+    try:
+        result = prune_migration_backups(backups_dir)
+    except OSError as exc:
+        logger.warning(
+            "Failed to prune migration backups",
+            path=str(backups_dir),
+            err=str(exc),
+        )
+        return
+
+    if result.removed:
+        logger.info(
+            "Pruned migration backups",
+            path=str(backups_dir),
+            removed_count=len(result.removed),
+            kept_count=len(result.kept),
+        )
 
 
 # ------------------------------------------------------------------

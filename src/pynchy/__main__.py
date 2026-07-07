@@ -12,6 +12,7 @@ import argparse
 import asyncio
 import subprocess
 import sys
+from pathlib import Path
 
 _DEFAULT_PORT = "8484"
 _DEFAULT_HOST = f"localhost:{_DEFAULT_PORT}"
@@ -54,6 +55,24 @@ def _build() -> None:
     sys.exit(result.returncode)
 
 
+def _prune_migration_backups(path: str | None, keep: int, apply: bool) -> None:
+    from pynchy.config import get_settings
+    from pynchy.host.migration_backups import prune_migration_backups
+
+    backups_dir = Path(path) if path else get_settings().project_root / "data" / "migration-backups"
+    result = prune_migration_backups(backups_dir, keep=keep, dry_run=not apply)
+    action = "Removed" if apply else "Would remove"
+
+    sys.stdout.write(f"Migration backups: {backups_dir}\n")
+    sys.stdout.write(f"Keeping {len(result.kept)} backup(s).\n")
+    if not result.removed:
+        sys.stdout.write("No older backup directories to remove.\n")
+        return
+
+    for removed_path in result.removed:
+        sys.stdout.write(f"{action}: {removed_path}\n")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="pynchy",
@@ -69,12 +88,34 @@ def main() -> None:
     )
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("build", help="Build the container image")
+    prune = sub.add_parser(
+        "prune-migration-backups",
+        help="Prune old data/migration-backups directories",
+    )
+    prune.add_argument(
+        "path",
+        nargs="?",
+        help="Migration-backups directory (default: data/migration-backups under project root)",
+    )
+    prune.add_argument(
+        "--keep",
+        type=int,
+        default=3,
+        help="Number of newest backup directories to keep (default: 3)",
+    )
+    prune.add_argument(
+        "--apply",
+        action="store_true",
+        help="Delete old backup directories. Without this flag, only report what would be removed.",
+    )
 
     args = parser.parse_args()
 
     match args.command:
         case "build":
             _build()
+        case "prune-migration-backups":
+            _prune_migration_backups(args.path, keep=args.keep, apply=args.apply)
         case _:
             if args.tui:
                 host = args.host
