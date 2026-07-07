@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+from uuid import uuid4
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager import write_groups_snapshot as _write_groups_snapshot
@@ -69,7 +70,57 @@ def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
 
 def make_learning_deps(app: PynchyApp) -> LearningWorkerDeps:
     """Create the dependency object for the Obsidian learning worker."""
-    return LearningWorkerDeps(run_agent=app.run_agent, queue=LearningQueue())
+
+    async def run_agent_via_queue(*args: Any, **kwargs: Any) -> str:
+        if app._shutting_down:
+            raise asyncio.CancelledError()
+
+        loop = asyncio.get_running_loop()
+        result_future: asyncio.Future[str] = loop.create_future()
+        group_jid = _learning_run_group_jid(args, kwargs)
+
+        async def run_queued_agent() -> None:
+            if result_future.cancelled():
+                return
+            try:
+                result = await app.run_agent(*args, **kwargs)
+            except asyncio.CancelledError:
+                if not result_future.done():
+                    result_future.cancel()
+                raise
+            except Exception as exc:  # allow: exception-handling - propagate queued run failure
+                if not result_future.done():
+                    result_future.set_exception(exc)
+            else:
+                if not result_future.done():
+                    result_future.set_result(result)
+
+        app.queue.enqueue_task(
+            group_jid,
+            f"learning-review-{uuid4().hex}",
+            run_queued_agent,
+        )
+        if app._shutting_down and not result_future.done():
+            result_future.cancel()
+
+        try:
+            return await result_future
+        except asyncio.CancelledError:
+            result_future.cancel()
+            raise
+
+    return LearningWorkerDeps(run_agent=run_agent_via_queue, queue=LearningQueue())
+
+
+def _learning_run_group_jid(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
+    if len(args) >= 2 and isinstance(args[1], str):
+        return args[1]
+
+    chat_jid = kwargs.get("chat_jid")
+    if isinstance(chat_jid, str):
+        return chat_jid
+
+    raise TypeError("learning reviewer run requires a chat_jid")
 
 
 async def _rebuild_and_deploy(

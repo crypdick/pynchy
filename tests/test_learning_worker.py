@@ -315,3 +315,46 @@ async def test_worker_loop_sleeps_when_no_job_and_propagates_cancellation() -> N
 
     process_mock.assert_awaited_once_with(deps)
     sleep_mock.assert_awaited_once_with(0.25)
+
+
+@pytest.mark.asyncio
+async def test_worker_loop_continues_after_non_cancellation_error() -> None:
+    deps = _deps(_FakeQueue(claimed=None), _FakeRunner())
+    settings = make_settings(
+        learning=LearningConfig(queue_poll_interval_seconds=0.25),
+    )
+    process_mock = AsyncMock(side_effect=[RuntimeError("queue exploded"), False])
+    sleep_calls: list[float] = []
+
+    async def sleep_until_second_loop(delay: float) -> None:
+        sleep_calls.append(delay)
+        if len(sleep_calls) == 2:
+            raise asyncio.CancelledError
+
+    with (
+        patch("pynchy.host.learning.worker.process_one_learning_job", process_mock),
+        patch("pynchy.host.learning.worker.asyncio.sleep", sleep_until_second_loop),
+        patch("pynchy.host.learning.worker.get_settings", return_value=settings),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await start_learning_worker_loop(deps)
+
+    assert process_mock.await_count == 2
+    assert sleep_calls == [0.25, 0.25]
+
+
+@pytest.mark.asyncio
+async def test_worker_loop_propagates_process_cancellation() -> None:
+    deps = _deps(_FakeQueue(claimed=None), _FakeRunner())
+    process_mock = AsyncMock(side_effect=asyncio.CancelledError)
+    sleep_mock = AsyncMock()
+
+    with (
+        patch("pynchy.host.learning.worker.process_one_learning_job", process_mock),
+        patch("pynchy.host.learning.worker.asyncio.sleep", sleep_mock),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await start_learning_worker_loop(deps)
+
+    process_mock.assert_awaited_once_with(deps)
+    sleep_mock.assert_not_awaited()

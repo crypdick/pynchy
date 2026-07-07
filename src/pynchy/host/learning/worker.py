@@ -11,6 +11,7 @@ from pynchy.config import get_settings
 from pynchy.host.learning.paths import resolve_learning_paths
 from pynchy.host.learning.queue import LearningQueue
 from pynchy.host.learning.reviewer import build_review_prompt, should_review
+from pynchy.logger import logger
 from pynchy.types import WorkspaceProfile
 
 
@@ -80,8 +81,14 @@ async def process_one_learning_job(deps: LearningWorkerDeps) -> bool:
 
 async def start_learning_worker_loop(deps: LearningWorkerDeps) -> None:
     while True:
-        processed = await process_one_learning_job(deps)
-        if not processed:
+        try:
+            processed = await process_one_learning_job(deps)
+            if not processed:
+                await asyncio.sleep(get_settings().learning.queue_poll_interval_seconds)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # allow: exception-handling - keep background learning worker alive
+            logger.exception("Error in learning worker loop")
             await asyncio.sleep(get_settings().learning.queue_poll_interval_seconds)
 
 

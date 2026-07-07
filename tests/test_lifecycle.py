@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
-from collections.abc import Awaitable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -15,6 +16,7 @@ from pynchy.config.models import LearningConfig
 from pynchy.host.learning.queue import LearningQueue
 from pynchy.host.orchestrator import dep_factory, lifecycle
 from pynchy.host.orchestrator.app import PynchyApp
+from pynchy.types import WorkspaceProfile
 
 
 class StopAfterArgumentValidation(Exception):
@@ -32,15 +34,90 @@ async def test_run_app_resolves_pynchyapp_runtime_annotation(monkeypatch):
         await lifecycle.run_app(PynchyApp())
 
 
-def test_make_learning_deps_uses_app_runner_and_learning_queue(monkeypatch, tmp_path) -> None:
+def test_make_learning_deps_uses_learning_queue(monkeypatch, tmp_path) -> None:
     settings = make_settings(data_dir=tmp_path / "data")
     monkeypatch.setattr("pynchy.host.learning.queue.get_settings", lambda: settings)
     app = PynchyApp()
 
     deps = dep_factory.make_learning_deps(app)
 
-    assert deps.run_agent == app.run_agent
     assert isinstance(deps.queue, LearningQueue)
+
+
+@dataclass(frozen=True)
+class _QueuedAgentTask:
+    group_jid: str
+    task_id: str
+    fn: Callable[[], Awaitable[None]]
+
+
+class _RecordingTaskQueue:
+    def __init__(self) -> None:
+        self.enqueued: list[_QueuedAgentTask] = []
+
+    def enqueue_task(
+        self,
+        group_jid: str,
+        task_id: str,
+        fn: Callable[[], Awaitable[None]],
+    ) -> None:
+        self.enqueued.append(_QueuedAgentTask(group_jid=group_jid, task_id=task_id, fn=fn))
+
+
+@pytest.mark.asyncio
+async def test_make_learning_deps_queues_learning_reviewer_run_before_running_agent(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    settings = make_settings(data_dir=tmp_path / "data")
+    monkeypatch.setattr("pynchy.host.learning.queue.get_settings", lambda: settings)
+    app = PynchyApp()
+    queue = _RecordingTaskQueue()
+    app.queue = cast(Any, queue)
+    run_agent_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    async def fake_run_agent(*args: Any, **kwargs: Any) -> str:
+        run_agent_calls.append((args, kwargs))
+        return "success"
+
+    monkeypatch.setattr(app, "run_agent", fake_run_agent)
+    deps = dep_factory.make_learning_deps(app)
+    group = WorkspaceProfile(
+        jid="learning-review:deep-work",
+        name="Learning Reviewer",
+        folder="learning-review-deep-work",
+        trigger="",
+        is_admin=False,
+    )
+
+    result_task = asyncio.create_task(
+        deps.run_agent(
+            group,
+            "learning-review:deep-work",
+            [{"role": "user", "content": "review this turn"}],
+            is_scheduled_task=True,
+        )
+    )
+    await asyncio.sleep(0)
+
+    assert run_agent_calls == []
+    assert result_task.done() is False
+    assert len(queue.enqueued) == 1
+    queued = queue.enqueued[0]
+    assert queued.group_jid == "learning-review:deep-work"
+    assert queued.task_id.startswith("learning-review-")
+
+    await queued.fn()
+
+    assert await result_task == "success"
+    assert len(run_agent_calls) == 1
+    args, kwargs = run_agent_calls[0]
+    assert args[:3] == (
+        group,
+        "learning-review:deep-work",
+        [{"role": "user", "content": "review this turn"}],
+    )
+    assert kwargs["is_scheduled_task"] is True
 
 
 @dataclass(frozen=True)
