@@ -232,10 +232,12 @@ async def _start_subsystems(app: PynchyApp, repo_groups: dict[str, list[str]]) -
         start_external_repo_sync_loop,
         start_host_git_sync_loop,
     )
+    from pynchy.host.learning.worker import start_learning_worker_loop
     from pynchy.host.orchestrator.dep_factory import (
         make_git_sync_deps,
         make_http_deps,
         make_ipc_deps,
+        make_learning_deps,
         make_scheduler_deps,
         make_status_deps,
     )
@@ -265,6 +267,15 @@ async def _start_subsystems(app: PynchyApp, repo_groups: dict[str, list[str]]) -
                     name=f"git-sync-{slug}",
                 )
             )
+
+    if s.learning.enabled and s.learning.review_after_turn:
+        app._subsystem_tasks.append(
+            create_background_task(
+                start_learning_worker_loop(make_learning_deps(app)),
+                name="learning-worker",
+            )
+        )
+
     app.queue.set_process_messages_fn(app._process_group_messages)
 
     assert app.plugin_manager is not None, (

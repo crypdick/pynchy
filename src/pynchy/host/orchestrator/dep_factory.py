@@ -15,6 +15,8 @@ from pynchy.host.container_manager import write_groups_snapshot as _write_groups
 from pynchy.host.container_manager.ipc import IpcDeps
 from pynchy.host.git_ops.sync import GitSyncDeps
 from pynchy.host.git_ops.utils import get_head_sha
+from pynchy.host.learning.queue import LearningQueue
+from pynchy.host.learning.worker import LearningWorkerDeps
 from pynchy.host.orchestrator.adapters import (
     EventBusAdapter,
     GroupMetadataManager,
@@ -63,6 +65,11 @@ def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
             return await app.handle_streamed_output(*args, **kwargs)
 
     return SchedulerDeps()
+
+
+def make_learning_deps(app: PynchyApp) -> LearningWorkerDeps:
+    """Create the dependency object for the Obsidian learning worker."""
+    return LearningWorkerDeps(run_agent=app.run_agent, queue=LearningQueue())
 
 
 async def _rebuild_and_deploy(
