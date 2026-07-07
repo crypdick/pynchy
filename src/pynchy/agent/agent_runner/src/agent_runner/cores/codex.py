@@ -142,6 +142,16 @@ def _codex_home() -> Path:
     return Path.home() / ".codex"
 
 
+def _resolve_codex_path() -> str:
+    """Resolve the Codex binary even when the container PATH is sparse."""
+    if path := shutil.which("codex"):
+        return path
+    installer_path = Path("/usr/local/bin/codex")
+    if installer_path.exists():
+        return str(installer_path)
+    return "codex"
+
+
 def _item_text(item: dict[str, Any]) -> str:
     """Extract display text from common Codex JSONL item shapes."""
     text = item.get("text") or item.get("message") or item.get("summary") or item.get("output")
@@ -199,7 +209,7 @@ class CodexCLIAgentCore:
 
     async def start(self) -> None:
         """Resolve the CLI binary, write config, and prepare the environment."""
-        self._codex_path = shutil.which("codex") or "codex"
+        self._codex_path = _resolve_codex_path()
         codex_home = _codex_home()
         _write_codex_config(codex_home, self.config.mcp_servers)
 

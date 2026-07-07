@@ -64,6 +64,20 @@ def test_start_writes_codex_config_with_hooks_and_mcp(tmp_path, monkeypatch):
     assert hooks[0]["hooks"][0]["command"].endswith("-m agent_runner.security.hook_entry")
 
 
+def test_start_falls_back_to_installer_path_when_codex_not_on_path(tmp_path, monkeypatch):
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    monkeypatch.setattr("agent_runner.cores.codex.shutil.which", lambda _: None)
+    monkeypatch.setattr(
+        "agent_runner.cores.codex.Path.exists",
+        lambda self: str(self) == "/usr/local/bin/codex",
+    )
+    core = _core()
+
+    asyncio.run(core.start())
+
+    assert core._codex_path == "/usr/local/bin/codex"
+
+
 def test_build_args_for_new_session(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
     core = _core()
