@@ -56,23 +56,6 @@ async def create_host_job(job: dict[str, Any]) -> None:
     await db.commit()
 
 
-async def get_due_host_jobs() -> list[HostJob]:
-    """Get all active and enabled host jobs that are due to run."""
-    db = _get_db()
-    now = datetime.now(UTC).isoformat()
-    cursor = await db.execute(
-        """
-        SELECT * FROM host_jobs
-        WHERE status = 'active' AND enabled = 1
-              AND next_run IS NOT NULL AND next_run <= ?
-        ORDER BY next_run
-        """,
-        (now,),
-    )
-    rows = await cursor.fetchall()
-    return [_row_to_host_job(row) for row in rows]
-
-
 async def update_host_job_after_run(job_id: str, next_run: str | None, exit_code: int) -> None:
     """Update a host job after a run."""
     db = _get_db()

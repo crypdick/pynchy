@@ -2,7 +2,7 @@
 
 Tests the scheduled task execution logic, including:
 - Scheduler loop initialization and duplicate prevention
-- Task polling and due task detection
+- Temporal reconciliation handoff
 - Task execution with different context modes
 - Next run calculation for cron, interval, and once schedules
 - Error handling and logging

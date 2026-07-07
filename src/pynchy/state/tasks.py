@@ -119,22 +119,6 @@ async def get_active_task_for_group(group_folder: str) -> ScheduledTask | None:
     return _row_to_task(row)
 
 
-async def get_due_tasks() -> list[ScheduledTask]:
-    """Get all active tasks that are due to run."""
-    db = _get_db()
-    now = datetime.now(UTC).isoformat()
-    cursor = await db.execute(
-        """
-        SELECT * FROM scheduled_tasks
-        WHERE status = 'active' AND next_run IS NOT NULL AND next_run <= ?
-        ORDER BY next_run
-        """,
-        (now,),
-    )
-    rows = await cursor.fetchall()
-    return [_row_to_task(row) for row in rows]
-
-
 async def update_task_after_run(task_id: str, next_run: str | None, last_result: str) -> None:
     """Update a task after a run."""
     db = _get_db()

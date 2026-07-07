@@ -12,7 +12,6 @@ from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.state import (
     create_host_job,
-    get_due_host_jobs,
     get_host_job_by_name,
 )
 from pynchy.utils import ShellResult
@@ -102,67 +101,6 @@ class TestHostJobScheduling:
         assert job is not None
         assert job.schedule_type == "once"
         assert job.next_run == future_time
-
-    async def test_get_due_host_jobs(self):
-        """get_due_host_jobs returns jobs that are due."""
-        past_time = "2020-01-01T00:00:00"
-        future_time = "2099-12-31T23:59:59"
-
-        await create_host_job(
-            {
-                "id": "job-due",
-                "name": "due-job",
-                "command": "echo due",
-                "schedule_type": "once",
-                "schedule_value": past_time,
-                "next_run": past_time,
-                "status": "active",
-                "created_at": datetime.now(UTC).isoformat(),
-                "created_by": "admin-1",
-                "enabled": True,
-            }
-        )
-
-        await create_host_job(
-            {
-                "id": "job-future",
-                "name": "future-job",
-                "command": "echo future",
-                "schedule_type": "once",
-                "schedule_value": future_time,
-                "next_run": future_time,
-                "status": "active",
-                "created_at": datetime.now(UTC).isoformat(),
-                "created_by": "admin-1",
-                "enabled": True,
-            }
-        )
-
-        due_jobs = await get_due_host_jobs()
-        assert len(due_jobs) == 1
-        assert due_jobs[0].name == "due-job"
-
-    async def test_disabled_host_jobs_not_returned(self):
-        """Disabled host jobs are not returned by get_due_host_jobs."""
-        past_time = "2020-01-01T00:00:00"
-
-        await create_host_job(
-            {
-                "id": "job-disabled",
-                "name": "disabled-job",
-                "command": "echo disabled",
-                "schedule_type": "once",
-                "schedule_value": past_time,
-                "next_run": past_time,
-                "status": "active",
-                "created_at": datetime.now(UTC).isoformat(),
-                "created_by": "admin-1",
-                "enabled": False,
-            }
-        )
-
-        due_jobs = await get_due_host_jobs()
-        assert len(due_jobs) == 0
 
     @patch("pynchy.host.orchestrator.temporal.scheduler.run_shell_command")
     async def test_temporal_database_host_job_activity_executes_command(self, mock_shell):

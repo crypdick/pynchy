@@ -17,7 +17,6 @@ from pynchy.state import (
     get_all_tasks,
     get_all_workspace_profiles,
     get_chat_history,
-    get_due_tasks,
     get_host_job_by_id,
     get_messages_since,
     get_messaging_stats,
@@ -704,29 +703,6 @@ class TestTaskAdvanced:
 
         tasks = await get_all_tasks()
         assert len(tasks) == 2
-
-    async def test_get_due_tasks(self):
-        # Due task (next_run in the past)
-        await create_task(replace(self._TASK_TEMPLATE, id="due-1", next_run="2020-01-01T00:00:00Z"))
-        # Not due (next_run in the far future)
-        await create_task(
-            replace(self._TASK_TEMPLATE, id="future-1", next_run="2099-01-01T00:00:00Z")
-        )
-        # No next_run (should not be due)
-        await create_task(replace(self._TASK_TEMPLATE, id="no-next", next_run=None))
-        # Paused task (should not be due even if next_run is past)
-        await create_task(
-            replace(
-                self._TASK_TEMPLATE,
-                id="paused-1",
-                next_run="2020-01-01T00:00:00Z",
-                status="paused",
-            )
-        )
-
-        due = await get_due_tasks()
-        assert len(due) == 1
-        assert due[0].id == "due-1"
 
     async def test_get_active_task_for_group(self):
         await create_task(replace(self._TASK_TEMPLATE, id="active-1", next_run=None))
