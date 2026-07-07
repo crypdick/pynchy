@@ -33,6 +33,44 @@ def _launchd_domain() -> str:
     return f"gui/{os.getuid()}"
 
 
+def _bootstrap_launchd_service(label: str, plist_path: Path) -> bool:
+    """Bootstrap a LaunchAgent and verify launchd registered the label."""
+    domain = _launchd_domain()
+    result = subprocess.run(
+        ["launchctl", "bootstrap", domain, str(plist_path)],
+        capture_output=True,
+        text=True,
+    )
+    if is_launchd_loaded(label):
+        return True
+
+    logger.warning(
+        "launchd bootstrap did not register service; resetting label state",
+        label=label,
+        returncode=result.returncode,
+        stderr=result.stderr.strip() or None,
+    )
+    label_target = f"{domain}/{label}"
+    subprocess.run(["launchctl", "bootout", label_target], capture_output=True)
+    subprocess.run(["launchctl", "disable", label_target], capture_output=True)
+    subprocess.run(["launchctl", "enable", label_target], capture_output=True)
+    result = subprocess.run(
+        ["launchctl", "bootstrap", domain, str(plist_path)],
+        capture_output=True,
+        text=True,
+    )
+    if is_launchd_loaded(label):
+        return True
+
+    logger.warning(
+        "launchd service still not registered after retry",
+        label=label,
+        returncode=result.returncode,
+        stderr=result.stderr.strip() or None,
+    )
+    return False
+
+
 def _remove_launchd_extended_attrs(path: Path) -> None:
     """Remove file metadata that can keep a LaunchAgent from bootstrapping.
 
@@ -123,11 +161,8 @@ def _install_launchd_service() -> None:
     # When running manually, loading would spawn a competing instance
     # that fights over channel websockets and port binding.
     if already_loaded or is_launchd_managed():
-        subprocess.run(
-            ["launchctl", "bootstrap", _launchd_domain(), str(dest)],
-            capture_output=True,
-        )
-        logger.info("Loaded launchd service", label=label)
+        if _bootstrap_launchd_service(label, dest):
+            logger.info("Loaded launchd service", label=label)
     elif not already_loaded:
         logger.info(
             "Launchd plist installed. To enable auto-restart, stop this "

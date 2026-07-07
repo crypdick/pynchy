@@ -282,7 +282,8 @@ class TestInstallLaunchdService:
             ),
             patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
             patch(
-                "pynchy.host.orchestrator.service_installer.is_launchd_loaded", return_value=False
+                "pynchy.host.orchestrator.service_installer.is_launchd_loaded",
+                side_effect=[False, True],
             ),
             patch(
                 "pynchy.host.orchestrator.service_installer.is_launchd_managed", return_value=True
@@ -295,6 +296,44 @@ class TestInstallLaunchdService:
             c for c in mock_run.call_args_list if c.args[0][:2] == ["launchctl", "bootstrap"]
         ]
         assert len(bootstrap_calls) == 1
+
+    def test_recovers_when_bootstrap_does_not_register_launchd_label(self, tmp_path: Path):
+        """launchd can keep stale disabled state for a label after bootout.
+
+        In that case bootstrap may return success while ``launchctl print`` still
+        cannot find the job. The installer should reset the disabled-state entry
+        and retry so reboot persistence is not left half-installed.
+        """
+        src_dir = tmp_path / "launchd"
+        src_dir.mkdir()
+        (src_dir / "com.pynchy.plist").write_text("<plist>test</plist>")
+
+        loaded_states = iter([False, False, True])
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.service_installer.get_settings",
+                return_value=_test_settings(project_root=tmp_path),
+            ),
+            patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
+            patch("pynchy.host.orchestrator.service_installer.os.getuid", return_value=501),
+            patch(
+                "pynchy.host.orchestrator.service_installer.is_launchd_loaded",
+                side_effect=lambda _label: next(loaded_states),
+            ),
+            patch(
+                "pynchy.host.orchestrator.service_installer.is_launchd_managed", return_value=True
+            ),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+            install_service()
+
+        cmds = [c.args[0] for c in mock_run.call_args_list]
+        bootstrap_cmds = [c for c in cmds if c[:2] == ["launchctl", "bootstrap"]]
+        assert len(bootstrap_cmds) == 2
+        assert ["launchctl", "disable", "gui/501/com.pynchy"] in cmds
+        assert ["launchctl", "enable", "gui/501/com.pynchy"] in cmds
 
 
 # ---------------------------------------------------------------------------
