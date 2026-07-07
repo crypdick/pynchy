@@ -141,7 +141,7 @@ class TestSyncWorktreeToMain:
             await dispatch(
                 {
                     "type": "sync_worktree_to_main",
-                    "requestId": "req-123",
+                    "request_id": "req-123",
                 },
                 "other-group",
                 False,
@@ -176,7 +176,7 @@ class TestSyncWorktreeToMain:
             await dispatch(
                 {
                     "type": "sync_worktree_to_main",
-                    "requestId": "req-fail",
+                    "request_id": "req-fail",
                 },
                 "other-group",
                 False,
@@ -217,7 +217,7 @@ class TestSyncWorktreeToMain:
             await dispatch(
                 {
                     "type": "sync_worktree_to_main",
-                    "requestId": "req-456",
+                    "request_id": "req-456",
                 },
                 "other-group",
                 False,
@@ -250,7 +250,7 @@ class TestSyncWorktreeToMain:
             await dispatch(
                 {
                     "type": "sync_worktree_to_main",
-                    "requestId": "req-789",
+                    "request_id": "req-789",
                 },
                 "other-group",
                 False,
@@ -302,7 +302,7 @@ class TestSyncWorktreeToMain:
             await dispatch(
                 {
                     "type": "sync_worktree_to_main",
-                    "requestId": "req-deploy",
+                    "request_id": "req-deploy",
                 },
                 "other-group",
                 False,
@@ -346,7 +346,7 @@ class TestSyncWorktreeToMain:
             await dispatch(
                 {
                     "type": "sync_worktree_to_main",
-                    "requestId": "req-nodeploy",
+                    "request_id": "req-nodeploy",
                 },
                 "other-group",
                 False,

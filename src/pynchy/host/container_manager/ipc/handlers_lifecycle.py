@@ -128,7 +128,7 @@ async def _handle_sync_worktree_to_main(
 
     from pynchy.host.git_ops.repo import resolve_repo_for_group
 
-    request_id = data.get("requestId", "")
+    request_id = data.get("request_id", "")
 
     if not data.get("_cop_approved"):
         from pynchy.host.container_manager.security.cop_gate import cop_gate
@@ -140,7 +140,7 @@ async def _handle_sync_worktree_to_main(
             data,
             source_group,
             deps,
-            request_id=data.get("requestId"),
+            request_id=request_id,
         )
         if not allowed:
             return

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -17,18 +18,18 @@ def ipc_dirs(tmp_path: Path) -> dict[str, Path]:
     """Create temporary IPC directories and return them."""
     responses = tmp_path / "responses"
     responses.mkdir()
-    tasks = tmp_path / "tasks"
-    tasks.mkdir()
-    return {"responses": responses, "tasks": tasks, "ipc": tmp_path}
+    requests = tmp_path / "requests"
+    requests.mkdir()
+    return {"responses": responses, "requests": requests, "ipc": tmp_path}
 
 
 @pytest.fixture(autouse=True)
 def _patch_ipc_dirs(ipc_dirs: dict[str, Path]):
-    """Redirect IPC_DIR, RESPONSES_DIR, and tasks/ to temp dirs."""
+    """Redirect IPC_DIR, RESPONSES_DIR, and requests/ to temp dirs."""
     with (
         patch("agent_runner.agent_tools._ipc_request.IPC_DIR", ipc_dirs["ipc"]),
         patch("agent_runner.agent_tools._ipc_request.RESPONSES_DIR", ipc_dirs["responses"]),
-        patch("agent_runner.agent_tools._ipc_request.write_ipc_file"),
+        patch("agent_runner.agent_tools._ipc_request.write_request_file"),
     ):
         yield
 
@@ -66,12 +67,20 @@ class TestWatchdogPicksUpResponse:
         """Write response 0.2s after request, verify it unblocks promptly."""
         captured_id: list[str] = []
 
-        def capture_write(directory: Path, data: dict) -> str:
-            captured_id.append(data["request_id"])
-            return "fake.json"
+        def capture_write(
+            kind: str,
+            payload: dict,
+            *,
+            request_id: str | None = None,
+            reply_to: str | None = "responses",
+            deadline: str | None = None,
+        ) -> tuple[str, str]:
+            assert request_id is not None
+            captured_id.append(request_id)
+            return "fake.json", request_id
 
         write_patch = patch(
-            "agent_runner.agent_tools._ipc_request.write_ipc_file",
+            "agent_runner.agent_tools._ipc_request.write_request_file",
             side_effect=capture_write,
         )
         with write_patch:
@@ -109,6 +118,55 @@ class TestWatchdogTimeout:
         assert "timed out" in result[0].text.lower()
 
 
+class TestWatchdogFallback:
+    """The response waiter still works when watchdog cannot allocate a watch."""
+
+    @pytest.mark.asyncio
+    async def test_inotify_limit_falls_back_to_polling(self, ipc_dirs: dict[str, Path]) -> None:
+        captured_id: list[str] = []
+
+        def capture_write(
+            kind: str,
+            payload: dict,
+            *,
+            request_id: str | None = None,
+            reply_to: str | None = "responses",
+            deadline: str | None = None,
+        ) -> tuple[str, str]:
+            assert request_id is not None
+            captured_id.append(request_id)
+            return "fake.json", request_id
+
+        with (
+            patch(
+                "agent_runner.agent_tools._ipc_request.write_request_file",
+                side_effect=capture_write,
+            ),
+            patch("agent_runner.agent_tools._ipc_request.Observer") as observer_cls,
+        ):
+            observer_cls.return_value.start.side_effect = OSError(
+                errno.ENOSPC, "inotify watch limit reached"
+            )
+
+            async def write_response_after_delay() -> None:
+                for _ in range(50):
+                    if captured_id:
+                        break
+                    await asyncio.sleep(0.02)
+                assert captured_id
+                await asyncio.sleep(0.05)
+                _write_response(ipc_dirs["responses"], captured_id[0], result={"ok": True})
+
+            task = asyncio.create_task(write_response_after_delay())
+            result = await asyncio.wait_for(
+                ipc_service_request("test_tool", {}, timeout=5.0),
+                timeout=10.0,
+            )
+            await task
+
+        assert json.loads(result[0].text) == {"ok": True}
+
+
 class TestResponseFileCleanedUp:
     """Response file is deleted after reading."""
 
@@ -116,12 +174,20 @@ class TestResponseFileCleanedUp:
     async def test_file_deleted(self, ipc_dirs: dict[str, Path]) -> None:
         captured_id: list[str] = []
 
-        def capture_write(directory: Path, data: dict) -> str:
-            captured_id.append(data["request_id"])
-            return "fake.json"
+        def capture_write(
+            kind: str,
+            payload: dict,
+            *,
+            request_id: str | None = None,
+            reply_to: str | None = "responses",
+            deadline: str | None = None,
+        ) -> tuple[str, str]:
+            assert request_id is not None
+            captured_id.append(request_id)
+            return "fake.json", request_id
 
         write_patch = patch(
-            "agent_runner.agent_tools._ipc_request.write_ipc_file",
+            "agent_runner.agent_tools._ipc_request.write_request_file",
             side_effect=capture_write,
         )
         with write_patch:
@@ -158,12 +224,20 @@ class TestErrorResponse:
     async def test_error_field_returned(self, ipc_dirs: dict[str, Path]) -> None:
         captured_id: list[str] = []
 
-        def capture_write(directory: Path, data: dict) -> str:
-            captured_id.append(data["request_id"])
-            return "fake.json"
+        def capture_write(
+            kind: str,
+            payload: dict,
+            *,
+            request_id: str | None = None,
+            reply_to: str | None = "responses",
+            deadline: str | None = None,
+        ) -> tuple[str, str]:
+            assert request_id is not None
+            captured_id.append(request_id)
+            return "fake.json", request_id
 
         write_patch = patch(
-            "agent_runner.agent_tools._ipc_request.write_ipc_file",
+            "agent_runner.agent_tools._ipc_request.write_request_file",
             side_effect=capture_write,
         )
         with write_patch:

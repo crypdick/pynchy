@@ -14,10 +14,15 @@ from pathlib import Path
 import pytest
 
 from pynchy.host.container_manager.ipc.protocol import (
+    IPC_SCHEMA_VERSION,
     SIGNAL_TYPES,
     TIER2_TYPES,
+    IpcRequestEnvelope,
+    make_ipc_request,
     make_signal,
     parse_ipc_file,
+    parse_request_envelope,
+    request_requires_idempotency_ledger,
     validate_signal,
 )
 
@@ -141,6 +146,116 @@ class TestParseIpcFile:
         f = tmp_path / "nonexistent.json"
         with pytest.raises(FileNotFoundError):
             parse_ipc_file(f)
+
+
+# ---------------------------------------------------------------------------
+# Canonical request envelope
+# ---------------------------------------------------------------------------
+
+
+class TestRequestEnvelope:
+    """Tests for the canonical file-IPC request envelope."""
+
+    def test_make_ipc_request_writes_required_envelope_fields(self):
+        """Every request file should carry the versioned transport envelope."""
+        payload = {"prompt": "ship it", "targetGroup": "admin-1"}
+
+        request = make_ipc_request(
+            kind="schedule_task",
+            request_id="req-123",
+            source_group="admin-1",
+            created_at="2026-07-07T12:00:00+00:00",
+            reply_to="responses",
+            deadline="2026-07-07T12:05:00+00:00",
+            payload=payload,
+        )
+
+        assert request == {
+            "schema_version": IPC_SCHEMA_VERSION,
+            "kind": "schedule_task",
+            "request_id": "req-123",
+            "source_group": "admin-1",
+            "created_at": "2026-07-07T12:00:00+00:00",
+            "reply_to": "responses",
+            "deadline": "2026-07-07T12:05:00+00:00",
+            "payload": payload,
+        }
+
+    def test_parse_request_envelope_returns_typed_envelope(self, tmp_path: Path):
+        """Request files should parse once into a typed transport object."""
+        file_path = tmp_path / "request.json"
+        file_path.write_text(
+            json.dumps(
+                make_ipc_request(
+                    kind="register_group",
+                    request_id="req-register",
+                    source_group="admin-1",
+                    created_at="2026-07-07T12:00:00+00:00",
+                    payload={
+                        "jid": "new@g.us",
+                        "name": "New",
+                        "folder": "new",
+                        "trigger": "@pynchy",
+                    },
+                )
+            )
+        )
+
+        envelope = parse_request_envelope(file_path)
+
+        assert isinstance(envelope, IpcRequestEnvelope)
+        assert envelope.kind == "register_group"
+        assert envelope.request_id == "req-register"
+        assert envelope.source_group == "admin-1"
+        assert envelope.payload["folder"] == "new"
+
+    def test_parse_request_envelope_rejects_legacy_type_only_files(self, tmp_path: Path):
+        """A requests/ file must use kind + envelope, not the old top-level type."""
+        file_path = tmp_path / "legacy.json"
+        file_path.write_text(
+            json.dumps(
+                {
+                    "type": "register_group",
+                    "jid": "new@g.us",
+                    "name": "New",
+                    "folder": "new",
+                    "trigger": "@pynchy",
+                }
+            )
+        )
+
+        with pytest.raises(ValueError, match="kind"):
+            parse_request_envelope(file_path)
+
+    def test_host_mutating_requests_require_idempotency_ledger(self):
+        """Host-mutating request kinds should be claimed before dispatch."""
+        assert request_requires_idempotency_ledger("schedule_task") is True
+        assert request_requires_idempotency_ledger("register_group") is True
+        assert request_requires_idempotency_ledger("sync_worktree_to_main") is True
+
+    def test_read_only_requests_do_not_require_idempotency_ledger(self):
+        """Read-only service calls can be replayed without mutating host state."""
+        assert request_requires_idempotency_ledger("service:list_calendar") is False
+
+    def test_all_static_request_kinds_parse_as_envelopes(self, tmp_path: Path):
+        """Every registered static kind should use the typed request envelope."""
+        for kind in sorted(SIGNAL_TYPES | TIER2_TYPES):
+            file_path = tmp_path / f"{kind.replace(':', '_')}.json"
+            file_path.write_text(
+                json.dumps(
+                    make_ipc_request(
+                        kind=kind,
+                        request_id=f"req-{kind.replace(':', '-')}",
+                        source_group="admin-1",
+                        created_at="2026-07-07T12:00:00+00:00",
+                        payload={},
+                    )
+                )
+            )
+
+            envelope = parse_request_envelope(file_path)
+
+            assert envelope.kind == kind
 
 
 # ---------------------------------------------------------------------------

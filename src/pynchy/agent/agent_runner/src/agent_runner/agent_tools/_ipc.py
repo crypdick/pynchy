@@ -6,13 +6,15 @@ import json
 import os
 import random
 import time
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+IPC_SCHEMA_VERSION = 1
 IPC_DIR = Path("/workspace/ipc")
 MESSAGES_DIR = IPC_DIR / "messages"
-TASKS_DIR = IPC_DIR / "tasks"
+REQUESTS_DIR = IPC_DIR / "requests"
 
 # Context from environment variables (set by the agent runner)
 chat_jid = os.environ.get("PYNCHY_CHAT_JID", "")
@@ -33,6 +35,47 @@ def write_ipc_file(directory: Path, data: dict[str, Any]) -> str:
     temp_path.rename(filepath)
 
     return filename
+
+
+def make_ipc_request(
+    kind: str,
+    payload: dict[str, Any],
+    *,
+    request_id: str | None = None,
+    reply_to: str | None = "responses",
+    deadline: str | None = None,
+) -> dict[str, Any]:
+    """Build a canonical IPC request envelope for host-bound operations."""
+    return {
+        "schema_version": IPC_SCHEMA_VERSION,
+        "kind": kind,
+        "request_id": request_id or uuid.uuid4().hex,
+        "source_group": group_folder,
+        "created_at": now_iso(),
+        "reply_to": reply_to,
+        "deadline": deadline,
+        "payload": payload,
+    }
+
+
+def write_request_file(
+    kind: str,
+    payload: dict[str, Any],
+    *,
+    request_id: str | None = None,
+    reply_to: str | None = "responses",
+    deadline: str | None = None,
+) -> tuple[str, str]:
+    """Write a canonical request file and return (filename, request_id)."""
+    envelope = make_ipc_request(
+        kind,
+        payload,
+        request_id=request_id,
+        reply_to=reply_to,
+        deadline=deadline,
+    )
+    filename = write_ipc_file(REQUESTS_DIR, envelope)
+    return filename, envelope["request_id"]
 
 
 def now_iso() -> str:

@@ -410,7 +410,7 @@ class TestIpcPolicyRouting:
             ),
         ):
             await dispatch(
-                {"type": "sync_worktree_to_main", "requestId": "req-1"},
+                {"type": "sync_worktree_to_main", "request_id": "req-1"},
                 "agent-1",
                 False,
                 deps,
@@ -452,7 +452,7 @@ class TestIpcPolicyRouting:
             ) as mock_pr,
         ):
             await dispatch(
-                {"type": "sync_worktree_to_main", "requestId": "req-2"},
+                {"type": "sync_worktree_to_main", "request_id": "req-2"},
                 "agent-1",
                 False,
                 deps,
@@ -495,7 +495,7 @@ class TestIpcPolicyRouting:
             ) as mock_notify,
         ):
             await dispatch(
-                {"type": "sync_worktree_to_main", "requestId": "req-3"},
+                {"type": "sync_worktree_to_main", "request_id": "req-3"},
                 "agent-1",
                 False,
                 deps,
@@ -528,7 +528,7 @@ class TestIpcPolicyRouting:
             ),
         ):
             await dispatch(
-                {"type": "sync_worktree_to_main", "requestId": "req-4"},
+                {"type": "sync_worktree_to_main", "request_id": "req-4"},
                 "agent-1",
                 False,
                 deps,

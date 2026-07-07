@@ -1,7 +1,7 @@
 """End-to-end integration tests for the ask_user blocking flow.
 
 Exercises the full round-trip:
-  container sends ask_user:ask IPC task → pending question file created
+  container sends ask_user:ask IPC request → pending question file created
   → channel's send_ask_user called → user answers via callback
   → IPC response written (or cold-start enqueued) → pending file deleted
 
@@ -126,7 +126,7 @@ class TestAskUserE2E:
             active_sessions={"chat@g.us": "session-abc"},
         )
 
-        # Step 1: Container sends ask_user:ask IPC task
+        # Step 1: Container sends ask_user:ask IPC request
         from pynchy.host.container_manager.ipc import dispatch
 
         data = {

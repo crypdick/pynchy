@@ -174,8 +174,7 @@ async def _schedule_task_handle(arguments: dict[str, Any]) -> list[TextContent] 
         return validation_error
 
     if task_type == "host":
-        data = {
-            "type": "schedule_host_job",
+        payload = {
             "name": arguments["name"],
             "command": arguments["command"],
             "schedule_type": schedule_type,
@@ -183,9 +182,8 @@ async def _schedule_task_handle(arguments: dict[str, Any]) -> list[TextContent] 
             "cwd": arguments.get("cwd"),
             "timeout_seconds": arguments.get("timeout_seconds", 600),
             "createdBy": _ipc.group_folder,
-            "timestamp": _ipc.now_iso(),
         }
-        filename = _ipc.write_ipc_file(_ipc.TASKS_DIR, data)
+        filename, _request_id = _ipc.write_request_file("schedule_host_job", payload, reply_to=None)
         return [
             TextContent(
                 type="text",
@@ -198,18 +196,16 @@ async def _schedule_task_handle(arguments: dict[str, Any]) -> list[TextContent] 
 
     target_group = (arguments.get("target_group") if _ipc.is_admin else None) or _ipc.group_folder
 
-    data = {
-        "type": "schedule_task",
+    payload = {
         "prompt": arguments["prompt"],
         "schedule_type": schedule_type,
         "schedule_value": schedule_value,
         "context_mode": arguments.get("context_mode", "group"),
         "targetGroup": target_group,
         "createdBy": _ipc.group_folder,
-        "timestamp": _ipc.now_iso(),
     }
 
-    filename = _ipc.write_ipc_file(_ipc.TASKS_DIR, data)
+    filename, _request_id = _ipc.write_request_file("schedule_task", payload, reply_to=None)
     return [
         TextContent(
             type="text",
@@ -331,15 +327,14 @@ _TASK_ID_SCHEMA = {
 
 def _task_action(action: str, task_id: str) -> list[TextContent]:
     """Write a pause/resume/cancel IPC file and return confirmation."""
-    _ipc.write_ipc_file(
-        _ipc.TASKS_DIR,
+    _ipc.write_request_file(
+        action,
         {
-            "type": action,
             "taskId": task_id,
             "groupFolder": _ipc.group_folder,
             "isAdmin": _ipc.is_admin,
-            "timestamp": _ipc.now_iso(),
         },
+        reply_to=None,
     )
     verb = action.replace("_task", "")
     if verb == "cancel":

@@ -327,7 +327,7 @@ class TestMoveToErrorDir:
         """Should create the errors/ directory if it doesn't exist."""
         ipc_dir = tmp_path / "ipc"
         ipc_dir.mkdir()
-        source_file = ipc_dir / "group1" / "tasks" / "task-002.json"
+        source_file = ipc_dir / "group1" / "requests" / "task-002.json"
         source_file.parent.mkdir(parents=True)
         source_file.write_text("{}")
 

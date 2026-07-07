@@ -1,6 +1,6 @@
 """IPC handler for ask_user: prefix.
 
-When the container-side ask_user MCP tool writes a task file with
+When the container-side ask_user MCP tool writes a request file with
 type "ask_user:ask", this handler:
 - Resolves which chat JID and channel own the source group
 - Stores a pending question via the pending_questions state manager
@@ -29,10 +29,10 @@ async def _handle_ask_user_request(
     is_admin: bool,
     deps: IpcDeps,
 ) -> None:
-    """Handle an ask_user:ask IPC task from a container."""
+    """Handle an ask_user:ask IPC request from a container."""
     request_id = data.get("request_id")
     if not request_id:
-        logger.warning("ask_user task missing request_id", source_group=source_group)
+        logger.warning("ask_user request missing request_id", source_group=source_group)
         return
 
     questions = data.get("questions", [])

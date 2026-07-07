@@ -1,6 +1,6 @@
 """Request-response IPC for service tools (calendar, X, Slack, etc.).
 
-Service tools write a request to the tasks/ directory and wait for the
+Service tools write a request to the requests/ directory and wait for the
 host to write a response to the responses/ directory. Uses watchdog for
 efficient file notification instead of polling.
 
@@ -21,7 +21,7 @@ from mcp.types import TextContent
 from watchdog.events import FileCreatedEvent, FileMovedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from agent_runner.agent_tools._ipc import IPC_DIR, write_ipc_file
+from agent_runner.agent_tools._ipc import IPC_DIR, write_request_file
 
 RESPONSES_DIR = IPC_DIR / "responses"
 
@@ -76,6 +76,30 @@ def _read_response(response_file: Path) -> list[TextContent]:
     ]
 
 
+async def _wait_for_response_file(
+    response_file: Path,
+    wakeup: asyncio.Event,
+    timeout: float,
+) -> None:
+    """Wait for a response file, using watchdog wakeups plus periodic polling."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+
+    while True:
+        if response_file.exists():
+            return
+
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            raise TimeoutError
+
+        try:
+            await asyncio.wait_for(wakeup.wait(), timeout=min(0.2, remaining))
+            wakeup.clear()
+        except TimeoutError:
+            pass
+
+
 async def ipc_service_request(
     tool_name: str,
     request: dict[str, Any],
@@ -101,8 +125,7 @@ async def ipc_service_request(
         MCP TextContent with the result or error message.
     """
     request_id = uuid.uuid4().hex
-    request["type"] = type_override or f"service:{tool_name}"
-    request["request_id"] = request_id
+    request_kind = type_override or f"service:{tool_name}"
 
     response_file = RESPONSES_DIR / f"{request_id}.json"
     RESPONSES_DIR.mkdir(parents=True, exist_ok=True)
@@ -114,29 +137,37 @@ async def ipc_service_request(
     observer = Observer()
     observer.schedule(handler, str(RESPONSES_DIR), recursive=False)
     observer.daemon = True
-    observer.start()
+    observer_started = False
+    try:
+        observer.start()
+        observer_started = True
+    except OSError:
+        # If the host has exhausted inotify watches, polling still preserves
+        # correctness. Watchdog remains an optimization, not a hard dependency.
+        pass
 
     try:
         # Double-check: response might already exist (race with host)
         if response_file.exists():
             return _read_response(response_file)
 
-        # Write request to tasks/ (picked up by host IPC watcher).
+        # Write request to requests/ (picked up by host IPC watcher).
         # Done *after* observer is started so we can't miss the response.
-        write_ipc_file(IPC_DIR / "tasks", request)
+        write_request_file(request_kind, request, request_id=request_id, reply_to="responses")
 
         # Second check: host may have responded between observer.start()
         # and now (especially fast in tests or local setups)
         if response_file.exists():
             return _read_response(response_file)
 
-        # Wait for watchdog to signal the response file appeared
-        await asyncio.wait_for(wakeup.wait(), timeout=timeout)
+        # Watchdog should wake this promptly; polling covers missed/unavailable events.
+        await _wait_for_response_file(response_file, wakeup, timeout)
 
         return _read_response(response_file)
 
     except TimeoutError:
         return [TextContent(type="text", text="Error: Request timed out waiting for host response")]
     finally:
-        observer.stop()
-        observer.join(timeout=2)
+        if observer_started:
+            observer.stop()
+            observer.join(timeout=2)

@@ -19,6 +19,13 @@ sys.path.insert(
 
 from agent_runner.agent_tools._ipc import write_ipc_file
 
+
+def _read_request_file(path: Path) -> tuple[dict, dict]:
+    """Read a canonical request envelope and return (envelope, payload)."""
+    envelope = json.loads(path.read_text())
+    return envelope, envelope["payload"]
+
+
 # ---------------------------------------------------------------------------
 # write_ipc_file
 # ---------------------------------------------------------------------------
@@ -82,7 +89,7 @@ class TestScheduleTaskValidation:
             patch("agent_runner.agent_tools._ipc.group_folder", "test-group"),
             patch("agent_runner.agent_tools._ipc.is_admin", True),
             patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
-            patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
+            patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"),
         ):
             yield
 
@@ -90,7 +97,7 @@ class TestScheduleTaskValidation:
     async def test_valid_cron(self, tmp_path):
         from agent_runner.agent_tools._server import call_tool
 
-        with patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"):
+        with patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"):
             result = await call_tool(
                 "schedule_task",
                 {
@@ -124,7 +131,7 @@ class TestScheduleTaskValidation:
     async def test_valid_interval(self, tmp_path):
         from agent_runner.agent_tools._server import call_tool
 
-        with patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"):
+        with patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"):
             result = await call_tool(
                 "schedule_task",
                 {
@@ -183,7 +190,7 @@ class TestScheduleTaskValidation:
     async def test_valid_once(self, tmp_path):
         from agent_runner.agent_tools._server import call_tool
 
-        with patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"):
+        with patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"):
             result = await call_tool(
                 "schedule_task",
                 {
@@ -216,7 +223,7 @@ class TestScheduleTaskValidation:
 
         with (
             patch("agent_runner.agent_tools._ipc.is_admin", False),
-            patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
+            patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"),
         ):
             result = await call_tool(
                 "schedule_task",
@@ -229,9 +236,10 @@ class TestScheduleTaskValidation:
             )
         assert isinstance(result, list)
         # Verify the IPC file uses the caller's folder, not the target
-        files = list((tmp_path / "tasks").glob("*.json"))
-        data = json.loads(files[0].read_text())
-        assert data["targetGroup"] == "test-group"
+        files = list((tmp_path / "requests").glob("*.json"))
+        envelope, payload = _read_request_file(files[0])
+        assert envelope["kind"] == "schedule_task"
+        assert payload["targetGroup"] == "test-group"
 
     @pytest.mark.asyncio
     async def test_admin_can_set_target_group(self, tmp_path):
@@ -240,7 +248,7 @@ class TestScheduleTaskValidation:
 
         with (
             patch("agent_runner.agent_tools._ipc.is_admin", True),
-            patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
+            patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"),
         ):
             result = await call_tool(
                 "schedule_task",
@@ -252,9 +260,10 @@ class TestScheduleTaskValidation:
                 },
             )
         assert isinstance(result, list)
-        files = list((tmp_path / "tasks").glob("*.json"))
-        data = json.loads(files[0].read_text())
-        assert data["targetGroup"] == "other-group"
+        files = list((tmp_path / "requests").glob("*.json"))
+        envelope, payload = _read_request_file(files[0])
+        assert envelope["kind"] == "schedule_task"
+        assert payload["targetGroup"] == "other-group"
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +301,7 @@ class TestRegisterGroupAuth:
 
         with (
             patch("agent_runner.agent_tools._ipc.is_admin", True),
-            patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
+            patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"),
         ):
             result = await call_tool(
                 "register_group",
@@ -484,14 +493,14 @@ class TestTaskLifecycle:
         with (
             patch("agent_runner.agent_tools._ipc.group_folder", "test"),
             patch("agent_runner.agent_tools._ipc.is_admin", False),
-            patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
+            patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"),
         ):
             result = await call_tool("pause_task", {"task_id": "task-123"})
         assert "pause" in result[0].text.lower()
-        files = list((tmp_path / "tasks").glob("*.json"))
-        data = json.loads(files[0].read_text())
-        assert data["type"] == "pause_task"
-        assert data["taskId"] == "task-123"
+        files = list((tmp_path / "requests").glob("*.json"))
+        envelope, payload = _read_request_file(files[0])
+        assert envelope["kind"] == "pause_task"
+        assert payload["taskId"] == "task-123"
 
     @pytest.mark.asyncio
     async def test_resume_task(self, tmp_path):
@@ -500,7 +509,7 @@ class TestTaskLifecycle:
         with (
             patch("agent_runner.agent_tools._ipc.group_folder", "test"),
             patch("agent_runner.agent_tools._ipc.is_admin", False),
-            patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
+            patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"),
         ):
             result = await call_tool("resume_task", {"task_id": "task-123"})
         assert "resume" in result[0].text.lower()
@@ -512,7 +521,7 @@ class TestTaskLifecycle:
         with (
             patch("agent_runner.agent_tools._ipc.group_folder", "test"),
             patch("agent_runner.agent_tools._ipc.is_admin", False),
-            patch("agent_runner.agent_tools._ipc.TASKS_DIR", tmp_path / "tasks"),
+            patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"),
         ):
             result = await call_tool("cancel_task", {"task_id": "task-123"})
         assert "cancel" in result[0].text.lower()

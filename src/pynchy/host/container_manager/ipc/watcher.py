@@ -8,19 +8,21 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import os
 from pathlib import Path
-from typing import Any
 
-from watchdog.events import FileCreatedEvent, FileMovedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.deps import IpcDeps
+from pynchy.host.container_manager.ipc.events import IpcEventHandler as _IpcEventHandler
+from pynchy.host.container_manager.ipc.handlers_signals import handle_signal as _handle_signal
+from pynchy.host.container_manager.ipc.ledger import (
+    claim_request_for_execution as _claim_request_for_execution,
+)
 from pynchy.host.container_manager.ipc.protocol import (
     InboundChatMessage,
     parse_ipc_file,
-    validate_signal,
+    parse_request_envelope,
 )
 from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.container_manager.process import OnOutput, is_query_done_pulse
@@ -30,6 +32,8 @@ from pynchy.types import GroupFolder
 
 _ipc_watcher_lock = asyncio.Lock()
 _ipc_watcher_running = False
+_ipc_runtime_sweep_task: asyncio.Task[None] | None = None
+IPC_RUNTIME_SWEEP_INTERVAL_SECONDS = 5.0
 
 
 def _move_to_error_dir(ipc_base_dir: Path, source_group: str, file_path: Path) -> None:
@@ -99,33 +103,33 @@ async def _process_message_file(
         _move_to_error_dir(ipc_base_dir, source_group, file_path)
 
 
-async def _process_task_file(
+async def _process_request_file(
     file_path: Path,
     source_group: str,
     is_admin: bool,
     ipc_base_dir: Path,
     deps: IpcDeps,
 ) -> None:
-    """Process a single IPC task file.
-
-    Routes Tier 1 signals to _handle_signal, Tier 2 requests to dispatch.
-    """
+    """Process a single canonical IPC request file."""
     try:
-        data = parse_ipc_file(file_path)
+        envelope = parse_request_envelope(file_path)
+        if envelope.source_group != source_group:
+            raise ValueError(
+                "IPC request source_group does not match directory "
+                f"({envelope.source_group!r} != {source_group!r})"
+            )
 
-        # Tier 1: signal-only
-        signal_type = validate_signal(data)
-        if signal_type is not None:
-            await _handle_signal(signal_type, source_group, is_admin, deps)
+        if envelope.kind in ("refresh_groups",):
+            await _handle_signal(envelope.kind, source_group, is_admin, deps)
             file_path.unlink()
             return
 
-        # Tier 2: data-carrying request
-        await dispatch(data, source_group, is_admin, deps)
+        if _claim_request_for_execution(envelope, ipc_base_dir):
+            await dispatch(envelope, source_group, is_admin, deps)
         file_path.unlink()
     except Exception:
         logger.exception(
-            "Error processing IPC task",
+            "Error processing IPC request",
             file=file_path.name,
             source_group=source_group,
         )
@@ -210,45 +214,6 @@ async def _process_output_file(
         _move_to_error_dir(ipc_base_dir, source_group, file_path)
 
 
-async def _handle_signal(
-    signal_type: str,
-    source_group: str,
-    is_admin: bool,
-    deps: IpcDeps,
-) -> None:
-    """Handle a Tier 1 signal-only IPC request.
-
-    Signals carry no payload — the host derives behavior from the signal
-    type and its own state (which group sent it, registered groups, etc.).
-    """
-    if signal_type == "refresh_groups":
-        if is_admin:
-            logger.info(
-                "Group metadata refresh requested via signal",
-                source_group=source_group,
-            )
-            workspaces = deps.workspaces()
-            await deps.sync_group_metadata(True)
-            available_groups = await deps.get_available_groups()
-            deps.write_groups_snapshot(
-                source_group,
-                True,
-                available_groups,
-                set(workspaces.keys()),
-            )
-        else:
-            logger.warning(
-                "Unauthorized refresh_groups signal blocked",
-                source_group=source_group,
-            )
-    else:
-        logger.warning(
-            "Unknown signal type",
-            signal=signal_type,
-            source_group=source_group,
-        )
-
-
 async def _sweep_messages(
     messages_dir: Path, source_group: str, is_admin: bool, ipc_base_dir: Path, deps: IpcDeps
 ) -> int:
@@ -270,21 +235,63 @@ async def _sweep_messages(
         return 0
 
 
-async def _sweep_tasks(
-    tasks_dir: Path, source_group: str, is_admin: bool, ipc_base_dir: Path, deps: IpcDeps
+async def _sweep_requests(
+    requests_dir: Path, source_group: str, is_admin: bool, ipc_base_dir: Path, deps: IpcDeps
 ) -> int:
-    """Replay pending task files. Returns the number processed."""
-    if not tasks_dir.exists():
+    """Replay pending request files. Returns the number processed."""
+    if not requests_dir.exists():
         return 0
     try:
         count = 0
-        for file_path in sorted(f for f in tasks_dir.iterdir() if f.suffix == ".json"):
-            await _process_task_file(file_path, source_group, is_admin, ipc_base_dir, deps)
+        for file_path in sorted(f for f in requests_dir.iterdir() if f.suffix == ".json"):
+            await _process_request_file(file_path, source_group, is_admin, ipc_base_dir, deps)
             count += 1
         return count
     except OSError as exc:
         logger.error(
-            "Error reading IPC tasks directory during sweep",
+            "Error reading IPC requests directory during sweep",
+            err=str(exc),
+            source_group=source_group,
+        )
+        return 0
+
+
+async def _sweep_output_events(output_dir: Path, source_group: str, ipc_base_dir: Path) -> int:
+    """Process output files during live runtime recovery sweeps."""
+    if not output_dir.exists():
+        return 0
+    try:
+        count = 0
+        for file_path in sorted(f for f in output_dir.iterdir() if f.suffix == ".json"):
+            await _process_output_file(file_path, source_group, ipc_base_dir)
+            count += 1
+        return count
+    except OSError as exc:
+        logger.error(
+            "Error reading IPC output directory during runtime sweep",
+            err=str(exc),
+            source_group=source_group,
+        )
+        return 0
+
+
+async def _sweep_approval_decisions(decisions_dir: Path, source_group: str, deps: IpcDeps) -> int:
+    """Process approval decisions during live runtime recovery sweeps."""
+    if not decisions_dir.exists():
+        return 0
+    try:
+        count = 0
+        from pynchy.host.container_manager.ipc.handlers_approval import (
+            process_approval_decision,
+        )
+
+        for file_path in sorted(f for f in decisions_dir.iterdir() if f.suffix == ".json"):
+            await process_approval_decision(file_path, source_group, deps=deps)
+            count += 1
+        return count
+    except OSError as exc:
+        logger.error(
+            "Error reading IPC approval_decisions directory during runtime sweep",
             err=str(exc),
             source_group=source_group,
         )
@@ -353,7 +360,7 @@ async def _sweep_directory(
 ) -> int:
     """Sweep stale IPC files on startup (crash recovery).
 
-    Messages and tasks are *processed* (replayed).  Output files and stale
+    Messages and requests are *processed* (replayed).  Output files and stale
     ``initial.json`` are *deleted* — they were mid-query artefacts from a
     dead session and replaying them is meaningless.
 
@@ -378,8 +385,8 @@ async def _sweep_directory(
         processed += await _sweep_messages(
             group_dir / "messages", source_group, is_admin, ipc_base_dir, deps
         )
-        processed += await _sweep_tasks(
-            group_dir / "tasks", source_group, is_admin, ipc_base_dir, deps
+        processed += await _sweep_requests(
+            group_dir / "requests", source_group, is_admin, ipc_base_dir, deps
         )
         cleaned += _clean_output_dir(group_dir / "output", source_group)
         cleaned += _clean_stale_initial(group_dir / "input", source_group)
@@ -392,47 +399,49 @@ async def _sweep_directory(
     return processed + cleaned
 
 
-class _IpcEventHandler(FileSystemEventHandler):
-    """Watchdog handler that enqueues IPC file events for async processing."""
+async def _sweep_runtime_directory(
+    ipc_base_dir: Path,
+    deps: IpcDeps,
+) -> int:
+    """Sweep live IPC directories so missed watchdog events do not wedge sessions."""
+    try:
+        group_folders = [
+            f.name for f in ipc_base_dir.iterdir() if f.is_dir() and f.name != "errors"
+        ]
+    except OSError as exc:
+        logger.error("Error reading IPC base directory during runtime sweep", err=str(exc))
+        return 0
 
-    def __init__(
-        self,
-        ipc_base_dir: Path,
-        loop: asyncio.AbstractEventLoop,
-        queue: asyncio.Queue[Path],
-    ) -> None:
-        super().__init__()
-        self._ipc_base_dir = ipc_base_dir
-        self._loop = loop
-        self._queue = queue
+    workspaces = deps.workspaces()
+    admin_folders = {g.folder for g in workspaces.values() if g.is_admin}
 
-    def _enqueue_if_ipc(self, path_str: str) -> None:
-        """Enqueue a file if it matches the IPC directory structure."""
-        if not path_str.endswith(".json"):
-            return
-        file_path = Path(path_str)
-        try:
-            relative = file_path.relative_to(self._ipc_base_dir)
-            parts = relative.parts
-            # Expected: <group>/<messages|tasks|output|approval_decisions>/<file>.json
-            if len(parts) == 3 and parts[1] in (
-                "messages",
-                "tasks",
-                "output",
-                "approval_decisions",
-            ):
-                self._loop.call_soon_threadsafe(self._queue.put_nowait, file_path)
-        except (ValueError, IndexError):
-            pass  # File not under IPC base dir or malformed path — ignore
+    processed = 0
+    for source_group in group_folders:
+        is_admin = source_group in admin_folders
+        group_dir = ipc_base_dir / source_group
+        processed += await _sweep_messages(
+            group_dir / "messages", source_group, is_admin, ipc_base_dir, deps
+        )
+        processed += await _sweep_requests(
+            group_dir / "requests", source_group, is_admin, ipc_base_dir, deps
+        )
+        processed += await _sweep_output_events(group_dir / "output", source_group, ipc_base_dir)
+        processed += await _sweep_approval_decisions(
+            group_dir / "approval_decisions", source_group, deps
+        )
 
-    def on_created(self, event: Any) -> None:
-        if isinstance(event, FileCreatedEvent):
-            self._enqueue_if_ipc(os.fsdecode(event.src_path))
+    await _sweep_expired_state()
 
-    def on_moved(self, event: Any) -> None:
-        # Atomic writes (tmp → .json rename) generate moved events, not created
-        if isinstance(event, FileMovedEvent):
-            self._enqueue_if_ipc(os.fsdecode(event.dest_path))
+    return processed
+
+
+async def _runtime_sweep_loop(ipc_base_dir: Path, deps: IpcDeps) -> None:
+    """Periodically sweep live IPC files in case watchdog drops an event."""
+    while True:
+        await asyncio.sleep(IPC_RUNTIME_SWEEP_INTERVAL_SECONDS)
+        handled = await _sweep_runtime_directory(ipc_base_dir, deps)
+        if handled:
+            logger.info("IPC runtime sweep processed files", count=handled)
 
 
 async def _process_queue(
@@ -459,8 +468,8 @@ async def _process_queue(
 
             if subdir == "messages":
                 await _process_message_file(file_path, source_group, is_admin, ipc_base_dir, deps)
-            elif subdir == "tasks":
-                await _process_task_file(file_path, source_group, is_admin, ipc_base_dir, deps)
+            elif subdir == "requests":
+                await _process_request_file(file_path, source_group, is_admin, ipc_base_dir, deps)
             elif subdir == "output":
                 await _process_output_file(file_path, source_group, ipc_base_dir)
             elif subdir == "approval_decisions":
@@ -484,7 +493,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
     1. Performs a startup sweep to process files written while the process was down.
     2. Starts a watchdog Observer for event-driven processing.
     """
-    global _ipc_watcher_running
+    global _ipc_runtime_sweep_task, _ipc_watcher_running
     async with _ipc_watcher_lock:
         if _ipc_watcher_running:
             logger.debug("IPC watcher already running, skipping duplicate start")
@@ -510,5 +519,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
     observer.daemon = True
     observer.start()
     logger.info("IPC watcher started (watchdog mode)", path=str(ipc_base_dir))
+
+    _ipc_runtime_sweep_task = asyncio.create_task(_runtime_sweep_loop(ipc_base_dir, deps))
 
     await _process_queue(queue, ipc_base_dir, deps)
