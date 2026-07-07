@@ -95,11 +95,14 @@ def make_learning_deps(app: PynchyApp) -> LearningWorkerDeps:
                 if not result_future.done():
                     result_future.set_result(result)
 
-        app.queue.enqueue_task(
+        accepted = app.queue.enqueue_task(
             group_jid,
             f"learning-review-{uuid4().hex}",
             run_queued_agent,
         )
+        if not accepted:
+            result_future.cancel()
+            raise asyncio.CancelledError()
         if app._shutting_down and not result_future.done():
             result_future.cancel()
 

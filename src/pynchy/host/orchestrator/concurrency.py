@@ -117,15 +117,18 @@ class GroupQueue:
             name=f"process-messages-{group_jid[:20]}",
         )
 
-    def enqueue_task(self, group_jid: str, task_id: str, fn: Callable[[], Awaitable[None]]) -> None:
+    def enqueue_task(self, group_jid: str, task_id: str, fn: Callable[[], Awaitable[None]]) -> bool:
         """Queue a scheduled task for *group_jid*.
 
         Deduplicates by *task_id* — if the same task is already queued it is
         silently skipped.  Respects the same concurrency and per-group
         serialization rules as ``enqueue_message_check``.
+
+        Returns True when the task was accepted for immediate or pending
+        execution, False when the queue rejected it.
         """
         if self._shutting_down:
-            return
+            return False
 
         state = self._get_group(group_jid)
 
@@ -136,7 +139,7 @@ class GroupQueue:
                 group_jid=group_jid,
                 task_id=task_id,
             )
-            return
+            return False
 
         if state.active:
             state.pending_tasks.append(QueuedTask(id=task_id, group_jid=group_jid, fn=fn))
@@ -145,7 +148,7 @@ class GroupQueue:
                 group_jid=group_jid,
                 task_id=task_id,
             )
-            return
+            return True
 
         if self._active_count >= get_settings().container.max_concurrent:
             state.pending_tasks.append(QueuedTask(id=task_id, group_jid=group_jid, fn=fn))
@@ -157,7 +160,7 @@ class GroupQueue:
                 task_id=task_id,
                 active_count=self._active_count,
             )
-            return
+            return True
 
         # Eagerly mark as active before scheduling
         state.active = True
@@ -167,6 +170,7 @@ class GroupQueue:
             self._run_task(group_jid, QueuedTask(id=task_id, group_jid=group_jid, fn=fn)),
             name=f"run-task-{task_id[:20]}",
         )
+        return True
 
     def register_process(
         self,

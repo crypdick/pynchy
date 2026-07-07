@@ -7,6 +7,7 @@ import inspect
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any, cast
+from unittest.mock import AsyncMock
 
 import pluggy
 import pytest
@@ -52,7 +53,8 @@ class _QueuedAgentTask:
 
 
 class _RecordingTaskQueue:
-    def __init__(self) -> None:
+    def __init__(self, *, accepts_tasks: bool = True) -> None:
+        self._accepts_tasks = accepts_tasks
         self.enqueued: list[_QueuedAgentTask] = []
 
     def enqueue_task(
@@ -60,8 +62,11 @@ class _RecordingTaskQueue:
         group_jid: str,
         task_id: str,
         fn: Callable[[], Awaitable[None]],
-    ) -> None:
+    ) -> bool:
+        if not self._accepts_tasks:
+            return False
         self.enqueued.append(_QueuedAgentTask(group_jid=group_jid, task_id=task_id, fn=fn))
+        return True
 
 
 @pytest.mark.asyncio
@@ -118,6 +123,39 @@ async def test_make_learning_deps_queues_learning_reviewer_run_before_running_ag
         [{"role": "user", "content": "review this turn"}],
     )
     assert kwargs["is_scheduled_task"] is True
+
+
+@pytest.mark.asyncio
+async def test_make_learning_deps_cancels_when_queue_rejects_reviewer_run(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    settings = make_settings(data_dir=tmp_path / "data")
+    monkeypatch.setattr("pynchy.host.learning.queue.get_settings", lambda: settings)
+    app = PynchyApp()
+    queue = _RecordingTaskQueue(accepts_tasks=False)
+    app.queue = cast(Any, queue)
+    run_agent_mock = AsyncMock(return_value="success")
+    monkeypatch.setattr(app, "run_agent", run_agent_mock)
+    deps = dep_factory.make_learning_deps(app)
+    group = WorkspaceProfile(
+        jid="learning-review:deep-work",
+        name="Learning Reviewer",
+        folder="learning-review-deep-work",
+        trigger="",
+        is_admin=False,
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await deps.run_agent(
+            group,
+            "learning-review:deep-work",
+            [{"role": "user", "content": "review this turn"}],
+            is_scheduled_task=True,
+        )
+
+    assert queue.enqueued == []
+    run_agent_mock.assert_not_awaited()
 
 
 @dataclass(frozen=True)

@@ -227,8 +227,8 @@ class TestEnqueueTask:
             nonlocal task_calls
             task_calls += 1
 
-        queue.enqueue_task("group1@g.us", "task-1", task_fn)
-        queue.enqueue_task("group1@g.us", "task-1", task_fn)  # duplicate
+        assert queue.enqueue_task("group1@g.us", "task-1", task_fn) is True
+        assert queue.enqueue_task("group1@g.us", "task-1", task_fn) is False
 
         # Release and let everything drain
         completions[0].set()
@@ -697,6 +697,21 @@ class TestTaskExceptionHandling:
             # Retry should fire
             await asyncio.sleep(0.15)
             assert call_count >= 2
+
+
+class TestTaskAcceptance:
+    """Tests for enqueue_task acceptance reporting."""
+
+    async def test_rejects_task_when_queue_is_shutting_down(self, queue: GroupQueue):
+        async def task_fn():
+            raise AssertionError("rejected task should not run")
+
+        queue._shutting_down = True
+
+        assert queue.enqueue_task("group1@g.us", "task-1", task_fn) is False
+        await asyncio.sleep(0.02)
+
+        assert queue.snapshot()["_meta"]["active_count"] == 0
 
 
 class TestStopActiveProcess:
