@@ -60,6 +60,10 @@ class AgentConfig(_StrictModel):
     # NOTE: Update docs/architecture/message-routing.md § Trigger Pattern if you change this
     trigger_aliases: list[str] = ["ghost"]
     core: str = "openai"  # built-in: "openai", "claude", "claude-cli", or "codex"
+    # Passed through to the selected core. For LiteLLM routes, use the model_name
+    # from litellm_config.yaml, e.g. "chatgpt/gpt-5.3-codex".
+    model: str | None = "openai/gpt-5.5"
+    fallback_model: str | None = None
 
 
 class ContainerConfig(_StrictModel):

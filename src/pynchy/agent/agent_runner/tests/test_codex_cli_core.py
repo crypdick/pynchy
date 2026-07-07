@@ -10,6 +10,8 @@ import asyncio
 import signal
 import tomllib
 
+import pytest
+
 from agent_runner.core import AgentCoreConfig
 from agent_runner.cores.codex import CodexCLIAgentCore
 
@@ -42,13 +44,28 @@ def _core(session_id: str | None = None) -> CodexCLIAgentCore:
     )
 
 
+def _set_gateway_env(
+    monkeypatch: pytest.MonkeyPatch, base_url: str = "http://gateway:4000"
+) -> None:
+    monkeypatch.setenv("OPENAI_BASE_URL", base_url)
+    monkeypatch.setenv("OPENAI_API_KEY", "gw-test")
+
+
 def test_start_writes_codex_config_with_hooks_and_mcp(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    _set_gateway_env(monkeypatch)
     core = _core()
 
     asyncio.run(core.start())
 
     config = tomllib.loads((tmp_path / "config.toml").read_text())
+    assert config["model_provider"] == "pynchy_litellm"
+    assert config["model_providers"]["pynchy_litellm"] == {
+        "name": "Pynchy LiteLLM Gateway",
+        "base_url": "http://gateway:4000/v1",
+        "wire_api": "responses",
+        "env_key": "OPENAI_API_KEY",
+    }
     assert config["features"]["hooks"] is True
     assert config["approval_policy"] == "never"
     assert config["sandbox_mode"] == "workspace-write"
@@ -64,8 +81,30 @@ def test_start_writes_codex_config_with_hooks_and_mcp(tmp_path, monkeypatch):
     assert hooks[0]["hooks"][0]["command"].endswith("-m agent_runner.security.hook_entry")
 
 
+def test_start_rejects_missing_gateway_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "gw-test")
+    core = _core()
+
+    with pytest.raises(RuntimeError, match="OPENAI_BASE_URL"):
+        asyncio.run(core.start())
+
+
+def test_start_normalizes_gateway_base_url_with_v1_suffix(tmp_path, monkeypatch):
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    _set_gateway_env(monkeypatch, "http://gateway:4000/v1/")
+    core = _core()
+
+    asyncio.run(core.start())
+
+    config = tomllib.loads((tmp_path / "config.toml").read_text())
+    assert config["model_providers"]["pynchy_litellm"]["base_url"] == "http://gateway:4000/v1"
+
+
 def test_start_falls_back_to_installer_path_when_codex_not_on_path(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    _set_gateway_env(monkeypatch)
     monkeypatch.setattr("agent_runner.cores.codex.shutil.which", lambda _: None)
     monkeypatch.setattr(
         "agent_runner.cores.codex.Path.exists",
@@ -80,6 +119,7 @@ def test_start_falls_back_to_installer_path_when_codex_not_on_path(tmp_path, mon
 
 def test_build_args_for_new_session(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    _set_gateway_env(monkeypatch)
     core = _core()
     asyncio.run(core.start())
 
@@ -97,6 +137,7 @@ def test_build_args_for_new_session(tmp_path, monkeypatch):
 
 def test_build_args_skips_missing_group_workspace(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    _set_gateway_env(monkeypatch)
     monkeypatch.setattr("agent_runner.cores.codex.Path.exists", lambda self: False)
     core = _core()
     asyncio.run(core.start())
@@ -108,6 +149,7 @@ def test_build_args_skips_missing_group_workspace(tmp_path, monkeypatch):
 
 def test_build_args_adds_group_workspace_when_mounted(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    _set_gateway_env(monkeypatch)
     monkeypatch.setattr("agent_runner.cores.codex.Path.exists", lambda self: True)
     core = _core()
     asyncio.run(core.start())
@@ -122,6 +164,7 @@ def test_build_args_adds_group_workspace_when_mounted(tmp_path, monkeypatch):
 
 def test_build_args_for_resumed_session(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    _set_gateway_env(monkeypatch)
     core = _core(session_id="019c6e27-e55b-73d1-87d8-4e01f1f75043")
     asyncio.run(core.start())
 

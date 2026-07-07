@@ -23,14 +23,22 @@
 # Agent core: "openai" (default), "claude", "claude-cli", or "codex"
 # core = "openai"
 
+# Model name passed to the selected core. Default: "openai/gpt-5.5".
+# Use a model_name from litellm_config.yaml, e.g. "chatgpt/gpt-5.3-codex"
+# for LiteLLM's ChatGPT Subscription provider.
+# model = "openai/gpt-5.5"
+
+# Optional fallback model for cores that support fallback retries.
+# fallback_model = "openai/gpt-5.5-mini"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # API Credentials
 # ─────────────────────────────────────────────────────────────────────────────
 # Secrets (API keys, tokens, passwords) belong in .env, not here.
 # See config-examples/.env.EXAMPLE for the template.
 #
-# For Codex subscription auth, run `codex login` on the host. Pynchy seeds the
-# per-group container Codex home from ~/.codex/auth.json when that file exists.
+# For the Codex core, configure a Codex-capable model in litellm_config.yaml.
+# Pynchy routes Codex CLI model traffic through the gateway, not host Codex auth.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Container Configuration

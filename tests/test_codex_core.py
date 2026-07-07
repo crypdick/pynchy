@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import stat
 from pathlib import Path
 from unittest.mock import patch
 
@@ -78,12 +76,12 @@ def test_build_volume_mounts_creates_per_group_codex_home(tmp_path: Path) -> Non
     assert codex_home.is_dir()
 
 
-def test_build_volume_mounts_seeds_codex_auth_once(tmp_path: Path) -> None:
-    """A host Codex auth cache is copied into the isolated group home once."""
+def test_build_volume_mounts_does_not_seed_host_codex_auth(tmp_path: Path) -> None:
+    """Codex core auth is owned by the gateway, not host ChatGPT state."""
     host_home = tmp_path / "host-home"
     host_auth = host_home / ".codex" / "auth.json"
     host_auth.parent.mkdir(parents=True)
-    host_auth.write_text(json.dumps({"tokens": "host"}))
+    host_auth.write_text('{"tokens": "host"}')
 
     settings = make_settings(
         project_root=tmp_path,
@@ -99,14 +97,4 @@ def test_build_volume_mounts_seeds_codex_auth_once(tmp_path: Path) -> None:
         build_volume_mounts(_group(), is_admin=False)
 
     group_auth = tmp_path / "data" / "sessions" / "codex-group" / ".codex" / "auth.json"
-    assert json.loads(group_auth.read_text()) == {"tokens": "host"}
-    assert stat.S_IMODE(group_auth.stat().st_mode) == 0o600
-
-    group_auth.write_text(json.dumps({"tokens": "refreshed-in-container"}))
-    with (
-        patch("pynchy.host.container_manager.mounts.get_settings", return_value=settings),
-        patch("pynchy.host.container_manager.mounts.Path.home", return_value=host_home),
-    ):
-        build_volume_mounts(_group(), is_admin=False)
-
-    assert json.loads(group_auth.read_text()) == {"tokens": "refreshed-in-container"}
+    assert not group_auth.exists()

@@ -9,6 +9,7 @@ Set the core in `config.toml`:
 ```toml
 [agent]
 core = "openai"    # or "claude", "claude-cli", "codex"
+model = "openai/gpt-5.5"
 ```
 
 Or via environment variable (takes priority over config):
@@ -34,22 +35,23 @@ The default core using OpenAI's Agents SDK.
 
 - **Activation:** selected by default; make sure an OpenAI API key is available
 - **Model selection:** via the LiteLLM gateway
+- **Default model:** `openai/gpt-5.5`
 
 ## Built-in: OpenAI Codex CLI
 
 An alternative core that drives `codex exec --json` inside the agent container.
-Use this when you want Pynchy turns billed against your Codex/ChatGPT
-subscription instead of OpenAI Platform API usage.
+Use this when you want Codex's CLI runtime, session behavior, and JSONL event
+stream while keeping model routing and provider credentials in the Pynchy
+LiteLLM gateway.
 
-- **Activation:** run `codex login` on the host, then set `core = "codex"`
-- **Auth state:** Pynchy creates `data/sessions/{group}/.codex/` and copies the host `~/.codex/auth.json` there on first use if it exists
+- **Activation:** configure a Codex-capable model in `litellm_config.yaml`, then set `core = "codex"` and `model` to that LiteLLM `model_name`
+- **Auth state:** Codex reads the same gateway env vars as the OpenAI core (`OPENAI_BASE_URL` / `OPENAI_API_KEY`). Pynchy writes a per-group Codex config that points Codex at that gateway with the Responses wire API.
 - **Session management:** Codex thread IDs are stored as Pynchy session IDs and resumed with `codex exec resume`
 - **Tools:** Codex Bash/tool events are mapped into the same Pynchy event stream, and Pynchy writes a per-group Codex config with the standard `BEFORE_TOOL_USE` hook
 
-The Codex CLI must be able to read Codex auth in the container. That means this
-core cannot provide the same API-key isolation as the LiteLLM gateway. Treat
-`data/sessions/*/.codex/auth.json` as a secret, and only enable the Codex core
-for trusted sandboxes.
+The per-group Codex home still stores generated config and Codex session state,
+but it does not need host `~/.codex/auth.json`. Real provider credentials stay
+behind the gateway.
 
 ## Tool Security
 
@@ -71,10 +73,22 @@ Claude SDK and OpenAI Agents SDK calls route through a host-side gateway. You ge
 
 The gateway is configured in `litellm_config.yaml` and runs as a Docker container managed by Pynchy. See the [Installation Guide](../install.md).
 
-The Codex CLI core is the exception: it calls Codex directly through the `codex`
-binary so it can use ChatGPT/Codex subscription auth. Switching between
-`claude`, `claude-cli`, and `openai` uses the gateway; switching to `codex`
-uses the per-group Codex CLI home instead.
+The Codex CLI core also uses the gateway. Pynchy generates a Codex custom model
+provider for each sandbox with:
+
+- `model_provider = "pynchy_litellm"`
+- `wire_api = "responses"`
+- `env_key = "OPENAI_API_KEY"`
+
+Use model names that exist in `litellm_config.yaml`; Codex passes its requested
+model to the gateway. For LiteLLM's ChatGPT Subscription provider, that means a
+route such as:
+
+```toml
+[agent]
+core = "codex"
+model = "chatgpt/gpt-5.3-codex"
+```
 
 ---
 

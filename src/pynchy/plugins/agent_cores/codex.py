@@ -2,9 +2,8 @@
 
 Advertises the ``codex`` agent core, which drives the OpenAI Codex CLI via
 ``codex exec --json``. Select it with ``[agent] core = "codex"`` (or
-``PYNCHY_AGENT_CORE=codex``). This core uses Codex CLI authentication, so it
-can run against a ChatGPT/Codex subscription when the container's per-group
-``~/.codex`` home has valid Codex auth.
+``PYNCHY_AGENT_CORE=codex``). This core routes Codex model traffic through
+Pynchy's OpenAI API gateway.
 """
 
 from __future__ import annotations

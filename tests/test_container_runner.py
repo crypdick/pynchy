@@ -36,6 +36,10 @@ from pynchy.host.container_manager.session_prep import (
 )
 from pynchy.host.container_manager.snapshots import write_groups_snapshot, write_tasks_snapshot
 from pynchy.host.git_ops.repo import RepoContext, get_repo_token
+from pynchy.host.orchestrator.agent_runner import (
+    _build_container_input,  # allow: private-test-imports
+    _PreContainerResult,  # allow: private-test-imports
+)
 from pynchy.types import (
     ContainerInput,
     VolumeMount,
@@ -1071,6 +1075,56 @@ class TestResolveAgentCore:
 
         assert module == "cores.custom"
         assert cls == "CustomCore"
+
+
+# ---------------------------------------------------------------------------
+# Container input core config
+# ---------------------------------------------------------------------------
+
+
+class TestContainerInputAgentCoreConfig:
+    """Test model configuration passed from host settings into agent cores."""
+
+    @staticmethod
+    def _ctx() -> _PreContainerResult:
+        return _PreContainerResult(
+            is_admin=False,
+            repo_access=None,
+            system_prompt_append=None,
+            session_id=None,
+            system_notices=[],
+            agent_core_module="agent_runner.cores.codex",
+            agent_core_class="CodexCLIAgentCore",
+            wrapped_on_output=AsyncMock(),
+            config_timeout=30.0,
+            snapshot_ms=0.0,
+        )
+
+    def test_agent_model_settings_flow_to_core_config(self):
+        from pynchy.config import AgentConfig
+
+        settings = make_settings(
+            agent=AgentConfig(
+                model="chatgpt/gpt-5.3-codex",
+                fallback_model="chatgpt/gpt-5.3-codex-spark",
+            )
+        )
+
+        with patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings):
+            result = _build_container_input([], self._ctx(), "chat", TEST_GROUP)
+
+        assert result.agent_core_config == {
+            "model": "chatgpt/gpt-5.3-codex",
+            "fallback_model": "chatgpt/gpt-5.3-codex-spark",
+        }
+
+    def test_default_agent_model_flows_to_core_config(self):
+        settings = make_settings()
+
+        with patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings):
+            result = _build_container_input([], self._ctx(), "chat", TEST_GROUP)
+
+        assert result.agent_core_config == {"model": "openai/gpt-5.5"}
 
 
 # ---------------------------------------------------------------------------

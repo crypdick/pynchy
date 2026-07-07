@@ -10,7 +10,7 @@ These ship with pynchy and are always available. Some require optional dependenc
 |--------|------|---------|--------|------|
 | `agent_claude` | Agent Core | Default Claude SDK agent core. | Always active | [Agent cores](../usage/agent-cores.md) |
 | `agent_openai` | Agent Core | OpenAI Agents SDK alternative. | `PYNCHY_AGENT_CORE=openai` | [Agent cores](../usage/agent-cores.md) |
-| `agent_codex` | Agent Core | OpenAI Codex CLI core using Codex/ChatGPT subscription auth. | `PYNCHY_AGENT_CORE=codex` | [Agent cores](../usage/agent-cores.md) |
+| `agent_codex` | Agent Core | OpenAI Codex CLI core routed through the LLM gateway. | `PYNCHY_AGENT_CORE=codex` | [Agent cores](../usage/agent-cores.md) |
 | `whatsapp` | Channel | WhatsApp channel via neonize. | `uv sync --extra whatsapp` + QR auth | [Channels](../usage/channels.md) |
 | `slack` | Channel | Slack channel via Socket Mode (bolt). Maps Slack channels/DMs to workspaces. | `[slack] bot_token / app_token` + `uv sync --extra slack` | [Channels](../usage/channels.md) |
 | `tui` | Channel | TUI client (Textual). Standalone terminal UI connecting via HTTP/SSE. | Always active | [Channels](../usage/channels.md) |

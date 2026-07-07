@@ -141,6 +141,7 @@ def _build_container_input(
     Shared by cold start and scheduled task paths to avoid duplicating
     the field mapping.
     """
+    agent_core_config = _agent_core_config_from_settings()
     return ContainerInput(
         messages=messages,
         session_id=ctx.session_id,
@@ -153,7 +154,18 @@ def _build_container_input(
         system_prompt_append=ctx.system_prompt_append,
         agent_core_module=ctx.agent_core_module,
         agent_core_class=ctx.agent_core_class,
+        agent_core_config=agent_core_config,
     )
+
+
+def _agent_core_config_from_settings() -> dict[str, str] | None:
+    s = get_settings()
+    result: dict[str, str] = {}
+    if s.agent.model:
+        result["model"] = s.agent.model
+    if s.agent.fallback_model:
+        result["fallback_model"] = s.agent.fallback_model
+    return result or None
 
 
 async def _pre_container_setup(
