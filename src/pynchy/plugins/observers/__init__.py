@@ -6,12 +6,10 @@ Built-in observers live under ``plugins/observers/``.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
+from pynchy.event_bus import EventBus
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    from pynchy.event_bus import EventBus
 
 
 @runtime_checkable

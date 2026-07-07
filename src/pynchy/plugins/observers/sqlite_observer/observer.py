@@ -6,12 +6,10 @@ Schema lives in ``db/_schema.py``; storage is delegated to ``db.store_event()``.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from pynchy.event_bus import EventBus
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    from pynchy.event_bus import EventBus
 
 
 class SqliteEventObserver:

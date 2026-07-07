@@ -73,6 +73,27 @@ class TestInRepoPluginDiscovery:
         assert "builtin-openai" in names
 
 
+class TestObserverPluginRuntimeTypes:
+    """Observer plugin entrypoints should accept runtime EventBus instances."""
+
+    def test_attach_observers_accepts_event_bus(self):
+        """attach_observers should not crash resolving the EventBus annotation."""
+        from pynchy.event_bus import EventBus
+        from pynchy.plugins.observers import attach_observers
+
+        with patch("pynchy.plugins.collect_hook_results", return_value=[]):
+            assert attach_observers(EventBus()) == []
+
+    def test_sqlite_observer_subscribes_to_event_bus(self):
+        """SqliteEventObserver.subscribe should accept a real EventBus."""
+        from pynchy.event_bus import EventBus
+        from pynchy.plugins.observers.sqlite_observer.observer import SqliteEventObserver
+
+        observer = SqliteEventObserver()
+
+        observer.subscribe(EventBus())
+
+
 @pytest.mark.asyncio
 class TestSlackPluginFunctionality:
     """Verify Slack plugin hook behavior when loaded."""
