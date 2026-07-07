@@ -157,7 +157,14 @@ async def wait_for_ipc_message() -> str | None:
     observer = Observer()
     observer.schedule(handler, str(IPC_INPUT_DIR), recursive=False)
     observer.daemon = True
-    observer.start()
+    observer_started = False
+    try:
+        observer.start()
+        observer_started = True
+    except OSError:
+        # If watchdog cannot allocate a filesystem watch, the loop below still
+        # polls input periodically. File IPC must remain correct without events.
+        pass
 
     try:
         while True:
@@ -166,9 +173,13 @@ async def wait_for_ipc_message() -> str | None:
             messages = drain_ipc_input()
             if messages:
                 return "\n".join(messages)
-            # Wait until watchdog signals file activity, then re-check
-            await wakeup.wait()
-            wakeup.clear()
+            # Watchdog should wake this promptly; polling covers missed/unavailable events.
+            try:
+                await asyncio.wait_for(wakeup.wait(), timeout=0.2)
+                wakeup.clear()
+            except TimeoutError:
+                pass
     finally:
-        observer.stop()
-        observer.join(timeout=2)
+        if observer_started:
+            observer.stop()
+            observer.join(timeout=2)

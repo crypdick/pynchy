@@ -51,15 +51,13 @@ async def _register_group_handle(arguments: dict[str, Any]) -> list[TextContent]
     if not _ipc.is_admin:
         return tool_error("Only the admin group can register new groups.")
 
-    data = {
-        "type": "register_group",
+    payload = {
         "jid": arguments["jid"],
         "name": arguments["name"],
         "folder": arguments["folder"],
         "trigger": arguments["trigger"],
-        "timestamp": _ipc.now_iso(),
     }
-    _ipc.write_ipc_file(_ipc.TASKS_DIR, data)
+    _ipc.write_request_file("register_group", payload, reply_to=None)
     return [
         TextContent(
             type="text",
@@ -122,8 +120,7 @@ async def _deploy_changes_handle(arguments: dict[str, Any]) -> list[TextContent]
 
     session_id = os.environ.get("PYNCHY_SESSION_ID", "")
 
-    data = {
-        "type": "deploy",
+    payload = {
         "rebuildContainer": arguments.get("rebuild_container", False),
         "resumePrompt": arguments.get(
             "resume_prompt",
@@ -132,9 +129,8 @@ async def _deploy_changes_handle(arguments: dict[str, Any]) -> list[TextContent]
         "headSha": head_sha,
         "sessionId": session_id,
         "chatJid": _ipc.chat_jid,
-        "timestamp": _ipc.now_iso(),
     }
-    _ipc.write_ipc_file(_ipc.TASKS_DIR, data)
+    _ipc.write_request_file("deploy", payload, reply_to=None)
     return [
         TextContent(
             type="text",

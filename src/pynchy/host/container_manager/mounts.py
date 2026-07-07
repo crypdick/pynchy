@@ -83,7 +83,7 @@ def build_volume_mounts(
 
     # Per-group IPC namespace
     group_ipc_dir = s.data_dir / "ipc" / group.folder
-    for sub in ("messages", "tasks", "input", "output", "merge_results"):
+    for sub in ("messages", "requests", "input", "output", "merge_results"):
         (group_ipc_dir / sub).mkdir(parents=True, exist_ok=True)
     mounts.append(VolumeMount(str(group_ipc_dir), "/workspace/ipc", readonly=False))
 

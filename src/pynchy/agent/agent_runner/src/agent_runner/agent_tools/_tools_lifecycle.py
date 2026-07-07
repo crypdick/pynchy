@@ -32,14 +32,13 @@ from agent_runner.agent_tools._registry import tool, tool_error
 )
 async def _sync_worktree_handle(arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
     request_id = f"{int(time.time() * 1000)}-{random.randbytes(3).hex()}"
-    _ipc.write_ipc_file(
-        _ipc.TASKS_DIR,
+    _ipc.write_request_file(
+        "sync_worktree_to_main",
         {
-            "type": "sync_worktree_to_main",
             "groupFolder": _ipc.group_folder,
-            "requestId": request_id,
-            "timestamp": _ipc.now_iso(),
         },
+        request_id=request_id,
+        reply_to="merge_results",
     )
 
     result_file = _ipc.IPC_DIR / "merge_results" / f"{request_id}.json"
@@ -91,14 +90,13 @@ def _exit_container() -> NoReturn:
     visible=lambda: _ipc.is_scheduled_task,
 )
 async def _finished_work_handle(arguments: dict[str, Any]) -> list[TextContent]:
-    _ipc.write_ipc_file(
-        _ipc.TASKS_DIR,
+    _ipc.write_request_file(
+        "finished_work",
         {
-            "type": "finished_work",
             "groupFolder": _ipc.group_folder,
             "chatJid": _ipc.chat_jid,
-            "timestamp": _ipc.now_iso(),
         },
+        reply_to=None,
     )
     _exit_container()
 
@@ -143,12 +141,10 @@ async def _finished_work_handle(arguments: dict[str, Any]) -> list[TextContent]:
 )
 async def _reset_context_handle(arguments: dict[str, Any]) -> list[TextContent]:
     data: dict[str, str] = {
-        "type": "reset_context",
         "chatJid": _ipc.chat_jid,
         "groupFolder": _ipc.group_folder,
-        "timestamp": _ipc.now_iso(),
     }
     if arguments.get("message"):
         data["message"] = arguments["message"]
-    _ipc.write_ipc_file(_ipc.TASKS_DIR, data)
+    _ipc.write_request_file("reset_context", data, reply_to=None)
     _exit_container()

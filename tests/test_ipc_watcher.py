@@ -1,7 +1,7 @@
 """Tests for the IPC watcher file processing loop.
 
 Tests the inner file-scanning logic of start_ipc_watcher: message authorization,
-task file processing, error handling, and file cleanup. These are critical paths
+request dispatch, error handling, and file cleanup. These are critical paths
 where a bug could leak messages across groups or silently drop data.
 """
 
@@ -193,7 +193,7 @@ class TestIpcMessageProcessing:
 
 
 # ---------------------------------------------------------------------------
-# IPC task file processing — edge cases not covered by test_ipc_auth.py
+# IPC request dispatch — edge cases not covered by test_ipc_auth.py
 # ---------------------------------------------------------------------------
 
 
@@ -201,14 +201,14 @@ class TestIpcTaskFileEdgeCases:
     """Edge cases in the task processing pipeline of the IPC watcher."""
 
     async def test_empty_type_field_is_ignored(self, deps):
-        """A task file with no type field should be logged and ignored."""
+        """A request with no type field should be logged and ignored."""
         from pynchy.host.container_manager.ipc import dispatch
 
         # Should not raise
         await dispatch({"no_type_field": True}, "admin-1", True, deps)
 
     async def test_none_type_field_is_ignored(self, deps):
-        """A task file with type=None should be handled gracefully."""
+        """A request with type=None should be handled gracefully."""
         from pynchy.host.container_manager.ipc import dispatch
 
         await dispatch({"type": None}, "admin-1", True, deps)
@@ -318,7 +318,7 @@ class TestSyncWorktreeIpc:
             await dispatch(
                 {
                     "type": "sync_worktree_to_main",
-                    "requestId": "req-123",
+                    "request_id": "req-123",
                 },
                 "other-group",
                 False,
@@ -359,7 +359,7 @@ class TestSyncWorktreeIpc:
             await dispatch(
                 {
                     "type": "sync_worktree_to_main",
-                    "requestId": "req-456",
+                    "request_id": "req-456",
                 },
                 "other-group",
                 False,
@@ -391,7 +391,7 @@ class TestSyncWorktreeIpc:
             await dispatch(
                 {
                     "type": "sync_worktree_to_main",
-                    "requestId": "req-789",
+                    "request_id": "req-789",
                 },
                 "other-group",
                 False,

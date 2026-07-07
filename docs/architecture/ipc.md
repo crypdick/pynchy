@@ -13,7 +13,7 @@ Each group gets its own IPC directory, mounted into the container at `/workspace
 ```
 data/ipc/{group}/
 ├── messages/          # Container → host: outbound chat messages
-├── tasks/             # Container → host: task/group management + service requests
+├── requests/          # Container → host: request envelopes
 ├── responses/         # Host → container: service request responses
 ├── input/             # Host → container: follow-up user messages
 ├── merge_results/     # Host → container: git sync responses
@@ -84,11 +84,31 @@ Outbound chat messages. The agent sends messages mid-run without ending its turn
 
 `sender` — optional, used for multi-bot display in Telegram.
 
-#### Tasks (`tasks/`)
+#### Requests (`requests/`)
 
-All other operations — scheduling, group management, deployment, git sync — go through the tasks directory. The `type` field determines the operation:
+All other operations — scheduling, group management, deployment, git sync — go through the requests directory. Every request file uses the same versioned envelope; the `kind` field determines the operation and `payload` carries handler-owned data:
 
-| Type | Purpose | God only? |
+```json
+{
+  "schema_version": 1,
+  "kind": "schedule_task",
+  "request_id": "uuid-...",
+  "source_group": "my-group",
+  "created_at": "2026-07-07T12:00:00+00:00",
+  "reply_to": null,
+  "deadline": null,
+  "payload": {
+    "prompt": "Send a daily briefing",
+    "schedule_type": "cron",
+    "schedule_value": "0 9 * * *",
+    "targetGroup": "my-group"
+  }
+}
+```
+
+Host-mutating request kinds are claimed in `request_ledger/{request_id}.json` before execution so a replayed file cannot perform the mutation twice.
+
+| Kind | Purpose | God only? |
 |------|---------|-----------|
 | `schedule_task` | Create a recurring/one-time task | No (own group) |
 | `schedule_host_job` | Schedule a shell command on the host | Yes |
@@ -108,7 +128,7 @@ The host enforces permissions based on the source group's identity. See [Securit
 
 ## Service Requests
 
-Service requests use the `service:<tool_name>` type prefix for request-response IPC. The container writes a request with a unique `request_id` to `tasks/`, and the host writes the response to `responses/{request_id}.json`. The container polls for the response file.
+Service requests use the `service:<tool_name>` kind prefix for request-response IPC. The container writes a request with a unique `request_id` to `requests/`, and the host writes the response to `responses/{request_id}.json`. The container watches for the response file.
 
 Service requests pass through the [security policy middleware](security.md) before dispatch. Plugin-provided handlers process the request and return a result or error.
 
@@ -125,13 +145,19 @@ Security requests use the `security:` type prefix. Unlike service requests (init
 
 The container's bash security hook sends this request when a command is not on the local whitelist (i.e., it is network-capable or unknown). The host evaluates the command against the session's taint state and returns a decision.
 
-**Request** (container writes to `tasks/`):
+**Request** (container writes to `requests/`):
 ```json
 {
-  "type": "security:bash_check",
+  "schema_version": 1,
+  "kind": "security:bash_check",
   "request_id": "uuid-...",
-  "command": "curl https://example.com/api",
-  "groupFolder": "my-group"
+  "source_group": "my-group",
+  "created_at": "2026-07-07T12:00:00+00:00",
+  "reply_to": "responses",
+  "deadline": null,
+  "payload": {
+    "command": "curl https://example.com/api"
+  }
 }
 ```
 

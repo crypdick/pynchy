@@ -108,7 +108,7 @@ Foreground message handling stays fast:
 6. The reviewer model receives only the bounded packet and the mounted vault path.
 7. Accepted outputs write immediately to the selected vault memory folder or the resolved profile's learned-skill namespace.
 
-The queue uses file-based IPC semantics because Pynchy already depends on atomic filesystem handoff between containers and the host. Durable work units live outside the existing synchronous `tasks/` request-response directory:
+The queue uses file-based IPC semantics because Pynchy already depends on atomic filesystem handoff between containers and the host. Durable work units live outside the existing synchronous `requests/` request-response directory:
 
 ```text
 data/ipc/learning/

@@ -144,7 +144,7 @@ class TestSyncWorktreeCopGate:
             ),
         ):
             await dispatch(
-                {"type": "sync_worktree_to_main", "requestId": "req-1"},
+                {"type": "sync_worktree_to_main", "request_id": "req-1"},
                 "admin-1",
                 True,
                 deps,
@@ -171,7 +171,7 @@ class TestSyncWorktreeCopGate:
             ),
         ):
             await dispatch(
-                {"type": "sync_worktree_to_main", "requestId": "req-42"},
+                {"type": "sync_worktree_to_main", "request_id": "req-42"},
                 "admin-1",
                 True,
                 deps,
@@ -199,7 +199,7 @@ class TestSyncWorktreeCopGate:
             await dispatch(
                 {
                     "type": "sync_worktree_to_main",
-                    "requestId": "req-ok",
+                    "request_id": "req-ok",
                     "_cop_approved": True,
                 },
                 "admin-1",

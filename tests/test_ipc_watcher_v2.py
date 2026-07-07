@@ -16,6 +16,7 @@ import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
 
 from pynchy.host.container_manager.ipc import watcher
+from pynchy.host.container_manager.ipc.protocol import make_ipc_request
 from pynchy.types import WorkspaceProfile
 
 ADMIN_GROUP = WorkspaceProfile(
@@ -144,20 +145,25 @@ class TestStartupSweep:
         assert len(deps.broadcast_messages) == 1
         assert "hello from sweep" in deps.broadcast_messages[0][1]
 
-    async def test_sweep_processes_task_files(self, deps, tmp_path: Path):
-        """Startup sweep should process leftover task files."""
+    async def test_sweep_processes_request_files(self, deps, tmp_path: Path):
+        """Startup sweep should process leftover request files."""
         ipc_dir = tmp_path / "ipc"
         _write_ipc_file(
             ipc_dir,
             "admin-1",
-            "tasks",
-            {
-                "type": "register_group",
-                "jid": "new@g.us",
-                "name": "New",
-                "folder": "new",
-                "trigger": "@pynchy",
-            },
+            "requests",
+            make_ipc_request(
+                kind="register_group",
+                request_id="req-new",
+                source_group="admin-1",
+                created_at="2026-07-07T12:00:00+00:00",
+                payload={
+                    "jid": "new@g.us",
+                    "name": "New",
+                    "folder": "new",
+                    "trigger": "@pynchy",
+                },
+            ),
         )
 
         with patch(
@@ -169,14 +175,20 @@ class TestStartupSweep:
         assert processed == 1
         assert "new@g.us" in deps.workspaces()
 
-    async def test_sweep_handles_signal_files(self, deps, tmp_path: Path):
-        """Startup sweep should process signal-format files."""
+    async def test_sweep_handles_signal_requests(self, deps, tmp_path: Path):
+        """Startup sweep should process signal requests through the envelope."""
         ipc_dir = tmp_path / "ipc"
         _write_ipc_file(
             ipc_dir,
             "admin-1",
-            "tasks",
-            {"signal": "refresh_groups"},
+            "requests",
+            make_ipc_request(
+                kind="refresh_groups",
+                request_id="req-refresh",
+                source_group="admin-1",
+                created_at="2026-07-07T12:00:00+00:00",
+                payload={},
+            ),
         )
 
         with patch(
@@ -362,17 +374,28 @@ class TestSignalHandling:
 
 
 # ---------------------------------------------------------------------------
-# Task file processing — signal vs legacy dispatch
+# Request file processing — signal vs dispatch
 # ---------------------------------------------------------------------------
 
 
-class TestTaskFileProcessing:
-    """Tests for _process_task_file distinguishing signals from legacy tasks."""
+class TestRequestSignalProcessing:
+    """Tests for _process_request_file distinguishing signals from requests."""
 
     async def test_signal_file_is_handled_as_signal(self, deps, tmp_path: Path):
-        """A file with signal format should be routed through _handle_signal."""
+        """A refresh_groups request should be routed through _handle_signal."""
         ipc_dir = tmp_path / "ipc"
-        file_path = _write_ipc_file(ipc_dir, "admin-1", "tasks", {"signal": "refresh_groups"})
+        file_path = _write_ipc_file(
+            ipc_dir,
+            "admin-1",
+            "requests",
+            make_ipc_request(
+                kind="refresh_groups",
+                request_id="req-refresh",
+                source_group="admin-1",
+                created_at="2026-07-07T12:00:00+00:00",
+                payload={},
+            ),
+        )
 
         deps.sync_group_metadata = AsyncMock()
         deps.get_available_groups = AsyncMock(return_value=[])
@@ -381,47 +404,186 @@ class TestTaskFileProcessing:
             "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            await watcher._process_task_file(file_path, "admin-1", True, ipc_dir, deps)
+            await watcher._process_request_file(file_path, "admin-1", True, ipc_dir, deps)
 
         deps.sync_group_metadata.assert_called_once()
         assert not file_path.exists()  # File should be cleaned up
 
-    async def test_legacy_task_file_uses_dispatch(self, deps, tmp_path: Path):
-        """A file with legacy format should be routed through dispatch."""
-        ipc_dir = tmp_path / "ipc"
-        file_path = _write_ipc_file(
-            ipc_dir,
-            "admin-1",
-            "tasks",
-            {
-                "type": "register_group",
-                "jid": "test@g.us",
-                "name": "Test",
-                "folder": "test",
-                "trigger": "@p",
-            },
-        )
-
-        await watcher._process_task_file(file_path, "admin-1", True, ipc_dir, deps)
-
-        assert "test@g.us" in deps.workspaces()
-        assert not file_path.exists()
-
     async def test_malformed_signal_goes_to_errors(self, deps, tmp_path: Path):
-        """A file claiming to be a signal but with extra payload should error."""
+        """A malformed request envelope should move to errors."""
         ipc_dir = tmp_path / "ipc"
         file_path = _write_ipc_file(
             ipc_dir,
             "admin-1",
-            "tasks",
+            "requests",
             {"signal": "refresh_groups", "extra_payload": "bad"},
         )
 
-        await watcher._process_task_file(file_path, "admin-1", True, ipc_dir, deps)
+        await watcher._process_request_file(file_path, "admin-1", True, ipc_dir, deps)
 
         # Should have been moved to errors
         assert not file_path.exists()
         assert (ipc_dir / "errors" / "admin-1-test.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# Request file processing — canonical envelope
+# ---------------------------------------------------------------------------
+
+
+class TestRequestFileProcessing:
+    """Tests for the requests/ queue and canonical request envelope."""
+
+    async def test_request_file_uses_envelope_and_requests_directory(self, deps, tmp_path: Path):
+        """A requests/ file should parse as an envelope and dispatch its kind."""
+        ipc_dir = tmp_path / "ipc"
+        file_path = _write_ipc_file(
+            ipc_dir,
+            "admin-1",
+            "requests",
+            make_ipc_request(
+                kind="register_group",
+                request_id="req-register",
+                source_group="admin-1",
+                created_at="2026-07-07T12:00:00+00:00",
+                payload={
+                    "jid": "test@g.us",
+                    "name": "Test",
+                    "folder": "test",
+                    "trigger": "@p",
+                },
+            ),
+        )
+
+        await watcher._process_request_file(file_path, "admin-1", True, ipc_dir, deps)
+
+        assert "test@g.us" in deps.workspaces()
+        assert not file_path.exists()
+
+    async def test_request_source_group_must_match_directory(self, deps, tmp_path: Path):
+        """The path-derived group owns the request; spoofed envelopes are rejected."""
+        ipc_dir = tmp_path / "ipc"
+        file_path = _write_ipc_file(
+            ipc_dir,
+            "other-group",
+            "requests",
+            make_ipc_request(
+                kind="register_group",
+                request_id="req-spoof",
+                source_group="admin-1",
+                created_at="2026-07-07T12:00:00+00:00",
+                payload={
+                    "jid": "test@g.us",
+                    "name": "Test",
+                    "folder": "test",
+                    "trigger": "@p",
+                },
+            ),
+        )
+
+        await watcher._process_request_file(file_path, "other-group", False, ipc_dir, deps)
+
+        assert "test@g.us" not in deps.workspaces()
+        assert not file_path.exists()
+        assert (ipc_dir / "errors" / "other-group-test.json").exists()
+
+    async def test_host_mutating_request_is_ledgered_before_dispatch(self, deps, tmp_path: Path):
+        """Duplicate host-mutating request IDs should not execute twice."""
+        ipc_dir = tmp_path / "ipc"
+        request = make_ipc_request(
+            kind="schedule_task",
+            request_id="req-mutate",
+            source_group="admin-1",
+            created_at="2026-07-07T12:00:00+00:00",
+            payload={
+                "prompt": "hello",
+                "schedule_type": "once",
+                "schedule_value": "2026-07-07T12:30:00",
+                "targetGroup": "admin-1",
+            },
+        )
+        requests_dir = ipc_dir / "admin-1" / "requests"
+        requests_dir.mkdir(parents=True, exist_ok=True)
+        first = requests_dir / "first.json"
+        second = requests_dir / "second.json"
+        first.write_text(json.dumps(request))
+        second.write_text(json.dumps(request))
+        ledger_file = ipc_dir / "admin-1" / "request_ledger" / "req-mutate.json"
+        dispatch_calls: list[str] = []
+
+        async def fake_dispatch(envelope, source_group, is_admin, deps):
+            assert ledger_file.exists()
+            dispatch_calls.append(envelope.request_id)
+
+        with patch("pynchy.host.container_manager.ipc.watcher.dispatch", fake_dispatch):
+            await watcher._process_request_file(first, "admin-1", True, ipc_dir, deps)
+            await watcher._process_request_file(second, "admin-1", True, ipc_dir, deps)
+
+        assert dispatch_calls == ["req-mutate"]
+        assert not first.exists()
+        assert not second.exists()
+        assert ledger_file.exists()
+
+    async def test_runtime_sweep_processes_requests_without_startup_cleanup(
+        self, deps, tmp_path: Path
+    ):
+        """Periodic runtime sweeps should recover missed requests/ events."""
+        ipc_dir = tmp_path / "ipc"
+        _write_ipc_file(
+            ipc_dir,
+            "admin-1",
+            "requests",
+            make_ipc_request(
+                kind="register_group",
+                request_id="req-sweep",
+                source_group="admin-1",
+                created_at="2026-07-07T12:00:00+00:00",
+                payload={
+                    "jid": "sweep@g.us",
+                    "name": "Sweep",
+                    "folder": "sweep",
+                    "trigger": "@p",
+                },
+            ),
+        )
+
+        with patch(
+            "pynchy.host.container_manager.ipc.watcher.get_settings",
+            return_value=_test_settings(data_dir=tmp_path),
+        ):
+            processed = await watcher._sweep_runtime_directory(ipc_dir, deps)
+
+        assert processed == 1
+        assert "sweep@g.us" in deps.workspaces()
+
+    async def test_runtime_sweep_processes_output_files(self, deps, tmp_path: Path):
+        """A missed output event should not wedge a live session."""
+        ipc_dir = tmp_path / "ipc"
+        output_file = _write_ipc_file(
+            ipc_dir,
+            "admin-1",
+            "output",
+            {
+                "status": "success",
+                "type": "text",
+                "text": "missed watchdog event",
+            },
+        )
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.watcher.get_settings",
+                return_value=_test_settings(data_dir=tmp_path),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.watcher._process_output_file",
+                new_callable=AsyncMock,
+            ) as mock_process,
+        ):
+            processed = await watcher._sweep_runtime_directory(ipc_dir, deps)
+
+        assert processed == 1
+        mock_process.assert_awaited_once_with(output_file, "admin-1", ipc_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -553,7 +715,7 @@ class TestIpcEventHandler:
         loop.close()
 
     def test_files_outside_group_subdirs_are_ignored(self):
-        """Files not in a group's messages/ or tasks/ dir should be ignored."""
+        """Files not in a group's watched IPC subdirs should be ignored."""
         loop = asyncio.new_event_loop()
         queue: asyncio.Queue[Path] = asyncio.Queue()
         ipc_dir = Path("/tmp/test-ipc")
@@ -562,7 +724,7 @@ class TestIpcEventHandler:
 
         from watchdog.events import FileCreatedEvent
 
-        # File directly in group dir (not messages/ or tasks/) — ignored
+        # File directly in group dir (not a watched IPC subdir) — ignored
         handler.on_created(FileCreatedEvent(str(ipc_dir / "admin-1" / "random.json")))
         self._drain(loop)
         assert queue.qsize() == 0
@@ -572,8 +734,8 @@ class TestIpcEventHandler:
         self._drain(loop)
         assert queue.qsize() == 0
 
-        # File in tasks/ — should be queued
-        handler.on_created(FileCreatedEvent(str(ipc_dir / "admin-1" / "tasks" / "task.json")))
+        # File in requests/ — should be queued
+        handler.on_created(FileCreatedEvent(str(ipc_dir / "admin-1" / "requests" / "request.json")))
         self._drain(loop)
         assert queue.qsize() == 1
 
