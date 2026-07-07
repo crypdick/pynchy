@@ -17,11 +17,15 @@ from pynchy.host.learning.queue_models import (
 
 ERROR_DETAILS_MAX_CHARS = 200
 CLAIMING_PREVIOUS_ATTEMPTS_KEY = "_claiming_previous_attempts"
+CLAIMING_TRANSITION_KEY = "_claiming_transition"
+CLAIMING_TRANSITION_FRESH_CLAIM = "fresh_claim"
+CLAIMING_TRANSITION_RETURN_TO_PENDING = "return_to_pending"
 CLAIM_METADATA_KEYS = (
     "claim_id",
     "claimed_at",
     "lease_until",
     CLAIMING_PREVIOUS_ATTEMPTS_KEY,
+    CLAIMING_TRANSITION_KEY,
 )
 
 

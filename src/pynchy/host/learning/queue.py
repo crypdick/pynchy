@@ -108,11 +108,17 @@ class LearningQueue:
                     claim_time + timedelta(seconds=self._lease_seconds)
                 ).isoformat()
                 claimed_payload[codec.CLAIMING_PREVIOUS_ATTEMPTS_KEY] = packet.attempts
+                claimed_payload[codec.CLAIMING_TRANSITION_KEY] = (
+                    codec.CLAIMING_TRANSITION_FRESH_CLAIM
+                )
                 write_json_atomic(claiming_path, claimed_payload, indent=2)
                 claimed_path = self._claimed_dir / pending_path.name
                 try:
                     _rename_no_clobber(claiming_path, claimed_path)
                 except LearningQueueError as exc:
+                    if claimed_path.exists():
+                        claiming_path.unlink(missing_ok=True)
+                        continue
                     self._move_bad_payload(
                         claiming_path,
                         error="claim_collision",
@@ -120,6 +126,7 @@ class LearningQueue:
                     )
                     continue
                 claimed_payload.pop(codec.CLAIMING_PREVIOUS_ATTEMPTS_KEY, None)
+                claimed_payload.pop(codec.CLAIMING_TRANSITION_KEY, None)
                 write_json_atomic(claimed_path, claimed_payload, indent=2)
                 return ClaimedLearningPacket(
                     packet=claimed_packet,
@@ -151,13 +158,11 @@ class LearningQueue:
             if claimed.packet.attempts >= self._max_attempts:
                 codec.copy_claim_metadata(current_payload, payload)
                 write_json_atomic(claimed.path, payload, indent=2)
-                destination = self._errors_dir / claimed.path.name
                 try:
-                    _rename_no_clobber(claimed.path, destination)
+                    return self._move_claimed_to_errors(claimed.path)
                 except LearningQueueError:
                     self._raise_if_terminal_duplicate_exists(claimed.path.name)
                     raise
-                return destination
 
             return self._return_claimed_to_pending(claimed.path, payload)
 
@@ -196,7 +201,7 @@ class LearningQueue:
                         f"({packet.attempts}/{self._max_attempts})"
                     )
                     write_json_atomic(claimed_path, payload, indent=2)
-                    self._move_expired_exhausted_claim_to_errors(claimed_path)
+                    self._move_claimed_to_errors(claimed_path)
                     continue
 
                 self._return_claimed_to_pending(claimed_path, payload)
@@ -250,11 +255,21 @@ class LearningQueue:
         claimed_path: Path,
         payload: dict[str, Any],
     ) -> Path:
+        staged_payload = codec.clear_claim_metadata(payload)
+        staged_payload[codec.CLAIMING_TRANSITION_KEY] = codec.CLAIMING_TRANSITION_RETURN_TO_PENDING
+        write_json_atomic(claimed_path, staged_payload, indent=2)
         claiming_path = self._claiming_dir / claimed_path.name
         _rename_no_clobber(claimed_path, claiming_path)
-        write_json_atomic(claiming_path, codec.clear_claim_metadata(payload), indent=2)
+        pending_payload = codec.clear_claim_metadata(staged_payload)
+        write_json_atomic(claiming_path, pending_payload, indent=2)
         pending_path = self._pending_dir / claimed_path.name
-        _rename_no_clobber(claiming_path, pending_path)
+        try:
+            _rename_no_clobber(claiming_path, pending_path)
+        except LearningQueueError:
+            if pending_path.exists():
+                claiming_path.unlink(missing_ok=True)
+                return pending_path
+            raise
         return pending_path
 
     def _recover_interrupted_claims(self) -> int:
@@ -313,6 +328,10 @@ class LearningQueue:
         payload: dict[str, Any],
         attempts: int,
     ) -> int:
+        transition = codec.string_metadata(payload, codec.CLAIMING_TRANSITION_KEY)
+        if transition == codec.CLAIMING_TRANSITION_RETURN_TO_PENDING:
+            return attempts
+
         previous_attempts = payload.get(codec.CLAIMING_PREVIOUS_ATTEMPTS_KEY)
         if (
             isinstance(previous_attempts, int)
@@ -320,6 +339,8 @@ class LearningQueue:
             and 0 <= previous_attempts <= attempts
         ):
             return previous_attempts
+        if transition == codec.CLAIMING_TRANSITION_FRESH_CLAIM:
+            return max(attempts - 1, 0)
         if self._has_claim_metadata(payload):
             return max(attempts - 1, 0)
         return attempts
@@ -331,15 +352,17 @@ class LearningQueue:
             for key in ("claim_id", "claimed_at", "lease_until")
         )
 
-    def _move_expired_exhausted_claim_to_errors(self, claimed_path: Path) -> None:
+    def _move_claimed_to_errors(self, claimed_path: Path) -> Path:
+        destination = self._errors_dir / claimed_path.name
         try:
-            _rename_no_clobber(claimed_path, self._errors_dir / claimed_path.name)
+            _rename_no_clobber(claimed_path, destination)
         except LearningQueueError:
             if self._terminal_duplicate_path(claimed_path.name) is None:
                 raise
             self._recover_terminal_duplicates()
-            return
+            return destination
         self._recover_terminal_duplicates()
+        return destination
 
     def _recover_terminal_duplicates(self) -> int:
         return discard_duplicates_with_terminal_winner(self._layout)

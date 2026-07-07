@@ -438,6 +438,46 @@ def test_requeue_expired_recovers_job_stranded_in_claiming_after_failed_claim(
     assert not claiming_path.exists()
 
 
+def test_requeue_expired_rolls_back_fresh_claim_interrupted_after_metadata_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=30, max_attempts=5)
+    packet = replace(_packet(), attempts=2)
+    queue.enqueue(packet)
+    original_rename_no_clobber = learning_queue._rename_no_clobber
+
+    def crash_after_fresh_claim_metadata(source: Path, destination: Path) -> None:
+        if source.parent.name == "claiming" and destination.parent.name == "claimed":
+            raise OSError("simulated crash before claim finalization")
+        original_rename_no_clobber(source, destination)
+
+    monkeypatch.setattr(
+        learning_queue,
+        "_rename_no_clobber",
+        crash_after_fresh_claim_metadata,
+    )
+
+    with pytest.raises(OSError, match="simulated crash"):
+        queue.claim_next(now=datetime(2026, 7, 7, 12, 0, tzinfo=UTC))
+
+    monkeypatch.setattr(learning_queue, "_rename_no_clobber", original_rename_no_clobber)
+    claiming_path = _base_dir(tmp_path) / "claiming" / "job-1.json"
+    assert _read_json(claiming_path)["attempts"] == 3
+
+    requeued = queue.requeue_expired(now=datetime(2026, 7, 7, 12, 1, tzinfo=UTC))
+
+    pending_path = _base_dir(tmp_path) / "pending" / "job-1.json"
+    assert requeued == 1
+    assert pending_path.exists()
+    assert not claiming_path.exists()
+    pending_payload = _read_json(pending_path)
+    assert pending_payload["attempts"] == 2
+    assert "claim_id" not in pending_payload
+    assert "claimed_at" not in pending_payload
+    assert "lease_until" not in pending_payload
+
+
 def test_requeue_expired_rewinds_attempt_from_interrupted_claim_with_metadata(
     tmp_path: Path,
 ):
@@ -457,6 +497,89 @@ def test_requeue_expired_rewinds_attempt_from_interrupted_claim_with_metadata(
     assert not claiming_path.exists()
     pending_payload = _read_json(pending_path)
     assert pending_payload["attempts"] == 0
+    assert "claim_id" not in pending_payload
+    assert "claimed_at" not in pending_payload
+    assert "lease_until" not in pending_payload
+
+
+def test_fail_recovery_preserves_attempt_from_interrupted_return_to_pending(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=30, max_attempts=3)
+    queue.enqueue(_packet())
+    claimed = queue.claim_next(now=datetime(2026, 7, 7, 12, 0, tzinfo=UTC))
+    assert claimed is not None
+    original_rename_no_clobber = learning_queue._rename_no_clobber
+
+    def crash_after_claimed_moves_to_staging(source: Path, destination: Path) -> None:
+        original_rename_no_clobber(source, destination)
+        if source.parent.name == "claimed" and destination.parent.name == "claiming":
+            raise OSError("simulated crash before pending rewrite")
+
+    monkeypatch.setattr(
+        learning_queue,
+        "_rename_no_clobber",
+        crash_after_claimed_moves_to_staging,
+    )
+
+    with pytest.raises(OSError, match="simulated crash"):
+        queue.fail(claimed, "first failure")
+
+    monkeypatch.setattr(learning_queue, "_rename_no_clobber", original_rename_no_clobber)
+    claiming_path = _base_dir(tmp_path) / "claiming" / "job-1.json"
+    assert claiming_path.exists()
+
+    recovered = queue.requeue_expired(now=datetime(2026, 7, 7, 12, 1, tzinfo=UTC))
+
+    pending_path = _base_dir(tmp_path) / "pending" / "job-1.json"
+    assert recovered == 1
+    assert pending_path.exists()
+    assert not claiming_path.exists()
+    pending_payload = _read_json(pending_path)
+    assert pending_payload["attempts"] == 1
+    assert pending_payload["last_error"] == "first failure"
+    assert "claim_id" not in pending_payload
+    assert "claimed_at" not in pending_payload
+    assert "lease_until" not in pending_payload
+
+
+def test_requeue_recovery_preserves_attempt_from_interrupted_expired_return(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=30, max_attempts=3)
+    queue.enqueue(_packet())
+    claimed = queue.claim_next(now=datetime(2026, 7, 7, 12, 0, tzinfo=UTC))
+    assert claimed is not None
+    original_rename_no_clobber = learning_queue._rename_no_clobber
+
+    def crash_after_claimed_moves_to_staging(source: Path, destination: Path) -> None:
+        original_rename_no_clobber(source, destination)
+        if source.parent.name == "claimed" and destination.parent.name == "claiming":
+            raise OSError("simulated crash before pending rewrite")
+
+    monkeypatch.setattr(
+        learning_queue,
+        "_rename_no_clobber",
+        crash_after_claimed_moves_to_staging,
+    )
+
+    with pytest.raises(OSError, match="simulated crash"):
+        queue.requeue_expired(now=datetime(2026, 7, 7, 12, 0, 31, tzinfo=UTC))
+
+    monkeypatch.setattr(learning_queue, "_rename_no_clobber", original_rename_no_clobber)
+    claiming_path = _base_dir(tmp_path) / "claiming" / "job-1.json"
+    assert claiming_path.exists()
+
+    recovered = queue.requeue_expired(now=datetime(2026, 7, 7, 12, 1, tzinfo=UTC))
+
+    pending_path = _base_dir(tmp_path) / "pending" / "job-1.json"
+    assert recovered == 1
+    assert pending_path.exists()
+    assert not claiming_path.exists()
+    pending_payload = _read_json(pending_path)
+    assert pending_payload["attempts"] == 1
     assert "claim_id" not in pending_payload
     assert "claimed_at" not in pending_payload
     assert "lease_until" not in pending_payload
@@ -548,6 +671,38 @@ def test_claim_next_treats_claiming_transition_collision_as_lost_race(
     assert claimed is not None
     assert claimed.packet.job_id == "job-2"
     assert (_base_dir(tmp_path) / "pending" / "job-1.json").exists()
+
+
+def test_claim_finalization_collision_keeps_active_claimed_without_errors(
+    tmp_path: Path,
+):
+    queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=30)
+    pending_path = queue.enqueue(_packet())
+    claimed_path = _base_dir(tmp_path) / "claimed" / "job-1.json"
+    claimed_payload = asdict(replace(_packet(), attempts=1))
+    claimed_payload["last_error"] = None
+    claimed_payload["claim_id"] = "existing-claim"
+    claimed_payload["claimed_at"] = datetime(2026, 7, 7, 12, 0, tzinfo=UTC).isoformat()
+    claimed_payload["lease_until"] = datetime(2026, 7, 7, 12, 5, tzinfo=UTC).isoformat()
+    claimed_path.write_text(json.dumps(claimed_payload))
+
+    assert pending_path.exists()
+    assert queue.claim_next(now=datetime(2026, 7, 7, 12, 1, tzinfo=UTC)) is None
+
+    claiming_path = _base_dir(tmp_path) / "claiming" / "job-1.json"
+    error_path = _base_dir(tmp_path) / "errors" / "job-1.json"
+    assert claimed_path.exists()
+    assert not pending_path.exists()
+    assert not claiming_path.exists()
+    assert not error_path.exists()
+
+    second_pass = queue.requeue_expired(now=datetime(2026, 7, 7, 12, 2, tzinfo=UTC))
+
+    assert second_pass == 0
+    assert _read_json(claimed_path)["claim_id"] == "existing-claim"
+    assert not pending_path.exists()
+    assert not claiming_path.exists()
+    assert not error_path.exists()
 
 
 def test_requeue_expired_moves_exhausted_claim_to_errors(tmp_path: Path):
