@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 from pynchy.config import get_settings
 from pynchy.host.orchestrator import startup_handler
+from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.messaging import router as output_handler
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
 from pynchy.logger import logger
@@ -32,7 +33,6 @@ from pynchy.types import OutboundEvent, OutboundEventType
 from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
-    from pynchy.host.orchestrator.app import PynchyApp
     from pynchy.types import NewMessage
 
 
