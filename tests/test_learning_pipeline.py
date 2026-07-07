@@ -1,0 +1,357 @@
+"""Tests for learning capture in the message-processing pipeline."""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from conftest import make_settings
+
+from pynchy.config.models import LearningConfig, ObsidianLearningConfig
+from pynchy.host.orchestrator.messaging.pipeline import MessageHandlerDeps, process_group_messages
+from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
+
+_P_SETTINGS = "pynchy.host.orchestrator.messaging.pipeline.get_settings"
+_P_MSGS_SINCE = "pynchy.host.orchestrator.messaging.pipeline.get_messages_since"
+_P_INTERCEPT = "pynchy.host.orchestrator.messaging.pipeline.intercept_special_command"
+_P_FMT_SDK = "pynchy.host.orchestrator.messaging.formatter.format_messages_for_sdk"
+_P_LEARNING_ENQUEUE = (
+    "pynchy.host.orchestrator.messaging.pipeline.learning_packets.enqueue_learning_packet"
+)
+_P_LEARNING_QUEUE = "pynchy.host.learning.packets.LearningQueue"
+_P_LEARNING_SETTINGS = "pynchy.host.learning.packets.get_settings"
+_P_LEARNING_PATH_SETTINGS = "pynchy.host.learning.paths.get_settings"
+_P_BG_MERGE = "pynchy.host.git_ops._worktree_merge.background_merge_worktree"
+
+
+def _make_deps(
+    *,
+    groups: dict[str, WorkspaceProfile] | None = None,
+    last_agent_ts: dict[str, str] | None = None,
+) -> MagicMock:
+    deps = MagicMock(spec=MessageHandlerDeps)
+    deps.workspaces = groups or {}
+    deps.last_agent_timestamp = last_agent_ts if last_agent_ts is not None else {}
+    deps._dispatched_through = {}
+    deps.channels = []
+    deps.last_timestamp = ""
+
+    deps.save_state = AsyncMock()
+    deps.handle_context_reset = AsyncMock()
+    deps.handle_end_session = AsyncMock()
+    deps.trigger_manual_redeploy = AsyncMock()
+    deps.broadcast_to_channels = AsyncMock()
+    deps.broadcast_host_message = AsyncMock()
+    deps.send_reaction_to_channels = AsyncMock()
+    deps.send_reaction_to_outbound = AsyncMock()
+    deps.set_typing_on_channels = AsyncMock()
+    deps.catch_up_channels = AsyncMock()
+    deps.emit = MagicMock()
+    deps.run_agent = AsyncMock(return_value="success")
+    deps.handle_streamed_output = AsyncMock(return_value=False)
+
+    deps.queue = MagicMock()
+    deps.queue.is_active_task = MagicMock(return_value=False)
+    deps.queue.send_message = MagicMock(return_value=False)
+    deps.queue.enqueue_message_check = MagicMock()
+    deps.queue.clear_pending_tasks = MagicMock()
+    deps.queue.stop_active_process = AsyncMock()
+    deps.queue.close_stdin = MagicMock()
+    return deps
+
+
+def _make_group(
+    *,
+    name: str = "test-group",
+    folder: str = "test-group",
+    is_admin: bool = True,
+) -> WorkspaceProfile:
+    return WorkspaceProfile(
+        jid="g@g.us",
+        name=name,
+        folder=folder,
+        trigger="@pynchy",
+        is_admin=is_admin,
+    )
+
+
+def _make_message(
+    content: str = "hello",
+    *,
+    id: str = "msg-1",
+    timestamp: str = "2024-01-01T00:00:01.000Z",
+) -> NewMessage:
+    return NewMessage(
+        id=id,
+        chat_jid="g@g.us",
+        sender="user@s.whatsapp.net",
+        sender_name="Alice",
+        content=content,
+        timestamp=timestamp,
+    )
+
+
+def _settings_mock(tmp_path: Path, **overrides):
+    defaults = {
+        "data_dir": tmp_path,
+        "learning": LearningConfig(enabled=False),
+        "trigger_pattern": re.compile(".*"),
+        "idle_timeout": 300,
+    }
+    defaults.update(overrides)
+    return make_settings(**defaults)
+
+
+def _patch_intercept(*, return_value: bool = False):
+    return patch(_P_INTERCEPT, new_callable=AsyncMock, return_value=return_value)
+
+
+def _patch_fmt_sdk():
+    return patch(_P_FMT_SDK, return_value=[{"content": "hello"}])
+
+
+@pytest.mark.asyncio
+async def test_clean_successful_turn_enqueues_learning_packet_after_cursor(
+    tmp_path: Path,
+) -> None:
+    group = _make_group()
+    deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
+    msg = _make_message("what should we remember?", id="msg-42", timestamp="new-ts")
+
+    async def _run_agent(_group, _jid, _msgs, on_output=None, *_args, **_kwargs):
+        if on_output:
+            await on_output(ContainerOutput(status="success", type="tool_use", tool_name="Bash"))
+            await on_output(ContainerOutput(status="success", type="result", result="Remembered."))
+        return "success"
+
+    observed: dict[str, object] = {}
+
+    def _enqueue_learning_packet(**kwargs):
+        observed["cursor_at_enqueue"] = deps.last_agent_timestamp.get("g@g.us")
+        observed["summary"] = kwargs["summary"]
+        return tmp_path / "packet.json"
+
+    deps.run_agent = AsyncMock(side_effect=_run_agent)
+
+    with (
+        patch(_P_SETTINGS) as settings,
+        patch(_P_MSGS_SINCE, new_callable=AsyncMock, return_value=[msg]),
+        _patch_intercept(),
+        _patch_fmt_sdk(),
+        patch(_P_LEARNING_ENQUEUE, side_effect=_enqueue_learning_packet) as mock_enqueue,
+        patch(_P_BG_MERGE),
+    ):
+        settings.return_value = _settings_mock(tmp_path, learning=LearningConfig(enabled=True))
+        result = await process_group_messages(deps, "g@g.us")
+
+    assert result is True
+    mock_enqueue.assert_called_once()
+    kwargs = mock_enqueue.call_args.kwargs
+    assert kwargs["chat_jid"] == "g@g.us"
+    assert kwargs["group"] is group
+    assert kwargs["missed_messages"] == [msg]
+    assert kwargs["final_cursor"] == "new-ts"
+    assert observed["cursor_at_enqueue"] == "new-ts"
+    summary = observed["summary"]
+    assert summary.final_answer == "Remembered."
+    assert summary.tool_counts == {"Bash": 1}
+
+
+@pytest.mark.asyncio
+async def test_learning_packet_includes_follow_up_dispatched_during_active_run(
+    tmp_path: Path,
+) -> None:
+    group = _make_group()
+    deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
+    initial = _make_message(
+        "first question",
+        id="msg-initial",
+        timestamp="2026-07-07T10:00:01Z",
+    )
+    follow_up = _make_message(
+        "more context",
+        id="msg-follow-up",
+        timestamp="2026-07-07T10:00:02Z",
+    )
+    settings = _settings_mock(
+        tmp_path,
+        learning=LearningConfig(
+            enabled=True,
+            obsidian=ObsidianLearningConfig(vault_root=str(tmp_path / "vault")),
+        ),
+    )
+
+    async def _run_agent(_group, _jid, _msgs, on_output=None, *_args, **_kwargs):
+        deps._dispatched_through["g@g.us"] = follow_up.timestamp
+        if on_output:
+            await on_output(ContainerOutput(status="success", type="result", result="Remembered."))
+        return "success"
+
+    deps.run_agent = AsyncMock(side_effect=_run_agent)
+
+    with (
+        patch(_P_SETTINGS, return_value=settings),
+        patch(_P_LEARNING_SETTINGS, return_value=settings),
+        patch(_P_LEARNING_PATH_SETTINGS, return_value=settings),
+        patch(_P_MSGS_SINCE, new_callable=AsyncMock) as mock_messages_since,
+        _patch_intercept(),
+        _patch_fmt_sdk(),
+        patch(_P_LEARNING_QUEUE) as queue_cls,
+        patch(_P_BG_MERGE),
+    ):
+        mock_messages_since.side_effect = [[initial], [initial, follow_up]]
+        queue_cls.return_value.enqueue.return_value = tmp_path / "packet.json"
+
+        result = await process_group_messages(deps, "g@g.us")
+
+    assert result is True
+    assert deps.last_agent_timestamp["g@g.us"] == follow_up.timestamp
+    packet = queue_cls.return_value.enqueue.call_args.args[0]
+    assert packet.provenance["final_cursor"] == follow_up.timestamp
+    assert json.loads(packet.provenance["source_message_ids"]) == [
+        "msg-initial",
+        "msg-follow-up",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_learning_packet_falls_back_when_expanded_fetch_fails(tmp_path: Path) -> None:
+    group = _make_group()
+    deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
+    initial = _make_message(
+        "first question",
+        id="msg-initial",
+        timestamp="2026-07-07T10:00:01Z",
+    )
+    follow_up_timestamp = "2026-07-07T10:00:02Z"
+    settings = _settings_mock(
+        tmp_path,
+        learning=LearningConfig(
+            enabled=True,
+            obsidian=ObsidianLearningConfig(vault_root=str(tmp_path / "vault")),
+        ),
+    )
+
+    async def _run_agent(_group, _jid, _msgs, on_output=None, *_args, **_kwargs):
+        deps._dispatched_through["g@g.us"] = follow_up_timestamp
+        if on_output:
+            await on_output(ContainerOutput(status="success", type="result", result="Remembered."))
+        return "success"
+
+    deps.run_agent = AsyncMock(side_effect=_run_agent)
+
+    with (
+        patch(_P_SETTINGS, return_value=settings),
+        patch(_P_LEARNING_SETTINGS, return_value=settings),
+        patch(_P_LEARNING_PATH_SETTINGS, return_value=settings),
+        patch(_P_MSGS_SINCE, new_callable=AsyncMock) as mock_messages_since,
+        _patch_intercept(),
+        _patch_fmt_sdk(),
+        patch(_P_LEARNING_QUEUE) as queue_cls,
+        patch(_P_BG_MERGE),
+    ):
+        mock_messages_since.side_effect = [[initial], RuntimeError("database unavailable")]
+        queue_cls.return_value.enqueue.return_value = tmp_path / "packet.json"
+
+        result = await process_group_messages(deps, "g@g.us")
+
+    assert result is True
+    assert deps.last_agent_timestamp["g@g.us"] == follow_up_timestamp
+    packet = queue_cls.return_value.enqueue.call_args.args[0]
+    assert packet.provenance["final_cursor"] == follow_up_timestamp
+    assert json.loads(packet.provenance["source_message_ids"]) == ["msg-initial"]
+
+
+@pytest.mark.asyncio
+async def test_retryable_failure_does_not_enqueue_learning_packet(tmp_path: Path) -> None:
+    group = _make_group()
+    deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
+    deps.run_agent = AsyncMock(return_value="error")
+    msg = _make_message("hello", timestamp="new-ts")
+
+    with (
+        patch(_P_SETTINGS) as settings,
+        patch(_P_MSGS_SINCE, new_callable=AsyncMock, return_value=[msg]),
+        _patch_intercept(),
+        _patch_fmt_sdk(),
+        patch(_P_LEARNING_ENQUEUE) as mock_enqueue,
+    ):
+        settings.return_value = _settings_mock(tmp_path)
+        result = await process_group_messages(deps, "g@g.us")
+
+    assert result is False
+    mock_enqueue.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_partial_output_failure_does_not_enqueue_learning_packet(tmp_path: Path) -> None:
+    group = _make_group()
+    deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
+    msg = _make_message("hello", timestamp="new-ts")
+
+    async def _run_agent(_group, _jid, _msgs, on_output=None, *_args, **_kwargs):
+        if on_output:
+            await on_output(ContainerOutput(status="error", type="result", result="partial error"))
+        return "error"
+
+    deps.run_agent = AsyncMock(side_effect=_run_agent)
+    deps.handle_streamed_output = AsyncMock(return_value=True)
+
+    with (
+        patch(_P_SETTINGS) as settings,
+        patch(_P_MSGS_SINCE, new_callable=AsyncMock, return_value=[msg]),
+        _patch_intercept(),
+        _patch_fmt_sdk(),
+        patch(_P_LEARNING_ENQUEUE) as mock_enqueue,
+    ):
+        settings.return_value = _settings_mock(tmp_path)
+        result = await process_group_messages(deps, "g@g.us")
+
+    assert result is True
+    assert deps.last_agent_timestamp["g@g.us"] == "new-ts"
+    mock_enqueue.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_learning_disabled_skips_follow_up_expansion_and_enqueue(
+    tmp_path: Path,
+) -> None:
+    group = _make_group()
+    deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
+    initial = _make_message(
+        "first question",
+        id="msg-initial",
+        timestamp="2026-07-07T10:00:01Z",
+    )
+    follow_up_timestamp = "2026-07-07T10:00:02Z"
+
+    async def _run_agent(_group, _jid, _msgs, on_output=None, *_args, **_kwargs):
+        deps._dispatched_through["g@g.us"] = follow_up_timestamp
+        if on_output:
+            await on_output(ContainerOutput(status="success", type="result", result="Ignored."))
+        return "success"
+
+    deps.run_agent = AsyncMock(side_effect=_run_agent)
+
+    with (
+        patch(
+            _P_SETTINGS,
+            return_value=_settings_mock(tmp_path, learning=LearningConfig(enabled=False)),
+        ),
+        patch(_P_MSGS_SINCE, new_callable=AsyncMock) as mock_messages_since,
+        _patch_intercept(),
+        _patch_fmt_sdk(),
+        patch(_P_LEARNING_ENQUEUE) as mock_enqueue,
+        patch(_P_BG_MERGE),
+    ):
+        mock_messages_since.side_effect = [[initial], RuntimeError("should not expand")]
+
+        result = await process_group_messages(deps, "g@g.us")
+
+    assert result is True
+    assert deps.last_agent_timestamp["g@g.us"] == follow_up_timestamp
+    assert mock_messages_since.await_count == 1
+    mock_enqueue.assert_not_called()

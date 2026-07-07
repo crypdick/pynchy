@@ -1,5 +1,7 @@
 """Message processing pipeline — intercepts commands and processes messages for agents.
 
+# allow: file-length - packet logic lives in host.learning.packets; pipeline split is separate work.
+
 Handles command interception (reset, end session, redeploy, !commands),
 reset handoffs, dirty repo checks, cursor management, and the core
 group message processing flow.
@@ -9,7 +11,6 @@ Message routing and the polling loop live in :mod:`_message_routing`.
 
 from __future__ import annotations
 
-# allow: file-length - packet logic lives in host.learning.packets; pipeline split is separate work.
 import json
 import time
 from datetime import UTC, datetime
@@ -531,6 +532,7 @@ async def _finalize_cursor_and_retry(
     had_error: bool,
     output_sent_to_user: bool,
     learning_summary: learning_packets.LearningRunSummary,
+    learning_enabled: bool,
 ) -> bool:
     """Advance the cursor (or signal retry) based on how the agent run went.
 
@@ -565,20 +567,21 @@ async def _finalize_cursor_and_retry(
         )
         return True
 
-    learning_messages = await _messages_for_learning_packet(
-        chat_jid=chat_jid,
-        group=group,
-        missed_messages=missed_messages,
-        previous_cursor=previous_cursor,
-        final_cursor=final_cursor,
-    )
-    learning_packets.enqueue_learning_packet(
-        chat_jid=chat_jid,
-        group=group,
-        missed_messages=learning_messages,
-        final_cursor=final_cursor,
-        summary=learning_summary,
-    )
+    if learning_enabled:
+        learning_messages = await _messages_for_learning_packet(
+            chat_jid=chat_jid,
+            group=group,
+            missed_messages=missed_messages,
+            previous_cursor=previous_cursor,
+            final_cursor=final_cursor,
+        )
+        learning_packets.enqueue_learning_packet(
+            chat_jid=chat_jid,
+            group=group,
+            missed_messages=learning_messages,
+            final_cursor=final_cursor,
+            summary=learning_summary,
+        )
 
     # Success: merge worktree commits into main and push for groups with repo_access
     from pynchy.host.git_ops._worktree_merge import background_merge_worktree
@@ -664,4 +667,5 @@ async def process_group_messages(
         had_error,
         output_sent_to_user,
         learning_summary,
+        s.learning.enabled,
     )
