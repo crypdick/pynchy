@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from conftest import make_settings
@@ -165,16 +165,22 @@ async def test_learning_packet_includes_follow_up_dispatched_during_active_run(
     tmp_path: Path,
 ) -> None:
     group = _make_group()
-    deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
+    previous_cursor = "2026-07-07T09:59:59.000Z"
+    deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": previous_cursor})
     initial = _make_message(
         "first question",
         id="msg-initial",
-        timestamp="2026-07-07T10:00:01Z",
+        timestamp="2026-07-07T10:00:01.000Z",
+    )
+    initial_tail = _make_message(
+        "clarifying detail",
+        id="msg-initial-tail",
+        timestamp="2026-07-07T10:00:02.000Z",
     )
     follow_up = _make_message(
         "more context",
         id="msg-follow-up",
-        timestamp="2026-07-07T10:00:02Z",
+        timestamp="2026-07-07T10:00:03.000Z",
     )
     settings = _settings_mock(
         tmp_path,
@@ -202,17 +208,22 @@ async def test_learning_packet_includes_follow_up_dispatched_during_active_run(
         patch(_P_LEARNING_QUEUE) as queue_cls,
         patch(_P_BG_MERGE),
     ):
-        mock_messages_since.side_effect = [[initial], [initial, follow_up]]
+        mock_messages_since.side_effect = [[initial, initial_tail], [follow_up]]
         queue_cls.return_value.enqueue.return_value = tmp_path / "packet.json"
 
         result = await process_group_messages(deps, "g@g.us")
 
     assert result is True
     assert deps.last_agent_timestamp["g@g.us"] == follow_up.timestamp
+    assert mock_messages_since.await_args_list == [
+        call("g@g.us", previous_cursor),
+        call("g@g.us", initial_tail.timestamp),
+    ]
     packet = queue_cls.return_value.enqueue.call_args.args[0]
     assert packet.provenance["final_cursor"] == follow_up.timestamp
     assert json.loads(packet.provenance["source_message_ids"]) == [
         "msg-initial",
+        "msg-initial-tail",
         "msg-follow-up",
     ]
 

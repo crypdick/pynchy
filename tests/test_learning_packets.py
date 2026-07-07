@@ -16,6 +16,8 @@ from pynchy.host.learning.packets import (
     build_learning_packet,
     enqueue_learning_packet,
     observe_container_output,
+    packet_payload_char_limit,
+    packet_to_reviewer_payload,
 )
 from pynchy.host.learning.queue_codec import packet_to_payload
 from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
@@ -115,6 +117,38 @@ def test_observe_container_output_records_final_answer_and_tool_counts() -> None
     assert summary.tool_counts == {"Bash": 2, "Read": 1}
 
 
+def test_recovered_tool_result_errors_are_captured_without_tool_inputs() -> None:
+    summary = LearningRunSummary()
+    secret = "sk-live-secret-tool-input"  # pragma: allowlist secret - fake regression value
+
+    observe_container_output(
+        summary,
+        ContainerOutput(
+            status="success",
+            type="tool_result",
+            tool_result_is_error=True,
+            tool_result_content="permission denied\x00while reading vault",
+            tool_input={"command": f"cat {secret}"},
+        ),
+    )
+    for index in range(10):
+        observe_container_output(
+            summary,
+            ContainerOutput(
+                status="success",
+                type="tool_result",
+                tool_result_is_error=True,
+                tool_result_content=f"recovered error {index}\x00 {'x' * 500}",
+            ),
+        )
+
+    assert summary.error_snippets[0] == "permission denied while reading vault"
+    assert secret not in json.dumps(summary.error_snippets)
+    assert len(summary.error_snippets) == 5
+    assert all("\x00" not in snippet for snippet in summary.error_snippets)
+    assert all(len(snippet) < 500 for snippet in summary.error_snippets)
+
+
 def test_build_packet_bounds_user_messages_and_skips_non_user_visible_messages(
     tmp_path: Path,
 ) -> None:
@@ -143,6 +177,66 @@ def test_build_packet_bounds_user_messages_and_skips_non_user_visible_messages(
     assert packet.messages[0]["content"].startswith("this user")
     assert _captured_packet_chars(packet) <= settings.learning.packet_max_chars
     assert packet.provenance["source_message_ids"] == json.dumps(["msg-user"])
+
+
+def test_build_packet_bounds_full_reviewer_payload_with_pathological_fields(
+    tmp_path: Path,
+) -> None:
+    max_chars = 260
+    long_profile = f"Research Profile {'p' * 900}"
+    settings = _settings(tmp_path=tmp_path, packet_max_chars=max_chars, profile=long_profile)
+    messages = [
+        _message(
+            f"long content {index} {'m' * 400}",
+            id=f"message-{index}-{'i' * 400}",
+            sender_name=f"Sender {index} {'s' * 400}",
+            timestamp=f"2026-07-07T10:00:{index:02d}.000Z",
+        )
+        for index in range(30)
+    ]
+    summary = LearningRunSummary(final_answer=f"final answer {'a' * 900}")
+    secret = (
+        "sk-live-never-serialize-tool-input"  # pragma: allowlist secret - fake regression value
+    )
+    for index in range(30):
+        observe_container_output(
+            summary,
+            ContainerOutput(
+                status="success",
+                type="tool_use",
+                tool_name=f"VeryLongToolName-{index}-{'t' * 400}",
+                tool_input={"command": f"echo {secret}"},
+            ),
+        )
+    for index in range(20):
+        observe_container_output(
+            summary,
+            ContainerOutput(
+                status="success",
+                type="tool_result",
+                tool_result_is_error=True,
+                tool_result_content=f"tool failed {index} {'e' * 400}",
+            ),
+        )
+
+    with _patch_learning_settings(settings):
+        packet = build_learning_packet(
+            chat_jid=f"slack:{'c' * 500}",
+            group=_group(),
+            missed_messages=messages,
+            final_cursor=f"2026-07-07T10:00:29.000Z-{'z' * 500}",
+            summary=summary,
+        )
+
+    assert packet is not None
+    payload = packet_to_reviewer_payload(packet)
+    serialized_payload = json.dumps(payload, sort_keys=True)
+    assert len(serialized_payload) <= packet_payload_char_limit(max_chars)
+    assert secret not in serialized_payload
+    assert long_profile not in serialized_payload
+    assert all(len(tool_name) < 400 for tool_name in packet.tool_counts)
+    assert all(len(message["sender_name"]) < 400 for message in packet.messages)
+    assert packet.messages
 
 
 def test_build_packet_bounds_bursty_turn_as_one_packet(tmp_path: Path) -> None:
@@ -182,6 +276,23 @@ def test_build_packet_bounds_bursty_turn_as_one_packet(tmp_path: Path) -> None:
     assert len(packet.messages) < len(messages)
     assert len(packet.error_snippets) < len(summary.error_snippets)
     assert len(packet.provenance["source_message_ids"]) <= max_chars
+
+
+def test_build_packet_skips_when_no_useful_message_content_can_be_captured(
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path=tmp_path, packet_max_chars=1)
+
+    with _patch_learning_settings(settings):
+        packet = build_learning_packet(
+            chat_jid="slack:C123",
+            group=_group(),
+            missed_messages=[_message("", sender_name="")],
+            final_cursor="2026-07-07T10:00:00Z",
+            summary=LearningRunSummary(),
+        )
+
+    assert packet is None
 
 
 def test_build_packet_caps_final_answer_and_error_snippets(tmp_path: Path) -> None:

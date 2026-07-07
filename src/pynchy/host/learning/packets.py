@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from pynchy.config import get_settings
@@ -14,13 +15,20 @@ from pynchy.host.learning.paths import (
     resolve_learning_paths,
 )
 from pynchy.host.learning.queue import LearningPacket, LearningQueue
+from pynchy.host.learning.queue_codec import packet_to_payload as _packet_to_payload
 from pynchy.logger import logger
 from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
 
-_MAX_PACKET_MESSAGES = 20
+_MAX_PACKET_MESSAGES = 8
 _MAX_ERROR_SNIPPETS = 5
-_MAX_TOOL_COUNT_ENTRIES = 40
+_MAX_TOOL_COUNT_ENTRIES = 8
 _MIN_SOURCE_IDS_CHARS = 2
+_PACKET_PAYLOAD_OVERHEAD_CHARS = 2_048
+_MAX_METADATA_CHARS = 96
+_MAX_TIMESTAMP_CHARS = 40
+_MAX_TOOL_NAME_CHARS = 48
+_MAX_ERROR_SNIPPET_CHARS = 240
+_MAX_TOOL_COUNT_VALUE = 999
 
 
 @dataclass
@@ -30,17 +38,35 @@ class LearningRunSummary:
     error_snippets: list[str] = field(default_factory=list)
 
 
+def packet_to_reviewer_payload(packet: LearningPacket) -> dict[str, Any]:
+    """Return the exact JSON payload shape consumed by the queue/reviewer."""
+    return _packet_to_payload(packet)
+
+
+def packet_payload_char_limit(packet_max_chars: int) -> int:
+    """Maximum serialized packet payload size, including fixed JSON metadata."""
+    return max(0, packet_max_chars) + _PACKET_PAYLOAD_OVERHEAD_CHARS
+
+
 def observe_container_output(summary: LearningRunSummary, output: ContainerOutput) -> None:
     if output.type == "result" and output.result is not None:
-        summary.final_answer = output.result
+        summary.final_answer = _sanitize_text(output.result)
 
     if output.type == "tool_use" and output.tool_name:
-        summary.tool_counts[output.tool_name] = summary.tool_counts.get(output.tool_name, 0) + 1
+        _record_tool_count(summary, output.tool_name)
 
     if output.status == "error":
         error_text = output.error or output.result or output.text or output.tool_result_content
         if error_text:
-            summary.error_snippets.append(error_text)
+            _append_error_snippet(summary, error_text)
+        return
+
+    if (
+        output.type == "tool_result"
+        and output.tool_result_is_error is True
+        and output.tool_result_content
+    ):
+        _append_error_snippet(summary, output.tool_result_content)
 
 
 def build_learning_packet(
@@ -75,13 +101,15 @@ def build_learning_packet(
         has_error_snippets=bool(nonempty_error_snippets),
     )
     messages, captured_messages = _bounded_messages(user_messages, budgets.messages)
+    if not messages:
+        return None
 
     now = datetime.now(UTC)
-    return LearningPacket(
+    packet = LearningPacket(
         job_id=_new_job_id(now),
-        chat_jid=chat_jid,
-        group_folder=group.folder,
-        profile=paths.profile,
+        chat_jid=_bounded_metadata(chat_jid),
+        group_folder=_bounded_metadata(group.folder),
+        profile=_bounded_metadata(paths.profile),
         created_at=now.isoformat(),
         messages=messages,
         final_answer=_cap_optional_text(summary.final_answer, budgets.final_answer),
@@ -89,14 +117,23 @@ def build_learning_packet(
         error_snippets=_bounded_error_snippets(nonempty_error_snippets, budgets.error_snippets),
         loaded_skills=[],
         provenance={
-            "chat_jid": chat_jid,
-            "group_folder": group.folder,
-            "final_cursor": final_cursor,
+            "chat_jid": _bounded_metadata(chat_jid),
+            "group_folder": _bounded_metadata(group.folder),
+            "final_cursor": _cap_text(_sanitize_text(final_cursor), _MAX_TIMESTAMP_CHARS),
             "source_message_ids": _bounded_source_message_ids(
                 captured_messages, budgets.source_ids
             ),
         },
     )
+    if _serialized_payload_chars(packet) > packet_payload_char_limit(max_chars):
+        logger.warning(
+            "Skipped oversized learning packet after bounding",
+            group=group.name,
+            payload_chars=_serialized_payload_chars(packet),
+            limit=packet_payload_char_limit(max_chars),
+        )
+        return None
+    return packet
 
 
 def enqueue_learning_packet(
@@ -146,7 +183,7 @@ class _TextBudget:
     def take(self, value: str) -> str:
         if self.remaining <= 0:
             return ""
-        capped = _cap_text(value, self.remaining)
+        capped = _cap_text(_sanitize_text(value), self.remaining)
         self.remaining -= len(capped)
         return capped
 
@@ -208,14 +245,17 @@ def _bounded_messages(
     messages: list[dict[str, str]] = []
     captured_messages: list[NewMessage] = []
     for message in user_messages[:_MAX_PACKET_MESSAGES]:
-        if budget.remaining <= 0 and messages:
+        if budget.remaining <= 0:
             break
+        content = budget.take(message.content)
+        if not content:
+            continue
         messages.append(
             {
                 "role": "user",
                 "sender_name": budget.take(message.sender_name),
-                "timestamp": message.timestamp,
-                "content": budget.take(message.content),
+                "timestamp": _cap_text(_sanitize_text(message.timestamp), _MAX_TIMESTAMP_CHARS),
+                "content": content,
             }
         )
         captured_messages.append(message)
@@ -235,7 +275,18 @@ def _bounded_error_snippets(snippets: list[str], max_chars: int) -> list[str]:
 
 
 def _bounded_tool_counts(tool_counts: dict[str, int]) -> dict[str, int]:
-    return dict(sorted(tool_counts.items())[:_MAX_TOOL_COUNT_ENTRIES])
+    bounded: dict[str, int] = {}
+    for raw_name, count in sorted(tool_counts.items()):
+        name = _cap_text(_sanitize_text(raw_name), _MAX_TOOL_NAME_CHARS)
+        if not name:
+            continue
+        bounded[name] = min(
+            bounded.get(name, 0) + count,
+            _MAX_TOOL_COUNT_VALUE,
+        )
+        if len(bounded) >= _MAX_TOOL_COUNT_ENTRIES:
+            break
+    return bounded
 
 
 def _bounded_source_message_ids(messages: list[NewMessage], max_chars: int) -> str:
@@ -244,10 +295,11 @@ def _bounded_source_message_ids(messages: list[NewMessage], max_chars: int) -> s
 
     ids: list[str] = []
     for message in messages:
-        candidate = json.dumps([*ids, message.id])
+        message_id = _cap_text(_sanitize_text(message.id), max_chars)
+        candidate = json.dumps([*ids, message_id])
         if len(candidate) > max_chars:
             break
-        ids.append(message.id)
+        ids.append(message_id)
     return json.dumps(ids)
 
 
@@ -263,6 +315,44 @@ def _cap_text(value: str, max_chars: int) -> str:
     if max_chars <= 3:
         return value[:max_chars]
     return f"{value[: max_chars - 3]}..."
+
+
+def _sanitize_text(value: str) -> str:
+    return "".join(_safe_char(char) for char in value).strip()
+
+
+def _safe_char(char: str) -> str:
+    if char in {"\n", "\t"} or ord(char) >= 32:
+        return char
+    return " "
+
+
+def _record_tool_count(summary: LearningRunSummary, raw_tool_name: str) -> None:
+    tool_name = _cap_text(_sanitize_text(raw_tool_name), _MAX_TOOL_NAME_CHARS)
+    if not tool_name:
+        return
+    if tool_name not in summary.tool_counts and len(summary.tool_counts) >= _MAX_TOOL_COUNT_ENTRIES:
+        return
+    summary.tool_counts[tool_name] = min(
+        summary.tool_counts.get(tool_name, 0) + 1,
+        _MAX_TOOL_COUNT_VALUE,
+    )
+
+
+def _append_error_snippet(summary: LearningRunSummary, raw_error: str) -> None:
+    if len(summary.error_snippets) >= _MAX_ERROR_SNIPPETS:
+        return
+    snippet = _cap_text(_sanitize_text(raw_error), _MAX_ERROR_SNIPPET_CHARS)
+    if snippet:
+        summary.error_snippets.append(snippet)
+
+
+def _bounded_metadata(value: str) -> str:
+    return _cap_text(_sanitize_text(value), _MAX_METADATA_CHARS)
+
+
+def _serialized_payload_chars(packet: LearningPacket) -> int:
+    return len(json.dumps(packet_to_reviewer_payload(packet), sort_keys=True))
 
 
 def _new_job_id(now: datetime) -> str:

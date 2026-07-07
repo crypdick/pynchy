@@ -485,7 +485,6 @@ async def _messages_for_learning_packet(
     chat_jid: str,
     group: WorkspaceProfile,
     missed_messages: list[NewMessage],
-    previous_cursor: str,
     final_cursor: str,
 ) -> list[NewMessage]:
     """Return the user turn covered by the final cursor for learning capture."""
@@ -494,7 +493,7 @@ async def _messages_for_learning_packet(
         return missed_messages
 
     try:
-        expanded_messages = await get_messages_since(chat_jid, previous_cursor)
+        expanded_messages = await get_messages_since(chat_jid, initial_last_timestamp)
     except Exception as exc:  # allow: exception-handling - learning fetch is best-effort
         logger.exception(
             "Failed to fetch expanded learning messages",
@@ -541,7 +540,6 @@ async def _finalize_cursor_and_retry(
     """
     # Pop the dispatched marker; include any follow-ups piped while this
     # container was running (tracked by the routing loop via _mark_dispatched).
-    previous_cursor = deps.last_agent_timestamp.get(chat_jid, "")
     dispatched = deps._dispatched_through.pop(chat_jid, missed_messages[-1].timestamp)
     final_cursor = max(missed_messages[-1].timestamp, dispatched)
 
@@ -572,7 +570,6 @@ async def _finalize_cursor_and_retry(
             chat_jid=chat_jid,
             group=group,
             missed_messages=missed_messages,
-            previous_cursor=previous_cursor,
             final_cursor=final_cursor,
         )
         learning_packets.enqueue_learning_packet(
