@@ -54,7 +54,7 @@ _LITELLM_INTERNAL_PORT = 4000
 _POSTGRES_PORT = 5432
 _POSTGRES_DB = "litellm"
 _POSTGRES_USER = "litellm"
-_HEALTH_TIMEOUT = 90  # seconds; Postgres + LiteLLM migrations need headroom
+_HEALTH_TIMEOUT = 90.0  # seconds; Postgres + LiteLLM migrations need headroom
 _HEALTH_POLL_INTERVAL = 1.0
 _POSTGRES_HEALTH_TIMEOUT = 30
 

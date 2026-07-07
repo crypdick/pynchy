@@ -295,7 +295,7 @@ class TestLiteLLMGatewayStart:
             patch(f"{_LITELLM_MOD}.ensure_image", new_callable=AsyncMock),
             patch(f"{_LITELLM_MOD}.ensure_network", new_callable=AsyncMock),
             patch.object(gw, "_wait_postgres_healthy", new_callable=AsyncMock),
-            patch(f"{_LITELLM_MOD}.wait_healthy", new_callable=AsyncMock),
+            patch(f"{_LITELLM_MOD}.wait_healthy", new_callable=AsyncMock) as wait_healthy_mock,
         ):
             await gw.start()
 
@@ -309,6 +309,7 @@ class TestLiteLLMGatewayStart:
         assert "postgresql://" in litellm_run
         assert "LITELLM_SALT_KEY=" in litellm_run
         assert "--network pynchy-litellm-net" in litellm_run
+        assert isinstance(wait_healthy_mock.await_args.kwargs["timeout"], float)
 
     @pytest.mark.asyncio
     async def test_stop_removes_all_containers_and_network(self, gw: LiteLLMGateway):
