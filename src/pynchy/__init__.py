@@ -26,9 +26,20 @@ import warnings
 
 from beartype import BeartypeConf
 from beartype.claw import beartype_this_package
-from beartype.roar import BeartypeClawDecorWarning
+from beartype.roar import BeartypeClawDecorWarning, BeartypeDecorHintPep585DeprecationWarning
 
 warnings.filterwarnings("ignore", category=BeartypeClawDecorWarning)
+
+# aiohttp.web_request.BaseRequest subclasses typing.MutableMapping[str, Any]
+# (not beartype.typing's PEP 585 form) in aiohttp's own source. Beartype walks
+# the full MRO of any annotated type, so validating a `web.Request` parameter
+# surfaces aiohttp's PEP 585 warning as if it were ours. There is no fix on
+# our side — the source of the warning lives in aiohttp's own code.
+warnings.filterwarnings(
+    "ignore",
+    message=r".*typing\.MutableMapping\[str, typing\.Any\].*",
+    category=BeartypeDecorHintPep585DeprecationWarning,
+)
 
 beartype_this_package(
     conf=BeartypeConf(
