@@ -604,12 +604,11 @@ class TestStatePersistence:
         assert app2.last_agent_timestamp == {}
 
 
-class TestTracePersistence:
-    """Verify that trace events (thinking, tool_use, system, result_meta) are
-    persisted to the database with correct sender values."""
+class TestTraceLocalPersistence:
+    """Verify that SQLite history keeps messages but not Phoenix-owned traces."""
 
-    async def test_thinking_and_tool_use_persisted(self, app: PynchyApp, tmp_path: Path):
-        """Thinking and tool_use events should be stored in DB."""
+    async def test_thinking_and_tool_use_not_persisted(self, app: PynchyApp, tmp_path: Path):
+        """Thinking and tool_use events should not be copied into chat history."""
         msg = _make_message(content="@pynchy do something")
         await store_message(msg)
 
@@ -651,15 +650,14 @@ class TestTracePersistence:
 
         await driver
 
-        # Check DB for persisted trace messages
         history = await get_chat_history("group@g.us", limit=50)
         senders = {m.sender for m in history}
-        assert "thinking" in senders, f"Expected 'thinking' in senders, got {senders}"
-        assert "tool_use" in senders, f"Expected 'tool_use' in senders, got {senders}"
         assert "bot" in senders, f"Expected 'bot' in senders, got {senders}"
+        assert "thinking" not in senders, f"Unexpected thinking trace in {senders}"
+        assert "tool_use" not in senders, f"Unexpected tool trace in {senders}"
 
-    async def test_system_message_persisted(self, app: PynchyApp, tmp_path: Path):
-        """System messages should be stored with sender='system'."""
+    async def test_system_trace_not_persisted(self, app: PynchyApp, tmp_path: Path):
+        """System trace payloads should not be copied into chat history."""
         msg = _make_message(content="@pynchy hello")
         await store_message(msg)
 
@@ -697,12 +695,10 @@ class TestTracePersistence:
 
         history = await get_chat_history("group@g.us", limit=50)
         system_msgs = [m for m in history if m.sender == "system"]
-        assert len(system_msgs) >= 1
-        content = json.loads(system_msgs[0].content)
-        assert content["subtype"] == "init"
+        assert system_msgs == []
 
-    async def test_result_metadata_persisted(self, app: PynchyApp, tmp_path: Path):
-        """Result metadata should be stored with sender='result_meta'."""
+    async def test_result_metadata_not_persisted(self, app: PynchyApp, tmp_path: Path):
+        """Result metadata should not be copied into chat history."""
         msg = _make_message(content="@pynchy hello")
         await store_message(msg)
 
@@ -745,10 +741,7 @@ class TestTracePersistence:
 
         history = await get_chat_history("group@g.us", limit=50)
         meta_msgs = [m for m in history if m.sender == "result_meta"]
-        assert len(meta_msgs) >= 1
-        content = json.loads(meta_msgs[0].content)
-        assert content["total_cost_usd"] == 0.03
-        assert content["num_turns"] == 3
+        assert meta_msgs == []
 
         # Channel should have received the formatted cost message
         texts = [text for _, text in channel.sent_messages]

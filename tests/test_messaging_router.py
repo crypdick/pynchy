@@ -96,32 +96,20 @@ def _get_send_event(deps: MagicMock):
 
 
 # ---------------------------------------------------------------------------
-# trace id generation (observed via the stored trace row's id)
+# trace broadcast
 # ---------------------------------------------------------------------------
 
 
-class TestNextTraceId:
+class TestBroadcastTrace:
     @pytest.mark.asyncio
-    async def test_prefix_is_present(self):
+    async def test_broadcast_trace_does_not_persist_trace_body(self):
         deps = _make_deps()
         with patch(
             "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
         ) as mock_store:
-            await broadcast_trace(
-                deps, "g@g.us", "tool_use", {}, "text", db_id_prefix="tool", db_sender="tool_use"
-            )
-        assert mock_store.call_args[1]["id"].startswith("tool-")
-
-    @pytest.mark.asyncio
-    async def test_ids_are_unique(self):
-        deps = _make_deps()
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ) as mock_store:
-            await broadcast_trace(deps, "g@g.us", "t", {}, "text", db_id_prefix="t", db_sender="t")
-            await broadcast_trace(deps, "g@g.us", "t", {}, "text", db_id_prefix="t", db_sender="t")
-        ids = [call.kwargs["id"] for call in mock_store.call_args_list]
-        assert ids[0] != ids[1]
+            await broadcast_trace(deps, "g@g.us", "tool_use", {"tool_name": "Bash"}, "text")
+        mock_store.assert_not_awaited()
+        deps.emit.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -445,7 +433,7 @@ class TestHandleStreamedOutput:
 
     @pytest.mark.asyncio
     async def test_result_and_metadata_both_processed(self):
-        """When both result text and metadata exist, both should be processed."""
+        """Metadata is broadcast live while only the final result is stored."""
         deps = _make_deps()
         group = _make_group()
         output = _make_output(
@@ -461,8 +449,8 @@ class TestHandleStreamedOutput:
             result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is True
-        # Should have stored both metadata and result
-        assert mock_store.await_count >= 2
+        # Only the final result is stored locally; metadata belongs in Phoenix.
+        assert mock_store.await_count == 1
         # Metadata stats go through deps.broadcast_to_channels (trace path)
         assert deps.broadcast_to_channels.await_count >= 1
         # Result text goes through the bus (finalize_stream_or_broadcast -> ch.send_event)
@@ -475,43 +463,24 @@ class TestHandleStreamedOutput:
 
         with patch(
             "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            await broadcast_trace(
-                deps,
-                "g@g.us",
-                "tool_use",
-                {"tool_name": "Bash"},
-                "\U0001f527 Bash: ls",
-                db_id_prefix="tool",
-                db_sender="tool_use",
-            )
+        ) as mock_store:
+            await broadcast_trace(deps, "g@g.us", "tool_use", {"tool_name": "Bash"}, "Bash: ls")
 
+        mock_store.assert_not_awaited()
         event = deps.emit.call_args[0][0]
         assert event.trace_type == "tool_use"
         assert event.chat_jid == "g@g.us"
         assert event.data == {"tool_name": "Bash"}
 
     @pytest.mark.asyncio
-    async def test_broadcast_trace_uses_custom_message_type(self):
-        """broadcast_trace should use the specified message_type for DB storage."""
+    async def test_broadcast_trace_broadcasts_channel_text(self):
+        """broadcast_trace should still send trace text to live channels."""
         deps = _make_deps()
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ) as mock_store:
-            await broadcast_trace(
-                deps,
-                "g@g.us",
-                "system",
-                {"subtype": "init"},
-                "\u2699\ufe0f system: init",
-                db_id_prefix="sys",
-                db_sender="system",
-                message_type="system",
-            )
+        await broadcast_trace(deps, "g@g.us", "system", {"subtype": "init"}, "system: init")
 
-        call_kwargs = mock_store.call_args[1]
-        assert call_kwargs["message_type"] == "system"
+        event = deps.broadcast_to_channels.await_args.args[1]
+        assert event.content == "system: init"
 
     # -----------------------------------------------------------------------
     # Verbose tool result (ExitPlanMode, EnterPlanMode)

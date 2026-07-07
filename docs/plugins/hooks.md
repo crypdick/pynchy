@@ -268,9 +268,14 @@ def pynchy_observer(self) -> Any | None:
 | `MessageEvent` | `chat_jid`, `sender_name`, `content`, `timestamp`, `is_bot` | New message stored |
 | `AgentActivityEvent` | `chat_jid`, `active` | Agent started/stopped processing |
 | `AgentTraceEvent` | `chat_jid`, `trace_type`, `data` | Ephemeral trace (thinking, tool use, text) |
+
+The built-in SQLite observer subscribes only to operational events. Durable LLM
+trace history is exported by LiteLLM to Phoenix.
 | `ChatClearedEvent` | `chat_jid` | Chat history cleared |
 
-**Built-in:** The SQLite observer (`src/pynchy/observers/plugins/sqlite_observer/`) stores all events to a dedicated `events` table in the main database.
+**Built-in:** The SQLite observer (`src/pynchy/plugins/observers/sqlite_observer/`)
+stores operational event summaries to a dedicated `events` table in the main
+database.
 
 !!! warning
     Observer plugins run **in the host process** and subscribe to every event. A misbehaving observer can slow down event dispatch. Keep handlers light and non-blocking.

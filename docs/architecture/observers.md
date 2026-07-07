@@ -2,7 +2,9 @@
 
 The event observation system — how Pynchy emits events and how plugins subscribe to persist or process them. Use this page to build monitoring, analytics, or debugging tools for your Pynchy installation.
 
-Observers are pluggable. The built-in observer stores events to SQLite. Alternative backends (OpenTelemetry, log files, external services) can be added via plugins.
+Observers are pluggable. The built-in observer stores operational events to
+SQLite. Durable LLM trace and conversation-history payloads are exported by the
+LiteLLM gateway to Phoenix, not duplicated in SQLite.
 
 ## Event Bus
 
@@ -39,9 +41,12 @@ Multiple observers can coexist — each subscribes independently to the event bu
 
 ## Built-in: sqlite-observer
 
-Persists all events to a dedicated `events` table in the main SQLite database.
+Persists operational events to a dedicated `events` table in the main SQLite database.
 
-**What it stores:** event type, chat JID, timestamp, and a JSON payload with event-specific fields. Message content is truncated to 500 characters.
+**What it stores:** message summaries, agent activity, and chat-clear events.
+Message content is truncated to 500 characters. It deliberately does not store
+`AgentTraceEvent` payloads; Phoenix is the source of truth for thinking, tool,
+prompt, response, token, and cost traces.
 
 **Indexes:** event type, chat JID, and timestamp — for querying event history by group or time range.
 

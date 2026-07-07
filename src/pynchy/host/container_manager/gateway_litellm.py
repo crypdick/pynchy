@@ -30,6 +30,7 @@ import re
 import secrets
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.docker import (
@@ -59,6 +60,9 @@ _HEALTH_POLL_INTERVAL = 1.0
 _POSTGRES_HEALTH_TIMEOUT = 30
 
 _SALT_KEY_FILE = "salt.key"
+_PHOENIX_CALLBACK = "arize_phoenix"
+_PHOENIX_ENDPOINT_ENV = "PHOENIX_COLLECTOR_HTTP_ENDPOINT"
+_OTEL_CONTENT_ENV = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
 
 
 # ---------------------------------------------------------------------------
@@ -281,6 +285,74 @@ class LiteLLMGateway:
         """Return True when the filtered config needs ChatGPT OAuth state."""
         return "chatgpt/" in config_path.read_text()
 
+    @staticmethod
+    def _uses_phoenix_callback(config_path: Path) -> bool:
+        """Return True when LiteLLM is configured to export traces to Phoenix."""
+        import yaml
+
+        config = yaml.safe_load(config_path.read_text()) or {}
+        if not isinstance(config, dict):
+            return False
+        settings = config.get("litellm_settings") or {}
+        if not isinstance(settings, dict):
+            return False
+        callbacks = settings.get("callbacks") or []
+        if isinstance(callbacks, str):
+            callbacks = [callbacks]
+        return _PHOENIX_CALLBACK in callbacks
+
+    @staticmethod
+    def _phoenix_health_url(endpoint: str) -> str:
+        """Map a Phoenix OTLP traces endpoint to the deployment health endpoint."""
+        parsed = urlparse(endpoint)
+        path = parsed.path.rstrip("/")
+        if path.endswith("/v1/traces"):
+            path = path[: -len("/v1/traces")]
+        health_path = f"{path}/healthz" if path else "/healthz"
+        return urlunparse(parsed._replace(path=health_path, params="", query="", fragment=""))
+
+    async def _check_phoenix_ready(self, endpoint: str) -> None:
+        """Fail startup when Phoenix is enabled but unreachable."""
+        import aiohttp
+
+        health_url = self._phoenix_health_url(endpoint)
+        try:
+            timeout = aiohttp.ClientTimeout(total=5)
+            async with (
+                aiohttp.ClientSession(timeout=timeout) as session,
+                session.get(health_url) as response,
+            ):
+                if response.status < 400:
+                    return
+                msg = f"Phoenix health check failed at {health_url}: HTTP {response.status}"
+                raise RuntimeError(msg)
+        except Exception as exc:
+            msg = f"Phoenix is required but not reachable at {health_url}: {exc}"
+            raise RuntimeError(msg) from exc
+
+    def _phoenix_env_vars(self, config_path: Path, env: dict[str, str]) -> dict[str, str]:
+        """Resolve Phoenix/OTel env for LiteLLM when Phoenix callback is configured."""
+        if not self._uses_phoenix_callback(config_path):
+            return {}
+
+        endpoint = env.get(_PHOENIX_ENDPOINT_ENV, "").strip()
+        if not endpoint:
+            msg = (
+                "LiteLLM Phoenix tracing is enabled but "
+                f"{_PHOENIX_ENDPOINT_ENV} is not set in .env or the host environment"
+            )
+            raise RuntimeError(msg)
+
+        resolved = {
+            "LITELLM_OTEL_V2": env.get("LITELLM_OTEL_V2", "true"),
+            _OTEL_CONTENT_ENV: env.get(_OTEL_CONTENT_ENV, "SPAN_AND_EVENT"),
+            _PHOENIX_ENDPOINT_ENV: endpoint,
+            "PHOENIX_PROJECT_NAME": env.get("PHOENIX_PROJECT_NAME", "pynchy"),
+        }
+        if phoenix_api_key := env.get("PHOENIX_API_KEY"):
+            resolved["PHOENIX_API_KEY"] = phoenix_api_key
+        return resolved
+
     # Docker helpers are in _docker.py — imported at module level.
 
     # ------------------------------------------------------------------
@@ -385,6 +457,9 @@ class LiteLLMGateway:
 
         # Filter the config: remove model entries with missing/placeholder keys
         filtered_config = self._prepare_config(self._config_path, self._data_dir, env)
+        phoenix_env = self._phoenix_env_vars(filtered_config, env)
+        if phoenix_env:
+            await self._check_phoenix_ready(phoenix_env[_PHOENIX_ENDPOINT_ENV])
 
         logger.info(
             "Starting LiteLLM proxy container",
@@ -405,6 +480,8 @@ class LiteLLMGateway:
         if self._uses_chatgpt_provider(filtered_config):
             token_dir = env.get("CHATGPT_TOKEN_DIR") or "/app/data/chatgpt"
             env_vars.extend(["-e", f"CHATGPT_TOKEN_DIR={token_dir}"])
+        for var_name, value in phoenix_env.items():
+            env_vars.extend(["-e", f"{var_name}={value}"])
 
         # Forward env vars referenced in the *filtered* config so we don't
         # forward vars for model entries that were filtered out.

@@ -4,28 +4,27 @@ How messages flow from channels to agents and back. Read this to debug message d
 
 Messages arrive from plugin-provided [channels](../usage/channels.md) (WhatsApp, Slack, TUI, etc.) and all flow through the same routing code path.
 
-## Transparent Token Stream
+## Chat History And Trace History
 
-The chat history mirrors the LLM's token stream. A user reading the conversation can reconstruct the exact contents of the LLM context. Nothing hides; every message type is visible and distinguishable.
+SQLite chat history stores channel-visible messages and operational notices.
+LiteLLM exports LLM request/response traces to Phoenix, which is the source of
+truth for prompt/response bodies, tool-call traces, token usage, cost, and
+provider request metadata.
 
 The sender vocabulary in the database:
 
 | `sender` value | Visible to LLM? | Description |
 |----------------|-----------------|-------------|
-| `system` | Yes | Harness-to-model messages — a conversation turn the user can also read |
 | `host` | No | Pynchy process notifications (boot, deploy, errors) — user-only |
 | `bot` | Yes | Claude's responses (`AssistantMessage`) |
 | `deploy` | Yes | Deploy continuation markers |
 | `tui-user` | Yes | Messages from the TUI client (`UserMessage`) |
 | `command_output` | Yes | Tool/command results stored in DB |
-| `thinking` | Stored | Claude's thinking traces (internal, stored for debugging) |
-| `tool_use` | Stored | Tool invocation records (internal) |
-| `tool_result` | Stored | Tool result records (internal) |
-| `result_meta` | Stored | Result metadata (internal) |
 | `system_notice` | No | Ephemeral system notices (not stored in DB) |
 | `{channel_jid}` | Yes | Channel user messages — WhatsApp phone JID, `slack:<channel_id>`, etc. (`UserMessage`) |
 
-The goal: if something went wrong, you can reconstruct what the LLM saw by reading the chat.
+The goal: read SQLite to understand the chat workflow, and read Phoenix to
+reconstruct what the model saw and produced.
 
 ## Trigger Pattern
 

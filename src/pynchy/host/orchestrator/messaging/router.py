@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from itertools import count
 from typing import Any
 
 from pynchy.config import get_settings
@@ -46,8 +45,6 @@ __all__ = [
     "init_trace_batcher",
     "pop_last_result_ids",
 ]
-
-_trace_counter = count(1)
 
 
 def _make_event(event_type: str, content: str, **metadata: object) -> OutboundEvent:
@@ -91,15 +88,6 @@ _last_tool_name: dict[str, str] = {}
 _MAX_TOOL_OUTPUT = 4000
 
 
-def _next_trace_id(prefix: str) -> str:
-    """Generate a unique monotonic ID for trace DB rows.
-
-    Uses itertools.count for thread-safe, atomic counter increments.
-    """
-    ts_ms = int(datetime.now(UTC).timestamp() * 1000)
-    return f"{prefix}-{ts_ms}-{next(_trace_counter)}"
-
-
 def _truncate_output(content: str) -> str:
     """Truncate long tool output for channel broadcast, keeping head and tail."""
     head = content[:2000]
@@ -114,23 +102,8 @@ async def broadcast_trace(
     trace_type: str,
     data: dict[str, Any],
     channel_text: str,
-    *,
-    db_id_prefix: str,
-    db_sender: str,
-    message_type: str = "assistant",
 ) -> None:
-    """Store a trace event, send to channels, and emit to EventBus."""
-    ts = datetime.now(UTC).isoformat()
-    await store_message_direct(
-        id=_next_trace_id(db_id_prefix),
-        chat_jid=chat_jid,
-        sender=db_sender,
-        sender_name=db_sender,
-        content=json.dumps(data),
-        timestamp=ts,
-        is_from_me=True,
-        message_type=message_type,
-    )
+    """Send a live trace event to channels and the EventBus."""
     await enqueue_or_broadcast(deps, chat_jid, _make_event("text", channel_text))
     deps.emit(AgentTraceEvent(chat_jid=chat_jid, trace_type=trace_type, data=data))
 
@@ -216,9 +189,6 @@ async def _handle_thinking(deps: OutputDeps, chat_jid: str, result: ContainerOut
         "thinking",
         {"thinking": thinking},
         channel_text,
-        db_id_prefix="think",
-        db_sender="thinking",
-        message_type="assistant",
     )
 
 
@@ -239,9 +209,6 @@ async def _handle_tool_use(deps: OutputDeps, chat_jid: str, result: ContainerOut
         "tool_use",
         data,
         f"\U0001f527 {preview}",
-        db_id_prefix="tool",
-        db_sender="tool_use",
-        message_type="assistant",
     )
 
 
@@ -269,17 +236,14 @@ async def _handle_tool_result(deps: OutputDeps, chat_jid: str, result: Container
             "is_error": result.tool_result_is_error or False,
         },
         channel_text,
-        db_id_prefix="toolr",
-        db_sender="tool_result",
-        message_type="assistant",
     )
 
 
 async def _handle_system(deps: OutputDeps, chat_jid: str, result: ContainerOutput) -> None:
     """Handle a system trace event.
 
-    Persists to DB and emits to EventBus. Suppresses init events from
-    channels since they fire on every query and add no value for the user.
+    Emits to EventBus. Suppresses init events from channels since they fire
+    on every query and add no value for the user.
     """
     subtype = result.system_subtype or ""
     sys_data = result.system_data or {}
@@ -293,21 +257,10 @@ async def _handle_system(deps: OutputDeps, chat_jid: str, result: ContainerOutpu
     else:
         channel_text = f"\u2699\ufe0f system: {subtype or 'unknown'}"
 
-    ts = datetime.now(UTC).isoformat()
-    await store_message_direct(
-        id=_next_trace_id("sys"),
-        chat_jid=chat_jid,
-        sender="system",
-        sender_name="system",
-        content=json.dumps(data),
-        timestamp=ts,
-        is_from_me=True,
-        message_type="system",
-    )
     deps.emit(AgentTraceEvent(chat_jid=chat_jid, trace_type="system", data=data))
 
     # Suppress init from channels — the descriptive text above is still
-    # persisted to DB for debugging.
+    # available to live EventBus consumers for debugging.
     if subtype != "init":
         await enqueue_or_broadcast(deps, chat_jid, _make_event("system", channel_text))
 
@@ -340,20 +293,8 @@ async def _handle_text(deps: OutputDeps, chat_jid: str, result: ContainerOutput)
         await stream_text_to_channels(deps, chat_jid, state)
 
 
-async def _handle_result_metadata(
-    deps: OutputDeps, chat_jid: str, meta: dict[str, Any], ts: str
-) -> None:
-    """Persist result metadata (cost, usage, duration) and broadcast summary."""
-    await store_message_direct(
-        id=_next_trace_id("meta"),
-        chat_jid=chat_jid,
-        sender="result_meta",
-        sender_name="result_meta",
-        content=json.dumps(meta),
-        timestamp=ts,
-        is_from_me=True,
-        message_type="assistant",
-    )
+async def _handle_result_metadata(deps: OutputDeps, chat_jid: str, meta: dict[str, Any]) -> None:
+    """Broadcast result metadata summary and emit the live trace event."""
     cost = meta.get("total_cost_usd")
     duration = meta.get("duration_ms")
     turns = meta.get("num_turns")
@@ -468,7 +409,7 @@ async def handle_streamed_output(
     """
     ts = datetime.now(UTC).isoformat()
 
-    # --- Trace events: persist to DB + broadcast ---
+    # --- Trace events: broadcast live; LiteLLM/Phoenix owns trace persistence ---
     if result.type == "thinking":
         await _handle_thinking(deps, chat_jid, result)
         return False
@@ -487,7 +428,7 @@ async def handle_streamed_output(
 
     # --- Final result: metadata + result text ---
     if result.result_metadata:
-        await _handle_result_metadata(deps, chat_jid, result.result_metadata, ts)
+        await _handle_result_metadata(deps, chat_jid, result.result_metadata)
 
     # Finalize any streaming state — update streamed messages with final text
     # or clean up if the result is empty.

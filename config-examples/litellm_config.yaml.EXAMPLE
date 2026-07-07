@@ -97,6 +97,15 @@ model_list:
   #     id: anthropic-api-key
 
 # ---------------------------------------------------------------------------
+# Observability / conversation history
+# ---------------------------------------------------------------------------
+# Phoenix is the source of truth for LLM request/response traces. When this
+# callback is enabled, Pynchy requires PHOENIX_COLLECTOR_HTTP_ENDPOINT and
+# forwards Phoenix/OTel env vars into the LiteLLM container at startup.
+litellm_settings:
+  callbacks: ["arize_phoenix"]
+
+# ---------------------------------------------------------------------------
 # Router settings  —  failover tuning
 # ---------------------------------------------------------------------------
 # See the litellm-diagnostics reference for detailed rationale.

@@ -22,7 +22,7 @@ These ship with pynchy and are always available. Some require optional dependenc
 | `slack-token-extractor` | Service Handler | Extracts fresh Slack browser tokens (xoxc/xoxd) from persistent browser sessions. | Always active | — |
 | `x-integration` | Service Handler | Post tweets, like, reply, retweet, and quote on X (Twitter) via browser automation. | Always active | — |
 | `notebook-server` | MCP Server | JupyterLab notebook execution server for running Python notebooks in agent containers. | Always active | [Notebooks](../usage/notebooks.md) |
-| `sqlite-observer` | Observer | Persists EventBus events to a dedicated `events` table for observability. | Always active | [Observers](../architecture/observers.md) |
+| `sqlite-observer` | Observer | Persists operational EventBus summaries to a dedicated `events` table. | Always active | [Observers](../architecture/observers.md) |
 | `tailscale` | Tunnel | Tailscale connectivity detection. Warns at startup if tunnel is down. | Always active (requires `tailscale` CLI) | [Tunnels](../architecture/tunnels.md) |
 
 Plugins with optional dependencies are gracefully skipped at startup if their dependencies aren't installed. Install all optional dependencies at once with `uv sync --extra all`.

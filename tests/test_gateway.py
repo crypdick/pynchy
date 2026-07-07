@@ -239,6 +239,65 @@ class TestCollectYamlEnvRefs:
         litellm_run = " ".join(next(c for c in calls if "LITELLM_MASTER_KEY" in " ".join(c)))
         assert "CHATGPT_TOKEN_DIR=/app/data/chatgpt" in litellm_run
 
+    @pytest.mark.asyncio
+    async def test_start_requires_phoenix_endpoint_when_callback_enabled(self, tmp_path: Path):
+        """Phoenix tracing is a source-of-truth dependency, not a best-effort sink."""
+        cfg = tmp_path / "litellm_config.yaml"
+        cfg.write_text('litellm_settings:\n  callbacks: ["arize_phoenix"]\n')
+
+        gw = LiteLLMGateway(config_path=str(cfg), data_dir=tmp_path, **_LITELLM_KWARGS)
+
+        with (
+            patch("pynchy.host.container_manager.docker.docker_available", return_value=True),
+            patch(f"{_LITELLM_MOD}.docker_available", return_value=True),
+            patch(f"{_LITELLM_MOD}.ensure_network", new_callable=AsyncMock),
+            patch(f"{_LITELLM_MOD}.ensure_image", new_callable=AsyncMock),
+            patch.object(gw, "_start_postgres", new_callable=AsyncMock),
+            pytest.raises(RuntimeError, match="PHOENIX_COLLECTOR_HTTP_ENDPOINT"),
+        ):
+            await gw.start()
+
+    @pytest.mark.asyncio
+    async def test_start_forwards_phoenix_env_and_content_capture(self, tmp_path: Path):
+        """Phoenix callback env is forwarded even when not referenced by os.environ/ YAML."""
+        cfg = tmp_path / "litellm_config.yaml"
+        cfg.write_text('litellm_settings:\n  callbacks: ["arize_phoenix"]\n')
+        (tmp_path / ".env").write_text(
+            "PHOENIX_COLLECTOR_HTTP_ENDPOINT=https://phoenix.example.test/v1/traces\n"
+            "PHOENIX_PROJECT_NAME=pynchy-test\n"  # pragma: allowlist secret
+        )
+
+        gw = LiteLLMGateway(config_path=str(cfg), data_dir=tmp_path, **_LITELLM_KWARGS)
+        calls: list[list[str]] = []
+
+        def fake_docker(*args: str, check: bool = True, timeout: int = 30):
+            calls.append(list(args))
+            result = MagicMock()
+            result.stdout = ""
+            result.returncode = 0
+            return result
+
+        with (
+            patch("pynchy.host.container_manager.docker.docker_available", return_value=True),
+            patch(f"{_LITELLM_MOD}.docker_available", return_value=True),
+            patch(f"{_LITELLM_MOD}.run_docker", new_callable=AsyncMock, side_effect=fake_docker),
+            patch(f"{_DOCKER_MOD}.run_docker", new_callable=AsyncMock, side_effect=fake_docker),
+            patch(f"{_LITELLM_MOD}.ensure_image", new_callable=AsyncMock),
+            patch(f"{_LITELLM_MOD}.ensure_network", new_callable=AsyncMock),
+            patch.object(gw, "_wait_postgres_healthy", new_callable=AsyncMock),
+            patch.object(gw, "_check_phoenix_ready", new_callable=AsyncMock),
+            patch(f"{_LITELLM_MOD}.wait_healthy", new_callable=AsyncMock),
+        ):
+            await gw.start()
+
+        litellm_run = " ".join(next(c for c in calls if "LITELLM_MASTER_KEY" in " ".join(c)))
+        assert (
+            "PHOENIX_COLLECTOR_HTTP_ENDPOINT=https://phoenix.example.test/v1/traces" in litellm_run
+        )
+        assert "PHOENIX_PROJECT_NAME=pynchy-test" in litellm_run
+        assert "LITELLM_OTEL_V2=true" in litellm_run
+        assert "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=SPAN_AND_EVENT" in litellm_run
+
 
 class TestLiteLLMGatewayStart:
     @pytest.fixture

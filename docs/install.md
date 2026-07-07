@@ -108,6 +108,15 @@ cp config-examples/litellm_config.yaml.EXAMPLE litellm_config.yaml
 
 Pynchy starts the LiteLLM container automatically on boot. The admin UI is available at `http://localhost:4000/ui` (login with the `ui_username`/`ui_password` you configured).
 
+LiteLLM is also the trace ingestion boundary for conversation history. The
+example config enables the `arize_phoenix` callback; set
+`PHOENIX_COLLECTOR_HTTP_ENDPOINT` in `.env` to your Phoenix OTLP HTTP traces
+endpoint, for example `https://phoenix.example.com/v1/traces`. When that
+callback is enabled, Pynchy checks Phoenix before starting LiteLLM and fails
+startup if Phoenix is unavailable. Pynchy forwards `LITELLM_OTEL_V2=true` and
+`OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=SPAN_AND_EVENT` by default
+so Phoenix receives prompt/response content instead of metadata-only spans.
+
 To use the Codex CLI core, add a model route that Codex can request. LiteLLM's
 OpenAI provider supports Codex models through the Responses API, and LiteLLM's
 ChatGPT Subscription provider can also expose subscription-backed Codex models.

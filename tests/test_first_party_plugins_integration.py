@@ -6,6 +6,7 @@ from their subsystem packages and wires up hook functionality.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import patch
 
 import pytest
@@ -92,6 +93,42 @@ class TestObserverPluginRuntimeTypes:
         observer = SqliteEventObserver()
 
         observer.subscribe(EventBus())
+
+    @pytest.mark.asyncio
+    async def test_sqlite_observer_ignores_trace_event_payloads(self):
+        """LiteLLM/Phoenix owns trace persistence; SQLite keeps operational events."""
+        from unittest.mock import AsyncMock
+
+        from pynchy.event_bus import AgentTraceEvent, EventBus, MessageEvent
+        from pynchy.plugins.observers.sqlite_observer.observer import SqliteEventObserver
+
+        bus = EventBus()
+        observer = SqliteEventObserver()
+        observer.subscribe(bus)
+
+        with patch("pynchy.state.store_event", new_callable=AsyncMock) as mock_store:
+            bus.emit(
+                MessageEvent(
+                    chat_jid="g@g.us",
+                    sender_name="bot",
+                    content="hello",
+                    timestamp="2026-07-07T00:00:00Z",
+                    is_bot=True,
+                )
+            )
+            await asyncio.sleep(0)
+            mock_store.assert_awaited_once()
+
+            mock_store.reset_mock()
+            bus.emit(
+                AgentTraceEvent(
+                    chat_jid="g@g.us",
+                    trace_type="tool_use",
+                    data={"tool_name": "Bash", "tool_input": {"command": "date"}},
+                )
+            )
+            await asyncio.sleep(0)
+            mock_store.assert_not_awaited()
 
 
 @pytest.mark.asyncio
