@@ -128,13 +128,19 @@ class LearningQueue:
 
     def complete(self, claimed: ClaimedLearningPacket) -> Path:
         with self._transition_lock():
+            self._raise_if_terminal_duplicate_exists(claimed.path.name)
             self._current_claim_payload(claimed)
             done_path = self._done_dir / claimed.path.name
-            _rename_no_clobber(claimed.path, done_path)
+            try:
+                _rename_no_clobber(claimed.path, done_path)
+            except LearningQueueError:
+                self._raise_if_terminal_duplicate_exists(claimed.path.name)
+                raise
             return done_path
 
     def fail(self, claimed: ClaimedLearningPacket, reason: str) -> Path:
         with self._transition_lock():
+            self._raise_if_terminal_duplicate_exists(claimed.path.name)
             current_payload = self._current_claim_payload(claimed)
             payload = codec.packet_to_payload(claimed.packet)
             payload["last_error"] = codec.cap_error(reason)
@@ -143,7 +149,11 @@ class LearningQueue:
                 codec.copy_claim_metadata(current_payload, payload)
                 write_json_atomic(claimed.path, payload, indent=2)
                 destination = self._errors_dir / claimed.path.name
-                _rename_no_clobber(claimed.path, destination)
+                try:
+                    _rename_no_clobber(claimed.path, destination)
+                except LearningQueueError:
+                    self._raise_if_terminal_duplicate_exists(claimed.path.name)
+                    raise
                 return destination
 
             return self._return_claimed_to_pending(claimed.path, payload)
@@ -215,6 +225,15 @@ class LearningQueue:
         except (KeyError, TypeError, ValueError) as exc:
             raise LearningQueueError("claimed file contains an invalid payload") from exc
         return payload
+
+    def _raise_if_terminal_duplicate_exists(self, filename: str) -> None:
+        for terminal_dir in self._layout.terminal_dirs:
+            terminal_path = terminal_dir / filename
+            if terminal_path.exists():
+                self._recover_terminal_duplicates()
+                raise LearningQueueError(
+                    f"terminal state already exists for claimed job: {terminal_dir.name}/{filename}"
+                )
 
     def _return_claimed_to_pending(
         self,

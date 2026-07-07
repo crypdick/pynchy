@@ -232,7 +232,7 @@ def test_claim_handle_rejects_invalid_current_payload(
     assert not (_base_dir(tmp_path) / "pending" / "job-1.json").exists()
 
 
-def test_complete_rejects_done_collision_without_overwriting_claimed_job(
+def test_complete_discards_claimed_duplicate_when_done_already_terminal(
     tmp_path: Path,
 ):
     queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=60)
@@ -242,14 +242,22 @@ def test_complete_rejects_done_collision_without_overwriting_claimed_job(
     done_path = _base_dir(tmp_path) / "done" / "job-1.json"
     done_path.write_text(json.dumps({"sentinel": True}))
 
-    with pytest.raises(RuntimeError, match="destination"):
+    with pytest.raises(RuntimeError, match="terminal state"):
         queue.complete(claimed)
 
     assert _read_json(done_path) == {"sentinel": True}
-    assert claimed.path.exists()
+    assert not claimed.path.exists()
+    assert not (_base_dir(tmp_path) / "pending" / "job-1.json").exists()
+    assert not (_base_dir(tmp_path) / "errors" / "job-1.json").exists()
+
+    assert queue.requeue_expired(now=datetime(2026, 7, 7, 12, 1, tzinfo=UTC)) == 0
+    assert _read_json(done_path) == {"sentinel": True}
+    assert not claimed.path.exists()
+    assert not (_base_dir(tmp_path) / "pending" / "job-1.json").exists()
+    assert not (_base_dir(tmp_path) / "errors" / "job-1.json").exists()
 
 
-def test_complete_rejects_done_collision_created_during_move(
+def test_complete_discards_claimed_duplicate_when_done_appears_during_move(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -267,11 +275,46 @@ def test_complete_rejects_done_collision_created_during_move(
 
     monkeypatch.setattr(os, "link", create_destination_before_link)
 
-    with pytest.raises(RuntimeError, match="destination"):
+    with pytest.raises(RuntimeError, match="terminal state"):
         queue.complete(claimed)
 
     assert _read_json(done_path) == {"sentinel": True}
-    assert claimed.path.exists()
+    assert not claimed.path.exists()
+    assert not (_base_dir(tmp_path) / "pending" / "job-1.json").exists()
+    assert not (_base_dir(tmp_path) / "errors" / "job-1.json").exists()
+
+    assert queue.requeue_expired(now=datetime(2026, 7, 7, 12, 1, tzinfo=UTC)) == 0
+    assert _read_json(done_path) == {"sentinel": True}
+    assert not claimed.path.exists()
+    assert not (_base_dir(tmp_path) / "pending" / "job-1.json").exists()
+    assert not (_base_dir(tmp_path) / "errors" / "job-1.json").exists()
+
+
+def test_complete_discards_claimed_duplicate_when_errors_already_terminal(
+    tmp_path: Path,
+):
+    queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=60, max_attempts=2)
+    queue.enqueue(_packet())
+    claimed = queue.claim_next(now=datetime(2026, 7, 7, 12, 0, tzinfo=UTC))
+    assert claimed is not None
+    error_path = _base_dir(tmp_path) / "errors" / "job-1.json"
+    terminal_payload = _read_json(claimed.path)
+    terminal_payload["terminal_marker"] = "errors"
+    error_path.write_text(json.dumps(terminal_payload))
+
+    with pytest.raises(RuntimeError, match="terminal state"):
+        queue.complete(claimed)
+
+    assert _read_json(error_path)["terminal_marker"] == "errors"
+    assert not claimed.path.exists()
+    assert not (_base_dir(tmp_path) / "pending" / "job-1.json").exists()
+    assert not (_base_dir(tmp_path) / "done" / "job-1.json").exists()
+
+    assert queue.requeue_expired(now=datetime(2026, 7, 7, 12, 1, tzinfo=UTC)) == 0
+    assert _read_json(error_path)["terminal_marker"] == "errors"
+    assert not claimed.path.exists()
+    assert not (_base_dir(tmp_path) / "pending" / "job-1.json").exists()
+    assert not (_base_dir(tmp_path) / "done" / "job-1.json").exists()
 
 
 def test_fail_requeues_until_max_attempts_then_moves_to_errors(tmp_path: Path):
@@ -315,6 +358,33 @@ def test_fail_caps_long_reason_before_requeueing(tmp_path: Path):
     payload = _read_json(pending_path)
     assert len(payload["last_error"]) == 200
     assert payload["last_error"].endswith("...")
+
+
+def test_fail_discards_claimed_duplicate_when_done_already_terminal(
+    tmp_path: Path,
+):
+    queue = LearningQueue(base_dir=_base_dir(tmp_path), lease_seconds=60, max_attempts=2)
+    queue.enqueue(_packet())
+    claimed = queue.claim_next(now=datetime(2026, 7, 7, 12, 0, tzinfo=UTC))
+    assert claimed is not None
+    done_path = _base_dir(tmp_path) / "done" / "job-1.json"
+    terminal_payload = _read_json(claimed.path)
+    terminal_payload["terminal_marker"] = "done"
+    done_path.write_text(json.dumps(terminal_payload))
+
+    with pytest.raises(RuntimeError, match="terminal state"):
+        queue.fail(claimed, "stale failure")
+
+    assert _read_json(done_path)["terminal_marker"] == "done"
+    assert not claimed.path.exists()
+    assert not (_base_dir(tmp_path) / "pending" / "job-1.json").exists()
+    assert not (_base_dir(tmp_path) / "errors" / "job-1.json").exists()
+
+    assert queue.requeue_expired(now=datetime(2026, 7, 7, 12, 1, tzinfo=UTC)) == 0
+    assert _read_json(done_path)["terminal_marker"] == "done"
+    assert not claimed.path.exists()
+    assert not (_base_dir(tmp_path) / "pending" / "job-1.json").exists()
+    assert not (_base_dir(tmp_path) / "errors" / "job-1.json").exists()
 
 
 def test_requeue_expired_returns_claimed_jobs_to_pending(tmp_path: Path):
