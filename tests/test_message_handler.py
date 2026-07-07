@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import make_settings
 
+from pynchy.config.models import LearningConfig
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
 from pynchy.host.orchestrator.messaging.pipeline import (
     MessageHandlerDeps,
@@ -35,6 +36,11 @@ _P_INTERCEPT = "pynchy.host.orchestrator.messaging.pipeline.intercept_special_co
 _P_FMT_SDK = "pynchy.host.orchestrator.messaging.formatter.format_messages_for_sdk"
 _P_STORE = "pynchy.host.orchestrator.messaging.pipeline.store_message_direct"
 _P_DIRTY = "pynchy.host.orchestrator.messaging.pipeline.is_repo_dirty"
+_P_LEARNING_ENQUEUE = (
+    "pynchy.host.orchestrator.messaging.pipeline.learning_packets.enqueue_learning_packet"
+)
+_P_LEARNING_QUEUE = "pynchy.host.learning.packets.LearningQueue"
+_P_LEARNING_SETTINGS = "pynchy.host.learning.packets.get_settings"
 _P_GET_RA = "pynchy.host.orchestrator.workspace_config.get_repo_access"
 _P_MERGE = "pynchy.host.git_ops._worktree_merge.merge_and_push_worktree"
 
@@ -397,6 +403,7 @@ def _settings_mock(tmp_path, **overrides):
     """
     defaults = {
         "data_dir": tmp_path,
+        "learning": LearningConfig(enabled=False),
         "trigger_pattern": re.compile(".*"),
         "idle_timeout": 300,
     }
@@ -625,6 +632,133 @@ class TestProcessGroupMessages:
 
         assert result is True
         mock_bg_merge.assert_called_once_with(group)
+
+    @pytest.mark.asyncio
+    async def test_clean_successful_turn_enqueues_learning_packet_after_cursor(self, tmp_path):
+        """Clean successful user turn → one packet after the durable cursor advances."""
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
+        msg = _make_message("what should we remember?", id="msg-42", timestamp="new-ts")
+
+        async def _run_agent(_group, _jid, _msgs, on_output=None, *_args, **_kwargs):
+            if on_output:
+                await on_output(
+                    ContainerOutput(status="success", type="tool_use", tool_name="Bash")
+                )
+                await on_output(
+                    ContainerOutput(status="success", type="result", result="Remembered.")
+                )
+            return "success"
+
+        observed: dict[str, object] = {}
+
+        def _enqueue_learning_packet(**kwargs):
+            observed["cursor_at_enqueue"] = deps.last_agent_timestamp.get("g@g.us")
+            observed["summary"] = kwargs["summary"]
+            return tmp_path / "packet.json"
+
+        deps.run_agent = AsyncMock(side_effect=_run_agent)
+        deps.handle_streamed_output = AsyncMock(return_value=False)
+
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([msg]),
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+            patch(_P_LEARNING_ENQUEUE, side_effect=_enqueue_learning_packet) as mock_enqueue,
+            patch("pynchy.host.git_ops._worktree_merge.background_merge_worktree"),
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            result = await process_group_messages(deps, "g@g.us")
+
+        assert result is True
+        mock_enqueue.assert_called_once()
+        kwargs = mock_enqueue.call_args.kwargs
+        assert kwargs["chat_jid"] == "g@g.us"
+        assert kwargs["group"] is group
+        assert kwargs["missed_messages"] == [msg]
+        assert kwargs["final_cursor"] == "new-ts"
+        assert observed["cursor_at_enqueue"] == "new-ts"
+        summary = observed["summary"]
+        assert summary.final_answer == "Remembered."
+        assert summary.tool_counts == {"Bash": 1}
+
+    @pytest.mark.asyncio
+    async def test_retryable_failure_does_not_enqueue_learning_packet(self, tmp_path):
+        """Failure with no user-visible output retries the batch, so no packet."""
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
+        deps.run_agent = AsyncMock(return_value="error")
+        deps.handle_streamed_output = AsyncMock(return_value=False)
+        msg = _make_message("hello", timestamp="new-ts")
+
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([msg]),
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+            patch(_P_LEARNING_ENQUEUE) as mock_enqueue,
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            result = await process_group_messages(deps, "g@g.us")
+
+        assert result is False
+        mock_enqueue.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_partial_output_failure_does_not_enqueue_learning_packet(self, tmp_path):
+        """Failure after user-visible output advances the cursor but is not clean."""
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
+        msg = _make_message("hello", timestamp="new-ts")
+
+        async def _run_agent(_group, _jid, _msgs, on_output=None, *_args, **_kwargs):
+            if on_output:
+                await on_output(
+                    ContainerOutput(status="error", type="result", result="partial error")
+                )
+            return "error"
+
+        deps.run_agent = AsyncMock(side_effect=_run_agent)
+        deps.handle_streamed_output = AsyncMock(return_value=True)
+
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([msg]),
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+            patch(_P_LEARNING_ENQUEUE) as mock_enqueue,
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            result = await process_group_messages(deps, "g@g.us")
+
+        assert result is True
+        assert deps.last_agent_timestamp["g@g.us"] == "new-ts"
+        mock_enqueue.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_learning_disabled_does_not_enqueue_from_pipeline(self, tmp_path):
+        """Learning disabled makes a clean success skip durable queue enqueue."""
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
+        deps.run_agent = AsyncMock(return_value="success")
+        deps.handle_streamed_output = AsyncMock(return_value=False)
+        msg = _make_message("hello", timestamp="new-ts")
+        settings = _settings_mock(tmp_path, learning=LearningConfig(enabled=False))
+
+        with (
+            patch(_P_SETTINGS, return_value=settings),
+            patch(_P_LEARNING_SETTINGS, return_value=settings),
+            _patch_msgs_since([msg]),
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+            patch(_P_LEARNING_QUEUE) as queue_cls,
+            patch("pynchy.host.git_ops._worktree_merge.background_merge_worktree"),
+        ):
+            result = await process_group_messages(deps, "g@g.us")
+
+        assert result is True
+        queue_cls.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_dirty_repo_warning_added_for_admin_group(self, tmp_path):

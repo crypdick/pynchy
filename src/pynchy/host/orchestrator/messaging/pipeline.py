@@ -1,3 +1,4 @@
+# allow: file-length - packet logic lives in host.learning.packets; pipeline split is separate work.
 """Message processing pipeline — intercepts commands and processes messages for agents.
 
 Handles command interception (reset, end session, redeploy, !commands),
@@ -20,6 +21,7 @@ from pynchy.config.settings import Settings
 from pynchy.event_bus import AgentActivityEvent, MessageEvent
 from pynchy.host.container_manager import OnOutput
 from pynchy.host.git_ops.utils import is_repo_dirty
+from pynchy.host.learning import packets as learning_packets
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.messaging.approval_handler import (
     handle_approval_command,
@@ -485,6 +487,7 @@ async def _finalize_cursor_and_retry(
     agent_result: str,
     had_error: bool,
     output_sent_to_user: bool,
+    learning_summary: learning_packets.LearningRunSummary,
 ) -> bool:
     """Advance the cursor (or signal retry) based on how the agent run went.
 
@@ -517,6 +520,14 @@ async def _finalize_cursor_and_retry(
             group=group.name,
         )
         return True
+
+    learning_packets.enqueue_learning_packet(
+        chat_jid=chat_jid,
+        group=group,
+        missed_messages=missed_messages,
+        final_cursor=final_cursor,
+        summary=learning_summary,
+    )
 
     # Success: merge worktree commits into main and push for groups with repo_access
     from pynchy.host.git_ops._worktree_merge import background_merge_worktree
@@ -564,10 +575,12 @@ async def process_group_messages(
 
     had_error = False
     output_sent_to_user = False
+    learning_summary = learning_packets.LearningRunSummary()
 
     async def on_output(result: ContainerOutput) -> None:
         nonlocal had_error, output_sent_to_user
 
+        learning_packets.observe_container_output(learning_summary, result)
         sent = await deps.handle_streamed_output(chat_jid, group, result)
         if sent:
             output_sent_to_user = True
@@ -592,5 +605,12 @@ async def process_group_messages(
     )
 
     return await _finalize_cursor_and_retry(
-        deps, chat_jid, group, missed_messages, agent_result, had_error, output_sent_to_user
+        deps,
+        chat_jid,
+        group,
+        missed_messages,
+        agent_result,
+        had_error,
+        output_sent_to_user,
+        learning_summary,
     )
