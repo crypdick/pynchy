@@ -99,6 +99,49 @@ def test_iter_skips_symlink_that_escapes_skills_root(
     assert "outside skills root" in caplog.text
 
 
+def test_iter_skips_skill_with_file_symlink_escape(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+):
+    vault = tmp_path / "vault"
+    skills_root = vault / "systems/pynchy/profiles/default/skills"
+    skill = skills_root / "leaky"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("---\nname: leaky\ntier: learned\n---\n")
+    secret = tmp_path / "secret.txt"
+    secret.write_text("host secret")
+    (skill / "secret.txt").symlink_to(secret)
+    settings = _settings(tmp_path=tmp_path, learning=_enabled_learning(vault))
+
+    caplog.set_level(logging.WARNING)
+    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+        assert _iter_learned_skill_dirs("unprofiled") == []
+
+    assert "Skipping learned skill" in caplog.text
+    assert "symlink" in caplog.text
+
+
+def test_iter_skips_skill_md_symlink_escape(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+):
+    vault = tmp_path / "vault"
+    skills_root = vault / "systems/pynchy/profiles/default/skills"
+    skill = skills_root / "leaky"
+    skill.mkdir(parents=True)
+    escaped_skill_md = tmp_path / "SKILL.md"
+    escaped_skill_md.write_text("---\nname: leaky\ntier: learned\n---\n")
+    (skill / "SKILL.md").symlink_to(escaped_skill_md)
+    settings = _settings(tmp_path=tmp_path, learning=_enabled_learning(vault))
+
+    caplog.set_level(logging.WARNING)
+    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+        assert _iter_learned_skill_dirs("unprofiled") == []
+
+    assert "Skipping learned skill" in caplog.text
+    assert "symlink" in caplog.text
+
+
 def test_iter_skips_skill_over_byte_budget(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,

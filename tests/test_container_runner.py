@@ -494,6 +494,30 @@ class TestMountBuilding:
         assert (profile_root / "memory").is_dir()
         assert (profile_root / "skills").is_dir()
 
+    def test_learning_mount_does_not_scan_skills_when_workspace_skills_is_none(
+        self,
+        tmp_path: Path,
+    ):
+        vault = tmp_path / "vault"
+        vault.mkdir()
+        learning = LearningConfig(
+            enabled=True,
+            obsidian=ObsidianLearningConfig(vault_root=str(vault)),
+        )
+
+        with (
+            _patch_settings(tmp_path, learning=learning),
+            patch(
+                "pynchy.host.container_manager.mounts.iter_learned_skill_dirs",
+                side_effect=AssertionError("unexpected scan"),
+            ),
+        ):
+            (tmp_path / "groups" / "test-group").mkdir(parents=True)
+
+            mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
+
+        assert any(m.container_path == "/workspace/vault" for m in mounts)
+
     def test_learning_mount_syncs_vault_profile_skill_when_learned_selected(
         self,
         tmp_path: Path,
@@ -1501,6 +1525,65 @@ class TestSyncSkills:
         assert copied_skill.read_text() == "built-in"
         assert "Skipping learned skill" in caplog.text
         assert "collision" in caplog.text
+
+    def test_learned_skill_resync_updates_prior_learned_copy(self, tmp_path: Path):
+        learned_skill = tmp_path / "vault-skills" / "remember-routing"
+        learned_skill.mkdir(parents=True)
+        (learned_skill / "SKILL.md").write_text(
+            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
+        )
+        notes = learned_skill / "notes.md"
+        notes.write_text("first version")
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with _patch_settings(tmp_path):
+            _sync_skills(
+                session_dir,
+                workspace_skills=["learned"],
+                learned_skill_paths=[learned_skill],
+            )
+            notes.write_text("second version")
+            _sync_skills(
+                session_dir,
+                workspace_skills=["learned"],
+                learned_skill_paths=[learned_skill],
+            )
+
+        skill_dst = session_dir / "skills" / "remember-routing"
+        assert (skill_dst / "notes.md").read_text() == "second version"
+
+    def test_learned_skill_copy_failure_is_skipped_and_logged(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ):
+        learned_skill = tmp_path / "vault-skills" / "remember-routing"
+        learned_skill.mkdir(parents=True)
+        (learned_skill / "SKILL.md").write_text(
+            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
+        )
+        (learned_skill / "notes.md").write_text("Use the right queue.")
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        caplog.set_level(logging.WARNING)
+        with (
+            _patch_settings(tmp_path),
+            patch(
+                "pynchy.host.container_manager.session_prep.shutil.copy2",
+                side_effect=OSError("copy denied"),
+            ),
+        ):
+            _sync_skills(
+                session_dir,
+                workspace_skills=["learned"],
+                learned_skill_paths=[learned_skill],
+            )
+
+        assert not (session_dir / "skills" / "remember-routing").exists()
+        assert "Skipping learned skill" in caplog.text
+        assert "copy denied" in caplog.text
 
 
 # ---------------------------------------------------------------------------

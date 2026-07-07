@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import stat
 from pathlib import Path
 
 from pynchy.config import get_settings
@@ -43,16 +44,31 @@ def iter_learned_skill_dirs(group_folder: str) -> list[Path]:
             )
             continue
 
-        skill_md = resolved_candidate / "SKILL.md"
-        if not skill_md.is_file():
+        if candidate.is_symlink():
             logger.warning(
                 "Skipping learned skill",
                 path=str(candidate),
-                reason="missing SKILL.md",
+                reason="skill directory is a symlink",
             )
             continue
 
-        size_bytes = _directory_size_bytes(resolved_candidate)
+        skill_md = candidate / "SKILL.md"
+        if not _is_regular_file_without_symlink(skill_md):
+            logger.warning(
+                "Skipping learned skill",
+                path=str(candidate),
+                reason="SKILL.md is missing, unreadable, or a symlink",
+            )
+            continue
+
+        size_bytes = _directory_size_bytes(candidate)
+        if size_bytes is None:
+            logger.warning(
+                "Skipping learned skill",
+                path=str(candidate),
+                reason="contains symlink or unreadable file",
+            )
+            continue
         if size_bytes > skill_max_bytes:
             logger.warning(
                 "Skipping learned skill",
@@ -76,16 +92,33 @@ def _is_under(path: Path, root: Path) -> bool:
     return True
 
 
-def _directory_size_bytes(root: Path) -> int:
+def _is_regular_file_without_symlink(path: Path) -> bool:
+    try:
+        return stat.S_ISREG(path.lstat().st_mode)
+    except OSError:
+        return False
+
+
+def _directory_size_bytes(root: Path) -> int | None:
     total = 0
     for path in root.rglob("*"):
         try:
-            if path.is_file():
-                total += path.stat().st_size
+            stat_result = path.lstat()
         except OSError as exc:
             logger.warning(
                 "Skipping unreadable learned skill file",
                 path=str(path),
                 err=str(exc),
             )
+            return None
+
+        if stat.S_ISLNK(stat_result.st_mode):
+            logger.warning(
+                "Skipping learned skill file symlink",
+                path=str(path),
+            )
+            return None
+        if stat.S_ISREG(stat_result.st_mode):
+            total += stat_result.st_size
+
     return total

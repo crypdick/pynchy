@@ -21,6 +21,11 @@ from pynchy.logger import logger
 # ---------------------------------------------------------------------------
 
 _DEFAULT_TIER = "community"
+_LEARNED_SKILL_MARKER = ".pynchy-learned-skill"
+
+
+class _LearnedSkillSyncError(Exception):
+    pass
 
 
 def parse_skill_tier(skill_dir: Path) -> tuple[str, str]:
@@ -113,6 +118,8 @@ def _sync_skills(
                 logger.debug("Skipping skill (not selected)", skill=name, tier=tier)
                 continue
             dst_dir = skills_dst / skill_dir.name
+            if _is_learned_skill_copy(dst_dir):
+                shutil.rmtree(dst_dir)
             _copy_direct_skill_files(skill_dir, dst_dir)
 
     # Copy plugin skills
@@ -136,6 +143,8 @@ def _sync_skills(
                         continue
 
                     dst_dir = skills_dst / skill_path.name
+                    if _is_learned_skill_copy(dst_dir):
+                        shutil.rmtree(dst_dir)
                     if dst_dir.exists():
                         raise ValueError(
                             f"Skill name collision: skill '{skill_path.name}' conflicts with "
@@ -164,6 +173,11 @@ def _copy_direct_skill_files(skill_dir: Path, dst_dir: Path) -> None:
             shutil.copy2(f, dst_dir / f.name)
 
 
+def _is_learned_skill_copy(dst_dir: Path) -> bool:
+    marker = dst_dir / _LEARNED_SKILL_MARKER
+    return dst_dir.is_dir() and marker.is_file() and not marker.is_symlink()
+
+
 def _sync_learned_skills(
     skills_dst: Path,
     learned_skill_paths: list[Path],
@@ -186,7 +200,7 @@ def _sync_learned_skills(
             continue
 
         dst_dir = skills_dst / skill_path.name
-        if dst_dir.exists():
+        if dst_dir.exists() and not _is_learned_skill_copy(dst_dir):
             logger.warning(
                 "Skipping learned skill",
                 skill=skill_path.name,
@@ -195,8 +209,51 @@ def _sync_learned_skills(
             )
             continue
 
-        _copy_direct_skill_files(skill_path, dst_dir)
+        try:
+            if dst_dir.exists():
+                shutil.rmtree(dst_dir)
+            _copy_learned_skill_files(skill_path, dst_dir)
+            (dst_dir / _LEARNED_SKILL_MARKER).write_text("managed by pynchy\n")
+        except (OSError, _LearnedSkillSyncError) as exc:
+            if dst_dir.exists():
+                shutil.rmtree(dst_dir, ignore_errors=True)
+            logger.warning(
+                "Skipping learned skill",
+                skill=skill_path.name,
+                path=str(skill_path),
+                reason="copy failed",
+                err=str(exc),
+            )
+            continue
+
         logger.info("Synced learned skill", skill=skill_path.name)
+
+
+def _copy_learned_skill_files(skill_dir: Path, dst_dir: Path) -> None:
+    resolved_skill_dir = skill_dir.resolve()
+    files = _validated_direct_learned_files(skill_dir, resolved_skill_dir)
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    for f in files:
+        shutil.copy2(f, dst_dir / f.name)
+
+
+def _validated_direct_learned_files(skill_dir: Path, resolved_skill_dir: Path) -> list[Path]:
+    files: list[Path] = []
+    for f in sorted(skill_dir.iterdir(), key=lambda path: path.name):
+        if f.name == _LEARNED_SKILL_MARKER:
+            continue
+        if f.is_symlink():
+            raise _LearnedSkillSyncError(f"learned skill file is a symlink: {f}")
+        if f.is_dir():
+            continue
+        if not f.is_file():
+            continue
+        try:
+            f.resolve(strict=True).relative_to(resolved_skill_dir)
+        except (OSError, ValueError) as exc:
+            raise _LearnedSkillSyncError(f"learned skill file escapes skill dir: {f}") from exc
+        files.append(f)
+    return files
 
 
 def _write_settings_json(session_dir: Path) -> None:

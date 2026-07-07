@@ -58,6 +58,8 @@ def build_volume_mounts(
     group_dir = s.groups_dir / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
 
+    resolved = load_resolved_config(group.folder)
+    workspace_skills = resolved.skills if resolved else None
     learning_paths = resolve_learning_paths(group.folder)
     learned_skill_paths: list[Path] | None = None
     if learning_paths is not None:
@@ -72,7 +74,8 @@ def build_volume_mounts(
                 readonly=False,
             )
         )
-        learned_skill_paths = iter_learned_skill_dirs(group.folder)
+        if workspace_skills is not None:
+            learned_skill_paths = iter_learned_skill_dirs(group.folder)
 
     if worktree_path and repo_ctx:
         mounts.append(VolumeMount(str(worktree_path), "/workspace/project", readonly=False))
@@ -88,11 +91,10 @@ def build_volume_mounts(
     session_dir = s.data_dir / "sessions" / group.folder / ".claude"
     session_dir.mkdir(parents=True, exist_ok=True)
     _write_settings_json(session_dir)
-    resolved = load_resolved_config(group.folder)
     _sync_skills(
         session_dir,
         plugin_manager,
-        workspace_skills=resolved.skills if resolved else None,
+        workspace_skills=workspace_skills,
         learned_skill_paths=learned_skill_paths,
     )
     mounts.append(VolumeMount(str(session_dir), "/home/agent/.claude", readonly=False))
