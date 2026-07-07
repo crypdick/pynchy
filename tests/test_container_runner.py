@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import shutil
 import subprocess
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -1553,6 +1554,101 @@ class TestSyncSkills:
         skill_dst = session_dir / "skills" / "remember-routing"
         assert (skill_dst / "notes.md").read_text() == "second version"
 
+    def test_learned_skill_removed_from_vault_prunes_prior_managed_copy(
+        self,
+        tmp_path: Path,
+    ):
+        learned_skill = tmp_path / "vault-skills" / "remember-routing"
+        learned_skill.mkdir(parents=True)
+        (learned_skill / "SKILL.md").write_text(
+            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
+        )
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with _patch_settings(tmp_path):
+            _sync_skills(
+                session_dir,
+                workspace_skills=["learned"],
+                learned_skill_paths=[learned_skill],
+            )
+            shutil.rmtree(learned_skill)
+            _sync_skills(
+                session_dir,
+                workspace_skills=["learned"],
+                learned_skill_paths=[],
+            )
+
+        assert not (session_dir / "skills" / "remember-routing").exists()
+
+    @pytest.mark.parametrize("workspace_skills", [None, ["core"]])
+    def test_deselected_learned_skills_prune_prior_managed_copy(
+        self,
+        tmp_path: Path,
+        workspace_skills: list[str] | None,
+    ):
+        learned_skill = tmp_path / "vault-skills" / "remember-routing"
+        learned_skill.mkdir(parents=True)
+        (learned_skill / "SKILL.md").write_text(
+            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
+        )
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with _patch_settings(tmp_path):
+            _sync_skills(
+                session_dir,
+                workspace_skills=["learned"],
+                learned_skill_paths=[learned_skill],
+            )
+            _sync_skills(
+                session_dir,
+                workspace_skills=workspace_skills,
+                learned_skill_paths=[learned_skill],
+            )
+
+        assert not (session_dir / "skills" / "remember-routing").exists()
+
+    def test_symlinked_marker_destination_is_not_pruned_or_overwritten(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ):
+        session_dir = tmp_path / "session" / ".claude"
+        skills_dst = session_dir / "skills"
+        skills_dst.mkdir(parents=True)
+        target = tmp_path / "external-managed-skill"
+        target.mkdir()
+        (target / ".pynchy-learned-skill").write_text("managed by pynchy\n")
+        (target / "payload.md").write_text("external content")
+        symlink_dst = skills_dst / "remember-routing"
+        symlink_dst.symlink_to(target, target_is_directory=True)
+
+        learned_skill = tmp_path / "vault-skills" / "remember-routing"
+        learned_skill.mkdir(parents=True)
+        (learned_skill / "SKILL.md").write_text(
+            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
+        )
+        (learned_skill / "payload.md").write_text("vault content")
+
+        caplog.set_level(logging.WARNING)
+        with _patch_settings(tmp_path):
+            _sync_skills(
+                session_dir,
+                workspace_skills=["learned"],
+                learned_skill_paths=[],
+            )
+            _sync_skills(
+                session_dir,
+                workspace_skills=["learned"],
+                learned_skill_paths=[learned_skill],
+            )
+
+        assert symlink_dst.is_symlink()
+        assert symlink_dst.resolve() == target.resolve()
+        assert (target / "payload.md").read_text() == "external content"
+        assert "collision" in caplog.text
+
     def test_learned_skill_copy_failure_is_skipped_and_logged(
         self,
         tmp_path: Path,
@@ -1584,6 +1680,47 @@ class TestSyncSkills:
         assert not (session_dir / "skills" / "remember-routing").exists()
         assert "Skipping learned skill" in caplog.text
         assert "copy denied" in caplog.text
+
+    def test_learned_skill_collision_with_plugin_is_skipped_and_logged(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ):
+        plugin_skill = tmp_path / "plugins" / "shared-name"
+        plugin_skill.mkdir(parents=True)
+        (plugin_skill / "SKILL.md").write_text("plugin")
+
+        learned_skill = tmp_path / "vault-skills" / "shared-name"
+        learned_skill.mkdir(parents=True)
+        (learned_skill / "SKILL.md").write_text(
+            "---\nname: shared-name\ntier: learned\n---\nlearned"
+        )
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        class FakeHook:
+            def pynchy_skill_paths(self):
+                return [[str(plugin_skill)]]
+
+        class FakePM(pluggy.PluginManager):
+            hook = FakeHook()
+
+            def __init__(self):
+                pass
+
+        caplog.set_level(logging.WARNING)
+        with _patch_settings(tmp_path):
+            _sync_skills(
+                session_dir,
+                plugin_manager=FakePM(),
+                workspace_skills=["*"],
+                learned_skill_paths=[learned_skill],
+            )
+
+        copied_skill = session_dir / "skills" / "shared-name" / "SKILL.md"
+        assert copied_skill.read_text() == "plugin"
+        assert "Skipping learned skill" in caplog.text
+        assert "collision" in caplog.text
 
 
 # ---------------------------------------------------------------------------

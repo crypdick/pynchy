@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib
 import logging
 from pathlib import Path
@@ -36,13 +37,22 @@ def _iter_learned_skill_dirs(group_folder: str) -> list[Path]:
     return module.iter_learned_skill_dirs(group_folder)
 
 
+@contextlib.contextmanager
+def _patch_learning_settings(settings):
+    with (
+        patch("pynchy.host.learning.paths.get_settings", return_value=settings),
+        patch("pynchy.host.learning.skills.get_settings", return_value=settings),
+    ):
+        yield
+
+
 def test_iter_returns_empty_when_learning_disabled(tmp_path: Path):
     settings = _settings(
         tmp_path=tmp_path,
         learning=LearningConfig(enabled=False),
     )
 
-    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+    with _patch_learning_settings(settings):
         assert _iter_learned_skill_dirs("shopping") == []
 
 
@@ -55,7 +65,7 @@ def test_iter_returns_empty_when_skills_root_is_missing(tmp_path: Path):
         workspaces={"shopping": WorkspaceConfig(profile="shopping")},
     )
 
-    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+    with _patch_learning_settings(settings):
         assert _iter_learned_skill_dirs("shopping") == []
 
 
@@ -74,7 +84,7 @@ def test_iter_returns_only_skill_dirs_with_skill_md(tmp_path: Path):
         workspaces={"shopping": WorkspaceConfig(profile="shopping")},
     )
 
-    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+    with _patch_learning_settings(settings):
         assert _iter_learned_skill_dirs("shopping") == [valid.resolve()]
 
 
@@ -92,7 +102,7 @@ def test_iter_skips_symlink_that_escapes_skills_root(
     settings = _settings(tmp_path=tmp_path, learning=_enabled_learning(vault))
 
     caplog.set_level(logging.WARNING)
-    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+    with _patch_learning_settings(settings):
         assert _iter_learned_skill_dirs("unprofiled") == []
 
     assert "Skipping learned skill" in caplog.text
@@ -114,7 +124,7 @@ def test_iter_skips_skill_with_file_symlink_escape(
     settings = _settings(tmp_path=tmp_path, learning=_enabled_learning(vault))
 
     caplog.set_level(logging.WARNING)
-    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+    with _patch_learning_settings(settings):
         assert _iter_learned_skill_dirs("unprofiled") == []
 
     assert "Skipping learned skill" in caplog.text
@@ -135,7 +145,7 @@ def test_iter_skips_skill_md_symlink_escape(
     settings = _settings(tmp_path=tmp_path, learning=_enabled_learning(vault))
 
     caplog.set_level(logging.WARNING)
-    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+    with _patch_learning_settings(settings):
         assert _iter_learned_skill_dirs("unprofiled") == []
 
     assert "Skipping learned skill" in caplog.text
@@ -158,10 +168,7 @@ def test_iter_skips_skill_over_byte_budget(
     )
 
     caplog.set_level(logging.WARNING)
-    with (
-        patch("pynchy.host.learning.paths.get_settings", return_value=settings),
-        patch("pynchy.host.learning.skills.get_settings", return_value=settings),
-    ):
+    with _patch_learning_settings(settings):
         assert _iter_learned_skill_dirs("unprofiled") == []
 
     assert "Skipping learned skill" in caplog.text
@@ -188,10 +195,7 @@ def test_iter_skips_skill_when_file_stat_fails(
         return original_stat(path, *args, **kwargs)
 
     caplog.set_level(logging.WARNING)
-    with (
-        patch("pynchy.host.learning.paths.get_settings", return_value=settings),
-        patch.object(Path, "stat", fail_payload_stat),
-    ):
+    with _patch_learning_settings(settings), patch.object(Path, "stat", fail_payload_stat):
         assert _iter_learned_skill_dirs("unprofiled") == []
 
     assert "Skipping learned skill" in caplog.text
@@ -218,11 +222,21 @@ def test_iter_skips_skill_when_file_lstat_fails(
         return original_lstat(path)
 
     caplog.set_level(logging.WARNING)
-    with (
-        patch("pynchy.host.learning.paths.get_settings", return_value=settings),
-        patch.object(Path, "lstat", fail_payload_lstat),
-    ):
+    with _patch_learning_settings(settings), patch.object(Path, "lstat", fail_payload_lstat):
         assert _iter_learned_skill_dirs("unprofiled") == []
 
     assert "Skipping learned skill" in caplog.text
     assert "lstat denied" in caplog.text
+
+
+def test_iter_accepts_current_loader_metadata_without_description(tmp_path: Path):
+    vault = tmp_path / "vault"
+    skill = vault / "systems/pynchy/profiles/default/skills/no-description"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: no-description\ntier: learned\n---\n# No Description\n"
+    )
+    settings = _settings(tmp_path=tmp_path, learning=_enabled_learning(vault))
+
+    with _patch_learning_settings(settings):
+        assert _iter_learned_skill_dirs("unprofiled") == [skill.resolve()]

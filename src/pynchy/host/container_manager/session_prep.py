@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import stat
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -162,6 +163,12 @@ def _sync_skills(
             except (OSError, TypeError):
                 logger.exception("Failed to sync plugin skills")
 
+    desired_learned_skill_names = _selected_learned_skill_names(
+        learned_skill_paths,
+        workspace_skills,
+    )
+    _prune_stale_learned_skill_copies(skills_dst, desired_learned_skill_names)
+
     if learned_skill_paths and workspace_skills is not None:
         _sync_learned_skills(skills_dst, learned_skill_paths, workspace_skills)
 
@@ -174,8 +181,56 @@ def _copy_direct_skill_files(skill_dir: Path, dst_dir: Path) -> None:
 
 
 def _is_learned_skill_copy(dst_dir: Path) -> bool:
+    try:
+        dst_stat = dst_dir.lstat()
+    except OSError:
+        return False
+    if not stat.S_ISDIR(dst_stat.st_mode):
+        return False
+
     marker = dst_dir / _LEARNED_SKILL_MARKER
-    return dst_dir.is_dir() and marker.is_file() and not marker.is_symlink()
+    try:
+        marker_stat = marker.lstat()
+    except OSError:
+        return False
+    return stat.S_ISREG(marker_stat.st_mode)
+
+
+def _selected_learned_skill_names(
+    learned_skill_paths: list[Path] | None,
+    workspace_skills: list[str] | None,
+) -> set[str]:
+    if learned_skill_paths is None or workspace_skills is None:
+        return set()
+
+    selected_names: set[str] = set()
+    for skill_path in learned_skill_paths:
+        if not skill_path.exists() or not skill_path.is_dir():
+            continue
+
+        name, tier = parse_skill_tier(skill_path)
+        if is_skill_selected(name, tier, workspace_skills):
+            selected_names.add(skill_path.name)
+
+    return selected_names
+
+
+def _prune_stale_learned_skill_copies(skills_dst: Path, desired_names: set[str]) -> None:
+    for dst_dir in sorted(skills_dst.iterdir(), key=lambda path: path.name):
+        if dst_dir.name in desired_names:
+            continue
+        if not _is_learned_skill_copy(dst_dir):
+            continue
+
+        try:
+            shutil.rmtree(dst_dir)
+        except OSError as exc:
+            logger.warning(
+                "Failed to prune stale learned skill",
+                skill=dst_dir.name,
+                path=str(dst_dir),
+                err=str(exc),
+            )
 
 
 def _sync_learned_skills(

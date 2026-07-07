@@ -53,6 +53,8 @@ def iter_learned_skill_dirs(group_folder: str) -> list[Path]:
             continue
 
         skill_md = candidate / "SKILL.md"
+        # Learned skills follow session_prep.parse_skill_tier's current loader contract:
+        # require a real SKILL.md here, but do not invent learned-only frontmatter fields.
         if not _is_regular_file_without_symlink(skill_md):
             logger.warning(
                 "Skipping learned skill",
