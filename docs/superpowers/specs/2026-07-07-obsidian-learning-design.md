@@ -50,16 +50,16 @@ review_after_turn = true
 [learning.obsidian]
 vault_root = "~/Documents/obsidian/wiki"
 mount_path = "/workspace/vault"
-memory_root = "repos/<owner>/<repo>/memory"
-skill_root = "repos/<owner>/<repo>/skills"
+default_workspace_root = "systems/pynchy/workspaces/{workspace}"
+skill_root = "systems/pynchy/skills"
 ```
 
 `vault_root` is the global memory namespace. In the first implementation, Pynchy mounts that root directly into each learning-enabled container. A later access-control phase can change `vault_root` to a subdirectory or mount a narrower `vault_mount_root` without changing the folder conventions for memory and skills.
 
-Automatic memory writes target `memory_root`, following the current vault pattern:
+Automatic memory writes follow the current vault pattern by choosing the relevant folder. Repo-associated work can write under `repos/<owner>/<repo>/memory/`; machine work can write under `systems/machines/<host>/memory/`; non-coding workspaces can write under their semantic area of the vault. When no better domain folder is obvious, the reviewer uses the configured workspace fallback:
 
 ```text
-<vault_root>/repos/<owner>/<repo>/memory/
+<vault_root>/systems/pynchy/workspaces/<workspace>/memory/
 ├── MEMORY.md
 ├── index.md
 └── <date-or-descriptive-slug>.md
@@ -92,7 +92,8 @@ Pynchy still validates mount configuration before container start:
 - `vault_root` must exist;
 - `vault_root` must resolve to a directory;
 - `mount_path` must be an absolute container path;
-- `memory_root` and `skill_root` must be relative paths under `vault_root`.
+- `default_workspace_root` and `skill_root` must be relative paths under `vault_root`;
+- `default_workspace_root` may contain `{workspace}`, which Pynchy expands from the sanitized workspace folder name.
 
 ## Learning Queue
 
@@ -154,7 +155,7 @@ Vault misconfiguration disables the vault mount and learning writes but does not
 
 - `vault_root` does not exist;
 - `vault_root` is not a directory;
-- `memory_root` or `skill_root` is absolute or escapes `vault_root`;
+- `default_workspace_root` or `skill_root` is absolute or escapes `vault_root`;
 - the container runtime rejects the vault mount;
 - the worker exhausts retry attempts for a learning packet;
 - a generated skill fails validation.
@@ -167,7 +168,7 @@ Unit tests cover:
 
 - config parsing and path normalization for the Obsidian learning settings;
 - rejection of path traversal, absolute escaped paths, and symlink escapes;
-- memory writes creating notes under `memory_root`;
+- memory writes creating notes under the configured workspace fallback when no semantic folder is selected;
 - vault mount generation for learning-enabled containers;
 - skill validation and active skill source discovery;
 - durable queue claim, lease expiry, retry, done, and error behavior;
