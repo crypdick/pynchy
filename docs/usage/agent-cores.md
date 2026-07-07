@@ -9,7 +9,7 @@ Set the core in `config.toml`:
 ```toml
 [agent]
 core = "openai"    # or "claude", "claude-cli", "codex"
-model = "openai/gpt-5.5"
+model = "gpt-5.5"
 ```
 
 Or via environment variable (takes priority over config):
@@ -35,7 +35,7 @@ The default core using OpenAI's Agents SDK.
 
 - **Activation:** selected by default; make sure an OpenAI API key is available
 - **Model selection:** via the LiteLLM gateway
-- **Default model:** `openai/gpt-5.5`
+- **Default model:** `gpt-5.5`
 
 ## Built-in: OpenAI Codex CLI
 

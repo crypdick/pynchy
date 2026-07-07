@@ -1124,7 +1124,7 @@ class TestContainerInputAgentCoreConfig:
         with patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings):
             result = _build_container_input([], self._ctx(), "chat", TEST_GROUP)
 
-        assert result.agent_core_config == {"model": "openai/gpt-5.5"}
+        assert result.agent_core_config == {"model": "gpt-5.5"}
 
 
 # ---------------------------------------------------------------------------
