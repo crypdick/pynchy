@@ -18,9 +18,8 @@ _P_SETTINGS = "pynchy.host.orchestrator.messaging.pipeline.get_settings"
 _P_MSGS_SINCE = "pynchy.host.orchestrator.messaging.pipeline.get_messages_since"
 _P_INTERCEPT = "pynchy.host.orchestrator.messaging.pipeline.intercept_special_command"
 _P_FMT_SDK = "pynchy.host.orchestrator.messaging.formatter.format_messages_for_sdk"
-_P_LEARNING_ENQUEUE = (
-    "pynchy.host.orchestrator.messaging.pipeline.learning_packets.enqueue_learning_packet"
-)
+_P_LEARNING_ENQUEUE = "pynchy.host.learning.packets.enqueue_learning_packet"
+_P_LEARNING_OBSERVE = "pynchy.host.learning.packets.observe_container_output"
 _P_LEARNING_QUEUE = "pynchy.host.learning.packets.LearningQueue"
 _P_LEARNING_SETTINGS = "pynchy.host.learning.packets.get_settings"
 _P_LEARNING_PATH_SETTINGS = "pynchy.host.learning.paths.get_settings"
@@ -322,6 +321,85 @@ async def test_partial_output_failure_does_not_enqueue_learning_packet(tmp_path:
         result = await process_group_messages(deps, "g@g.us")
 
     assert result is True
+    assert deps.last_agent_timestamp["g@g.us"] == "new-ts"
+    mock_enqueue.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_review_after_turn_false_skips_follow_up_expansion_and_enqueue(
+    tmp_path: Path,
+) -> None:
+    group = _make_group()
+    deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
+    initial = _make_message(
+        "first question",
+        id="msg-initial",
+        timestamp="2026-07-07T10:00:01Z",
+    )
+    follow_up_timestamp = "2026-07-07T10:00:02Z"
+
+    async def _run_agent(_group, _jid, _msgs, on_output=None, *_args, **_kwargs):
+        deps._dispatched_through["g@g.us"] = follow_up_timestamp
+        if on_output:
+            await on_output(ContainerOutput(status="success", type="result", result="Ignored."))
+        return "success"
+
+    deps.run_agent = AsyncMock(side_effect=_run_agent)
+
+    with (
+        patch(
+            _P_SETTINGS,
+            return_value=_settings_mock(
+                tmp_path,
+                learning=LearningConfig(enabled=True, review_after_turn=False),
+            ),
+        ),
+        patch(_P_MSGS_SINCE, new_callable=AsyncMock) as mock_messages_since,
+        _patch_intercept(),
+        _patch_fmt_sdk(),
+        patch(_P_LEARNING_ENQUEUE) as mock_enqueue,
+        patch(_P_BG_MERGE),
+    ):
+        mock_messages_since.side_effect = [[initial], RuntimeError("should not expand")]
+
+        result = await process_group_messages(deps, "g@g.us")
+
+    assert result is True
+    assert deps.last_agent_timestamp["g@g.us"] == follow_up_timestamp
+    assert mock_messages_since.await_count == 1
+    mock_enqueue.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_learning_observation_failure_does_not_block_streamed_output(
+    tmp_path: Path,
+) -> None:
+    group = _make_group()
+    deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
+    msg = _make_message("hello", timestamp="new-ts")
+    output = ContainerOutput(status="success", type="result", result="Visible answer")
+
+    async def _run_agent(_group, _jid, _msgs, on_output=None, *_args, **_kwargs):
+        if on_output:
+            await on_output(output)
+        return "success"
+
+    deps.run_agent = AsyncMock(side_effect=_run_agent)
+    deps.handle_streamed_output = AsyncMock(return_value=True)
+
+    with (
+        patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+        patch(_P_MSGS_SINCE, new_callable=AsyncMock, return_value=[msg]),
+        _patch_intercept(),
+        _patch_fmt_sdk(),
+        patch(_P_LEARNING_OBSERVE, side_effect=RuntimeError("observer broke")),
+        patch(_P_LEARNING_ENQUEUE) as mock_enqueue,
+        patch(_P_BG_MERGE),
+    ):
+        result = await process_group_messages(deps, "g@g.us")
+
+    assert result is True
+    deps.handle_streamed_output.assert_awaited_once_with("g@g.us", group, output)
     assert deps.last_agent_timestamp["g@g.us"] == "new-ts"
     mock_enqueue.assert_not_called()
 

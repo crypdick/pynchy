@@ -1,7 +1,5 @@
 """Message processing pipeline — intercepts commands and processes messages for agents.
 
-# allow: file-length - packet logic lives in host.learning.packets; pipeline split is separate work.
-
 Handles command interception (reset, end session, redeploy, !commands),
 reset handoffs, dirty repo checks, cursor management, and the core
 group message processing flow.
@@ -17,36 +15,27 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+import pynchy.types as types
 from pynchy.config import get_settings
 from pynchy.config.settings import Settings
 from pynchy.event_bus import AgentActivityEvent, MessageEvent
 from pynchy.host.container_manager import OnOutput
 from pynchy.host.git_ops.utils import is_repo_dirty
-from pynchy.host.learning import packets as learning_packets
+from pynchy.host.learning import capture as learning_capture
 from pynchy.host.orchestrator.concurrency import GroupQueue
-from pynchy.host.orchestrator.messaging.approval_handler import (
-    handle_approval_command,
-    handle_pending_query,
-)
-from pynchy.host.orchestrator.messaging.commands import (
-    is_approval_command,
-    is_context_reset,
-    is_end_session,
-    is_pending_query,
-    is_redeploy,
-)
+from pynchy.host.orchestrator.messaging import approval_handler, commands
 from pynchy.host.orchestrator.messaging.router import pop_last_result_ids
 from pynchy.logger import logger
 from pynchy.state import get_messages_since, store_message_direct
-from pynchy.types import (
-    Channel,
-    ContainerOutput,
-    GroupFolder,
-    NewMessage,
-    OutboundEvent,
-    WorkspaceProfile,
-)
 from pynchy.utils import generate_message_id, run_shell_command
+
+type Group = types.WorkspaceProfile
+type Output = types.ContainerOutput
+is_approval_command = commands.is_approval_command
+is_context_reset = commands.is_context_reset
+is_end_session = commands.is_end_session
+is_pending_query = commands.is_pending_query
+is_redeploy = commands.is_redeploy
 
 
 @runtime_checkable
@@ -54,10 +43,10 @@ class MessageHandlerDeps(Protocol):
     """Dependencies for message processing."""
 
     @property
-    def channels(self) -> list[Channel]: ...
+    def channels(self) -> list[types.Channel]: ...
 
     @property
-    def workspaces(self) -> dict[str, WorkspaceProfile]: ...
+    def workspaces(self) -> dict[str, Group]: ...
 
     @property
     def last_agent_timestamp(self) -> dict[str, str]: ...
@@ -77,18 +66,14 @@ class MessageHandlerDeps(Protocol):
 
     async def save_state(self) -> None: ...
 
-    async def handle_context_reset(
-        self, chat_jid: str, group: WorkspaceProfile, timestamp: str
-    ) -> None: ...
+    async def handle_context_reset(self, chat_jid: str, group: Group, timestamp: str) -> None: ...
 
-    async def handle_end_session(
-        self, chat_jid: str, group: WorkspaceProfile, timestamp: str
-    ) -> None: ...
+    async def handle_end_session(self, chat_jid: str, group: Group, timestamp: str) -> None: ...
 
     async def trigger_manual_redeploy(self, chat_jid: str) -> None: ...
 
     async def broadcast_to_channels(
-        self, chat_jid: str, event: OutboundEvent, *, suppress_errors: bool = True
+        self, chat_jid: str, event: types.OutboundEvent, *, suppress_errors: bool = True
     ) -> None: ...
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
@@ -109,7 +94,7 @@ class MessageHandlerDeps(Protocol):
 
     async def run_agent(
         self,
-        group: WorkspaceProfile,
+        group: Group,
         chat_jid: str,
         messages: list[dict[str, Any]],
         on_output: OnOutput | None = None,
@@ -118,16 +103,14 @@ class MessageHandlerDeps(Protocol):
         input_source: str = "user",
     ) -> str: ...
 
-    async def handle_streamed_output(
-        self, chat_jid: str, group: WorkspaceProfile, result: ContainerOutput
-    ) -> bool: ...
+    async def handle_streamed_output(self, chat_jid: str, group: Group, result: Output) -> bool: ...
 
 
 async def intercept_special_command(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: WorkspaceProfile,
-    message: NewMessage,
+    group: types.WorkspaceProfile,
+    message: types.NewMessage,
 ) -> bool:
     """Check for and handle special commands (reset, end session, redeploy, !cmd).
 
@@ -161,9 +144,11 @@ async def intercept_special_command(
 
     if approval := is_approval_command(content):
         action, short_id = approval
-        await handle_approval_command(deps, chat_jid, action, short_id, message.sender_name)
+        await approval_handler.handle_approval_command(
+            deps, chat_jid, action, short_id, message.sender_name
+        )
     elif is_pending_query(content):
-        await handle_pending_query(deps, chat_jid)
+        await approval_handler.handle_pending_query(deps, chat_jid)
     elif content.startswith("!") and content[1:]:
         await execute_direct_command(deps, chat_jid, group, message, content[1:])
     else:
@@ -176,8 +161,8 @@ async def intercept_special_command(
 async def execute_direct_command(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: WorkspaceProfile,
-    message: NewMessage,
+    group: types.WorkspaceProfile,
+    message: types.NewMessage,
     command: str,
 ) -> None:
     """Execute a user command directly without LLM approval."""
@@ -201,11 +186,9 @@ async def execute_direct_command(
         return
 
     if result.returncode == 0:
-        output = result.stdout or "(no output)"
-        status_emoji = "✅"
+        output, status_emoji = result.stdout or "(no output)", "✅"
     else:
-        output = result.stderr or result.stdout or "(no output)"
-        status_emoji = "❌"
+        output, status_emoji = result.stderr or result.stdout or "(no output)", "❌"
 
     ts = datetime.now(UTC).isoformat()
     output_text = f"{status_emoji} Command output (exit {result.returncode}):\n```\n{output}\n```"
@@ -222,10 +205,10 @@ async def execute_direct_command(
         metadata={"exit_code": result.returncode},
     )
 
-    from pynchy.types import OutboundEvent, OutboundEventType
-
-    event = OutboundEvent(
-        type=OutboundEventType.TOOL_RESULT, content=output_text, metadata={"verbose": True}
+    event = types.OutboundEvent(
+        type=types.OutboundEventType.TOOL_RESULT,
+        content=output_text,
+        metadata={"verbose": True},
     )
     await deps.broadcast_to_channels(chat_jid, event)
 
@@ -250,7 +233,7 @@ async def execute_direct_command(
 async def _handle_reset_handoff(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: WorkspaceProfile,
+    group: types.WorkspaceProfile,
     reset_file: Path,
 ) -> bool | None:
     """Consume a reset_prompt.json file and run the handoff agent.
@@ -283,7 +266,7 @@ async def _handle_reset_handoff(
 
     logger.info("Processing reset handoff", group=group.name)
 
-    async def handoff_on_output(result: ContainerOutput) -> None:
+    async def handoff_on_output(result: types.ContainerOutput) -> None:
         await deps.handle_streamed_output(chat_jid, group, result)
 
     reset_messages = [
@@ -380,8 +363,8 @@ def _mark_dispatched(deps: MessageHandlerDeps, chat_jid: str, new_timestamp: str
 async def _should_skip_batch(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: WorkspaceProfile,
-    missed_messages: list[NewMessage],
+    group: types.WorkspaceProfile,
+    missed_messages: list[types.NewMessage],
     is_admin_group: bool,
     s: Settings,
 ) -> bool:
@@ -413,7 +396,10 @@ async def _should_skip_batch(
 
 
 def _prepare_message_context(
-    s: Settings, group: WorkspaceProfile, missed_messages: list[NewMessage], is_admin_group: bool
+    s: Settings,
+    group: types.WorkspaceProfile,
+    missed_messages: list[types.NewMessage],
+    is_admin_group: bool,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Format messages for the agent SDK and compute any dirty-repo system notices."""
     from pynchy.host.orchestrator.messaging.formatter import format_messages_for_sdk
@@ -429,8 +415,8 @@ def _prepare_message_context(
 async def _announce_processing_start(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: WorkspaceProfile,
-    missed_messages: list[NewMessage],
+    group: types.WorkspaceProfile,
+    missed_messages: list[types.NewMessage],
 ) -> None:
     """Mark dispatched, log, and signal 'agent is working' to the user."""
     # Mark dispatched (in-memory only).  last_agent_timestamp stays at its pre-run value
@@ -456,7 +442,10 @@ async def _announce_processing_start(
 
 
 def _register_idle_zzz_callback(
-    deps: MessageHandlerDeps, chat_jid: str, group: WorkspaceProfile, output_sent_to_user: bool
+    deps: MessageHandlerDeps,
+    chat_jid: str,
+    group: types.WorkspaceProfile,
+    output_sent_to_user: bool,
 ) -> None:
     """Register a zzz reaction to fire when the container actually hibernates
     (idle timeout), not immediately after the query finishes.
@@ -467,7 +456,7 @@ def _register_idle_zzz_callback(
 
     from pynchy.host.container_manager.session import get_session
 
-    session = get_session(GroupFolder(group.folder))
+    session = get_session(types.GroupFolder(group.folder))
     if session is None:
         return
 
@@ -480,58 +469,16 @@ def _register_idle_zzz_callback(
     session.set_idle_callback(_send_zzz)
 
 
-async def _messages_for_learning_packet(
-    *,
-    chat_jid: str,
-    group: WorkspaceProfile,
-    missed_messages: list[NewMessage],
-    final_cursor: str,
-) -> list[NewMessage]:
-    """Return the user turn covered by the final cursor for learning capture."""
-    initial_last_timestamp = missed_messages[-1].timestamp
-    if final_cursor <= initial_last_timestamp:
-        return missed_messages
-
-    try:
-        expanded_messages = await get_messages_since(chat_jid, initial_last_timestamp)
-    except Exception as exc:  # allow: exception-handling - learning fetch is best-effort
-        logger.exception(
-            "Failed to fetch expanded learning messages",
-            group=group.name,
-            err=str(exc),
-            final_cursor=final_cursor,
-        )
-        return missed_messages
-
-    seen_ids: set[str] = set()
-    covered_messages: list[NewMessage] = []
-    for message in [*missed_messages, *expanded_messages]:
-        if message.timestamp > final_cursor or message.id in seen_ids:
-            continue
-        seen_ids.add(message.id)
-        covered_messages.append(message)
-
-    if not covered_messages:
-        logger.warning(
-            "Expanded learning message fetch returned no covered messages",
-            group=group.name,
-            final_cursor=final_cursor,
-        )
-        return missed_messages
-
-    return sorted(covered_messages, key=lambda message: message.timestamp)
-
-
 async def _finalize_cursor_and_retry(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: WorkspaceProfile,
-    missed_messages: list[NewMessage],
+    group: types.WorkspaceProfile,
+    missed_messages: list[types.NewMessage],
     agent_result: str,
     had_error: bool,
     output_sent_to_user: bool,
-    learning_summary: learning_packets.LearningRunSummary,
-    learning_enabled: bool,
+    learning_summary: learning_capture.LearningRunSummary,
+    s: Settings,
 ) -> bool:
     """Advance the cursor (or signal retry) based on how the agent run went.
 
@@ -565,20 +512,9 @@ async def _finalize_cursor_and_retry(
         )
         return True
 
-    if learning_enabled:
-        learning_messages = await _messages_for_learning_packet(
-            chat_jid=chat_jid,
-            group=group,
-            missed_messages=missed_messages,
-            final_cursor=final_cursor,
-        )
-        learning_packets.enqueue_learning_packet(
-            chat_jid=chat_jid,
-            group=group,
-            missed_messages=learning_messages,
-            final_cursor=final_cursor,
-            summary=learning_summary,
-        )
+    await learning_capture.enqueue_completed_turn_learning_packet(
+        s, chat_jid, group, missed_messages, final_cursor, learning_summary, get_messages_since
+    )
 
     # Success: merge worktree commits into main and push for groups with repo_access
     from pynchy.host.git_ops._worktree_merge import background_merge_worktree
@@ -626,12 +562,12 @@ async def process_group_messages(
 
     had_error = False
     output_sent_to_user = False
-    learning_summary = learning_packets.LearningRunSummary()
+    learning_summary = learning_capture.LearningRunSummary()
 
-    async def on_output(result: ContainerOutput) -> None:
+    async def on_output(result: types.ContainerOutput) -> None:
         nonlocal had_error, output_sent_to_user
 
-        learning_packets.observe_container_output(learning_summary, result)
+        learning_capture.observe_learning_output(learning_summary, result)
         sent = await deps.handle_streamed_output(chat_jid, group, result)
         if sent:
             output_sent_to_user = True
@@ -664,5 +600,5 @@ async def process_group_messages(
         had_error,
         output_sent_to_user,
         learning_summary,
-        s.learning.enabled,
+        s,
     )

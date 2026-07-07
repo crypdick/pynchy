@@ -81,16 +81,9 @@ def _message(
     )
 
 
-def _captured_packet_chars(packet) -> int:
-    message_chars = sum(
-        len(message["sender_name"]) + len(message["content"]) for message in packet.messages
-    )
-    return (
-        message_chars
-        + len(packet.final_answer or "")
-        + sum(len(snippet) for snippet in packet.error_snippets)
-        + len(packet.provenance["source_message_ids"])
-    )
+def _serialized_reviewer_payload_chars(packet) -> int:
+    payload = packet_to_reviewer_payload(packet)
+    return len(json.dumps(payload, sort_keys=True))
 
 
 def test_observe_container_output_records_final_answer_and_tool_counts() -> None:
@@ -175,7 +168,9 @@ def test_build_packet_bounds_user_messages_and_skips_non_user_visible_messages(
     assert packet.messages[0]["sender_name"] == "Alice"
     assert packet.messages[0]["timestamp"] == "2026-07-07T10:00:00Z"
     assert packet.messages[0]["content"].startswith("this user")
-    assert _captured_packet_chars(packet) <= settings.learning.packet_max_chars
+    assert _serialized_reviewer_payload_chars(packet) <= packet_payload_char_limit(
+        settings.learning.packet_max_chars
+    )
     assert packet.provenance["source_message_ids"] == json.dumps(["msg-user"])
 
 
@@ -272,10 +267,9 @@ def test_build_packet_bounds_bursty_turn_as_one_packet(tmp_path: Path) -> None:
         )
 
     assert packet is not None
-    assert _captured_packet_chars(packet) <= max_chars
+    assert _serialized_reviewer_payload_chars(packet) <= packet_payload_char_limit(max_chars)
     assert len(packet.messages) < len(messages)
     assert len(packet.error_snippets) < len(summary.error_snippets)
-    assert len(packet.provenance["source_message_ids"]) <= max_chars
 
 
 def test_build_packet_skips_when_no_useful_message_content_can_be_captured(
@@ -318,7 +312,9 @@ def test_build_packet_caps_final_answer_and_error_snippets(tmp_path: Path) -> No
     assert len(packet.final_answer) < len(summary.final_answer or "")
     assert len(packet.error_snippets) == 1
     assert packet.error_snippets[0].startswith("error details")
-    assert _captured_packet_chars(packet) <= settings.learning.packet_max_chars
+    assert _serialized_reviewer_payload_chars(packet) <= packet_payload_char_limit(
+        settings.learning.packet_max_chars
+    )
 
 
 def test_tool_inputs_are_not_serialized_into_learning_packets(tmp_path: Path) -> None:
