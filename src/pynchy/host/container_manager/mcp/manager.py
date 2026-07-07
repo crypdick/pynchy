@@ -25,7 +25,7 @@ from pynchy.host.container_manager.docker import (
     is_container_running,
     stop_container,
 )
-from pynchy.host.container_manager.gateway import LiteLLMGateway
+from pynchy.host.container_manager.gateway import LiteLLMGateway, resolve_container_host
 from pynchy.host.container_manager.mcp.lifecycle import (
     ensure_docker_running,
     ensure_script_running,
@@ -278,7 +278,7 @@ class McpManager:
         if not instance_ids or not self._proxy.port:
             return []
 
-        host = get_settings().gateway.container_host
+        host = resolve_container_host(get_settings().gateway.container_host)
         configs: list[dict[str, str]] = []
         for iid in instance_ids:
             instance = self._instances.get(iid)

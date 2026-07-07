@@ -137,6 +137,31 @@ class TestGetDirectServerConfigsProxy:
         assert "8080" in configs[0]["url"]
         assert configs[0]["transport"] == "streamable_http"
 
+    def test_default_container_host_resolves_for_apple_runtime(self):
+        """Apple Container needs the host gateway IP, not Docker's DNS name."""
+        from pynchy.host.container_manager.mcp.manager import McpManager
+
+        mgr = McpManager.__new__(McpManager)
+        mgr._proxy = McpProxy()
+        mgr._proxy._port = 8080
+        mgr._workspace_instances = {"test-ws": ["browser_abc"]}
+        mgr._instances = {
+            "browser_abc": MagicMock(
+                server_config=MagicMock(transport="streamable_http"),
+            ),
+        }
+        runtime = MagicMock()
+        runtime.name = "apple"
+
+        with (
+            patch("pynchy.host.container_manager.mcp.manager.get_settings") as mock_settings,
+            patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime),
+        ):
+            mock_settings.return_value.gateway.container_host = "host.docker.internal"
+            configs = mgr.get_direct_server_configs("test-ws", invocation_ts=42.0)
+
+        assert configs[0]["url"].startswith("http://192.168.64.1:8080/")
+
     def test_empty_when_no_proxy(self):
         """Should return empty list when proxy not started (port=0)."""
         from pynchy.host.container_manager.mcp.manager import McpManager

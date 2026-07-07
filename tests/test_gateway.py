@@ -488,6 +488,68 @@ class TestGatewayModeSelection:
             assert isinstance(gw, LiteLLMGateway)
 
     @pytest.mark.asyncio
+    async def test_default_container_host_resolves_for_apple_runtime(self, tmp_path: Path):
+        cfg = tmp_path / "litellm_config.yaml"
+        cfg.write_text("model_list: []\n")
+
+        from pynchy.config.models import GatewayConfig
+
+        mock_settings = make_settings(
+            gateway=GatewayConfig(
+                litellm_config=str(cfg),
+                port=4000,
+                container_host="host.docker.internal",
+                litellm_image="ghcr.io/berriai/litellm:main-latest",
+                postgres_image="postgres:17-alpine",
+                master_key=SecretStr("test-key"),
+            ),
+            data_dir=tmp_path,
+            mcp_servers={},
+        )
+        runtime = MagicMock()
+        runtime.name = "apple"
+
+        with (
+            patch(f"{_GATEWAY_MOD}.get_settings", return_value=mock_settings),
+            patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime),
+            patch.object(LiteLLMGateway, "start", new_callable=AsyncMock),
+        ):
+            gw = await start_gateway()
+
+        assert gw.base_url == "http://192.168.64.1:4000"
+
+    @pytest.mark.asyncio
+    async def test_custom_container_host_is_respected_for_apple_runtime(self, tmp_path: Path):
+        cfg = tmp_path / "litellm_config.yaml"
+        cfg.write_text("model_list: []\n")
+
+        from pynchy.config.models import GatewayConfig
+
+        mock_settings = make_settings(
+            gateway=GatewayConfig(
+                litellm_config=str(cfg),
+                port=4000,
+                container_host="pynchy-host.local",
+                litellm_image="ghcr.io/berriai/litellm:main-latest",
+                postgres_image="postgres:17-alpine",
+                master_key=SecretStr("test-key"),
+            ),
+            data_dir=tmp_path,
+            mcp_servers={},
+        )
+        runtime = MagicMock()
+        runtime.name = "apple"
+
+        with (
+            patch(f"{_GATEWAY_MOD}.get_settings", return_value=mock_settings),
+            patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime),
+            patch.object(LiteLLMGateway, "start", new_callable=AsyncMock),
+        ):
+            gw = await start_gateway()
+
+        assert gw.base_url == "http://pynchy-host.local:4000"
+
+    @pytest.mark.asyncio
     async def test_builtin_mode_when_no_config(self, tmp_path: Path):
         from pynchy.config.models import GatewayConfig
 

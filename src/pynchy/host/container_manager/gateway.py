@@ -13,10 +13,14 @@ Two modes, selected by ``[gateway].litellm_config`` in config.toml:
 
 Container env vars are set identically for both modes::
 
-    ANTHROPIC_BASE_URL=http://host.docker.internal:<port>
+    ANTHROPIC_BASE_URL=http://<container-reachable-host>:<port>
     ANTHROPIC_AUTH_TOKEN=<gateway-key>
-    OPENAI_BASE_URL=http://host.docker.internal:<port>
+    OPENAI_BASE_URL=http://<container-reachable-host>:<port>
     OPENAI_API_KEY=<gateway-key>
+
+``host.docker.internal`` remains the config default.  Runtime-specific
+resolution maps that default to the host address each container runtime
+actually supports.
 
 Start with :func:`start_gateway`, access the singleton with :func:`get_gateway`.
 
@@ -48,9 +52,13 @@ __all__ = [
     "LiteLLMGateway",
     "_load_or_create_persistent_key",
     "get_gateway",
+    "resolve_container_host",
     "start_gateway",
     "stop_gateway",
 ]
+
+_DEFAULT_CONTAINER_HOST = "host.docker.internal"
+_APPLE_CONTAINER_HOST = "192.168.64.1"
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +88,25 @@ _gateway: LiteLLMGateway | BuiltinGateway | None = None
 def get_gateway() -> LiteLLMGateway | BuiltinGateway | None:
     """Return the active gateway, or ``None`` if not started."""
     return _gateway
+
+
+def resolve_container_host(container_host: str) -> str:
+    """Return the gateway host that agent containers can actually reach."""
+    if container_host != _DEFAULT_CONTAINER_HOST:
+        return container_host
+
+    from pynchy.plugins.runtimes.detection import get_runtime
+
+    try:
+        runtime_name = get_runtime().name
+    except RuntimeError:
+        return container_host
+
+    if runtime_name == "apple":
+        # Apple Container does not provide Docker's host.docker.internal DNS
+        # name; the host gateway for its default VM bridge is 192.168.64.1.
+        return _APPLE_CONTAINER_HOST
+    return container_host
 
 
 def collect_plugin_mcp_servers(
@@ -146,6 +173,7 @@ async def start_gateway(
     """
     global _gateway
     s = get_settings()
+    container_host = resolve_container_host(s.gateway.container_host)
 
     if s.gateway.litellm_config:
         logger.info("Using LiteLLM gateway mode", config=s.gateway.litellm_config)
@@ -156,7 +184,7 @@ async def start_gateway(
         _gateway = LiteLLMGateway(
             config_path=s.gateway.litellm_config,
             port=s.gateway.port,
-            container_host=s.gateway.container_host,
+            container_host=container_host,
             image=s.gateway.litellm_image,
             postgres_image=s.gateway.postgres_image,
             data_dir=s.data_dir,
@@ -167,7 +195,7 @@ async def start_gateway(
         _gateway = BuiltinGateway(
             port=s.gateway.port,
             host=s.gateway.host,
-            container_host=s.gateway.container_host,
+            container_host=container_host,
         )
 
     await _gateway.start()

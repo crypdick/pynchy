@@ -182,9 +182,9 @@ Container ──[gateway key]──► Host Gateway ──[real API key]──�
 3. Containers receive environment variables pointing to the gateway:
 
 ```
-ANTHROPIC_BASE_URL=http://host.docker.internal:4010
+ANTHROPIC_BASE_URL=http://<container-reachable-host>:4010
 ANTHROPIC_AUTH_TOKEN=gw-<random>
-OPENAI_BASE_URL=http://host.docker.internal:4010
+OPENAI_BASE_URL=http://<container-reachable-host>:4010
 OPENAI_API_KEY=gw-<random>
 ```
 
@@ -197,6 +197,7 @@ OPENAI_API_KEY=gw-<random>
 - Ephemeral keys regenerate on each restart and carry no value outside the gateway
 - A compromised container cannot use the ephemeral key to reach providers directly
 - Docker containers reach the host via `host.docker.internal` (with `--add-host` on Linux)
+- Apple runtime containers use the host gateway address resolved by Pynchy when `container_host` keeps the default value
 
 #### OneCLI Agent Vault
 
