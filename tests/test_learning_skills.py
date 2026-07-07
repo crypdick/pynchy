@@ -166,3 +166,33 @@ def test_iter_skips_skill_over_byte_budget(
 
     assert "Skipping learned skill" in caplog.text
     assert "exceeds byte budget" in caplog.text
+
+
+def test_iter_skips_skill_when_file_stat_fails(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+):
+    vault = tmp_path / "vault"
+    skills_root = vault / "systems/pynchy/profiles/default/skills"
+    skill = skills_root / "unreadable-stat"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("---\nname: unreadable-stat\ntier: learned\n---\n")
+    payload = skill / "payload.txt"
+    payload.write_text("payload")
+    settings = _settings(tmp_path=tmp_path, learning=_enabled_learning(vault))
+    original_stat = Path.stat
+
+    def fail_payload_stat(path: Path, *args, **kwargs):
+        if path == payload and kwargs.get("follow_symlinks", True):
+            raise OSError("stat denied")
+        return original_stat(path, *args, **kwargs)
+
+    caplog.set_level(logging.WARNING)
+    with (
+        patch("pynchy.host.learning.paths.get_settings", return_value=settings),
+        patch.object(Path, "stat", fail_payload_stat),
+    ):
+        assert _iter_learned_skill_dirs("unprofiled") == []
+
+    assert "Skipping learned skill" in caplog.text
+    assert "stat denied" in caplog.text

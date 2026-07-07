@@ -119,6 +119,14 @@ def _directory_size_bytes(root: Path) -> int | None:
             )
             return None
         if stat.S_ISREG(stat_result.st_mode):
-            total += stat_result.st_size
+            try:
+                total += path.stat().st_size
+            except OSError as exc:
+                logger.warning(
+                    "Skipping unreadable learned skill file",
+                    path=str(path),
+                    err=str(exc),
+                )
+                return None
 
     return total
