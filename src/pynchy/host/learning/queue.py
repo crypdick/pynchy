@@ -8,15 +8,22 @@ from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
+from uuid import uuid4
 
 from pynchy.config import get_settings
 from pynchy.utils import write_json_atomic
 
 _PENDING = "pending"
+_CLAIMING = "claiming"
 _CLAIMED = "claimed"
 _DONE = "done"
 _ERRORS = "errors"
 _ERROR_DETAILS_MAX_CHARS = 200
+_CLAIM_METADATA_KEYS = ("claim_id", "claimed_at", "lease_until")
+
+
+class LearningQueueError(RuntimeError):
+    """Raised when queue state changes would violate durable ownership."""
 
 
 @dataclass(frozen=True)
@@ -39,6 +46,7 @@ class LearningPacket:
 class ClaimedLearningPacket:
     packet: LearningPacket
     path: Path
+    claim_id: str
 
 
 class LearningQueue:
@@ -66,6 +74,7 @@ class LearningQueue:
 
         for directory in (
             self._pending_dir,
+            self._claiming_dir,
             self._claimed_dir,
             self._done_dir,
             self._errors_dir,
@@ -73,22 +82,89 @@ class LearningQueue:
             directory.mkdir(parents=True, exist_ok=True)
 
     def enqueue(self, packet: LearningPacket) -> Path:
-        path = self._pending_dir / _job_filename(packet.job_id)
+        filename = self._ensure_job_id_available(packet.job_id)
+        path = self._pending_dir / filename
         write_json_atomic(path, _packet_to_payload(packet), indent=2)
         return path
 
     def claim_next(self, *, now: datetime | None = None) -> ClaimedLearningPacket | None:
         claim_time = _coerce_utc(now)
         for pending_path in sorted(self._pending_dir.glob("*.json")):
-            claimed_path = self._claimed_dir / pending_path.name
+            claiming_path = self._claiming_dir / pending_path.name
             try:
-                pending_path.rename(claimed_path)
+                _rename_no_clobber(pending_path, claiming_path)
             except FileNotFoundError:
                 continue
 
             try:
+                payload = _load_payload(claiming_path)
+                packet = _packet_from_payload(payload)
+                if _job_filename(packet.job_id) != pending_path.name:
+                    raise ValueError("job_id must match queue filename")
+            except json.JSONDecodeError as exc:
+                self._move_bad_payload(
+                    claiming_path,
+                    error="invalid_json",
+                    details=str(exc),
+                )
+                continue
+            except (KeyError, TypeError, ValueError) as exc:
+                self._move_bad_payload(
+                    claiming_path,
+                    error="invalid_payload",
+                    details=str(exc),
+                )
+                continue
+
+            claimed_packet = replace(packet, attempts=packet.attempts + 1)
+            claim_id = uuid4().hex
+            claimed_payload = _packet_to_payload(claimed_packet)
+            claimed_payload["last_error"] = _string_metadata(payload, "last_error")
+            claimed_payload["claim_id"] = claim_id
+            claimed_payload["claimed_at"] = claim_time.isoformat()
+            claimed_payload["lease_until"] = (
+                claim_time + timedelta(seconds=self._lease_seconds)
+            ).isoformat()
+            write_json_atomic(claiming_path, claimed_payload, indent=2)
+            claimed_path = self._claimed_dir / pending_path.name
+            _rename_no_clobber(claiming_path, claimed_path)
+            return ClaimedLearningPacket(
+                packet=claimed_packet,
+                path=claimed_path,
+                claim_id=claim_id,
+            )
+
+        return None
+
+    def complete(self, claimed: ClaimedLearningPacket) -> Path:
+        self._current_claim_payload(claimed)
+        done_path = self._done_dir / claimed.path.name
+        _rename_no_clobber(claimed.path, done_path)
+        return done_path
+
+    def fail(self, claimed: ClaimedLearningPacket, reason: str) -> Path:
+        current_payload = self._current_claim_payload(claimed)
+        payload = _packet_to_payload(claimed.packet)
+        payload["last_error"] = _cap_error(reason)
+
+        if claimed.packet.attempts >= self._max_attempts:
+            _copy_claim_metadata(current_payload, payload)
+            write_json_atomic(claimed.path, payload, indent=2)
+            destination = self._errors_dir / claimed.path.name
+            _rename_no_clobber(claimed.path, destination)
+            return destination
+
+        return self._return_claimed_to_pending(claimed.path, payload)
+
+    def requeue_expired(self, *, now: datetime | None = None) -> int:
+        check_time = _coerce_utc(now)
+        requeued = 0
+        for claimed_path in sorted(self._claimed_dir.glob("*.json")):
+            try:
                 payload = _load_payload(claimed_path)
                 packet = _packet_from_payload(payload)
+                if _job_filename(packet.job_id) != claimed_path.name:
+                    raise ValueError("job_id must match queue filename")
             except json.JSONDecodeError as exc:
                 self._move_bad_payload(
                     claimed_path,
@@ -104,72 +180,75 @@ class LearningQueue:
                 )
                 continue
 
-            claimed_packet = replace(packet, attempts=packet.attempts + 1)
-            claimed_payload = _packet_to_payload(claimed_packet)
-            claimed_payload["last_error"] = _string_metadata(payload, "last_error")
-            claimed_payload["claimed_at"] = claim_time.isoformat()
-            claimed_payload["lease_until"] = (
-                claim_time + timedelta(seconds=self._lease_seconds)
-            ).isoformat()
-            write_json_atomic(claimed_path, claimed_payload, indent=2)
-            return ClaimedLearningPacket(packet=claimed_packet, path=claimed_path)
-
-        return None
-
-    def complete(self, claimed: ClaimedLearningPacket) -> Path:
-        done_path = self._done_dir / claimed.path.name
-        claimed.path.rename(done_path)
-        return done_path
-
-    def fail(self, claimed: ClaimedLearningPacket, reason: str) -> Path:
-        payload = _packet_to_payload(claimed.packet)
-        if existing_payload := _safe_load_payload(claimed.path):
-            if claimed_at := _string_metadata(existing_payload, "claimed_at"):
-                payload["claimed_at"] = claimed_at
-            if lease_until := _string_metadata(existing_payload, "lease_until"):
-                payload["lease_until"] = lease_until
-        payload["last_error"] = _cap_error(reason)
-
-        write_json_atomic(claimed.path, payload, indent=2)
-        destination_dir = (
-            self._errors_dir if claimed.packet.attempts >= self._max_attempts else self._pending_dir
-        )
-        destination = destination_dir / claimed.path.name
-        claimed.path.rename(destination)
-        return destination
-
-    def requeue_expired(self, *, now: datetime | None = None) -> int:
-        check_time = _coerce_utc(now)
-        requeued = 0
-        for claimed_path in sorted(self._claimed_dir.glob("*.json")):
-            try:
-                payload = _load_payload(claimed_path)
-            except json.JSONDecodeError as exc:
-                self._move_bad_payload(
-                    claimed_path,
-                    error="invalid_json",
-                    details=str(exc),
-                )
-                continue
-            except ValueError as exc:
-                self._move_bad_payload(
-                    claimed_path,
-                    error="invalid_payload",
-                    details=str(exc),
-                )
-                continue
-
             if not _lease_is_expired(payload, check_time):
                 continue
 
-            claimed_path.rename(self._pending_dir / claimed_path.name)
+            if packet.attempts >= self._max_attempts:
+                payload["last_error"] = _cap_error(
+                    "lease expired after reaching max attempts "
+                    f"({packet.attempts}/{self._max_attempts})"
+                )
+                write_json_atomic(claimed_path, payload, indent=2)
+                _rename_no_clobber(claimed_path, self._errors_dir / claimed_path.name)
+                continue
+
+            self._return_claimed_to_pending(claimed_path, payload)
             requeued += 1
 
         return requeued
 
+    def _ensure_job_id_available(self, job_id: str) -> str:
+        filename = _job_filename(job_id)
+        for directory in (
+            self._pending_dir,
+            self._claiming_dir,
+            self._claimed_dir,
+            self._done_dir,
+            self._errors_dir,
+        ):
+            existing_path = directory / filename
+            if existing_path.exists():
+                raise LearningQueueError(
+                    f"job_id {job_id!r} already exists in queue state {directory.name}"
+                )
+        return filename
+
+    def _current_claim_payload(
+        self,
+        claimed: ClaimedLearningPacket,
+    ) -> dict[str, Any]:
+        try:
+            payload = _load_payload(claimed.path)
+        except FileNotFoundError as exc:
+            raise LearningQueueError("claimed file is missing") from exc
+        except json.JSONDecodeError as exc:
+            raise LearningQueueError("claimed file contains invalid JSON") from exc
+        except ValueError as exc:
+            raise LearningQueueError("claimed file contains an invalid payload") from exc
+
+        if _string_metadata(payload, "claim_id") != claimed.claim_id:
+            raise LearningQueueError("claim ownership mismatch")
+        return payload
+
+    def _return_claimed_to_pending(
+        self,
+        claimed_path: Path,
+        payload: dict[str, Any],
+    ) -> Path:
+        claiming_path = self._claiming_dir / claimed_path.name
+        _rename_no_clobber(claimed_path, claiming_path)
+        write_json_atomic(claiming_path, _clear_claim_metadata(payload), indent=2)
+        pending_path = self._pending_dir / claimed_path.name
+        _rename_no_clobber(claiming_path, pending_path)
+        return pending_path
+
     @property
     def _pending_dir(self) -> Path:
         return self._base_dir / _PENDING
+
+    @property
+    def _claiming_dir(self) -> Path:
+        return self._base_dir / _CLAIMING
 
     @property
     def _claimed_dir(self) -> Path:
@@ -191,12 +270,18 @@ class LearningQueue:
         }
         write_json_atomic(path, error_payload)
         error_path = self._errors_dir / path.name
-        path.rename(error_path)
+        _rename_no_clobber(path, error_path)
         return error_path
 
 
 def _job_filename(job_id: str) -> str:
+    _validate_job_id(job_id)
     return f"{job_id}.json"
+
+
+def _validate_job_id(job_id: str) -> None:
+    if not job_id or job_id == "." or ".." in job_id or "/" in job_id or "\\" in job_id:
+        raise ValueError("job_id must be a non-empty safe filename component")
 
 
 def _coerce_utc(value: datetime | None) -> datetime:
@@ -218,16 +303,9 @@ def _load_payload(path: Path) -> dict[str, Any]:
     return cast(dict[str, Any], payload)
 
 
-def _safe_load_payload(path: Path) -> dict[str, Any] | None:
-    try:
-        return _load_payload(path)
-    except (FileNotFoundError, json.JSONDecodeError, ValueError):
-        return None
-
-
 def _packet_from_payload(payload: Mapping[str, Any]) -> LearningPacket:
     return LearningPacket(
-        job_id=_required_str(payload, "job_id"),
+        job_id=_required_job_id(payload, "job_id"),
         chat_jid=_required_str(payload, "chat_jid"),
         group_folder=_required_str(payload, "group_folder"),
         profile=_required_str(payload, "profile"),
@@ -240,6 +318,12 @@ def _packet_from_payload(payload: Mapping[str, Any]) -> LearningPacket:
         provenance=_required_str_dict(payload, "provenance"),
         attempts=_optional_int(payload, "attempts", default=0),
     )
+
+
+def _required_job_id(payload: Mapping[str, Any], key: str) -> str:
+    value = _required_str(payload, key)
+    _validate_job_id(value)
+    return value
 
 
 def _required_str(payload: Mapping[str, Any], key: str) -> str:
@@ -305,6 +389,8 @@ def _optional_int(payload: Mapping[str, Any], key: str, *, default: int) -> int:
     value = payload.get(key, default)
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValueError(f"{key} must be an integer")
+    if value < 0:
+        raise ValueError(f"{key} must be non-negative")
     return value
 
 
@@ -341,3 +427,26 @@ def _cap_error(value: str) -> str:
     if len(value) <= _ERROR_DETAILS_MAX_CHARS:
         return value
     return f"{value[: _ERROR_DETAILS_MAX_CHARS - 3]}..."
+
+
+def _copy_claim_metadata(
+    source: Mapping[str, Any],
+    destination: dict[str, Any],
+) -> None:
+    for key in _CLAIM_METADATA_KEYS:
+        if value := _string_metadata(source, key):
+            destination[key] = value
+
+
+def _clear_claim_metadata(payload: Mapping[str, Any]) -> dict[str, Any]:
+    cleaned = dict(payload)
+    for key in _CLAIM_METADATA_KEYS:
+        cleaned.pop(key, None)
+    return cleaned
+
+
+def _rename_no_clobber(source: Path, destination: Path) -> None:
+    if destination.exists():
+        raise LearningQueueError(f"queue destination already exists: {destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    source.rename(destination)
