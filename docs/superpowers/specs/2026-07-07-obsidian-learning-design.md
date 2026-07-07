@@ -7,7 +7,9 @@ Pynchy already has two relevant extension points:
 - host-side service tools that agents call through the container MCP server and IPC;
 - session preparation that copies selected skill directories into the agent session before container start.
 
-The first learning phase uses those surfaces instead of mounting the Obsidian vault directly into containers. The vault becomes the durable source of truth for learned facts and learned skills, while Pynchy remains responsible for deciding what agents can search, write, validate, and activate.
+The first learning phase keeps the integration intentionally direct: Pynchy mounts the configured Obsidian vault into learning-enabled containers. The vault becomes the durable source of truth for learned facts and learned skills, and folder placement carries the meaning.
+
+The current vault organizes knowledge by path. Examples include `repos/<owner>/<repo>/memory/` for project memory, `systems/machines/<host>/memory/` for machine memory, `diary/` for dated operational notes, `convos/` for conversation writeups, `plans/` and `specs/` for project artifacts, and `_sources/` for source material. Pynchy should follow that convention instead of relying on agents to maintain semantic frontmatter correctly.
 
 ## Scope
 
@@ -16,21 +18,21 @@ This phase adds:
 - one global Obsidian-backed memory namespace;
 - one Obsidian-backed learned-skill namespace;
 - a durable background learning queue that reviews completed turns without blocking chat replies;
-- a constrained host-side MCP/service-tool facade for vault search, memory writes, and skill writes.
+- a direct vault mount that lets agents and background reviewers read and write vault files through normal filesystem tools.
 
-This phase does not add per-group, per-policy, or per-user access control. All sessions share the same global learning surface. The design leaves namespace metadata in place so access control can attach later without rewriting stored notes.
+This phase does not add per-group, per-policy, or per-user access control. All sessions share the same global learning surface. The folder layout stays stable so access control can attach later by narrowing the mounted root or selecting specific subfolders.
 
 ## Approaches Considered
 
-### Recommended: Obsidian-backed learning with Pynchy activation
+### Recommended: Mounted Obsidian vault with folder-based activation
 
-Pynchy searches the configured vault root for recall, writes new learning notes into a controlled global memory folder, stores learned skills under a controlled skill namespace, and validates skills before adding them to the active skill registry.
+Pynchy mounts the configured vault root into learning-enabled containers, writes new learning notes into conventional vault folders, stores learned skills under a conventional skill folder, and validates skills before adding them to the active skill registry.
 
-This keeps recall broad, writes auditable, and behavior-changing instructions behind Pynchy validation.
+This keeps the first implementation small and matches the way the vault already works. Behavior-changing instructions still go through Pynchy validation before activation.
 
-### Rejected: Raw vault mount inside agent containers
+### Deferred: Constrained vault MCP facade
 
-Mounting the vault into every agent container would make implementation simple, but it would also give agents direct filesystem access to unrelated notes, let them write anywhere, and bypass Pynchy's IPC/security model.
+A future version can replace the broad filesystem mount with a constrained MCP/service-tool facade. That facade can expose search, read, and write operations for only the namespaces attached to a session.
 
 ### Deferred: Full memory namespace access control
 
@@ -47,25 +49,25 @@ review_after_turn = true
 
 [learning.obsidian]
 vault_root = "~/Documents/obsidian/wiki"
-global_search_root = "."
-global_write_root = "repos/<owner>/<repo>/memory/global"
+mount_path = "/workspace/vault"
+memory_root = "repos/<owner>/<repo>/memory"
 skill_root = "repos/<owner>/<repo>/skills"
 ```
 
-`global_search_root = "."` means the global memory namespace can recall from the whole vault. Automatic writes do not target the vault root. They target `global_write_root` so newly learned notes stay easy to audit, migrate, and clean up.
+`vault_root` is the global memory namespace. In the first implementation, Pynchy mounts that root directly into each learning-enabled container. A later access-control phase can change `vault_root` to a subdirectory or mount a narrower `vault_mount_root` without changing the folder conventions for memory and skills.
 
-Every generated memory note includes frontmatter:
+Automatic memory writes target `memory_root`, following the current vault pattern:
 
-```yaml
----
-learning_namespace: global
-learning_kind: fact
-source: pynchy-learning-review
-visibility: shared
----
+```text
+<vault_root>/repos/<owner>/<repo>/memory/
+├── MEMORY.md
+├── index.md
+└── <date-or-descriptive-slug>.md
 ```
 
-Every generated skill lives under:
+Pynchy does not require learning-specific frontmatter. Agents classify information by choosing the correct folder and filename. If the vault linter manages generic `created` or `updated` fields, that remains a vault concern rather than a learning contract.
+
+Learned skills live under:
 
 ```text
 <skill_root>/<skill-name>/SKILL.md
@@ -73,19 +75,24 @@ Every generated skill lives under:
 
 The folder name is the skill identifier. Optional companion files can live below the same skill folder, but the first implementation validates and activates only skills with a `SKILL.md` entrypoint.
 
-## Constrained Vault Tools
+## Vault Mount
 
-Agents and background reviewers do not receive shell access to the vault. They get host-side service tools exposed through the existing container MCP/IPC path:
+Learning-enabled containers receive the vault at `mount_path`.
 
-| Tool | Purpose | Constraint |
-|------|---------|------------|
-| `learning_search` | Search the global vault namespace | Searches only `global_search_root` and returns bounded snippets |
-| `learning_read` | Read a selected search result | Reads only opaque result ids returned by `learning_search` |
-| `learning_write_memory` | Save a learned fact or preference | Writes only under `global_write_root` |
-| `learning_list_skills` | List learned skills | Reads only under `skill_root` |
-| `learning_write_skill` | Create or update a learned skill | Writes only under one skill folder below `skill_root` |
+```text
+host:      <vault_root>/
+container: /workspace/vault/
+mode:      read-write
+```
 
-The host resolves and normalizes all paths. Requests with path traversal, absolute paths, symlinks escaping the configured roots, or oversized payloads fail before touching the vault.
+The broad mount is a deliberate v1 simplification. It gives agents direct access to the vault, so operators should enable it only for sessions trusted to read and edit that vault. The follow-up access-control design can narrow the mount to a subdirectory or replace it with a constrained MCP facade.
+
+Pynchy still validates mount configuration before container start:
+
+- `vault_root` must exist;
+- `vault_root` must resolve to a directory;
+- `mount_path` must be an absolute container path;
+- `memory_root` and `skill_root` must be relative paths under `vault_root`.
 
 ## Learning Queue
 
@@ -96,7 +103,7 @@ Foreground message handling stays fast:
 3. A host-side learning worker claims packets with lease/retry semantics.
 4. The worker coalesces recent packets from the same chat during a short idle window.
 5. A deterministic prefilter skips obvious casual turns.
-6. The reviewer model receives only the bounded packet and the constrained vault tools.
+6. The reviewer model receives only the bounded packet and the mounted vault path.
 7. Accepted outputs write immediately to Obsidian memory or the learned-skill namespace.
 
 The queue uses file-based IPC semantics because Pynchy already depends on atomic filesystem handoff between containers and the host. Durable work units live outside the existing synchronous `tasks/` request-response directory:
@@ -125,7 +132,7 @@ It contains:
 - short error/recovery snippets when a task failed and then recovered;
 - message ids for provenance.
 
-It does not include the full conversation transcript. The reviewer can search the vault when it needs prior facts.
+It does not include the full conversation transcript. The reviewer can search the mounted vault when it needs prior facts.
 
 ## Skill Activation
 
@@ -134,7 +141,7 @@ Learned skills are stored in Obsidian, but Pynchy activates only validated skill
 Validation requires:
 
 - a skill folder below `skill_root`;
-- a `SKILL.md` file with valid frontmatter;
+- a `SKILL.md` file with the metadata required by Pynchy's skill loader;
 - a non-empty name and description;
 - file sizes below configured limits;
 - no symlink escapes from the skill folder.
@@ -143,11 +150,12 @@ After validation, session preparation treats learned skills as an additional ski
 
 ## Error Handling
 
-Vault misconfiguration disables learning writes but does not block normal chat processing. Pynchy logs an operator-visible error when:
+Vault misconfiguration disables the vault mount and learning writes but does not block normal chat processing unless the workspace explicitly requires learning. Pynchy logs an operator-visible error when:
 
 - `vault_root` does not exist;
-- a configured root escapes `vault_root`;
-- the Obsidian search/index command fails;
+- `vault_root` is not a directory;
+- `memory_root` or `skill_root` is absolute or escapes `vault_root`;
+- the container runtime rejects the vault mount;
 - the worker exhausts retry attempts for a learning packet;
 - a generated skill fails validation.
 
@@ -159,8 +167,8 @@ Unit tests cover:
 
 - config parsing and path normalization for the Obsidian learning settings;
 - rejection of path traversal, absolute escaped paths, and symlink escapes;
-- memory writes creating frontmatter under `global_write_root`;
-- whole-vault search using `global_search_root = "."` without granting arbitrary reads;
+- memory writes creating notes under `memory_root`;
+- vault mount generation for learning-enabled containers;
 - skill validation and active skill source discovery;
 - durable queue claim, lease expiry, retry, done, and error behavior;
 - post-turn enqueue behavior after a successful agent result;
@@ -176,4 +184,5 @@ Future namespace access control can add:
 - separate read and write namespace grants;
 - per-group or per-policy skill namespaces;
 - reviewer modes such as immediate, cop-reviewed, or read-only;
-- migration tools that move existing `global` notes into narrower namespaces.
+- mounting only a subdirectory for less-trusted sessions;
+- a constrained MCP facade for sessions that should search or write only selected folders.
