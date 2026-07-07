@@ -276,6 +276,11 @@ class LiteLLMGateway:
         out.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False))
         return out
 
+    @staticmethod
+    def _uses_chatgpt_provider(config_path: Path) -> bool:
+        """Return True when the filtered config needs ChatGPT OAuth state."""
+        return "chatgpt/" in config_path.read_text()
+
     # Docker helpers are in _docker.py — imported at module level.
 
     # ------------------------------------------------------------------
@@ -397,6 +402,9 @@ class LiteLLMGateway:
             "-e",
             f"DATABASE_URL={self._database_url}",
         ]
+        if self._uses_chatgpt_provider(filtered_config):
+            token_dir = env.get("CHATGPT_TOKEN_DIR") or "/app/data/chatgpt"
+            env_vars.extend(["-e", f"CHATGPT_TOKEN_DIR={token_dir}"])
 
         # Forward env vars referenced in the *filtered* config so we don't
         # forward vars for model entries that were filtered out.
