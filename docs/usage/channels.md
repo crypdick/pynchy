@@ -61,6 +61,55 @@ uv sync --extra slack
 - Streaming message updates (edits messages in-place)
 - Markdown formatting
 
+## Built-in: Discord
+
+Connects as a bot over Discord's official gateway (via `discord.py`). Maps guild
+channels, threads, and DMs to Pynchy conversations. Unlike Slack's flat model, one
+guild `#channel` can host many threads — each thread is its own conversation but
+inherits its parent channel's access config.
+
+**Setup:**
+
+1. Create a bot in the [Discord Developer Portal](https://discord.com/developers/applications).
+   Under **Bot → Privileged Gateway Intents**, enable **Message Content Intent**
+   (required to read message text).
+2. Invite the bot with the `bot` scope and at least *View Channels*, *Send Messages*,
+   *Read Message History*, and *Add Reactions* permissions.
+3. Put the bot token in an environment variable (never in `config.toml`), then
+   reference the variable name:
+
+```toml
+[connection.discord.mybot]
+bot_token_env = "DISCORD_BOT_TOKEN"   # name of the env var holding the token
+dm_policy = "allowlist"               # open | allowlist | disabled
+allow_from = ["discord:<your-user-id>"]  # DM allowlist (user snowflakes); "*" = open
+group_policy = "allowlist"            # open | disabled | allowlist
+
+[connection.discord.mybot.chat.<guild-id>]
+require_mention = true                 # guild default; require an @mention to respond
+users = ["discord:<user-id>"]          # optional sender allowlist
+roles = ["role:<role-id>"]             # optional role allowlist
+
+[connection.discord.mybot.chat.<guild-id>.channels.<channel-id>]
+enabled = true
+require_mention = false                # override the guild default for this channel
+```
+
+4. Install dependencies:
+```bash
+uv sync --extra discord
+```
+
+**Features:**
+
+- Guild channel, thread, and DM support
+- Reactions (inbound and outbound)
+- Automatic 2000-character message splitting (preserves code fences)
+- Safe mention defaults (never pings `@everyone` unless asked)
+- History catch-up after reconnect
+
+DM pairing, interactive question widgets, and voice are not yet supported.
+
 ## Built-in: TUI
 
 A terminal UI built with Textual. Connects to Pynchy's HTTP/SSE server — no external service needed.

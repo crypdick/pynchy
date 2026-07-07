@@ -39,6 +39,7 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
     ("pynchy.plugins.agent_cores.claude", "ClaudeAgentCorePlugin", "claude"),
     ("pynchy.plugins.agent_cores.claude_cli", "ClaudeCLIAgentCorePlugin", "claude-cli"),
     ("pynchy.plugins.agent_cores.openai", "OpenAIAgentCorePlugin", "openai"),
+    ("pynchy.plugins.channels.discord", "DiscordChannelPlugin", "discord"),
     ("pynchy.plugins.channels.slack", "SlackChannelPlugin", "slack"),
     ("pynchy.plugins.channels.tui", "TuiChannelPlugin", "tui"),
     ("pynchy.plugins.channels.whatsapp", "WhatsAppPlugin", "whatsapp"),

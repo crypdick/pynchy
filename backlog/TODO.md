@@ -61,8 +61,6 @@ Single source of truth for all pynchy work items.
 ### 3 - Ready
 *Plan approved or not needed. Ready for an agent to pick up.*
 
-- [Discord channel](3-ready/discord-channel.md) — `discord.py` bot channel (guild channels + threads + DMs, replies, reactions, embeds) at Slack parity; composition-based plugin. Threads are per-thread conversations that inherit parent-channel config
-
 - add a mcp that allows admin accounts to add passwords to the .env. it should be upsert only permissions. it should be written in such a way that when the user pastes in their password, it bypasses the llm, the mcp updates .env, and a message posted on the chat saying they can delete the message they posted containing their password. the password should never be stored in the sqlite db. when using the service adder mcp, it should print a system message saying that if the mcp requires any password_env fields, to paste it in. maybe there should be a magic phrase, like 'env add KEY=VALUE' and this is what the harness intercepts. i guess in that case it shouldn't even be an MCP, it should be part of the harness. oh, and afterwards there should be a system (not host) message broadcast so that the local agent is aware when the env files are updated.
 
 - Observability gaps — Slack message loss alerting and boot failure notifications still open (scheduled task progress heartbeats already resolved)

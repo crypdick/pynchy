@@ -24,9 +24,10 @@ dependencies = [
 [project.optional-dependencies]
 whatsapp = ["neonize>=0.3.14.post0", "qrcode>=8.2"]
 slack = ["slack-bolt>=1.27.0", "slack-sdk>=3.40.0"]
+discord = ["discord.py>=2.4.0"]
 caldav = ["caldav>=1.4.0"]
 browser = ["playwright"]
-all = ["pynchy[whatsapp,slack,caldav,browser,notebook]"]
+all = ["pynchy[whatsapp,slack,discord,caldav,browser,notebook]"]
 notebook = [
     "fastmcp>=2.10",
     "ipykernel>=6.30",
@@ -163,6 +164,7 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = [
     "caldav.*",
+    "discord.*",
     "fastmcp.*",
     "jupyter_client.*",
     "neonize.*",

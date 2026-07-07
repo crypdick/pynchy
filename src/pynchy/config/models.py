@@ -166,6 +166,51 @@ class WhatsAppConnectionConfig(_StrictModel):
     chat: dict[str, ConnectionChatConfig] = {}
 
 
+class DiscordChannelConfig(_StrictModel):
+    """Per-channel config for a Discord guild channel.
+
+    Threads inherit their parent channel's config, so this also governs any
+    thread opened under the channel.  ``require_mention`` is ``None`` by
+    default so an unset channel inherits the guild's value; only an explicit
+    bool overrides it.
+    """
+
+    enabled: bool = True
+    require_mention: bool | None = None
+    users: list[str] = []
+    roles: list[str] = []
+    allow: list[str] = []  # per-channel tool allowlist
+    deny: list[str] = []  # per-channel tool denylist (deny wins)
+    security: ChannelOverrideConfig | None = None
+
+
+class DiscordGuildConfig(_StrictModel):
+    """Per-guild config for a Discord connection (a ``chat.<guild>`` section)."""
+
+    require_mention: bool = True
+    users: list[str] = []  # guild-wide sender allowlist (ids)
+    roles: list[str] = []  # guild-wide role-id allowlist
+    channels: dict[str, DiscordChannelConfig] = {}
+    security: ChannelOverrideConfig | None = None
+
+
+class DiscordConnectionConfig(_StrictModel):
+    """Discord connection config (bot token read from an env var).
+
+    ``chat`` is keyed by guild id/slug, mirroring Slack's ``chat`` map, but
+    each guild nests a ``channels`` map because one guild channel can host many
+    threads.
+    """
+
+    bot_token_env: str
+    application_id: str | None = None
+    dm_policy: Literal["open", "allowlist", "disabled"] = "allowlist"
+    allow_from: list[str] = []  # DM allowlist (user snowflakes); "*" = open
+    group_policy: Literal["open", "disabled", "allowlist"] = "allowlist"
+    security: ChannelOverrideConfig | None = None
+    chat: dict[str, DiscordGuildConfig] = {}
+
+
 class ConnectionsConfig(_StrictModel):
     """Root container for all external chat connections.
 
@@ -176,10 +221,11 @@ class ConnectionsConfig(_StrictModel):
 
     slack: dict[str, SlackConnectionConfig] = {}
     whatsapp: dict[str, WhatsAppConnectionConfig] = {}
+    discord: dict[str, DiscordConnectionConfig] = {}
 
     def get_connection(
         self, platform: str, name: str
-    ) -> SlackConnectionConfig | WhatsAppConnectionConfig | None:
+    ) -> SlackConnectionConfig | WhatsAppConnectionConfig | DiscordConnectionConfig | None:
         """Look up a connection config by platform and name.
 
         Uses ``getattr`` so any platform field works automatically without
