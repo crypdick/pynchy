@@ -88,13 +88,19 @@ class _MockGateway(BuiltinGateway):
     check without pulling in real gateway startup behavior.
     """
 
-    def __init__(self, providers: set[str] | None = None) -> None:
+    def __init__(
+        self,
+        providers: set[str] | None = None,
+        *,
+        base_url: str = "http://host.docker.internal:4010",
+    ) -> None:
         self.key = "gw-test-key"
         self._providers = providers or set()
+        self._base_url = base_url
 
     @property
     def base_url(self) -> str:
-        return "http://host.docker.internal:4010"
+        return self._base_url
 
     def has_provider(self, name: str) -> bool:
         return name in self._providers
@@ -688,6 +694,35 @@ class TestWriteEnvFile:
             content = (env_dir / "env").read_text()
             assert f"OPENAI_BASE_URL='{gw.base_url}'" in content
             assert f"OPENAI_API_KEY='{gw.key}'" in content
+
+    def test_gateway_host_bypasses_container_proxy_vars(self, tmp_path: Path):
+        """Local gateway traffic must not route through OneCLI's env proxy."""
+        gw = _MockGateway(providers={"openai"}, base_url="http://192.168.64.1:4000")
+        proxy_env = {
+            "HTTP_PROXY": "http://proxy.internal:8080",
+            "HTTPS_PROXY": "http://proxy.internal:8080",
+            "NO_PROXY": "metadata.internal",
+        }
+        with (
+            _patch_settings(tmp_path),
+            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
+            patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
+            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
+        ):
+            env_dir = _write_env_file(
+                is_admin=True,
+                group_folder="test",
+                extra_env_vars=proxy_env,
+            )
+
+        assert env_dir is not None
+        content = (env_dir / "env").read_text()
+        expected_hosts = (
+            "metadata.internal,localhost,127.0.0.1,::1,host.docker.internal,192.168.64.1"
+        )
+        assert "HTTP_PROXY='http://proxy.internal:8080'" in content
+        assert f"NO_PROXY='{expected_hosts}'" in content
+        assert f"no_proxy='{expected_hosts}'" in content
 
     def test_returns_none_when_no_credentials(self, tmp_path: Path):
         """No gateway providers and no non-LLM creds → returns None."""

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from urllib.parse import urlparse
 
 from pynchy.config import get_settings
 from pynchy.config.settings import Settings
@@ -65,6 +66,8 @@ def shell_quote(value: str) -> str:
 # Env file writer
 # ---------------------------------------------------------------------------
 
+_BASE_NO_PROXY_HOSTS = ("localhost", "127.0.0.1", "::1", "host.docker.internal")
+
 
 def has_api_credentials() -> bool:
     """Check whether LLM API credentials are available for containers.
@@ -92,6 +95,36 @@ def _gateway_env_vars(gateway: LiteLLMGateway | BuiltinGateway | None) -> dict[s
         env_vars["OPENAI_BASE_URL"] = gateway.base_url
         env_vars["OPENAI_API_KEY"] = gateway.key
     return env_vars
+
+
+def _dedupe_csv(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        normalized = value.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        result.append(normalized)
+    return result
+
+
+def _gateway_no_proxy_hosts(gateway: LiteLLMGateway | BuiltinGateway | None) -> list[str]:
+    if gateway is None:
+        return []
+    host = urlparse(gateway.base_url).hostname
+    return _dedupe_csv([*_BASE_NO_PROXY_HOSTS, host or ""])
+
+
+def _merge_no_proxy_hosts(env_vars: dict[str, str], hosts: list[str]) -> None:
+    if not hosts:
+        return
+    existing: list[str] = []
+    for key in ("NO_PROXY", "no_proxy"):
+        existing.extend(env_vars.get(key, "").split(","))
+    merged = _dedupe_csv([*existing, *hosts])
+    for key in ("NO_PROXY", "no_proxy"):
+        env_vars[key] = ",".join(merged)
 
 
 def _gh_token_env_var(s: Settings, *, is_admin: bool, group_folder: str) -> dict[str, str]:
@@ -180,9 +213,13 @@ def _write_env_file(
     env_dir.mkdir(parents=True, exist_ok=True)
 
     env_vars: dict[str, str] = {}
-    env_vars.update(_gateway_env_vars(get_gateway()))
+    gateway = get_gateway()
+    gateway_env_vars = _gateway_env_vars(gateway)
+    env_vars.update(gateway_env_vars)
     if extra_env_vars:
         env_vars.update(extra_env_vars)
+    if gateway_env_vars:
+        _merge_no_proxy_hosts(env_vars, _gateway_no_proxy_hosts(gateway))
     if include_gh_token:
         env_vars.update(_gh_token_env_var(s, is_admin=is_admin, group_folder=group_folder))
     env_vars.update(_git_identity_env_vars())
