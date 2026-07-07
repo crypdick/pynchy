@@ -32,6 +32,7 @@ The container boundary limits the attack surface to what's mounted, rather than 
 - Never mounted into containers
 - Agents cannot modify it
 
+<!-- Source of truth: SecurityConfig.blocked_patterns in src/pynchy/config/models.py — keep this list in sync. -->
 **Default Blocked Patterns:**
 ```
 .ssh, .gnupg, .gpg, .aws, .azure, .gcloud, .kube, .docker,
@@ -72,6 +73,7 @@ Host-side service tools (calendar, Slack, browser, etc.) are gated by `SecurityP
 
 Each service declares four trust properties in `config.toml`:
 
+<!-- Source of truth: ServiceTrustConfig in src/pynchy/types.py — keep these properties/defaults in sync. -->
 | Property | Question it answers |
 |----------|-------------------|
 | `public_source` | Can this service deliver content from untrusted parties? |

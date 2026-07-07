@@ -9,6 +9,7 @@ from typing import Any
 from croniter import croniter
 
 from pynchy.config import get_settings
+from pynchy.config.models import ChatRefStr
 from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.logger import logger
@@ -132,7 +133,7 @@ async def _handle_create_periodic_agent(
         return
 
     chat_name = data.get("chat") or name
-    chat_ref = f"{command_center}.chat.{chat_name}"
+    chat_ref = ChatRefStr(f"{command_center}.chat.{chat_name}")
 
     config = WorkspaceConfig(
         name=name,

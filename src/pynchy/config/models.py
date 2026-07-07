@@ -14,12 +14,39 @@ in their respective plugin files.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal, NewType
 
 from croniter import croniter
-from pydantic import BaseModel, SecretStr, field_validator
+from pydantic import AfterValidator, BaseModel, SecretStr, field_validator
 
 from pynchy.config.refs import parse_chat_ref, parse_connection_ref
+
+# Reference strings whose well-formedness is proven by a validator. Carrying
+# the proof in a distinct type (per CONVENTIONS.md "Parse, don't validate") means
+# downstream code that reads these fields gets a type that can't be confused with an
+# arbitrary str. Both are NewTypes over str, so they remain assignable wherever a
+# plain str ref is expected (string interpolation, config round-trip, cascade merge).
+ConnectionRefStr = NewType("ConnectionRefStr", str)
+ChatRefStr = NewType("ChatRefStr", str)
+
+
+def _validated_connection_ref(v: str) -> ConnectionRefStr:
+    if parse_connection_ref(v) is None:
+        raise ValueError("command_center.connection must be connection.<platform>.<name>")
+    return ConnectionRefStr(v)
+
+
+def _validated_chat_ref(v: str) -> ChatRefStr:
+    if parse_chat_ref(v) is None:
+        raise ValueError("chat must be connection.<platform>.<name>.chat.<chat>")
+    return ChatRefStr(v)
+
+
+# AfterValidator runs after Pydantic coerces the input to str; for Optional fields it
+# is skipped on None. The validator returns the NewType so the field's static type
+# carries the parse result — no downstream re-validation.
+ValidatedConnectionRef = Annotated[ConnectionRefStr, AfterValidator(_validated_connection_ref)]
+ValidatedChatRef = Annotated[ChatRefStr, AfterValidator(_validated_chat_ref)]
 
 
 class _StrictModel(BaseModel):
@@ -53,6 +80,8 @@ class ContainerConfig(_StrictModel):
 
 
 class ServerConfig(_StrictModel):
+    # NOTE: Update docs/install.md (§ Headless Server Deployment — the 8484
+    # references and "Port 8484 not reachable" troubleshooting) if you change this default.
     port: int = 8484
 
 
@@ -165,16 +194,7 @@ class ConnectionsConfig(_StrictModel):
 class CommandCenterConfig(_StrictModel):
     """Which connection is the dedicated command center."""
 
-    connection: str | None = None
-
-    @field_validator("connection")
-    @classmethod
-    def _validate_connection_ref(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
-        if parse_connection_ref(v) is None:
-            raise ValueError("command_center.connection must be connection.<platform>.<name>")
-        return v
+    connection: ValidatedConnectionRef | None = None
 
 
 class SandboxProfileConfig(_StrictModel):
@@ -259,7 +279,7 @@ class WorkspaceConfig(_StrictModel):
     profile: str | None = None  # sandbox_profiles.<name> reference
     directives: list[str] | None = None  # directive names; convention: directives/<name>.md
     # TODO: Allow binding to a whole connection (not just a chat).
-    chat: str | None = None  # connection.<platform>.<name>.chat.<chat>
+    chat: ValidatedChatRef | None = None  # connection.<platform>.<name>.chat.<chat>
     is_admin: bool | None = None  # None → not admin
     repo_access: str | None = None  # GitHub slug (owner/repo) from [repos.*]; None = no worktree
     schedule: str | None = None  # cron expression
@@ -278,15 +298,9 @@ class WorkspaceConfig(_StrictModel):
     git_policy: Literal["merge-to-main", "pull-request"] | None = None  # None → merge-to-main
     idle_terminate: bool | None = None  # None → inherit from profile/universal (default: True)
 
-    @field_validator("chat")
-    @classmethod
-    def validate_chat_ref(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
-        if parse_chat_ref(v) is None:
-            raise ValueError("chat must be connection.<platform>.<name>.chat.<chat>")
-        return v
-
+    # A cron expression has no distinct parsed type worth carrying: croniter.is_valid
+    # is cheap and compute_next_run re-instantiates croniter from the string anyway, so
+    # this stays a str-returning check rather than a NewType parse.
     @field_validator("schedule")
     @classmethod
     def validate_cron(cls, v: str | None) -> str | None:
@@ -335,6 +349,8 @@ class CronJobConfig(_StrictModel):
     timeout_seconds: int = 600
     enabled: bool = True
 
+    # See WorkspaceConfig.validate_cron: cron stays a str-returning check because
+    # croniter re-validation is cheap and there is no parsed type to carry downstream.
     @field_validator("schedule")
     @classmethod
     def validate_schedule(cls, v: str) -> str:
@@ -388,6 +404,8 @@ class CalDAVConfig(_StrictModel):
 
 
 class SecurityConfig(_StrictModel):
+    # NOTE: Update docs/architecture/security.md § 2 (Mount Security → Default
+    # Blocked Patterns) if you change this list — it restates these values in prose.
     blocked_patterns: list[str] = [
         ".ssh",
         ".gnupg",

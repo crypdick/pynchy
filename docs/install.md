@@ -384,6 +384,7 @@ Then rebuild: `./container/build.sh`
 ### Port 8484 not reachable over Tailscale
 
 - Verify Tailscale is connected: `tailscale status`
+<!-- Source of truth for the default port: ServerConfig.port in src/pynchy/config/models.py — keep the 8484 references in this file in sync. -->
 - The HTTP server binds to `0.0.0.0:8484` by default, which is accessible over Tailscale without any additional configuration
 - Check firewall rules if on a cloud provider
 
