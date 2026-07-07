@@ -24,6 +24,28 @@ def _make_instance(server_name: str) -> McpInstance:
     )
 
 
+class _LiteLLMSession:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_exc_info):
+        return None
+
+
+def _make_gateway(tmp_path) -> LiteLLMGateway:
+    config_path = tmp_path / "litellm_config.yaml"
+    config_path.write_text("model_list: []\n")
+    return LiteLLMGateway(
+        config_path=str(config_path),
+        port=4000,
+        container_host="host.docker.internal",
+        image="litellm:test",
+        postgres_image="postgres:test",
+        data_dir=tmp_path,
+        master_key="sk-test",
+    )
+
+
 class TestMcpManagerHasProxy:
     """McpManager should own an McpProxy instance."""
 
@@ -63,6 +85,29 @@ class TestBuildTrustMap:
 
         trust_map = build_trust_map(instances, {})
         assert set(trust_map.keys()) == {"a", "b", "c"}
+
+
+class TestLiteLLMSyncRuntimeTypes:
+    """Runtime type hints used by beartype should be importable."""
+
+    @pytest.mark.asyncio
+    async def test_sync_mcp_endpoints_accepts_real_gateway(self, tmp_path):
+        """sync_mcp_endpoints should not crash resolving LiteLLMGateway."""
+        from pynchy.host.container_manager.mcp import litellm
+
+        gateway = _make_gateway(tmp_path)
+
+        async def api_request(*_args, **_kwargs):
+            return []
+
+        with (
+            patch(
+                "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
+                return_value=_LiteLLMSession(),
+            ),
+            patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request),
+        ):
+            await litellm.sync_mcp_endpoints(gateway, {})
 
 
 class TestGetDirectServerConfigsProxy:

@@ -19,11 +19,11 @@ from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
+from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
 from pynchy.host.container_manager.mcp.resolution import WorkspaceTeam
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
-    from pynchy.host.container_manager.gateway import LiteLLMGateway
     from pynchy.host.container_manager.mcp.resolution import McpInstance
 
 
