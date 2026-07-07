@@ -308,7 +308,8 @@ class TestHandleStreamedOutput:
         """Non-string results should be JSON-serialized before processing."""
         deps = _make_deps()
         group = _make_group()
-        output = _make_output(type="result", result={"key": "value"})
+        with pytest.warns(UserWarning, match="violates type hint"):
+            output = _make_output(type="result", result={"key": "value"})
 
         with patch(
             "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
