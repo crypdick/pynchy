@@ -2,7 +2,7 @@
 
 Database path: `data/messages.db`
 
-**Host access:** If not on the pynchy host directly, prefix commands with `ssh pynchy-server` (Tailscale). See the `pynchy-ops` skill for remote access patterns.
+**Host access:** If not on the Pynchy host directly, set `PYNCHY_HOST` to the deployment-specific hostname and prefix commands with `ssh "$PYNCHY_HOST"`. See the `pynchy-ops` skill for remote access patterns.
 
 ## Table Overview
 

@@ -4,7 +4,7 @@ Personal Claude assistant. See [README.md](README.md) for philosophy. See [insta
 
 ## Deployment Awareness
 
-You are usually NOT running on the production host. The pynchy service runs on `pynchy-server` (reachable via Tailscale SSH). Before making changes that affect the live service (config.toml, server-side files, service restarts), read the [pynchy-ops skill](.claude/skills/pynchy-ops/SKILL.md) for deployment procedures, auto-deploy behavior, and how to observe the running service.
+You are usually NOT running on the production host. The live host is deployment-specific and should come from local memory, environment, or the operator, not from public repo defaults. Before making changes that affect the live service (config.toml, server-side files, service restarts), read the [pynchy-ops skill](.claude/skills/pynchy-ops/SKILL.md) for deployment procedures, auto-deploy behavior, and how to observe the running service.
 
 ## Quick Context
 

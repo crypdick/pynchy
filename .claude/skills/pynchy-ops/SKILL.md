@@ -5,9 +5,7 @@ description: Use when managing the pynchy service on the server — deploying ch
 
 # Pynchy Ops
 
-The live personal Pynchy service runs on `mac-mini` over Tailscale. SSH: `ssh mac-mini`.
-
-Treat `pynchy-server` as historical unless a fresh status check proves it is serving the live deployment.
+The live Pynchy host is deployment-specific. Public repo instructions must not assume a private hostname. Set `PYNCHY_HOST` from local memory, environment, or the operator before running remote commands.
 
 ## Auto-deploy: Never Restart Manually
 
@@ -26,10 +24,12 @@ Only use manual commands when the service is unhealthy and needs fixing. See [re
 
 ```bash
 # On the live host directly:
-curl -s http://localhost:8485/status | python3 -m json.tool
+curl -s http://localhost:8484/status | python3 -m json.tool
 
 # Remotely (via Tailscale):
-curl -s http://mac-mini:8485/status | python3 -m json.tool
+PYNCHY_HOST="${PYNCHY_HOST:?set the live host}"
+PYNCHY_PORT="${PYNCHY_PORT:-8484}"
+curl -s "http://$PYNCHY_HOST:$PYNCHY_PORT/status" | python3 -m json.tool
 ```
 
 Returns JSON with: `service` (uptime), `deploy` (SHA, dirty, unpushed), `channels` (slack/whatsapp connected), `gateway` (LiteLLM health), `temporal` (cluster health, worker state, task queue, last scheduled workflow/result), `queue` (active containers, waiting groups), `repos` (per-repo worktree status — SHA, dirty, ahead/behind, conflicts), `messages` (inbound/outbound counts, last activity), `tasks` (scheduled tasks with status/next run), `host_jobs`, `groups` (total, active sessions).
@@ -60,16 +60,18 @@ tail -n 200 ~/src/PERSONAL/pynchy/logs/pynchy.log | grep groupCount
 
 ```bash
 # Trigger a deploy (from HOST — use mcp__pynchy__deploy_changes from containers)
-curl -s -X POST http://mac-mini:8485/deploy
+PYNCHY_HOST="${PYNCHY_HOST:?set the live host}"
+PYNCHY_PORT="${PYNCHY_PORT:-8484}"
+curl -s -X POST "http://$PYNCHY_HOST:$PYNCHY_PORT/deploy"
 
 # Observe (always safe)
-ssh mac-mini 'launchctl print gui/$(id -u)/com.pynchy'
-ssh mac-mini 'tail -n 100 ~/src/PERSONAL/pynchy/logs/pynchy.log'
-ssh mac-mini 'tail -n 100 ~/src/PERSONAL/pynchy/logs/pynchy.error.log'
-ssh mac-mini 'docker ps --filter name=pynchy'
+ssh "$PYNCHY_HOST" 'launchctl print gui/$(id -u)/com.pynchy'
+ssh "$PYNCHY_HOST" 'tail -n 100 ~/src/PERSONAL/pynchy/logs/pynchy.log'
+ssh "$PYNCHY_HOST" 'tail -n 100 ~/src/PERSONAL/pynchy/logs/pynchy.error.log'
+ssh "$PYNCHY_HOST" 'docker ps --filter name=pynchy'
 
 # Manual restart — ONLY for unhealthy/stuck service
-ssh mac-mini 'launchctl kickstart -k gui/$(id -u)/com.pynchy'
+ssh "$PYNCHY_HOST" 'launchctl kickstart -k gui/$(id -u)/com.pynchy'
 ```
 
 ## Monitoring Live Agent Activity
@@ -78,14 +80,14 @@ ssh mac-mini 'launchctl kickstart -k gui/$(id -u)/com.pynchy'
 
 ```bash
 # Recent activity for a specific group (replace <JID> with e.g. slack:C0AFR6DB0FK)
-ssh mac-mini 'cd ~/src/PERSONAL/pynchy && sqlite3 data/messages.db "
+ssh "$PYNCHY_HOST" 'cd ~/src/PERSONAL/pynchy && sqlite3 data/messages.db "
   SELECT timestamp, message_type, substr(content, 1, 120)
   FROM messages WHERE chat_jid = '\''<JID>'\''
   ORDER BY timestamp DESC LIMIT 15;
 "'
 
 # All recent activity across all groups
-ssh mac-mini 'cd ~/src/PERSONAL/pynchy && sqlite3 data/messages.db "
+ssh "$PYNCHY_HOST" 'cd ~/src/PERSONAL/pynchy && sqlite3 data/messages.db "
   SELECT timestamp, chat_jid, message_type, substr(content, 1, 80)
   FROM messages ORDER BY timestamp DESC LIMIT 15;
 "'
@@ -95,7 +97,7 @@ ssh mac-mini 'cd ~/src/PERSONAL/pynchy && sqlite3 data/messages.db "
 
 Scheduled work runs through Temporal. Pynchy reconciles active agent tasks, database host jobs, and config cron jobs into Temporal schedules or delayed workflows. Pynchy owns the worker in the host process; Temporal owns workflow durability and wake-ups.
 
-mac-mini service:
+macOS launchd deployment:
 
 | Item | Value |
 |------|-------|
@@ -107,17 +109,17 @@ mac-mini service:
 Safe checks:
 
 ```bash
-ssh mac-mini 'launchctl print gui/$(id -u)/com.pynchy.temporal'
-ssh mac-mini 'temporal operator cluster health --address 127.0.0.1:7233'
-ssh mac-mini 'lsof -nP -iTCP:7233 -sTCP:LISTEN'
-curl -s http://mac-mini:8485/status | python3 -m json.tool
+ssh "$PYNCHY_HOST" 'launchctl print gui/$(id -u)/com.pynchy.temporal'
+ssh "$PYNCHY_HOST" 'temporal operator cluster health --address 127.0.0.1:7233'
+ssh "$PYNCHY_HOST" 'lsof -nP -iTCP:7233 -sTCP:LISTEN'
+curl -s "http://$PYNCHY_HOST:${PYNCHY_PORT:-8484}/status" | python3 -m json.tool
 ```
 
 `data/temporal.db` is durable scheduler state. Make sure host backups include it with the rest of `data/`.
 
 ## Runtime DB Backups
 
-mac-mini uses `scripts/backup_runtime_dbs.sh` for SQLite-safe runtime DB snapshots. It backs up `messages.db`, `memories.db`, `neonize.db`, and `temporal.db` into iCloud Drive by default.
+macOS deployments can use `scripts/backup_runtime_dbs.sh` for SQLite-safe runtime DB snapshots. It backs up `messages.db`, `memories.db`, `neonize.db`, and `temporal.db` into iCloud Drive by default.
 
 Live service:
 
@@ -130,9 +132,9 @@ Live service:
 Safe checks:
 
 ```bash
-ssh mac-mini 'launchctl print gui/$(id -u)/com.pynchy.backup'
-ssh mac-mini 'ls -lt ~/Library/Mobile\ Documents/com~apple~CloudDocs/PynchyBackups | head'
-ssh mac-mini 'tail -n 50 ~/Library/Logs/pynchy/backup.err.log'
+ssh "$PYNCHY_HOST" 'launchctl print gui/$(id -u)/com.pynchy.backup'
+ssh "$PYNCHY_HOST" 'ls -lt ~/Library/Mobile\ Documents/com~apple~CloudDocs/PynchyBackups | head'
+ssh "$PYNCHY_HOST" 'tail -n 50 ~/Library/Logs/pynchy/backup.err.log'
 ```
 
 **When to use what:**
@@ -151,7 +153,7 @@ Use the TUI API to inject messages into any group's chat pipeline (useful for te
 
 ```bash
 # Send a message as if a user typed it
-curl -s -X POST http://mac-mini:8485/api/send \
+curl -s -X POST "http://$PYNCHY_HOST:${PYNCHY_PORT:-8484}/api/send" \
   -H "Content-Type: application/json" \
   -d '{"jid": "<JID>", "content": "your message here"}'
 ```
@@ -182,10 +184,10 @@ Systemd unit template: `config-examples/pynchy.service.EXAMPLE`
 
 ```bash
 # Interactive login (works over SSH with -t for TTY)
-ssh -t mac-mini 'gh auth login -p ssh'
+ssh -t "$PYNCHY_HOST" 'gh auth login -p ssh'
 
 # Verify
-ssh mac-mini 'gh auth status'
+ssh "$PYNCHY_HOST" 'gh auth status'
 ```
 
 After authenticating, `_write_env_file()` auto-discovers `GH_TOKEN` and git identity on each admin container launch. No manual env configuration needed.
@@ -203,16 +205,16 @@ Verify: `container run -i --rm --entrypoint python pynchy-agent:latest -c "impor
 
 ## LiteLLM Gateway
 
-Runs as `pynchy-litellm` Docker container with PostgreSQL sidecar (`pynchy-litellm-db`). Access at `http://localhost:4000` on the pynchy server, or via Tailscale at port 4000.
+Runs as `pynchy-litellm` Docker container with PostgreSQL sidecar (`pynchy-litellm-db`). Access at `http://localhost:4000` on the Pynchy host, or via Tailscale at port 4000.
 
-Master key: `ssh mac-mini 'grep master_key ~/src/PERSONAL/pynchy/config.toml'`
+Master key lookup: `ssh "$PYNCHY_HOST" 'grep master_key ~/src/PERSONAL/pynchy/config.toml'`
 Pass as: `Authorization: Bearer <key>`
 
 If `master_key` is not in `config.toml`, it may be injected via `.env` or container env. Prefer a scripted lookup that **does not print the key**, e.g. using it inline for a request (see `references/litellm-diagnostics.md` for examples).
 
 Config: `~/src/PERSONAL/pynchy/litellm_config.yaml`. Editing it triggers an automatic restart (~30–90s). Do not manually restart containers.
 
-Dashboard: `http://mac-mini:4000/ui/`
+Dashboard: `http://$PYNCHY_HOST:4000/ui/`
 
 - **Diagnostics, spend tracking, failure analysis**: [references/litellm-diagnostics.md](references/litellm-diagnostics.md)
 - **MCP server management API and gotchas**: [references/litellm-mcp-api.md](references/litellm-mcp-api.md)
@@ -222,7 +224,7 @@ Dashboard: `http://mac-mini:4000/ui/`
 If SSH login reports zombie processes, check whether they live inside the LiteLLM container:
 
 ```bash
-ssh mac-mini 'docker exec pynchy-litellm ps -eo pid,ppid,stat,args | awk '\''$3 ~ /Z/ {print}'\'''
+ssh "$PYNCHY_HOST" 'docker exec pynchy-litellm ps -eo pid,ppid,stat,args | awk '\''$3 ~ /Z/ {print}'\'''
 ```
 
 Note: use `args`, not `cmd` — `cmd` can appear empty for zombie processes.
@@ -243,7 +245,7 @@ All databases live in `data/`:
 | `data/neonize.db` | WhatsApp auth state (Neonize credentials) |
 | `data/memories.db` | BM25-ranked memory store (sqlite-memory plugin) |
 
-Quick inspection (run on the live host or prefix with `ssh mac-mini 'cd ~/src/PERSONAL/pynchy && ...'`):
+Quick inspection (run on the live host or prefix with `ssh "$PYNCHY_HOST" 'cd ~/src/PERSONAL/pynchy && ...'`):
 
 ```bash
 # List registered groups

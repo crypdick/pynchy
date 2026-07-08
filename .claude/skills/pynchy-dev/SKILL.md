@@ -1,6 +1,6 @@
 ---
 name: Pynchy Development
-description: Use when running pynchy locally — running the app, tests, linting, formatting, pre-commit hooks, or rebuilding the agent container. Also use when determining whether you're on pynchy-server or a local machine, and for debugging agent behavior-- session transcript branching, inspecting message history and agent traces in SQLite, pytest hangs, or diagnosing known codebase issues.
+description: Use when running pynchy locally — running the app, tests, linting, formatting, pre-commit hooks, or rebuilding the agent container. Also use when determining whether you're on the live Pynchy host or a local machine, and for debugging agent behavior-- session transcript branching, inspecting message history and agent traces in SQLite, pytest hangs, or diagnosing known codebase issues.
 ---
 
 # Pynchy Development
@@ -9,7 +9,7 @@ Run commands directly—don't tell the user to run them.
 
 ## Am I on pynchy?
 
-Check `hostname`. If it returns `pynchy-server`, you're on the server and can access services at `localhost`. Otherwise, reach pynchy over Tailscale (e.g., `ssh pynchy-server`).
+Check `hostname` and compare it with the deployment-specific live host from local memory, environment, or the operator. If you are on that host, access services at `localhost`. Otherwise, reach Pynchy over SSH or Tailscale using that configured host.
 
 ## Commands
 
@@ -38,7 +38,7 @@ Write tests that validate **actual business logic**, not just line coverage. See
 
 Prefer querying SQLite over docker logs — docker logs truncate output, but the DB stores full content and captures agent internals (thinking, tool calls, system prompts).
 
-Database: `data/messages.db`. If not on the pynchy host, prefix with `ssh pynchy-server`.
+Database: `data/messages.db`. If not on the Pynchy host, prefix commands with `ssh "$PYNCHY_HOST"` after setting `PYNCHY_HOST` to the deployment-specific hostname.
 
 ```bash
 # Last 20 messages in a channel

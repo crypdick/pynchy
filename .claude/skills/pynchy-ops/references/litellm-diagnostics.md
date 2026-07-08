@@ -1,6 +1,6 @@
 # LiteLLM Diagnostics Reference
 
-All commands assume SSH to pynchy-server. Use `ssh pynchy-server '<command>'` when running remotely.
+All commands assume you are on the Pynchy host. When running remotely, set `PYNCHY_HOST` to the deployment-specific hostname and use `ssh "$PYNCHY_HOST" '<command>'`.
 
 ## Health & readiness
 

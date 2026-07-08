@@ -58,16 +58,17 @@ The TUI HTTP API can be used to send messages to any group without a TUI client.
 
 ```bash
 # 1. Look up the group's JID
-curl -s http://pynchy-server:8484/api/groups | python3 -m json.tool
+PYNCHY_BASE_URL="${PYNCHY_BASE_URL:-http://localhost:8484}"
+curl -s "$PYNCHY_BASE_URL/api/groups" | python3 -m json.tool
 # Returns: [{"name": "my-group", "jid": "...", ...}, ...]
 
 # 2. Send a message to the agent in that group
-curl -s -X POST http://pynchy-server:8484/api/send \
+curl -s -X POST "$PYNCHY_BASE_URL/api/send" \
   -H 'Content-Type: application/json' \
   -d '{"jid": "<jid-from-step-1>", "content": "your message here"}'
 
 # 3. Watch the response via SSE (or just check /api/messages after a moment)
-curl -s "http://pynchy-server:8484/api/messages?jid=<jid>&limit=5" | python3 -m json.tool
+curl -s "$PYNCHY_BASE_URL/api/messages?jid=<jid>&limit=5" | python3 -m json.tool
 ```
 
 This is useful for:
