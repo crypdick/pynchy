@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from conftest import make_settings
@@ -83,7 +83,16 @@ async def _run_due_task_via_scheduler(deps, task: ScheduledTask) -> None:
     """
     import pynchy.host.orchestrator.task_scheduler as ts_mod
 
-    await ts_mod._run_scheduled_agent(task, deps)
+    if isinstance(ts_mod.get_task_run_logs, Mock):
+        await ts_mod._run_scheduled_agent(task, deps)
+        return
+
+    with patch(
+        "pynchy.host.orchestrator.task_scheduler.get_task_run_logs",
+        new_callable=AsyncMock,
+        return_value=[],
+    ):
+        await ts_mod._run_scheduled_agent(task, deps)
 
 
 async def _run_scheduler_reconcile_once(deps) -> type[RecordingTemporalRuntime]:
