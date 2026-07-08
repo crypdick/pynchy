@@ -45,6 +45,7 @@ class SessionDiedError(Exception):
 
 
 _RUNTIME_POLL_INTERVAL_SECONDS = 0.5
+_RUNTIME_START_GRACE_SECONDS = 5.0
 
 
 async def _runtime_container_running(container_name: str) -> bool:
@@ -87,6 +88,7 @@ class ContainerSession:
         self.container_name = container_name
         self.proc: asyncio.subprocess.Process | None = None
         self._proc_monitor_task: asyncio.Task[None] | None = None
+        self._runtime_monitor_task: asyncio.Task[None] | None = None
         self._stderr_task: asyncio.Task[None] | None = None
         self._on_output: OnOutput | None = None
         self._query_done = asyncio.Event()
@@ -125,6 +127,11 @@ class ContainerSession:
             self._monitor_proc(proc),
             name=f"proc-monitor-{self.container_name}",
         )
+        if sys.platform == "darwin":
+            self._runtime_monitor_task = create_background_task(
+                self._monitor_runtime_while_cli_alive(proc),
+                name=f"runtime-monitor-{self.container_name}",
+            )
         self._reset_idle_timer()
 
     def set_output_handler(self, on_output: OnOutput | None) -> None:
@@ -191,7 +198,7 @@ class ContainerSession:
         await _docker_rm_force(self.container_name)
 
         # Cancel background tasks
-        for task in (self._proc_monitor_task, self._stderr_task):
+        for task in (self._proc_monitor_task, self._runtime_monitor_task, self._stderr_task):
             if task and not task.done():
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
@@ -257,6 +264,8 @@ class ContainerSession:
         (reset_context, finished_work) -- NOT a crash.
         """
         exit_code = await proc.wait()
+        if self._dead:
+            return
 
         if await _runtime_container_running(self.container_name):
             self._runtime_alive_after_proc_exit = True
@@ -270,6 +279,30 @@ class ContainerSession:
             return
 
         await self._mark_container_exited(exit_code)
+
+    async def _monitor_runtime_while_cli_alive(self, proc: asyncio.subprocess.Process) -> None:
+        """Detect Apple runtime container death even if ``container run`` hangs."""
+        seen_running = False
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + _RUNTIME_START_GRACE_SECONDS
+
+        while proc.returncode is None and not self._dead:
+            running = await _runtime_container_running(self.container_name)
+            if running:
+                seen_running = True
+            elif seen_running:
+                logger.warning(
+                    "Runtime container stopped while CLI process remained alive",
+                    group=self.group_folder,
+                    container=self.container_name,
+                )
+                with contextlib.suppress(ProcessLookupError):
+                    proc.kill()
+                await self._mark_container_exited(1)
+                return
+            elif loop.time() >= deadline:
+                return
+            await asyncio.sleep(_RUNTIME_POLL_INTERVAL_SECONDS)
 
     async def _monitor_runtime_container(self, cli_exit_code: int) -> None:
         """Poll runtime state after the CLI client exits before the container."""
