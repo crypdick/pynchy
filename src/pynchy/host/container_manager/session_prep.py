@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     import pluggy
 
 from pynchy.config import get_settings
+from pynchy.host.container_manager.onecli import sync_onecli_gateway_skill
 from pynchy.logger import logger
 
 # ---------------------------------------------------------------------------
@@ -172,6 +173,8 @@ def _sync_skills(
 
     if learned_skill_paths and workspace_skills is not None:
         _sync_learned_skills(skills_dst, learned_skill_paths, workspace_skills)
+
+    sync_onecli_gateway_skill(skills_dst)
 
 
 def _copy_direct_skill_files(skill_dir: Path, dst_dir: Path) -> None:

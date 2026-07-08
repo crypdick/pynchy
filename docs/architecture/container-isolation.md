@@ -83,6 +83,11 @@ stay in OneCLI and are injected only as matching outbound requests pass through
 the OneCLI gateway. When this material is present, `GH_TOKEN` is not written to
 the agent env file.
 
+Host-owned git operations also prefer OneCLI when it is enabled: clone, fetch,
+and push use the OneCLI proxy/CA environment instead of embedding GitHub tokens
+in command arguments. Native token helpers remain only for disabled-OneCLI or
+explicit fail-open migration setups.
+
 **Process:**
 1. Host discovers credentials from `config.toml [secrets]` and auto-discovery (OAuth, gh CLI, git config)
 2. LLM keys are registered with the gateway; containers get the gateway URL + ephemeral key

@@ -872,6 +872,7 @@ class TestCollectStatus:
             "deploy",
             "channels",
             "gateway",
+            "onecli",
             "queue",
             "repos",
             "messages",
@@ -889,6 +890,19 @@ class TestCollectStatus:
         assert result["service"]["status"] == "ok"
         assert result["service"]["uptime_seconds"] >= 120
         assert result["messages"]["total_inbound"] == 100
+
+    @pytest.mark.asyncio
+    async def test_includes_onecli_status(self):
+        deps = MockStatusDeps()
+        onecli = {"enabled": True, "ready": True, "pending_approvals": 1}
+
+        with (
+            _inert_status(),
+            patch(f"{_S}.collect_onecli_status", return_value=onecli),
+        ):
+            result = await collect_status(deps, time.monotonic())
+
+        assert result["onecli"] == onecli
 
 
 # ---------------------------------------------------------------------------

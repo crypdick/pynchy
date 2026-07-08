@@ -7,6 +7,11 @@ import subprocess
 from pathlib import Path
 
 from pynchy.config import get_settings
+from pynchy.host.container_manager.onecli import (
+    OneCliError,
+    OneCliMaterial,
+    prepare_onecli_material,
+)
 from pynchy.logger import logger
 
 _SUBPROCESS_TIMEOUT = 30
@@ -49,8 +54,48 @@ def run_git(
     )
 
 
-def git_env_with_token(slug: str) -> dict[str, str] | None:
-    """Build env dict with GIT_ASKPASS for a repo's scoped token.
+def _host_process_env(material: OneCliMaterial) -> dict[str, str]:
+    host_paths_by_container_path = {
+        mount.container_path: mount.host_path for mount in material.mounts
+    }
+    return {
+        key: host_paths_by_container_path.get(value, value)
+        for key, value in material.env_vars.items()
+    }
+
+
+def _git_env_with_onecli(slug: str, *, group_folder: str | None) -> dict[str, str] | None:
+    s = get_settings()
+    if not s.onecli.enabled:
+        return None
+
+    agent_key = group_folder or f"git-{slug}"
+    material = prepare_onecli_material(agent_key)
+    if material is None:
+        return None
+
+    env = _host_process_env(material)
+    has_proxy = any(
+        key in env for key in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy")
+    )
+    if not has_proxy:
+        reason = "OneCLI git material did not include proxy env"
+        if s.onecli.fail_closed:
+            raise OneCliError(reason)
+        logger.warning(reason, slug=slug, onecli_agent=agent_key)
+        return None
+
+    merged = os.environ.copy()
+    merged.update(env)
+    merged["GIT_TERMINAL_PROMPT"] = "0"
+    return merged
+
+
+def git_env_with_token(slug: str, *, group_folder: str | None = None) -> dict[str, str] | None:
+    """Build env dict for authenticated git remote operations.
+
+    When OneCLI is enabled, git receives OneCLI proxy/CA env and no raw token.
+    Otherwise this falls back to Pynchy's native repo token resolution.
 
     Returns None if no token is available (callers fall back to ambient
     credentials). Uses GIT_ASKPASS with a small inline script that echoes the
@@ -58,6 +103,9 @@ def git_env_with_token(slug: str) -> dict[str, str] | None:
     in .git/config or ``git remote -v`` output.
     """
     from pynchy.host.git_ops.repo import get_repo_token
+
+    if onecli_env := _git_env_with_onecli(slug, group_folder=group_folder):
+        return onecli_env
 
     token = get_repo_token(slug)
     if not token:

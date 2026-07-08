@@ -18,6 +18,7 @@ from temporalio.client import Client
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.docker import run_docker
+from pynchy.host.container_manager.onecli import collect_onecli_status
 from pynchy.host.git_ops.repo import RepoContext, get_repo_context
 from pynchy.host.git_ops.utils import (
     count_unpushed_commits,
@@ -106,6 +107,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         tasks,
         host_jobs,
         gateway,
+        onecli,
         temporal,
     ) = await asyncio.gather(
         _collect_deploy(),
@@ -114,6 +116,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         _collect_tasks(),
         _collect_host_jobs(),
         _collect_gateway(deps.get_gateway_info()),
+        asyncio.to_thread(collect_onecli_status),
         _collect_temporal(),
     )
 
@@ -122,6 +125,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         "deploy": deploy,
         "channels": channels,
         "gateway": gateway,
+        "onecli": onecli,
         "queue": queue,
         "repos": repos,
         "messages": messages,

@@ -98,8 +98,8 @@ def ensure_repo_cloned(repo_ctx: RepoContext) -> bool:
     Only applies to auto-managed repos (those without an explicit path in config).
     Returns True if the repo root exists and is ready for worktree operations.
 
-    Uses the repo's resolved token for authentication (supports private repos).
-    After cloning, resets the remote URL to the bare form so the token doesn't
+    Uses the repo's resolved git environment for authentication (supports
+    private repos). The clone URL stays bare so tokens never appear in argv or
     persist in .git/config.
     """
     if repo_ctx.root.exists():
@@ -107,25 +107,25 @@ def ensure_repo_cloned(repo_ctx: RepoContext) -> bool:
 
     repo_ctx.root.parent.mkdir(parents=True, exist_ok=True)
 
-    token = get_repo_token(repo_ctx.slug)
-    if token:
-        clone_url = f"https://x-access-token:{token}@github.com/{repo_ctx.slug}"
-    else:
-        clone_url = f"https://github.com/{repo_ctx.slug}"
+    from pynchy.host.git_ops.utils import git_env_with_token
+
+    env = git_env_with_token(repo_ctx.slug)
+    token = env.get("GH_TOKEN") if env else None
+    clone_url = f"https://github.com/{repo_ctx.slug}"
 
     logger.info("Cloning repo", slug=repo_ctx.slug, dest=str(repo_ctx.root))
     result = subprocess.run(
         ["git", "clone", clone_url, str(repo_ctx.root)],
         capture_output=True,
         text=True,
+        env=env,
     )
     if result.returncode != 0:
         stderr = _sanitize_token(result.stderr.strip(), token)
         logger.error("Failed to clone repo", slug=repo_ctx.slug, stderr=stderr)
         return False
 
-    # Reset the remote URL to the bare form — token must not persist in .git/config.
-    # Future fetch/push operations use the credential helper or env-based token.
+    # Keep the remote URL bare. Future fetch/push operations use env-based auth.
     subprocess.run(
         ["git", "remote", "set-url", "origin", f"https://github.com/{repo_ctx.slug}"],
         cwd=str(repo_ctx.root),

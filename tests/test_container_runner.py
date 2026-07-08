@@ -1526,6 +1526,19 @@ class TestSyncSkills:
         # skills/ directory should still be created (empty)
         assert (session_dir / "skills").exists()
 
+    def test_syncs_generated_onecli_gateway_skill(self, tmp_path: Path):
+        """Session skill sync delegates generated OneCLI gateway skill installation."""
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with (
+            _patch_settings(tmp_path),
+            patch("pynchy.host.container_manager.session_prep.sync_onecli_gateway_skill") as sync,
+        ):
+            _sync_skills(session_dir)
+
+        sync.assert_called_once_with(session_dir / "skills")
+
     def test_plugin_skills_are_synced(self, tmp_path: Path):
         """Plugin manager skill paths are copied to session dir."""
         plugin_skill = tmp_path / "plugins" / "ext-skill"

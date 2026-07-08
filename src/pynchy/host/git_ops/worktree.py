@@ -102,7 +102,7 @@ def _sync_existing_worktree(
 ) -> WorktreeResult:
     """Sync an existing worktree — best-effort pull, preserve local state."""
     notices: list[str] = []
-    env = git_env_with_token(repo_ctx.slug)
+    env = git_env_with_token(repo_ctx.slug, group_folder=group_folder)
 
     # Check for uncommitted changes
     status = run_git("status", "--porcelain", cwd=worktree_path)
@@ -151,7 +151,7 @@ def _create_new_worktree(
     repo_ctx: RepoContext,
 ) -> WorktreeResult:
     """Create a worktree from origin/{main}. Raises WorktreeError on failure."""
-    env = git_env_with_token(repo_ctx.slug)
+    env = git_env_with_token(repo_ctx.slug, group_folder=group_folder)
     # Fetch is required for initial creation
     fetch = run_git("fetch", "origin", cwd=repo_ctx.root, env=env)
     if fetch.returncode != 0:
@@ -284,7 +284,6 @@ def reconcile_worktrees_at_startup(
         check_token_expiry,
         ensure_repo_cloned,
         get_repo_context,
-        get_repo_token,
     )
 
     repo_groups = repo_groups or {}
@@ -303,7 +302,7 @@ def reconcile_worktrees_at_startup(
         repo_cfg = s.repos.get(slug)
         if repo_cfg and repo_cfg.token:
             check_token_expiry(slug, repo_cfg.token.get_secret_value())
-        elif not get_repo_token(slug):
+        elif not git_env_with_token(slug):
             logger.warning(
                 "No git token for repo — private repos will fail to clone",
                 slug=slug,
