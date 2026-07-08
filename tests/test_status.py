@@ -592,7 +592,7 @@ class TestCollectGateway:
         mock_resp = AsyncMock()
         mock_resp.status = 200
         mock_resp.json.return_value = {
-            "status": "connected",
+            "status": "healthy",
             "db": "connected",
             "litellm_version": "1.2.3",
         }

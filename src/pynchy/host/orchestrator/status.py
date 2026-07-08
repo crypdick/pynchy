@@ -338,7 +338,11 @@ async def _collect_gateway(info: dict[str, Any]) -> dict[str, Any]:
                     timeout=aiohttp.ClientTimeout(total=5),
                 )
                 data = await resp.json()
-                result["ready"] = resp.status == 200 and data.get("status") == "connected"
+                result["ready"] = (
+                    resp.status == 200
+                    and data.get("status") in {"connected", "healthy"}
+                    and data.get("db") == "connected"
+                )
                 result["database"] = data.get("db")
                 if "litellm_version" in data:
                     result["litellm_version"] = data["litellm_version"]

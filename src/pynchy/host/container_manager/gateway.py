@@ -109,6 +109,20 @@ def resolve_container_host(container_host: str) -> str:
     return container_host
 
 
+def _required_litellm_models(
+    *,
+    agent_core: str,
+    model: str | None,
+    fallback_model: str | None,
+) -> tuple[str, ...]:
+    """Return LiteLLM model aliases that the active core can request directly."""
+    if agent_core == "codex":
+        return (model,) if model else ()
+    if agent_core == "openai":
+        return tuple(m for m in (model, fallback_model) if m)
+    return ()
+
+
 def collect_plugin_mcp_servers(
     plugin_manager: pluggy.PluginManager | None,
 ) -> tuple[dict[str, Any], dict[str, ServiceTrustConfig]]:
@@ -189,6 +203,11 @@ async def start_gateway(
             postgres_image=s.gateway.postgres_image,
             data_dir=s.data_dir,
             master_key=s.gateway.master_key.get_secret_value(),
+            required_models=_required_litellm_models(
+                agent_core=s.agent.core,
+                model=s.agent.model,
+                fallback_model=s.agent.fallback_model,
+            ),
         )
     else:
         logger.info("Using builtin gateway mode (no litellm_config set)")

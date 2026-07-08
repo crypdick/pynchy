@@ -29,7 +29,6 @@ import os
 import re
 import secrets
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 from pynchy.config import get_settings
@@ -41,6 +40,10 @@ from pynchy.host.container_manager.docker import (
     run_docker,
     stop_container,
     wait_healthy,
+)
+from pynchy.host.container_manager.litellm_config import (
+    PLACEHOLDER_RE,
+    LiteLLMConfigPreparer,
 )
 from pynchy.logger import logger
 
@@ -117,10 +120,13 @@ class LiteLLMGateway:
         postgres_image: str,
         data_dir: Path,
         master_key: str,
+        required_models: tuple[str, ...] = (),
     ) -> None:
         self.port = port
         self.container_host = container_host
         self.key: str = master_key
+        self._required_models = tuple(dict.fromkeys(required_models))
+        self._config_preparer = LiteLLMConfigPreparer(required_models=self._required_models)
 
         self._config_path = Path(config_path).resolve()
         self._image = image
@@ -165,13 +171,6 @@ class LiteLLMGateway:
         }
     )
 
-    # Pattern matching obvious placeholder values in env vars.  Real API
-    # keys never contain "..." or "YOUR_KEY", but placeholder .env lines
-    # commonly do.  Forwarding a placeholder to LiteLLM creates a zombie
-    # deployment that poisons the router's health state (auth errors
-    # during startup probes mark all deployments as unhealthy).
-    _PLACEHOLDER_RE = re.compile(r"\.\.\.|YOUR_|CHANGE_ME|REPLACE_|xxx{3,}", re.IGNORECASE)
-
     @staticmethod
     def _resolve_env(config_path: Path) -> dict[str, str]:
         """Build a merged env dict from ``.env`` file + ``os.environ``.
@@ -207,7 +206,7 @@ class LiteLLMGateway:
             value = env.get(name)
             if not value:
                 logger.warning("YAML references unset env var", var=name)
-            elif LiteLLMGateway._PLACEHOLDER_RE.search(value):
+            elif PLACEHOLDER_RE.search(value):
                 logger.warning(
                     "Skipping env var with placeholder value",
                     var=name,
@@ -215,70 +214,6 @@ class LiteLLMGateway:
             else:
                 resolved.append((name, value))
         return resolved
-
-    @staticmethod
-    def _prepare_config(config_path: Path, output_dir: Path, env: dict[str, str]) -> Path:
-        """Create a filtered copy of the litellm config.
-
-        Removes ``model_list`` entries whose ``api_key`` references an
-        env var that is unset or contains a placeholder value.  This
-        prevents LiteLLM from loading zombie deployments that fail auth
-        during startup health probes and poison the router's health state
-        for *all* deployments.
-
-        Returns the path to the filtered config (written inside
-        *output_dir*).  If no entries are filtered, the file is still
-        written — it's always the filtered copy that gets mounted.
-        """
-        import yaml
-
-        config = yaml.safe_load(config_path.read_text())
-
-        if not isinstance(config, dict) or "model_list" not in config:
-            # Nothing to filter — write a verbatim copy
-            out = output_dir / "litellm_config.yaml"
-            out.write_text(config_path.read_text())
-            return out
-
-        original_count = len(config["model_list"])
-        kept: list[dict[str, Any]] = []
-        for entry in config["model_list"]:
-            api_key = (entry.get("litellm_params") or {}).get("api_key", "")
-            m = re.match(r"os\.environ/(\w+)", str(api_key))
-            if m:
-                var_name = m.group(1)
-                value = env.get(var_name)
-                if not value:
-                    model_id = (entry.get("model_info") or {}).get("id", "?")
-                    logger.warning(
-                        "Removing model entry with unset api_key env var",
-                        model_id=model_id,
-                        var=var_name,
-                    )
-                    continue
-                if LiteLLMGateway._PLACEHOLDER_RE.search(value):
-                    model_id = (entry.get("model_info") or {}).get("id", "?")
-                    logger.warning(
-                        "Removing model entry with placeholder api_key",
-                        model_id=model_id,
-                        var=var_name,
-                    )
-                    continue
-            kept.append(entry)
-
-        config["model_list"] = kept
-
-        removed = original_count - len(kept)
-        if removed:
-            logger.info(
-                "Filtered litellm config",
-                removed=removed,
-                remaining=len(kept),
-            )
-
-        out = output_dir / "litellm_config.yaml"
-        out.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False))
-        return out
 
     @staticmethod
     def _uses_chatgpt_provider(config_path: Path) -> bool:
@@ -456,7 +391,11 @@ class LiteLLMGateway:
         env = self._resolve_env(self._config_path)
 
         # Filter the config: remove model entries with missing/placeholder keys
-        filtered_config = self._prepare_config(self._config_path, self._data_dir, env)
+        filtered_config = self._config_preparer.prepare(
+            self._config_path,
+            self._data_dir,
+            env,
+        )
         phoenix_env = self._phoenix_env_vars(filtered_config, env)
         if phoenix_env:
             await self._check_phoenix_ready(phoenix_env[_PHOENIX_ENDPOINT_ENV])

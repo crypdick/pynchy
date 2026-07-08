@@ -16,6 +16,7 @@ from pynchy.host.container_manager.gateway import (
     _load_or_create_persistent_key,  # allow: private-test-imports
     start_gateway,
 )
+from pynchy.host.container_manager.litellm_config import LiteLLMConfigPreparer
 
 # ---------------------------------------------------------------------------
 # LiteLLMGateway — unit tests (Docker calls mocked)
@@ -299,11 +300,57 @@ class TestCollectYamlEnvRefs:
         assert "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=SPAN_AND_EVENT" in litellm_run
 
 
+class TestPrepareLiteLLMConfig:
+    def test_raises_when_all_model_routes_are_filtered(self, tmp_path: Path):
+        cfg = tmp_path / "litellm_config.yaml"
+        cfg.write_text(
+            "model_list:\n"
+            "  - model_name: gpt-5.5\n"
+            "    model_info:\n"
+            "      id: openai-as-gpt-5.5\n"
+            "    litellm_params:\n"
+            "      model: openai/gpt-5.5\n"
+            "      api_key: os.environ/OPENAI_KEY_AS\n"
+        )
+
+        with pytest.raises(RuntimeError, match="No usable LiteLLM model routes remain"):
+            LiteLLMConfigPreparer().prepare(cfg, tmp_path, env={})
+
+    def test_raises_when_required_model_route_is_missing(self, tmp_path: Path):
+        cfg = tmp_path / "litellm_config.yaml"
+        cfg.write_text(
+            "model_list:\n"
+            "  - model_name: other-model\n"
+            "    litellm_params:\n"
+            "      model: chatgpt/other-model\n"
+        )
+
+        with pytest.raises(RuntimeError, match="gpt-5.5"):
+            LiteLLMConfigPreparer(required_models=("gpt-5.5",)).prepare(cfg, tmp_path, env={})
+
+    def test_required_model_can_match_provider_wildcard_route(self, tmp_path: Path):
+        cfg = tmp_path / "litellm_config.yaml"
+        cfg.write_text(
+            "model_list:\n  - model_name: openai/*\n    litellm_params:\n      model: openai/*\n"
+        )
+
+        LiteLLMConfigPreparer(required_models=("openai/gpt-5.5",)).prepare(
+            cfg,
+            tmp_path,
+            env={},
+        )
+
+
 class TestLiteLLMGatewayStart:
     @pytest.fixture
     def litellm_config(self, tmp_path: Path) -> Path:
         cfg = tmp_path / "litellm_config.yaml"
-        cfg.write_text("model_list: []\n")
+        cfg.write_text(
+            "model_list:\n"
+            "  - model_name: gpt-5.5\n"
+            "    litellm_params:\n"
+            "      model: chatgpt/gpt-5.5\n"
+        )
         return cfg
 
     @pytest.fixture
@@ -465,9 +512,10 @@ class TestGatewayModeSelection:
         cfg = tmp_path / "litellm_config.yaml"
         cfg.write_text("model_list: []\n")
 
-        from pynchy.config.models import GatewayConfig
+        from pynchy.config.models import AgentConfig, GatewayConfig
 
         mock_settings = make_settings(
+            agent=AgentConfig(core="codex", model="gpt-5.5"),
             gateway=GatewayConfig(
                 litellm_config=str(cfg),
                 port=4000,
@@ -486,6 +534,7 @@ class TestGatewayModeSelection:
         ):
             gw = await start_gateway()
             assert isinstance(gw, LiteLLMGateway)
+            assert gw._required_models == ("gpt-5.5",)
 
     @pytest.mark.asyncio
     async def test_default_container_host_resolves_for_apple_runtime(self, tmp_path: Path):
