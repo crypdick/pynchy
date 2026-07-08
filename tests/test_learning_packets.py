@@ -6,20 +6,21 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
+import pytest
 from conftest import make_settings
 
 from pynchy.config.models import LearningConfig, ObsidianLearningConfig, WorkspaceConfig
+from pynchy.host.learning.packet_codec import packet_to_payload
 from pynchy.host.learning.packets import (
     LearningRunSummary,
     build_learning_packet,
-    enqueue_learning_packet,
     observe_container_output,
     packet_payload_char_limit,
     packet_to_reviewer_payload,
+    start_learning_review_workflow,
 )
-from pynchy.host.learning.queue_codec import packet_to_payload
 from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
 
 
@@ -412,12 +413,18 @@ def test_packet_provenance_and_profile_come_from_group_configuration(tmp_path: P
     }
 
 
-def test_learning_disabled_returns_no_packet_and_does_not_enqueue(tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_learning_disabled_returns_no_packet_and_does_not_start_workflow(
+    tmp_path: Path,
+) -> None:
     settings = _settings(tmp_path=tmp_path, enabled=False)
 
     with (
         _patch_learning_settings(settings),
-        patch("pynchy.host.learning.packets.LearningQueue") as queue_cls,
+        patch(
+            "pynchy.host.orchestrator.temporal.scheduler.start_learning_review_workflow",
+            new_callable=AsyncMock,
+        ) as temporal_start,
     ):
         packet = build_learning_packet(
             chat_jid="slack:C123",
@@ -426,7 +433,7 @@ def test_learning_disabled_returns_no_packet_and_does_not_enqueue(tmp_path: Path
             final_cursor="cursor-1",
             summary=LearningRunSummary(final_answer="Done"),
         )
-        path = enqueue_learning_packet(
+        job_id = await start_learning_review_workflow(
             chat_jid="slack:C123",
             group=_group(),
             missed_messages=[_message("remember this")],
@@ -435,20 +442,24 @@ def test_learning_disabled_returns_no_packet_and_does_not_enqueue(tmp_path: Path
         )
 
     assert packet is None
-    assert path is None
-    queue_cls.assert_not_called()
+    assert job_id is None
+    temporal_start.assert_not_awaited()
 
 
-def test_enqueue_learning_packet_writes_enabled_packet(tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_start_learning_review_workflow_starts_temporal_with_enabled_packet(
+    tmp_path: Path,
+) -> None:
     settings = _settings(tmp_path=tmp_path)
-    queue_path = tmp_path / "data" / "ipc" / "learning" / "pending" / "packet.json"
 
     with (
         _patch_learning_settings(settings),
-        patch("pynchy.host.learning.packets.LearningQueue") as queue_cls,
+        patch(
+            "pynchy.host.orchestrator.temporal.scheduler.start_learning_review_workflow",
+            new_callable=AsyncMock,
+        ) as temporal_start,
     ):
-        queue_cls.return_value.enqueue.return_value = queue_path
-        path = enqueue_learning_packet(
+        job_id = await start_learning_review_workflow(
             chat_jid="slack:C123",
             group=_group(),
             missed_messages=[_message("remember this")],
@@ -456,7 +467,8 @@ def test_enqueue_learning_packet_writes_enabled_packet(tmp_path: Path) -> None:
             summary=LearningRunSummary(final_answer="Done"),
         )
 
-    assert path == queue_path
-    queue_cls.assert_called_once_with()
-    packet = queue_cls.return_value.enqueue.call_args.args[0]
+    assert job_id is not None
+    temporal_start.assert_awaited_once()
+    packet = temporal_start.await_args.args[0]
+    assert packet.job_id == job_id
     assert packet.final_answer == "Done"

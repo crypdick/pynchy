@@ -159,8 +159,6 @@
 # [learning]
 # enabled = false
 # review_after_turn = true
-# queue_poll_interval_seconds = 5.0
-# lease_seconds = 300
 # max_attempts = 3
 # packet_max_chars = 12000
 # skill_max_bytes = 200000

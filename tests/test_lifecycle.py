@@ -7,15 +7,13 @@ import inspect
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any, cast
-from unittest.mock import AsyncMock
 
 import pluggy
 import pytest
 from conftest import make_settings
 
 from pynchy.config.models import LearningConfig
-from pynchy.host.learning.queue import LearningQueue
-from pynchy.host.orchestrator import dep_factory, lifecycle
+from pynchy.host.orchestrator import lifecycle
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.types import WorkspaceProfile
 
@@ -179,129 +177,6 @@ async def test_shutdown_app_exits_zero_after_cleanup_when_requested(monkeypatch)
     assert exit_codes == [0]
 
 
-def test_make_learning_deps_uses_learning_queue(monkeypatch, tmp_path) -> None:
-    settings = make_settings(data_dir=tmp_path / "data")
-    monkeypatch.setattr("pynchy.host.learning.queue.get_settings", lambda: settings)
-    app = PynchyApp()
-
-    deps = dep_factory.make_learning_deps(app)
-
-    assert isinstance(deps.queue, LearningQueue)
-
-
-@dataclass(frozen=True)
-class _QueuedAgentTask:
-    group_jid: str
-    task_id: str
-    fn: Callable[[], Awaitable[None]]
-
-
-class _RecordingTaskQueue:
-    def __init__(self, *, accepts_tasks: bool = True) -> None:
-        self._accepts_tasks = accepts_tasks
-        self.enqueued: list[_QueuedAgentTask] = []
-
-    def enqueue_task(
-        self,
-        group_jid: str,
-        task_id: str,
-        fn: Callable[[], Awaitable[None]],
-    ) -> bool:
-        if not self._accepts_tasks:
-            return False
-        self.enqueued.append(_QueuedAgentTask(group_jid=group_jid, task_id=task_id, fn=fn))
-        return True
-
-
-@pytest.mark.asyncio
-async def test_make_learning_deps_queues_learning_reviewer_run_before_running_agent(
-    monkeypatch,
-    tmp_path,
-) -> None:
-    settings = make_settings(data_dir=tmp_path / "data")
-    monkeypatch.setattr("pynchy.host.learning.queue.get_settings", lambda: settings)
-    app = PynchyApp()
-    queue = _RecordingTaskQueue()
-    app.queue = cast(Any, queue)
-    run_agent_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
-
-    async def fake_run_agent(*args: Any, **kwargs: Any) -> str:
-        run_agent_calls.append((args, kwargs))
-        return "success"
-
-    monkeypatch.setattr(app, "run_agent", fake_run_agent)
-    deps = dep_factory.make_learning_deps(app)
-    group = WorkspaceProfile(
-        jid="learning-review:deep-work",
-        name="Learning Reviewer",
-        folder="learning-review-deep-work",
-        trigger="",
-        is_admin=False,
-    )
-
-    result_task = asyncio.create_task(
-        deps.run_agent(
-            group,
-            "learning-review:deep-work",
-            [{"role": "user", "content": "review this turn"}],
-            is_scheduled_task=True,
-        )
-    )
-    await asyncio.sleep(0)
-
-    assert run_agent_calls == []
-    assert result_task.done() is False
-    assert len(queue.enqueued) == 1
-    queued = queue.enqueued[0]
-    assert queued.group_jid == "learning-review:deep-work"
-    assert queued.task_id.startswith("learning-review-")
-
-    await queued.fn()
-
-    assert await result_task == "success"
-    assert len(run_agent_calls) == 1
-    args, kwargs = run_agent_calls[0]
-    assert args[:3] == (
-        group,
-        "learning-review:deep-work",
-        [{"role": "user", "content": "review this turn"}],
-    )
-    assert kwargs["is_scheduled_task"] is True
-
-
-@pytest.mark.asyncio
-async def test_make_learning_deps_cancels_when_queue_rejects_reviewer_run(
-    monkeypatch,
-    tmp_path,
-) -> None:
-    settings = make_settings(data_dir=tmp_path / "data")
-    monkeypatch.setattr("pynchy.host.learning.queue.get_settings", lambda: settings)
-    app = PynchyApp()
-    queue = _RecordingTaskQueue(accepts_tasks=False)
-    app.queue = cast(Any, queue)
-    run_agent_mock = AsyncMock(return_value="success")
-    monkeypatch.setattr(app, "run_agent", run_agent_mock)
-    deps = dep_factory.make_learning_deps(app)
-    group = WorkspaceProfile(
-        jid="learning-review:deep-work",
-        name="Learning Reviewer",
-        folder="learning-review-deep-work",
-        trigger="",
-        is_admin=False,
-    )
-
-    with pytest.raises(asyncio.CancelledError):
-        await deps.run_agent(
-            group,
-            "learning-review:deep-work",
-            [{"role": "user", "content": "review this turn"}],
-            is_scheduled_task=True,
-        )
-
-    assert queue.enqueued == []
-    run_agent_mock.assert_not_awaited()
-
-
 @dataclass(frozen=True)
 class _RecordedTask:
     name: str
@@ -328,20 +203,19 @@ def _noop_coroutine() -> Coroutine[Any, Any, None]:
 
 
 @pytest.mark.parametrize(
-    ("enabled", "review_after_turn", "expected_learning_worker"),
+    ("enabled", "review_after_turn"),
     [
-        (True, True, True),
-        (False, True, False),
-        (True, False, False),
+        (True, True),
+        (False, True),
+        (True, False),
     ],
 )
 @pytest.mark.asyncio
-async def test_start_subsystems_starts_learning_worker_only_when_after_turn_enabled(
+async def test_start_subsystems_does_not_start_local_learning_worker(
     monkeypatch,
     tmp_path,
     enabled: bool,
     review_after_turn: bool,
-    expected_learning_worker: bool,
 ) -> None:
     settings = make_settings(
         data_dir=tmp_path / "data",
@@ -351,9 +225,6 @@ async def test_start_subsystems_starts_learning_worker_only_when_after_turn_enab
     app = PynchyApp()
     app.plugin_manager = pluggy.PluginManager("pynchy-test")
     created_task_names: list[str] = []
-    learning_deps = object()
-    make_learning_deps_calls: list[PynchyApp] = []
-    learning_loop_calls: list[object] = []
 
     def fake_create_background_task(
         awaitable: Awaitable[None], *, name: str | None = None
@@ -365,14 +236,6 @@ async def test_start_subsystems_starts_learning_worker_only_when_after_turn_enab
         return task
 
     def fake_loop(*_args: Any, **_kwargs: Any) -> Coroutine[Any, Any, None]:
-        return _noop_coroutine()
-
-    def fake_make_learning_deps(received_app: PynchyApp) -> object:
-        make_learning_deps_calls.append(received_app)
-        return learning_deps
-
-    def fake_start_learning_worker_loop(deps: object) -> Coroutine[Any, Any, None]:
-        learning_loop_calls.append(deps)
         return _noop_coroutine()
 
     async def fake_start_http_server(*_args: Any, **_kwargs: Any) -> _HttpRunner:
@@ -399,22 +262,7 @@ async def test_start_subsystems_starts_learning_worker_only_when_after_turn_enab
         lambda: None,
     )
     monkeypatch.setattr("pynchy.plugins.tunnels.check_tunnels", lambda _plugin_manager: None)
-    monkeypatch.setattr(
-        "pynchy.host.orchestrator.dep_factory.make_learning_deps",
-        fake_make_learning_deps,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        "pynchy.host.learning.worker.start_learning_worker_loop",
-        fake_start_learning_worker_loop,
-    )
-
     await lifecycle._start_subsystems(app, {})
 
-    expected_task_names = ["scheduler", "ipc-watcher", "git-sync"]
-    if expected_learning_worker:
-        expected_task_names.append("learning-worker")
-    assert created_task_names == expected_task_names
-    assert ("learning-worker" in created_task_names) is expected_learning_worker
-    assert make_learning_deps_calls == ([app] if expected_learning_worker else [])
-    assert learning_loop_calls == ([learning_deps] if expected_learning_worker else [])
+    assert created_task_names == ["scheduler", "ipc-watcher", "git-sync"]
+    assert "learning-worker" not in created_task_names

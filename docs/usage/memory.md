@@ -36,6 +36,8 @@ On top of the structured tools above, agents have file-based storage:
 
 Automatic learning can use an Obsidian vault as a shared memory and skill namespace. Enable `[learning]` and set `[learning.obsidian].vault_root` to the vault root. Pynchy mounts that root read-write at `/workspace/vault` by default.
 
+After each successful turn, Pynchy starts a Temporal learning review workflow. The workflow runs a hidden reviewer agent that decides whether the turn produced durable memory or skill updates. Set `max_attempts` to control Temporal activity retries for that reviewer.
+
 The vault root is the global memory namespace. The hidden reviewer chooses existing semantic folders first, then falls back to `systems/pynchy/profiles/{profile}/memory` when no repo, machine, subject, or other existing folder clearly fits.
 
 Learned skills live under `systems/pynchy/profiles/{profile}/skills/<skill-name>/SKILL.md`. To load them into a profile or sandbox, include `skills = ["learned"]` or `skills = ["*"]` in the effective workspace config.

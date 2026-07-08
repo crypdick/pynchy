@@ -6,11 +6,12 @@ runner so container IPC and streaming behavior stay in one place.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import inspect
-from dataclasses import asdict, dataclass, replace
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import Any
+from uuid import uuid4
 
 from temporalio import activity
 from temporalio.client import (
@@ -27,10 +28,29 @@ from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxR
 
 from pynchy.config import get_settings
 from pynchy.config.models import SchedulerConfig
+from pynchy.host.learning.packet_codec import packet_from_payload, packet_to_payload
+from pynchy.host.learning.packet_models import LearningPacket
+from pynchy.host.learning.review_runner import run_learning_review as _run_learning_review_agent
 from pynchy.host.orchestrator.task_scheduler import (
     SchedulerDependencies,
     _run_scheduled_agent,
-    resolve_cron_job_cwd,
+)
+from pynchy.host.orchestrator.temporal.host_jobs import (
+    run_config_host_cron_job,
+    run_database_host_job,
+)
+from pynchy.host.orchestrator.temporal.runtime_state import (
+    _record_activity_result,
+    _require_scheduler_deps,
+    _update_temporal_scheduler_status,
+    _utc_timestamp,
+    bind_scheduler_deps,
+)
+from pynchy.host.orchestrator.temporal.runtime_state import (
+    get_temporal_scheduler_status as _get_temporal_scheduler_status,
+)
+from pynchy.host.orchestrator.temporal.runtime_state import (
+    reset_temporal_scheduler_status as _reset_temporal_scheduler_status,
 )
 from pynchy.host.orchestrator.temporal.schedules import (
     SCHEDULE_PREFIXES,
@@ -40,6 +60,7 @@ from pynchy.host.orchestrator.temporal.schedules import (
     database_host_job_schedule_id,
     database_host_job_workflow_id,
     once_due_at,
+    safe_workflow_fragment,
     schedule_for_agent_task,
     schedule_for_config_host_cron,
     schedule_for_database_host_job,
@@ -48,84 +69,41 @@ from pynchy.host.orchestrator.temporal.schedules import (
 from pynchy.host.orchestrator.temporal.workflows import (
     ConfigHostCronWorkflow,
     DatabaseHostJobWorkflow,
+    LearningReviewWorkflow,
     ScheduledAgentTaskWorkflow,
 )
 from pynchy.logger import logger
 from pynchy.state import (
     get_all_host_jobs,
     get_all_tasks,
-    get_host_job_by_id,
     get_task_by_id,
-    update_host_job_after_run,
 )
 from pynchy.types import HostJob, ScheduledTask
-from pynchy.utils import compute_next_run, log_shell_result, run_shell_command
 
-_scheduler_deps: SchedulerDependencies | None = None
+_active_runtime: TemporalSchedulerRuntime | None = None
 _WORKFLOW_MODULE = "pynchy.host.orchestrator.temporal.workflows"
-
-
-@dataclass(frozen=True)
-class TemporalSchedulerStatusSnapshot:
-    worker_running: bool = False
-    last_workflow_id: str | None = None
-    last_task_id: str | None = None
-    last_result: str | None = None
-    last_started_at: str | None = None
-    last_completed_at: str | None = None
-    last_error: str | None = None
-
-
-_temporal_scheduler_status = TemporalSchedulerStatusSnapshot()
-
-
-def _utc_timestamp() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 def reset_temporal_scheduler_status() -> None:
     """Clear the in-process Temporal worker status snapshot."""
-    global _temporal_scheduler_status
-    _temporal_scheduler_status = TemporalSchedulerStatusSnapshot()
+    _reset_temporal_scheduler_status()
 
 
 def get_temporal_scheduler_status() -> dict[str, Any]:
     """Return the in-process Temporal worker status snapshot."""
-    return asdict(_temporal_scheduler_status)
+    return _get_temporal_scheduler_status()
 
 
-def _update_temporal_scheduler_status(**changes: Any) -> None:
-    global _temporal_scheduler_status
-    _temporal_scheduler_status = replace(_temporal_scheduler_status, **changes)
+def learning_review_workflow_id(packet: LearningPacket) -> str:
+    """Return the idempotency key for one hidden learning review."""
+    return f"pynchy-learning-review-{safe_workflow_fragment(packet.job_id)}"
 
 
-def _activity_workflow_id() -> str | None:
-    try:
-        return activity.info().workflow_id
-    except RuntimeError:
-        return None
-
-
-def _record_activity_result(task_id: str, result: str, error: str | None = None) -> None:
-    _update_temporal_scheduler_status(
-        last_workflow_id=_activity_workflow_id(),
-        last_task_id=task_id,
-        last_result=result,
-        last_completed_at=_utc_timestamp(),
-        last_error=error,
-    )
-
-
-def bind_scheduler_deps(deps: SchedulerDependencies | None) -> None:
-    """Bind app dependencies for Temporal activities running in this process."""
-    global _scheduler_deps
-    _scheduler_deps = deps
-
-
-def _require_scheduler_deps() -> SchedulerDependencies:
-    if _scheduler_deps is None:
-        raise RuntimeError("Temporal scheduler dependencies are not bound")
-    return _scheduler_deps
+async def start_learning_review_workflow(packet: LearningPacket) -> None:
+    """Start a Temporal learning review workflow using the active runtime."""
+    if _active_runtime is None:
+        raise RuntimeError("Temporal scheduler runtime has not been started")
+    await _active_runtime.start_learning_review(packet)
 
 
 def scheduler_workflow_runner() -> WorkflowRunner:
@@ -156,74 +134,76 @@ async def run_scheduled_agent_task(task_id: str) -> str:
     return "completed"
 
 
-@activity.defn(name="run_database_host_job")
-async def run_database_host_job(job_id: str) -> str:
-    """Temporal activity that runs one active database-backed host job."""
-    job = await get_host_job_by_id(job_id)
-    if job is None or job.status != "active" or not job.enabled:
-        logger.info("Temporal database host job skipped", job_id=job_id)
-        _record_activity_result(job_id, "skipped")
-        return "skipped"
+@activity.defn(name="run_learning_review")
+async def run_learning_review(packet_payload: dict[str, Any]) -> str:
+    """Temporal activity that runs one hidden Obsidian learning review."""
+    packet = packet_from_payload(packet_payload)
+    try:
+        result = await _run_learning_review(packet, _require_scheduler_deps())
+    except Exception as exc:  # allow: exception-handling - record activity failure
+        _record_activity_result(packet.job_id, "error", str(exc))
+        raise
+    _record_activity_result(packet.job_id, result)
+    return result
+
+
+async def _run_learning_review(packet: LearningPacket, deps: SchedulerDependencies) -> str:
+    async def run_agent_via_queue(*args: Any, **kwargs: Any) -> str:
+        return await _run_agent_via_queue(deps, *args, **kwargs)
+
+    return await _run_learning_review_agent(packet, run_agent_via_queue)
+
+
+async def _run_agent_via_queue(
+    deps: SchedulerDependencies,
+    *args: Any,
+    **kwargs: Any,
+) -> str:
+    loop = asyncio.get_running_loop()
+    result_future: asyncio.Future[str] = loop.create_future()
+    group_jid = _learning_run_group_jid(args, kwargs)
+
+    async def run_queued_agent() -> None:
+        if result_future.cancelled():
+            return
+        try:
+            result = await deps.run_agent(*args, **kwargs)
+        except asyncio.CancelledError:
+            if not result_future.done():
+                result_future.cancel()
+            raise
+        except Exception as exc:  # allow: exception-handling - propagate queued run failure
+            if not result_future.done():
+                result_future.set_exception(exc)
+        else:
+            if not result_future.done():
+                result_future.set_result(result)
+
+    accepted = deps.queue.enqueue_task(
+        group_jid,
+        f"learning-review-{uuid4().hex}",
+        run_queued_agent,
+    )
+    if accepted is False:
+        result_future.cancel()
+        raise asyncio.CancelledError()
 
     try:
-        await _run_database_host_job(job)
-    except Exception as exc:  # allow: exception-handling - record activity failure
-        _record_activity_result(job_id, "error", str(exc))
+        return await result_future
+    except asyncio.CancelledError:
+        result_future.cancel()
         raise
-    _record_activity_result(job_id, "completed")
-    return "completed"
 
 
-@activity.defn(name="run_config_host_cron_job")
-async def run_config_host_cron_job(job_name: str) -> str:
-    """Temporal activity that runs one enabled config-backed host cron job."""
-    job = get_settings().cron_jobs.get(job_name)
-    if job is None or not job.enabled:
-        logger.info("Temporal config host cron job skipped", job=job_name)
-        _record_activity_result(job_name, "skipped")
-        return "skipped"
+def _learning_run_group_jid(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
+    if len(args) >= 2 and isinstance(args[1], str):
+        return args[1]
 
-    try:
-        command_cwd = resolve_cron_job_cwd(job.cwd)
-        logger.info(
-            "Running config host cron job",
-            job=job_name,
-            schedule=job.schedule,
-            cwd=command_cwd,
-        )
-        result = await run_shell_command(
-            job.command,
-            cwd=command_cwd,
-            timeout_seconds=job.timeout_seconds,
-        )
-        log_shell_result(result, label="Config host cron job", job=job_name)
-    except Exception as exc:  # allow: exception-handling - record activity failure
-        _record_activity_result(job_name, "error", str(exc))
-        raise
-    _record_activity_result(job_name, "completed")
-    return "completed"
+    chat_jid = kwargs.get("chat_jid")
+    if isinstance(chat_jid, str):
+        return chat_jid
 
-
-async def _run_database_host_job(job: HostJob) -> None:
-    command_cwd = resolve_cron_job_cwd(job.cwd)
-    logger.info(
-        "Running database host job",
-        job_id=job.id,
-        name=job.name,
-        schedule_type=job.schedule_type,
-        cwd=command_cwd,
-    )
-
-    result = await run_shell_command(
-        job.command,
-        cwd=command_cwd,
-        timeout_seconds=job.timeout_seconds,
-    )
-    log_shell_result(result, label="Database host job", job_id=job.id)
-
-    next_run = compute_next_run(job.schedule_type, job.schedule_value, get_settings().timezone)
-    exit_code = result.returncode if result.returncode is not None else 1
-    await update_host_job_after_run(job.id, next_run, exit_code)
+    raise TypeError("learning reviewer run requires a chat_jid")
 
 
 class TemporalSchedulerRuntime:
@@ -237,6 +217,7 @@ class TemporalSchedulerRuntime:
         self._worker_stack = contextlib.AsyncExitStack()
 
     async def __aenter__(self) -> TemporalSchedulerRuntime:
+        global _active_runtime
         bind_scheduler_deps(self.deps)
         try:
             self.client = await Client.connect(
@@ -250,11 +231,13 @@ class TemporalSchedulerRuntime:
                     ScheduledAgentTaskWorkflow,
                     DatabaseHostJobWorkflow,
                     ConfigHostCronWorkflow,
+                    LearningReviewWorkflow,
                 ],
                 activities=[
                     run_scheduled_agent_task,
                     run_database_host_job,
                     run_config_host_cron_job,
+                    run_learning_review,
                 ],
                 workflow_runner=scheduler_workflow_runner(),
             )
@@ -264,6 +247,7 @@ class TemporalSchedulerRuntime:
             bind_scheduler_deps(None)
             _update_temporal_scheduler_status(worker_running=False, last_error=str(exc))
             raise
+        _active_runtime = self
         _update_temporal_scheduler_status(worker_running=True, last_error=None)
         logger.info(
             "Temporal scheduler runtime started",
@@ -274,8 +258,11 @@ class TemporalSchedulerRuntime:
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
+        global _active_runtime
         await self._worker_stack.aclose()
         bind_scheduler_deps(None)
+        if _active_runtime is self:
+            _active_runtime = None
         _update_temporal_scheduler_status(worker_running=False)
 
     async def start_scheduled_agent_task(self, task: ScheduledTask) -> None:
@@ -289,6 +276,19 @@ class TemporalSchedulerRuntime:
             task.id,
             workflow_id=workflow_id,
             status_id=task.id,
+        )
+
+    async def start_learning_review(self, packet: LearningPacket) -> None:
+        """Start a Temporal workflow for one hidden learning review packet."""
+        if self.client is None:
+            raise RuntimeError("Temporal scheduler runtime has not been started")
+
+        await self._start_workflow(
+            LearningReviewWorkflow.run,
+            packet_to_payload(packet),
+            get_settings().learning.max_attempts,
+            workflow_id=learning_review_workflow_id(packet),
+            status_id=packet.job_id,
         )
 
     async def reconcile_schedules(self) -> None:
@@ -356,8 +356,7 @@ class TemporalSchedulerRuntime:
     async def _start_workflow(
         self,
         workflow,
-        arg: str,
-        *,
+        *args: Any,
         workflow_id: str,
         status_id: str,
         start_delay: timedelta | None = None,
@@ -369,7 +368,7 @@ class TemporalSchedulerRuntime:
             if start_delay is None:
                 await self.client.start_workflow(
                     workflow,
-                    arg,
+                    *args,
                     id=workflow_id,
                     task_queue=self.scheduler_config.temporal_task_queue,
                     id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
@@ -377,7 +376,7 @@ class TemporalSchedulerRuntime:
             else:
                 await self.client.start_workflow(
                     workflow,
-                    arg,
+                    *args,
                     id=workflow_id,
                     task_queue=self.scheduler_config.temporal_task_queue,
                     id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,

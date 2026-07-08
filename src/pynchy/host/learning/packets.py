@@ -5,17 +5,16 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from pynchy.config import get_settings
+from pynchy.host.learning.packet_codec import packet_to_payload as _packet_to_payload
+from pynchy.host.learning.packet_models import LearningPacket
 from pynchy.host.learning.paths import (
     LearningConfigError,
     resolve_learning_paths,
 )
-from pynchy.host.learning.queue import LearningPacket, LearningQueue
-from pynchy.host.learning.queue_codec import packet_to_payload as _packet_to_payload
 from pynchy.logger import logger
 from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
 
@@ -39,7 +38,7 @@ class LearningRunSummary:
 
 
 def packet_to_reviewer_payload(packet: LearningPacket) -> dict[str, Any]:
-    """Return the exact JSON payload shape consumed by the queue/reviewer."""
+    """Return the exact JSON payload shape consumed by the Temporal reviewer."""
     return _packet_to_payload(packet)
 
 
@@ -138,14 +137,14 @@ def build_learning_packet(
     return packet
 
 
-def enqueue_learning_packet(
+async def start_learning_review_workflow(
     *,
     chat_jid: str,
     group: WorkspaceProfile,
     missed_messages: list[NewMessage],
     final_cursor: str,
     summary: LearningRunSummary,
-) -> Path | None:
+) -> str | None:
     try:
         packet = build_learning_packet(
             chat_jid=chat_jid,
@@ -156,10 +155,15 @@ def enqueue_learning_packet(
         )
         if packet is None:
             return None
-        return LearningQueue().enqueue(packet)
+        from pynchy.host.orchestrator.temporal.scheduler import (
+            start_learning_review_workflow as _start_temporal_learning_review,
+        )
+
+        await _start_temporal_learning_review(packet)
+        return packet.job_id
     except Exception as exc:  # allow: exception-handling — learning must not fail user turns
         logger.exception(
-            "Failed to enqueue learning packet",
+            "Failed to start learning review workflow",
             group=group.name,
             err=str(exc),
         )

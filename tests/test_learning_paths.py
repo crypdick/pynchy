@@ -224,8 +224,6 @@ def test_settings_validation_allows_learning_enabled_without_vault_root(tmp_path
             "learning": {
                 "enabled": True,
                 "review_after_turn": True,
-                "queue_poll_interval_seconds": 5.0,
-                "lease_seconds": 300,
                 "max_attempts": 3,
                 "packet_max_chars": 12_000,
                 "skill_max_bytes": 200_000,
@@ -258,10 +256,6 @@ def test_learning_dir_names_must_be_single_path_components():
 
 def test_learning_operational_knobs_must_be_positive():
     invalid_cases = [
-        {"queue_poll_interval_seconds": 0.0},
-        {"queue_poll_interval_seconds": -0.1},
-        {"lease_seconds": 0},
-        {"lease_seconds": -1},
         {"max_attempts": 0},
         {"max_attempts": -1},
         {"packet_max_chars": 0},

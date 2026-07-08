@@ -9,15 +9,12 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
-from uuid import uuid4
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager import write_groups_snapshot as _write_groups_snapshot
 from pynchy.host.container_manager.ipc import IpcDeps
 from pynchy.host.git_ops.sync import GitSyncDeps
 from pynchy.host.git_ops.utils import get_head_sha
-from pynchy.host.learning.queue import LearningQueue
-from pynchy.host.learning.worker import LearningWorkerDeps
 from pynchy.host.orchestrator.adapters import (
     EventBusAdapter,
     GroupMetadataManager,
@@ -66,64 +63,6 @@ def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
             return await app.handle_streamed_output(*args, **kwargs)
 
     return SchedulerDeps()
-
-
-def make_learning_deps(app: PynchyApp) -> LearningWorkerDeps:
-    """Create the dependency object for the Obsidian learning worker."""
-
-    async def run_agent_via_queue(*args: Any, **kwargs: Any) -> str:
-        if app._shutting_down:
-            raise asyncio.CancelledError()
-
-        loop = asyncio.get_running_loop()
-        result_future: asyncio.Future[str] = loop.create_future()
-        group_jid = _learning_run_group_jid(args, kwargs)
-
-        async def run_queued_agent() -> None:
-            if result_future.cancelled():
-                return
-            try:
-                result = await app.run_agent(*args, **kwargs)
-            except asyncio.CancelledError:
-                if not result_future.done():
-                    result_future.cancel()
-                raise
-            except Exception as exc:  # allow: exception-handling - propagate queued run failure
-                if not result_future.done():
-                    result_future.set_exception(exc)
-            else:
-                if not result_future.done():
-                    result_future.set_result(result)
-
-        accepted = app.queue.enqueue_task(
-            group_jid,
-            f"learning-review-{uuid4().hex}",
-            run_queued_agent,
-        )
-        if not accepted:
-            result_future.cancel()
-            raise asyncio.CancelledError()
-        if app._shutting_down and not result_future.done():
-            result_future.cancel()
-
-        try:
-            return await result_future
-        except asyncio.CancelledError:
-            result_future.cancel()
-            raise
-
-    return LearningWorkerDeps(run_agent=run_agent_via_queue, queue=LearningQueue())
-
-
-def _learning_run_group_jid(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
-    if len(args) >= 2 and isinstance(args[1], str):
-        return args[1]
-
-    chat_jid = kwargs.get("chat_jid")
-    if isinstance(chat_jid, str):
-        return chat_jid
-
-    raise TypeError("learning reviewer run requires a chat_jid")
 
 
 async def _rebuild_and_deploy(

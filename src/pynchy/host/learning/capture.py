@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from pathlib import Path
 
 from pynchy.config.settings import Settings
 from pynchy.host.learning import packets as learning_packets
@@ -73,7 +72,7 @@ async def messages_for_learning_packet(
     return sorted(covered_messages, key=lambda message: message.timestamp)
 
 
-async def enqueue_completed_turn_learning_packet(
+async def start_completed_turn_learning_review(
     settings: Settings,
     chat_jid: str,
     group: WorkspaceProfile,
@@ -81,7 +80,7 @@ async def enqueue_completed_turn_learning_packet(
     final_cursor: str,
     summary: LearningRunSummary,
     fetch_messages_since: FetchMessagesSince,
-) -> Path | None:
+) -> str | None:
     if not is_after_turn_learning_enabled(settings):
         return None
 
@@ -95,7 +94,7 @@ async def enqueue_completed_turn_learning_packet(
         )
         if learning_messages is None:
             return None
-        return learning_packets.enqueue_learning_packet(
+        return await learning_packets.start_learning_review_workflow(
             chat_jid=chat_jid,
             group=group,
             missed_messages=learning_messages,

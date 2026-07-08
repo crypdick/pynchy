@@ -185,16 +185,12 @@ class ObsidianLearningConfig(_StrictModel):
 class LearningConfig(_StrictModel):
     enabled: bool = False
     review_after_turn: bool = True
-    queue_poll_interval_seconds: float = 5.0
-    lease_seconds: int = 300
     max_attempts: int = 3
     packet_max_chars: int = 12_000
     skill_max_bytes: int = 200_000
     obsidian: ObsidianLearningConfig = ObsidianLearningConfig()
 
     @field_validator(
-        "queue_poll_interval_seconds",
-        "lease_seconds",
         "max_attempts",
         "packet_max_chars",
         "skill_max_bytes",

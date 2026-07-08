@@ -102,10 +102,10 @@ class TestHostJobScheduling:
         assert job.schedule_type == "once"
         assert job.next_run == future_time
 
-    @patch("pynchy.host.orchestrator.temporal.scheduler.run_shell_command")
+    @patch("pynchy.host.orchestrator.temporal.host_jobs.run_shell_command")
     async def test_temporal_database_host_job_activity_executes_command(self, mock_shell):
         """Temporal host-job activity executes due job commands."""
-        from pynchy.host.orchestrator.temporal.scheduler import run_database_host_job
+        from pynchy.host.orchestrator.temporal.host_jobs import run_database_host_job
 
         mock_shell.return_value = ShellResult(returncode=0, stdout="Success", stderr="")
 

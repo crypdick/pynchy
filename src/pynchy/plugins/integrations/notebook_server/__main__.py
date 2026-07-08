@@ -115,6 +115,7 @@ _sessions: dict[str, KernelSession] = {}
 # ---------------------------------------------------------------------------
 
 
+# FastMCP's decorator is untyped, so each tool needs a local mypy ignore.
 @mcp.tool()  # type: ignore[untyped-decorator]
 async def start_kernel(name: str | None = None) -> dict[str, Any]:
     """Start an IPython kernel, optionally loading an existing notebook.

@@ -11,6 +11,8 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config import CronJobConfig, SchedulerConfig
+from pynchy.host.learning.packet_codec import packet_to_payload
+from pynchy.host.learning.packet_models import LearningPacket
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.types import HostJob, ScheduledTask
 
@@ -79,6 +81,23 @@ class AwaitableScheduleListClient(FakeScheduleClient):
 
 
 @pytest.fixture
+def learning_packet() -> LearningPacket:
+    return LearningPacket(
+        job_id="learning job one",
+        chat_jid="slack:C123",
+        group_folder="research",
+        profile="Deep Work",
+        created_at="2026-07-07T10:00:00+00:00",
+        messages=[{"role": "user", "content": "remember this workflow"}],
+        final_answer="Done.",
+        tool_counts={"Bash": 1},
+        error_snippets=[],
+        loaded_skills=[],
+        provenance={"run_id": "run-123"},
+    )
+
+
+@pytest.fixture
 def temporal_task() -> ScheduledTask:
     return ScheduledTask(
         id="task/with spaces",
@@ -133,6 +152,13 @@ class TestTemporalSchedulerRuntime:
         schedule_id = agent_task_schedule_id(temporal_task)
 
         assert schedule_id == "pynchy-agent-schedule-task-with-spaces"
+
+    def test_learning_review_workflow_id_is_stable_and_temporal_safe(self, learning_packet):
+        from pynchy.host.orchestrator.temporal.scheduler import learning_review_workflow_id
+
+        workflow_id = learning_review_workflow_id(learning_packet)
+
+        assert workflow_id == "pynchy-learning-review-learning-job-one"
 
     @pytest.mark.asyncio
     async def test_start_scheduled_agent_task_uses_configured_task_queue(self, temporal_task):
@@ -195,6 +221,26 @@ class TestTemporalSchedulerRuntime:
         assert status["last_result"] == "started"
         assert status["last_started_at"] is not None
         assert status["last_completed_at"] is None
+
+    @pytest.mark.asyncio
+    async def test_start_learning_review_starts_temporal_workflow(self, learning_packet):
+        from pynchy.host.orchestrator.temporal.scheduler import TemporalSchedulerRuntime
+        from pynchy.host.orchestrator.temporal.workflows import LearningReviewWorkflow
+
+        client = FakeScheduleClient()
+        scheduler = SchedulerConfig(temporal_task_queue="pynchy-test")
+        runtime = TemporalSchedulerRuntime(deps=NullSchedulerDeps(), scheduler_config=scheduler)
+        runtime.client = client
+
+        await runtime.start_learning_review(learning_packet)
+
+        assert len(client.started_workflows) == 1
+        workflow, args, kwargs = client.started_workflows[0]
+        assert workflow == LearningReviewWorkflow.run
+        assert args == (packet_to_payload(learning_packet), 3)
+        assert kwargs["id"] == "pynchy-learning-review-learning-job-one"
+        assert kwargs["task_queue"] == "pynchy-test"
+        assert kwargs["id_reuse_policy"].name == "REJECT_DUPLICATE"
 
     @pytest.mark.asyncio
     async def test_reconcile_creates_temporal_schedule_for_recurring_agent_task(
@@ -386,6 +432,40 @@ class TestTemporalSchedulerRuntime:
         assert temporal_scheduler.get_temporal_scheduler_status()["worker_running"] is False
 
     @pytest.mark.asyncio
+    async def test_worker_registers_learning_review_workflow_and_activity(self, monkeypatch):
+        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
+        from pynchy.host.orchestrator.temporal.workflows import LearningReviewWorkflow
+
+        captured = {}
+
+        class FakeWorker:
+            def __init__(self, *args, workflows, activities, **kwargs):
+                captured["workflows"] = workflows
+                captured["activities"] = activities
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return None
+
+        async def fake_connect(*args, **kwargs):
+            return object()
+
+        monkeypatch.setattr(temporal_scheduler.Client, "connect", fake_connect)
+        monkeypatch.setattr(temporal_scheduler, "Worker", FakeWorker)
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+        )
+
+        await runtime.__aenter__()
+
+        assert LearningReviewWorkflow in captured["workflows"]
+        assert temporal_scheduler.run_learning_review in captured["activities"]
+
+        await runtime.__aexit__(None, None, None)
+
+    @pytest.mark.asyncio
     async def test_startup_failure_unbinds_scheduler_deps(self, monkeypatch):
         import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
@@ -448,6 +528,36 @@ class TestTemporalSchedulerRuntime:
         assert status["last_task_id"] == temporal_task.id
         assert status["last_result"] == "completed"
         assert status["last_completed_at"] is not None
+
+    @pytest.mark.asyncio
+    async def test_run_learning_review_activity_uses_bound_deps(self, monkeypatch, learning_packet):
+        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
+
+        deps = NullSchedulerDeps()
+        called = {}
+
+        async def fake_run_learning_review(packet, runner_deps):
+            called["packet"] = packet
+            called["deps"] = runner_deps
+            return "completed"
+
+        monkeypatch.setattr(temporal_scheduler, "_run_learning_review", fake_run_learning_review)
+        monkeypatch.setattr(
+            temporal_scheduler.activity,
+            "info",
+            lambda: SimpleNamespace(workflow_id="learning-workflow-completed"),
+        )
+        temporal_scheduler.reset_temporal_scheduler_status()
+        temporal_scheduler.bind_scheduler_deps(deps)
+
+        result = await temporal_scheduler.run_learning_review(packet_to_payload(learning_packet))
+
+        assert result == "completed"
+        assert called == {"packet": learning_packet, "deps": deps}
+        status = temporal_scheduler.get_temporal_scheduler_status()
+        assert status["last_workflow_id"] == "learning-workflow-completed"
+        assert status["last_task_id"] == learning_packet.job_id
+        assert status["last_result"] == "completed"
 
     @pytest.mark.asyncio
     async def test_run_scheduled_agent_activity_skips_paused_task(self, monkeypatch, temporal_task):

@@ -6,8 +6,8 @@ import json
 import re
 from dataclasses import asdict
 
+from pynchy.host.learning.packet_models import LearningPacket
 from pynchy.host.learning.paths import LearningPaths
-from pynchy.host.learning.queue import LearningPacket
 
 _EXPLICIT_LEARNING_PATTERNS = (
     re.compile(r"\bremember\b", re.IGNORECASE),

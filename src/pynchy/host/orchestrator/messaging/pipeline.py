@@ -512,7 +512,7 @@ async def _finalize_cursor_and_retry(
         )
         return True
 
-    await learning_capture.enqueue_completed_turn_learning_packet(
+    await learning_capture.start_completed_turn_learning_review(
         s, chat_jid, group, missed_messages, final_cursor, learning_summary, get_messages_since
     )
 

@@ -18,11 +18,13 @@ _P_SETTINGS = "pynchy.host.orchestrator.messaging.pipeline.get_settings"
 _P_MSGS_SINCE = "pynchy.host.orchestrator.messaging.pipeline.get_messages_since"
 _P_INTERCEPT = "pynchy.host.orchestrator.messaging.pipeline.intercept_special_command"
 _P_FMT_SDK = "pynchy.host.orchestrator.messaging.formatter.format_messages_for_sdk"
-_P_LEARNING_ENQUEUE = "pynchy.host.learning.packets.enqueue_learning_packet"
+_P_LEARNING_START = "pynchy.host.learning.capture.start_completed_turn_learning_review"
 _P_LEARNING_OBSERVE = "pynchy.host.learning.packets.observe_container_output"
-_P_LEARNING_QUEUE = "pynchy.host.learning.packets.LearningQueue"
 _P_LEARNING_SETTINGS = "pynchy.host.learning.packets.get_settings"
 _P_LEARNING_PATH_SETTINGS = "pynchy.host.learning.paths.get_settings"
+_P_TEMPORAL_LEARNING_START = (
+    "pynchy.host.orchestrator.temporal.scheduler.start_learning_review_workflow"
+)
 _P_BG_MERGE = "pynchy.host.git_ops._worktree_merge.background_merge_worktree"
 
 
@@ -113,7 +115,7 @@ def _patch_fmt_sdk():
 
 
 @pytest.mark.asyncio
-async def test_clean_successful_turn_enqueues_learning_packet_after_cursor(
+async def test_clean_successful_turn_starts_temporal_learning_review_after_cursor(
     tmp_path: Path,
 ) -> None:
     group = _make_group()
@@ -126,13 +128,6 @@ async def test_clean_successful_turn_enqueues_learning_packet_after_cursor(
             await on_output(ContainerOutput(status="success", type="result", result="Remembered."))
         return "success"
 
-    observed: dict[str, object] = {}
-
-    def _enqueue_learning_packet(**kwargs):
-        observed["cursor_at_enqueue"] = deps.last_agent_timestamp.get("g@g.us")
-        observed["summary"] = kwargs["summary"]
-        return tmp_path / "packet.json"
-
     deps.run_agent = AsyncMock(side_effect=_run_agent)
 
     with (
@@ -140,27 +135,29 @@ async def test_clean_successful_turn_enqueues_learning_packet_after_cursor(
         patch(_P_MSGS_SINCE, new_callable=AsyncMock, return_value=[msg]),
         _patch_intercept(),
         _patch_fmt_sdk(),
-        patch(_P_LEARNING_ENQUEUE, side_effect=_enqueue_learning_packet) as mock_enqueue,
+        patch(_P_LEARNING_START, new_callable=AsyncMock, create=True) as mock_start,
         patch(_P_BG_MERGE),
     ):
         settings.return_value = _settings_mock(tmp_path, learning=LearningConfig(enabled=True))
         result = await process_group_messages(deps, "g@g.us")
 
     assert result is True
-    mock_enqueue.assert_called_once()
-    kwargs = mock_enqueue.call_args.kwargs
-    assert kwargs["chat_jid"] == "g@g.us"
-    assert kwargs["group"] is group
-    assert kwargs["missed_messages"] == [msg]
-    assert kwargs["final_cursor"] == "new-ts"
-    assert observed["cursor_at_enqueue"] == "new-ts"
-    summary = observed["summary"]
-    assert summary.final_answer == "Remembered."
-    assert summary.tool_counts == {"Bash": 1}
+    mock_start.assert_awaited_once()
+    args = mock_start.await_args.args
+    assert args[:5] == (
+        settings.return_value,
+        "g@g.us",
+        group,
+        [msg],
+        "new-ts",
+    )
+    assert args[5].final_answer == "Remembered."
+    assert args[5].tool_counts == {"Bash": 1}
+    assert deps.last_agent_timestamp["g@g.us"] == "new-ts"
 
 
 @pytest.mark.asyncio
-async def test_learning_packet_includes_follow_up_dispatched_during_active_run(
+async def test_learning_review_packet_includes_follow_up_dispatched_during_active_run(
     tmp_path: Path,
 ) -> None:
     group = _make_group()
@@ -204,11 +201,10 @@ async def test_learning_packet_includes_follow_up_dispatched_during_active_run(
         patch(_P_MSGS_SINCE, new_callable=AsyncMock) as mock_messages_since,
         _patch_intercept(),
         _patch_fmt_sdk(),
-        patch(_P_LEARNING_QUEUE) as queue_cls,
+        patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock) as temporal_start,
         patch(_P_BG_MERGE),
     ):
         mock_messages_since.side_effect = [[initial, initial_tail], [follow_up]]
-        queue_cls.return_value.enqueue.return_value = tmp_path / "packet.json"
 
         result = await process_group_messages(deps, "g@g.us")
 
@@ -218,7 +214,8 @@ async def test_learning_packet_includes_follow_up_dispatched_during_active_run(
         call("g@g.us", previous_cursor),
         call("g@g.us", initial_tail.timestamp),
     ]
-    packet = queue_cls.return_value.enqueue.call_args.args[0]
+    temporal_start.assert_awaited_once()
+    packet = temporal_start.await_args.args[0]
     assert packet.provenance["final_cursor"] == follow_up.timestamp
     assert json.loads(packet.provenance["source_message_ids"]) == [
         "msg-initial",
@@ -228,7 +225,7 @@ async def test_learning_packet_includes_follow_up_dispatched_during_active_run(
 
 
 @pytest.mark.asyncio
-async def test_learning_packet_is_skipped_when_expanded_fetch_fails(tmp_path: Path) -> None:
+async def test_learning_review_is_skipped_when_expanded_fetch_fails(tmp_path: Path) -> None:
     group = _make_group()
     deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
     initial = _make_message(
@@ -260,11 +257,10 @@ async def test_learning_packet_is_skipped_when_expanded_fetch_fails(tmp_path: Pa
         patch(_P_MSGS_SINCE, new_callable=AsyncMock) as mock_messages_since,
         _patch_intercept(),
         _patch_fmt_sdk(),
-        patch(_P_LEARNING_QUEUE) as queue_cls,
+        patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock) as temporal_start,
         patch(_P_BG_MERGE),
     ):
         mock_messages_since.side_effect = [[initial], RuntimeError("database unavailable")]
-        queue_cls.return_value.enqueue.return_value = tmp_path / "packet.json"
 
         result = await process_group_messages(deps, "g@g.us")
 
@@ -274,11 +270,11 @@ async def test_learning_packet_is_skipped_when_expanded_fetch_fails(tmp_path: Pa
         call("g@g.us", "old-ts"),
         call("g@g.us", initial.timestamp),
     ]
-    queue_cls.assert_not_called()
+    temporal_start.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_retryable_failure_does_not_enqueue_learning_packet(tmp_path: Path) -> None:
+async def test_retryable_failure_does_not_start_learning_review(tmp_path: Path) -> None:
     group = _make_group()
     deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
     deps.run_agent = AsyncMock(return_value="error")
@@ -289,17 +285,17 @@ async def test_retryable_failure_does_not_enqueue_learning_packet(tmp_path: Path
         patch(_P_MSGS_SINCE, new_callable=AsyncMock, return_value=[msg]),
         _patch_intercept(),
         _patch_fmt_sdk(),
-        patch(_P_LEARNING_ENQUEUE) as mock_enqueue,
+        patch(_P_LEARNING_START, new_callable=AsyncMock, create=True) as mock_start,
     ):
         settings.return_value = _settings_mock(tmp_path)
         result = await process_group_messages(deps, "g@g.us")
 
     assert result is False
-    mock_enqueue.assert_not_called()
+    mock_start.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_partial_output_failure_does_not_enqueue_learning_packet(tmp_path: Path) -> None:
+async def test_partial_output_failure_does_not_start_learning_review(tmp_path: Path) -> None:
     group = _make_group()
     deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
     msg = _make_message("hello", timestamp="new-ts")
@@ -317,18 +313,18 @@ async def test_partial_output_failure_does_not_enqueue_learning_packet(tmp_path:
         patch(_P_MSGS_SINCE, new_callable=AsyncMock, return_value=[msg]),
         _patch_intercept(),
         _patch_fmt_sdk(),
-        patch(_P_LEARNING_ENQUEUE) as mock_enqueue,
+        patch(_P_LEARNING_START, new_callable=AsyncMock, create=True) as mock_start,
     ):
         settings.return_value = _settings_mock(tmp_path)
         result = await process_group_messages(deps, "g@g.us")
 
     assert result is True
     assert deps.last_agent_timestamp["g@g.us"] == "new-ts"
-    mock_enqueue.assert_not_called()
+    mock_start.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_review_after_turn_false_skips_follow_up_expansion_and_enqueue(
+async def test_review_after_turn_false_skips_follow_up_expansion_and_learning_start(
     tmp_path: Path,
 ) -> None:
     group = _make_group()
@@ -359,7 +355,7 @@ async def test_review_after_turn_false_skips_follow_up_expansion_and_enqueue(
         patch(_P_MSGS_SINCE, new_callable=AsyncMock) as mock_messages_since,
         _patch_intercept(),
         _patch_fmt_sdk(),
-        patch(_P_LEARNING_ENQUEUE) as mock_enqueue,
+        patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock) as temporal_start,
         patch(_P_BG_MERGE),
     ):
         mock_messages_since.side_effect = [[initial], RuntimeError("should not expand")]
@@ -369,7 +365,7 @@ async def test_review_after_turn_false_skips_follow_up_expansion_and_enqueue(
     assert result is True
     assert deps.last_agent_timestamp["g@g.us"] == follow_up_timestamp
     assert mock_messages_since.await_count == 1
-    mock_enqueue.assert_not_called()
+    temporal_start.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -395,7 +391,7 @@ async def test_learning_observation_failure_does_not_block_streamed_output(
         _patch_intercept(),
         _patch_fmt_sdk(),
         patch(_P_LEARNING_OBSERVE, side_effect=RuntimeError("observer broke")),
-        patch(_P_LEARNING_ENQUEUE) as mock_enqueue,
+        patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock) as temporal_start,
         patch(_P_BG_MERGE),
     ):
         result = await process_group_messages(deps, "g@g.us")
@@ -403,11 +399,11 @@ async def test_learning_observation_failure_does_not_block_streamed_output(
     assert result is True
     deps.handle_streamed_output.assert_awaited_once_with("g@g.us", group, output)
     assert deps.last_agent_timestamp["g@g.us"] == "new-ts"
-    mock_enqueue.assert_not_called()
+    temporal_start.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_learning_disabled_skips_follow_up_expansion_and_enqueue(
+async def test_learning_disabled_skips_follow_up_expansion_and_learning_start(
     tmp_path: Path,
 ) -> None:
     group = _make_group()
@@ -435,7 +431,7 @@ async def test_learning_disabled_skips_follow_up_expansion_and_enqueue(
         patch(_P_MSGS_SINCE, new_callable=AsyncMock) as mock_messages_since,
         _patch_intercept(),
         _patch_fmt_sdk(),
-        patch(_P_LEARNING_ENQUEUE) as mock_enqueue,
+        patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock) as temporal_start,
         patch(_P_BG_MERGE),
     ):
         mock_messages_since.side_effect = [[initial], RuntimeError("should not expand")]
@@ -445,4 +441,4 @@ async def test_learning_disabled_skips_follow_up_expansion_and_enqueue(
     assert result is True
     assert deps.last_agent_timestamp["g@g.us"] == follow_up_timestamp
     assert mock_messages_since.await_count == 1
-    mock_enqueue.assert_not_called()
+    temporal_start.assert_not_awaited()

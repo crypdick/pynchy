@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from pynchy.host.learning.packet_models import LearningPacket
 from pynchy.host.learning.paths import LearningPaths
-from pynchy.host.learning.queue import LearningPacket
 from pynchy.host.learning.reviewer import build_review_prompt, should_review
 
 

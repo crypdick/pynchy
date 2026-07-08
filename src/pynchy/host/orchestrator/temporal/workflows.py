@@ -6,9 +6,10 @@ Keep this module deterministic and light: activities do the Pynchy I/O.
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import cast
+from typing import Any, cast
 
 from temporalio import workflow
+from temporalio.common import RetryPolicy
 
 
 @workflow.defn
@@ -55,5 +56,22 @@ class ConfigHostCronWorkflow:
                 "run_config_host_cron_job",
                 job_name,
                 start_to_close_timeout=timedelta(hours=12),
+            ),
+        )
+
+
+@workflow.defn
+class LearningReviewWorkflow:
+    """Run one hidden Obsidian learning review through a host-side activity."""
+
+    @workflow.run
+    async def run(self, packet_payload: dict[str, Any], maximum_attempts: int) -> str:
+        return cast(
+            str,
+            await workflow.execute_activity(
+                "run_learning_review",
+                packet_payload,
+                start_to_close_timeout=timedelta(hours=12),
+                retry_policy=RetryPolicy(maximum_attempts=maximum_attempts),
             ),
         )
