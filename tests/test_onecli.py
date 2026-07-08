@@ -54,6 +54,28 @@ def _settings(tmp_path: Path, *, enabled: bool = True) -> object:
     )
 
 
+def _onecli_material_payload() -> dict[str, object]:
+    return {
+        "env": {
+            "HTTPS_PROXY": "http://proxy",
+            "SSL_CERT_FILE": "/tmp/onecli-ca.pem",
+        },
+        "caCertificate": "-----BEGIN CERTIFICATE-----\nCA\n-----END CERTIFICATE-----\n",
+        "caCertificateContainerPath": "/tmp/onecli-ca.pem",
+        "credentialStubs": [
+            {
+                "containerPath": "/home/agent/.codex/auth.json",
+                "content": '{"token":"onecli-managed"}',
+            }
+        ],
+        "warnings": ["connected"],
+    }
+
+
+def _mount_for_container_path(material, container_path: str):
+    return next(m for m in material.mounts if m.container_path == container_path)
+
+
 def test_normalize_agent_identifier_lowercases_and_collapses_separators() -> None:
     assert normalize_agent_identifier("pynchy", "Research Group!") == "pynchy-research-group"
 
@@ -230,21 +252,7 @@ def test_prepare_onecli_material_writes_ca_and_stubs(
 ) -> None:
     settings = _settings(tmp_path)
     monkeypatch.setenv("ONECLI_API_KEY", "oc_test_key")
-    payload = {
-        "env": {
-            "HTTPS_PROXY": "http://proxy",
-            "SSL_CERT_FILE": "/tmp/onecli-ca.pem",
-        },
-        "caCertificate": "-----BEGIN CERTIFICATE-----\nCA\n-----END CERTIFICATE-----\n",
-        "caCertificateContainerPath": "/tmp/onecli-ca.pem",
-        "credentialStubs": [
-            {
-                "containerPath": "/home/agent/.codex/auth.json",
-                "content": '{"token":"onecli-managed"}',
-            }
-        ],
-        "warnings": ["connected"],
-    }
+    payload = _onecli_material_payload()
     requests = []
 
     def fake_urlopen(request, timeout):
@@ -263,12 +271,10 @@ def test_prepare_onecli_material_writes_ca_and_stubs(
     assert requests[0].full_url.endswith("/v1/container-config?agent=pynchy-research-group")
     assert requests[0].get_header("Authorization") == "Bearer oc_test_key"
 
-    ca_mount = next(m for m in material.mounts if m.container_path == "/tmp/onecli-ca.pem")
+    ca_mount = _mount_for_container_path(material, "/tmp/onecli-ca.pem")
     assert ca_mount.readonly is True
     assert Path(ca_mount.host_path).read_text() == payload["caCertificate"]
 
-    stub_mount = next(
-        m for m in material.mounts if m.container_path == "/home/agent/.codex/auth.json"
-    )
+    stub_mount = _mount_for_container_path(material, "/home/agent/.codex/auth.json")
     assert stub_mount.readonly is True
     assert Path(stub_mount.host_path).read_text() == '{"token":"onecli-managed"}'
