@@ -306,6 +306,32 @@ class TestContainerProcessHelpers:
             stderr=asyncio.subprocess.DEVNULL,
         )
 
+    async def test_force_remove_reaps_apple_runtime_orphan_after_quick_return(self):
+        """Apple delete can return while the stopped container runtime remains alive."""
+        from pynchy.host.container_manager.process import (
+            _docker_rm_force,  # allow: private-test-imports - external cleanup side effect
+        )
+
+        completed_delete = FakeProcess()
+        completed_delete.close(code=1)
+        retry_delete = FakeProcess()
+        retry_delete.close(code=1)
+
+        with (
+            patch(
+                "pynchy.host.container_manager.process.asyncio.create_subprocess_exec",
+                new=AsyncMock(side_effect=[completed_delete, retry_delete]),
+            ) as create_proc,
+            patch(
+                "pynchy.host.container_manager.process._reap_apple_runtime_orphans",
+                new=AsyncMock(return_value=True),
+            ) as reap_orphan,
+        ):
+            await _docker_rm_force("pynchy-code-improver")
+
+        reap_orphan.assert_awaited_once_with("pynchy-code-improver")
+        assert create_proc.await_count == 2
+
     async def test_force_remove_retries_after_reaping_apple_runtime_orphan(self):
         """If Apple delete hangs, reap the orphaned runtime and retry cleanup once."""
         from pynchy.host.container_manager.process import (

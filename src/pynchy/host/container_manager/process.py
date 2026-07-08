@@ -236,8 +236,8 @@ async def _docker_rm_force(container_name: str) -> None:
     management, one-shot container cleanup).
     """
     try:
-        removed = await _run_rm_force(container_name, _RM_FORCE_TIMEOUT_SECONDS)
-        if not removed and await _reap_apple_runtime_orphans(container_name):
+        await _run_rm_force(container_name, _RM_FORCE_TIMEOUT_SECONDS)
+        if await _reap_apple_runtime_orphans(container_name):
             await _run_rm_force(container_name, _RM_FORCE_KILL_WAIT_SECONDS)
     except OSError as exc:
         # OSError covers FileNotFoundError (CLI missing) and other
