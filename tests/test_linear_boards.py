@@ -178,6 +178,14 @@ class TestEnsureWorkspaceBoard:
 
         assert board.project["name"] == "Custom Display Name"
 
+    async def test_project_name_uses_folder_when_display_name_is_repo_slug(self):
+        client = FakeLinearClient()
+        workspace = WorkspaceStub(folder="code-improver", name="crypdick--pynchy")
+
+        board = await ensure_workspace_board(client, workspace, team_key=None)
+
+        assert board.project["name"] == "Code Improver"
+
     async def test_renames_existing_prefixed_project_by_workspace_metadata(self):
         client = FakeLinearClient()
         client.projects.append(
@@ -195,6 +203,35 @@ class TestEnsureWorkspaceBoard:
         assert board.project["id"] == "project-existing"
         assert board.project["name"] == "DDDD Evening Review"
         assert client.updated_projects[0]["name"] == "DDDD Evening Review"
+
+    async def test_renames_all_stale_workspace_projects_by_metadata(self):
+        client = FakeLinearClient()
+        client.projects.extend(
+            [
+                {
+                    "id": "project-current",
+                    "name": "crypdick--pynchy",
+                    "url": "https://linear.app/acme/project/current",
+                    "description": "Managed by Pynchy.\n\npynchy.workspace=code-improver\n",
+                },
+                {
+                    "id": "project-prefixed",
+                    "name": "Pynchy: Code Improver",
+                    "url": "https://linear.app/acme/project/prefixed",
+                    "description": "Managed by Pynchy.\n\npynchy.workspace=code-improver\n",
+                },
+            ]
+        )
+        workspace = WorkspaceStub(folder="code-improver", name="crypdick--pynchy")
+
+        board = await ensure_workspace_board(client, workspace, team_key=None)
+
+        assert board.project["name"] == "Code Improver"
+        assert {project["name"] for project in client.projects} == {"Code Improver"}
+        assert {project["project_id"] for project in client.updated_projects} == {
+            "project-current",
+            "project-prefixed",
+        }
 
 
 class TestWorkspaceTodos:
