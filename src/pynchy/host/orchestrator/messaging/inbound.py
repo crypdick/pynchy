@@ -39,56 +39,82 @@ async def _route_incoming_group(
     when the group should be skipped (access/trigger rules, system-notice
     filtering, special commands).
     """
+    group_messages = _allowed_group_messages(deps, group_jid, group, group_messages)
+    if not group_messages:
+        return
+
+    all_pending = await _pending_messages_for_group(deps, group_jid, group)
+    if not all_pending:
+        return
+
+    if await _intercept_pending_command(deps, group_jid, group, all_pending):
+        return
+
+    await _route_pending_messages(deps, group_jid, group, group_messages, all_pending)
+
+
+def _channel_plugin_name(deps: MessageHandlerDeps, group_jid: str) -> str | None:
+    return next((ch.name for ch in deps.channels if ch.owns_jid(group_jid)), None)
+
+
+def _allowed_group_messages(
+    deps: MessageHandlerDeps,
+    group_jid: str,
+    group: WorkspaceProfile,
+    group_messages: list[NewMessage],
+) -> list[NewMessage]:
     s = get_settings()
     from pynchy.config.access import filter_allowed_messages, resolve_channel_config
 
-    channel_plugin_name = next(
-        (ch.name for ch in deps.channels if ch.owns_jid(group_jid)),
-        None,
-    )
-
+    channel_plugin_name = _channel_plugin_name(deps, group_jid)
     resolved = resolve_channel_config(
         group.folder,
         channel_jid=group_jid,
         channel_plugin_name=channel_plugin_name,
     )
 
-    # Access check: skip write-only or read-only workspaces
     if resolved.access in ("read", "write"):
         logger.info("route_trace", step="skip_access", group=group.name, access=resolved.access)
-        return
+        return []
 
-    # Sender filter: only process messages from allowed users.
-    # Admin groups accept all senders — anyone with access to the
-    # command-center channel is implicitly trusted.
-    group_messages = filter_allowed_messages(group_messages, group, channel_plugin_name)
-    if not group_messages:
+    filtered_messages = filter_allowed_messages(group_messages, group, channel_plugin_name)
+    if not filtered_messages:
         logger.info("route_trace", step="skip_all_filtered", group=group.name)
-        return
+        return []
 
-    is_admin_group = group.is_admin
-    needs_trigger = not is_admin_group and resolved.trigger == "mention"
+    if _needs_trigger(group, resolved.trigger) and not _has_group_trigger(s, filtered_messages):
+        logger.info("route_trace", step="skip_no_trigger", group=group.name)
+        return []
+    return filtered_messages
 
-    if needs_trigger:
-        has_trigger = any(s.trigger_pattern.search(m.content.strip()) for m in group_messages)
-        # Magic commands (c, boom, done, r, etc.) bypass trigger
-        last_content = group_messages[-1].content.strip()
-        if not has_trigger and not is_any_magic_command(last_content):
-            logger.info(
-                "route_trace",
-                step="skip_no_trigger",
-                group=group.name,
-            )
-            return
 
+def _needs_trigger(group: WorkspaceProfile, trigger: str) -> bool:
+    return not group.is_admin and trigger == "mention"
+
+
+def _has_group_trigger(settings: object, group_messages: list[NewMessage]) -> bool:
+    has_trigger = any(settings.trigger_pattern.search(m.content.strip()) for m in group_messages)
+    last_content = group_messages[-1].content.strip()
+    return has_trigger or is_any_magic_command(last_content)
+
+
+def _routing_cursor(deps: MessageHandlerDeps, group_jid: str) -> str:
     # Use the furthest of the processed cursor and the dispatched-but-not-yet-
     # completed cursor.  When a container is active, _dispatched_through is
     # ahead of last_agent_timestamp so follow-up pipes don't re-include the
     # messages the container is already handling.
-    cursor = max(
+    return max(
         deps.last_agent_timestamp.get(group_jid, ""),
         deps._dispatched_through.get(group_jid, ""),
     )
+
+
+async def _pending_messages_for_group(
+    deps: MessageHandlerDeps,
+    group_jid: str,
+    group: WorkspaceProfile,
+) -> list[NewMessage]:
+    cursor = _routing_cursor(deps, group_jid)
     logger.info(
         "route_trace",
         step="get_messages_since",
@@ -98,16 +124,31 @@ async def _route_incoming_group(
     all_pending = await get_messages_since(group_jid, cursor)
     if not all_pending:
         logger.info("route_trace", step="skip_no_pending", group=group.name)
-        return
+        return []
+    if _only_system_notices_while_idle(deps, group_jid, all_pending):
+        return []
+    return all_pending
 
+
+def _only_system_notices_while_idle(
+    deps: MessageHandlerDeps,
+    group_jid: str,
+    all_pending: list[NewMessage],
+) -> bool:
     # System notices (e.g. clean rebase notifications) shouldn't wake a
     # sleeping agent — they're just context for the next real session.
     # Skip if *all* pending messages are notices and no container is running.
-    if not deps.queue.is_active_task(group_jid) and all(
+    return not deps.queue.is_active_task(group_jid) and all(
         m.sender == "system_notice" for m in all_pending
-    ):
-        return
+    )
 
+
+async def _intercept_pending_command(
+    deps: MessageHandlerDeps,
+    group_jid: str,
+    group: WorkspaceProfile,
+    all_pending: list[NewMessage],
+) -> bool:
     logger.info(
         "route_trace",
         step="intercept_check",
@@ -116,48 +157,79 @@ async def _route_incoming_group(
     )
     if await intercept_special_command(deps, group_jid, group, all_pending[-1]):
         logger.info("route_trace", step="intercepted", group=group.name)
-        return
-
+        return True
     logger.info("route_trace", step="not_intercepted", group=group.name)
+    return False
 
+
+async def _route_pending_messages(
+    deps: MessageHandlerDeps,
+    group_jid: str,
+    group: WorkspaceProfile,
+    group_messages: list[NewMessage],
+    all_pending: list[NewMessage],
+) -> None:
     formatted = "\n".join(f"{msg.sender_name}: {msg.content}" for msg in all_pending)
     last_content = all_pending[-1].content.strip()
     is_btw = last_content.lower().startswith("btw ")
 
-    # --- Active scheduled task: forward, add todo, or interrupt ---
     if deps.queue.is_active_task(group_jid):
         logger.info("route_trace", step="active_task_forward", group=group.name)
         await _handle_message_during_task(deps, group_jid, group, formatted, last_content, is_btw)
         return
 
-    # --- Active message container: pipe follow-up messages ---
     if deps.queue.send_message(group_jid, formatted):
-        logger.info("route_trace", step="piped_to_container", group=group.name)
-        if is_btw:
-            # Non-interrupting — forward to active container via IPC but
-            # don't advance the cursor.  Will be reprocessed after the
-            # agent finishes its current turn.
-            from pynchy.types import OutboundEvent, OutboundEventType
-
-            msg = f"\u00bb [Forwarded] {last_content[:500]}"
-            await deps.broadcast_to_channels(
-                group_jid, OutboundEvent(type=OutboundEventType.TEXT, content=msg)
-            )
-            deps.queue.enqueue_message_check(group_jid)
-        else:
-            logger.debug(
-                "Piped messages to active container",
-                chat_jid=group_jid,
-                count=len(all_pending),
-            )
-            last_msg = all_pending[-1]
-            await deps.send_reaction_to_channels(group_jid, last_msg.id, last_msg.sender, "🦀")
-            _mark_dispatched(deps, group_jid, all_pending[-1].timestamp)
+        await _forward_to_active_container(
+            deps,
+            group_jid,
+            all_pending,
+            last_content=last_content,
+            is_btw=is_btw,
+        )
         return
 
-    # --- No active container: enqueue a run ---
+    await _start_new_interactive_turn(deps, group_jid, group, group_messages[0])
+
+
+async def _forward_to_active_container(
+    deps: MessageHandlerDeps,
+    group_jid: str,
+    all_pending: list[NewMessage],
+    *,
+    last_content: str,
+    is_btw: bool,
+) -> None:
+    logger.info("route_trace", step="piped_to_container")
+    if is_btw:
+        # Non-interrupting — forward to active container via IPC but
+        # don't advance the cursor.  Will be reprocessed after the
+        # agent finishes its current turn.
+        from pynchy.types import OutboundEvent, OutboundEventType
+
+        msg = f"\u00bb [Forwarded] {last_content[:500]}"
+        await deps.broadcast_to_channels(
+            group_jid, OutboundEvent(type=OutboundEventType.TEXT, content=msg)
+        )
+        deps.queue.enqueue_message_check(group_jid)
+        return
+
+    logger.debug(
+        "Piped messages to active container",
+        chat_jid=group_jid,
+        count=len(all_pending),
+    )
+    last_msg = all_pending[-1]
+    await deps.send_reaction_to_channels(group_jid, last_msg.id, last_msg.sender, "🦀")
+    _mark_dispatched(deps, group_jid, last_msg.timestamp)
+
+
+async def _start_new_interactive_turn(
+    deps: MessageHandlerDeps,
+    group_jid: str,
+    group: WorkspaceProfile,
+    first_msg: NewMessage,
+) -> None:
     logger.info("route_trace", step="enqueue_new_run", group=group.name)
-    first_msg = group_messages[0]
     await deps.send_reaction_to_channels(group_jid, first_msg.id, first_msg.sender, "sunrise")
     await deps.start_interactive_turn(group_jid)
 
