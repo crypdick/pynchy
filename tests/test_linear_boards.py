@@ -125,6 +125,13 @@ class TestSelectTeam:
 
         assert team["id"] == "team-2"
 
+    async def test_rejects_malformed_team_payloads_at_the_boundary(self):
+        client = FakeLinearClient()
+        client.teams = [{"key": "OPS", "name": "Ops"}]
+
+        with pytest.raises(LinearBoardError, match="missing string id"):
+            await select_team(client, team_key=None)
+
 
 class TestEnsureWorkspaceBoard:
     async def test_creates_missing_project_and_workflow_states(self):

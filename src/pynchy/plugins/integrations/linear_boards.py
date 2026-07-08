@@ -52,6 +52,44 @@ class LinearWorkspaceBoard:
     states: dict[str, dict[str, Any]]
 
 
+@dataclass(frozen=True)
+class _VisibleLinearTeam:
+    raw: dict[str, Any]
+    team_id: str
+    key: str | None
+    name: str | None
+
+    @classmethod
+    def from_payload(cls, payload: object) -> _VisibleLinearTeam:
+        if not isinstance(payload, dict):
+            raise LinearBoardError("Linear team payload was not an object")
+
+        team_id = payload.get("id")
+        if not isinstance(team_id, str) or not team_id:
+            raise LinearBoardError("Linear team payload missing string id")
+
+        key = payload.get("key")
+        name = payload.get("name")
+        return cls(
+            raw=payload,
+            team_id=team_id,
+            key=key if isinstance(key, str) and key else None,
+            name=name if isinstance(name, str) and name else None,
+        )
+
+    def matches(self, team_key: str) -> bool:
+        normalized = team_key.lower()
+        return any(
+            candidate.lower() == normalized
+            for candidate in (self.team_id, self.key, self.name)
+            if candidate is not None
+        )
+
+    @property
+    def choice_label(self) -> str:
+        return self.key or self.name or self.team_id
+
+
 LINEAR_TODO_STATUSES: dict[str, TodoStatusSpec] = {
     "backlog": TodoStatusSpec("Backlog", "backlog", 10.0, "#8A8F98"),
     "planning": TodoStatusSpec("Planning", "unstarted", 20.0, "#F2C94C"),
@@ -61,20 +99,19 @@ LINEAR_TODO_STATUSES: dict[str, TodoStatusSpec] = {
 }
 
 
-def _matching_team(teams: list[dict[str, Any]], team_key: str) -> dict[str, Any] | None:
-    normalized = team_key.lower()
+def _visible_teams(raw_teams: Iterable[object]) -> list[_VisibleLinearTeam]:
+    return [_VisibleLinearTeam.from_payload(team) for team in raw_teams]
+
+
+def _matching_team(teams: list[_VisibleLinearTeam], team_key: str) -> _VisibleLinearTeam | None:
     for team in teams:
-        if str(team.get("key", "")).lower() == normalized:
-            return team
-        if str(team.get("id", "")).lower() == normalized:
-            return team
-        if str(team.get("name", "")).lower() == normalized:
+        if team.matches(team_key):
             return team
     return None
 
 
-def _visible_team_choices(teams: list[dict[str, Any]]) -> str:
-    return ", ".join(str(team.get("key") or team.get("name") or team.get("id")) for team in teams)
+def _visible_team_choices(teams: list[_VisibleLinearTeam]) -> str:
+    return ", ".join(team.choice_label for team in teams)
 
 
 async def select_team(
@@ -83,15 +120,15 @@ async def select_team(
     team_key: str | None,
 ) -> dict[str, Any]:
     """Select the Linear team to use, defaulting only when unambiguous."""
-    teams = await client.list_teams()
+    teams = _visible_teams(await client.list_teams())
     if team_key:
         team = _matching_team(teams, team_key)
         if team is not None:
-            return team
+            return team.raw
         raise LinearBoardError(f"LINEAR_TEAM_KEY did not match a visible Linear team: {team_key}")
 
     if len(teams) == 1:
-        return teams[0]
+        return teams[0].raw
     if not teams:
         raise LinearBoardError("Linear API key cannot see any teams")
     raise LinearBoardError(
