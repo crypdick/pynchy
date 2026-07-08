@@ -120,6 +120,78 @@ def temporal_task() -> ScheduledTask:
 
 
 class TestTemporalSchedulerRuntime:
+    @staticmethod
+    def _capturing_worker(captured: dict[str, object]):
+        class FakeWorker:
+            def __init__(self, *args, workflows, activities, **kwargs):
+                captured["workflows"] = workflows
+                captured["activities"] = activities
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, _tb):
+                return None
+
+        return FakeWorker
+
+    @staticmethod
+    def _assert_registered_temporal_workflows(
+        captured: dict[str, object], temporal_scheduler
+    ) -> None:
+        from pynchy.host.orchestrator.temporal.workflows import (
+            ChannelReconciliationWorkflow,
+            DeployWorkflow,
+            ExternalGitSyncWorkflow,
+            HostGitSyncWorkflow,
+            InteractiveMessageWorkflow,
+            LearningReviewWorkflow,
+        )
+
+        assert {
+            InteractiveMessageWorkflow,
+            LearningReviewWorkflow,
+            DeployWorkflow,
+            HostGitSyncWorkflow,
+            ExternalGitSyncWorkflow,
+            ChannelReconciliationWorkflow,
+        }.issubset(set(captured["workflows"]))
+        assert {
+            temporal_scheduler.run_interactive_message_turn,
+            temporal_scheduler.run_learning_review,
+            temporal_scheduler.run_deploy,
+            temporal_scheduler.run_host_git_sync,
+            temporal_scheduler.run_external_git_sync,
+            temporal_scheduler.run_channel_reconciliation,
+        }.issubset(set(captured["activities"]))
+
+    @staticmethod
+    def _assert_finalize_deploy_kwargs(finalize_deploy: AsyncMock, deps: NullSchedulerDeps) -> None:
+        finalize_deploy.assert_awaited_once()
+        assert finalize_deploy.await_args.kwargs == {
+            "broadcast_host_message": deps.broadcast_host_message,
+            "chat_jid": "slack:C123",
+            "commit_sha": "new-sha",
+            "previous_sha": "old-sha",
+            "session_id": "session-1",
+            "active_sessions": {"slack:C123": "session-1"},
+            "resume_prompt": "Deploy complete. Verifying service health.",
+            "sigterm_delay": 0.25,
+        }
+
+    @staticmethod
+    def _assert_scheduler_status(
+        temporal_scheduler,
+        *,
+        workflow_id: str,
+        task_id: str,
+        result: str,
+    ) -> None:
+        status = temporal_scheduler.get_temporal_scheduler_status()
+        assert status["last_workflow_id"] == workflow_id
+        assert status["last_task_id"] == task_id
+        assert status["last_result"] == result
+
     def test_scheduler_status_defaults_to_stopped(self):
         import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
@@ -569,51 +641,20 @@ class TestTemporalSchedulerRuntime:
     @pytest.mark.asyncio
     async def test_worker_registers_temporal_orchestration_workflows(self, monkeypatch):
         import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
-        from pynchy.host.orchestrator.temporal.workflows import (
-            ChannelReconciliationWorkflow,
-            DeployWorkflow,
-            ExternalGitSyncWorkflow,
-            HostGitSyncWorkflow,
-            InteractiveMessageWorkflow,
-            LearningReviewWorkflow,
-        )
 
         captured = {}
-
-        class FakeWorker:
-            def __init__(self, *args, workflows, activities, **kwargs):
-                captured["workflows"] = workflows
-                captured["activities"] = activities
-
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, exc_type, exc, _tb):
-                return None
 
         async def fake_connect(*args, **kwargs):
             return object()
 
         monkeypatch.setattr(temporal_scheduler.Client, "connect", fake_connect)
-        monkeypatch.setattr(temporal_scheduler, "Worker", FakeWorker)
+        monkeypatch.setattr(temporal_scheduler, "Worker", self._capturing_worker(captured))
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
             deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
         )
 
         await runtime.__aenter__()
-
-        assert InteractiveMessageWorkflow in captured["workflows"]
-        assert LearningReviewWorkflow in captured["workflows"]
-        assert DeployWorkflow in captured["workflows"]
-        assert HostGitSyncWorkflow in captured["workflows"]
-        assert ExternalGitSyncWorkflow in captured["workflows"]
-        assert ChannelReconciliationWorkflow in captured["workflows"]
-        assert temporal_scheduler.run_interactive_message_turn in captured["activities"]
-        assert temporal_scheduler.run_learning_review in captured["activities"]
-        assert temporal_scheduler.run_deploy in captured["activities"]
-        assert temporal_scheduler.run_host_git_sync in captured["activities"]
-        assert temporal_scheduler.run_external_git_sync in captured["activities"]
-        assert temporal_scheduler.run_channel_reconciliation in captured["activities"]
+        self._assert_registered_temporal_workflows(captured, temporal_scheduler)
 
         await runtime.__aexit__(None, None, None)
 
@@ -800,18 +841,13 @@ class TestTemporalSchedulerRuntime:
         )
 
         assert result == "restart_requested"
-        finalize_deploy.assert_awaited_once()
-        kwargs = finalize_deploy.await_args.kwargs
-        assert kwargs["broadcast_host_message"] == deps.broadcast_host_message
-        assert kwargs["chat_jid"] == "slack:C123"
-        assert kwargs["commit_sha"] == "new-sha"
-        assert kwargs["previous_sha"] == "old-sha"
-        assert kwargs["active_sessions"] == {"slack:C123": "session-1"}
-        assert kwargs["sigterm_delay"] == 0.25
-        status = temporal_scheduler.get_temporal_scheduler_status()
-        assert status["last_workflow_id"] == "deploy-workflow-completed"
-        assert status["last_task_id"] == "new-sha"
-        assert status["last_result"] == "restart_requested"
+        self._assert_finalize_deploy_kwargs(finalize_deploy, deps)
+        self._assert_scheduler_status(
+            temporal_scheduler,
+            workflow_id="deploy-workflow-completed",
+            task_id="new-sha",
+            result="restart_requested",
+        )
 
     @pytest.mark.asyncio
     async def test_run_deploy_activity_reports_build_failure(self, monkeypatch):
