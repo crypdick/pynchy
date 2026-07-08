@@ -115,16 +115,20 @@ class TestOverrideSemantics:
 
     def test_no_tier_sets_field_uses_hardcoded_default(self):
         result = merge_sandbox_config(None, None, _sandbox())
-        assert result.context_mode == "group"
-        assert result.access == "readwrite"
-        assert result.mode == "agent"
-        assert result.trust is True
-        assert result.trigger == "mention"
-        assert result.allowed_users == ["owner"]
-        assert result.idle_terminate is True
-        assert result.git_policy == "merge-to-main"
-        assert result.security is None
-        assert result.repo_access is None
+        expected_defaults = {
+            "context_mode": "group",
+            "access": "readwrite",
+            "mode": "agent",
+            "trust": True,
+            "trigger": "mention",
+            "allowed_users": ["owner"],
+            "idle_terminate": True,
+            "git_policy": "merge-to-main",
+            "security": None,
+            "repo_access": None,
+        }
+        for field_name, expected_value in expected_defaults.items():
+            assert getattr(result, field_name) == expected_value
 
     def test_allowed_users_uses_override_not_union(self):
         """allowed_users is an override field despite being a list."""
@@ -258,23 +262,22 @@ class TestMixedScenarios:
         )
         result = merge_sandbox_config(universal, profile, sandbox)
 
-        # Union fields
-        assert result.directives == ["base", "profile-extra", "sandbox-special"]
-        assert result.skills == ["core", "web", "data"]
-        assert result.mcp_servers == []
-
-        # Override fields
-        assert result.mode == "agent"  # sandbox wins over universal's "chat"
-        assert result.trust is False  # universal, nothing overrides
-        assert result.trigger == "always"  # profile, nothing overrides
-        assert result.repo_access == "org/repo"  # from profile
-        assert result.context_mode == "group"  # hardcoded default
-        assert result.allowed_users == ["owner"]  # hardcoded default
-
-        # Pass-through
-        assert result.chat == "connection.slack.main.chat.general"
-        assert result.is_admin is True
-        assert result.name == "test-sandbox"
+        expected_fields = {
+            "directives": ["base", "profile-extra", "sandbox-special"],
+            "skills": ["core", "web", "data"],
+            "mcp_servers": [],
+            "mode": "agent",
+            "trust": False,
+            "trigger": "always",
+            "repo_access": "org/repo",
+            "context_mode": "group",
+            "allowed_users": ["owner"],
+            "chat": "connection.slack.main.chat.general",
+            "is_admin": True,
+            "name": "test-sandbox",
+        }
+        for field_name, expected_value in expected_fields.items():
+            assert getattr(result, field_name) == expected_value
 
     def test_result_is_frozen(self):
         result = merge_sandbox_config(None, None, _sandbox())
