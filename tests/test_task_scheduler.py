@@ -201,6 +201,8 @@ class MockSchedulerDeps:
         self.groups: dict[str, WorkspaceProfile] = {}
         self.queue = GroupQueue()
         self.messages: list = []
+        self.host_messages: list = []
+        self.system_notices: list = []
         self.agent_runs: list = []
         self.streamed_outputs: list = []
         # Configurable return value for run_agent
@@ -213,6 +215,12 @@ class MockSchedulerDeps:
 
     async def broadcast_to_channels(self, jid: str, event) -> None:
         self.messages.append((jid, event))
+
+    async def broadcast_host_message(self, chat_jid: str, text: str) -> None:
+        self.host_messages.append((chat_jid, text))
+
+    async def broadcast_system_notice(self, chat_jid: str, text: str) -> None:
+        self.system_notices.append((chat_jid, text))
 
     async def run_agent(
         self,

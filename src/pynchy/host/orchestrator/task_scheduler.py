@@ -34,6 +34,10 @@ class SchedulerDependencies(Protocol):
 
     async def broadcast_to_channels(self, jid: str, event: OutboundEvent) -> None: ...
 
+    async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
+
+    async def broadcast_system_notice(self, chat_jid: str, text: str) -> None: ...
+
     async def run_agent(
         self,
         group: WorkspaceProfile,

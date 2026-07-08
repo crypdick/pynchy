@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import signal
 import subprocess
 import time
 from collections.abc import Callable, Coroutine
@@ -26,8 +24,9 @@ from pynchy.host.git_ops.utils import (
     push_local_commits,
     run_git,
 )
-from pynchy.host.orchestrator.deploy import finalize_deploy
 from pynchy.host.orchestrator.status import StatusDeps, collect_status
+from pynchy.host.orchestrator.temporal.deploy import DeployRequest
+from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
 from pynchy.logger import logger
 from pynchy.types import NewMessage
 
@@ -154,33 +153,19 @@ async def _handle_deploy(request: web.Request) -> web.Response:
                 status=422,
             )
 
-    # 5. Rebuild container image if src/pynchy/agent/ files changed
-    if has_new_code and files_changed_between(old_sha, new_sha, "src/pynchy/agent/"):
-        from pynchy.host.orchestrator.deploy import build_container_image
-
-        build = await asyncio.to_thread(build_container_image)
-        if not build.success:
-            chat_jid = deps.admin_chat_jid()
-            if chat_jid:
-                msg = "Deploy warning — container rebuild failed, continuing with old image."
-                await deps.broadcast_host_message(chat_jid, msg)
-
-    # 6. Restart (write continuation only when the pull changed HEAD)
+    # 5. Start deploy workflow. The activity owns rebuild, continuation, and restart.
     chat_jid = deps.admin_chat_jid()
-    if has_new_code:
-        await finalize_deploy(
-            broadcast_host_message=deps.broadcast_host_message,
+    rebuild = has_new_code and files_changed_between(old_sha, new_sha, "src/pynchy/agent/")
+    await start_deploy_workflow(
+        DeployRequest(
             chat_jid=chat_jid,
             commit_sha=new_sha,
             previous_sha=old_sha,
-            sigterm_delay=0.5,
             active_sessions=deps.get_active_sessions(),
+            rebuild=rebuild,
+            reason="http",
         )
-    else:
-        # Plain restart — no continuation needed, boot notification handles "I'm back"
-        logger.info("Restarting service (no new code)")
-        loop = asyncio.get_running_loop()
-        loop.call_later(0.5, os.kill, os.getpid(), signal.SIGTERM)
+    )
 
     return web.json_response(
         {

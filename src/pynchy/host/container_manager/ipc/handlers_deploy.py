@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.host.container_manager.ipc.registry import register
-from pynchy.host.orchestrator.deploy import build_container_image, finalize_deploy
+from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.logger import logger
+
+
+async def start_deploy_workflow(request: DeployRequest) -> None:
+    """Start deploy workflow lazily so IPC imports do not import the scheduler."""
+    from pynchy.host.orchestrator.temporal.scheduler import (
+        start_deploy_workflow as _start_deploy_workflow,
+    )
+
+    await _start_deploy_workflow(request)
 
 
 async def _handle_deploy(
@@ -19,9 +27,9 @@ async def _handle_deploy(
 ) -> None:
     """Handle a deploy request from the admin group agent.
 
-    The agent is responsible for git add/commit before calling deploy.
-    This handler reads the current HEAD (for rollback), optionally rebuilds
-    the container, writes a continuation file, and SIGTERMs the process.
+    The agent is responsible for git add/commit before calling deploy. This
+    handler validates context and starts the Temporal deploy workflow; rebuild,
+    continuation writing, and restart signaling happen inside the activity.
     """
     if not is_admin:
         logger.warning(
@@ -52,40 +60,23 @@ async def _handle_deploy(
             chat_jid=chat_jid,
         )
 
-    if rebuild_container:
-        build = await asyncio.to_thread(build_container_image)
-        if not build.success and not build.skipped:
-            await _deploy_error(
-                deps,
-                chat_jid,
-                f"Container rebuild failed: {build.stderr}",
-            )
-            return
-
     # Merge the admin agent's explicit session with all other active sessions
     active_sessions = deps.get_active_sessions()
     if session_id and chat_jid:
         active_sessions[chat_jid] = session_id
 
-    await finalize_deploy(
-        broadcast_host_message=deps.broadcast_host_message,
-        chat_jid=chat_jid,
-        commit_sha=head_sha,
-        previous_sha=head_sha,
-        session_id=session_id,
-        resume_prompt=resume_prompt,
-        active_sessions=active_sessions,
+    await start_deploy_workflow(
+        DeployRequest(
+            chat_jid=chat_jid,
+            commit_sha=head_sha,
+            previous_sha=head_sha,
+            session_id=session_id,
+            resume_prompt=resume_prompt,
+            active_sessions=active_sessions,
+            rebuild=bool(rebuild_container),
+            reason="ipc",
+        )
     )
-
-
-async def _deploy_error(
-    deps: IpcDeps,
-    chat_jid: str,
-    message: str,
-) -> None:
-    """Send a deploy error message back to the admin group."""
-    logger.error("Deploy failed", error=message)
-    await deps.broadcast_host_message(chat_jid, f"Deploy failed: {message}")
 
 
 register("deploy", _handle_deploy)

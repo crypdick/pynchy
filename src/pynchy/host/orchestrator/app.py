@@ -136,6 +136,14 @@ class PynchyApp:
     async def catch_up_channels(self) -> None:
         await self._catch_up_channel_history()
 
+    async def start_channel_reconciliation(self) -> None:
+        """Start durable Temporal reconciliation for channel history."""
+        from pynchy.host.orchestrator.temporal.scheduler import (
+            start_channel_reconciliation_workflow,
+        )
+
+        await start_channel_reconciliation_workflow()
+
     async def broadcast_agent_input(
         self, chat_jid: str, messages: list[dict[str, Any]], *, source: str = "user"
     ) -> None:
@@ -345,16 +353,19 @@ class PynchyApp:
     # ------------------------------------------------------------------
 
     async def _catch_up_channel_history(self) -> None:
-        """Reconcile channel history and retry pending outbound.
+        """Start Temporal-owned channel history reconciliation."""
+        from pynchy.host.orchestrator.temporal.scheduler import (
+            TemporalRuntimeUnavailableError,
+            temporal_scheduler_runtime_active,
+        )
 
-        Delegates to the unified reconciler which handles per-channel
-        bidirectional cursors, inbound catch-up, and outbound retry.
-
-        Runs at boot AND periodically from the message polling loop.
-        """
-        from pynchy.host.orchestrator.messaging.reconciler import reconcile_all_channels
-
-        await reconcile_all_channels(self)
+        if not temporal_scheduler_runtime_active():
+            logger.info("Channel reconciliation deferred until Temporal scheduler runtime starts")
+            return
+        try:
+            await self.start_channel_reconciliation()
+        except TemporalRuntimeUnavailableError:
+            logger.info("Channel reconciliation deferred until Temporal scheduler runtime starts")
 
     # ------------------------------------------------------------------
     # Lifecycle (delegated to _lifecycle module)

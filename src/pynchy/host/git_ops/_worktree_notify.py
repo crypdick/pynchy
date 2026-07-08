@@ -3,7 +3,7 @@
 Extracted from sync.py — this is the "pull main INTO worktrees" direction,
 while sync.py handles "push worktree changes INTO main."
 
-Used by sync_poll.py (background polling loops) and
+Used by the Temporal git-sync activity and
 ipc/_handlers_lifecycle.py (after a sync_worktree_to_main merge).
 """
 
