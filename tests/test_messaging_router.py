@@ -147,6 +147,51 @@ class TestInitTraceBatcher:
 
 
 # ---------------------------------------------------------------------------
+# streaming helpers
+# ---------------------------------------------------------------------------
+
+
+class TestStreamTextToChannels:
+    @pytest.mark.asyncio
+    async def test_posts_first_stream_message_and_tracks_message_id(self):
+        deps = _make_deps()
+        deps._test_channel.owns_jid.return_value = True
+        deps._test_channel.post_event = AsyncMock(return_value="msg-123")
+        deps._test_channel.update_event = AsyncMock()
+        state = StreamState(event=OutboundEvent(type=OutboundEventType.TEXT, content="hello"))
+
+        with patch(
+            "pynchy.host.orchestrator.messaging.streaming.time.monotonic",
+            return_value=10.0,
+        ):
+            await streaming.stream_text_to_channels(deps, "g@g.us", state)
+
+        deps._test_channel.post_event.assert_awaited_once_with("g@g.us", state.event)
+        deps._test_channel.update_event.assert_not_awaited()
+        assert state.message_ids == {"test": "msg-123"}
+        assert state.event.metadata["cursor"] is True
+
+    @pytest.mark.asyncio
+    async def test_updates_existing_stream_message_on_final_flush(self):
+        deps = _make_deps()
+        deps._test_channel.owns_jid.return_value = True
+        deps._test_channel.post_event = AsyncMock()
+        deps._test_channel.update_event = AsyncMock()
+        state = StreamState(event=OutboundEvent(type=OutboundEventType.TEXT, content="hello"))
+        state.message_ids["test"] = "msg-123"
+
+        with patch(
+            "pynchy.host.orchestrator.messaging.streaming.time.monotonic",
+            return_value=10.0,
+        ):
+            await streaming.stream_text_to_channels(deps, "g@g.us", state, final=True)
+
+        deps._test_channel.post_event.assert_not_awaited()
+        deps._test_channel.update_event.assert_awaited_once_with("g@g.us", "msg-123", state.event)
+        assert state.event.metadata["cursor"] is False
+
+
+# ---------------------------------------------------------------------------
 # handle_streamed_output
 # ---------------------------------------------------------------------------
 

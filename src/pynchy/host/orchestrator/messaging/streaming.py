@@ -83,40 +83,13 @@ async def stream_text_to_channels(
     rendering -- this function just sets ``metadata["cursor"]`` and delegates.
     """
     now = time.monotonic()
-    if not final and (now - state.last_update) < _STREAM_THROTTLE:
+    if _skip_stream_delivery(state, final=final, now=now):
         return
 
-    if not state.event.content and not final:
-        return  # nothing to show yet
+    _prepare_stream_event(state, final=final, now=now)
 
-    # Tell the formatter whether to show a cursor indicator.
-    state.event.metadata["cursor"] = not final
-    state.last_update = now
-
-    for ch in deps.channels:
-        if not ch.is_connected():
-            continue
-        if not hasattr(ch, "update_event") or not hasattr(ch, "post_event"):
-            continue
-
-        target_jid = resolve_target_jid(chat_jid, ch)
-        if not target_jid:
-            continue
-
-        ch_name = getattr(ch, "name", "?")
-        msg_id = state.message_ids.get(ch_name)
-
-        try:
-            if msg_id is None:
-                msg_id = await ch.post_event(target_jid, state.event)
-                if msg_id:
-                    state.message_ids[ch_name] = msg_id
-                else:
-                    logger.warning("Stream post_event returned no message_id", channel=ch_name)
-            else:
-                await ch.update_event(target_jid, msg_id, state.event)
-        except Exception as exc:
-            logger.warning("Stream post/update failed", channel=ch_name, err=str(exc))
+    for ch, target_jid in _stream_targets(deps, chat_jid):
+        await _deliver_stream_update(ch, target_jid, state)
 
 
 async def finalize_active_stream(deps: OutputDeps, chat_jid: str) -> None:
@@ -129,6 +102,58 @@ async def finalize_active_stream(deps: OutputDeps, chat_jid: str) -> None:
     state = stream_states.pop(chat_jid, None)
     if state and state.event.content:
         await stream_text_to_channels(deps, chat_jid, state, final=True)
+
+
+def _skip_stream_delivery(state: StreamState, *, final: bool, now: float) -> bool:
+    if not final and (now - state.last_update) < _STREAM_THROTTLE:
+        return True
+    return not state.event.content and not final
+
+
+def _prepare_stream_event(state: StreamState, *, final: bool, now: float) -> None:
+    # Tell the formatter whether to show a cursor indicator.
+    state.event.metadata["cursor"] = not final
+    state.last_update = now
+
+
+def _stream_targets(deps: OutputDeps, chat_jid: str) -> list[tuple[Channel, str]]:
+    targets: list[tuple[Channel, str]] = []
+    for ch in deps.channels:
+        if not ch.is_connected():
+            continue
+        if not hasattr(ch, "update_event") or not hasattr(ch, "post_event"):
+            continue
+        target_jid = resolve_target_jid(chat_jid, ch)
+        if not target_jid:
+            continue
+        targets.append((ch, target_jid))
+    return targets
+
+
+async def _deliver_stream_update(ch: Channel, target_jid: str, state: StreamState) -> None:
+    ch_name = getattr(ch, "name", "?")
+    msg_id = state.message_ids.get(ch_name)
+
+    try:
+        if msg_id is None:
+            await _post_stream_message(ch, target_jid, state, ch_name)
+            return
+        await ch.update_event(target_jid, msg_id, state.event)
+    except Exception as exc:
+        logger.warning("Stream post/update failed", channel=ch_name, err=str(exc))
+
+
+async def _post_stream_message(
+    ch: Channel,
+    target_jid: str,
+    state: StreamState,
+    ch_name: str,
+) -> None:
+    msg_id = await ch.post_event(target_jid, state.event)
+    if msg_id:
+        state.message_ids[ch_name] = msg_id
+    else:
+        logger.warning("Stream post_event returned no message_id", channel=ch_name)
 
 
 # ---------------------------------------------------------------------------
