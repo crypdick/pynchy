@@ -13,7 +13,6 @@ from pynchy.host.git_ops.sync import (
 from pynchy.host.git_ops.sync_poll import (
     needs_container_rebuild,
     needs_deploy,
-    start_host_git_sync_loop,
 )
 from pynchy.host.git_ops.utils import (
     count_commits,
@@ -58,5 +57,4 @@ __all__ = [
     "push_local_commits",
     "reconcile_worktrees_at_startup",
     "run_git",
-    "start_host_git_sync_loop",
 ]

@@ -39,6 +39,72 @@ class InteractiveMessageWorkflow:
 
 
 @workflow.defn
+class DeployWorkflow:
+    """Run one deploy handoff through a host-side activity."""
+
+    @workflow.run
+    async def run(self, deploy_payload: dict[str, Any]) -> str:
+        return cast(
+            str,
+            await workflow.execute_activity(
+                "run_deploy",
+                deploy_payload,
+                start_to_close_timeout=timedelta(minutes=30),
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            ),
+        )
+
+
+@workflow.defn
+class HostGitSyncWorkflow:
+    """Run one host repository sync poll through a host-side activity."""
+
+    @workflow.run
+    async def run(self) -> str:
+        return cast(
+            str,
+            await workflow.execute_activity(
+                "run_host_git_sync",
+                start_to_close_timeout=timedelta(minutes=10),
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            ),
+        )
+
+
+@workflow.defn
+class ExternalGitSyncWorkflow:
+    """Run one external repository sync poll through a host-side activity."""
+
+    @workflow.run
+    async def run(self, repo_slug: str) -> str:
+        return cast(
+            str,
+            await workflow.execute_activity(
+                "run_external_git_sync",
+                repo_slug,
+                start_to_close_timeout=timedelta(minutes=10),
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            ),
+        )
+
+
+@workflow.defn
+class ChannelReconciliationWorkflow:
+    """Run one channel reconciliation pass through a host-side activity."""
+
+    @workflow.run
+    async def run(self) -> str:
+        return cast(
+            str,
+            await workflow.execute_activity(
+                "run_channel_reconciliation",
+                start_to_close_timeout=timedelta(minutes=10),
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            ),
+        )
+
+
+@workflow.defn
 class ScheduledAgentTaskWorkflow:
     """Run one scheduled agent task through a host-side activity."""
 

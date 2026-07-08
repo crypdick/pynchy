@@ -27,7 +27,6 @@ from pynchy.host.git_ops.utils import (
     is_repo_dirty,
     run_git,
 )
-from pynchy.host.orchestrator.temporal.scheduler import get_temporal_scheduler_status
 from pynchy.logger import logger
 from pynchy.state import (
     get_all_host_jobs,
@@ -48,6 +47,15 @@ def record_start_time() -> None:
     """Called once at service startup to record the wall-clock start time."""
     global _started_at
     _started_at = datetime.now(UTC)
+
+
+def get_temporal_scheduler_status() -> dict[str, Any]:
+    """Return worker status lazily so status imports do not import the scheduler."""
+    from pynchy.host.orchestrator.temporal.scheduler import (
+        get_temporal_scheduler_status as _get_temporal_scheduler_status,
+    )
+
+    return _get_temporal_scheduler_status()
 
 
 # ---------------------------------------------------------------------------

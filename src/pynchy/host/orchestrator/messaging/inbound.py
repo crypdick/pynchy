@@ -11,7 +11,6 @@ module only handles *how* messages arrive and get dispatched.
 from __future__ import annotations
 
 import asyncio
-import time as _time
 from collections.abc import Callable
 
 from pynchy.config import get_settings
@@ -231,9 +230,6 @@ async def start_message_loop(
 ) -> None:
     """Main polling loop — checks for incoming messages every message_poll interval."""
     s = get_settings()
-    _CATCHUP_INTERVAL = 10  # seconds between channel history reconciliation
-    _last_catchup = _time.monotonic()
-
     logger.info("🦞 Pynchy running", trigger=s.agent.name)
 
     while not shutting_down():
@@ -272,17 +268,5 @@ async def start_message_loop(
 
         except Exception:
             logger.exception("Error in message loop")
-
-        # Periodically reconcile channel history to recover events
-        # dropped by Socket Mode or other transient delivery failures.
-        now = _time.monotonic()
-        if now - _last_catchup >= _CATCHUP_INTERVAL:
-            _last_catchup = now
-            try:
-                logger.info("message_loop_trace", step="catch_up_start")
-                await deps.catch_up_channels()
-                logger.info("message_loop_trace", step="catch_up_done")
-            except Exception:
-                logger.exception("Error in channel catch-up")
 
         await asyncio.sleep(s.intervals.message_poll)

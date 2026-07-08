@@ -1,5 +1,11 @@
 """Temporal-backed orchestrator components."""
 
-from pynchy.host.orchestrator.temporal.scheduler import TemporalSchedulerRuntime
-
 __all__ = ["TemporalSchedulerRuntime"]
+
+
+def __getattr__(name: str):
+    if name == "TemporalSchedulerRuntime":
+        from pynchy.host.orchestrator.temporal.scheduler import TemporalSchedulerRuntime
+
+        return TemporalSchedulerRuntime
+    raise AttributeError(name)

@@ -8,20 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import inspect
 from datetime import timedelta
 from typing import Any
 
 from temporalio import activity
-from temporalio.client import (
-    Client,
-    Schedule,
-    ScheduleAlreadyRunningError,
-    ScheduleUpdate,
-)
+from temporalio.client import Client
 from temporalio.common import WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
-from temporalio.service import RPCError, RPCStatusCode
 from temporalio.worker import Worker, WorkflowRunner
 from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxRestrictions
 
@@ -32,6 +25,19 @@ from pynchy.host.learning.packet_models import LearningPacket
 from pynchy.host.orchestrator.task_scheduler import (
     SchedulerDependencies,
     _run_scheduled_agent,
+)
+from pynchy.host.orchestrator.temporal.channel_reconciliation import (
+    run_channel_reconciliation,
+)
+from pynchy.host.orchestrator.temporal.deploy import (
+    DeployRequest,
+    deploy_request_to_payload,
+    deploy_workflow_id,
+    run_deploy,
+)
+from pynchy.host.orchestrator.temporal.git_sync import (
+    run_external_git_sync,
+    run_host_git_sync,
 )
 from pynchy.host.orchestrator.temporal.host_jobs import (
     run_config_host_cron_job,
@@ -58,22 +64,21 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
 from pynchy.host.orchestrator.temporal.runtime_state import (
     reset_temporal_scheduler_status as _reset_temporal_scheduler_status,
 )
+from pynchy.host.orchestrator.temporal.schedule_reconciler import (
+    reconcile_temporal_schedules,
+)
 from pynchy.host.orchestrator.temporal.schedules import (
-    SCHEDULE_PREFIXES,
     agent_task_schedule_id,
     agent_task_workflow_id,
-    config_host_cron_schedule_id,
-    database_host_job_schedule_id,
-    database_host_job_workflow_id,
-    once_due_at,
-    schedule_for_agent_task,
-    schedule_for_config_host_cron,
-    schedule_for_database_host_job,
-    start_delay_until,
+    channel_reconciliation_schedule_id,
 )
 from pynchy.host.orchestrator.temporal.workflows import (
+    ChannelReconciliationWorkflow,
     ConfigHostCronWorkflow,
     DatabaseHostJobWorkflow,
+    DeployWorkflow,
+    ExternalGitSyncWorkflow,
+    HostGitSyncWorkflow,
     InteractiveMessageWorkflow,
     LearningReviewWorkflow,
     ScheduledAgentTaskWorkflow,
@@ -84,10 +89,36 @@ from pynchy.state import (
     get_all_tasks,
     get_task_by_id,
 )
-from pynchy.types import HostJob, ScheduledTask
+from pynchy.types import ScheduledTask
 
 _active_runtime: TemporalSchedulerRuntime | None = None
 _WORKFLOW_MODULE = "pynchy.host.orchestrator.temporal.workflows"
+__all__ = [
+    "TemporalRuntimeUnavailableError",
+    "TemporalSchedulerRuntime",
+    "agent_task_schedule_id",
+    "agent_task_workflow_id",
+    "deploy_workflow_id",
+    "get_temporal_scheduler_status",
+    "interactive_message_workflow_id",
+    "learning_review_workflow_id",
+    "reset_temporal_scheduler_status",
+    "scheduler_workflow_runner",
+    "start_channel_reconciliation_workflow",
+    "start_deploy_workflow",
+    "start_interactive_message_workflow",
+    "start_learning_review_workflow",
+    "temporal_scheduler_runtime_active",
+]
+
+
+class TemporalRuntimeUnavailableError(RuntimeError):
+    """Raised when a workflow start is requested before the worker is active."""
+
+
+def temporal_scheduler_runtime_active() -> bool:
+    """Return whether this process currently has an active Temporal runtime."""
+    return _active_runtime is not None
 
 
 def reset_temporal_scheduler_status() -> None:
@@ -105,7 +136,7 @@ async def _require_active_runtime() -> TemporalSchedulerRuntime:
     deadline = asyncio.get_running_loop().time() + 10.0
     while _active_runtime is None:
         if asyncio.get_running_loop().time() >= deadline:
-            raise RuntimeError("Temporal scheduler runtime has not been started")
+            raise TemporalRuntimeUnavailableError("Temporal scheduler runtime has not been started")
         await asyncio.sleep(0.05)
     return _active_runtime
 
@@ -120,6 +151,18 @@ async def start_interactive_message_workflow(chat_jid: str) -> None:
     """Start a Temporal workflow to process pending messages for one chat."""
     runtime = await _require_active_runtime()
     await runtime.start_interactive_message_turn(chat_jid)
+
+
+async def start_deploy_workflow(request: DeployRequest) -> None:
+    """Start a Temporal workflow to perform a deploy handoff."""
+    runtime = await _require_active_runtime()
+    await runtime.start_deploy(request)
+
+
+async def start_channel_reconciliation_workflow() -> None:
+    """Start a Temporal workflow to reconcile channel history immediately."""
+    runtime = await _require_active_runtime()
+    await runtime.start_channel_reconciliation()
 
 
 def scheduler_workflow_runner() -> WorkflowRunner:
@@ -176,6 +219,10 @@ class TemporalSchedulerRuntime:
                 self.client,
                 task_queue=self.scheduler_config.temporal_task_queue,
                 workflows=[
+                    DeployWorkflow,
+                    HostGitSyncWorkflow,
+                    ExternalGitSyncWorkflow,
+                    ChannelReconciliationWorkflow,
                     InteractiveMessageWorkflow,
                     ScheduledAgentTaskWorkflow,
                     DatabaseHostJobWorkflow,
@@ -183,6 +230,10 @@ class TemporalSchedulerRuntime:
                     LearningReviewWorkflow,
                 ],
                 activities=[
+                    run_deploy,
+                    run_host_git_sync,
+                    run_external_git_sync,
+                    run_channel_reconciliation,
                     run_interactive_message_turn,
                     run_scheduled_agent_task,
                     run_database_host_job,
@@ -257,66 +308,40 @@ class TemporalSchedulerRuntime:
             id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
         )
 
+    async def start_deploy(self, request: DeployRequest) -> None:
+        """Start a Temporal workflow for a deploy handoff."""
+        if self.client is None:
+            raise RuntimeError("Temporal scheduler runtime has not been started")
+
+        await self._start_workflow(
+            DeployWorkflow.run,
+            deploy_request_to_payload(request),
+            workflow_id=deploy_workflow_id(request.commit_sha or request.previous_sha),
+            status_id=request.commit_sha or request.previous_sha or request.reason,
+            id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+        )
+
+    async def start_channel_reconciliation(self) -> None:
+        """Start a Temporal workflow for immediate channel reconciliation."""
+        if self.client is None:
+            raise RuntimeError("Temporal scheduler runtime has not been started")
+
+        await self._start_workflow(
+            ChannelReconciliationWorkflow.run,
+            workflow_id=f"{channel_reconciliation_schedule_id()}-manual",
+            status_id=channel_reconciliation_schedule_id(),
+            id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+        )
+
     async def reconcile_schedules(self) -> None:
         """Reconcile Pynchy's desired scheduled work into Temporal schedules."""
         if self.client is None:
             raise RuntimeError("Temporal scheduler runtime has not been started")
-
-        desired_schedule_ids: set[str] = set()
-        settings = get_settings()
-        tasks = await get_all_tasks()
-        host_jobs = await get_all_host_jobs()
-
-        for task in tasks:
-            if task.status != "active":
-                continue
-            if task.schedule_type == "once":
-                await self._start_once_agent_task(task)
-                continue
-            schedule_id = agent_task_schedule_id(task)
-            desired_schedule_ids.add(schedule_id)
-            await self._upsert_schedule(schedule_id, schedule_for_agent_task(task))
-
-        for job in host_jobs:
-            if job.status != "active" or not job.enabled:
-                continue
-            if job.schedule_type == "once":
-                await self._start_once_database_host_job(job)
-                continue
-            schedule_id = database_host_job_schedule_id(job)
-            desired_schedule_ids.add(schedule_id)
-            await self._upsert_schedule(schedule_id, schedule_for_database_host_job(job))
-
-        for job_name, cron_job in settings.cron_jobs.items():
-            if not cron_job.enabled:
-                continue
-            schedule_id = config_host_cron_schedule_id(job_name)
-            desired_schedule_ids.add(schedule_id)
-            await self._upsert_schedule(
-                schedule_id,
-                schedule_for_config_host_cron(job_name, cron_job.schedule),
-            )
-
-        await self._delete_stale_schedules(desired_schedule_ids)
-
-    async def _start_once_agent_task(self, task: ScheduledTask) -> None:
-        workflow_id = agent_task_workflow_id(task)
-        await self._start_workflow(
-            ScheduledAgentTaskWorkflow.run,
-            task.id,
-            workflow_id=workflow_id,
-            status_id=task.id,
-            start_delay=start_delay_until(once_due_at(task.next_run or task.schedule_value)),
-        )
-
-    async def _start_once_database_host_job(self, job: HostJob) -> None:
-        workflow_id = database_host_job_workflow_id(job)
-        await self._start_workflow(
-            DatabaseHostJobWorkflow.run,
-            job.id,
-            workflow_id=workflow_id,
-            status_id=job.id,
-            start_delay=start_delay_until(once_due_at(job.next_run or job.schedule_value)),
+        await reconcile_temporal_schedules(
+            self,
+            get_settings_fn=get_settings,
+            get_tasks=get_all_tasks,
+            get_host_jobs=get_all_host_jobs,
         )
 
     async def _start_workflow(
@@ -383,36 +408,3 @@ class TemporalSchedulerRuntime:
             workflow_id=workflow_id,
             task_queue=self.scheduler_config.temporal_task_queue,
         )
-
-    async def _upsert_schedule(self, schedule_id: str, schedule: Schedule) -> None:
-        if self.client is None:
-            raise RuntimeError("Temporal scheduler runtime has not been started")
-        try:
-            await self.client.create_schedule(schedule_id, schedule)
-        except ScheduleAlreadyRunningError:
-            handle = self.client.get_schedule_handle(schedule_id)
-            await handle.update(lambda _input: ScheduleUpdate(schedule=schedule))
-        except RPCError as exc:
-            if exc.status != RPCStatusCode.ALREADY_EXISTS:
-                raise
-            handle = self.client.get_schedule_handle(schedule_id)
-            await handle.update(lambda _input: ScheduleUpdate(schedule=schedule))
-
-    async def _delete_stale_schedules(self, desired_schedule_ids: set[str]) -> None:
-        if self.client is None:
-            raise RuntimeError("Temporal scheduler runtime has not been started")
-        schedule_iter: Any = self.client.list_schedules()
-        if inspect.isawaitable(schedule_iter):
-            schedule_iter = await schedule_iter
-        async for description in schedule_iter:
-            schedule_id = description.id
-            if not schedule_id.startswith(SCHEDULE_PREFIXES):
-                continue
-            if schedule_id in desired_schedule_ids:
-                continue
-            handle = self.client.get_schedule_handle(schedule_id)
-            try:
-                await handle.delete()
-            except RPCError as exc:
-                if exc.status != RPCStatusCode.NOT_FOUND:
-                    raise

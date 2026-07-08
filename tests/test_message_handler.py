@@ -1158,6 +1158,21 @@ def _run_loop_once(deps):
     return start_message_loop(deps, shutting_down)
 
 
+@pytest.mark.asyncio
+async def test_message_loop_does_not_run_channel_reconciliation_locally():
+    """Channel reconciliation is Temporal-scheduled, not message-loop work."""
+    deps = _make_deps()
+    deps.catch_up_channels = AsyncMock()
+
+    with (
+        patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
+        patch(_PR_NEW_MSGS, new_callable=AsyncMock, return_value=([], "")),
+    ):
+        await _run_loop_once(deps)
+
+    deps.catch_up_channels.assert_not_awaited()
+
+
 class TestBtwNonInterruptingMessages:
     """Messages starting with 'btw' should not interrupt active tasks.
 

@@ -7,7 +7,6 @@ the composite dependency objects that subsystems require.
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from pynchy.config import get_settings
@@ -30,6 +29,8 @@ from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.http_server import HttpDeps
 from pynchy.host.orchestrator.status import StatusDeps
 from pynchy.host.orchestrator.task_scheduler import SchedulerDependencies
+from pynchy.host.orchestrator.temporal.deploy import DeployRequest
+from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
 from pynchy.utils import create_background_task
 
 
@@ -51,9 +52,12 @@ def _schedule_interactive_turn(app: PynchyApp, chat_jid: str) -> None:
 
 def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
     """Create the dependency object for the task scheduler."""
+    broadcaster, host_broadcaster = _get_broadcasters(app)
 
     class SchedulerDeps:
-        broadcast_to_channels = app._broadcaster._broadcast_to_channels
+        broadcast_host_message = host_broadcaster.broadcast_host_message
+        broadcast_system_notice = host_broadcaster.broadcast_system_notice
+        broadcast_to_channels = broadcaster._broadcast_to_channels
 
         def workspaces(self) -> dict[str, Any]:
             return app.workspaces
@@ -73,7 +77,7 @@ def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
     return SchedulerDeps()
 
 
-async def _rebuild_and_deploy(
+async def _start_temporal_deploy(
     *,
     host_broadcaster: HostMessageBroadcaster,
     workspaces: dict[str, Any],
@@ -81,35 +85,26 @@ async def _rebuild_and_deploy(
     previous_sha: str,
     rebuild: bool = True,
 ) -> None:
-    """Shared rebuild + deploy logic used by IPC and git-sync paths.
-
-    Optionally rebuilds the container image, then calls ``finalize_deploy``
-    with all active sessions so every group gets resume continuity.
-    """
-    from pynchy.host.orchestrator.deploy import finalize_deploy
-
+    """Start a Temporal deploy workflow with all active sessions."""
     chat_jid = find_admin_jid(workspaces)
     if chat_jid:
         msg = (
-            "Container files changed — rebuilding and restarting..."
+            "Container files changed — starting deploy workflow..."
             if rebuild
-            else "Code/config changed — restarting..."
+            else "Code/config changed — starting deploy workflow..."
         )
         await host_broadcaster.broadcast_host_message(chat_jid, msg)
 
-    if rebuild:
-        from pynchy.host.orchestrator.deploy import build_container_image
-
-        await asyncio.to_thread(build_container_image)
-
     active_sessions = session_manager.get_active_sessions(workspaces)
-
-    await finalize_deploy(
-        broadcast_host_message=host_broadcaster.broadcast_host_message,
-        chat_jid=chat_jid,
-        commit_sha=get_head_sha(),
-        previous_sha=previous_sha,
-        active_sessions=active_sessions,
+    await start_deploy_workflow(
+        DeployRequest(
+            chat_jid=chat_jid,
+            commit_sha=get_head_sha(),
+            previous_sha=previous_sha,
+            active_sessions=active_sessions,
+            rebuild=rebuild,
+            reason="dependency_adapter",
+        )
     )
 
 
@@ -176,7 +171,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
             return session_manager.get_active_sessions(app.workspaces)
 
         async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
-            await _rebuild_and_deploy(
+            await _start_temporal_deploy(
                 host_broadcaster=host_broadcaster,
                 workspaces=app.workspaces,
                 session_manager=session_manager,
@@ -250,7 +245,7 @@ def make_git_sync_deps(app: PynchyApp) -> GitSyncDeps:
             return app.workspaces
 
         async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
-            await _rebuild_and_deploy(
+            await _start_temporal_deploy(
                 host_broadcaster=host_broadcaster,
                 workspaces=app.workspaces,
                 session_manager=session_manager,

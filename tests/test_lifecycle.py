@@ -106,6 +106,26 @@ async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) 
 
 
 @pytest.mark.asyncio
+async def test_channel_history_catch_up_defers_until_temporal_runtime(monkeypatch) -> None:
+    app = PynchyApp()
+    start_called = False
+
+    async def fail_if_started() -> None:
+        nonlocal start_called
+        start_called = True
+
+    monkeypatch.setattr(app, "start_channel_reconciliation", fail_if_started)
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.temporal.scheduler.temporal_scheduler_runtime_active",
+        lambda: False,
+    )
+
+    await app._catch_up_channel_history()
+
+    assert start_called is False
+
+
+@pytest.mark.asyncio
 async def test_shutdown_watchdog_outlasts_container_stop_budget_and_is_cancelled(
     monkeypatch,
 ) -> None:
@@ -248,11 +268,6 @@ async def test_start_subsystems_does_not_start_local_learning_worker(
         fake_loop,
     )
     monkeypatch.setattr("pynchy.host.container_manager.ipc.start_ipc_watcher", fake_loop)
-    monkeypatch.setattr("pynchy.host.git_ops.sync_poll.start_host_git_sync_loop", fake_loop)
-    monkeypatch.setattr(
-        "pynchy.host.git_ops.sync_poll.start_external_repo_sync_loop",
-        fake_loop,
-    )
     monkeypatch.setattr(
         "pynchy.host.orchestrator.http_server.start_http_server",
         fake_start_http_server,
@@ -264,5 +279,5 @@ async def test_start_subsystems_does_not_start_local_learning_worker(
     monkeypatch.setattr("pynchy.plugins.tunnels.check_tunnels", lambda _plugin_manager: None)
     await lifecycle._start_subsystems(app, {})
 
-    assert created_task_names == ["scheduler", "ipc-watcher", "git-sync"]
+    assert created_task_names == ["scheduler", "ipc-watcher"]
     assert "learning-worker" not in created_task_names

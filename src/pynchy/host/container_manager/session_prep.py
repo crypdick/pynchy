@@ -1,6 +1,6 @@
 """Session directory preparation — skills sync and settings.json.
 
-Prepares the per-group .claude/ directory that gets mounted into the container.
+Prepares per-group agent home directories that get mounted into the container.
 """
 
 from __future__ import annotations
@@ -97,10 +97,10 @@ def _sync_skills(
     workspace_skills: list[str] | None = None,
     learned_skill_paths: list[Path] | None = None,
 ) -> None:
-    """Copy agent/skills/ and plugin skills into the session's .claude/skills/ directory.
+    """Copy agent/skills/ and plugin skills into the session's skills directory.
 
     Args:
-        session_dir: Path to the .claude directory for this session
+        session_dir: Path to the agent home directory for this session
         plugin_manager: Optional pluggy.PluginManager for plugin skills
         workspace_skills: Skill tier/name filter from workspace config; None = core only
         learned_skill_paths: Optional learned skill directories from the Obsidian vault

@@ -100,6 +100,12 @@ def build_volume_mounts(
     mounts.append(VolumeMount(str(session_dir), "/home/agent/.claude", readonly=False))
 
     codex_home = _prepare_codex_home(group.folder)
+    _sync_skills(
+        codex_home,
+        plugin_manager,
+        workspace_skills=workspace_skills,
+        learned_skill_paths=learned_skill_paths,
+    )
     mounts.append(VolumeMount(str(codex_home), "/home/agent/.codex", readonly=False))
 
     # Per-group IPC namespace

@@ -814,12 +814,12 @@ class TestDeployAuth:
         # No host messages sent (deploy was blocked)
         assert len(deps.host_messages) == 0
 
-    async def test_admin_deploy_invokes_finalize(self, deps):
-        """God deploy with valid data calls finalize_deploy."""
+    async def test_admin_deploy_starts_temporal_workflow(self, deps):
+        """God deploy with valid data starts the Temporal deploy workflow."""
         with patch(
-            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy",
+            "pynchy.host.container_manager.ipc.handlers_deploy.start_deploy_workflow",
             new_callable=AsyncMock,
-        ) as mock_finalize:
+        ) as mock_start:
             await dispatch(
                 {
                     "type": "deploy",
@@ -833,9 +833,10 @@ class TestDeployAuth:
                 True,
                 deps,
             )
-            mock_finalize.assert_called_once()
-            call_kwargs = mock_finalize.call_args
-            assert call_kwargs.kwargs["chat_jid"] == "admin-1@g.us"
+            mock_start.assert_awaited_once()
+            request = mock_start.await_args.args[0]
+            assert request.chat_jid == "admin-1@g.us"
+            assert request.session_id == "sess-1"
 
 
 # --- reset_context execution ---

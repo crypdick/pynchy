@@ -16,8 +16,11 @@ from temporalio.client import (
 
 from pynchy.config import get_settings
 from pynchy.host.orchestrator.temporal.workflows import (
+    ChannelReconciliationWorkflow,
     ConfigHostCronWorkflow,
     DatabaseHostJobWorkflow,
+    ExternalGitSyncWorkflow,
+    HostGitSyncWorkflow,
     ScheduledAgentTaskWorkflow,
 )
 from pynchy.types import HostJob, ScheduledTask
@@ -27,7 +30,13 @@ SCHEDULE_PREFIXES = (
     "pynchy-agent-schedule-",
     "pynchy-host-job-schedule-",
     "pynchy-host-cron-schedule-",
+    "pynchy-git-sync-",
+    "pynchy-channel-reconciliation",
 )
+HOST_GIT_SYNC_SCHEDULE_ID = "pynchy-git-sync-host"
+CHANNEL_RECONCILIATION_SCHEDULE_ID = "pynchy-channel-reconciliation"
+HOST_GIT_SYNC_INTERVAL_SECONDS = 5
+CHANNEL_RECONCILIATION_INTERVAL_SECONDS = 10
 
 
 def safe_workflow_fragment(value: str) -> str:
@@ -60,6 +69,21 @@ def database_host_job_schedule_id(job: HostJob) -> str:
 def config_host_cron_schedule_id(job_name: str) -> str:
     """Return the Temporal Schedule ID for a config-backed host cron job."""
     return f"pynchy-host-cron-schedule-{safe_workflow_fragment(job_name)}"
+
+
+def host_git_sync_schedule_id() -> str:
+    """Return the Temporal Schedule ID for host repository sync polling."""
+    return HOST_GIT_SYNC_SCHEDULE_ID
+
+
+def external_git_sync_schedule_id(repo_slug: str) -> str:
+    """Return the Temporal Schedule ID for external repository sync polling."""
+    return f"pynchy-git-sync-repo-{safe_workflow_fragment(repo_slug)}"
+
+
+def channel_reconciliation_schedule_id() -> str:
+    """Return the Temporal Schedule ID for channel reconciliation polling."""
+    return CHANNEL_RECONCILIATION_SCHEDULE_ID
 
 
 def once_due_at(value: str | None) -> datetime:
@@ -123,6 +147,61 @@ def schedule_for_config_host_cron(job_name: str, schedule_value: str) -> Schedul
             task_queue=get_settings().scheduler.temporal_task_queue,
         ),
         spec=_recurring_schedule_spec("cron", schedule_value, timezone=_schedule_timezone()),
+        policy=_schedule_policy(),
+    )
+
+
+def schedule_for_host_git_sync() -> Schedule:
+    """Build the Temporal Schedule for host repository sync polling."""
+    return Schedule(
+        action=ScheduleActionStartWorkflow(
+            HostGitSyncWorkflow.run,
+            id=f"{host_git_sync_schedule_id()}-workflow",
+            task_queue=get_settings().scheduler.temporal_task_queue,
+        ),
+        spec=ScheduleSpec(
+            intervals=[
+                ScheduleIntervalSpec(every=timedelta(seconds=HOST_GIT_SYNC_INTERVAL_SECONDS))
+            ]
+        ),
+        policy=_schedule_policy(),
+    )
+
+
+def schedule_for_external_git_sync(repo_slug: str) -> Schedule:
+    """Build the Temporal Schedule for one external repository sync poller."""
+    schedule_id = external_git_sync_schedule_id(repo_slug)
+    return Schedule(
+        action=ScheduleActionStartWorkflow(
+            ExternalGitSyncWorkflow.run,
+            args=[repo_slug],
+            id=f"{schedule_id}-workflow",
+            task_queue=get_settings().scheduler.temporal_task_queue,
+        ),
+        spec=ScheduleSpec(
+            intervals=[
+                ScheduleIntervalSpec(every=timedelta(seconds=HOST_GIT_SYNC_INTERVAL_SECONDS))
+            ]
+        ),
+        policy=_schedule_policy(),
+    )
+
+
+def schedule_for_channel_reconciliation() -> Schedule:
+    """Build the Temporal Schedule for channel history reconciliation."""
+    return Schedule(
+        action=ScheduleActionStartWorkflow(
+            ChannelReconciliationWorkflow.run,
+            id=f"{channel_reconciliation_schedule_id()}-workflow",
+            task_queue=get_settings().scheduler.temporal_task_queue,
+        ),
+        spec=ScheduleSpec(
+            intervals=[
+                ScheduleIntervalSpec(
+                    every=timedelta(seconds=CHANNEL_RECONCILIATION_INTERVAL_SECONDS)
+                )
+            ]
+        ),
         policy=_schedule_policy(),
     )
 
