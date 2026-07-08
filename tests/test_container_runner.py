@@ -2658,3 +2658,33 @@ class TestSessionStartOnlyStderr:
         assert session._dead is True
         assert session._died_before_pulse is True
         assert session._query_done.is_set()
+
+    async def test_runtime_container_never_starts_unblocks_query_when_cli_process_hangs(self):
+        """Apple Container can leave ``container run`` alive after startup failure."""
+        from pynchy.host.container_manager.session import ContainerSession, SessionDiedError
+
+        session = ContainerSession("apple-runtime-never-start-test", "pynchy-never-start")
+        proc = FakeProcess()
+
+        async def fake_runtime_running(_container_name: str) -> bool:
+            return False
+
+        with (
+            patch("pynchy.host.container_manager.session.sys.platform", "darwin"),
+            patch(
+                "pynchy.host.container_manager.session._runtime_container_running",
+                side_effect=fake_runtime_running,
+            ),
+            patch("pynchy.host.container_manager.session._RUNTIME_POLL_INTERVAL_SECONDS", 0.01),
+            patch("pynchy.host.container_manager.session._RUNTIME_START_GRACE_SECONDS", 0.02),
+        ):
+            session.start(proc)  # type: ignore[arg-type]
+            session.set_output_handler(AsyncMock())
+
+            with pytest.raises(SessionDiedError):
+                await session.wait_for_query_done(timeout=0.5)
+
+        assert proc._killed is True
+        assert session._dead is True
+        assert session._died_before_pulse is True
+        assert session._query_done.is_set()

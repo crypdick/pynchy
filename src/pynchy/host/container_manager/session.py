@@ -301,6 +301,14 @@ class ContainerSession:
                 await self._mark_container_exited(1)
                 return
             elif loop.time() >= deadline:
+                logger.warning(
+                    "Runtime container did not start while CLI process remained alive",
+                    group=self.group_folder,
+                    container=self.container_name,
+                )
+                with contextlib.suppress(ProcessLookupError):
+                    proc.kill()
+                await self._mark_container_exited(1)
                 return
             await asyncio.sleep(_RUNTIME_POLL_INTERVAL_SECONDS)
 
