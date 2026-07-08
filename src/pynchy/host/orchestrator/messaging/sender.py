@@ -231,18 +231,31 @@ async def finalize_stream_or_broadcast(
         await broadcast(deps, chat_jid, event, suppress_errors=suppress_errors, source="agent")
         return
 
-    # Match broadcast()'s error handling: suppress_errors=True catches only
-    # network errors (letting programming bugs propagate); False catches all.
-    caught: tuple[type[BaseException], ...] = (
-        (OSError, TimeoutError, ConnectionError) if suppress_errors else (Exception,)
-    )
-
-    # Resolve non-streaming targets via the shared helper
+    caught = _caught_errors(suppress_errors=suppress_errors)
     send_targets = _resolve_send_targets(deps, chat_jid)
+    stream_targets = _resolve_stream_targets(deps, chat_jid, stream_message_ids)
+    stream_target_names = {ch.name for ch, _, _ in stream_targets}
+    send_targets = [(ch, jid) for ch, jid in send_targets if ch.name not in stream_target_names]
     send_target_names = {ch.name for ch, _ in send_targets}
 
-    # Identify streaming targets (channels with a message_id and update_event).
-    stream_targets: list[tuple[Channel, str, str]] = []  # (ch, msg_id, target_jid)
+    all_target_names = sorted(stream_target_names | send_target_names)
+    ledger_id = await _record_to_ledger(chat_jid, event.content, "agent", all_target_names)
+    await _deliver_stream_targets(stream_targets, event, ledger_id, caught)
+    await _deliver_send_targets(send_targets, event, ledger_id, caught)
+
+
+def _caught_errors(*, suppress_errors: bool) -> tuple[type[BaseException], ...]:
+    # Match broadcast()'s error handling: suppress_errors=True catches only
+    # network errors (letting programming bugs propagate); False catches all.
+    return (OSError, TimeoutError, ConnectionError) if suppress_errors else (Exception,)
+
+
+def _resolve_stream_targets(
+    deps: BusDeps,
+    chat_jid: str,
+    stream_message_ids: dict[str, str],
+) -> list[tuple[Channel, str, str]]:
+    stream_targets: list[tuple[Channel, str, str]] = []
     for ch in deps.channels:
         ch_name = ch.name
         msg_id = stream_message_ids.get(ch_name)
@@ -254,16 +267,15 @@ async def finalize_stream_or_broadcast(
         if not target_jid:
             continue
         stream_targets.append((ch, msg_id, target_jid))
-    stream_target_names = {ch.name for ch, _, _ in stream_targets}
+    return stream_targets
 
-    # Remove streaming channels from send targets (they get update_event instead)
-    send_targets = [(ch, jid) for ch, jid in send_targets if ch.name not in stream_target_names]
 
-    # Record to ledger
-    all_target_names = sorted(stream_target_names | send_target_names)
-    ledger_id = await _record_to_ledger(chat_jid, event.content, "agent", all_target_names)
-
-    # Deliver: update streamed messages in-place, falling back to send_event.
+async def _deliver_stream_targets(
+    stream_targets: list[tuple[Channel, str, str]],
+    event: OutboundEvent,
+    ledger_id: int | None,
+    caught: tuple[type[BaseException], ...],
+) -> None:
     # update_event failures always fall back to send_event (catch Exception);
     # send_event failures respect suppress_errors via `caught`.
     for ch, msg_id, target_jid in stream_targets:
@@ -279,7 +291,13 @@ async def finalize_stream_or_broadcast(
                 logger.warning("Fallback send_event also failed", channel=ch.name, err=str(exc))
                 await _mark_error(ledger_id, ch.name, str(exc))
 
-    # Deliver: send to non-streaming channels
+
+async def _deliver_send_targets(
+    send_targets: list[tuple[Channel, str]],
+    event: OutboundEvent,
+    ledger_id: int | None,
+    caught: tuple[type[BaseException], ...],
+) -> None:
     for ch, target_jid in send_targets:
         try:
             await ch.send_event(target_jid, event)
