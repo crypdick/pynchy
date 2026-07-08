@@ -162,6 +162,55 @@ class MountValidationResult:
     effective_readonly: bool | None = None
 
 
+def _resolved_container_path(mount: AdditionalMount) -> str:
+    return mount.container_path or os.path.basename(mount.host_path)
+
+
+def _existing_real_host_path(host_path: str) -> str | None:
+    expanded_path = _expand_path(host_path)
+    if not os.path.exists(expanded_path):
+        return None
+    return os.path.realpath(expanded_path)
+
+
+def _missing_host_path_reason(host_path: str) -> str:
+    expanded_path = _expand_path(host_path)
+    return f'Host path does not exist: "{host_path}" (expanded: "{expanded_path}")'
+
+
+def _allowed_root_reason(allowed_root: AllowedRoot) -> str:
+    desc = f" ({allowed_root.description})" if allowed_root.description else ""
+    return f'Allowed under root "{allowed_root.path}"{desc}'
+
+
+def _effective_readonly(
+    *,
+    mount: AdditionalMount,
+    is_admin: bool,
+    allowlist: MountAllowlist,
+    allowed_root: AllowedRoot,
+) -> bool:
+    if mount.readonly is not False:
+        return True
+
+    if not is_admin and allowlist.non_admin_read_only:
+        logger.info(
+            "Mount forced to read-only for non-admin group",
+            mount=mount.host_path,
+        )
+        return True
+
+    if not allowed_root.allow_read_write:
+        logger.info(
+            "Mount forced to read-only - root does not allow read-write",
+            mount=mount.host_path,
+            root=allowed_root.path,
+        )
+        return True
+
+    return False
+
+
 def validate_mount(mount: AdditionalMount, is_admin: bool) -> MountValidationResult:
     """Validate a single additional mount against the allowlist."""
     s = get_settings()
@@ -173,9 +222,7 @@ def validate_mount(mount: AdditionalMount, is_admin: bool) -> MountValidationRes
             reason=f"No mount allowlist configured at {s.mount_allowlist_path}",
         )
 
-    # Derive containerPath from hostPath basename if not specified
-    container_path = mount.container_path or os.path.basename(mount.host_path)
-
+    container_path = _resolved_container_path(mount)
     if not _is_valid_container_path(container_path):
         return MountValidationResult(
             allowed=False,
@@ -185,14 +232,12 @@ def validate_mount(mount: AdditionalMount, is_admin: bool) -> MountValidationRes
             ),
         )
 
-    expanded_path = _expand_path(mount.host_path)
-    if not os.path.exists(expanded_path):
+    real_path = _existing_real_host_path(mount.host_path)
+    if real_path is None:
         return MountValidationResult(
             allowed=False,
-            reason=f'Host path does not exist: "{mount.host_path}" (expanded: "{expanded_path}")',
+            reason=_missing_host_path_reason(mount.host_path),
         )
-
-    real_path = os.path.realpath(expanded_path)
 
     blocked_match = _matches_blocked_pattern(real_path, allowlist.blocked_patterns)
     if blocked_match is not None:
@@ -209,34 +254,17 @@ def validate_mount(mount: AdditionalMount, is_admin: bool) -> MountValidationRes
             reason=f'Path "{real_path}" is not under any allowed root. Allowed roots: {roots_str}',
         )
 
-    # Determine effective readonly status
-    requested_read_write = mount.readonly is False
-    effective_readonly = True  # Default to readonly
-
-    if requested_read_write:
-        if not is_admin and allowlist.non_admin_read_only:
-            effective_readonly = True
-            logger.info(
-                "Mount forced to read-only for non-admin group",
-                mount=mount.host_path,
-            )
-        elif not allowed_root.allow_read_write:
-            effective_readonly = True
-            logger.info(
-                "Mount forced to read-only - root does not allow read-write",
-                mount=mount.host_path,
-                root=allowed_root.path,
-            )
-        else:
-            effective_readonly = False
-
-    desc = f" ({allowed_root.description})" if allowed_root.description else ""
     return MountValidationResult(
         allowed=True,
-        reason=f'Allowed under root "{allowed_root.path}"{desc}',
+        reason=_allowed_root_reason(allowed_root),
         real_host_path=real_path,
         resolved_container_path=container_path,
-        effective_readonly=effective_readonly,
+        effective_readonly=_effective_readonly(
+            mount=mount,
+            is_admin=is_admin,
+            allowlist=allowlist,
+            allowed_root=allowed_root,
+        ),
     )
 
 
