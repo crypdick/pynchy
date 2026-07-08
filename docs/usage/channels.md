@@ -73,10 +73,21 @@ inherits its parent channel's access config.
 1. Create a bot in the [Discord Developer Portal](https://discord.com/developers/applications).
    Under **Bot → Privileged Gateway Intents**, enable **Message Content Intent**
    (required to read message text).
-2. Invite the bot with the `bot` scope and at least *View Channels*, *Send Messages*,
-   *Read Message History*, and *Add Reactions* permissions.
-3. Put the bot token in an environment variable (never in `config.toml`), then
-   reference the variable name:
+2. Invite the bot with the `bot` scope and at least *View Channels*, *Send
+   Messages*, *Send Messages in Threads*, *Read Message History*, and *Add
+   Reactions* permissions. Do not grant Administrator; Pynchy does not need it.
+3. In Discord, enable Developer Mode and copy the server, channel, and user
+   IDs. Discord calls these numeric IDs "snowflakes".
+4. Put the bot token in an environment variable on the host that runs Pynchy.
+   Never put the token value in `config.toml`; reference the variable name
+   instead:
+
+```bash
+DISCORD_BOT_TOKEN=<bot token>
+```
+
+5. Configure the Discord connection and the workspaces that should receive
+   Discord messages:
 
 ```toml
 [connection.discord.mybot]
@@ -87,12 +98,12 @@ group_policy = "allowlist"            # open | disabled | allowlist
 
 [connection.discord.mybot.chat.<guild-id>]
 require_mention = true                 # guild default; require an @mention to respond
-users = ["discord:<user-id>"]          # optional sender allowlist
+users = ["discord:<user-id>"]          # sender allowlist
 roles = ["role:<role-id>"]             # optional role allowlist
 
 [connection.discord.mybot.chat.<guild-id>.channels.<channel-id>]
 enabled = true
-require_mention = false                # override the guild default for this channel
+require_mention = false                # safe for a dedicated allowlisted channel
 
 [sandbox.discord-admin]
 chat = "connection.discord.mybot.chat.<guild-id>.channels.<channel-id>"
@@ -100,12 +111,24 @@ is_admin = true
 
 [sandbox.discord-dm]
 chat = "connection.discord.mybot.chat.direct.<your-user-id>"
+is_admin = true
 ```
 
-4. Install dependencies:
+6. Install dependencies:
 ```bash
 uv sync --extra discord
 ```
+
+7. Start or reload Pynchy, then check `/status`. The Discord connection should
+   appear in `channels`:
+
+```bash
+curl -s http://localhost:8485/status
+```
+
+If the service reconciled the workspace correctly, `registered_groups` contains
+JIDs such as `discord:channel:<channel-id>` and `discord:direct:<user-id>`.
+Send a message in the configured channel or DM to confirm inbound delivery.
 
 **Features:**
 
