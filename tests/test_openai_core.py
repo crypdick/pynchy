@@ -15,6 +15,7 @@ if container_path.exists():
 
 try:
     from agent_runner.core import AgentCore, AgentCoreConfig, AgentEvent
+    from agent_runner.cores._openai_tool_parsing import _fallback_mapping_scan
     from agent_runner.registry import create_agent_core
 
     AGENT_RUNNER_AVAILABLE = True
@@ -211,6 +212,33 @@ class TestEventMapping:
         assert event.type == "result"
         assert event.data["result"] == "Done! I listed the files."
         assert event.data["result_metadata"]["session_id"] == "resp_xyz789"
+
+
+@pytest.mark.skipif(not AGENT_RUNNER_AVAILABLE, reason="agent_runner module not available")
+class TestOpenAIToolParsing:
+    """Focused coverage for the OpenAI tool-call fallback parser helpers."""
+
+    def test_fallback_scan_reads_nested_data_mapping(self):
+        raw = object()
+        tool_name, tool_input = _fallback_mapping_scan(
+            raw,
+            {"data": {"name": "search_docs", "input": {"query": "hooks"}}},
+            None,
+            None,
+        )
+        assert tool_name == "search_docs"
+        assert tool_input == {"query": "hooks"}
+
+    def test_fallback_scan_builds_shell_input_from_action(self):
+        raw = object()
+        tool_name, tool_input = _fallback_mapping_scan(
+            raw,
+            {"action": {"type": "shell_call", "command": "git status"}},
+            None,
+            None,
+        )
+        assert tool_name == "shell"
+        assert tool_input == {"command": "git status"}
 
 
 # ---------------------------------------------------------------------------
