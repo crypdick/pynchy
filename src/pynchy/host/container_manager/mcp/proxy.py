@@ -57,6 +57,14 @@ class _ProxyState:
 _STATE_KEY: web.AppKey[_ProxyState] = web.AppKey("proxy_state", t=_ProxyState)
 
 
+@dataclass(frozen=True)
+class _ProxyRequest:
+    group_folder: str
+    instance_id: str
+    invocation_ts: float
+    tail: str
+
+
 def create_proxy_app(
     instance_urls: dict[str, str],
     *,
@@ -100,80 +108,108 @@ async def _cleanup_http_session(app: web.Application) -> None:
         app[_STATE_KEY].http_session = None
 
 
-async def _proxy_handler(request: web.Request) -> web.Response:
-    """Route an MCP request through SecurityGate to the backend."""
-    group_folder = request.match_info["group_folder"]
-    instance_id = request.match_info["instance_id"]
-    tail = request.match_info.get("tail", "")
-
+def _proxy_request(request: web.Request) -> _ProxyRequest | web.Response:
     try:
         invocation_ts = float(request.match_info["invocation_ts"])
     except (ValueError, TypeError):
         return web.json_response({"error": "Invalid invocation_ts"}, status=400)
 
-    state = request.app[_STATE_KEY]
+    return _ProxyRequest(
+        group_folder=request.match_info["group_folder"],
+        instance_id=request.match_info["instance_id"],
+        invocation_ts=invocation_ts,
+        tail=request.match_info.get("tail", ""),
+    )
 
-    # Look up backend URL
-    backend_url = state.instance_urls.get(instance_id)
-    if backend_url is None:
-        return web.json_response({"error": f"Unknown MCP instance: {instance_id}"}, status=404)
 
-    # Look up SecurityGate
-    gate = get_gate(group_folder, invocation_ts)
-    if gate is None:
-        logger.warning(
-            "MCP proxy: no SecurityGate",
-            group=group_folder,
-            invocation_ts=invocation_ts,
-        )
-        return web.json_response({"error": "No security context for this session"}, status=403)
+def _backend_url(state: _ProxyState, proxy_request: _ProxyRequest) -> str | web.Response:
+    backend_url = state.instance_urls.get(proxy_request.instance_id)
+    if backend_url is not None:
+        return backend_url
+    return web.json_response(
+        {"error": f"Unknown MCP instance: {proxy_request.instance_id}"},
+        status=404,
+    )
 
-    # Forward to backend
-    body = await request.read()
-    target_url = backend_url + tail
 
-    # Outbound gating: evaluate_write() on tools/call requests before forwarding.
-    # Non-JSON or non-tools/call requests pass through ungated.
+def _session_gate(proxy_request: _ProxyRequest) -> SecurityGate | web.Response:
+    gate = get_gate(proxy_request.group_folder, proxy_request.invocation_ts)
+    if gate is not None:
+        return gate
+
+    logger.warning(
+        "MCP proxy: no SecurityGate",
+        group=proxy_request.group_folder,
+        invocation_ts=proxy_request.invocation_ts,
+    )
+    return web.json_response({"error": "No security context for this session"}, status=403)
+
+
+async def _rpc_payload(body: bytes) -> dict[str, Any]:
     try:
-        rpc = _json.loads(body) if body else {}
+        return _json.loads(body) if body else {}
     except (ValueError, UnicodeDecodeError):
-        rpc = {}
+        return {}
 
-    if rpc.get("method") == "tools/call":
-        decision = gate.evaluate_write(instance_id, rpc.get("params", {}))
-        if not decision.allowed:
-            return web.json_response({"error": f"Policy denied: {decision.reason}"}, status=403)
-        if decision.needs_human:
-            result = await _await_human_approval(
-                state, group_folder, instance_id, rpc, decision.reason or ""
-            )
-            if result is not None:
-                return result
 
-    # Filter out hop-by-hop headers that shouldn't be forwarded
-    forwarded_headers = {
-        k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length")
+async def _maybe_gate_outbound_call(
+    state: _ProxyState,
+    proxy_request: _ProxyRequest,
+    gate: SecurityGate,
+    rpc: dict[str, Any],
+) -> web.Response | None:
+    if rpc.get("method") != "tools/call":
+        return None
+
+    decision = gate.evaluate_write(proxy_request.instance_id, rpc.get("params", {}))
+    if not decision.allowed:
+        return web.json_response({"error": f"Policy denied: {decision.reason}"}, status=403)
+    if not decision.needs_human:
+        return None
+
+    return await _await_human_approval(
+        state,
+        proxy_request.group_folder,
+        proxy_request.instance_id,
+        rpc,
+        decision.reason or "",
+    )
+
+
+def _forwarded_headers(request: web.Request) -> dict[str, str]:
+    return {
+        key: value
+        for key, value in request.headers.items()
+        if key.lower() not in ("host", "content-length")
     }
 
-    # Use the shared session (created by on_startup hook).
-    session = state.http_session
-    assert session is not None, "Proxy ClientSession not initialized"
 
+async def _forward_to_backend(
+    *,
+    session: aiohttp.ClientSession,
+    request: web.Request,
+    backend_url: str,
+    tail: str,
+    body: bytes,
+    state: _ProxyState,
+    instance_id: str,
+    gate: SecurityGate,
+    group_folder: str,
+) -> web.Response:
     try:
         async with session.request(
             request.method,
-            target_url,
+            backend_url + tail,
             data=body,
-            headers=forwarded_headers,
+            headers=_forwarded_headers(request),
         ) as backend_resp:
             response_body = await backend_resp.read()
             response_headers = {
-                k: v
-                for k, v in backend_resp.headers.items()
-                if k.lower() not in ("content-length", "transfer-encoding")
+                key: value
+                for key, value in backend_resp.headers.items()
+                if key.lower() not in ("content-length", "transfer-encoding")
             }
 
-            # Apply fencing to responses from public_source servers
             trust = state.trust_map.get(instance_id, {})
             if trust.get("public_source"):
                 response_body = await _apply_fencing(response_body, instance_id, gate, group_folder)
@@ -186,6 +222,41 @@ async def _proxy_handler(request: web.Request) -> web.Response:
     except aiohttp.ClientError as exc:
         logger.error("MCP proxy backend error", instance=instance_id, error=str(exc))
         return web.json_response({"error": "MCP backend unavailable"}, status=502)
+
+
+async def _proxy_handler(request: web.Request) -> web.Response:
+    """Route an MCP request through SecurityGate to the backend."""
+    proxy_request = _proxy_request(request)
+    if isinstance(proxy_request, web.Response):
+        return proxy_request
+
+    state = request.app[_STATE_KEY]
+    backend_url = _backend_url(state, proxy_request)
+    if isinstance(backend_url, web.Response):
+        return backend_url
+    gate = _session_gate(proxy_request)
+    if isinstance(gate, web.Response):
+        return gate
+
+    body = await request.read()
+    rpc = await _rpc_payload(body)
+    outbound_decision = await _maybe_gate_outbound_call(state, proxy_request, gate, rpc)
+    if outbound_decision is not None:
+        return outbound_decision
+
+    session = state.http_session
+    assert session is not None, "Proxy ClientSession not initialized"
+    return await _forward_to_backend(
+        session=session,
+        request=request,
+        backend_url=backend_url,
+        tail=proxy_request.tail,
+        body=body,
+        state=state,
+        instance_id=proxy_request.instance_id,
+        gate=gate,
+        group_folder=proxy_request.group_folder,
+    )
 
 
 async def _await_human_approval(
