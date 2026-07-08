@@ -126,20 +126,15 @@ _SETTINGS_MODULES = [
 ]
 
 
-@contextlib.contextmanager
-def _patch_settings(
-    tmp_path: Path | None = None,
+def _settings_overrides(
     *,
-    core: str | None = None,
-    container_timeout: float | None = None,
-    idle_timeout: float | None = None,
-    max_output_size: int | None = None,
-    learning: LearningConfig | None = None,
-    workspaces: dict[str, WorkspaceConfig] | None = None,
-    secret_overrides: dict[str, str] | None = None,
-):
-    """Patch get_settings() across all container_runner submodules."""
-    overrides: dict = {
+    tmp_path: Path | None,
+    learning: LearningConfig | None,
+    workspaces: dict[str, WorkspaceConfig] | None,
+    container_timeout: float | None,
+    idle_timeout: float | None,
+) -> dict[str, object]:
+    overrides: dict[str, object] = {
         "gateway": GatewayConfig(),
         "learning": learning or LearningConfig(),
         "workspaces": workspaces or {},
@@ -154,14 +149,45 @@ def _patch_settings(
         overrides["container_timeout"] = container_timeout
     if idle_timeout is not None:
         overrides["idle_timeout"] = idle_timeout
+    return overrides
+
+
+def _apply_secret_overrides(
+    settings,
+    secret_overrides: dict[str, str] | None,
+) -> None:
+    if not secret_overrides:
+        return
+    for key, value in secret_overrides.items():
+        setattr(settings.secrets, key, SecretStr(value))
+
+
+@contextlib.contextmanager
+def _patch_settings(
+    tmp_path: Path | None = None,
+    *,
+    core: str | None = None,
+    container_timeout: float | None = None,
+    idle_timeout: float | None = None,
+    max_output_size: int | None = None,
+    learning: LearningConfig | None = None,
+    workspaces: dict[str, WorkspaceConfig] | None = None,
+    secret_overrides: dict[str, str] | None = None,
+):
+    """Patch get_settings() across all container_runner submodules."""
+    overrides = _settings_overrides(
+        tmp_path=tmp_path,
+        learning=learning,
+        workspaces=workspaces,
+        container_timeout=container_timeout,
+        idle_timeout=idle_timeout,
+    )
     s = make_settings(**overrides)
     if core is not None:
         s.agent.core = core
     if max_output_size is not None:
         s.container.max_output_size = max_output_size
-    if secret_overrides:
-        for key, value in secret_overrides.items():
-            setattr(s.secrets, key, SecretStr(value))
+    _apply_secret_overrides(s, secret_overrides)
     with contextlib.ExitStack() as stack:
         for mod in _SETTINGS_MODULES:
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
@@ -2481,40 +2507,61 @@ class TestShellQuote:
 # ---------------------------------------------------------------------------
 
 
-class TestOutputParsingEdgeCases:
-    """Edge cases for parse_container_output."""
-
-    def test_parses_all_output_fields(self):
-        """Verify all ContainerOutput fields are correctly parsed."""
-        out = parse_container_output(
-            json.dumps(
-                {
-                    "status": "success",
-                    "result": "done",
-                    "new_session_id": "s1",
-                    "type": "tool_use",
-                    "thinking": "Let me think...",
-                    "tool_name": "Read",
-                    "tool_input": {"file_path": "/test.py"},
-                    "text": "some text",
-                    "system_subtype": "compact",
-                    "system_data": {"key": "val"},
-                    "tool_result_id": "tr-1",
-                    "tool_result_content": "file contents",
-                    "tool_result_is_error": False,
-                    "result_metadata": {"duration_ms": 1234},
-                }
-            )
+def _parsed_output_with_all_fields() -> ContainerOutput:
+    return parse_container_output(
+        json.dumps(
+            {
+                "status": "success",
+                "result": "done",
+                "new_session_id": "s1",
+                "type": "tool_use",
+                "thinking": "Let me think...",
+                "tool_name": "Read",
+                "tool_input": {"file_path": "/test.py"},
+                "text": "some text",
+                "system_subtype": "compact",
+                "system_data": {"key": "val"},
+                "tool_result_id": "tr-1",
+                "tool_result_content": "file contents",
+                "tool_result_is_error": False,
+                "result_metadata": {"duration_ms": 1234},
+            }
         )
-        assert out.status == "success"
-        assert out.type == "tool_use"
-        assert out.thinking == "Let me think..."
-        assert out.tool_name == "Read"
-        assert out.tool_input == {"file_path": "/test.py"}
-        assert out.system_subtype == "compact"
-        assert out.tool_result_id == "tr-1"
-        assert out.tool_result_is_error is False
-        assert out.result_metadata == {"duration_ms": 1234}
+    )
+
+
+def test_parse_container_output_reads_tool_use_fields() -> None:
+    out = _parsed_output_with_all_fields()
+
+    assert out.status == "success"
+    assert out.type == "tool_use"
+    assert out.thinking == "Let me think..."
+    assert out.tool_name == "Read"
+    assert out.tool_input == {"file_path": "/test.py"}
+
+
+def test_parse_container_output_reads_system_fields() -> None:
+    out = _parsed_output_with_all_fields()
+
+    assert out.system_subtype == "compact"
+    assert out.system_data == {"key": "val"}
+    assert out.text == "some text"
+
+
+def test_parse_container_output_reads_tool_result_fields() -> None:
+    out = _parsed_output_with_all_fields()
+
+    assert out.tool_result_id == "tr-1"
+    assert out.tool_result_content == "file contents"
+    assert out.tool_result_is_error is False
+
+
+def test_parse_container_output_reads_result_metadata() -> None:
+    out = _parsed_output_with_all_fields()
+
+    assert out.result == "done"
+    assert out.new_session_id == "s1"
+    assert out.result_metadata == {"duration_ms": 1234}
 
 
 # ---------------------------------------------------------------------------
