@@ -55,19 +55,46 @@ async def reconcile_temporal_schedules(
     tasks = await get_tasks()
     host_jobs = await get_host_jobs()
 
-    schedule_id = host_git_sync_schedule_id()
-    desired_schedule_ids.add(schedule_id)
-    await _upsert_schedule(client, schedule_id, schedule_for_host_git_sync())
+    await _reconcile_builtin_schedules(client, desired_schedule_ids)
+    await _reconcile_external_repo_sync_schedules(client, settings, desired_schedule_ids)
+    await _reconcile_task_schedules(runtime, client, tasks, desired_schedule_ids)
+    await _reconcile_host_job_schedules(runtime, client, host_jobs, desired_schedule_ids)
+    await _reconcile_config_cron_schedules(client, settings, desired_schedule_ids)
 
-    schedule_id = channel_reconciliation_schedule_id()
-    desired_schedule_ids.add(schedule_id)
-    await _upsert_schedule(client, schedule_id, schedule_for_channel_reconciliation())
+    await _delete_stale_schedules(client, desired_schedule_ids)
 
+
+async def _reconcile_builtin_schedules(client: Any, desired_schedule_ids: set[str]) -> None:
+    host_sync_schedule_id = host_git_sync_schedule_id()
+    desired_schedule_ids.add(host_sync_schedule_id)
+    await _upsert_schedule(client, host_sync_schedule_id, schedule_for_host_git_sync())
+
+    channel_schedule_id = channel_reconciliation_schedule_id()
+    desired_schedule_ids.add(channel_schedule_id)
+    await _upsert_schedule(
+        client,
+        channel_schedule_id,
+        schedule_for_channel_reconciliation(),
+    )
+
+
+async def _reconcile_external_repo_sync_schedules(
+    client: Any,
+    settings: Any,
+    desired_schedule_ids: set[str],
+) -> None:
     for repo_slug in _external_repo_sync_slugs(settings):
         schedule_id = external_git_sync_schedule_id(repo_slug)
         desired_schedule_ids.add(schedule_id)
         await _upsert_schedule(client, schedule_id, schedule_for_external_git_sync(repo_slug))
 
+
+async def _reconcile_task_schedules(
+    runtime: Any,
+    client: Any,
+    tasks: list[ScheduledTask],
+    desired_schedule_ids: set[str],
+) -> None:
     for task in tasks:
         if task.status != "active":
             continue
@@ -78,6 +105,13 @@ async def reconcile_temporal_schedules(
         desired_schedule_ids.add(schedule_id)
         await _upsert_schedule(client, schedule_id, schedule_for_agent_task(task))
 
+
+async def _reconcile_host_job_schedules(
+    runtime: Any,
+    client: Any,
+    host_jobs: list[HostJob],
+    desired_schedule_ids: set[str],
+) -> None:
     for job in host_jobs:
         if job.status != "active" or not job.enabled:
             continue
@@ -88,6 +122,12 @@ async def reconcile_temporal_schedules(
         desired_schedule_ids.add(schedule_id)
         await _upsert_schedule(client, schedule_id, schedule_for_database_host_job(job))
 
+
+async def _reconcile_config_cron_schedules(
+    client: Any,
+    settings: Any,
+    desired_schedule_ids: set[str],
+) -> None:
     for job_name, cron_job in settings.cron_jobs.items():
         if not cron_job.enabled:
             continue
@@ -98,8 +138,6 @@ async def reconcile_temporal_schedules(
             schedule_id,
             schedule_for_config_host_cron(job_name, cron_job.schedule),
         )
-
-    await _delete_stale_schedules(client, desired_schedule_ids)
 
 
 def _require_client(runtime: Any) -> Any:
