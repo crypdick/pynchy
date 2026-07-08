@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 from conftest import make_settings
 
 from pynchy.config.mcp import McpServerConfig
+from pynchy.config.models import SandboxProfileConfig, WorkspaceConfig
 from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
 from pynchy.host.container_manager.mcp.lifecycle import (
     _build_placeholders,  # allow: private-test-imports
@@ -282,3 +283,26 @@ class TestResolveAllInstancesPortOffset:
         state = resolve_all_instances(mgr._settings, mgr._merged_mcp_servers)
         inst = next(iter(state.instances.values()))
         assert inst.port is None
+
+    def test_profile_mcp_servers_are_resolved_for_workspace(self):
+        settings = make_settings(
+            sandbox_profiles={
+                "dev": SandboxProfileConfig(mcp_servers=["linear"]),
+            },
+            workspaces={
+                "code-improver": WorkspaceConfig(profile="dev"),
+            },
+            mcp_servers={
+                "linear": McpServerConfig(
+                    type="script",
+                    command="uv",
+                    port=8474,
+                    transport="streamable_http",
+                ),
+            },
+        )
+
+        state = resolve_all_instances(settings, merged_mcp_servers(settings, {}))
+
+        assert list(state.instances) == ["linear"]
+        assert state.workspace_instances == {"code-improver": ["linear"]}

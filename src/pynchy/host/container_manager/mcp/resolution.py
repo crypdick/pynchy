@@ -15,6 +15,7 @@ from typing import Any
 
 from pynchy.config import Settings
 from pynchy.config.mcp import McpServerConfig
+from pynchy.config.merge import ResolvedSandboxConfig, merge_sandbox_config
 from pynchy.logger import logger
 from pynchy.types import ServiceTrustConfig
 
@@ -81,6 +82,19 @@ class _SyncState:
 # ---------------------------------------------------------------------------
 
 
+def _resolved_workspace_config(
+    settings: Settings,
+    group_folder: str,
+) -> ResolvedSandboxConfig | None:
+    """Resolve sandbox config before reading MCP server declarations."""
+    ws_config = settings.workspaces.get(group_folder)
+    if ws_config is None:
+        return None
+
+    profile = settings.sandbox_profiles.get(ws_config.profile) if ws_config.profile else None
+    return merge_sandbox_config(settings.sandbox_universal, profile, ws_config)
+
+
 def merged_mcp_servers(
     settings: Settings,
     plugin_mcp_servers: dict[str, McpServerConfig],
@@ -139,7 +153,7 @@ def resolve_workspace_servers(
     group_folder: str,
 ) -> list[str]:
     """Expand workspace's mcp_servers list (groups + names) into concrete server names."""
-    ws_config = settings.workspaces.get(group_folder)
+    ws_config = _resolved_workspace_config(settings, group_folder)
     if not ws_config or not ws_config.mcp_servers:
         return []
 
@@ -223,11 +237,10 @@ def resolve_all_instances(
     # offset the host port for each additional instance.
     port_counters: dict[str, int] = {}
 
-    for folder, ws_config in settings.workspaces.items():
-        if not ws_config.mcp_servers:
-            continue
-
+    for folder in settings.workspaces:
         servers = resolve_workspace_servers(settings, all_servers, folder)
+        if not servers:
+            continue
         instance_ids: list[str] = []
 
         for server_name in servers:
