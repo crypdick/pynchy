@@ -5,7 +5,7 @@ Imported by :mod:`pynchy.config` to keep that file lean.
 
 Example TOML::
 
-    [mcp_servers.playwright]
+    [mcp.playwright]
     type = "docker"
     image = "mcp/playwright:latest"
     args = ["--headless", "--port", "8931", "--host", "0.0.0.0", "--allowed-hosts", "*"]
@@ -13,7 +13,7 @@ Example TOML::
     transport = "http"
     idle_timeout = 600
 
-    [mcp_servers.slack_mcp_acme]
+    [mcp.slack_mcp_acme]
     type = "docker"
     image = "ghcr.io/korotovsky/slack-mcp-server:latest"
     port = 8080
@@ -22,14 +22,14 @@ Example TOML::
     env_forward.SLACK_MCP_XOXC_TOKEN = "SLACK_XOXC_ACME"
     env_forward.SLACK_MCP_XOXD_TOKEN = "SLACK_XOXD_ACME"
 
-    [mcp_servers.some-remote-api]
+    [mcp.some-remote-api]
     type = "url"
     url = "https://api.example.com/mcp"
     transport = "streamable_http"
     auth_value_env = "SOME_API_KEY"
 
     # Host script MCP (subprocess managed by pynchy):
-    [mcp_servers.my_custom_tool]
+    [mcp.my_custom_tool]
     type = "script"
     command = "uv"
     args = ["run", "scripts/my-tool.py"]

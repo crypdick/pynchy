@@ -88,7 +88,7 @@ When OneCLI is enabled, raw `GH_TOKEN` stops being written to agent env files. G
 For MCP servers that require credentials, add an explicit opt-in field to their config, for example:
 
 ```toml
-[mcp_servers.gmail]
+[mcp.gmail]
 type = "docker"
 onecli = true
 onecli_agent = "workspace"

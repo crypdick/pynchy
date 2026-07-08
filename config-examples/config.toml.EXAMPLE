@@ -137,12 +137,14 @@
 # IPC file polling interval (seconds)
 # ipc_poll = 1.0
 
-# Host cron jobs (runs shell commands directly on host, no LLM/container loop)
-# [cron_jobs.rebuild_container]
+# Host jobs (runs shell commands directly on host, no LLM/container loop)
+# [jobs.rebuild_container]
+# workspace = "host"
 # schedule = "0 5 * * *"
 # command = "./container/build.sh"
 # cwd = "."
 # timeout_seconds = 1200
+# quiet_on_success = true
 # enabled = true
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -212,14 +214,10 @@
 # enabled = false
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Sandbox Universal (defaults for all sandboxes)
+# Profiles, Workspaces, and Jobs
 # ─────────────────────────────────────────────────────────────────────────────
-# These values apply to every sandbox. Per-sandbox and profile values override.
-# List fields (directives, skills, mcp_servers) are unioned across tiers.
-# Scalar fields use most-specific-wins semantics.
-
-# [sandbox_universal]
-# directives = ["base", "idle-escape"]
+# [universal]
+# tags = ["base"]
 # context_mode = "group"
 # access = "readwrite"   # "read", "write", "readwrite"
 # mode = "agent"         # "agent" or "chat"
@@ -227,58 +225,79 @@
 # trigger = "mention"    # "mention" or "always"
 # allowed_users = ["owner"]  # user IDs, group refs, or "*"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Sandboxes
-# ─────────────────────────────────────────────────────────────────────────────
-# Each [sandbox.<folder_name>] defines a sandbox. The folder name matches
-# the directory under groups/.
+# [profiles.pynchy-admin]
+# tags = ["pynchy", "pynchy-admin", "browser"]
+# is_admin = true
+# contains_secrets = true
+# idle_terminate = false
+# repo_access = "crypdick/pynchy"
+# model = "chatgpt/gpt-5.3-codex"
 
-# [sandbox.admin-1]
-# profile = "pynchy-dev"
+# [profiles.pynchy-worker]
+# tags = ["pynchy"]
+# is_admin = false
+# contains_secrets = false
+# idle_terminate = true
+# repo_access = "crypdick/pynchy"
+
+# Each [workspaces.<name>] binds a configured Discord/Slack channel to a profile.
+# Discord threads under that channel become dynamic isolated contexts that
+# inherit the workspace profile.
+
+# [workspaces.admin]
+# profile = "pynchy-admin"
 # chat = "connection.slack.synapse.chat.admin-1"
-# is_admin = true
 
-# [sandbox.admin-2]
-# profile = "pynchy-dev"
-# chat = "connection.slack.synapse.chat.admin-2"
-# is_admin = true
+# [workspaces.code-improver]
+# profile = "pynchy-worker"
+# chat = "connection.slack.synapse.chat.pynchy-core-code-improver"
 
 # CLEAN ROOM POLICY: Admin workspaces cannot have MCP servers with public_source = true.
 # Any MCP not declared in [services] defaults to public_source = true.
 # Pynchy refuses to start if this constraint is violated.
 # See: https://pynchy.ricardodecal.com/usage/security/#admin-clean-room
 
-# Example workspace with Google MCP (dot-syntax instance names):
-# [sandbox.mycompany-1]
-# chat = "connection.slack.synapse.chat.mycompany-1"
+# Example profile with Google MCP (dot-syntax instance names):
+# [profiles.mycompany-worker]
+# tags = ["mycompany", "gdrive"]
 # mcp_servers = ["gdrive.mycompany", "gcal.mycompany"]
-#
-# Per-workspace security overrides (mark workspace as containing secrets):
-# [sandbox.mycompany-1.security]
 # contains_secrets = true
 
 # Example workspace with MCP access and per-MCP kwargs:
-# [sandbox.research]
+# [workspaces.research]
+# profile = "mycompany-worker"
 # chat = "connection.slack.synapse.chat.research"
-# mcp_servers = ["dev-tools", "remote-api"]   # groups + individual names, set-unioned
 #
-# [sandbox.research.mcp.playwright]
+# [workspaces.research.mcp.playwright]
 # presets = ["dev-research"]                   # expands + merges with explicit values
 # allowed-origins = "internal.example.com"     # merged with preset domains
 
-# Example workspace with Slack MCP (references a named server entry):
-# [sandbox.acme-1]
-# chat = "connection.slack.synapse.chat.acme-1"
-# mcp_servers = ["slack_mcp_acme"]
-
-# Example admin workspace with private-source MCPs only (clean room policy enforced):
-# [sandbox.admin]
-# chat = "connection.slack.synapse.chat.admin"
-# is_admin = true
-# mcp_servers = ["caldav"]   # only MCPs declared with public_source = false are allowed
-# # mcp_servers = ["*"] would fail if any server has public_source = true (the default)
-
-# Plugins can provide additional managed sandboxes automatically.
+# Daily Pynchy operations triage. Replace the chat ref with the explicit
+# Pynchy channel/topic that should receive the memo.
+# [jobs.daily-triage]
+# enabled = true
+# schedule = "0 8 * * *"
+# workspace = "admin"
+# prompt_file = "prompts/daily-triage.md"
+#
+# One-time agent job:
+# [jobs.cancel-youtube-premium]
+# enabled = true
+# at = "2026-07-08T18:30:00-07:00"
+# workspace = "admin"
+# prompt = """
+# Open a browser, log into YouTube, and cancel the YouTube Premium subscription.
+# """
+#
+# Host job. "host" is a reserved workspace name for direct host execution.
+# [jobs.backup-runtime-dbs]
+# enabled = true
+# schedule = "0 3 * * *"
+# workspace = "host"
+# command = "scripts/backup_runtime_dbs.sh"
+# cwd = "."
+# timeout_seconds = 600
+# quiet_on_success = true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Command Words (magic commands)
@@ -359,13 +378,13 @@
 # Google services (gdrive, gcal) — base specs are provided by the built-in
 # GoogleMcpPlugin. Declare instances with chrome_profile attachment:
 #
-# [mcp_servers.gdrive.mycompany]
+# [mcp.gdrive.mycompany]
 # chrome_profile = "mycompany"
 #
-# [mcp_servers.gdrive.work]
+# [mcp.gdrive.work]
 # chrome_profile = "work"
 #
-# [mcp_servers.gcal.mycompany]
+# [mcp.gcal.mycompany]
 # chrome_profile = "mycompany"
 #
 # Each instance is 2 lines. The plugin provides everything else (Docker image,
@@ -375,7 +394,7 @@
 # The agent sees tools as mcp__gdrive_mycompany__search (dots → underscores).
 
 # Docker-based MCP (container managed by pynchy):
-# [mcp_servers.playwright]
+# [mcp.playwright]
 # type = "docker"
 # image = "mcp/playwright:latest"
 # args = ["--headless", "--port", "8931", "--host", "0.0.0.0"]
@@ -390,7 +409,7 @@
 
 # Slack MCP (read-only Slack access via browser tokens):
 # One entry per Slack workspace — each gets its own container and tokens.
-# [mcp_servers.slack_mcp_acme]
+# [mcp.slack_mcp_acme]
 # type = "docker"
 # image = "ghcr.io/korotovsky/slack-mcp-server:latest"
 # port = 8080
@@ -400,14 +419,14 @@
 # env_forward = { SLACK_MCP_XOXC_TOKEN = "SLACK_XOXC_ACME", SLACK_MCP_XOXD_TOKEN = "SLACK_XOXD_ACME" }
 
 # Remote URL-based MCP:
-# [mcp_servers.remote-api]
+# [mcp.remote-api]
 # type = "url"
 # url = "https://api.example.com/mcp"
 # transport = "streamable_http"
 # auth_value_env = "SOME_API_KEY"    # env var name (never inline secrets)
 
 # Host script MCP (subprocess managed by pynchy):
-# [mcp_servers.my_custom_tool]
+# [mcp.my_custom_tool]
 # type = "script"
 # command = "uv"
 # args = ["run", "scripts/my-tool.py"]
@@ -490,25 +509,25 @@
 # blocked_patterns = [".ssh", ".gnupg", ".gpg", ".aws", ...]
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Sandbox Profiles (reusable config bundles)
+# Profiles (reusable workspace config bundles)
 # ─────────────────────────────────────────────────────────────────────────────
 # Profiles bundle directives, skills, MCP servers, and other config.
-# Sandboxes reference a profile via `profile = "<name>"`.
-# Effective config = sandbox_universal ∪ profile ∪ per-sandbox.
+# Workspaces reference a profile via `profile = "<name>"`.
+# Effective config = universal ∪ profile ∪ workspace.
 #
 # List fields (directives, skills, mcp_servers) are unioned across tiers.
 # Scalar fields use most-specific-wins semantics.
 #
 # Directives use convention-based resolution: name "base" → directives/base.md.
 
-# [sandbox_profiles.pynchy-dev]
+# [profiles.pynchy-dev]
 # directives = ["pynchy-admin-ops", "pynchy-code-improver"]
 # skills = ["core", "ops"]
 # repo_access = "owner/repo"
 # idle_terminate = false
 # trigger = "always"
 
-# [sandbox_profiles.ray-bench]
+# [profiles.ray-bench]
 # directives = ["ray-bench"]
 # repo_access = "owner/ray-bench"
 # mcp_servers = ["notebook"]

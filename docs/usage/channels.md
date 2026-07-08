@@ -109,23 +109,24 @@ name = "code-improver"                 # Discord channel name; created if missin
 enabled = true
 require_mention = false                # safe for a dedicated allowlisted channel
 
-[sandbox.discord-admin]
-profile = "pynchy-dev"                # use the same profile/repo access as the equivalent sandbox
+[workspaces.discord-admin]
+profile = "pynchy-dev"
 chat = "connection.discord.mybot.chat.synapse.channels.code-improver"
 is_admin = true
 
-[sandbox.discord-dm]
+[workspaces.discord-dm]
 profile = "pynchy-dev"
 chat = "connection.discord.mybot.chat.direct.<your-user-id>"
 is_admin = true
 ```
 
-Set `profile` or `repo_access` on Discord sandboxes the same way you set it on
-Slack or TUI sandboxes. Repo-backed agent cores need the project worktree mount;
-omit the profile only for group-only assistants that do not work inside a repo.
+Set `profile` or `repo_access` on Discord workspaces the same way you set it on
+Slack or TUI workspaces. Repo-backed agent cores need the project worktree mount.
 After startup reconciliation, Pynchy stores the concrete Discord channel
 snowflake in workspace state as `discord:channel:<id>`. Keep config human-facing:
 use names for guild channels unless you intentionally need a legacy ID ref.
+Discord threads under a configured channel become dynamic isolated contexts and
+inherit the parent workspace profile.
 
 6. Install dependencies:
 ```bash

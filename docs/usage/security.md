@@ -39,7 +39,7 @@ dangerous_writes = true     # sending is irreversible
 When an agent reads from a service, Pynchy tracks two *taint flags*:
 
 - **Corruption taint** — set when the agent reads from a `public_source`. Sticks for the rest of the session.
-- **Secret taint** — set when the agent reads `secret_data` or accesses a workspace marked `contains_secrets = true`.
+- **Secret taint** — set when the agent reads `secret_data` or accesses a workspace whose profile has `contains_secrets = true`.
 
 When the agent writes to a service, the gating matrix kicks in:
 
@@ -119,16 +119,16 @@ dangerous_writes = false
 
 Result: reading Drive files sets the secret taint but not the corruption taint. Writes to Drive are ungated. But if the agent *also* read from an untrusted source (a Slack message, web page), then writing to a public sink requires approval — both taints are set.
 
-## Per-Workspace Overrides
+## Profile Secret Classification
 
-Mark workspaces that contain sensitive information:
+Mark profiles whose workspaces contain sensitive information:
 
 ```toml
-[sandbox.acme-1.security]
+[profiles.acme-worker]
 contains_secrets = true
 ```
 
-Accessing a workspace with `contains_secrets = true` sets the secret taint flag. Any agent in a corporate workspace that also reads from an untrusted source will hit approval gates on outbound writes.
+Accessing a workspace whose profile has `contains_secrets = true` sets the secret taint flag. Any agent in a corporate workspace that also reads from an untrusted source will hit approval gates on outbound writes.
 
 ## Admin Clean Room
 

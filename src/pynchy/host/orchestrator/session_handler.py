@@ -44,6 +44,8 @@ class SessionDeps(Protocol):
     @property
     def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
+    async def _register_workspace(self, profile: WorkspaceProfile) -> None: ...
+
     async def save_state(self) -> None: ...
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
@@ -209,6 +211,8 @@ async def on_inbound(deps: SessionDeps, _jid: str, msg: NewMessage) -> None:
             source_channel = ch.name
             break
 
+    await _ensure_dynamic_thread_workspace(deps, msg)
+
     # Check channel access mode — skip inbound from write-only channels
     group = deps.workspaces.get(msg.chat_jid)
     if group and source_channel:
@@ -248,3 +252,39 @@ async def on_inbound(deps: SessionDeps, _jid: str, msg: NewMessage) -> None:
             )
 
     await ingest_user_message(deps, msg, source_channel=source_channel)
+
+
+async def _ensure_dynamic_thread_workspace(deps: SessionDeps, msg: NewMessage) -> None:
+    """Register a Discord thread workspace that inherits its parent profile."""
+    if msg.chat_jid in deps.workspaces:
+        return
+    metadata = msg.metadata or {}
+    parent_jid = metadata.get("discord_parent_chat_jid")
+    if not isinstance(parent_jid, str):
+        return
+    parent = deps.workspaces.get(parent_jid)
+    if parent is None:
+        return
+
+    from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
+
+    thread_name = metadata.get("discord_channel_name")
+    if not isinstance(thread_name, str) or not thread_name.strip():
+        thread_name = msg.chat_jid
+    profile = WorkspaceProfile(
+        jid=msg.chat_jid,
+        name=f"{parent.name}/{thread_name}",
+        folder=dynamic_thread_folder(parent.folder, msg.chat_jid),
+        trigger=parent.trigger,
+        container_config=parent.container_config,
+        security=parent.security,
+        is_admin=parent.is_admin,
+        added_at=datetime.now(UTC).isoformat(),
+    )
+    await deps._register_workspace(profile)
+    logger.info(
+        "Registered dynamic thread workspace",
+        jid=msg.chat_jid,
+        parent_jid=parent_jid,
+        folder=profile.folder,
+    )

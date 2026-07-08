@@ -5,6 +5,7 @@ from __future__ import annotations
 from pynchy.config.merge import ResolvedSandboxConfig, merge_sandbox_config
 from pynchy.config.models import (
     SandboxProfileConfig,
+    ServiceTrustTomlConfig,
     WorkspaceConfig,
     WorkspaceSecurityTomlConfig,
 )
@@ -161,11 +162,13 @@ class TestOverrideSemantics:
         assert result.git_policy == "pull-request"
 
     def test_security_override(self):
-        sec = WorkspaceSecurityTomlConfig(contains_secrets=True)
+        sec = WorkspaceSecurityTomlConfig(
+            services={"email": ServiceTrustTomlConfig(public_source=True)}
+        )
         profile = _profile(security=sec)
         result = merge_sandbox_config(None, profile, _sandbox())
         assert result.security is sec
-        assert result.security.contains_secrets is True
+        assert "email" in result.security.services
 
     def test_repo_access_from_profile(self):
         profile = _profile(repo_access="org/repo")
@@ -177,6 +180,17 @@ class TestOverrideSemantics:
         sandbox = _sandbox(repo_access="org/repo-b")
         result = merge_sandbox_config(None, profile, sandbox)
         assert result.repo_access == "org/repo-b"
+
+    def test_model_sandbox_overrides_profile(self):
+        profile = _profile(model="chatgpt/gpt-5.3-codex")
+        sandbox = _sandbox(model="chatgpt/gpt-5.3-codex-spark")
+        result = merge_sandbox_config(None, profile, sandbox)
+        assert result.model == "chatgpt/gpt-5.3-codex-spark"
+
+    def test_fallback_model_from_profile(self):
+        profile = _profile(fallback_model="chatgpt/gpt-5.3-codex-spark")
+        result = merge_sandbox_config(None, profile, _sandbox())
+        assert result.fallback_model == "chatgpt/gpt-5.3-codex-spark"
 
     def test_context_mode_from_sandbox(self):
         sandbox = _sandbox(context_mode="isolated")

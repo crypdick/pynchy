@@ -765,11 +765,19 @@ class TestTaskAdvanced:
         await create_task(replace(self._TASK_TEMPLATE, id="t1", next_run=None))
 
         # Try updating a field that isn't in the allowed set
-        await update_task("t1", {"chat_jid": "hacked@g.us", "status": "paused"})
+        await update_task("t1", {"invalid_field": "hacked", "status": "paused"})
         task = await get_task_by_id("t1")
         assert task is not None
         assert task.status == "paused"
-        assert task.chat_jid == "group@g.us"  # unchanged
+        assert not hasattr(task, "invalid_field")
+
+    async def test_update_task_allows_chat_jid(self):
+        await create_task(replace(self._TASK_TEMPLATE, id="t1", next_run=None))
+
+        await update_task("t1", {"chat_jid": "new@g.us"})
+        task = await get_task_by_id("t1")
+        assert task is not None
+        assert task.chat_jid == "new@g.us"
 
     async def test_update_task_noop_for_empty_fields(self):
         await create_task(replace(self._TASK_TEMPLATE, id="t1", next_run=None))

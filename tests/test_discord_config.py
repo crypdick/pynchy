@@ -12,7 +12,16 @@ import pytest
 from pydantic import ValidationError
 
 from pynchy.config import Settings
-from pynchy.config.models import ConnectionsConfig, DiscordConnectionConfig, WorkspaceConfig
+from pynchy.config.models import (
+    ConnectionsConfig,
+    DiscordConnectionConfig,
+    ProfileConfig,
+    WorkspaceConfig,
+)
+
+
+def _profiles():
+    return {"admin": ProfileConfig(is_admin=True)}
 
 
 def test_minimal_connection_defaults():
@@ -96,8 +105,10 @@ def test_settings_accept_discord_workspace_channel_ref():
                 )
             }
         ),
-        sandbox={
+        profiles=_profiles(),
+        workspaces={
             "discord-admin": WorkspaceConfig(
+                profile="admin",
                 chat="connection.discord.mybot.chat.123.channels.456",
             )
         },
@@ -131,8 +142,10 @@ def test_settings_accept_discord_workspace_name_ref():
                 )
             }
         ),
-        sandbox={
+        profiles=_profiles(),
+        workspaces={
             "discord-admin": WorkspaceConfig(
+                profile="admin",
                 chat="connection.discord.mybot.chat.synapse.channels.code-improver",
             )
         },
@@ -155,8 +168,10 @@ def test_settings_accept_discord_workspace_direct_ref_when_user_allowed():
                 )
             }
         ),
-        sandbox={
+        profiles=_profiles(),
+        workspaces={
             "discord-dm": WorkspaceConfig(
+                profile="admin",
                 chat="connection.discord.mybot.chat.direct.42",
             )
         },
@@ -178,8 +193,10 @@ def test_settings_reject_discord_workspace_channel_ref_missing_config():
                     )
                 }
             ),
-            sandbox={
+            profiles=_profiles(),
+            workspaces={
                 "discord-admin": WorkspaceConfig(
+                    profile="admin",
                     chat="connection.discord.mybot.chat.123.channels.456",
                 )
             },

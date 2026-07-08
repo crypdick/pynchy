@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pluggy
+import pytest
 from conftest import make_settings
 
 from pynchy.config import WorkspaceConfig
-from pynchy.config.models import SandboxProfileConfig
+from pynchy.config.models import ProfileConfig, SandboxProfileConfig
 from pynchy.host.orchestrator.workspace_config import (
     configure_plugin_workspaces,
     get_repo_access,
     get_repo_access_groups,
     load_workspace_config,
+    reconcile_workspaces,
 )
+from pynchy.types import InboundFetchResult, OutboundEvent
 
 
 class _FakePM(pluggy.PluginManager):
@@ -23,6 +26,36 @@ class _FakePM(pluggy.PluginManager):
 
     def __init__(self, hook: SimpleNamespace) -> None:
         self.hook = hook
+
+
+class _FakeChannel:
+    name = "connection.slack.main"
+    formatter = object()
+
+    def __init__(self, jid: str) -> None:
+        self.jid = jid
+
+    async def connect(self) -> None: ...
+
+    async def send_event(self, jid: str, event: OutboundEvent) -> None: ...
+
+    def is_connected(self) -> bool:
+        return True
+
+    def owns_jid(self, jid: str) -> bool:
+        return jid == self.jid
+
+    async def disconnect(self) -> None: ...
+
+    async def reconnect(self) -> None: ...
+
+    def prepare_shutdown(self) -> None: ...
+
+    async def fetch_inbound_since(self, channel_jid: str, since: str) -> InboundFetchResult:
+        return InboundFetchResult(messages=[])
+
+    async def resolve_chat_jid(self, chat_name: str) -> str:
+        return self.jid
 
 
 def _settings_with_workspaces(
@@ -45,7 +78,7 @@ class TestLoadWorkspaceConfig:
         with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
             assert load_workspace_config("missing") is None
 
-    def test_applies_workspace_defaults(self):
+    def test_load_workspace_config_does_not_apply_inherited_defaults(self):
         s = _settings_with_workspaces(
             workspaces={"team": WorkspaceConfig(name="test", is_admin=False)},
             defaults=SandboxProfileConfig(trigger="always", context_mode="isolated"),
@@ -55,7 +88,7 @@ class TestLoadWorkspaceConfig:
 
         assert cfg is not None
         assert cfg.trigger is None  # trigger cascaded in resolve_channel_config, not here
-        assert cfg.context_mode == "isolated"
+        assert cfg.context_mode is None
         assert cfg.is_periodic is False
 
     def test_keeps_explicit_workspace_fields(self):
@@ -160,3 +193,32 @@ class TestGetRepoAccessGroups:
         assert "owner/pynchy" in result
         assert set(result["owner/pynchy"]) == {"code-improver", "other-project"}
         assert "plain" not in str(result)
+
+
+@pytest.mark.asyncio
+async def test_reconcile_registers_profile_admin_and_contains_secrets():
+    s = make_settings(
+        profiles={"admin": ProfileConfig(is_admin=True, contains_secrets=True)},
+        workspaces={
+            "admin": WorkspaceConfig(
+                profile="admin",
+                chat="connection.slack.main.chat.admin",
+            )
+        },
+    )
+    channel = _FakeChannel("slack:CADMIN")
+    register = AsyncMock()
+
+    with (
+        patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s),
+        patch(
+            "pynchy.host.orchestrator.workspace_config.get_all_tasks",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+    ):
+        await reconcile_workspaces({}, [channel], register)
+
+    profile = register.await_args.args[0]
+    assert profile.is_admin is True
+    assert profile.security.contains_secrets is True

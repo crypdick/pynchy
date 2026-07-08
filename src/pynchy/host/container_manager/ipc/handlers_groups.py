@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, Protocol, cast, runtime_checkable
 
 from croniter import croniter
 
@@ -26,6 +26,7 @@ from pynchy.types import ScheduledTask, WorkspaceProfile
 from pynchy.utils import compute_next_run
 
 
+@runtime_checkable
 class _CreateGroupChannel(Protocol):
     name: str
 

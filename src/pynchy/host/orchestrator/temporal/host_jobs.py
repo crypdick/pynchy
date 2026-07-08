@@ -53,7 +53,8 @@ async def run_config_host_cron_job(job_name: str) -> str:
             cwd=command_cwd,
             timeout_seconds=job.timeout_seconds,
         )
-        log_shell_result(result, label="Config host cron job", job=job_name)
+        if not (job.quiet_on_success and result.returncode == 0):
+            log_shell_result(result, label="Config host cron job", job=job_name)
     except Exception as exc:  # allow: exception-handling - record activity failure
         _record_activity_result(job_name, "error", str(exc))
         raise

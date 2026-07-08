@@ -1,9 +1,11 @@
 """Tests for trust-model config parsing."""
 
 import pytest
+from conftest import make_settings
 from pydantic import ValidationError
 
 from pynchy.config.models import (
+    ProfileConfig,
     ServiceTrustTomlConfig,
     WorkspaceConfig,
     WorkspaceSecurityTomlConfig,
@@ -51,7 +53,6 @@ def test_service_trust_toml_invalid_value():
 def test_workspace_security_toml_defaults():
     cfg = WorkspaceSecurityTomlConfig()
     assert cfg.services == {}
-    assert cfg.contains_secrets is False
 
 
 def test_workspace_service_override_only_forbidden():
@@ -71,9 +72,19 @@ def test_workspace_config_has_security():
     cfg = WorkspaceConfig(
         security=WorkspaceSecurityTomlConfig(
             services={"email": ServiceTrustTomlConfig(public_source=True)},
-            contains_secrets=True,
         ),
     )
     assert cfg.security is not None
     assert "email" in cfg.security.services
-    assert cfg.security.contains_secrets is True
+
+
+def test_profile_contains_secrets_feeds_runtime_security(monkeypatch):
+    from pynchy.host.container_manager.security.gate import resolve_security
+
+    settings = make_settings(
+        profiles={"worker": ProfileConfig(contains_secrets=True)},
+        workspaces={"research": WorkspaceConfig(profile="worker")},
+    )
+    monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
+
+    assert resolve_security("research").contains_secrets is True

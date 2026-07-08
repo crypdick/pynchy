@@ -27,7 +27,7 @@ Add a chrome profile and gdrive instance to `config.toml`:
 ```toml
 chrome_profiles = ["mycompany"]
 
-[mcp_servers.gdrive.mycompany]
+[mcp.gdrive.mycompany]
 chrome_profile = "mycompany"
 ```
 
@@ -67,10 +67,10 @@ Each chrome profile maps to one Google account. To access Drive from multiple ac
 ```toml
 chrome_profiles = ["mycompany", "work"]
 
-[mcp_servers.gdrive.mycompany]
+[mcp.gdrive.mycompany]
 chrome_profile = "mycompany"
 
-[mcp_servers.gdrive.work]
+[mcp.gdrive.work]
 chrome_profile = "work"
 
 [workspaces.mycompany-1]
@@ -103,7 +103,7 @@ rm -f data/playwright-profiles/google/SingletonCookie
 
 ## Migration from old gdrive setup
 
-If you previously used the old `[mcp_servers.gdrive]` config with Docker named volumes:
+If you previously used the old `[mcp.gdrive]` config with Docker named volumes:
 
 1. Create the chrome profile directory and move credentials:
    ```bash
@@ -113,8 +113,8 @@ If you previously used the old `[mcp_servers.gdrive]` config with Docker named v
 
 2. Update `config.toml`:
    - Add `chrome_profiles = ["mycompany"]`
-   - Remove the old `[mcp_servers.gdrive]` section (plugin provides it now)
-   - Add instance: `[mcp_servers.gdrive.mycompany]` with `chrome_profile = "mycompany"`
+   - Remove the old `[mcp.gdrive]` section (plugin provides it now)
+   - Add instance: `[mcp.gdrive.mycompany]` with `chrome_profile = "mycompany"`
    - Update workspace: `mcp_servers = ["gdrive.mycompany"]`
 
 3. Re-authorize (tokens in the old Docker volume won't carry over):

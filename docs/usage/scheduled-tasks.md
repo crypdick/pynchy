@@ -6,7 +6,7 @@ Two kinds: **agent tasks** (run a Claude agent in a container) and **host tasks*
 
 ## Agent Tasks
 
-Agent tasks spin up a containerized Claude agent on schedule. The agent gets a prompt and uses its normal tools (Bash, MCP, etc.), as if a user had sent the message. Any group can schedule agent tasks for itself; the admin group can schedule them for any group.
+Agent tasks spin up a containerized agent on schedule. The agent gets a prompt and uses its normal tools (Bash, MCP, etc.), as if a user had sent the message. Config-backed jobs target a named workspace.
 
 ### Context Modes
 
@@ -16,6 +16,67 @@ Agent tasks spin up a containerized Claude agent on schedule. The agent gets a p
 | `isolated` | Runs in a fresh session each time |
 
 Agent tasks can optionally send messages to their group via `send_message`, or finish silently. Each run is logged to the database with duration and result. If the task has `pynchy_repo_access`, worktree commits merge and push after a successful run.
+
+### Daily Triage Memo
+
+A daily triage memo is a config-backed periodic agent that posts a short status memo to an explicit Pynchy channel. Keep it read-only by prompt and use an isolated context plus a cheaper profile model override:
+
+```toml
+[profiles.pynchy-admin]
+is_admin = true
+context_mode = "isolated"
+model = "chatgpt/gpt-5.3-codex-spark"
+
+[workspaces.admin]
+profile = "pynchy-admin"
+chat = "connection.slack.synapse.chat.pynchy"
+
+[jobs.daily-triage]
+enabled = true
+schedule = "0 8 * * *"
+workspace = "admin"
+prompt = """
+Produce the daily Pynchy triage memo.
+
+Review recent scheduled task health, failed runs, Temporal scheduler status,
+stale PR/branch/CI signals if available, and recent Pynchy/operator notes.
+Keep the run read-only except for writing a dated memo/report note if useful.
+Do not edit config, cron jobs, branches, PRs, or external services.
+
+Send a concise memo to this Pynchy channel every run:
+- Top 3 findings or "no urgent findings".
+- Any failing or paused scheduled work.
+- Suggested next actions with concrete repo paths, URLs, or commands when useful.
+- Links/paths to any full report you wrote.
+"""
+```
+
+Replace the `chat` value with the real Pynchy channel/topic ref for the deployment. The example model name must exist in the active LiteLLM config; for Codex workspaces backed by LiteLLM's ChatGPT subscription provider, keep the `chatgpt/...` prefix.
+
+One-time agent jobs use `at` instead of `schedule`:
+
+```toml
+[jobs.cancel-youtube-premium]
+enabled = true
+at = "2026-07-08T18:30:00-07:00"
+workspace = "admin"
+prompt = """
+Open a browser, log into YouTube, and cancel the YouTube Premium subscription.
+"""
+```
+
+Host jobs use the reserved workspace name `host`:
+
+```toml
+[jobs.backup-runtime-dbs]
+enabled = true
+schedule = "0 3 * * *"
+workspace = "host"
+command = "scripts/backup_runtime_dbs.sh"
+cwd = "."
+timeout_seconds = 600
+quiet_on_success = true
+```
 
 ## Temporal Scheduler
 
@@ -103,18 +164,20 @@ Two ways to define them:
 
 ### Config file (`config.toml`)
 
-Static cron jobs defined in config. Good for always-on maintenance jobs that are part of the deployment.
+Static host jobs defined in config. Good for always-on maintenance jobs that are part of the deployment.
 
 ```toml
-[cron_jobs.backup_db]
+[jobs.backup_db]
+enabled = true
+workspace = "host"
 schedule = "0 3 * * *"          # daily at 3am
 command = "scripts/backup.sh"
 cwd = "."                       # relative to project root (optional)
 timeout_seconds = 600           # default: 600
-enabled = true                  # default: true
+quiet_on_success = true         # suppress clean-run output logging
 ```
 
-Config cron jobs only support cron expressions. Pynchy reconciles enabled config cron jobs into Temporal Schedules, and Temporal triggers host-process activities for each run. They don't show up in `list_tasks` (static config, not database entries).
+Config host jobs use `workspace = "host"` and currently support cron expressions. Pynchy reconciles enabled config host jobs into Temporal Schedules, and Temporal triggers host-process activities for each run. They don't show up in `list_tasks` (static config, not database entries).
 
 ### MCP tool (`schedule_task` with `task_type: "host"`)
 

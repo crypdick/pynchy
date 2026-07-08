@@ -1,8 +1,7 @@
-"""Three-tier sandbox config merge: universal < profile < per-sandbox.
+"""Three-tier workspace profile config merge: universal < profile < workspace.
 
-Produces a fully-resolved :class:`ResolvedSandboxConfig` by cascading
-``sandbox_universal``, an optional ``sandbox_profiles.<name>``, and the
-per-sandbox :class:`WorkspaceConfig`.
+Produces a fully-resolved config by cascading ``universal``, an optional
+``profiles.<name>``, and the per-workspace :class:`WorkspaceConfig`.
 
 Union fields (directives, skills, mcp_servers) are merged across all tiers
 with order-preserved deduplication.  Override fields use most-specific-wins
@@ -15,7 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from pynchy.config.models import (
-    SandboxProfileConfig,
+    ProfileConfig,
     WorkspaceConfig,
     WorkspaceSecurityTomlConfig,
 )
@@ -33,10 +32,14 @@ _HARDCODED_DEFAULTS: dict[str, Any] = {
     "git_policy": "merge-to-main",
     "security": None,
     "repo_access": None,
+    "model": None,
+    "fallback_model": None,
+    "is_admin": False,
+    "contains_secrets": False,
 }
 
 # Fields that use union (list-merge) semantics.
-_UNION_FIELDS = ("directives", "skills", "mcp_servers")
+_UNION_FIELDS = ("tags", "directives", "skills", "mcp_servers")
 
 # Fields that use override (most-specific-wins) semantics.
 _OVERRIDE_FIELDS = tuple(_HARDCODED_DEFAULTS.keys())
@@ -44,12 +47,13 @@ _OVERRIDE_FIELDS = tuple(_HARDCODED_DEFAULTS.keys())
 
 @dataclass(frozen=True)
 class ResolvedSandboxConfig:
-    """Fully-resolved sandbox config after three-tier merge."""
+    """Fully-resolved workspace config after three-tier merge."""
 
     # Union fields
     directives: list[str]
     skills: list[str]
     mcp_servers: list[str]
+    tags: list[str]
 
     # Override fields
     context_mode: str
@@ -62,10 +66,13 @@ class ResolvedSandboxConfig:
     git_policy: str
     security: WorkspaceSecurityTomlConfig | None
     repo_access: str | None
+    model: str | None
+    fallback_model: str | None
+    is_admin: bool
+    contains_secrets: bool
 
     # Pass-through from WorkspaceConfig (not overridable)
     chat: str | None
-    is_admin: bool
     schedule: str | None
     prompt: str | None
     name: str | None
@@ -85,8 +92,8 @@ def _deduplicate(items: list[str]) -> list[str]:
 
 def _resolve_union(
     field: str,
-    universal: SandboxProfileConfig | None,
-    profile: SandboxProfileConfig | None,
+    universal: ProfileConfig | None,
+    profile: ProfileConfig | None,
     sandbox: WorkspaceConfig,
 ) -> list[str]:
     """Merge a union field across three tiers with deduplication."""
@@ -94,7 +101,7 @@ def _resolve_union(
     for tier, label in (
         (universal, "universal"),
         (profile, "profile"),
-        (sandbox, "sandbox"),
+        (sandbox, "workspace"),
     ):
         if tier is None:
             continue
@@ -112,14 +119,14 @@ def _resolve_union(
 
 def _resolve_override(
     field: str,
-    universal: SandboxProfileConfig | None,
-    profile: SandboxProfileConfig | None,
+    universal: ProfileConfig | None,
+    profile: ProfileConfig | None,
     sandbox: WorkspaceConfig,
 ) -> Any:
     """Resolve an override field: most-specific explicitly-set value wins."""
     # Walk from most-specific to least-specific.
-    tiers: list[tuple[SandboxProfileConfig | WorkspaceConfig | None, str]] = [
-        (sandbox, "sandbox"),
+    tiers: list[tuple[ProfileConfig | WorkspaceConfig | None, str]] = [
+        (sandbox, "workspace"),
         (profile, "profile"),
         (universal, "universal"),
     ]
@@ -170,21 +177,21 @@ def _resolve_override(
 
 
 def merge_sandbox_config(
-    universal: SandboxProfileConfig | None,
-    profile: SandboxProfileConfig | None,
+    universal: ProfileConfig | None,
+    profile: ProfileConfig | None,
     sandbox: WorkspaceConfig,
 ) -> ResolvedSandboxConfig:
-    """Cascade sandbox_universal < sandbox_profile < per-sandbox config.
+    """Cascade universal < profile < workspace config.
 
     Parameters
     ----------
     universal:
-        The ``[sandbox_universal]`` section, or ``None`` if absent.
+        The ``[universal]`` section, or ``None`` if absent.
     profile:
-        The resolved ``sandbox_profiles.<name>`` section, or ``None`` if no
-        profile is referenced.
+        The resolved ``profiles.<name>`` section, or ``None`` if no profile is
+        referenced.
     sandbox:
-        The per-sandbox ``WorkspaceConfig``.
+        The per-workspace ``WorkspaceConfig``.
 
     Returns
     -------
@@ -206,6 +213,7 @@ def merge_sandbox_config(
         directives=union_results["directives"],
         skills=union_results["skills"],
         mcp_servers=union_results["mcp_servers"],
+        tags=union_results["tags"],
         # Override
         context_mode=override_results["context_mode"],
         access=override_results["access"],
@@ -217,9 +225,12 @@ def merge_sandbox_config(
         git_policy=override_results["git_policy"],
         security=override_results["security"],
         repo_access=override_results["repo_access"],
+        model=override_results["model"],
+        fallback_model=override_results["fallback_model"],
+        is_admin=override_results["is_admin"],
+        contains_secrets=override_results["contains_secrets"],
         # Pass-through
         chat=sandbox.chat,
-        is_admin=sandbox.is_admin if sandbox.is_admin is not None else False,
         schedule=sandbox.schedule,
         prompt=sandbox.prompt,
         name=sandbox.name,

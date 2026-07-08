@@ -1,15 +1,15 @@
 """Workspace configuration — reads from config.toml via Settings.
 
-Workspaces are defined in [sandbox.<folder_name>] sections of config.toml.
+Workspaces are defined in [workspaces.<name>] sections of config.toml.
 Runtime creation (e.g. via IPC) writes sections using add_workspace_to_toml().
 """
 
 from __future__ import annotations
 
-# FIXME: Rename "workspace" -> "sandbox" across config + codebase.
+import re
 import uuid
 from collections.abc import Awaitable, Callable, Iterable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -18,12 +18,17 @@ from pynchy.config.merge import ResolvedSandboxConfig
 from pynchy.config.models import WorkspaceConfig
 from pynchy.config.refs import connection_ref_from_parts, parse_chat_ref
 from pynchy.config.settings import Settings
+from pynchy.host.orchestrator.config_jobs import reconcile_agent_jobs
+from pynchy.host.orchestrator.workspace_registration import (
+    ensure_workspace_registered,
+    resolve_display_name,
+    sync_workspace_profile,
+)
 from pynchy.logger import logger
 from pynchy.state import (
     create_task,
     get_active_task_for_group,
     get_all_tasks,
-    set_workspace_profile,
     update_task,
 )
 from pynchy.types import Channel, ScheduledTask, WorkspaceProfile
@@ -41,6 +46,24 @@ class WorkspaceSpec:
 
 
 _plugin_workspace_specs: dict[str, WorkspaceSpec] = {}
+_DYNAMIC_THREAD_DELIMITER = "__thread_"
+
+
+def _safe_folder_fragment(value: str) -> str:
+    fragment = re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-")
+    return fragment or "thread"
+
+
+def dynamic_thread_folder(parent_folder: str, thread_jid: str) -> str:
+    """Return the isolated runtime folder for a dynamic thread workspace."""
+    return f"{parent_folder}{_DYNAMIC_THREAD_DELIMITER}{_safe_folder_fragment(thread_jid)}"
+
+
+def _parent_folder_for_dynamic_thread(folder: str) -> str | None:
+    parent, sep, _child = folder.partition(_DYNAMIC_THREAD_DELIMITER)
+    if not sep or not parent:
+        return None
+    return parent
 
 
 def configure_plugin_workspaces(plugin_manager: pluggy.PluginManager | None) -> None:
@@ -86,108 +109,20 @@ def _workspace_specs() -> dict[str, WorkspaceSpec]:
     return merged
 
 
-async def _resolve_configured_jid(
-    *,
-    config: WorkspaceConfig,
-    channels: list[Channel],
-    allow_create: bool,
-) -> str | None:
-    chat_ref = parse_chat_ref(config.chat)
-    if chat_ref is None:
-        logger.warning("Invalid chat ref in workspace config", chat=config.chat)
-        return None
-
-    connection_name = connection_ref_from_parts(chat_ref.platform, chat_ref.name)
-    channel = next((ch for ch in channels if getattr(ch, "name", None) == connection_name), None)
-    if channel is None:
-        logger.warning(
-            "Configured connection not found for workspace",
-            connection=connection_name,
-        )
-        return None
-
-    jid = await _resolved_chat_jid(channel, connection_name, chat_ref.chat)
-    channel_allows_create = bool(
-        allow_create or getattr(channel, "auto_provision_configured_chats", False)
-    )
-    if jid is None and channel_allows_create:
-        jid = await _created_chat_jid(channel, connection_name, chat_ref.chat)
-
-    if jid is None:
-        logger.warning(
-            "Chat not found for workspace",
-            connection=connection_name,
-            chat=chat_ref.chat,
-        )
-    return jid
-
-
-def _valid_jid(value: Any) -> str | None:
-    if not isinstance(value, str):
-        return None
-    stripped = value.strip()
-    if not stripped:
-        return None
-    return stripped
-
-
-async def _resolved_chat_jid(channel: Channel, connection_name: str, chat_name: str) -> str | None:
-    if not hasattr(channel, "resolve_chat_jid"):
-        return None
-
-    try:
-        return _valid_jid(await channel.resolve_chat_jid(chat_name))
-    except Exception as exc:
-        logger.warning(
-            "Failed to resolve chat JID",
-            connection=connection_name,
-            chat=chat_name,
-            err=str(exc),
-        )
-        return None
-
-
-async def _created_chat_jid(channel: Channel, connection_name: str, chat_name: str) -> str | None:
-    if not hasattr(channel, "create_group"):
-        return None
-
-    try:
-        jid = _valid_jid(await channel.create_group(chat_name))
-    except Exception as exc:
-        logger.warning(
-            "Failed to create chat group for workspace",
-            connection=connection_name,
-            chat=chat_name,
-            err=str(exc),
-        )
-        return None
-
-    if jid is not None:
-        logger.info(
-            "Created chat group for workspace",
-            connection=connection_name,
-            chat=chat_name,
-            jid=jid,
-        )
-    return jid
-
-
 def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
     """Read workspace config for a group from Settings.
 
-    Returns None if the group has no [sandbox.<folder>] section in config.toml.
+    Returns None if the group has no [workspaces.<name>] section in config.toml.
     """
     specs = _workspace_specs()
     spec = specs.get(group_folder)
     if spec is None:
+        parent_folder = _parent_folder_for_dynamic_thread(group_folder)
+        if parent_folder is not None:
+            spec = specs.get(parent_folder)
+    if spec is None:
         return None
-    s = get_settings()
     config = spec.config
-
-    # Apply sandbox_universal defaults for None fields
-    if config.context_mode is None:
-        default_context_mode = s.sandbox_universal.context_mode or "group"
-        config = config.model_copy(update={"context_mode": default_context_mode})
 
     logger.debug(
         "Loaded workspace config",
@@ -200,7 +135,7 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
 
 
 def load_resolved_config(group_folder: str) -> ResolvedSandboxConfig | None:
-    """Load and merge the full config cascade for a sandbox.
+    """Load and merge the full config cascade for a workspace.
 
     Returns None if the group has no config.
     """
@@ -213,16 +148,16 @@ def load_resolved_config(group_folder: str) -> ResolvedSandboxConfig | None:
     s = get_settings()
     profile = None
     if ws.profile:
-        profile = s.sandbox_profiles.get(ws.profile)
+        profile = s.profiles.get(ws.profile)
 
-    return merge_sandbox_config(s.sandbox_universal, profile, ws)
+    return merge_sandbox_config(s.universal, profile, ws)
 
 
 def get_repo_access(group_folder: str) -> str | None:
     """Return the repo_access slug for a group folder, or None if not configured.
 
     Uses the three-tier merge cascade so that repo_access inherited from a
-    sandbox profile is correctly resolved.
+    profile is correctly resolved.
     """
     resolved = load_resolved_config(group_folder)
     slug = resolved.repo_access if resolved else None
@@ -238,7 +173,7 @@ def get_repo_access_groups(folders: Iterable[str]) -> dict[str, list[str]]:
     """Return a mapping of slug → list of group folder names with repo_access.
 
     Uses the three-tier merge cascade so that repo_access inherited from a
-    sandbox profile is correctly resolved.
+    profile is correctly resolved.
     """
     result: dict[str, list[str]] = {}
     for folder in folders:
@@ -246,101 +181,6 @@ def get_repo_access_groups(folders: Iterable[str]) -> dict[str, list[str]]:
         if slug:
             result.setdefault(slug, []).append(folder)
     return result
-
-
-def _resolve_display_name(
-    folder: str, config: WorkspaceConfig, resolved_repo_access: str | None
-) -> str:
-    if config.name:
-        return config.name
-    if resolved_repo_access:
-        # Slack channel names can't contain slashes — use double-dash convention
-        return resolved_repo_access.replace("/", "--")
-    return folder.replace("-", " ").title()
-
-
-async def _ensure_workspace_registered(
-    folder: str,
-    config: WorkspaceConfig,
-    display_name: str,
-    workspaces: dict[str, WorkspaceProfile],
-    folder_to_jid: dict[str, str],
-    channels: list[Channel],
-    s: Settings,
-    register_fn: Callable[[WorkspaceProfile], Awaitable[None]],
-) -> str | None:
-    """Ensure folder is registered to its configured chat. Returns the resolved jid, or None if unavailable."""
-    from pynchy.types import WorkspaceProfile
-
-    jid = folder_to_jid.get(folder)
-    chat_ref = parse_chat_ref(config.chat)
-    connection_name = (
-        connection_ref_from_parts(chat_ref.platform, chat_ref.name) if chat_ref else ""
-    )
-    allow_create = bool(
-        s.command_center.connection and connection_name == s.command_center.connection
-    )
-
-    expected_jid = await _resolve_configured_jid(
-        config=config,
-        channels=channels,
-        allow_create=allow_create,
-    )
-
-    if jid is None:
-        if expected_jid is None:
-            logger.warning("Workspace chat unavailable, skipping registration", folder=folder)
-            return None
-        jid = expected_jid
-        profile = WorkspaceProfile(
-            jid=jid,
-            name=display_name,
-            folder=folder,
-            trigger=f"@{s.agent.name}",
-            added_at=datetime.now(UTC).isoformat(),
-            is_admin=config.is_admin or False,
-        )
-        await register_fn(profile)
-        folder_to_jid[folder] = jid
-        logger.info(
-            "Registered workspace for configured chat",
-            name=display_name,
-            folder=folder,
-            is_admin=config.is_admin or False,
-        )
-    elif expected_jid and jid != expected_jid:
-        logger.warning(
-            "Workspace JID mismatch with configured chat",
-            folder=folder,
-            registered_jid=jid,
-            expected_jid=expected_jid,
-        )
-
-    return jid
-
-
-async def _sync_workspace_profile(
-    jid: str | None,
-    workspaces: dict[str, WorkspaceProfile],
-    folder: str,
-    display_name: str,
-    config: WorkspaceConfig,
-) -> None:
-    """Update the stored workspace profile if display name or admin flag changed."""
-    if jid is None or jid not in workspaces:
-        return
-    profile = workspaces[jid]
-    changed: dict[str, Any] = {}
-    if profile.name != display_name:
-        changed["name"] = display_name
-    if profile.is_admin != (config.is_admin or False):
-        changed["is_admin"] = config.is_admin or False
-    if not changed:
-        return
-    updated = replace(profile, **changed)
-    workspaces[jid] = updated
-    await set_workspace_profile(updated)
-    logger.info("Updated workspace profile", folder=folder, changed=list(changed.keys()))
 
 
 async def _reconcile_periodic_task(
@@ -402,12 +242,18 @@ async def _reconcile_periodic_task(
     )
 
 
-async def _pause_orphaned_tasks(specs: dict[str, WorkspaceSpec]) -> None:
+async def _pause_orphaned_tasks(
+    specs: dict[str, WorkspaceSpec], desired_job_task_ids: set[str]
+) -> None:
     """Pause active scheduled tasks whose workspace is not periodic/configured."""
     periodic_folders = {f for f, sp in specs.items() if sp.config.is_periodic}
     all_tasks = await get_all_tasks()
     for task in all_tasks:
-        if task.status == "active" and task.group_folder not in periodic_folders:
+        if task.status != "active":
+            continue
+        if task.id in desired_job_task_ids:
+            continue
+        if task.group_folder not in periodic_folders:
             await update_task(task.id, {"status": "paused"})
             logger.info(
                 "Paused orphaned scheduled task",
@@ -453,17 +299,28 @@ async def reconcile_workspaces(
     reconciled = 0
     for folder, spec in specs.items():
         config = spec.config
-        context_mode = config.context_mode or s.sandbox_universal.context_mode or "group"
-        resolved_repo_access = get_repo_access(folder)
-        display_name = _resolve_display_name(folder, config, resolved_repo_access)
+        resolved = load_resolved_config(folder)
+        if resolved is None:
+            continue
+        context_mode = resolved.context_mode
+        resolved_repo_access = resolved.repo_access
+        display_name = resolve_display_name(folder, config, resolved_repo_access)
 
-        jid = await _ensure_workspace_registered(
-            folder, config, display_name, workspaces, folder_to_jid, channels, s, register_fn
+        jid = await ensure_workspace_registered(
+            folder,
+            config,
+            resolved,
+            display_name,
+            workspaces,
+            folder_to_jid,
+            channels,
+            s,
+            register_fn,
         )
         if jid is None:
             continue
 
-        await _sync_workspace_profile(jid, workspaces, folder, display_name, config)
+        await sync_workspace_profile(jid, workspaces, folder, display_name, config, resolved)
 
         if not config.is_periodic:
             reconciled += 1
@@ -475,7 +332,8 @@ async def reconcile_workspaces(
     if reconciled:
         logger.info("Workspaces reconciled", count=reconciled)
 
-    await _pause_orphaned_tasks(specs)
+    desired_job_task_ids = await reconcile_agent_jobs(workspaces, s, load_resolved_config)
+    await _pause_orphaned_tasks(specs, desired_job_task_ids)
     await _remove_orphaned_workspaces(specs, workspaces, unregister_fn)
 
 
@@ -485,9 +343,9 @@ async def reconcile_workspaces(
 
 
 def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
-    """Programmatically add a sandbox to config.toml using tomlkit.
+    """Programmatically add a workspace to config.toml using tomlkit.
 
-    Preserves existing comments and formatting. Creates [sandbox.<folder>]
+    Preserves existing comments and formatting. Creates [workspaces.<folder>]
     section. Resets the settings cache so next get_settings() picks it up.
     """
     from pathlib import Path
@@ -498,15 +356,15 @@ def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
     toml_path = Path("config.toml")
     doc = tomlkit.parse(toml_path.read_text()) if toml_path.exists() else tomlkit.document()
 
-    if "sandbox" not in doc:
-        doc.add("sandbox", tomlkit.table(is_super_table=True))
+    if "workspaces" not in doc:
+        doc.add("workspaces", tomlkit.table(is_super_table=True))
 
     ws_table = tomlkit.table()
     data = config.model_dump(exclude_none=True, exclude_defaults=True)
     for key, value in data.items():
         ws_table.add(key, value)
 
-    doc["sandbox"][folder] = ws_table  # type: ignore[index]
+    doc["workspaces"][folder] = ws_table  # type: ignore[index]
 
     # Ensure the referenced chat exists under [connection.*] if possible.
     chat_ref = parse_chat_ref(config.chat)

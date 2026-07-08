@@ -321,8 +321,8 @@ class CommandCenterConfig(_StrictModel):
     connection: ValidatedConnectionRef | None = None
 
 
-class SandboxProfileConfig(_StrictModel):
-    """Overridable sandbox config — used for sandbox_universal and sandbox_profiles.
+class ProfileConfig(_StrictModel):
+    """Reusable workspace profile config.
 
     All fields default to None ("no opinion at this tier, inherit from next").
     Use model_fields_set to distinguish "explicitly set" from "defaulted to None".
@@ -332,6 +332,7 @@ class SandboxProfileConfig(_StrictModel):
     """
 
     # Union fields (merged across tiers, deduplicated)
+    tags: list[str] | None = None
     directives: list[str] | None = None
     skills: list[str] | None = None
     mcp_servers: list[str] | None = None
@@ -347,6 +348,13 @@ class SandboxProfileConfig(_StrictModel):
     git_policy: Literal["merge-to-main", "pull-request"] | None = None
     security: WorkspaceSecurityTomlConfig | None = None
     repo_access: str | None = None
+    model: str | None = None
+    fallback_model: str | None = None
+    is_admin: bool | None = None
+    contains_secrets: bool | None = None
+
+
+SandboxProfileConfig = ProfileConfig
 
 
 class ServiceTrustTomlConfig(_StrictModel):
@@ -375,7 +383,6 @@ class WorkspaceSecurityTomlConfig(_StrictModel):
     """Security profile in config.toml [workspaces.<name>.security]."""
 
     services: dict[str, ServiceTrustTomlConfig] = {}
-    contains_secrets: bool = False
 
 
 class RepoConfig(_StrictModel):
@@ -398,22 +405,21 @@ class RepoConfig(_StrictModel):
 
 
 class WorkspaceConfig(_StrictModel):
-    # FIXME: Rename "workspace" -> "sandbox" across config + codebase.
     name: str | None = None  # display name — optional, derived when omitted
-    profile: str | None = None  # sandbox_profiles.<name> reference
-    directives: list[str] | None = None  # directive names; convention: directives/<name>.md
+    profile: str | None = None  # profiles.<name> reference
+    directives: list[str] | None = None  # plugin/runtime directive names
     # TODO: Allow binding to a whole connection (not just a chat).
     chat: ValidatedChatRef | None = None  # connection.<platform>.<name>.chat.<chat>
     is_admin: bool | None = None  # None → not admin
     repo_access: str | None = None  # GitHub slug (owner/repo) from [repos.*]; None = no worktree
     schedule: str | None = None  # cron expression
     prompt: str | None = None  # prompt for scheduled tasks
-    context_mode: str | None = None  # None → use sandbox_universal
+    context_mode: str | None = None  # None → inherit from profile/universal
     security: WorkspaceSecurityTomlConfig | None = None  # Trust-based security profile
     skills: list[str] | None = None  # tier names and/or skill names; None = core only
     mcp_servers: list[str] | None = None  # server names + group names, set-unioned
     mcp: dict[str, dict[str, Any]] = {}  # {server_name: {key: value}} → per-MCP kwargs
-    # Channel access modes (None → inherit from sandbox_universal/profile)
+    # Channel access modes (None → inherit from profile/universal)
     access: Literal["read", "write", "readwrite"] | None = None
     mode: Literal["agent", "chat"] | None = None
     trust: bool | None = None
@@ -421,6 +427,8 @@ class WorkspaceConfig(_StrictModel):
     allowed_users: list[str] | None = None
     git_policy: Literal["merge-to-main", "pull-request"] | None = None  # None → merge-to-main
     idle_terminate: bool | None = None  # None → inherit from profile/universal (default: True)
+    model: str | None = None  # None → use [agent].model
+    fallback_model: str | None = None  # None → use [agent].fallback_model
 
     # A cron expression has no distinct parsed type worth carrying: croniter.is_valid
     # is cheap and compute_next_run re-instantiates croniter from the string anyway, so
@@ -476,6 +484,7 @@ class CronJobConfig(_StrictModel):
     cwd: str | None = None  # optional working directory (relative to project root or absolute)
     timeout_seconds: int = 600
     enabled: bool = True
+    quiet_on_success: bool = False
 
     # See WorkspaceConfig.validate_cron: cron stays a str-returning check because
     # croniter re-validation is cheap and there is no parsed type to carry downstream.

@@ -38,7 +38,7 @@ Profile fallback paths use the active workspace profile name, or `default` when 
 | Fallback memory notes | `systems/pynchy/profiles/{profile}/memory` |
 | Learned skills | `systems/pynchy/profiles/{profile}/skills` |
 
-Learned skills live under `systems/pynchy/profiles/{profile}/skills/<skill-name>/SKILL.md` and use the existing Pynchy skill format. Skill activation still follows workspace skill selection. Configure `skills = ["learned"]` or `skills = ["*"]` for a profile or sandbox to copy learned skills into future sessions.
+Learned skills live under `systems/pynchy/profiles/{profile}/skills/<skill-name>/SKILL.md` and use the existing Pynchy skill format. Skill activation still follows workspace skill selection. Configure `skills = ["learned"]` or `skills = ["*"]` for a profile or workspace to copy learned skills into future sessions.
 
 Learning packets live in a durable filesystem queue under `data/ipc/learning`. The queue uses pending, claimed, done, and error states so work can survive process restarts and another worker can reclaim expired jobs.
 

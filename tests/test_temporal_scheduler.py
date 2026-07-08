@@ -15,6 +15,7 @@ from pynchy.host.learning.packet_codec import packet_to_payload
 from pynchy.host.learning.packet_models import LearningPacket
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.types import HostJob, ScheduledTask
+from pynchy.utils import ShellResult
 
 
 class NullSchedulerDeps:
@@ -543,6 +544,34 @@ class TestTemporalSchedulerRuntime:
         assert schedule.spec.cron_expressions == ["15 3 * * *"]
         assert schedule.action.workflow == "ConfigHostCronWorkflow"
         assert schedule.action.args == ["backup_db"]
+
+    @pytest.mark.asyncio
+    async def test_quiet_success_config_host_job_suppresses_success_output_log(self, monkeypatch):
+        import pynchy.host.orchestrator.temporal.host_jobs as temporal_host_jobs
+
+        settings = make_settings(
+            cron_jobs={
+                "backup_db": CronJobConfig(
+                    schedule="15 3 * * *",
+                    command="scripts/backup_runtime_dbs.sh",
+                    quiet_on_success=True,
+                )
+            },
+        )
+        monkeypatch.setattr(temporal_host_jobs, "get_settings", lambda: settings)
+        monkeypatch.setattr(temporal_host_jobs, "resolve_cron_job_cwd", lambda cwd: "/repo")
+        monkeypatch.setattr(
+            temporal_host_jobs,
+            "run_shell_command",
+            AsyncMock(return_value=ShellResult(returncode=0, stdout="backup ok", stderr="")),
+        )
+        log_shell_result = AsyncMock()
+        monkeypatch.setattr(temporal_host_jobs, "log_shell_result", log_shell_result)
+
+        result = await temporal_host_jobs.run_config_host_cron_job("backup_db")
+
+        assert result == "completed"
+        log_shell_result.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_reconcile_creates_temporal_schedules_for_git_sync_and_channel_reconcile(

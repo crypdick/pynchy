@@ -361,7 +361,7 @@ def pynchy_mcp_server_spec(self) -> list[dict[str, Any]]:
 **Instance expansion:** Users don't configure the base spec. They declare *instances* in `config.toml` that reference the plugin-provided template:
 
 ```toml
-[mcp_servers.gdrive.anyscale]
+[mcp.gdrive.anyscale]
 chrome_profile = "anyscale"
 ```
 

@@ -86,7 +86,7 @@ Values are `false` (safe), `true` (risky — triggers gating), or `"forbidden"` 
 **Taint tracking.** The policy tracks two independent flags per container invocation:
 
 - **`corruption_tainted`** — set when the agent reads from a `public_source`. The container has seen attacker-controlled content.
-- **`secret_tainted`** — set when the agent reads `secret_data` or accesses a workspace with `contains_secrets = true`.
+- **`secret_tainted`** — set when the agent reads `secret_data` or accesses a workspace whose profile has `contains_secrets = true`.
 
 **Gating matrix.** When the agent writes to a service, the policy evaluates:
 

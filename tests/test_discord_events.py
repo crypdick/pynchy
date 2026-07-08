@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from pynchy.plugins.channels.discord._events import build_inbound_context, jid_for
+from pynchy.plugins.channels.discord._events import build_inbound_context, jid_for, metadata_for
 
 BOT_ID = "999"
 
@@ -127,3 +127,22 @@ def test_jid_for_thread_uses_thread_snowflake():
     msg = _message(author=_user("5"), guild_id="g1", channel_id="t1", parent_id="c1")
     ctx = build_inbound_context(msg, BOT_ID)
     assert jid_for(ctx) == "discord:channel:t1"
+
+
+def test_metadata_for_thread_carries_parent_jid_and_names():
+    msg = _message(
+        author=_user("5"),
+        guild_id="g1",
+        channel_id="t1",
+        channel_name="run-123",
+        parent_id="c1",
+        parent_name="admin",
+    )
+    ctx = build_inbound_context(msg, BOT_ID)
+
+    metadata = metadata_for(ctx, message_id="m1")
+
+    assert metadata["discord_message_id"] == "m1"
+    assert metadata["discord_parent_chat_jid"] == "discord:channel:c1"
+    assert metadata["discord_channel_name"] == "run-123"
+    assert metadata["discord_parent_channel_name"] == "admin"

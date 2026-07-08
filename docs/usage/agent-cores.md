@@ -20,6 +20,32 @@ PYNCHY_AGENT_CORE=codex
 
 Restart Pynchy after changing the core.
 
+## Profile Model Overrides
+
+Use `model` and `fallback_model` inside a profile when a workspace or scheduled job should use a cheaper route than the global interactive agent:
+
+```toml
+[profiles.daily-triage]
+context_mode = "isolated"
+model = "chatgpt/gpt-5.3-codex-spark"
+
+[workspaces.daily-triage]
+profile = "daily-triage"
+chat = "connection.slack.synapse.chat.pynchy"
+
+[jobs.daily-triage]
+enabled = true
+schedule = "0 8 * * *"
+workspace = "daily-triage"
+prompt = "Produce the daily Pynchy triage memo and send it to this channel."
+```
+
+The override is resolved through the same profile cascade as `repo_access` and `git_policy`: `[profiles.<name>]` wins over `[universal]`, then Pynchy falls back to `[agent].model`.
+
+When a profile sets `model`, it owns its fallback policy too. It will not inherit `[agent].fallback_model` unless `fallback_model` is also set in that profile cascade.
+
+For Codex workspaces using LiteLLM's ChatGPT subscription provider, use a `chatgpt/...` route such as `chatgpt/gpt-5.3-codex-spark` and make sure that `model_name` is declared in `litellm_config.yaml`.
+
 ## Built-in: Claude SDK
 
 Uses the Claude Agent SDK (Claude Code) to power agents.
@@ -74,7 +100,7 @@ Claude SDK and OpenAI Agents SDK calls route through a host-side gateway. You ge
 The gateway is configured in `litellm_config.yaml` and runs as a Docker container managed by Pynchy. See the [Installation Guide](../install.md).
 
 The Codex CLI core also uses the gateway. Pynchy generates a Codex custom model
-provider for each sandbox with:
+provider for each workspace with:
 
 - `model_provider = "pynchy_litellm"`
 - `wire_api = "responses"`

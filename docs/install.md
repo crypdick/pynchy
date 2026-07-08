@@ -137,7 +137,7 @@ model = "chatgpt/gpt-5.3-codex"
 To give agents access to external MCP tool servers (e.g., Playwright for web browsing), add definitions to `config.toml`:
 
 ```toml
-[mcp_servers.playwright]
+[mcp.playwright]
 type = "docker"
 image = "mcp/playwright:latest"
 args = ["--headless", "--port", "8931", "--host", "0.0.0.0"]

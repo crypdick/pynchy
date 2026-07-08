@@ -14,6 +14,7 @@ from pynchy.config.mcp import McpServerConfig
 from pynchy.config.models import (
     ConnectionChatConfig,
     ConnectionsConfig,
+    ProfileConfig,
     ServiceTrustTomlConfig,
     WhatsAppConnectionConfig,
     WorkspaceConfig,
@@ -32,14 +33,16 @@ def _base_connection() -> ConnectionsConfig:
     )
 
 
-def _ws(*, is_admin: bool = False, mcp_servers: list[str] | None = None) -> WorkspaceConfig:
+def _ws(*, profile: str) -> WorkspaceConfig:
     """Minimal workspace config with explicit non-exempt fields."""
     return WorkspaceConfig(
         chat="connection.whatsapp.wa1.chat.mychat",
-        is_admin=is_admin,
-        idle_terminate=True,
-        mcp_servers=mcp_servers,
+        profile=profile,
     )
+
+
+def _profile(*, is_admin: bool, mcp_servers: list[str] | None = None) -> ProfileConfig:
+    return ProfileConfig(is_admin=is_admin, mcp_servers=mcp_servers)
 
 
 def _docker_mcp(name: str = "test-mcp") -> dict[str, McpServerConfig]:
@@ -54,10 +57,9 @@ class TestAdminCleanRoomRejectsPublicSource:
         with pytest.raises(ValidationError, match="public_source"):
             Settings(
                 connection=_base_connection(),
-                sandbox={
-                    "admin-ws": _ws(is_admin=True, mcp_servers=["tainted-mcp"]),
-                },
-                mcp_servers=_docker_mcp("tainted-mcp"),
+                profiles={"admin": _profile(is_admin=True, mcp_servers=["tainted-mcp"])},
+                workspaces={"admin-ws": _ws(profile="admin")},
+                mcp=_docker_mcp("tainted-mcp"),
                 services={
                     "tainted-mcp": ServiceTrustTomlConfig(
                         public_source=True,
@@ -80,10 +82,9 @@ class TestAdminCleanRoomRejectsUndeclared:
         with pytest.raises(ValidationError, match="public_source"):
             Settings(
                 connection=_base_connection(),
-                sandbox={
-                    "admin-ws": _ws(is_admin=True, mcp_servers=["undeclared-mcp"]),
-                },
-                mcp_servers=_docker_mcp("undeclared-mcp"),
+                profiles={"admin": _profile(is_admin=True, mcp_servers=["undeclared-mcp"])},
+                workspaces={"admin-ws": _ws(profile="admin")},
+                mcp=_docker_mcp("undeclared-mcp"),
                 # No services entry for undeclared-mcp → defaults to public_source=True
                 services={},
             )
@@ -95,10 +96,9 @@ class TestAdminCleanRoomAllowsSafe:
     def test_allows_safe_mcp(self):
         s = Settings(
             connection=_base_connection(),
-            sandbox={
-                "admin-ws": _ws(is_admin=True, mcp_servers=["safe-mcp"]),
-            },
-            mcp_servers=_docker_mcp("safe-mcp"),
+            profiles={"admin": _profile(is_admin=True, mcp_servers=["safe-mcp"])},
+            workspaces={"admin-ws": _ws(profile="admin")},
+            mcp=_docker_mcp("safe-mcp"),
             services={
                 "safe-mcp": ServiceTrustTomlConfig(
                     public_source=False,
@@ -108,8 +108,8 @@ class TestAdminCleanRoomAllowsSafe:
                 ),
             },
         )
-        assert s.workspaces["admin-ws"].is_admin is True
-        assert s.workspaces["admin-ws"].mcp_servers == ["safe-mcp"]
+        assert s.resolved_workspace_config("admin-ws").is_admin is True
+        assert s.resolved_workspace_config("admin-ws").mcp_servers == ["safe-mcp"]
 
 
 class TestAdminCleanRoomGroupExpansion:
@@ -119,10 +119,9 @@ class TestAdminCleanRoomGroupExpansion:
         with pytest.raises(ValidationError, match="public_source"):
             Settings(
                 connection=_base_connection(),
-                sandbox={
-                    "admin-ws": _ws(is_admin=True, mcp_servers=["my-group"]),
-                },
-                mcp_servers={
+                profiles={"admin": _profile(is_admin=True, mcp_servers=["my-group"])},
+                workspaces={"admin-ws": _ws(profile="admin")},
+                mcp={
                     "safe-mcp": McpServerConfig(type="docker", image="s:latest", port=8080),
                     "tainted-mcp": McpServerConfig(type="docker", image="t:latest", port=8081),
                 },
@@ -146,10 +145,9 @@ class TestAdminCleanRoomGroupExpansion:
     def test_allows_group_all_safe(self):
         s = Settings(
             connection=_base_connection(),
-            sandbox={
-                "admin-ws": _ws(is_admin=True, mcp_servers=["my-group"]),
-            },
-            mcp_servers={
+            profiles={"admin": _profile(is_admin=True, mcp_servers=["my-group"])},
+            workspaces={"admin-ws": _ws(profile="admin")},
+            mcp={
                 "mcp-a": McpServerConfig(type="docker", image="a:latest", port=8080),
                 "mcp-b": McpServerConfig(type="docker", image="b:latest", port=8081),
             },
@@ -169,7 +167,7 @@ class TestAdminCleanRoomGroupExpansion:
                 ),
             },
         )
-        assert s.workspaces["admin-ws"].is_admin is True
+        assert s.resolved_workspace_config("admin-ws").is_admin is True
 
 
 class TestAdminCleanRoomAllKeyword:
@@ -179,10 +177,9 @@ class TestAdminCleanRoomAllKeyword:
         with pytest.raises(ValidationError, match="public_source"):
             Settings(
                 connection=_base_connection(),
-                sandbox={
-                    "admin-ws": _ws(is_admin=True, mcp_servers=["*"]),
-                },
-                mcp_servers={
+                profiles={"admin": _profile(is_admin=True, mcp_servers=["*"])},
+                workspaces={"admin-ws": _ws(profile="admin")},
+                mcp={
                     "safe-mcp": McpServerConfig(type="docker", image="s:latest", port=8080),
                     "tainted-mcp": McpServerConfig(type="docker", image="t:latest", port=8081),
                 },
@@ -209,10 +206,9 @@ class TestAdminCleanRoomNonAdmin:
     def test_non_admin_allows_public_source(self):
         s = Settings(
             connection=_base_connection(),
-            sandbox={
-                "normal-ws": _ws(is_admin=False, mcp_servers=["tainted-mcp"]),
-            },
-            mcp_servers=_docker_mcp("tainted-mcp"),
+            profiles={"normal": _profile(is_admin=False, mcp_servers=["tainted-mcp"])},
+            workspaces={"normal-ws": _ws(profile="normal")},
+            mcp=_docker_mcp("tainted-mcp"),
             services={
                 "tainted-mcp": ServiceTrustTomlConfig(
                     public_source=True,
@@ -222,4 +218,4 @@ class TestAdminCleanRoomNonAdmin:
                 ),
             },
         )
-        assert s.workspaces["normal-ws"].is_admin is False
+        assert s.resolved_workspace_config("normal-ws").is_admin is False

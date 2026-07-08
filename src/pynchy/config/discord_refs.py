@@ -12,7 +12,7 @@ DiscordChatKind = Literal["channel", "direct"]
 
 @dataclass(frozen=True)
 class DiscordChatTarget:
-    """A concrete Discord conversation target named by a sandbox chat ref."""
+    """A concrete Discord conversation target named by a workspace chat ref."""
 
     kind: DiscordChatKind
     target_id: str

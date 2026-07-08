@@ -1541,6 +1541,57 @@ class TestContainerInputAgentCoreConfig:
 
         assert result.agent_core_config == {"model": "gpt-5.5"}
 
+    def test_workspace_model_overrides_global_agent_model(self):
+        from pynchy.config import AgentConfig
+        from pynchy.config.models import WorkspaceConfig
+
+        settings = make_settings(
+            agent=AgentConfig(model="chatgpt/gpt-5.3-codex"),
+            workspaces={
+                TEST_GROUP.folder: WorkspaceConfig(
+                    model="chatgpt/gpt-5.3-codex-spark",
+                    fallback_model="chatgpt/gpt-5.3-codex-mini",
+                )
+            },
+        )
+
+        with (
+            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.orchestrator.workspace_config.get_settings",
+                return_value=settings,
+            ),
+        ):
+            result = _build_container_input([], self._ctx(), "chat", TEST_GROUP)
+
+        assert result.agent_core_config == {
+            "model": "chatgpt/gpt-5.3-codex-spark",
+            "fallback_model": "chatgpt/gpt-5.3-codex-mini",
+        }
+
+    def test_workspace_model_override_does_not_inherit_global_fallback(self):
+        from pynchy.config import AgentConfig
+        from pynchy.config.models import WorkspaceConfig
+
+        settings = make_settings(
+            agent=AgentConfig(
+                model="chatgpt/gpt-5.3-codex",
+                fallback_model="chatgpt/gpt-5.3-codex",
+            ),
+            workspaces={TEST_GROUP.folder: WorkspaceConfig(model="chatgpt/gpt-5.3-codex-spark")},
+        )
+
+        with (
+            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.orchestrator.workspace_config.get_settings",
+                return_value=settings,
+            ),
+        ):
+            result = _build_container_input([], self._ctx(), "chat", TEST_GROUP)
+
+        assert result.agent_core_config == {"model": "chatgpt/gpt-5.3-codex-spark"}
+
 
 class TestAgentRunnerPreContainerHelpers:
     @pytest.mark.asyncio

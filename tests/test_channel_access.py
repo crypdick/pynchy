@@ -41,8 +41,10 @@ def _settings_with(
 ) -> MagicMock:
     """Create a Settings mock for resolve_channel_config tests."""
     s = MagicMock(spec=Settings)
-    s.sandbox_universal = defaults or SandboxProfileConfig()
-    s.sandbox_profiles = sandbox_profiles or {}
+    s.universal = defaults or SandboxProfileConfig()
+    s.profiles = sandbox_profiles or {}
+    s.sandbox_universal = s.universal
+    s.sandbox_profiles = s.profiles
     s.workspaces = workspaces or {}
     s.owner = owner or OwnerConfig()
     s.user_groups = user_groups or {}

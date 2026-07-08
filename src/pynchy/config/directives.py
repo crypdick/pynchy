@@ -1,7 +1,7 @@
 """Convention-based directive resolution — reads directives/<name>.md files.
 
 Directive names map to files by convention: "base" → directives/base.md.
-No scope logic — assignment is handled by sandbox profiles.
+No scope logic — assignment is handled by profiles and workspaces.
 
 Usage::
 

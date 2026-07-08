@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.config.models import LearningConfig
+from pynchy.config.models import LearningConfig, ProfileConfig
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
 from pynchy.host.orchestrator.messaging.pipeline import (
     MessageHandlerDeps,
@@ -1184,13 +1184,8 @@ class TestBtwNonInterruptingMessages:
     @pytest.fixture(autouse=True)
     def _allow_all_senders(self, monkeypatch):
         """Bypass allowed_users filtering so routing tests aren't blocked by access control."""
-        from pynchy.config.models import SandboxProfileConfig
-
-        mock_settings = MagicMock()
-        mock_settings.sandbox_universal = SandboxProfileConfig(allowed_users=["*"])
-        mock_settings.sandbox_profiles = {}
-        mock_settings.workspaces = {}
-        monkeypatch.setattr("pynchy.config.access.get_settings", lambda: mock_settings)
+        settings = make_settings(universal=ProfileConfig(allowed_users=["*"]))
+        monkeypatch.setattr("pynchy.config.access.get_settings", lambda: settings)
 
     @pytest.mark.asyncio
     async def test_btw_message_does_not_interrupt_active_task(self):

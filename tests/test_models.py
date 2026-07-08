@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from pynchy.config.models import (
     SandboxProfileConfig,
+    ServiceTrustTomlConfig,
     WorkspaceConfig,
     WorkspaceSecurityTomlConfig,
 )
@@ -31,6 +32,8 @@ class TestSandboxProfileConfigDefaults:
             "git_policy",
             "security",
             "repo_access",
+            "model",
+            "fallback_model",
         ):
             assert getattr(cfg, field_name) is None
 
@@ -120,14 +123,24 @@ class TestSandboxProfileConfigScalarFields:
             assert cfg.git_policy == val
 
     def test_security_nested(self):
-        sec = WorkspaceSecurityTomlConfig(contains_secrets=True)
+        sec = WorkspaceSecurityTomlConfig(
+            services={"email": ServiceTrustTomlConfig(public_source=True)}
+        )
         cfg = SandboxProfileConfig(security=sec)
         assert cfg.security is not None
-        assert cfg.security.contains_secrets is True
+        assert "email" in cfg.security.services
 
     def test_repo_access_string(self):
         cfg = SandboxProfileConfig(repo_access="owner/repo")
         assert cfg.repo_access == "owner/repo"
+
+    def test_model_strings(self):
+        cfg = SandboxProfileConfig(
+            model="chatgpt/gpt-5.3-codex-spark",
+            fallback_model="chatgpt/gpt-5.3-codex-mini",
+        )
+        assert cfg.model == "chatgpt/gpt-5.3-codex-spark"
+        assert cfg.fallback_model == "chatgpt/gpt-5.3-codex-mini"
 
 
 class TestSandboxProfileConfigValidation:
@@ -181,3 +194,11 @@ class TestWorkspaceConfigNewFields:
         cfg = WorkspaceConfig()
         assert "profile" not in cfg.model_fields_set
         assert "directives" not in cfg.model_fields_set
+
+    def test_model_fields_accept_strings(self):
+        cfg = WorkspaceConfig(
+            model="chatgpt/gpt-5.3-codex-spark",
+            fallback_model="chatgpt/gpt-5.3-codex-mini",
+        )
+        assert cfg.model == "chatgpt/gpt-5.3-codex-spark"
+        assert cfg.fallback_model == "chatgpt/gpt-5.3-codex-mini"

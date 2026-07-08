@@ -109,9 +109,12 @@ def resolve_security(source_group: str, *, is_admin: bool = False) -> WorkspaceS
 
     s = get_settings()
     ws_config = s.workspaces.get(source_group)
+    resolve_workspace = getattr(s, "resolved_workspace_config", None)
+    resolved = resolve_workspace(source_group) if callable(resolve_workspace) else None
+    contains_secrets = resolved.contains_secrets if resolved is not None else False
 
     if ws_config is None or ws_config.security is None:
-        return WorkspaceSecurity()
+        return WorkspaceSecurity(contains_secrets=contains_secrets)
 
     sec = ws_config.security
 
@@ -127,5 +130,5 @@ def resolve_security(source_group: str, *, is_admin: bool = False) -> WorkspaceS
 
     return WorkspaceSecurity(
         services=services,
-        contains_secrets=sec.contains_secrets,
+        contains_secrets=contains_secrets,
     )

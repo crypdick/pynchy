@@ -3,9 +3,9 @@
 Resolves the effective access mode, trigger, trust, and allowed users
 for a given workspace by walking a 5-level cascade:
 
-1. ``[sandbox_universal]``                  (global defaults)
-2. ``[sandbox_profiles.<name>]``            (profile defaults)
-3. ``[sandbox.<name>]``                     (workspace overrides)
+1. ``[universal]``                          (global defaults)
+2. ``[profiles.<name>]``                    (profile defaults)
+3. ``[workspaces.<name>]``                  (workspace overrides)
 4. ``[connection.<type>.<name>].security``  (connection-level overrides)
 5. ``[connection.<type>.<name>.chat.*]``    (chat-level overrides, most specific)
 
@@ -19,7 +19,7 @@ from dataclasses import replace
 from typing import Any
 
 from pynchy.config.merge import ResolvedSandboxConfig, merge_sandbox_config
-from pynchy.config.models import OwnerConfig, SandboxProfileConfig, WorkspaceConfig
+from pynchy.config.models import OwnerConfig, ProfileConfig, WorkspaceConfig
 from pynchy.config.refs import (
     channel_platform_from_name,
     connection_ref_from_parts,
@@ -29,7 +29,7 @@ from pynchy.config.settings import Settings, get_settings
 from pynchy.types import NewMessage
 
 # The fields that participate in the connection/chat override cascade
-# (layers 4-5).  The sandbox merge (layers 1-3) handles these fields
+# (layers 4-5).  The workspace merge (layers 1-3) handles these fields
 # via merge_sandbox_config().
 _CASCADE_FIELDS = ("access", "mode", "trust", "trigger", "allowed_users")
 
@@ -48,7 +48,7 @@ def _collect_overrides(overrides: dict[str, Any], source: object) -> None:
 
 
 def resolve_workspace_connection_name(workspace_name: str) -> str | None:
-    """Return the owning connection name for a sandbox, if configured."""
+    """Return the owning connection name for a workspace, if configured."""
     s = get_settings()
     ws = s.workspaces.get(workspace_name)
     if ws is None:
@@ -61,10 +61,10 @@ def resolve_workspace_connection_name(workspace_name: str) -> str | None:
 
 def _workspace_profile(
     settings: Settings, workspace: WorkspaceConfig | None
-) -> SandboxProfileConfig | None:
+) -> ProfileConfig | None:
     if workspace is None or not workspace.profile:
         return None
-    return settings.sandbox_profiles.get(workspace.profile)
+    return settings.profiles.get(workspace.profile)
 
 
 def _connection_and_chat_overrides(
@@ -99,9 +99,9 @@ def resolve_channel_config(
     Cascade (most specific wins):
     1. connection.<type>.<name>.chat.*.security (chat-level overrides)
     2. connection.<type>.<name>.security (connection-level overrides)
-    3. sandbox.<name>.* (workspace overrides)
-    4. sandbox_profiles.<name>.* (profile defaults)
-    5. sandbox_universal.* (global defaults)
+    3. workspaces.<name>.* (workspace overrides)
+    4. profiles.<name>.* (profile defaults)
+    5. universal.* (global defaults)
 
     Layers 3-5 are resolved by :func:`merge_sandbox_config`; the connection-
     and chat-level overrides (layers 1-2) are then applied on top of the
@@ -110,7 +110,7 @@ def resolve_channel_config(
     s = get_settings()
     ws = s.workspaces.get(workspace_name)
     merged = merge_sandbox_config(
-        s.sandbox_universal,
+        s.universal,
         _workspace_profile(s, ws),
         ws or WorkspaceConfig(),
     )

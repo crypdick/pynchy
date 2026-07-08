@@ -17,7 +17,7 @@ You should already understand how pynchy manages MCP servers. If not, read the [
 Each Slack workspace gets its own server entry with its own token mapping:
 
 ```toml
-[mcp_servers.slack_mcp_acme]
+[mcp.slack_mcp_acme]
 type = "docker"
 image = "ghcr.io/korotovsky/slack-mcp-server:latest"
 port = 8080

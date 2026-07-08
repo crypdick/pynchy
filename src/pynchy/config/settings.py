@@ -34,6 +34,7 @@ from pydantic_settings import (
 )
 
 from pynchy.config.discord_refs import discord_chat_ref_error
+from pynchy.config.jobs import JobConfig
 from pynchy.config.mcp import McpServerConfig
 from pynchy.config.models import (
     AgentConfig,
@@ -51,9 +52,9 @@ from pynchy.config.models import (
     OneCliConfig,
     OwnerConfig,
     PluginConfig,
+    ProfileConfig,
     QueueConfig,
     RepoConfig,
-    SandboxProfileConfig,
     SchedulerConfig,
     SecretsConfig,
     SecurityConfig,
@@ -163,7 +164,21 @@ def _resolved_workspace_mcp_servers(settings: Settings, workspace: WorkspaceConf
 def _assert_admin_clean_room(
     settings: Settings, *, workspace_name: str, workspace: WorkspaceConfig
 ) -> None:
-    for server_name in _resolved_workspace_mcp_servers(settings, workspace):
+    resolved = settings.resolved_workspace_config(workspace_name)
+    if resolved is None:
+        return
+    server_names: set[str] = set()
+    for entry in resolved.mcp_servers:
+        if entry == "*":
+            server_names.update(settings.mcp_servers.keys())
+        elif entry in settings.mcp_groups:
+            server_names.update(settings.mcp_groups[entry])
+        elif entry in settings.mcp_servers:
+            server_names.add(entry)
+        else:
+            server_names.add(entry)
+
+    for server_name in server_names:
         svc = settings.services.get(server_name)
         public_source = svc.public_source if svc else True
         if public_source is not False:
@@ -191,22 +206,24 @@ def _validate_workspace_chat_ref(
     settings: Settings, *, folder: str, workspace: WorkspaceConfig
 ) -> None:
     if workspace.chat is None:
-        raise ValueError(f"sandbox.{folder}.chat must be connection.<platform>.<name>.chat.<chat>")
+        raise ValueError(
+            f"workspaces.{folder}.chat must be connection.<platform>.<name>.chat.<chat>"
+        )
     chat_ref = parse_chat_ref(workspace.chat)
     assert chat_ref is not None  # guaranteed by ValidatedChatRef
     conn = settings.connection.get_connection(chat_ref.platform, chat_ref.name)
     if conn is None:
         raise ValueError(
-            f"sandbox.{folder}.chat references unknown connection: "
+            f"workspaces.{folder}.chat references unknown connection: "
             f"{connection_ref_from_parts(chat_ref.platform, chat_ref.name)}"
         )
     if isinstance(conn, DiscordConnectionConfig):
         error = discord_chat_ref_error(conn, chat_ref.chat)
         if error is not None:
-            raise ValueError(f"sandbox.{folder}.chat {error}: {workspace.chat}")
+            raise ValueError(f"workspaces.{folder}.chat {error}: {workspace.chat}")
         return
     if chat_ref.chat not in conn.chat:
-        raise ValueError(f"sandbox.{folder}.chat references unknown chat: {workspace.chat}")
+        raise ValueError(f"workspaces.{folder}.chat references unknown chat: {workspace.chat}")
 
 
 # ---------------------------------------------------------------------------
@@ -230,24 +247,22 @@ class Settings(BaseSettings):
     gateway: GatewayConfig = GatewayConfig()
     onecli: OneCliConfig = OneCliConfig()
     learning: LearningConfig = LearningConfig()
-    sandbox_universal: SandboxProfileConfig = SandboxProfileConfig()
+    universal: ProfileConfig = ProfileConfig()
     services: dict[str, ServiceTrustTomlConfig] = {}  # [services.<name>]
     repos: dict[str, RepoConfig] = {}  # [repos."owner/repo"]
-    # FIXME: Rename "workspace" -> "sandbox" across config + codebase.
-    workspaces: dict[str, WorkspaceConfig] = Field(
-        default_factory=dict, validation_alias="sandbox"
-    )  # [sandbox.<folder_name>]
+    profiles: dict[str, ProfileConfig] = {}
+    workspaces: dict[str, WorkspaceConfig] = Field(default_factory=dict)
     owner: OwnerConfig = OwnerConfig()
     user_groups: dict[str, list[str]] = {}  # group_name → [user IDs or group refs]
     commands: CommandWordsConfig = CommandWordsConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
-    cron_jobs: dict[str, CronJobConfig] = {}  # [cron_jobs.<job_name>]
+    cron_jobs: dict[str, CronJobConfig] = {}  # internal adapter for host [jobs.<job_name>]
+    jobs: dict[str, JobConfig] = {}
     intervals: IntervalsConfig = IntervalsConfig()
     queue: QueueConfig = QueueConfig()
     command_center: CommandCenterConfig = CommandCenterConfig()
     connection: ConnectionsConfig = ConnectionsConfig()
     plugins: dict[str, PluginConfig] = {}
-    sandbox_profiles: dict[str, SandboxProfileConfig] = {}
     security: SecurityConfig = SecurityConfig()
     caldav: CalDAVConfig = CalDAVConfig()
 
@@ -256,12 +271,12 @@ class Settings(BaseSettings):
     chrome_profiles: list[str] = []
 
     # MCP management (imported from config_mcp)
-    mcp_servers: dict[str, McpServerConfig] = {}  # [mcp_servers.<name>]
+    mcp_servers: dict[str, McpServerConfig] = Field(default_factory=dict, validation_alias="mcp")
     mcp_groups: dict[str, list[str]] = {}  # {group_name: [server_names]}
     mcp_presets: dict[str, dict[str, str]] = {}  # {preset_name: {key: value}}
 
-    # Extracted by _separate_mcp_instances validator from nested sub-tables
-    # in mcp_servers.  {template_name: {instance_name: {chrome_profile: "...", ...}}}
+    # Extracted by _separate_mcp_instances validator from nested [mcp.*] sub-tables.
+    # {template_name: {instance_name: {chrome_profile: "...", ...}}}
     mcp_server_instances: dict[str, dict[str, dict[str, Any]]] = {}
 
     @model_validator(mode="before")
@@ -270,24 +285,35 @@ class Settings(BaseSettings):
         if isinstance(data, dict):
             legacy = [
                 k
-                for k in ("workspaces", "channels", "slack", "workspace_defaults", "directives")
+                for k in (
+                    "sandbox",
+                    "sandbox_universal",
+                    "sandbox_profiles",
+                    "channels",
+                    "slack",
+                    "workspace_defaults",
+                    "directives",
+                    "mcp_servers",
+                    "cron_jobs",
+                )
                 if k in data
             ]
             if legacy:
                 raise ValueError(
                     "Legacy config sections are no longer supported: "
-                    f"{legacy}. Use [sandbox], [connection.*], and [command_center] instead."
+                    f"{legacy}. Use [workspaces], [profiles], [jobs], [mcp], "
+                    "[connection.*], and [command_center] instead."
                 )
         return data
 
     @model_validator(mode="before")
     @classmethod
     def _separate_mcp_instances(cls, data: dict[str, Any]) -> dict[str, Any]:
-        """Detect nested sub-tables in mcp_servers and separate them.
+        """Detect nested sub-tables in mcp and separate them.
 
-        TOML input like ``[mcp_servers.gdrive.personal]`` with
+        TOML input like ``[mcp.gdrive.personal]`` with
         ``chrome_profile = "personal"`` gets parsed as a nested dict under
-        ``mcp_servers.gdrive``.  This validator splits those into:
+        ``mcp.gdrive``.  This validator splits those into:
         - ``mcp_servers`` — flat server definitions (base overrides)
         - ``mcp_server_instances`` — ``{template: {instance: {overrides}}}``
 
@@ -295,6 +321,8 @@ class Settings(BaseSettings):
         value is a dict and the key is NOT a known McpServerConfig field.
         """
         raw = data.get("mcp_servers")
+        if not isinstance(raw, dict):
+            raw = data.get("mcp")
         if not isinstance(raw, dict):
             return data
 
@@ -322,7 +350,7 @@ class Settings(BaseSettings):
             else:
                 flat[name] = spec
 
-        data["mcp_servers"] = flat
+        data["mcp"] = flat
         data["mcp_server_instances"] = instanced
         return data
 
@@ -344,13 +372,42 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_profile_refs(self) -> Settings:
-        """Validate that sandbox profile references exist."""
+        """Validate that workspace profile references exist."""
+        if "host" in self.workspaces:
+            raise ValueError("'host' is reserved and cannot be a workspace name")
         for folder, ws in self.workspaces.items():
-            if ws.profile is not None and ws.profile not in self.sandbox_profiles:
+            if ws.profile is None:
+                raise ValueError(f"workspaces.{folder}.profile is required")
+            if ws.profile not in self.profiles:
                 raise ValueError(
-                    f"sandbox.{folder}.profile references unknown profile: "
-                    f"'{ws.profile}'. Available: {list(self.sandbox_profiles.keys())}"
+                    f"workspaces.{folder}.profile references unknown profile: "
+                    f"'{ws.profile}'. Available: {list(self.profiles.keys())}"
                 )
+        for job_name, job in self.jobs.items():
+            if job.workspace != "host" and job.workspace not in self.workspaces:
+                raise ValueError(
+                    f"jobs.{job_name}.workspace references unknown workspace: {job.workspace}"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _derive_host_cron_jobs(self) -> Settings:
+        """Adapt [jobs.*] host entries to the existing Temporal host-cron path."""
+        derived = dict(self.cron_jobs)
+        for job_name, job in self.jobs.items():
+            if not job.is_host:
+                continue
+            assert job.schedule is not None
+            assert job.command is not None
+            derived[job_name] = CronJobConfig(
+                enabled=job.enabled,
+                schedule=job.schedule,
+                command=job.command,
+                cwd=job.cwd,
+                timeout_seconds=job.timeout_seconds or 600,
+                quiet_on_success=job.quiet_on_success or False,
+            )
+        self.cron_jobs = derived
         return self
 
     @model_validator(mode="after")
@@ -376,10 +433,31 @@ class Settings(BaseSettings):
         blocked.
         """
         for ws_name, ws in self.workspaces.items():
-            if not ws.is_admin or not ws.mcp_servers:
+            resolved = self.resolved_workspace_config(ws_name)
+            if resolved is None or not resolved.is_admin or not resolved.mcp_servers:
                 continue
             _assert_admin_clean_room(self, workspace_name=ws_name, workspace=ws)
         return self
+
+    @property
+    def sandbox_universal(self) -> ProfileConfig:
+        """Internal alias for modules that use the profile cascade."""
+        return self.universal
+
+    @property
+    def sandbox_profiles(self) -> dict[str, ProfileConfig]:
+        """Internal alias for modules that use the profile cascade."""
+        return self.profiles
+
+    def resolved_workspace_config(self, workspace_name: str):
+        """Return the merged config for a configured workspace."""
+        from pynchy.config.merge import merge_sandbox_config
+
+        workspace = self.workspaces.get(workspace_name)
+        if workspace is None:
+            return None
+        profile = self.profiles.get(workspace.profile or "")
+        return merge_sandbox_config(self.universal, profile, workspace)
 
     @classmethod
     def settings_customise_sources(

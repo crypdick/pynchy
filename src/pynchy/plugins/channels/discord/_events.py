@@ -69,6 +69,18 @@ def jid_for(ctx: InboundContext) -> str:
     return channel_jid(ctx.channel_id)
 
 
+def metadata_for(ctx: InboundContext, *, message_id: str) -> dict[str, str]:
+    """Return stable Discord routing metadata for a stored message."""
+    metadata = {
+        "discord_message_id": message_id,
+        "discord_channel_name": ctx.channel_name or "",
+    }
+    if ctx.parent_channel_id is not None:
+        metadata["discord_parent_chat_jid"] = channel_jid(ctx.parent_channel_id)
+        metadata["discord_parent_channel_name"] = ctx.parent_channel_name or ""
+    return metadata
+
+
 class DiscordEvents:
     """Registers inbound handlers on the channel's client and fires callbacks."""
 
@@ -126,7 +138,7 @@ class DiscordEvents:
             content=message.content,
             timestamp=timestamp,
             is_from_me=False,
-            metadata={"discord_message_id": str(message.id)},
+            metadata=metadata_for(ctx, message_id=str(message.id)),
         )
         logger.info("Discord inbound message", jid=jid, sender=ctx.author_id)
         ch.on_message(jid, msg)

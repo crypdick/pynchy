@@ -13,7 +13,7 @@ Add a chrome profile and gcal instance to `config.toml`:
 ```toml
 chrome_profiles = ["mycompany"]
 
-[mcp_servers.gcal.mycompany]
+[mcp.gcal.mycompany]
 chrome_profile = "mycompany"
 ```
 
@@ -61,10 +61,10 @@ Each chrome profile maps to one Google account. To access calendars from multipl
 ```toml
 chrome_profiles = ["mycompany", "personal"]
 
-[mcp_servers.gcal.mycompany]
+[mcp.gcal.mycompany]
 chrome_profile = "mycompany"
 
-[mcp_servers.gcal.personal]
+[mcp.gcal.personal]
 chrome_profile = "personal"
 
 [workspaces.mycompany-1]

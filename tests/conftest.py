@@ -60,7 +60,7 @@ def make_settings(**overrides):
         ServerConfig,
         Settings,
     )
-    from pynchy.config.models import SandboxProfileConfig
+    from pynchy.config.models import ProfileConfig
 
     # Separate cached properties from model fields
     cached = {k: overrides.pop(k) for k in list(overrides) if k in _CACHED_PROPERTY_NAMES}
@@ -71,7 +71,8 @@ def make_settings(**overrides):
         "server": ServerConfig(),
         "logging": LoggingConfig(),
         "secrets": SecretsConfig(),
-        "sandbox_universal": SandboxProfileConfig(),
+        "universal": ProfileConfig(),
+        "profiles": {},
         "workspaces": {},
         "commands": CommandWordsConfig(),
         "scheduler": SchedulerConfig(),
@@ -82,7 +83,12 @@ def make_settings(**overrides):
         "connection": ConnectionsConfig(),
         "plugins": {},
         "cron_jobs": {},
+        "jobs": {},
     }
+    if "sandbox_universal" in overrides:
+        defaults["universal"] = overrides.pop("sandbox_universal")
+    if "sandbox_profiles" in overrides:
+        defaults["profiles"] = overrides.pop("sandbox_profiles")
     defaults.update(overrides)
     s = Settings.model_construct(**defaults)
 

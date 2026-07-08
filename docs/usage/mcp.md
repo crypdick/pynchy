@@ -7,7 +7,7 @@ Add external tool servers to pynchy using the [Model Context Protocol](https://m
 Define it in `config.toml`:
 
 ```toml
-[mcp_servers.playwright]
+[mcp.playwright]
 type = "docker"
 image = "mcr.microsoft.com/playwright/mcp:latest"
 port = 8080
@@ -28,7 +28,7 @@ Docker MCP containers start on-demand when an agent first needs them and stop af
 `type = "script"` runs an MCP server as a host subprocess instead of a Docker container. Useful for tools that need host access or use `uv run` with ad-hoc dependencies.
 
 ```toml
-[mcp_servers.my_tool]
+[mcp.my_tool]
 type = "script"
 command = "uv"
 args = ["run", "scripts/my-tool.py"]
@@ -77,7 +77,7 @@ boundary.
 To run the same MCP server image against different accounts (e.g., multiple Slack workspaces), define separate server entries with different `env_forward` mappings:
 
 ```toml
-[mcp_servers.example_acme]
+[mcp.example_acme]
 type = "docker"
 image = "example/mcp-server:latest"
 port = 8080
@@ -86,7 +86,7 @@ env = { MCP_HOST = "0.0.0.0", MCP_PORT = "8080" }
 onecli = true
 env_forward = { MCP_API_SECRET = "MCP_API_SECRET_ACME" }  # pragma: allowlist secret
 
-[mcp_servers.example_personal]
+[mcp.example_personal]
 type = "docker"
 image = "example/mcp-server:latest"
 port = 8081
@@ -101,7 +101,7 @@ env_forward = { MCP_API_SECRET = "MCP_API_SECRET_PERSONAL" }  # pragma: allowlis
 Docker MCP containers are ephemeral by default — data is lost when they stop. To persist caches or other state across restarts, use `volumes`:
 
 ```toml
-[mcp_servers.slack_mcp_acme]
+[mcp.slack_mcp_acme]
 # ...
 volumes = ["data/mcp-cache/slack-acme:/root/.cache/slack-mcp-server"]
 ```

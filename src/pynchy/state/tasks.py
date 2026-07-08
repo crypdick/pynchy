@@ -100,9 +100,11 @@ async def get_all_tasks() -> list[ScheduledTask]:
 
 
 _TASK_UPDATE_FIELDS = {
+    "chat_jid",
     "prompt",
     "schedule_type",
     "schedule_value",
+    "context_mode",
     "next_run",
     "status",
     "repo_access",

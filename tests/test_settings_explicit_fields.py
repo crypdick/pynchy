@@ -6,7 +6,8 @@ import pytest
 from pydantic import ValidationError
 
 from pynchy.config import Settings
-from pynchy.config.models import AgentConfig, CronJobConfig
+from pynchy.config.jobs import JobConfig
+from pynchy.config.models import AgentConfig
 
 
 class TestExplicitFieldValidation:
@@ -17,6 +18,14 @@ class TestExplicitFieldValidation:
     def test_rejects_partial_dict_entry_submodel(self) -> None:
         with pytest.raises(
             ValidationError,
-            match=r"cron_jobs\.nightly: missing \['enabled', 'timeout_seconds'\]",
+            match=r"jobs\.nightly: missing \['enabled'\]",
         ):
-            Settings(cron_jobs={"nightly": CronJobConfig(schedule="0 0 * * *", command="echo hi")})
+            Settings(
+                jobs={
+                    "nightly": JobConfig(
+                        schedule="0 0 * * *",
+                        workspace="host",
+                        command="echo hi",
+                    )
+                }
+            )
