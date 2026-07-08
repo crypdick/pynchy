@@ -176,6 +176,15 @@ module = [
 ]
 ignore_missing_imports = true
 
+# Decorator typing for these integrations varies across installed dependency
+# metadata, so their decorator ignores must remain portable across environments.
+[[tool.mypy.overrides]]
+module = [
+    "pynchy.plugins.channels.slack._events",
+    "pynchy.plugins.integrations.notebook_server.__main__",
+]
+disable_error_code = ["unused-ignore"]
+
 # ─────────────────────────────────────────────────────────────────────────────
 # coverage — ratchet floor set at the measured baseline (68.93%, via
 # `uv run pytest --cov=pynchy`). Ratchet this number up as coverage improves —
