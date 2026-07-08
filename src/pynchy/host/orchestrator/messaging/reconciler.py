@@ -24,6 +24,7 @@ from pynchy.types import (
     Channel,
     ChannelName,
     ChatJid,
+    InboundFetchResult,
     NewMessage,
     OutboundEvent,
     OutboundEventType,
@@ -94,8 +95,6 @@ async def _reconcile_inbound(
     failed (caller should skip outbound retry and the cooldown/cursor update
     for this pair, so the next cycle retries without waiting out the cooldown).
     """
-    from pynchy.config.access import filter_allowed_messages
-
     logger.debug(
         "reconciler_trace",
         step="fetch_inbound",
@@ -103,12 +102,8 @@ async def _reconcile_inbound(
         jid=canonical_jid,
         cursor=inbound_cursor[:30] if inbound_cursor else "none",
     )
-    try:
-        result = await ch.fetch_inbound_since(target_jid, inbound_cursor)
-    except Exception as exc:
-        logger.warning(
-            "fetch_inbound_since failed", channel=ch.name, jid=canonical_jid, error=str(exc)
-        )
+    result = await _fetch_inbound_result(ch, target_jid, canonical_jid, inbound_cursor)
+    if result is None:
         return None
 
     remote_messages = result.messages
@@ -125,36 +120,14 @@ async def _reconcile_inbound(
     new_inbound_cursor = (
         result.high_water_mark if result.high_water_mark > inbound_cursor else inbound_cursor
     )
-    recovered = 0
-    for msg in remote_messages:
-        # Remap chat_jid to canonical (the channel returned channel-native JIDs)
-        msg.chat_jid = canonical_jid
-        exists = await message_exists(msg.id, canonical_jid)
-        logger.debug(
-            "reconciler_trace",
-            step="msg_check",
-            jid=canonical_jid,
-            msg_id=msg.id,
-            msg_ts=msg.timestamp[:30] if msg.timestamp else "none",
-            exists=exists,
-            sender=msg.sender,
-        )
-        if not exists:
-            # Sender filter: match _route_incoming_group behavior.
-            # Admin groups bypass; non-admin groups check allowed_users.
-            if not filter_allowed_messages([msg], group, ch.name):
-                logger.debug(
-                    "reconciler_skip_sender", channel=ch.name, jid=canonical_jid, sender=msg.sender
-                )
-                if msg.timestamp > new_inbound_cursor:
-                    new_inbound_cursor = msg.timestamp
-                continue
-            logger.debug("reconciler_trace", step="ingesting", jid=canonical_jid, msg_id=msg.id)
-            await deps._ingest_user_message(msg, source_channel=ch.name)
-            await deps.start_interactive_turn(canonical_jid)
-            recovered += 1
-        if msg.timestamp > new_inbound_cursor:
-            new_inbound_cursor = msg.timestamp
+    new_inbound_cursor, recovered = await _ingest_remote_messages(
+        ch,
+        canonical_jid,
+        group,
+        remote_messages,
+        new_inbound_cursor,
+        deps,
+    )
 
     logger.debug(
         "reconciler_trace",
@@ -165,6 +138,84 @@ async def _reconcile_inbound(
         will_advance=new_inbound_cursor != inbound_cursor,
     )
     return new_inbound_cursor, recovered
+
+
+async def _fetch_inbound_result(
+    ch: Channel,
+    target_jid: str,
+    canonical_jid: str,
+    inbound_cursor: str,
+) -> InboundFetchResult | None:
+    try:
+        return await ch.fetch_inbound_since(target_jid, inbound_cursor)
+    except Exception as exc:
+        logger.warning(
+            "fetch_inbound_since failed", channel=ch.name, jid=canonical_jid, error=str(exc)
+        )
+        return None
+
+
+async def _ingest_remote_messages(
+    ch: Channel,
+    canonical_jid: str,
+    group: WorkspaceProfile | None,
+    remote_messages: list[NewMessage],
+    new_inbound_cursor: str,
+    deps: ReconcilerDeps,
+) -> tuple[str, int]:
+    recovered = 0
+    for msg in remote_messages:
+        new_inbound_cursor, did_recover = await _ingest_remote_message(
+            ch,
+            canonical_jid,
+            group,
+            msg,
+            new_inbound_cursor,
+            deps,
+        )
+        recovered += int(did_recover)
+    return new_inbound_cursor, recovered
+
+
+async def _ingest_remote_message(
+    ch: Channel,
+    canonical_jid: str,
+    group: WorkspaceProfile | None,
+    msg: NewMessage,
+    new_inbound_cursor: str,
+    deps: ReconcilerDeps,
+) -> tuple[str, bool]:
+    from pynchy.config.access import filter_allowed_messages
+
+    # Remap chat_jid to canonical (the channel returned channel-native JIDs)
+    msg.chat_jid = canonical_jid
+    exists = await message_exists(msg.id, canonical_jid)
+    logger.debug(
+        "reconciler_trace",
+        step="msg_check",
+        jid=canonical_jid,
+        msg_id=msg.id,
+        msg_ts=msg.timestamp[:30] if msg.timestamp else "none",
+        exists=exists,
+        sender=msg.sender,
+    )
+    if exists:
+        return _advance_inbound_cursor(new_inbound_cursor, msg.timestamp), False
+
+    if not filter_allowed_messages([msg], group, ch.name):
+        logger.debug(
+            "reconciler_skip_sender", channel=ch.name, jid=canonical_jid, sender=msg.sender
+        )
+        return _advance_inbound_cursor(new_inbound_cursor, msg.timestamp), False
+
+    logger.debug("reconciler_trace", step="ingesting", jid=canonical_jid, msg_id=msg.id)
+    await deps._ingest_user_message(msg, source_channel=ch.name)
+    await deps.start_interactive_turn(canonical_jid)
+    return _advance_inbound_cursor(new_inbound_cursor, msg.timestamp), True
+
+
+def _advance_inbound_cursor(cursor: str, timestamp: str) -> str:
+    return timestamp if timestamp > cursor else cursor
 
 
 async def _retry_outbound(
@@ -202,68 +253,105 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
 
     for ch in deps.channels:
         for canonical_jid in deps.workspaces:
-            group = deps.workspaces.get(canonical_jid)
-            if _should_skip_pair(ch, canonical_jid, group, now):
+            pair_result = await _reconcile_channel_pair(deps, ch, canonical_jid, now)
+            if pair_result is None:
                 continue
-
-            target_jid = canonical_jid
-            key = (ch.name, canonical_jid)
-
-            logger.debug(
-                "reconciler_trace",
-                step="past_cooldown",
-                channel=ch.name,
-                jid=canonical_jid,
-                target_jid=target_jid,
-            )
-
-            inbound_cursor = await get_channel_cursor(
-                ChannelName(ch.name), ChatJid(canonical_jid), "inbound"
-            )
-            if not inbound_cursor:
-                # No cursor yet — channel was never reconciled (e.g. a
-                # Slack-native workspace that was never reconciled).
-                # Seed with a lookback so Socket Mode drops are recoverable
-                # from the first cycle onward.  The cursor advances
-                # naturally as messages are walked.
-                inbound_cursor = (now - _INITIAL_LOOKBACK).isoformat()
-
-            inbound_result = await _reconcile_inbound(
-                ch, canonical_jid, target_jid, group, inbound_cursor, deps
-            )
-            if inbound_result is None:
-                continue
-            new_inbound_cursor, pair_recovered = inbound_result
+            pair_recovered, pair_retried = pair_result
             recovered += pair_recovered
-
-            outbound_cursor = await get_channel_cursor(
-                ChannelName(ch.name), ChatJid(canonical_jid), "outbound"
-            )
-            new_outbound_cursor, pair_retried = await _retry_outbound(
-                ch, canonical_jid, target_jid, outbound_cursor
-            )
             retried += pair_retried
 
-            await advance_cursors_atomic(
-                ChannelName(ch.name),
-                ChatJid(canonical_jid),
-                inbound=new_inbound_cursor if new_inbound_cursor != inbound_cursor else None,
-                outbound=new_outbound_cursor if new_outbound_cursor != outbound_cursor else None,
-            )
-            _last_reconciled[key] = now
-
-    if recovered:
-        logger.info("Recovered missed channel messages", count=recovered)
-    if retried:
-        logger.info("Retried pending outbound deliveries", count=retried)
-    if not recovered and not retried:
-        logger.debug("Reconciliation complete, nothing to recover")
+    _log_reconciliation_summary(recovered, retried)
 
     # GC cursors for channels absent from the active set (e.g. after a rename)
     active_names = {ChannelName(ch.name) for ch in deps.channels}
     pruned = await prune_stale_cursors(active_names)
     if pruned:
         logger.info("Pruned stale cursors", count=pruned)
+
+
+async def _reconcile_channel_pair(
+    deps: ReconcilerDeps,
+    ch: Channel,
+    canonical_jid: str,
+    now: datetime,
+) -> tuple[int, int] | None:
+    group = deps.workspaces.get(canonical_jid)
+    if _should_skip_pair(ch, canonical_jid, group, now):
+        return None
+
+    target_jid = canonical_jid
+    logger.debug(
+        "reconciler_trace",
+        step="past_cooldown",
+        channel=ch.name,
+        jid=canonical_jid,
+        target_jid=target_jid,
+    )
+
+    inbound_cursor = await _inbound_cursor(ch.name, canonical_jid, now)
+    inbound_result = await _reconcile_inbound(
+        ch, canonical_jid, target_jid, group, inbound_cursor, deps
+    )
+    if inbound_result is None:
+        return None
+    new_inbound_cursor, pair_recovered = inbound_result
+
+    outbound_cursor = await get_channel_cursor(
+        ChannelName(ch.name), ChatJid(canonical_jid), "outbound"
+    )
+    new_outbound_cursor, pair_retried = await _retry_outbound(
+        ch, canonical_jid, target_jid, outbound_cursor
+    )
+    await _advance_pair_cursors(
+        ch.name,
+        canonical_jid,
+        inbound_cursor=inbound_cursor,
+        new_inbound_cursor=new_inbound_cursor,
+        outbound_cursor=outbound_cursor,
+        new_outbound_cursor=new_outbound_cursor,
+    )
+    _last_reconciled[(ch.name, canonical_jid)] = now
+    return pair_recovered, pair_retried
+
+
+async def _inbound_cursor(channel_name: str, canonical_jid: str, now: datetime) -> str:
+    inbound_cursor = await get_channel_cursor(
+        ChannelName(channel_name), ChatJid(canonical_jid), "inbound"
+    )
+    if inbound_cursor:
+        return inbound_cursor
+    # No cursor yet — channel was never reconciled (e.g. a
+    # Slack-native workspace that was never reconciled).
+    # Seed with a lookback so Socket Mode drops are recoverable
+    # from the first cycle onward.  The cursor advances naturally
+    # as messages are walked.
+    return (now - _INITIAL_LOOKBACK).isoformat()
+
+
+async def _advance_pair_cursors(
+    channel_name: str,
+    canonical_jid: str,
+    *,
+    inbound_cursor: str,
+    new_inbound_cursor: str,
+    outbound_cursor: str,
+    new_outbound_cursor: str,
+) -> None:
+    await advance_cursors_atomic(
+        ChannelName(channel_name),
+        ChatJid(canonical_jid),
+        inbound=new_inbound_cursor if new_inbound_cursor != inbound_cursor else None,
+        outbound=new_outbound_cursor if new_outbound_cursor != outbound_cursor else None,
+    )
+
+
+def _log_reconciliation_summary(recovered: int, retried: int) -> None:
+    if recovered:
+        logger.info("Recovered missed channel messages", count=recovered)
+    if retried:
+        logger.info("Retried pending outbound deliveries", count=retried)
+    if not recovered and not retried:
+        logger.debug("Reconciliation complete, nothing to recover")
 
 
 def reset_cooldowns() -> None:
