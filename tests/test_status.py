@@ -628,6 +628,35 @@ class TestCollectGateway:
         )
 
     @pytest.mark.asyncio
+    async def test_litellm_readiness_accepts_current_healthy_shape(self):
+        deps = MockStatusDeps(gateway={"mode": "litellm", "port": 4000, "key": "sk-test"})
+
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.json.return_value = {"status": "healthy", "db": "connected"}
+        mock_session = AsyncMock()
+        mock_session.get.return_value = mock_resp
+        mock_session.__aenter__.return_value = mock_session
+        mock_session.__aexit__.return_value = None
+
+        with (
+            _inert_status(),
+            patch(
+                f"{_S}.run_docker",
+                new_callable=AsyncMock,
+                side_effect=[
+                    Mock(returncode=0, stdout="running\n"),
+                    Mock(returncode=0, stdout="running\n"),
+                ],
+            ),
+            patch("aiohttp.ClientSession", return_value=mock_session),
+        ):
+            result = await collect_status(deps, time.monotonic())
+
+        assert result["gateway"]["ready"] is True
+        assert result["gateway"]["database"] == "connected"
+
+    @pytest.mark.asyncio
     async def test_gateway_health_failure_returns_none(self):
         """When gateway HTTP check fails, model counts are None."""
         deps = MockStatusDeps(gateway={"mode": "litellm", "port": 4000, "key": "sk-test"})
