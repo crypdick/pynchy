@@ -9,6 +9,7 @@ URL changes.
 from __future__ import annotations
 
 import secrets
+from collections.abc import Mapping
 
 import aiohttp
 from aiohttp import web
@@ -104,14 +105,16 @@ class BuiltinGateway:
     # Auth & proxying
     # ------------------------------------------------------------------
 
-    def _validate_auth(self, request: web.Request) -> bool:
-        auth = request.headers.get("Authorization", "")
-        api_key = request.headers.get("X-Api-Key", "")
+    def _validate_auth(self, headers: Mapping[str, str]) -> bool:
+        auth = headers.get("Authorization", "")
+        api_key = headers.get("X-Api-Key", "")
         return auth == f"Bearer {self.key}" or api_key == self.key
 
-    def _build_upstream_headers(self, request: web.Request, provider: str) -> dict[str, str]:
+    def _build_upstream_headers(
+        self, headers_in: Mapping[str, str], provider: str
+    ) -> dict[str, str]:
         headers: dict[str, str] = {}
-        for key, value in request.headers.items():
+        for key, value in headers_in.items():
             if key.lower() not in _STRIP_REQUEST_HEADERS:
                 headers[key] = value
 
@@ -123,10 +126,12 @@ class BuiltinGateway:
 
         return headers
 
-    async def _proxy_handler(self, request: web.Request) -> web.StreamResponse:
+    # Avoid annotating this as web.Request: beartype inspects aiohttp's
+    # typing.MutableMapping base and emits a PEP 585 warning.
+    async def _proxy_handler(self, request) -> web.StreamResponse:
         path = f"/{request.match_info.get('path', '')}"
 
-        if not self._validate_auth(request):
+        if not self._validate_auth(request.headers):
             return web.Response(status=401, text="Unauthorized")
 
         result = _resolve_provider(path)
@@ -141,7 +146,7 @@ class BuiltinGateway:
                 text=f"No credentials configured for {provider}",
             )
 
-        headers = self._build_upstream_headers(request, provider)
+        headers = self._build_upstream_headers(request.headers, provider)
         body = await request.read()
 
         assert self._session is not None

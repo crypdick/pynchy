@@ -475,21 +475,19 @@ class TestBuiltinGatewayAuthHeaders:
         return gw
 
     @staticmethod
-    def _make_request(headers: dict[str, str] | None = None) -> MagicMock:
-        request = MagicMock()
-        request.headers = headers or {}
-        return request
+    def _make_headers(headers: dict[str, str] | None = None) -> dict[str, str]:
+        return headers or {}
 
     def test_anthropic_creds_use_x_api_key(self):
         gw = self._make_gateway("anthropic")
-        headers = gw._build_upstream_headers(self._make_request(), "anthropic")
+        headers = gw._build_upstream_headers(self._make_headers(), "anthropic")
         assert headers["x-api-key"] == "sk-secret"
         assert "Authorization" not in headers
         assert "anthropic-beta" not in headers
 
     def test_openai_creds_use_bearer_auth(self):
         gw = self._make_gateway("openai")
-        headers = gw._build_upstream_headers(self._make_request(), "openai")
+        headers = gw._build_upstream_headers(self._make_headers(), "openai")
         assert headers["Authorization"] == "Bearer sk-secret"
         assert "x-api-key" not in headers
 

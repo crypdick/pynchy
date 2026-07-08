@@ -33,8 +33,9 @@ warnings.filterwarnings("ignore", category=BeartypeClawDecorWarning)
 # aiohttp.web_request.BaseRequest subclasses typing.MutableMapping[str, Any]
 # (not beartype.typing's PEP 585 form) in aiohttp's own source. Beartype walks
 # the full MRO of any annotated type, so validating a `web.Request` parameter
-# surfaces aiohttp's PEP 585 warning as if it were ours. There is no fix on
-# our side — the source of the warning lives in aiohttp's own code.
+# surfaces aiohttp's PEP 585 warning as if it were ours. Prefer narrower
+# helper contracts over `web.Request` annotations in our own code; keep this
+# filter for handler edges that genuinely receive aiohttp request objects.
 warnings.filterwarnings(
     "ignore",
     message=r".*typing\.MutableMapping\[str, typing\.Any\].*",
