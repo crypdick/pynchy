@@ -42,11 +42,14 @@ from pynchy.host.container_manager.snapshots import write_groups_snapshot, write
 from pynchy.host.git_ops.repo import RepoContext, get_repo_token
 from pynchy.host.learning.paths import LearningConfigError
 from pynchy.host.orchestrator.agent_runner import (
+    _build_admin_system_notices,  # allow: private-test-imports
     _build_container_input,  # allow: private-test-imports
     _PreContainerResult,  # allow: private-test-imports
+    _session_tracking_output_handler,  # allow: private-test-imports
 )
 from pynchy.types import (
     ContainerInput,
+    ContainerOutput,
     VolumeMount,
     WorkspaceProfile,
 )
@@ -1511,6 +1514,78 @@ class TestContainerInputAgentCoreConfig:
             result = _build_container_input([], self._ctx(), "chat", TEST_GROUP)
 
         assert result.agent_core_config == {"model": "gpt-5.5"}
+
+
+class TestAgentRunnerPreContainerHelpers:
+    @pytest.mark.asyncio
+    async def test_session_tracking_output_handler_records_session(self):
+        class _Deps:
+            def __init__(self) -> None:
+                self.sessions: dict[str, str] = {}
+                self._session_cleared: set[str] = set()
+                self.workspaces: dict[str, WorkspaceProfile] = {}
+                self.queue = MagicMock()
+                self.plugin_manager = None
+
+            async def get_available_groups(self) -> list[dict[str, object]]:
+                return []
+
+            async def broadcast_agent_input(
+                self,
+                chat_jid: str,
+                messages: list[dict[str, object]],
+                *,
+                source: str = "user",
+            ) -> None:
+                return None
+
+        deps = _Deps()
+        on_output = AsyncMock()
+        output = ContainerOutput(
+            status="success",
+            type="system",
+            system_subtype="thread.started",
+            system_data={"session_id": "codex:thread-1"},
+        )
+
+        with patch(
+            "pynchy.host.orchestrator._agent_runner_preflight.set_session",
+            new_callable=AsyncMock,
+        ) as persist:
+            handler = _session_tracking_output_handler(deps, "test-group", on_output)
+            await handler(output)
+
+        assert deps.sessions == {"test-group": "codex:thread-1"}
+        persist.assert_awaited_once()
+        on_output.assert_awaited_once_with(output)
+
+    def test_build_admin_system_notices_includes_repo_warnings_and_guidance(self):
+        repo_ctx = MagicMock()
+        repo_ctx.worktrees_dir = Path("/tmp/worktrees")
+
+        with (
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.get_repo_context",
+                return_value=repo_ctx,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.is_repo_dirty",
+                return_value=True,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.count_unpushed_commits",
+                return_value=2,
+            ),
+        ):
+            notices = _build_admin_system_notices(
+                "test-group",
+                is_admin=True,
+                repo_access="owner/repo",
+            )
+
+        assert any("uncommitted local changes" in notice for notice in notices)
+        assert any("haven't been pushed" in notice for notice in notices)
+        assert notices[-1].startswith("Consider whether to address")
 
 
 # ---------------------------------------------------------------------------
