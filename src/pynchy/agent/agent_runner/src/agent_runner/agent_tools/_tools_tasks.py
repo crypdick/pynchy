@@ -149,22 +149,19 @@ def _schedule_task_definition() -> Tool:
 
 
 async def _schedule_task_handle(arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
-    task_type = arguments.get("task_type", "agent")
+    task_type = _task_type(arguments)
 
-    if task_type not in ("agent", "host"):
-        return tool_error(f'Invalid task_type: "{task_type}". Must be "agent" or "host".')
+    task_type_error = _validate_task_type(task_type)
+    if task_type_error:
+        return task_type_error
 
-    if task_type == "host" and not _ipc.is_admin:
-        return tool_error("Only the admin group can schedule host-level jobs.")
+    permission_error = _host_task_permission_error(task_type)
+    if permission_error:
+        return permission_error
 
-    if task_type == "agent":
-        if not arguments.get("prompt"):
-            return tool_error('Agent tasks require a "prompt" field.')
-    else:
-        if not arguments.get("command"):
-            return tool_error('Host tasks require a "command" field.')
-        if not arguments.get("name"):
-            return tool_error('Host tasks require a "name" field.')
+    required_field_error = _required_task_field_error(arguments, task_type)
+    if required_field_error:
+        return required_field_error
 
     schedule_type = arguments["schedule_type"]
     schedule_value = arguments["schedule_value"]
@@ -174,44 +171,80 @@ async def _schedule_task_handle(arguments: dict[str, Any]) -> list[TextContent] 
         return validation_error
 
     if task_type == "host":
-        payload = {
-            "name": arguments["name"],
-            "command": arguments["command"],
-            "schedule_type": schedule_type,
-            "schedule_value": schedule_value,
-            "cwd": arguments.get("cwd"),
-            "timeout_seconds": arguments.get("timeout_seconds", 600),
-            "createdBy": _ipc.group_folder,
-        }
+        payload = _host_task_payload(arguments, schedule_type, schedule_value)
         filename, _request_id = _ipc.write_request_file("schedule_host_job", payload, reply_to=None)
-        return [
-            TextContent(
-                type="text",
-                text=(
-                    f"Host job scheduled ({filename}): {arguments['name']} - "
-                    f"{schedule_type} - {schedule_value}"
-                ),
-            )
-        ]
+        return _scheduled_text(
+            f"Host job scheduled ({filename}): {arguments['name']} - {schedule_type} - {schedule_value}"
+        )
 
-    target_group = (arguments.get("target_group") if _ipc.is_admin else None) or _ipc.group_folder
+    payload = _agent_task_payload(arguments, schedule_type, schedule_value)
+    filename, _request_id = _ipc.write_request_file("schedule_task", payload, reply_to=None)
+    return _scheduled_text(f"Task scheduled ({filename}): {schedule_type} - {schedule_value}")
 
-    payload = {
+
+def _task_type(arguments: dict[str, Any]) -> str:
+    task_type = arguments.get("task_type", "agent")
+    return str(task_type)
+
+
+def _validate_task_type(task_type: str) -> CallToolResult | None:
+    if task_type in ("agent", "host"):
+        return None
+    return tool_error(f'Invalid task_type: "{task_type}". Must be "agent" or "host".')
+
+
+def _host_task_permission_error(task_type: str) -> CallToolResult | None:
+    if task_type != "host" or _ipc.is_admin:
+        return None
+    return tool_error("Only the admin group can schedule host-level jobs.")
+
+
+def _required_task_field_error(arguments: dict[str, Any], task_type: str) -> CallToolResult | None:
+    if task_type == "agent":
+        if arguments.get("prompt"):
+            return None
+        return tool_error('Agent tasks require a "prompt" field.')
+
+    if not arguments.get("command"):
+        return tool_error('Host tasks require a "command" field.')
+    if not arguments.get("name"):
+        return tool_error('Host tasks require a "name" field.')
+    return None
+
+
+def _host_task_payload(
+    arguments: dict[str, Any], schedule_type: str, schedule_value: str
+) -> dict[str, Any]:
+    return {
+        "name": arguments["name"],
+        "command": arguments["command"],
+        "schedule_type": schedule_type,
+        "schedule_value": schedule_value,
+        "cwd": arguments.get("cwd"),
+        "timeout_seconds": arguments.get("timeout_seconds", 600),
+        "createdBy": _ipc.group_folder,
+    }
+
+
+def _agent_target_group(arguments: dict[str, Any]) -> str:
+    return (arguments.get("target_group") if _ipc.is_admin else None) or _ipc.group_folder
+
+
+def _agent_task_payload(
+    arguments: dict[str, Any], schedule_type: str, schedule_value: str
+) -> dict[str, Any]:
+    return {
         "prompt": arguments["prompt"],
         "schedule_type": schedule_type,
         "schedule_value": schedule_value,
         "context_mode": arguments.get("context_mode", "group"),
-        "targetGroup": target_group,
+        "targetGroup": _agent_target_group(arguments),
         "createdBy": _ipc.group_folder,
     }
 
-    filename, _request_id = _ipc.write_request_file("schedule_task", payload, reply_to=None)
-    return [
-        TextContent(
-            type="text",
-            text=f"Task scheduled ({filename}): {schedule_type} - {schedule_value}",
-        )
-    ]
+
+def _scheduled_text(message: str) -> list[TextContent]:
+    return [TextContent(type="text", text=message)]
 
 
 def _validate_schedule(schedule_type: str, schedule_value: str) -> CallToolResult | None:
