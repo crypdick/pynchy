@@ -11,7 +11,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from pynchy.config.models import ConnectionsConfig, DiscordConnectionConfig
+from pynchy.config import Settings
+from pynchy.config.models import ConnectionsConfig, DiscordConnectionConfig, WorkspaceConfig
 
 
 def test_minimal_connection_defaults():
@@ -76,3 +77,75 @@ def test_connections_config_exposes_discord():
 def test_get_connection_returns_none_for_missing_discord():
     conns = ConnectionsConfig()
     assert conns.get_connection("discord", "nope") is None
+
+
+def test_settings_accept_discord_workspace_channel_ref():
+    settings = Settings(
+        connection=ConnectionsConfig(
+            discord={
+                "mybot": DiscordConnectionConfig(
+                    bot_token_env="DISCORD_BOT_TOKEN",
+                    dm_policy="allowlist",
+                    group_policy="allowlist",
+                    chat={
+                        "123": {
+                            "require_mention": False,
+                            "channels": {"456": {"enabled": True}},
+                        }
+                    },
+                )
+            }
+        ),
+        sandbox={
+            "discord-admin": WorkspaceConfig(
+                chat="connection.discord.mybot.chat.123.channels.456",
+            )
+        },
+    )
+
+    assert settings.workspaces["discord-admin"].chat == (
+        "connection.discord.mybot.chat.123.channels.456"
+    )
+
+
+def test_settings_accept_discord_workspace_direct_ref_when_user_allowed():
+    settings = Settings(
+        connection=ConnectionsConfig(
+            discord={
+                "mybot": DiscordConnectionConfig(
+                    bot_token_env="DISCORD_BOT_TOKEN",
+                    dm_policy="allowlist",
+                    allow_from=["discord:42"],
+                    group_policy="disabled",
+                )
+            }
+        ),
+        sandbox={
+            "discord-dm": WorkspaceConfig(
+                chat="connection.discord.mybot.chat.direct.42",
+            )
+        },
+    )
+
+    assert settings.workspaces["discord-dm"].chat == "connection.discord.mybot.chat.direct.42"
+
+
+def test_settings_reject_discord_workspace_channel_ref_missing_config():
+    with pytest.raises(ValidationError, match="unknown Discord channel"):
+        Settings(
+            connection=ConnectionsConfig(
+                discord={
+                    "mybot": DiscordConnectionConfig(
+                        bot_token_env="DISCORD_BOT_TOKEN",
+                        dm_policy="allowlist",
+                        group_policy="allowlist",
+                        chat={"123": {"require_mention": True, "channels": {}}},
+                    )
+                }
+            ),
+            sandbox={
+                "discord-admin": WorkspaceConfig(
+                    chat="connection.discord.mybot.chat.123.channels.456",
+                )
+            },
+        )

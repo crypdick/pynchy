@@ -93,6 +93,13 @@ roles = ["role:<role-id>"]             # optional role allowlist
 [connection.discord.mybot.chat.<guild-id>.channels.<channel-id>]
 enabled = true
 require_mention = false                # override the guild default for this channel
+
+[sandbox.discord-admin]
+chat = "connection.discord.mybot.chat.<guild-id>.channels.<channel-id>"
+is_admin = true
+
+[sandbox.discord-dm]
+chat = "connection.discord.mybot.chat.direct.<your-user-id>"
 ```
 
 4. Install dependencies:

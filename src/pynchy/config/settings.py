@@ -32,6 +32,7 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
+from pynchy.config.discord_refs import discord_chat_ref_error
 from pynchy.config.mcp import McpServerConfig
 from pynchy.config.models import (
     AgentConfig,
@@ -41,6 +42,7 @@ from pynchy.config.models import (
     ConnectionsConfig,
     ContainerConfig,
     CronJobConfig,
+    DiscordConnectionConfig,
     GatewayConfig,
     IntervalsConfig,
     LearningConfig,
@@ -319,6 +321,11 @@ class Settings(BaseSettings):
                     f"sandbox.{folder}.chat references unknown connection: "
                     f"{connection_ref_from_parts(chat_ref.platform, chat_ref.name)}"
                 )
+            if isinstance(conn, DiscordConnectionConfig):
+                error = discord_chat_ref_error(conn, chat_ref.chat)
+                if error is not None:
+                    raise ValueError(f"sandbox.{folder}.chat {error}: {ws.chat}")
+                continue
             if chat_ref.chat not in conn.chat:
                 raise ValueError(f"sandbox.{folder}.chat references unknown chat: {ws.chat}")
 

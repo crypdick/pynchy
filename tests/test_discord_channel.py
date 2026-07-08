@@ -75,6 +75,60 @@ def test_owns_only_discord_jids():
 
 
 @pytest.mark.asyncio
+async def test_resolve_chat_jid_maps_configured_guild_channel_ref():
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env="X",
+            dm_policy="allowlist",
+            group_policy="allowlist",
+            chat={"123": {"require_mention": False, "channels": {"456": {"enabled": True}}}},
+        ),
+        bot_token="token",
+        on_message=lambda jid, msg: None,
+        on_chat_metadata=lambda jid, ts, name: None,
+    )
+
+    assert await ch.resolve_chat_jid("123.channels.456") == "discord:channel:456"
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_jid_maps_allowed_direct_ref():
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env="X",
+            dm_policy="allowlist",
+            allow_from=["discord:42"],
+            group_policy="disabled",
+        ),
+        bot_token="token",
+        on_message=lambda jid, msg: None,
+        on_chat_metadata=lambda jid, ts, name: None,
+    )
+
+    assert await ch.resolve_chat_jid("direct.42") == "discord:direct:42"
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_jid_returns_none_for_unconfigured_channel_ref():
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env="X",
+            dm_policy="allowlist",
+            group_policy="allowlist",
+            chat={"123": {"require_mention": False, "channels": {}}},
+        ),
+        bot_token="token",
+        on_message=lambda jid, msg: None,
+        on_chat_metadata=lambda jid, ts, name: None,
+    )
+
+    assert await ch.resolve_chat_jid("123.channels.456") is None
+
+
+@pytest.mark.asyncio
 async def test_send_event_chunks_long_text_with_safe_mentions():
     ch = _channel()
     ch.client = object()  # non-None so the guard passes

@@ -325,7 +325,7 @@ class TestPrepareLiteLLMConfig:
             "      model: chatgpt/other-model\n"
         )
 
-        with pytest.raises(RuntimeError, match="gpt-5.5"):
+        with pytest.raises(RuntimeError, match=r"gpt-5\.5"):
             LiteLLMConfigPreparer(required_models=("gpt-5.5",)).prepare(cfg, tmp_path, env={})
 
     def test_required_model_can_match_provider_wildcard_route(self, tmp_path: Path):

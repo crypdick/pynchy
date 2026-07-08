@@ -19,6 +19,7 @@ from typing import Any
 
 import discord
 
+from pynchy.config.discord_refs import resolve_discord_chat_target
 from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
 from pynchy.logger import logger
 from pynchy.types import InboundFetchResult, NewMessage, OutboundEvent, WorkspaceProfile
@@ -26,7 +27,7 @@ from pynchy.types import InboundFetchResult, NewMessage, OutboundEvent, Workspac
 from ._access import DiscordAccess
 from ._chunk import DISCORD_LIMIT, chunk_discord_text
 from ._events import DiscordEvents
-from ._ids import is_discord_jid, parse_jid
+from ._ids import channel_jid, dm_jid, is_discord_jid, parse_jid
 from ._lifecycle import DiscordLifecycle
 
 _MESSAGE_ID_PREFIX = "discord-"
@@ -93,6 +94,14 @@ class DiscordChannel:
     def owns_jid(self, jid: str) -> bool:
         # v1 assumes a single Discord connection; every discord: jid is ours.
         return is_discord_jid(jid)
+
+    async def resolve_chat_jid(self, chat_name: str) -> str | None:
+        target = resolve_discord_chat_target(self._config, chat_name)
+        if target is None:
+            return None
+        if target.kind == "direct":
+            return dm_jid(target.target_id)
+        return channel_jid(target.target_id)
 
     async def _resolve_channel(self, jid: str) -> Any:
         """Resolve a jid to a sendable discord.py channel (creating a DM if needed)."""
