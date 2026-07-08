@@ -189,6 +189,7 @@ class FakeDeps:
         self.channels: list = []
         self.broadcast_host_message = AsyncMock()
         self.broadcast_system_notice = AsyncMock()
+        self.start_interactive_turn = AsyncMock()
         self._register_workspace = AsyncMock()
 
     @property
@@ -294,7 +295,11 @@ class TestCheckDeployContinuation:
         assert deps.broadcast_system_notice.await_count == 2
         notified_jids = {call[0][0] for call in deps.broadcast_system_notice.call_args_list}
         assert notified_jids == {periodic_jid, interactive_jid}
-        assert set(deps.queue.enqueued) == {periodic_jid, interactive_jid}
+        assert {call.args[0] for call in deps.start_interactive_turn.await_args_list} == {
+            periodic_jid,
+            interactive_jid,
+        }
+        assert deps.queue.enqueued == []
 
     @pytest.mark.asyncio
     async def test_resumes_interactive_workspace(self, tmp_path, monkeypatch):
@@ -336,3 +341,5 @@ class TestCheckDeployContinuation:
         call_jid, call_text = deps.broadcast_system_notice.call_args[0]
         assert call_jid == jid
         assert "Deploy complete" in call_text
+        deps.start_interactive_turn.assert_awaited_once_with(jid)
+        assert deps.queue.enqueued == []

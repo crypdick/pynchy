@@ -24,6 +24,8 @@ class ReactionDeps(Protocol):
     @property
     def queue(self) -> Any: ...
 
+    async def start_interactive_turn(self, chat_jid: str) -> None: ...
+
     async def broadcast_to_channels(
         self, chat_jid: str, event: OutboundEvent, *, suppress_errors: bool = True
     ) -> None: ...
@@ -55,7 +57,7 @@ async def handle_reaction(
         return
 
     if action == "retry":
-        deps.queue.enqueue_message_check(jid)
+        await deps.start_interactive_turn(jid)
         logger.info("Reaction retry", group=group.name, emoji=emoji)
 
     elif action == "interrupt":

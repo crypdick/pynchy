@@ -13,6 +13,32 @@ from temporalio.common import RetryPolicy
 
 
 @workflow.defn
+class InteractiveMessageWorkflow:
+    """Run one interactive message turn through a host-side activity."""
+
+    @workflow.run
+    async def run(
+        self,
+        chat_jid: str,
+        maximum_attempts: int,
+        initial_retry_seconds: float,
+    ) -> str:
+        return cast(
+            str,
+            await workflow.execute_activity(
+                "run_interactive_message_turn",
+                chat_jid,
+                start_to_close_timeout=timedelta(hours=12),
+                retry_policy=RetryPolicy(
+                    maximum_attempts=maximum_attempts,
+                    initial_interval=timedelta(seconds=initial_retry_seconds),
+                    backoff_coefficient=2.0,
+                ),
+            ),
+        )
+
+
+@workflow.defn
 class ScheduledAgentTaskWorkflow:
     """Run one scheduled agent task through a host-side activity."""
 

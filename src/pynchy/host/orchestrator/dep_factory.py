@@ -30,6 +30,7 @@ from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.http_server import HttpDeps
 from pynchy.host.orchestrator.status import StatusDeps
 from pynchy.host.orchestrator.task_scheduler import SchedulerDependencies
+from pynchy.utils import create_background_task
 
 
 def _get_broadcasters(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBroadcaster]:
@@ -39,6 +40,13 @@ def _get_broadcasters(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBr
     instances from PynchyApp, ensuring a single code path for all channel sends.
     """
     return app._broadcaster, app._host_broadcaster
+
+
+def _schedule_interactive_turn(app: PynchyApp, chat_jid: str) -> None:
+    create_background_task(
+        app.start_interactive_turn(chat_jid),
+        name=f"interactive-turn-{chat_jid[:20]}",
+    )
 
 
 def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
@@ -112,7 +120,8 @@ def make_http_deps(app: PynchyApp) -> HttpDeps:
     metadata_manager = GroupMetadataManager(app.workspaces, app.channels, app.get_available_groups)
     periodic_agent_manager = PeriodicAgentManager(app.workspaces)
     user_message_handler = UserMessageHandler(
-        app._ingest_user_message, app.queue.enqueue_message_check
+        app._ingest_user_message,
+        lambda jid: _schedule_interactive_turn(app, jid),
     )
     event_adapter = EventBusAdapter(app.event_bus)
 
@@ -161,7 +170,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         channels = metadata_manager.channels
 
         def enqueue_message_check(self, group_jid: str) -> None:
-            app.queue.enqueue_message_check(group_jid)
+            _schedule_interactive_turn(app, group_jid)
 
         def get_active_sessions(self) -> dict[str, str]:
             return session_manager.get_active_sessions(app.workspaces)

@@ -160,6 +160,13 @@ class TestTemporalSchedulerRuntime:
 
         assert workflow_id == "pynchy-learning-review-learning-job-one"
 
+    def test_interactive_message_workflow_id_is_stable_and_temporal_safe(self):
+        from pynchy.host.orchestrator.temporal.scheduler import interactive_message_workflow_id
+
+        workflow_id = interactive_message_workflow_id("slack:C123/with spaces")
+
+        assert workflow_id == "pynchy-interactive-turn-slack-C123-with-spaces"
+
     @pytest.mark.asyncio
     async def test_start_scheduled_agent_task_uses_configured_task_queue(self, temporal_task):
         from pynchy.host.orchestrator.temporal.scheduler import TemporalSchedulerRuntime
@@ -241,6 +248,26 @@ class TestTemporalSchedulerRuntime:
         assert kwargs["id"] == "pynchy-learning-review-learning-job-one"
         assert kwargs["task_queue"] == "pynchy-test"
         assert kwargs["id_reuse_policy"].name == "REJECT_DUPLICATE"
+
+    @pytest.mark.asyncio
+    async def test_start_interactive_message_turn_starts_temporal_workflow(self):
+        from pynchy.host.orchestrator.temporal.scheduler import TemporalSchedulerRuntime
+        from pynchy.host.orchestrator.temporal.workflows import InteractiveMessageWorkflow
+
+        client = FakeScheduleClient()
+        scheduler = SchedulerConfig(temporal_task_queue="pynchy-test")
+        runtime = TemporalSchedulerRuntime(deps=NullSchedulerDeps(), scheduler_config=scheduler)
+        runtime.client = client
+
+        await runtime.start_interactive_message_turn("slack:C123")
+
+        assert len(client.started_workflows) == 1
+        workflow, args, kwargs = client.started_workflows[0]
+        assert workflow == InteractiveMessageWorkflow.run
+        assert args == ("slack:C123", 6, 5.0)
+        assert kwargs["id"] == "pynchy-interactive-turn-slack-C123"
+        assert kwargs["task_queue"] == "pynchy-test"
+        assert kwargs["id_reuse_policy"].name == "ALLOW_DUPLICATE"
 
     @pytest.mark.asyncio
     async def test_reconcile_creates_temporal_schedule_for_recurring_agent_task(
@@ -432,9 +459,12 @@ class TestTemporalSchedulerRuntime:
         assert temporal_scheduler.get_temporal_scheduler_status()["worker_running"] is False
 
     @pytest.mark.asyncio
-    async def test_worker_registers_learning_review_workflow_and_activity(self, monkeypatch):
+    async def test_worker_registers_interactive_and_learning_workflows(self, monkeypatch):
         import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
-        from pynchy.host.orchestrator.temporal.workflows import LearningReviewWorkflow
+        from pynchy.host.orchestrator.temporal.workflows import (
+            InteractiveMessageWorkflow,
+            LearningReviewWorkflow,
+        )
 
         captured = {}
 
@@ -460,7 +490,9 @@ class TestTemporalSchedulerRuntime:
 
         await runtime.__aenter__()
 
+        assert InteractiveMessageWorkflow in captured["workflows"]
         assert LearningReviewWorkflow in captured["workflows"]
+        assert temporal_scheduler.run_interactive_message_turn in captured["activities"]
         assert temporal_scheduler.run_learning_review in captured["activities"]
 
         await runtime.__aexit__(None, None, None)
@@ -531,6 +563,7 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_run_learning_review_activity_uses_bound_deps(self, monkeypatch, learning_packet):
+        import pynchy.host.orchestrator.temporal.learning as temporal_learning
         import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
         deps = NullSchedulerDeps()
@@ -541,7 +574,7 @@ class TestTemporalSchedulerRuntime:
             called["deps"] = runner_deps
             return "completed"
 
-        monkeypatch.setattr(temporal_scheduler, "_run_learning_review", fake_run_learning_review)
+        monkeypatch.setattr(temporal_learning, "_run_learning_review", fake_run_learning_review)
         monkeypatch.setattr(
             temporal_scheduler.activity,
             "info",
@@ -558,6 +591,55 @@ class TestTemporalSchedulerRuntime:
         assert status["last_workflow_id"] == "learning-workflow-completed"
         assert status["last_task_id"] == learning_packet.job_id
         assert status["last_result"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_run_interactive_message_activity_uses_bound_deps(self, monkeypatch):
+        import pynchy.host.orchestrator.temporal.interactive as temporal_interactive
+        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
+
+        deps = NullSchedulerDeps()
+        called = {}
+
+        async def fake_process_message_turn(runner_deps, chat_jid):
+            called["deps"] = runner_deps
+            called["chat_jid"] = chat_jid
+            return True
+
+        monkeypatch.setattr(
+            temporal_interactive, "_process_interactive_message_turn", fake_process_message_turn
+        )
+        monkeypatch.setattr(
+            temporal_interactive.activity,
+            "info",
+            lambda: SimpleNamespace(workflow_id="interactive-workflow-completed"),
+        )
+        temporal_scheduler.reset_temporal_scheduler_status()
+        temporal_scheduler.bind_scheduler_deps(deps)
+
+        result = await temporal_scheduler.run_interactive_message_turn("slack:C123")
+
+        assert result == "completed"
+        assert called == {"deps": deps, "chat_jid": "slack:C123"}
+        status = temporal_scheduler.get_temporal_scheduler_status()
+        assert status["last_workflow_id"] == "interactive-workflow-completed"
+        assert status["last_task_id"] == "slack:C123"
+        assert status["last_result"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_run_interactive_message_activity_retries_unhandled_turn(self, monkeypatch):
+        import pynchy.host.orchestrator.temporal.interactive as temporal_interactive
+        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
+
+        async def fake_process_message_turn(_runner_deps, _chat_jid):
+            return False
+
+        monkeypatch.setattr(
+            temporal_interactive, "_process_interactive_message_turn", fake_process_message_turn
+        )
+        temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
+
+        with pytest.raises(RuntimeError, match="Interactive message turn requested retry"):
+            await temporal_scheduler.run_interactive_message_turn("slack:C123")
 
     @pytest.mark.asyncio
     async def test_run_scheduled_agent_activity_skips_paused_task(self, monkeypatch, temporal_task):

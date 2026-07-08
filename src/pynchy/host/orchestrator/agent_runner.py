@@ -59,6 +59,16 @@ class _PreContainerResult:
     snapshot_ms: float
 
 
+def session_id_from_output(output: ContainerOutput) -> str | None:
+    """Extract a resumable agent session id from any container output event."""
+    if output.new_session_id:
+        return output.new_session_id
+    if output.type != "system":
+        return None
+    session_id = (output.system_data or {}).get("session_id")
+    return session_id if isinstance(session_id, str) and session_id else None
+
+
 @runtime_checkable
 class AgentRunnerDeps(Protocol):
     """Dependencies for agent execution."""
@@ -220,9 +230,11 @@ async def _pre_container_setup(
 
     # Wrap on_output to track session ID
     async def wrapped_on_output(output: ContainerOutput) -> None:
-        if output.new_session_id and group.folder not in deps._session_cleared:
-            deps.sessions[group.folder] = output.new_session_id
-            await set_session(GroupFolder(group.folder), SessionId(output.new_session_id))
+        if (
+            session_id := session_id_from_output(output)
+        ) and group.folder not in deps._session_cleared:
+            deps.sessions[group.folder] = session_id
+            await set_session(GroupFolder(group.folder), SessionId(session_id))
         if on_output:
             await on_output(output)
 

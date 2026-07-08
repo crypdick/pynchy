@@ -562,21 +562,29 @@ class TestRecoverPendingMessages:
         msg = _make_message(content="missed message")
         await store_message(msg)
 
-        enqueued = []
-        app.queue.enqueue_message_check = lambda jid: enqueued.append(jid)  # type: ignore[assignment]
+        started = []
+
+        async def _start_turn(jid: str) -> None:
+            started.append(jid)
+
+        app.start_interactive_turn = _start_turn  # type: ignore[method-assign]
 
         await startup_handler.recover_pending_messages(app)
-        assert "group@g.us" in enqueued
+        assert "group@g.us" in started
 
     async def test_skips_groups_with_no_pending_messages(self, app: PynchyApp):
         from pynchy.host.orchestrator import startup_handler
 
         # No messages stored at all
-        enqueued = []
-        app.queue.enqueue_message_check = lambda jid: enqueued.append(jid)  # type: ignore[assignment]
+        started = []
+
+        async def _start_turn(jid: str) -> None:
+            started.append(jid)
+
+        app.start_interactive_turn = _start_turn  # type: ignore[method-assign]
 
         await startup_handler.recover_pending_messages(app)
-        assert len(enqueued) == 0
+        assert len(started) == 0
 
 
 class TestStatePersistence:
@@ -790,8 +798,12 @@ class TestDeployContinuationResume:
         }
         (data_dir / "deploy_continuation.json").write_text(json.dumps(continuation))
 
-        enqueued: list[str] = []
-        app.queue.enqueue_message_check = lambda jid: enqueued.append(jid)  # type: ignore[assignment]
+        started: list[str] = []
+
+        async def _start_turn(jid: str) -> None:
+            started.append(jid)
+
+        app.start_interactive_turn = _start_turn  # type: ignore[method-assign]
 
         with (
             patch("pynchy.host.orchestrator.startup_handler.get_settings") as mock_settings,
@@ -807,9 +819,9 @@ class TestDeployContinuationResume:
 
             await check_deploy_continuation(app)
 
-        # Both groups should have been enqueued for resume
-        assert "admin-1@g.us" in enqueued
-        assert "team@g.us" in enqueued
+        # Both groups should have durable turn starts for resume
+        assert "admin-1@g.us" in started
+        assert "team@g.us" in started
 
         # Both groups should have a deploy resume message in history
         admin_history = await get_chat_history("admin-1@g.us", limit=10)
@@ -836,8 +848,12 @@ class TestDeployContinuationResume:
         }
         (data_dir / "deploy_continuation.json").write_text(json.dumps(continuation))
 
-        enqueued: list[str] = []
-        app.queue.enqueue_message_check = lambda jid: enqueued.append(jid)  # type: ignore[assignment]
+        started: list[str] = []
+
+        async def _start_turn(jid: str) -> None:
+            started.append(jid)
+
+        app.start_interactive_turn = _start_turn  # type: ignore[method-assign]
 
         with patch("pynchy.host.orchestrator.startup_handler.get_settings") as mock_settings:
             s = MagicMock()
@@ -847,4 +863,4 @@ class TestDeployContinuationResume:
 
             await check_deploy_continuation(app)
 
-        assert len(enqueued) == 0
+        assert len(started) == 0

@@ -68,6 +68,7 @@ def _make_deps(
     deps.workspaces = workspaces or {}
     deps.queue = MagicMock()
     deps._ingest_user_message = AsyncMock()
+    deps.start_interactive_turn = AsyncMock()
     return deps
 
 
@@ -127,7 +128,8 @@ class TestInboundReconciliation:
         deps._ingest_user_message.assert_awaited_once()
         ingested_msg = deps._ingest_user_message.call_args[0][0]
         assert ingested_msg.chat_jid == "group@g.us"  # remapped to canonical
-        deps.queue.enqueue_message_check.assert_called_once_with("group@g.us")
+        deps.start_interactive_turn.assert_awaited_once_with("group@g.us")
+        deps.queue.enqueue_message_check.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_advances_inbound_cursor(self):

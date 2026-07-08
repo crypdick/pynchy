@@ -285,10 +285,13 @@ class CodexCLIAgentCore:
         sid = obj.get("thread_id") or obj.get("threadId")
         if isinstance(sid, str) and sid:
             self._session_id = _pynchy_session_id(sid)
+        system_data = dict(obj)
+        if self._session_id:
+            system_data["session_id"] = self._session_id
         return [
             AgentEvent(
                 type="system",
-                data={"system_subtype": "thread.started", "system_data": obj},
+                data={"system_subtype": "thread.started", "system_data": system_data},
             )
         ]
 

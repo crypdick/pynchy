@@ -74,6 +74,11 @@ def _build_temporal_runtime(deps: SchedulerDependencies, scheduler_config: Any) 
     return TemporalSchedulerRuntime(deps, scheduler_config)
 
 
+def _workspace_map(deps: SchedulerDependencies) -> dict[str, WorkspaceProfile]:
+    workspaces = deps.workspaces
+    return workspaces() if callable(workspaces) else workspaces
+
+
 async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
     """Start the scheduler polling loop."""
     global _scheduler_running
@@ -126,7 +131,7 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
 
     logger.info("Running scheduled task", task_id=task.id, group=task.group_folder)
 
-    groups = deps.workspaces()
+    groups = _workspace_map(deps)
     group = next((g for g in groups.values() if g.folder == task.group_folder), None)
 
     # Advance next_run BEFORE execution so subsequent Temporal reconciliation

@@ -77,6 +77,7 @@ def _make_deps(
     deps.send_reaction_to_outbound = AsyncMock()
     deps.set_typing_on_channels = AsyncMock()
     deps.emit = MagicMock()
+    deps.start_interactive_turn = AsyncMock()
     deps.run_agent = AsyncMock(return_value="success")
     deps.handle_streamed_output = AsyncMock(return_value=True)
 
@@ -162,7 +163,8 @@ class TestInterceptSpecialCommand:
         msg = _make_message("reset context")
 
         with patch(
-            "pynchy.host.orchestrator.messaging.pipeline.is_context_reset", return_value=True
+            "pynchy.host.orchestrator.messaging.pipeline.commands.is_context_reset",
+            return_value=True,
         ):
             result = await intercept_special_command(deps, "g@g.us", group, msg)
 
@@ -177,11 +179,11 @@ class TestInterceptSpecialCommand:
 
         with (
             patch(
-                "pynchy.host.orchestrator.messaging.pipeline.is_context_reset",
+                "pynchy.host.orchestrator.messaging.pipeline.commands.is_context_reset",
                 return_value=False,
             ),
             patch(
-                "pynchy.host.orchestrator.messaging.pipeline.is_end_session",
+                "pynchy.host.orchestrator.messaging.pipeline.commands.is_end_session",
                 return_value=True,
             ),
         ):
@@ -198,15 +200,15 @@ class TestInterceptSpecialCommand:
 
         with (
             patch(
-                "pynchy.host.orchestrator.messaging.pipeline.is_context_reset",
+                "pynchy.host.orchestrator.messaging.pipeline.commands.is_context_reset",
                 return_value=False,
             ),
             patch(
-                "pynchy.host.orchestrator.messaging.pipeline.is_end_session",
+                "pynchy.host.orchestrator.messaging.pipeline.commands.is_end_session",
                 return_value=False,
             ),
             patch(
-                "pynchy.host.orchestrator.messaging.pipeline.is_redeploy",
+                "pynchy.host.orchestrator.messaging.pipeline.commands.is_redeploy",
                 return_value=True,
             ),
         ):
@@ -226,15 +228,15 @@ class TestInterceptSpecialCommand:
 
         with (
             patch(
-                "pynchy.host.orchestrator.messaging.pipeline.is_context_reset",
+                "pynchy.host.orchestrator.messaging.pipeline.commands.is_context_reset",
                 return_value=False,
             ),
             patch(
-                "pynchy.host.orchestrator.messaging.pipeline.is_end_session",
+                "pynchy.host.orchestrator.messaging.pipeline.commands.is_end_session",
                 return_value=False,
             ),
             patch(
-                "pynchy.host.orchestrator.messaging.pipeline.is_redeploy",
+                "pynchy.host.orchestrator.messaging.pipeline.commands.is_redeploy",
                 return_value=False,
             ),
             patch(
@@ -256,15 +258,15 @@ class TestInterceptSpecialCommand:
 
         with (
             patch(
-                "pynchy.host.orchestrator.messaging.pipeline.is_context_reset",
+                "pynchy.host.orchestrator.messaging.pipeline.commands.is_context_reset",
                 return_value=False,
             ),
             patch(
-                "pynchy.host.orchestrator.messaging.pipeline.is_end_session",
+                "pynchy.host.orchestrator.messaging.pipeline.commands.is_end_session",
                 return_value=False,
             ),
             patch(
-                "pynchy.host.orchestrator.messaging.pipeline.is_redeploy",
+                "pynchy.host.orchestrator.messaging.pipeline.commands.is_redeploy",
                 return_value=False,
             ),
         ):
@@ -280,15 +282,15 @@ class TestInterceptSpecialCommand:
 
         with (
             patch(
-                "pynchy.host.orchestrator.messaging.pipeline.is_context_reset",
+                "pynchy.host.orchestrator.messaging.pipeline.commands.is_context_reset",
                 return_value=False,
             ),
             patch(
-                "pynchy.host.orchestrator.messaging.pipeline.is_end_session",
+                "pynchy.host.orchestrator.messaging.pipeline.commands.is_end_session",
                 return_value=False,
             ),
             patch(
-                "pynchy.host.orchestrator.messaging.pipeline.is_redeploy",
+                "pynchy.host.orchestrator.messaging.pipeline.commands.is_redeploy",
                 return_value=False,
             ),
         ):
@@ -304,7 +306,8 @@ class TestInterceptSpecialCommand:
         msg = _make_message("  reset context  ")
 
         with patch(
-            "pynchy.host.orchestrator.messaging.pipeline.is_context_reset", return_value=True
+            "pynchy.host.orchestrator.messaging.pipeline.commands.is_context_reset",
+            return_value=True,
         ):
             result = await intercept_special_command(deps, "g@g.us", group, msg)
 
@@ -1579,8 +1582,9 @@ class TestBtwNonInterruptingMessages:
         ):
             await _run_loop_once(deps)
 
-        # Agent SHOULD be woken up because there's a real user message
-        deps.queue.enqueue_message_check.assert_called_once_with(jid)
+        # Agent SHOULD be woken up because there's a real user message.
+        deps.start_interactive_turn.assert_awaited_once_with(jid)
+        deps.queue.enqueue_message_check.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_btw_routed_normally_when_no_active_container(self):
@@ -1614,8 +1618,9 @@ class TestBtwNonInterruptingMessages:
         ):
             await _run_loop_once(deps)
 
-        # Falls through to normal enqueue_message_check
-        deps.queue.enqueue_message_check.assert_called_once_with(jid)
+        # Falls through to normal Temporal wake-up.
+        deps.start_interactive_turn.assert_awaited_once_with(jid)
+        deps.queue.enqueue_message_check.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_sunrise_reaction_on_wake(self):
@@ -1653,5 +1658,6 @@ class TestBtwNonInterruptingMessages:
         deps.send_reaction_to_channels.assert_awaited_once_with(
             jid, "msg-1", msg1.sender, "sunrise"
         )
-        # Still enqueues the run
-        deps.queue.enqueue_message_check.assert_called_once_with(jid)
+        # Still starts the durable turn
+        deps.start_interactive_turn.assert_awaited_once_with(jid)
+        deps.queue.enqueue_message_check.assert_not_called()

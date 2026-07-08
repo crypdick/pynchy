@@ -208,6 +208,7 @@ def test_thread_started_captures_session_id():
 
     assert [e.type for e in events] == ["system"]
     assert core.session_id == "codex:thread-1"
+    assert events[0].data["system_data"]["session_id"] == "codex:thread-1"
 
 
 def test_agent_message_maps_to_text_and_last_result():

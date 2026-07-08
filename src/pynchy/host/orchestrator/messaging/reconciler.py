@@ -8,7 +8,7 @@ the canonical JID are skipped.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pynchy.logger import logger
 from pynchy.state import (
@@ -48,12 +48,11 @@ class ReconcilerDeps(Protocol):
     @property
     def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
-    @property
-    def queue(self) -> Any: ...
-
     async def _ingest_user_message(
         self, msg: NewMessage, *, source_channel: str | None = None
     ) -> None: ...
+
+    async def start_interactive_turn(self, chat_jid: str) -> None: ...
 
 
 def _should_skip_pair(
@@ -152,7 +151,7 @@ async def _reconcile_inbound(
                 continue
             logger.debug("reconciler_trace", step="ingesting", jid=canonical_jid, msg_id=msg.id)
             await deps._ingest_user_message(msg, source_channel=ch.name)
-            deps.queue.enqueue_message_check(canonical_jid)
+            await deps.start_interactive_turn(canonical_jid)
             recovered += 1
         if msg.timestamp > new_inbound_cursor:
             new_inbound_cursor = msg.timestamp

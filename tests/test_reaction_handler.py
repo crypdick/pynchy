@@ -35,6 +35,7 @@ class FakeReactionDeps:
         self.queue = MagicMock()
         self.queue.is_active_task.return_value = is_active
         self.queue.stop_active_process = AsyncMock()
+        self.start_interactive_turn = AsyncMock()
         self.broadcast_to_channels = AsyncMock()
 
     async def broadcast_to_channels(
@@ -68,10 +69,11 @@ class TestHandleReaction:
 
     @pytest.mark.asyncio
     async def test_eyes_triggers_retry(self):
-        """Eyes emoji should enqueue a message check (retry)."""
+        """Eyes emoji should start a durable interactive turn (retry)."""
         deps = FakeReactionDeps(groups={TEST_JID: TEST_GROUP})
         await handle_reaction(deps, TEST_JID, "msg-ts", "user-1", "eyes")
-        deps.queue.enqueue_message_check.assert_called_once_with(TEST_JID)
+        deps.start_interactive_turn.assert_awaited_once_with(TEST_JID)
+        deps.queue.enqueue_message_check.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_x_interrupt_when_active(self):

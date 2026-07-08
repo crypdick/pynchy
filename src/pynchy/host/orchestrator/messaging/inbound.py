@@ -160,7 +160,7 @@ async def _route_incoming_group(
     logger.info("route_trace", step="enqueue_new_run", group=group.name)
     first_msg = group_messages[0]
     await deps.send_reaction_to_channels(group_jid, first_msg.id, first_msg.sender, "sunrise")
-    deps.queue.enqueue_message_check(group_jid)
+    await deps.start_interactive_turn(group_jid)
 
 
 async def _handle_message_during_task(

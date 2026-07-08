@@ -15,7 +15,7 @@ import signal
 import socket
 import threading
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from pynchy.config import get_settings
 from pynchy.host.orchestrator import startup_handler
@@ -246,18 +246,18 @@ async def _start_subsystems(app: PynchyApp, repo_groups: dict[str, list[str]]) -
         make_git_sync_deps,
         make_http_deps,
         make_ipc_deps,
-        make_scheduler_deps,
         make_status_deps,
     )
     from pynchy.host.orchestrator.http_server import start_http_server
     from pynchy.host.orchestrator.status import record_start_time
-    from pynchy.host.orchestrator.task_scheduler import start_scheduler_loop
+    from pynchy.host.orchestrator.task_scheduler import SchedulerDependencies, start_scheduler_loop
     from pynchy.plugins.tunnels import check_tunnels
 
     s = get_settings()
 
+    scheduler_deps = cast(SchedulerDependencies, app)
     app._subsystem_tasks.append(
-        create_background_task(start_scheduler_loop(make_scheduler_deps(app)), name="scheduler")
+        create_background_task(start_scheduler_loop(scheduler_deps), name="scheduler")
     )
     app._subsystem_tasks.append(
         create_background_task(start_ipc_watcher(make_ipc_deps(app)), name="ipc-watcher")

@@ -274,6 +274,14 @@ class PynchyApp:
         """Delegates group processing to the message handler module."""
         return await message_handler.process_group_messages(self, chat_jid)
 
+    async def start_interactive_turn(self, chat_jid: str) -> None:
+        """Start durable Temporal processing for pending messages in one chat."""
+        from pynchy.host.orchestrator.temporal.scheduler import (
+            start_interactive_message_workflow,
+        )
+
+        await start_interactive_message_workflow(chat_jid)
+
     # ------------------------------------------------------------------
     # Internal delegation for session_handler (used by dep_factory adapters)
     async def _ingest_user_message(
@@ -327,7 +335,7 @@ class PynchyApp:
         )
         await store_message(msg)
         await self.broadcast_host_message(chat_jid, "\U0001f60e Answer forwarded to agent")
-        self.queue.enqueue_message_check(chat_jid)
+        await self.start_interactive_turn(chat_jid)
 
     async def _send_clear_confirmation(self, chat_jid: str) -> None:
         await session_handler.send_clear_confirmation(self, chat_jid)

@@ -11,7 +11,6 @@ import contextlib
 import inspect
 from datetime import timedelta
 from typing import Any
-from uuid import uuid4
 
 from temporalio import activity
 from temporalio.client import (
@@ -28,9 +27,8 @@ from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxR
 
 from pynchy.config import get_settings
 from pynchy.config.models import SchedulerConfig
-from pynchy.host.learning.packet_codec import packet_from_payload, packet_to_payload
+from pynchy.host.learning.packet_codec import packet_to_payload
 from pynchy.host.learning.packet_models import LearningPacket
-from pynchy.host.learning.review_runner import run_learning_review as _run_learning_review_agent
 from pynchy.host.orchestrator.task_scheduler import (
     SchedulerDependencies,
     _run_scheduled_agent,
@@ -38,6 +36,14 @@ from pynchy.host.orchestrator.task_scheduler import (
 from pynchy.host.orchestrator.temporal.host_jobs import (
     run_config_host_cron_job,
     run_database_host_job,
+)
+from pynchy.host.orchestrator.temporal.interactive import (
+    interactive_message_workflow_id,
+    run_interactive_message_turn,
+)
+from pynchy.host.orchestrator.temporal.learning import (
+    learning_review_workflow_id,
+    run_learning_review,
 )
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _record_activity_result,
@@ -60,7 +66,6 @@ from pynchy.host.orchestrator.temporal.schedules import (
     database_host_job_schedule_id,
     database_host_job_workflow_id,
     once_due_at,
-    safe_workflow_fragment,
     schedule_for_agent_task,
     schedule_for_config_host_cron,
     schedule_for_database_host_job,
@@ -69,6 +74,7 @@ from pynchy.host.orchestrator.temporal.schedules import (
 from pynchy.host.orchestrator.temporal.workflows import (
     ConfigHostCronWorkflow,
     DatabaseHostJobWorkflow,
+    InteractiveMessageWorkflow,
     LearningReviewWorkflow,
     ScheduledAgentTaskWorkflow,
 )
@@ -94,16 +100,26 @@ def get_temporal_scheduler_status() -> dict[str, Any]:
     return _get_temporal_scheduler_status()
 
 
-def learning_review_workflow_id(packet: LearningPacket) -> str:
-    """Return the idempotency key for one hidden learning review."""
-    return f"pynchy-learning-review-{safe_workflow_fragment(packet.job_id)}"
+async def _require_active_runtime() -> TemporalSchedulerRuntime:
+    """Return the active runtime, waiting briefly for startup to finish."""
+    deadline = asyncio.get_running_loop().time() + 10.0
+    while _active_runtime is None:
+        if asyncio.get_running_loop().time() >= deadline:
+            raise RuntimeError("Temporal scheduler runtime has not been started")
+        await asyncio.sleep(0.05)
+    return _active_runtime
 
 
 async def start_learning_review_workflow(packet: LearningPacket) -> None:
     """Start a Temporal learning review workflow using the active runtime."""
-    if _active_runtime is None:
-        raise RuntimeError("Temporal scheduler runtime has not been started")
-    await _active_runtime.start_learning_review(packet)
+    runtime = await _require_active_runtime()
+    await runtime.start_learning_review(packet)
+
+
+async def start_interactive_message_workflow(chat_jid: str) -> None:
+    """Start a Temporal workflow to process pending messages for one chat."""
+    runtime = await _require_active_runtime()
+    await runtime.start_interactive_message_turn(chat_jid)
 
 
 def scheduler_workflow_runner() -> WorkflowRunner:
@@ -134,78 +150,6 @@ async def run_scheduled_agent_task(task_id: str) -> str:
     return "completed"
 
 
-@activity.defn(name="run_learning_review")
-async def run_learning_review(packet_payload: dict[str, Any]) -> str:
-    """Temporal activity that runs one hidden Obsidian learning review."""
-    packet = packet_from_payload(packet_payload)
-    try:
-        result = await _run_learning_review(packet, _require_scheduler_deps())
-    except Exception as exc:  # allow: exception-handling - record activity failure
-        _record_activity_result(packet.job_id, "error", str(exc))
-        raise
-    _record_activity_result(packet.job_id, result)
-    return result
-
-
-async def _run_learning_review(packet: LearningPacket, deps: SchedulerDependencies) -> str:
-    async def run_agent_via_queue(*args: Any, **kwargs: Any) -> str:
-        return await _run_agent_via_queue(deps, *args, **kwargs)
-
-    return await _run_learning_review_agent(packet, run_agent_via_queue)
-
-
-async def _run_agent_via_queue(
-    deps: SchedulerDependencies,
-    *args: Any,
-    **kwargs: Any,
-) -> str:
-    loop = asyncio.get_running_loop()
-    result_future: asyncio.Future[str] = loop.create_future()
-    group_jid = _learning_run_group_jid(args, kwargs)
-
-    async def run_queued_agent() -> None:
-        if result_future.cancelled():
-            return
-        try:
-            result = await deps.run_agent(*args, **kwargs)
-        except asyncio.CancelledError:
-            if not result_future.done():
-                result_future.cancel()
-            raise
-        except Exception as exc:  # allow: exception-handling - propagate queued run failure
-            if not result_future.done():
-                result_future.set_exception(exc)
-        else:
-            if not result_future.done():
-                result_future.set_result(result)
-
-    accepted = deps.queue.enqueue_task(
-        group_jid,
-        f"learning-review-{uuid4().hex}",
-        run_queued_agent,
-    )
-    if accepted is False:
-        result_future.cancel()
-        raise asyncio.CancelledError()
-
-    try:
-        return await result_future
-    except asyncio.CancelledError:
-        result_future.cancel()
-        raise
-
-
-def _learning_run_group_jid(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
-    if len(args) >= 2 and isinstance(args[1], str):
-        return args[1]
-
-    chat_jid = kwargs.get("chat_jid")
-    if isinstance(chat_jid, str):
-        return chat_jid
-
-    raise TypeError("learning reviewer run requires a chat_jid")
-
-
 class TemporalSchedulerRuntime:
     """Owns the Temporal client, worker, and schedule reconciliation."""
 
@@ -228,12 +172,14 @@ class TemporalSchedulerRuntime:
                 self.client,
                 task_queue=self.scheduler_config.temporal_task_queue,
                 workflows=[
+                    InteractiveMessageWorkflow,
                     ScheduledAgentTaskWorkflow,
                     DatabaseHostJobWorkflow,
                     ConfigHostCronWorkflow,
                     LearningReviewWorkflow,
                 ],
                 activities=[
+                    run_interactive_message_turn,
                     run_scheduled_agent_task,
                     run_database_host_job,
                     run_config_host_cron_job,
@@ -289,6 +235,22 @@ class TemporalSchedulerRuntime:
             get_settings().learning.max_attempts,
             workflow_id=learning_review_workflow_id(packet),
             status_id=packet.job_id,
+        )
+
+    async def start_interactive_message_turn(self, chat_jid: str) -> None:
+        """Start a Temporal workflow for pending messages in one chat."""
+        if self.client is None:
+            raise RuntimeError("Temporal scheduler runtime has not been started")
+
+        settings = get_settings()
+        await self._start_workflow(
+            InteractiveMessageWorkflow.run,
+            chat_jid,
+            settings.queue.max_retries + 1,
+            float(settings.queue.base_retry_seconds),
+            workflow_id=interactive_message_workflow_id(chat_jid),
+            status_id=chat_jid,
+            id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
         )
 
     async def reconcile_schedules(self) -> None:
@@ -360,6 +322,7 @@ class TemporalSchedulerRuntime:
         workflow_id: str,
         status_id: str,
         start_delay: timedelta | None = None,
+        id_reuse_policy: WorkflowIDReusePolicy = WorkflowIDReusePolicy.REJECT_DUPLICATE,
     ) -> None:
         if self.client is None:
             raise RuntimeError("Temporal scheduler runtime has not been started")
@@ -371,7 +334,7 @@ class TemporalSchedulerRuntime:
                     *args,
                     id=workflow_id,
                     task_queue=self.scheduler_config.temporal_task_queue,
-                    id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
+                    id_reuse_policy=id_reuse_policy,
                 )
             else:
                 await self.client.start_workflow(
@@ -379,7 +342,7 @@ class TemporalSchedulerRuntime:
                     *args,
                     id=workflow_id,
                     task_queue=self.scheduler_config.temporal_task_queue,
-                    id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
+                    id_reuse_policy=id_reuse_policy,
                     start_delay=start_delay,
                 )
         except WorkflowAlreadyStartedError:
