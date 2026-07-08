@@ -82,6 +82,32 @@ def _multi_questions() -> list[dict]:
     ]
 
 
+def _posted_blocks(channel: SlackChannel) -> list[dict]:
+    return channel._app.client.chat_postMessage.call_args.kwargs["blocks"]
+
+
+def _section_block(blocks: list[dict]) -> dict:
+    return next(block for block in blocks if block["type"] == "section")
+
+
+def _checkbox_actions_block(blocks: list[dict]) -> dict:
+    return next(
+        block
+        for block in blocks
+        if block["type"] == "actions"
+        and any(element.get("type") == "checkboxes" for element in block["elements"])
+    )
+
+
+def _checkbox_element(blocks: list[dict]) -> dict:
+    actions_block = _checkbox_actions_block(blocks)
+    return next(element for element in actions_block["elements"] if element["type"] == "checkboxes")
+
+
+def _actions_blocks(blocks: list[dict]) -> list[dict]:
+    return [block for block in blocks if block["type"] == "actions"]
+
+
 # ---------------------------------------------------------------------------
 # send_ask_user tests
 # ---------------------------------------------------------------------------
@@ -95,8 +121,7 @@ class TestSendAskUser:
         await ch.send_ask_user(JID, REQUEST_ID, _questions_with_options())
 
         ch._app.client.chat_postMessage.assert_called_once()
-        call_kwargs = ch._app.client.chat_postMessage.call_args.kwargs
-        blocks = call_kwargs["blocks"]
+        blocks = _posted_blocks(ch)
 
         block_types = [b["type"] for b in blocks]
         assert "section" in block_types, "Expected a section block for the question"
@@ -104,17 +129,11 @@ class TestSendAskUser:
         assert "input" in block_types, "Expected an input block for free-form text"
 
         # Verify section contains question text
-        section_block = next(b for b in blocks if b["type"] == "section")
+        section_block = _section_block(blocks)
         assert "Which framework" in section_block["text"]["text"]
 
         # Verify actions block has checkboxes (not buttons)
-        actions_block = next(
-            b
-            for b in blocks
-            if b["type"] == "actions"
-            and any(el.get("type") == "checkboxes" for el in b["elements"])
-        )
-        checkbox_el = next(el for el in actions_block["elements"] if el["type"] == "checkboxes")
+        checkbox_el = _checkbox_element(blocks)
         option_labels = [o["text"]["text"] for o in checkbox_el["options"]]
         assert "React" in option_labels
         assert "Vue" in option_labels
@@ -137,16 +156,14 @@ class TestSendAskUser:
         ch = _make_channel()
         await ch.send_ask_user(JID, REQUEST_ID, _questions_no_options())
 
-        call_kwargs = ch._app.client.chat_postMessage.call_args.kwargs
-        blocks = call_kwargs["blocks"]
+        blocks = _posted_blocks(ch)
 
         block_types = [b["type"] for b in blocks]
         assert "section" in block_types, "Expected a section block for the question"
         assert "input" in block_types, "Expected an input block for free-form text"
 
         # No option-button actions block — the only actions block is the submit button
-        actions_blocks = [b for b in blocks if b["type"] == "actions"]
-        for ab in actions_blocks:
+        for ab in _actions_blocks(blocks):
             buttons = [el for el in ab["elements"] if el["type"] == "button"]
             for btn in buttons:
                 # All buttons should be submit buttons, not option buttons
