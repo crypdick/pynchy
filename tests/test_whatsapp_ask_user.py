@@ -524,3 +524,20 @@ class TestHandleMessageIntercept:
 
         # Normal message pipeline SHOULD have been called
         ch._on_message.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_own_agent_echo_is_skipped(self) -> None:
+        callback = MagicMock()
+        ch = _make_channel(on_ask_user_answer=callback)
+
+        message = self._build_message_ev("pynchy: working on it")
+        message.Info.MessageSource.IsFromMe = True
+
+        jid2string_mock = sys.modules["neonize.utils.jid"].Jid2String
+        jid2string_mock.return_value = CHAT_JID
+        ch._translate_jid = MagicMock(return_value=CHAT_JID)
+
+        await ch._handle_message(message)
+
+        callback.assert_not_called()
+        ch._on_message.assert_not_called()

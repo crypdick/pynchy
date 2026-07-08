@@ -126,10 +126,11 @@ async def send_clear_confirmation(deps: SessionDeps, chat_jid: str) -> None:
 
 
 async def trigger_manual_redeploy(deps: SessionDeps, chat_jid: str) -> None:
-    """Handle a manual redeploy command — restart the service in-place."""
+    """Handle a manual redeploy command through Temporal."""
     from pynchy.host.git_ops.utils import get_head_sha
     from pynchy.host.orchestrator.adapters import SessionManager
-    from pynchy.host.orchestrator.deploy import finalize_deploy
+    from pynchy.host.orchestrator.temporal.deploy import DeployRequest
+    from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
 
     sha = get_head_sha()
     logger.info("Manual redeploy triggered via magic word", chat_jid=chat_jid)
@@ -138,12 +139,15 @@ async def trigger_manual_redeploy(deps: SessionDeps, chat_jid: str) -> None:
     sm = SessionManager(deps.sessions, deps._session_cleared)
     active_sessions = sm.get_active_sessions(deps.workspaces)
 
-    await finalize_deploy(
-        broadcast_host_message=deps.broadcast_host_message,
-        chat_jid=chat_jid,
-        commit_sha=sha,
-        previous_sha=sha,
-        active_sessions=active_sessions,
+    await start_deploy_workflow(
+        DeployRequest(
+            chat_jid=chat_jid,
+            commit_sha=sha,
+            previous_sha=sha,
+            active_sessions=active_sessions,
+            rebuild=False,
+            reason="manual_redeploy",
+        )
     )
 
 

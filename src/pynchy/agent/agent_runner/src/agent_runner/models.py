@@ -17,6 +17,33 @@ from dataclasses import dataclass
 from typing import Any, Union, get_args, get_origin, get_type_hints
 
 
+def _is_union_origin(origin: object) -> bool:
+    return origin is Union or origin is types.UnionType
+
+
+def _matches_union_hint(value: object, hint: Any) -> bool:
+    return any(_matches_hint(value, arg) for arg in get_args(hint))
+
+
+def _matches_list_hint(value: object, hint: Any) -> bool:
+    if not isinstance(value, list):
+        return False
+    item_hint = next(iter(get_args(hint)), Any)
+    return all(_matches_hint(item, item_hint) for item in value)
+
+
+def _matches_dict_hint(value: object, hint: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    args = get_args(hint)
+    if not args:
+        return True
+    key_hint, val_hint = args
+    return all(
+        _matches_hint(key, key_hint) and _matches_hint(val, val_hint) for key, val in value.items()
+    )
+
+
 def _matches_hint(value: object, hint: Any) -> bool:
     """Return True if ``value`` satisfies the type ``hint``.
 
@@ -28,23 +55,12 @@ def _matches_hint(value: object, hint: Any) -> bool:
     origin = get_origin(hint)
     if origin is None:
         return isinstance(value, hint)
-    if origin is Union or origin is types.UnionType:
-        return any(_matches_hint(value, arg) for arg in get_args(hint))
+    if _is_union_origin(origin):
+        return _matches_union_hint(value, hint)
     if origin is list:
-        if not isinstance(value, list):
-            return False
-        item_hint = next(iter(get_args(hint)), Any)
-        return all(_matches_hint(item, item_hint) for item in value)
+        return _matches_list_hint(value, hint)
     if origin is dict:
-        if not isinstance(value, dict):
-            return False
-        args = get_args(hint)
-        if not args:
-            return True
-        key_hint, val_hint = args
-        return all(
-            _matches_hint(k, key_hint) and _matches_hint(v, val_hint) for k, v in value.items()
-        )
+        return _matches_dict_hint(value, hint)
     return isinstance(value, origin)
 
 
@@ -117,6 +133,30 @@ class ContainerOutput:
     tool_result_is_error: bool | None = None
     result_metadata: dict[str, Any] | None = None
 
+    def _result_payload(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {"result": self.result}
+        if self.new_session_id:
+            payload["new_session_id"] = self.new_session_id
+        if self.error:
+            payload["error"] = self.error
+        if self.result_metadata:
+            payload["result_metadata"] = self.result_metadata
+        return payload
+
+    def _event_payload(self) -> dict[str, Any]:
+        payload_by_type: dict[str, dict[str, Any]] = {
+            "thinking": {"thinking": self.thinking},
+            "tool_use": {"tool_name": self.tool_name, "tool_input": self.tool_input},
+            "text": {"text": self.text},
+            "system": {"system_subtype": self.system_subtype, "system_data": self.system_data},
+            "tool_result": {
+                "tool_result_id": self.tool_result_id,
+                "tool_result_content": self.tool_result_content,
+                "tool_result_is_error": self.tool_result_is_error,
+            },
+        }
+        return payload_by_type.get(self.type, {})
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a dict suitable for JSON output.
 
@@ -126,26 +166,8 @@ class ContainerOutput:
         d: dict[str, Any] = {"type": self.type, "status": self.status}
 
         if self.type == "result":
-            d["result"] = self.result
-            if self.new_session_id:
-                d["new_session_id"] = self.new_session_id
-            if self.error:
-                d["error"] = self.error
-            if self.result_metadata:
-                d["result_metadata"] = self.result_metadata
-        elif self.type == "thinking":
-            d["thinking"] = self.thinking
-        elif self.type == "tool_use":
-            d["tool_name"] = self.tool_name
-            d["tool_input"] = self.tool_input
-        elif self.type == "text":
-            d["text"] = self.text
-        elif self.type == "system":
-            d["system_subtype"] = self.system_subtype
-            d["system_data"] = self.system_data
-        elif self.type == "tool_result":
-            d["tool_result_id"] = self.tool_result_id
-            d["tool_result_content"] = self.tool_result_content
-            d["tool_result_is_error"] = self.tool_result_is_error
+            d.update(self._result_payload())
+        else:
+            d.update(self._event_payload())
 
         return d

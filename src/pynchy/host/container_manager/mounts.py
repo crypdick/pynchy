@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,6 +19,12 @@ from pynchy.host.learning.paths import LearningConfigError, resolve_learning_pat
 from pynchy.host.learning.skills import iter_learned_skill_dirs
 from pynchy.host.orchestrator.workspace_config import load_resolved_config
 from pynchy.types import VolumeMount, WorkspaceProfile
+
+
+@dataclass(frozen=True)
+class _LearningMountContext:
+    workspace_skills: list[str] | None
+    learned_skill_paths: list[Path] | None
 
 
 def _prepare_codex_home(group_folder: str) -> Path:
@@ -58,55 +65,26 @@ def build_volume_mounts(
     group_dir = s.groups_dir / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
 
-    resolved = load_resolved_config(group.folder)
-    workspace_skills = resolved.skills if resolved else None
-    learning_paths = resolve_learning_paths(group.folder)
-    learned_skill_paths: list[Path] | None = None
-    if learning_paths is not None:
-        if not learning_paths.vault_root.exists() or not learning_paths.vault_root.is_dir():
-            raise LearningConfigError("learning.obsidian.vault_root must be an existing directory")
-        learning_paths.memory_root.mkdir(parents=True, exist_ok=True)
-        learning_paths.skills_root.mkdir(parents=True, exist_ok=True)
-        mounts.append(
-            VolumeMount(
-                str(learning_paths.vault_root),
-                learning_paths.vault_mount_path,
-                readonly=False,
-            )
-        )
-        if workspace_skills is not None:
-            learned_skill_paths = iter_learned_skill_dirs(group.folder)
-
-    if worktree_path and repo_ctx:
-        mounts.append(VolumeMount(str(worktree_path), "/workspace/project", readonly=False))
-        # Worktree .git file references the main repo's .git dir via absolute path.
-        # Mount it at the same host path so git resolves the reference inside the container.
-        git_dir = repo_ctx.root / ".git"
-        mounts.append(VolumeMount(str(git_dir), str(git_dir), readonly=False))
-        mounts.append(VolumeMount(str(group_dir), "/workspace/group", readonly=False))
-    else:
-        mounts.append(VolumeMount(str(group_dir), "/workspace/group", readonly=False))
-
-    # Per-group Claude sessions directory (isolated from other groups)
-    session_dir = s.data_dir / "sessions" / group.folder / ".claude"
-    session_dir.mkdir(parents=True, exist_ok=True)
-    _write_settings_json(session_dir)
-    _sync_skills(
-        session_dir,
-        plugin_manager,
-        workspace_skills=workspace_skills,
-        learned_skill_paths=learned_skill_paths,
+    learning = _add_learning_mounts(mounts, group.folder)
+    _add_workspace_mounts(mounts, group_dir, repo_ctx, worktree_path)
+    _add_claude_session_mount(
+        mounts,
+        data_dir=s.data_dir,
+        group_folder=group.folder,
+        plugin_manager=plugin_manager,
+        learning=learning,
     )
-    mounts.append(VolumeMount(str(session_dir), "/home/agent/.claude", readonly=False))
 
     codex_home = _prepare_codex_home(group.folder)
+    _sync_skills(
+        codex_home,
+        plugin_manager,
+        workspace_skills=learning.workspace_skills,
+        learned_skill_paths=learning.learned_skill_paths,
+    )
     mounts.append(VolumeMount(str(codex_home), "/home/agent/.codex", readonly=False))
 
-    # Per-group IPC namespace
-    group_ipc_dir = s.data_dir / "ipc" / group.folder
-    for sub in ("messages", "requests", "input", "output", "merge_results"):
-        (group_ipc_dir / sub).mkdir(parents=True, exist_ok=True)
-    mounts.append(VolumeMount(str(group_ipc_dir), "/workspace/ipc", readonly=False))
+    _add_ipc_mount(mounts, s.data_dir, group.folder)
 
     # Guard scripts (read-only: hook script + settings overlay)
     scripts_dir = s.project_root / "src" / "pynchy" / "agent" / "scripts"
@@ -133,34 +111,135 @@ def build_volume_mounts(
     agent_runner_src = s.project_root / "src" / "pynchy" / "agent" / "agent_runner" / "src"
     mounts.append(VolumeMount(str(agent_runner_src), "/app/src", readonly=True))
 
+    _add_raw_repo_mount(mounts, is_admin, repo_ctx)
+
+    _add_validated_additional_mounts(mounts, group, is_admin)
+
+    return mounts
+
+
+def _add_learning_mounts(mounts: list[VolumeMount], group_folder: str) -> _LearningMountContext:
+    resolved = load_resolved_config(group_folder)
+    workspace_skills = resolved.skills if resolved else None
+    learning_paths = resolve_learning_paths(group_folder)
+    learned_skill_paths: list[Path] | None = None
+    if learning_paths is None:
+        return _LearningMountContext(
+            workspace_skills=workspace_skills,
+            learned_skill_paths=learned_skill_paths,
+        )
+
+    _validate_learning_vault(learning_paths.vault_root)
+    learning_paths.memory_root.mkdir(parents=True, exist_ok=True)
+    learning_paths.skills_root.mkdir(parents=True, exist_ok=True)
+    mounts.append(
+        VolumeMount(
+            str(learning_paths.vault_root),
+            learning_paths.vault_mount_path,
+            readonly=False,
+        )
+    )
+    if _should_scan_learned_skills(workspace_skills):
+        learned_skill_paths = iter_learned_skill_dirs(group_folder)
+    return _LearningMountContext(
+        workspace_skills=workspace_skills,
+        learned_skill_paths=learned_skill_paths,
+    )
+
+
+def _validate_learning_vault(vault_root: Path) -> None:
+    if vault_root.exists() and vault_root.is_dir():
+        return
+    raise LearningConfigError("learning.obsidian.vault_root must be an existing directory")
+
+
+def _should_scan_learned_skills(workspace_skills: list[str] | None) -> bool:
+    if not workspace_skills:
+        return False
+    return "*" in workspace_skills or "learned" in workspace_skills
+
+
+def _add_workspace_mounts(
+    mounts: list[VolumeMount],
+    group_dir: Path,
+    repo_ctx: RepoContext | None,
+    worktree_path: Path | None,
+) -> None:
+    if worktree_path is not None and repo_ctx is not None:
+        mounts.append(VolumeMount(str(worktree_path), "/workspace/project", readonly=False))
+        # Worktree .git file references the main repo's .git dir via absolute path.
+        # Mount it at the same host path so git resolves the reference inside the container.
+        git_dir = repo_ctx.root / ".git"
+        mounts.append(VolumeMount(str(git_dir), str(git_dir), readonly=False))
+    mounts.append(VolumeMount(str(group_dir), "/workspace/group", readonly=False))
+
+
+def _add_claude_session_mount(
+    mounts: list[VolumeMount],
+    *,
+    data_dir: Path,
+    group_folder: str,
+    plugin_manager: pluggy.PluginManager | None,
+    learning: _LearningMountContext,
+) -> None:
+    session_dir = data_dir / "sessions" / group_folder / ".claude"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    _write_settings_json(session_dir)
+    _sync_skills(
+        session_dir,
+        plugin_manager,
+        workspace_skills=learning.workspace_skills,
+        learned_skill_paths=learning.learned_skill_paths,
+    )
+    mounts.append(VolumeMount(str(session_dir), "/home/agent/.claude", readonly=False))
+
+
+def _add_ipc_mount(mounts: list[VolumeMount], data_dir: Path, group_folder: str) -> None:
+    group_ipc_dir = data_dir / "ipc" / group_folder
+    for sub in ("messages", "requests", "input", "output", "merge_results"):
+        (group_ipc_dir / sub).mkdir(parents=True, exist_ok=True)
+    mounts.append(VolumeMount(str(group_ipc_dir), "/workspace/ipc", readonly=False))
+
+
+def _add_raw_repo_mount(
+    mounts: list[VolumeMount],
+    is_admin: bool,
+    repo_ctx: RepoContext | None,
+) -> None:
     # Admin groups get a read-write mount of the actual host repo root.
     # This gives them direct access to config.toml, data/, other worktrees, etc.
     # without going through the git sync workflow.  The path is intentionally
     # alarming so agents default to their worktree for normal work.
-    if is_admin and repo_ctx is not None:
+    if not is_admin or repo_ctx is None:
+        return
+    mounts.append(
+        VolumeMount(
+            str(repo_ctx.root),
+            "/danger/raw-host-repo-mount-prefer-your-worktree",
+            readonly=False,
+        )
+    )
+
+
+def _add_validated_additional_mounts(
+    mounts: list[VolumeMount],
+    group: WorkspaceProfile,
+    is_admin: bool,
+) -> None:
+    if group.container_config is None or not group.container_config.additional_mounts:
+        return
+
+    validated = validate_additional_mounts(
+        group.container_config.additional_mounts, group.name, is_admin
+    )
+    for mount in validated:
         mounts.append(
             VolumeMount(
-                str(repo_ctx.root),
-                "/danger/raw-host-repo-mount-prefer-your-worktree",
-                readonly=False,
+                host_path=str(mount["hostPath"]),
+                container_path=str(mount["containerPath"]),
+                readonly=bool(mount["readonly"]),
             )
         )
-
-    # Additional mounts validated against external allowlist
-    if group.container_config and group.container_config.additional_mounts:
-        validated = validate_additional_mounts(
-            group.container_config.additional_mounts, group.name, is_admin
-        )
-        for m in validated:
-            mounts.append(
-                VolumeMount(
-                    host_path=str(m["hostPath"]),
-                    container_path=str(m["containerPath"]),
-                    readonly=bool(m["readonly"]),
-                )
-            )
-
-    return mounts
 
 
 def build_container_args(mounts: list[VolumeMount], container_name: str) -> list[str]:

@@ -17,19 +17,22 @@ class TestSandboxProfileConfigDefaults:
 
     def test_all_fields_default_to_none(self):
         cfg = SandboxProfileConfig()
-        assert cfg.directives is None
-        assert cfg.skills is None
-        assert cfg.mcp_servers is None
-        assert cfg.context_mode is None
-        assert cfg.access is None
-        assert cfg.mode is None
-        assert cfg.trust is None
-        assert cfg.trigger is None
-        assert cfg.allowed_users is None
-        assert cfg.idle_terminate is None
-        assert cfg.git_policy is None
-        assert cfg.security is None
-        assert cfg.repo_access is None
+        for field_name in (
+            "directives",
+            "skills",
+            "mcp_servers",
+            "context_mode",
+            "access",
+            "mode",
+            "trust",
+            "trigger",
+            "allowed_users",
+            "idle_terminate",
+            "git_policy",
+            "security",
+            "repo_access",
+        ):
+            assert getattr(cfg, field_name) is None
 
     def test_default_instance_has_empty_fields_set(self):
         cfg = SandboxProfileConfig()

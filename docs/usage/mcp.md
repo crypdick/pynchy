@@ -117,6 +117,7 @@ Per-workspace MCP config (`[workspaces.X.mcp.Y]`) is arbitrary key-value pairs. 
 | Server | Guide |
 |--------|-------|
 | Google Drive | [Google Drive setup](gdrive.md) |
+| Linear | [Linear task tracking](linear.md) |
 | Notebooks | [Notebook execution](notebooks.md) |
 | Slack MCP | [Slack MCP setup](slack-mcp.md) |
 

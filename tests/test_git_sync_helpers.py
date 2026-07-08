@@ -48,6 +48,18 @@ def _make_repo(tmp_path: Path) -> Path:
     return repo
 
 
+def _flat_commands(commands: list[list[str]]) -> list[str]:
+    return [" ".join(command) for command in commands]
+
+
+def _first_command_index(commands: list[str], *fragments: str) -> int:
+    return next(
+        index
+        for index, command in enumerate(commands)
+        if all(fragment in command for fragment in fragments)
+    )
+
+
 # ---------------------------------------------------------------------------
 # build_rebase_notice tests
 # ---------------------------------------------------------------------------
@@ -217,12 +229,10 @@ class TestHostUpdateMain:
             result = host_update_main(tmp_path)
 
         assert result is True
-        flat = [" ".join(c) for c in commands]
-        stash_idx = next(
-            i for i, f in enumerate(flat) if "stash" in f and "--include-untracked" in f
-        )
-        fetch_idx = next(i for i, f in enumerate(flat) if "fetch" in f)
-        pop_idx = next(i for i, f in enumerate(flat) if "stash" in f and "pop" in f)
+        flat = _flat_commands(commands)
+        stash_idx = _first_command_index(flat, "stash", "--include-untracked")
+        fetch_idx = _first_command_index(flat, "fetch")
+        pop_idx = _first_command_index(flat, "stash", "pop")
         assert stash_idx < fetch_idx, "stash must come before fetch"
         assert fetch_idx < pop_idx, "fetch must come before stash pop"
         # When stash pop succeeds, no marker commit should be created

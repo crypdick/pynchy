@@ -31,12 +31,6 @@ from pynchy.state import get_messages_since, store_message_direct
 from pynchy.utils import generate_message_id, run_shell_command
 
 type Group = types.WorkspaceProfile
-type Output = types.ContainerOutput
-is_approval_command = commands.is_approval_command
-is_context_reset = commands.is_context_reset
-is_end_session = commands.is_end_session
-is_pending_query = commands.is_pending_query
-is_redeploy = commands.is_redeploy
 
 
 @runtime_checkable
@@ -93,6 +87,8 @@ class MessageHandlerDeps(Protocol):
 
     async def catch_up_channels(self) -> None: ...
 
+    async def start_interactive_turn(self, chat_jid: str) -> None: ...
+
     def emit(self, event: Any) -> None: ...
 
     async def run_agent(
@@ -106,7 +102,9 @@ class MessageHandlerDeps(Protocol):
         input_source: str = "user",
     ) -> str: ...
 
-    async def handle_streamed_output(self, chat_jid: str, group: Group, result: Output) -> bool: ...
+    async def handle_streamed_output(
+        self, chat_jid: str, group: Group, result: types.ContainerOutput
+    ) -> bool: ...
 
 
 async def intercept_special_command(
@@ -124,13 +122,13 @@ async def intercept_special_command(
 
     # --- Commands that manage their own cursor (via _teardown_group) ---
 
-    if is_context_reset(content):
+    if commands.is_context_reset(content):
         logger.info("intercept_trace", step="context_reset_start", group=group.name)
         await deps.handle_context_reset(chat_jid, group, message.timestamp)
         logger.info("Context reset", group=group.name)
         return True
 
-    if is_end_session(content):
+    if commands.is_end_session(content):
         logger.info("intercept_trace", step="end_session_start", group=group.name)
         await deps.handle_end_session(chat_jid, group, message.timestamp)
         logger.info("End session", group=group.name)
@@ -138,19 +136,19 @@ async def intercept_special_command(
 
     # --- Redeploy: advance cursor BEFORE the call (process may die) ---
 
-    if is_redeploy(content):
+    if commands.is_redeploy(content):
         await advance_cursor(deps, chat_jid, message.timestamp)
         await deps.trigger_manual_redeploy(chat_jid)
         return True
 
     # --- Commands with uniform post-handler cursor advancement ---
 
-    if approval := is_approval_command(content):
+    if approval := commands.is_approval_command(content):
         action, short_id = approval
         await approval_handler.handle_approval_command(
             deps, chat_jid, action, short_id, message.sender_name
         )
-    elif is_pending_query(content):
+    elif commands.is_pending_query(content):
         await approval_handler.handle_pending_query(deps, chat_jid)
     elif content.startswith("!") and content[1:]:
         await execute_direct_command(deps, chat_jid, group, message, content[1:])

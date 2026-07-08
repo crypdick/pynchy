@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Iterator
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -106,41 +107,106 @@ def _collect_implicit_fields(model: BaseModel, path: str) -> list[str]:
       use None as "inherit from parent" and can't be made explicit.
     """
     errors: list[str] = []
-    cls = type(model)
+    for child_path, child in _strict_model_children(model, path):
+        child_missing = _missing_explicit_fields(child)
+        if child_missing:
+            errors.append(f"{child_path}: missing {child_missing}")
+        errors.extend(_collect_implicit_fields(child, child_path))
+    return errors
 
+
+def _strict_model_children(model: BaseModel, path: str) -> Iterator[tuple[str, _StrictModel]]:
+    cls = type(model)
     for field_name in cls.model_fields:
         value = getattr(model, field_name)
-
-        # For dict-of-models (e.g., workspaces, cron_jobs), check each entry
         if isinstance(value, dict):
-            for key, item in value.items():
-                if isinstance(item, _StrictModel):
-                    child_path = f"{path}.{field_name}.{key}" if path else f"{field_name}.{key}"
-                    child_cls = type(item)
-                    child_missing = {
-                        f
-                        for f in set(child_cls.model_fields) - item.model_fields_set
-                        if not _is_exempt_field(child_cls, f)
-                    }
-                    if child_missing:
-                        errors.append(f"{child_path}: missing {sorted(child_missing)}")
-                    errors.extend(_collect_implicit_fields(item, child_path))
+            yield from _strict_dict_children(path, field_name, value)
             continue
-
-        # For direct sub-models, only check if the section was in the input
         if isinstance(value, _StrictModel) and field_name in model.model_fields_set:
-            child_path = f"{path}.{field_name}" if path else field_name
-            child_cls = type(value)
-            child_missing = {
-                f
-                for f in set(child_cls.model_fields) - value.model_fields_set
-                if not _is_exempt_field(child_cls, f)
-            }
-            if child_missing:
-                errors.append(f"{child_path}: missing {sorted(child_missing)}")
-            errors.extend(_collect_implicit_fields(value, child_path))
+            yield _join_path(path, field_name), value
 
-    return errors
+
+def _strict_dict_children(
+    path: str, field_name: str, value: dict[Any, Any]
+) -> Iterator[tuple[str, _StrictModel]]:
+    field_path = _join_path(path, field_name)
+    for key, item in value.items():
+        if isinstance(item, _StrictModel):
+            yield _join_path(field_path, str(key)), item
+
+
+def _missing_explicit_fields(model: _StrictModel) -> list[str]:
+    model_cls = type(model)
+    return sorted(
+        field_name
+        for field_name in model_cls.model_fields
+        if field_name not in model.model_fields_set and not _is_exempt_field(model_cls, field_name)
+    )
+
+
+def _join_path(path: str, child: str) -> str:
+    return f"{path}.{child}" if path else child
+
+
+def _resolved_workspace_mcp_servers(settings: Settings, workspace: WorkspaceConfig) -> set[str]:
+    resolved: set[str] = set()
+    for entry in workspace.mcp_servers or []:
+        if entry == "*":
+            resolved.update(settings.mcp_servers.keys())
+        elif entry in settings.mcp_groups:
+            resolved.update(settings.mcp_groups[entry])
+        elif entry in settings.mcp_servers:
+            resolved.add(entry)
+    return resolved
+
+
+def _assert_admin_clean_room(
+    settings: Settings, *, workspace_name: str, workspace: WorkspaceConfig
+) -> None:
+    for server_name in _resolved_workspace_mcp_servers(settings, workspace):
+        svc = settings.services.get(server_name)
+        public_source = svc.public_source if svc else True
+        if public_source is not False:
+            raise ValueError(
+                f"Admin workspace '{workspace_name}' has MCP server '{server_name}' "
+                f"with public_source={public_source!r}. Admin workspaces cannot "
+                f"have public_source MCPs (clean room policy)."
+            )
+
+
+def _validated_command_center_connection(settings: Settings) -> None:
+    connection = settings.command_center.connection
+    if not connection:
+        return
+    ref = parse_connection_ref(connection)
+    assert ref is not None  # guaranteed by ValidatedConnectionRef
+    if settings.connection.get_connection(ref.platform, ref.name) is None:
+        raise ValueError(
+            f"command_center.connection references unknown connection: "
+            f"{connection_ref_from_parts(ref.platform, ref.name)}"
+        )
+
+
+def _validate_workspace_chat_ref(
+    settings: Settings, *, folder: str, workspace: WorkspaceConfig
+) -> None:
+    if workspace.chat is None:
+        raise ValueError(f"sandbox.{folder}.chat must be connection.<platform>.<name>.chat.<chat>")
+    chat_ref = parse_chat_ref(workspace.chat)
+    assert chat_ref is not None  # guaranteed by ValidatedChatRef
+    conn = settings.connection.get_connection(chat_ref.platform, chat_ref.name)
+    if conn is None:
+        raise ValueError(
+            f"sandbox.{folder}.chat references unknown connection: "
+            f"{connection_ref_from_parts(chat_ref.platform, chat_ref.name)}"
+        )
+    if isinstance(conn, DiscordConnectionConfig):
+        error = discord_chat_ref_error(conn, chat_ref.chat)
+        if error is not None:
+            raise ValueError(f"sandbox.{folder}.chat {error}: {workspace.chat}")
+        return
+    if chat_ref.chat not in conn.chat:
+        raise ValueError(f"sandbox.{folder}.chat references unknown chat: {workspace.chat}")
 
 
 # ---------------------------------------------------------------------------
@@ -294,41 +360,9 @@ class Settings(BaseSettings):
         Uses ConnectionsConfig.get_connection() for platform-generic lookups
         so this validator doesn't need to hardcode platform names.
         """
-        # Validate command_center.connection exists (if set). Well-formedness is already
-        # proven by CommandCenterConfig.connection's validator, so parse only extracts parts.
-        if self.command_center.connection:
-            ref = parse_connection_ref(self.command_center.connection)
-            assert ref is not None  # guaranteed by ValidatedConnectionRef
-            if self.connection.get_connection(ref.platform, ref.name) is None:
-                raise ValueError(
-                    f"command_center.connection references unknown connection: "
-                    f"{connection_ref_from_parts(ref.platform, ref.name)}"
-                )
-
-        # Validate workspace chat refs point to configured connections/chats. The chat
-        # ref is proven well-formed by WorkspaceConfig.chat's validator when present; a
-        # workspace must still declare one, so a missing (None) chat is the only failure.
+        _validated_command_center_connection(self)
         for folder, ws in self.workspaces.items():
-            if ws.chat is None:
-                raise ValueError(
-                    f"sandbox.{folder}.chat must be connection.<platform>.<name>.chat.<chat>"
-                )
-            chat_ref = parse_chat_ref(ws.chat)
-            assert chat_ref is not None  # guaranteed by ValidatedChatRef
-            conn = self.connection.get_connection(chat_ref.platform, chat_ref.name)
-            if conn is None:
-                raise ValueError(
-                    f"sandbox.{folder}.chat references unknown connection: "
-                    f"{connection_ref_from_parts(chat_ref.platform, chat_ref.name)}"
-                )
-            if isinstance(conn, DiscordConnectionConfig):
-                error = discord_chat_ref_error(conn, chat_ref.chat)
-                if error is not None:
-                    raise ValueError(f"sandbox.{folder}.chat {error}: {ws.chat}")
-                continue
-            if chat_ref.chat not in conn.chat:
-                raise ValueError(f"sandbox.{folder}.chat references unknown chat: {ws.chat}")
-
+            _validate_workspace_chat_ref(self, folder=folder, workspace=ws)
         return self
 
     @model_validator(mode="after")
@@ -344,24 +378,7 @@ class Settings(BaseSettings):
         for ws_name, ws in self.workspaces.items():
             if not ws.is_admin or not ws.mcp_servers:
                 continue
-            # Resolve MCP server list (expand groups, "all")
-            resolved: set[str] = set()
-            for entry in ws.mcp_servers:
-                if entry == "*":
-                    resolved.update(self.mcp_servers.keys())
-                elif entry in self.mcp_groups:
-                    resolved.update(self.mcp_groups[entry])
-                elif entry in self.mcp_servers:
-                    resolved.add(entry)
-            for server_name in resolved:
-                svc = self.services.get(server_name)
-                public_source = svc.public_source if svc else True
-                if public_source is not False:
-                    raise ValueError(
-                        f"Admin workspace '{ws_name}' has MCP server '{server_name}' "
-                        f"with public_source={public_source!r}. Admin workspaces cannot "
-                        f"have public_source MCPs (clean room policy)."
-                    )
+            _assert_admin_clean_room(self, workspace_name=ws_name, workspace=ws)
         return self
 
     @classmethod

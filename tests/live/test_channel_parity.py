@@ -810,6 +810,47 @@ class TestFullTraceSequenceParity:
 class TestEdgeCaseParity:
     """Test edge cases that could cause parity issues between channels."""
 
+    @staticmethod
+    def _channels():
+        return [
+            make_tui_channel(),
+            make_whatsapp_channel(),
+            make_slack_channel(),
+            make_discord_channel(),
+        ]
+
+    @classmethod
+    def _broadcasting_deps(cls):
+        channels = cls._channels()
+        deps = _make_deps(channels)
+
+        async def mock_broadcast(jid, event, **kwargs):
+            for ch in channels:
+                if ch.is_connected():
+                    await ch.send_event(jid, event)
+
+        deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
+        deps.emit = lambda *a, **kw: None
+        return channels, deps
+
+    @staticmethod
+    def _group() -> WorkspaceProfile:
+        return WorkspaceProfile(
+            jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
+        )
+
+    @staticmethod
+    def _metadata_messages(channel) -> list[str]:
+        return [text for text in channel.get_texts() if "📊" in text]
+
+    @classmethod
+    def _assert_metadata_message(cls, channel) -> None:
+        meta_msgs = cls._metadata_messages(channel)
+        assert len(meta_msgs) == 1, f"{channel.name} got {len(meta_msgs)} metadata messages"
+        assert "0.42 USD" in meta_msgs[0]
+        assert "3.2s" in meta_msgs[0]
+        assert "5 turns" in meta_msgs[0]
+
     async def test_internal_tags_in_result_stripped_for_all(self):
         """<internal> content in agent results should be stripped for ALL channels."""
         channels = [
@@ -897,25 +938,7 @@ class TestEdgeCaseParity:
 
     async def test_result_metadata_parity(self):
         """Cost/usage metadata should be broadcast identically."""
-        channels = [
-            make_tui_channel(),
-            make_whatsapp_channel(),
-            make_slack_channel(),
-            make_discord_channel(),
-        ]
-        deps = _make_deps(channels)
-
-        async def mock_broadcast(jid, event, **kwargs):
-            for ch in channels:
-                if ch.is_connected():
-                    await ch.send_event(jid, event)
-
-        deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
-        deps.emit = lambda *a, **kw: None
-
-        group = WorkspaceProfile(
-            jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
-        )
+        channels, deps = self._broadcasting_deps()
 
         result = ContainerOutput(
             status="success",
@@ -933,22 +956,14 @@ class TestEdgeCaseParity:
             "pynchy.host.orchestrator.messaging.router.store_message_direct",
             new_callable=AsyncMock,
         ):
-            await handle_streamed_output(deps, CHAT_JID, group, result)
+            await handle_streamed_output(deps, CHAT_JID, self._group(), result)
 
         # Check that metadata message is consistent
         for ch in channels:
-            texts = ch.get_texts()
-            meta_msgs = [t for t in texts if "📊" in t]
-            assert len(meta_msgs) == 1, f"{ch.name} got {len(meta_msgs)} metadata messages"
-            assert "0.42 USD" in meta_msgs[0]
-            assert "3.2s" in meta_msgs[0]
-            assert "5 turns" in meta_msgs[0]
+            self._assert_metadata_message(ch)
 
         # Metadata text should be identical (no prefix differences for metadata)
-        all_meta = []
-        for ch in channels:
-            meta = [t for t in ch.get_texts() if "📊" in t]
-            all_meta.append(meta)
+        all_meta = [self._metadata_messages(ch) for ch in channels]
         for i, _ch in enumerate(channels):
             assert all_meta[i] == all_meta[0], (
                 f"Metadata parity: {ch.name}={all_meta[i]} vs {channels[0].name}={all_meta[0]}"

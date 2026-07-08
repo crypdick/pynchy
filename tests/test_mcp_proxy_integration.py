@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,14 +14,28 @@ from pynchy.host.container_manager.mcp.proxy import McpProxy
 from pynchy.host.container_manager.mcp.resolution import McpInstance, build_trust_map
 
 
-def _make_instance(server_name: str) -> McpInstance:
+def _make_instance(
+    server_name: str,
+    *,
+    instance_id: str | None = None,
+    transport: str = "sse",
+    auth_value_env: str | None = None,
+    port: int = 8931,
+) -> McpInstance:
     """Minimal real McpInstance — build_trust_map only reads .server_name."""
     return McpInstance(
         server_name=server_name,
-        server_config=McpServerConfig(type="script", command="noop", port=0),
+        server_config=McpServerConfig(
+            type="script",
+            command="noop",
+            port=port,
+            transport=transport,
+            auth_value_env=auth_value_env,
+        ),
         kwargs={},
-        instance_id=server_name,
+        instance_id=instance_id or server_name,
         container_name=server_name,
+        port=port,
     )
 
 
@@ -108,6 +123,98 @@ class TestLiteLLMSyncRuntimeTypes:
             patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request),
         ):
             await litellm.sync_mcp_endpoints(gateway, {"gdrive": _make_instance("gdrive")})
+
+
+class TestLiteLLMSyncEndpoints:
+    @pytest.mark.asyncio
+    async def test_sync_mcp_endpoints_deduplicates_and_deletes_stale_entries(self, tmp_path):
+        from pynchy.host.container_manager.mcp import litellm
+
+        gateway = _make_gateway(tmp_path)
+        calls: list[tuple[str, str, dict[str, object] | None]] = []
+
+        async def api_request(_session, _gateway, method, path, *, json_data=None, **_kwargs):
+            calls.append((method, path, json_data))
+            if method == "GET" and path == "/v1/mcp/server":
+                return [
+                    {
+                        "server_name": "gdrive_team",
+                        "url": "http://localhost:8931/mcp",
+                        "server_id": "keep",
+                    },
+                    {
+                        "server_name": "gdrive_team",
+                        "url": "http://stale-gdrive",
+                        "server_id": "drop-me",
+                    },
+                    {
+                        "server_name": "stale_service",
+                        "url": "http://stale-service",
+                        "server_id": "remove-me",
+                    },
+                ]
+            return True
+
+        instances = {
+            "gdrive.team": _make_instance("gdrive", instance_id="gdrive.team"),
+        }
+
+        with (
+            patch(
+                "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
+                return_value=_LiteLLMSession(),
+            ),
+            patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request),
+        ):
+            await litellm.sync_mcp_endpoints(gateway, instances)
+
+        assert ("DELETE", "/v1/mcp/server/drop-me", None) in calls
+        assert ("DELETE", "/v1/mcp/server/remove-me", None) in calls
+        assert ("POST", "/v1/mcp/server", None) not in calls
+
+    @pytest.mark.asyncio
+    async def test_sync_mcp_endpoints_registers_missing_instance(self, tmp_path):
+        from pynchy.host.container_manager.mcp import litellm
+
+        gateway = _make_gateway(tmp_path)
+        calls: list[tuple[str, str, dict[str, object] | None]] = []
+
+        async def api_request(_session, _gateway, method, path, *, json_data=None, **_kwargs):
+            calls.append((method, path, json_data))
+            if method == "GET" and path == "/v1/mcp/server":
+                return []
+            return True
+
+        instance = _make_instance(
+            "notebook",
+            instance_id="notebook-service",
+            transport="streamable_http",
+            auth_value_env="NOTEBOOK_TOKEN",
+            port=9123,
+        )
+
+        with (
+            patch.dict(os.environ, {"NOTEBOOK_TOKEN": "secret-token"}),
+            patch(
+                "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
+                return_value=_LiteLLMSession(),
+            ),
+            patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request),
+        ):
+            await litellm.sync_mcp_endpoints(gateway, {instance.instance_id: instance})
+
+        assert ("GET", "/v1/mcp/server", None) in calls
+        assert (
+            "POST",
+            "/v1/mcp/server",
+            {
+                "server_name": "notebook_service",
+                "url": "http://localhost:9123/mcp",
+                "transport": "http",
+                "allow_all_keys": True,
+                "auth_value": "secret-token",
+            },
+        ) in calls
 
 
 class TestGetDirectServerConfigsProxy:

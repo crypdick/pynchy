@@ -50,14 +50,18 @@ class TestCreatePendingQuestion:
         assert files[0].name == "aabb001122334455.json"
 
         data = json.loads(files[0].read_text())
-        assert data["request_id"] == "aabb001122334455"
-        assert data["short_id"] == "aabb0011"
-        assert data["source_group"] == "personal"
-        assert data["chat_jid"] == "slack:C123"
-        assert data["channel_name"] == "slack"
-        assert data["session_id"] == "sess-456"
-        assert data["questions"] == [{"question": "Which auth?", "options": ["OAuth", "API key"]}]
-        assert data["message_id"] is None
+        expected_fields = {
+            "request_id": "aabb001122334455",
+            "short_id": "aabb0011",
+            "source_group": "personal",
+            "chat_jid": "slack:C123",
+            "channel_name": "slack",
+            "session_id": "sess-456",
+            "questions": [{"question": "Which auth?", "options": ["OAuth", "API key"]}],
+            "message_id": None,
+        }
+        for field_name, expected_value in expected_fields.items():
+            assert data[field_name] == expected_value
         assert "timestamp" in data
 
     def test_atomic_write_no_tmp_left(self, ipc_dir: Path, settings):

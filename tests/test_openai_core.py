@@ -15,6 +15,7 @@ if container_path.exists():
 
 try:
     from agent_runner.core import AgentCore, AgentCoreConfig, AgentEvent
+    from agent_runner.cores._openai_tool_parsing import _fallback_mapping_scan
     from agent_runner.registry import create_agent_core
 
     AGENT_RUNNER_AVAILABLE = True
@@ -125,6 +126,24 @@ class TestOpenAICoreInstantiation:
 class TestMCPServerConversion:
     """Test that config.mcp_servers dict is converted to MCPServerStdio objects."""
 
+    def _make_core(self):
+        try:
+            from agent_runner.cores.openai import OpenAIAgentCore
+        except ImportError:
+            pytest.skip("openai-agents not installed")
+
+        return OpenAIAgentCore(
+            AgentCoreConfig(
+                cwd="/workspace/project",
+                session_id=None,
+                group_folder="admin-1",
+                chat_jid="test@g.us",
+                is_admin=True,
+                is_scheduled_task=False,
+                mcp_servers={},
+            )
+        )
+
     def test_mcp_servers_built_from_config(self):
         """start() converts mcp_servers dict to MCPServerStdio instances."""
         try:
@@ -155,6 +174,50 @@ class TestMCPServerConversion:
         core = OpenAIAgentCore(config)
         # Before start(), no servers are created
         assert len(core._mcp_servers) == 0
+
+    def test_build_mcp_server_stdio(self):
+        core = self._make_core()
+
+        built = core._build_mcp_server(
+            "pynchy",
+            {
+                "command": "python",
+                "args": ["-m", "agent_runner.agent_tools"],
+                "env": {"KEY": "val"},
+            },
+        )
+
+        assert built is not None
+        assert built.name == "pynchy"
+
+    def test_build_mcp_server_sse(self):
+        core = self._make_core()
+
+        built = core._build_mcp_server(
+            "browser",
+            {"type": "sse", "url": "http://browser:3000/mcp", "headers": {"X-Test": "1"}},
+        )
+
+        assert built is not None
+        assert built.name == "browser"
+
+    def test_build_mcp_server_streamable_http(self):
+        core = self._make_core()
+
+        built = core._build_mcp_server(
+            "remote",
+            {"type": "http", "url": "https://example.test/mcp", "headers": {"Auth": "token"}},
+        )
+
+        assert built is not None
+        assert built.name == "remote"
+
+    def test_build_mcp_server_rejects_unknown_transport(self):
+        core = self._make_core()
+
+        built = core._build_mcp_server("mystery", {"type": "udp", "url": "udp://example.test"})
+
+        assert built is None
 
 
 @pytest.mark.skipif(not AGENT_RUNNER_AVAILABLE, reason="agent_runner module not available")
@@ -211,6 +274,100 @@ class TestEventMapping:
         assert event.type == "result"
         assert event.data["result"] == "Done! I listed the files."
         assert event.data["result_metadata"]["session_id"] == "resp_xyz789"
+
+
+@pytest.mark.skipif(not AGENT_RUNNER_AVAILABLE, reason="agent_runner module not available")
+class TestOpenAIToolParsing:
+    """Focused coverage for the OpenAI tool-call fallback parser helpers."""
+
+    def test_fallback_scan_reads_nested_data_mapping(self):
+        raw = object()
+        tool_name, tool_input = _fallback_mapping_scan(
+            raw,
+            {"data": {"name": "search_docs", "input": {"query": "hooks"}}},
+            None,
+            None,
+        )
+        assert tool_name == "search_docs"
+        assert tool_input == {"query": "hooks"}
+
+    def test_fallback_scan_builds_shell_input_from_action(self):
+        raw = object()
+        tool_name, tool_input = _fallback_mapping_scan(
+            raw,
+            {"action": {"type": "shell_call", "command": "git status"}},
+            None,
+            None,
+        )
+        assert tool_name == "shell"
+        assert tool_input == {"command": "git status"}
+
+
+@pytest.mark.skipif(not AGENT_RUNNER_AVAILABLE, reason="agent_runner module not available")
+class TestOpenAIQueryFallback:
+    """Retry behavior for primary/fallback OpenAI models."""
+
+    def _make_core(self):
+        try:
+            from agent_runner.cores.openai import OpenAIAgentCore
+        except ImportError:
+            pytest.skip("openai-agents not installed")
+
+        core = OpenAIAgentCore(
+            AgentCoreConfig(
+                cwd="/workspace/project",
+                session_id=None,
+                group_folder="admin-1",
+                chat_jid="test@g.us",
+                is_admin=True,
+                is_scheduled_task=False,
+                mcp_servers={},
+                extra={"model": "primary-model", "fallback_model": "fallback-model"},
+            )
+        )
+        core._agent = object()
+        core._model_primary = "primary-model"
+        core._model_fallback = "fallback-model"
+        return core
+
+    @staticmethod
+    async def _collect_events(core, prompt: str):
+        return [event async for event in core.query(prompt)]
+
+    @pytest.mark.asyncio
+    async def test_retries_with_fallback_before_any_output(self, monkeypatch):
+        core = self._make_core()
+        calls: list[str] = []
+
+        async def fake_run_streamed(prompt: str, model: str):
+            calls.append(model)
+            if model == "primary-model":
+                raise RuntimeError("model_not_found")
+            yield AgentEvent(type="text", data={"text": prompt})
+
+        monkeypatch.setattr(core, "_run_streamed", fake_run_streamed)
+
+        events = await self._collect_events(core, "hello")
+
+        assert calls == ["primary-model", "fallback-model"]
+        assert [event.type for event in events] == ["text"]
+
+    @pytest.mark.asyncio
+    async def test_does_not_retry_after_emitting_primary_output(self, monkeypatch):
+        core = self._make_core()
+        calls: list[str] = []
+
+        async def fake_run_streamed(_prompt: str, model: str):
+            calls.append(model)
+            yield AgentEvent(type="thinking", data={"thinking": "partial"})
+            raise RuntimeError("model_not_found")
+
+        monkeypatch.setattr(core, "_run_streamed", fake_run_streamed)
+
+        with pytest.raises(RuntimeError, match="model_not_found"):
+            await self._collect_events(core, "hello")
+
+        assert calls == ["primary-model"]
 
 
 # ---------------------------------------------------------------------------

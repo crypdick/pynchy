@@ -14,15 +14,16 @@ natively in Discord) and split by :func:`chunk_discord_text` to respect the
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from typing import Any
 
 import discord
 
-from pynchy.config.discord_refs import resolve_discord_chat_target
+from pynchy.config.discord_refs import DiscordChatTarget, resolve_discord_chat_target
 from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
 from pynchy.logger import logger
+from pynchy.state import get_chat_jids_by_name
 from pynchy.types import InboundFetchResult, NewMessage, OutboundEvent, WorkspaceProfile
 from pynchy.utils import create_background_task
 
@@ -32,6 +33,7 @@ from ._chunk import DISCORD_LIMIT, chunk_discord_text
 from ._events import DiscordEvents, build_message_metadata, normalized_message_content
 from ._ids import channel_jid, dm_jid, is_discord_jid, parse_jid
 from ._lifecycle import DiscordLifecycle
+from ._lookup import discord_user_names, normalize_discord_channel_name, same_name
 
 _MESSAGE_ID_PREFIX = "discord-"
 _TYPING_REFRESH_SECONDS = 8.0
@@ -41,6 +43,7 @@ class DiscordChannel:
     """Pynchy ``Channel`` protocol implementation backed by discord.py."""
 
     prefix_assistant_name: bool = False  # Discord shows the bot's own username
+    auto_provision_configured_chats: bool = True
 
     def __init__(
         self,
@@ -112,8 +115,141 @@ class DiscordChannel:
         if target is None:
             return None
         if target.kind == "direct":
-            return dm_jid(target.target_id)
+            if target.target_id.isdecimal():
+                return dm_jid(target.target_id)
+            user = self._find_configured_user(target.target_id)
+            if user is not None:
+                return dm_jid(str(user.id))
+            return await self._find_stored_direct_jid(target.target_id)
+        if self.client is not None:
+            channel = await self._find_configured_channel(target)
+            if channel is not None:
+                return channel_jid(str(channel.id))
+        if not target.target_id.isdecimal():
+            return None
         return channel_jid(target.target_id)
+
+    def _known_users(self) -> Iterable[Any]:
+        if self.client is None:
+            return ()
+        cached_users = tuple(getattr(self.client, "users", ()) or ())
+        members: list[Any] = []
+        get_all_members = getattr(self.client, "get_all_members", None)
+        if callable(get_all_members):
+            members.extend(get_all_members())
+        else:
+            for guild in getattr(self.client, "guilds", []) or []:
+                members.extend(getattr(guild, "members", []) or [])
+        return (*cached_users, *members)
+
+    def _find_configured_user(self, user_key: str) -> Any | None:
+        if self.client is None:
+            return None
+        if user_key.isdecimal():
+            return self.client.get_user(int(user_key))
+        return next(
+            (
+                user
+                for user in self._known_users()
+                if any(same_name(name, user_key) for name in discord_user_names(user))
+            ),
+            None,
+        )
+
+    async def _find_stored_direct_jid(self, user_key: str) -> str | None:
+        matches = [
+            jid
+            for jid in await get_chat_jids_by_name(user_key)
+            if jid.startswith("discord:direct:")
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            logger.warning(
+                "Multiple Discord DMs match user name; disambiguate",
+                user=user_key,
+                matches=matches,
+            )
+        return None
+
+    async def create_group(self, name: str) -> str:
+        """Create or reuse a configured Discord text channel and return its JID."""
+        if self.client is None:
+            raise RuntimeError("Discord client is not connected")
+        target = resolve_discord_chat_target(self._config, name)
+        if target is None or target.kind != "channel":
+            raise ValueError(f"Discord chat ref is not a configured guild channel: {name}")
+
+        existing = await self._find_configured_channel(target)
+        if existing is not None:
+            return channel_jid(str(existing.id))
+
+        guild = await self._find_configured_guild(target)
+        if guild is None:
+            raise RuntimeError(f"Discord guild not found for configured chat: {name}")
+
+        channel_name = self._configured_channel_name(target)
+        channel = await guild.create_text_channel(
+            channel_name,
+            reason="Pynchy configured workspace channel",
+        )
+        logger.info(
+            "Created Discord channel",
+            connection=self.name,
+            guild=getattr(guild, "name", None),
+            channel=channel_name,
+            channel_id=str(channel.id),
+        )
+        return channel_jid(str(channel.id))
+
+    async def _find_configured_channel(self, target: DiscordChatTarget) -> Any | None:
+        guild = await self._find_configured_guild(target)
+        if guild is None:
+            return None
+        channel_key = target.target_id
+        if channel_key.isdecimal():
+            existing = (
+                self.client.get_channel(int(channel_key)) if self.client is not None else None
+            )
+            if existing is not None:
+                return existing
+        channel_name = self._configured_channel_name(target)
+        for channel in getattr(guild, "text_channels", []):
+            if channel_key.isdecimal() and str(channel.id) == channel_key:
+                return channel
+            if same_name(getattr(channel, "name", None), channel_name):
+                return channel
+        return None
+
+    async def _find_configured_guild(self, target: DiscordChatTarget) -> Any | None:
+        assert self.client is not None
+        guild_key = target.guild_id or ""
+        if guild_key.isdecimal():
+            guild = self.client.get_guild(int(guild_key))
+            if guild is not None:
+                return guild
+            return await self.client.fetch_guild(int(guild_key))
+
+        guild_name = self._configured_guild_name(target)
+        return next(
+            (
+                guild
+                for guild in getattr(self.client, "guilds", [])
+                if same_name(getattr(guild, "name", None), guild_name)
+            ),
+            None,
+        )
+
+    def _configured_guild_name(self, target: DiscordChatTarget) -> str:
+        guild_key = target.guild_id or ""
+        guild_cfg = self._config.chat.get(guild_key)
+        return (guild_cfg.name if guild_cfg and guild_cfg.name else guild_key).strip()
+
+    def _configured_channel_name(self, target: DiscordChatTarget) -> str:
+        guild_cfg = self._config.chat.get(target.guild_id or "")
+        channel_cfg = guild_cfg.channels.get(target.target_id) if guild_cfg else None
+        raw = channel_cfg.name if channel_cfg and channel_cfg.name else target.target_id
+        return normalize_discord_channel_name(raw)
 
     async def _resolve_channel(self, jid: str) -> Any:
         """Resolve a jid to a sendable discord.py channel (creating a DM if needed)."""
@@ -299,6 +435,33 @@ class DiscordChannel:
             self._ask_user_views[str(message.id)] = view
         return f"{_MESSAGE_ID_PREFIX}{message.id}"
 
+    @staticmethod
+    def _history_after(since: str) -> discord.Object:
+        return discord.Object(id=discord.utils.time_snowflake(datetime.fromisoformat(since)))
+
+    @staticmethod
+    def _history_high_water_mark(message: Any, current: str) -> str:
+        timestamp = message.created_at.isoformat() if message.created_at else ""
+        if timestamp > current:
+            return timestamp
+        return current
+
+    def _history_message(self, channel_jid: str, message: Any) -> NewMessage | None:
+        author = message.author
+        if getattr(author, "bot", False) or str(author.id) == self.bot_user_id:
+            return None
+        timestamp = message.created_at.isoformat() if message.created_at else ""
+        return NewMessage(
+            id=f"{_MESSAGE_ID_PREFIX}{message.id}",
+            chat_jid=channel_jid,
+            sender=str(author.id),
+            sender_name=getattr(author, "display_name", None) or str(author),
+            content=normalized_message_content(message),
+            timestamp=timestamp or datetime.now(UTC).isoformat(),
+            is_from_me=False,
+            metadata=build_message_metadata(message),
+        )
+
     async def fetch_inbound_since(self, channel_jid: str, since: str) -> InboundFetchResult:
         if self.client is None or not self.owns_jid(channel_jid) or not since:
             return InboundFetchResult(messages=[])
@@ -307,26 +470,12 @@ class DiscordChannel:
         except discord.DiscordException:
             return InboundFetchResult(messages=[])
 
-        after = discord.Object(id=discord.utils.time_snowflake(datetime.fromisoformat(since)))
+        after = self._history_after(since)
         messages: list[NewMessage] = []
         high_water_mark = ""
         async for message in channel.history(after=after, limit=1000, oldest_first=True):
-            timestamp = message.created_at.isoformat() if message.created_at else ""
-            if timestamp > high_water_mark:
-                high_water_mark = timestamp
-            author = message.author
-            if getattr(author, "bot", False) or str(author.id) == self.bot_user_id:
-                continue
-            messages.append(
-                NewMessage(
-                    id=f"{_MESSAGE_ID_PREFIX}{message.id}",
-                    chat_jid=channel_jid,
-                    sender=str(author.id),
-                    sender_name=getattr(author, "display_name", None) or str(author),
-                    content=normalized_message_content(message),
-                    timestamp=timestamp or datetime.now(UTC).isoformat(),
-                    is_from_me=False,
-                    metadata=build_message_metadata(message),
-                )
-            )
+            high_water_mark = self._history_high_water_mark(message, high_water_mark)
+            inbound = self._history_message(channel_jid, message)
+            if inbound is not None:
+                messages.append(inbound)
         return InboundFetchResult(messages=messages, high_water_mark=high_water_mark)

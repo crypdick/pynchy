@@ -24,6 +24,7 @@ from pynchy.state import (
     get_router_state,
     get_session,
     get_task_by_id,
+    get_task_run_logs,
     get_tasks_for_group,
     get_workspace_profile,
     init_test_database,
@@ -74,6 +75,48 @@ def _store(
         content=content,
         timestamp=timestamp,
         is_from_me=is_from_me,
+    )
+
+
+def _full_task() -> ScheduledTask:
+    return ScheduledTask(
+        id="full-task",
+        group_folder="my-group",
+        chat_jid="jid@g.us",
+        prompt="Do a thing",
+        schedule_type="interval",
+        schedule_value="3600000",
+        context_mode="group",
+        next_run="2024-06-01T00:00:00Z",
+        status="active",
+        created_at="2024-01-01T00:00:00Z",
+        repo_access="owner/pynchy",
+    )
+
+
+def _assert_full_task(task: ScheduledTask) -> None:
+    assert (
+        task.id,
+        task.group_folder,
+        task.chat_jid,
+        task.prompt,
+        task.schedule_type,
+        task.schedule_value,
+        task.context_mode,
+        task.next_run,
+        task.status,
+        task.repo_access,
+    ) == (
+        "full-task",
+        "my-group",
+        "jid@g.us",
+        "Do a thing",
+        "interval",
+        "3600000",
+        "group",
+        "2024-06-01T00:00:00Z",
+        "active",
+        "owner/pynchy",
     )
 
 
@@ -793,6 +836,32 @@ class TestTaskAdvanced:
         await delete_task("logged-task")
         assert await get_task_by_id("logged-task") is None
 
+    async def test_log_task_run_persists_temporal_attempt_metadata(self):
+        await create_task(replace(self._TASK_TEMPLATE, id="attempt-task", next_run=None))
+
+        await log_task_run(
+            TaskRunLog(
+                task_id="attempt-task",
+                run_at="2024-06-01T00:00:00Z",
+                duration_ms=500,
+                status="error",
+                result=None,
+                error="ValueError: failed on port 12345",
+                temporal_workflow_id="workflow-1",
+                temporal_attempt=2,
+                error_signature="ValueError: failed on port #",
+                escalation_reason="stagnation",
+            )
+        )
+
+        logs = await get_task_run_logs("attempt-task", limit=1)
+
+        assert len(logs) == 1
+        assert logs[0].temporal_workflow_id == "workflow-1"
+        assert logs[0].temporal_attempt == 2
+        assert logs[0].error_signature == "ValueError: failed on port #"
+        assert logs[0].escalation_reason == "stagnation"
+
     async def test_create_task_with_repo_access(self):
         await create_task(
             replace(
@@ -1018,33 +1087,10 @@ class TestGetTaskById:
         assert result is None
 
     async def test_returns_full_task_fields(self):
-        await create_task(
-            ScheduledTask(
-                id="full-task",
-                group_folder="my-group",
-                chat_jid="jid@g.us",
-                prompt="Do a thing",
-                schedule_type="interval",
-                schedule_value="3600000",
-                context_mode="group",
-                next_run="2024-06-01T00:00:00Z",
-                status="active",
-                created_at="2024-01-01T00:00:00Z",
-                repo_access="owner/pynchy",
-            )
-        )
+        await create_task(_full_task())
         task = await get_task_by_id("full-task")
         assert task is not None
-        assert task.id == "full-task"
-        assert task.group_folder == "my-group"
-        assert task.chat_jid == "jid@g.us"
-        assert task.prompt == "Do a thing"
-        assert task.schedule_type == "interval"
-        assert task.schedule_value == "3600000"
-        assert task.context_mode == "group"
-        assert task.next_run == "2024-06-01T00:00:00Z"
-        assert task.status == "active"
-        assert task.repo_access == "owner/pynchy"
+        _assert_full_task(task)
 
 
 # --- get_last_group_sync / set_last_group_sync ---

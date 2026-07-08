@@ -13,6 +13,98 @@ from temporalio.common import RetryPolicy
 
 
 @workflow.defn
+class InteractiveMessageWorkflow:
+    """Run one interactive message turn through a host-side activity."""
+
+    @workflow.run
+    async def run(
+        self,
+        chat_jid: str,
+        maximum_attempts: int,
+        initial_retry_seconds: float,
+    ) -> str:
+        return cast(
+            str,
+            await workflow.execute_activity(
+                "run_interactive_message_turn",
+                chat_jid,
+                start_to_close_timeout=timedelta(hours=12),
+                retry_policy=RetryPolicy(
+                    maximum_attempts=maximum_attempts,
+                    initial_interval=timedelta(seconds=initial_retry_seconds),
+                    backoff_coefficient=2.0,
+                ),
+            ),
+        )
+
+
+@workflow.defn
+class DeployWorkflow:
+    """Run one deploy handoff through a host-side activity."""
+
+    @workflow.run
+    async def run(self, deploy_payload: dict[str, Any]) -> str:
+        return cast(
+            str,
+            await workflow.execute_activity(
+                "run_deploy",
+                deploy_payload,
+                start_to_close_timeout=timedelta(minutes=30),
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            ),
+        )
+
+
+@workflow.defn
+class HostGitSyncWorkflow:
+    """Run one host repository sync poll through a host-side activity."""
+
+    @workflow.run
+    async def run(self) -> str:
+        return cast(
+            str,
+            await workflow.execute_activity(
+                "run_host_git_sync",
+                start_to_close_timeout=timedelta(minutes=10),
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            ),
+        )
+
+
+@workflow.defn
+class ExternalGitSyncWorkflow:
+    """Run one external repository sync poll through a host-side activity."""
+
+    @workflow.run
+    async def run(self, repo_slug: str) -> str:
+        return cast(
+            str,
+            await workflow.execute_activity(
+                "run_external_git_sync",
+                repo_slug,
+                start_to_close_timeout=timedelta(minutes=10),
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            ),
+        )
+
+
+@workflow.defn
+class ChannelReconciliationWorkflow:
+    """Run one channel reconciliation pass through a host-side activity."""
+
+    @workflow.run
+    async def run(self) -> str:
+        return cast(
+            str,
+            await workflow.execute_activity(
+                "run_channel_reconciliation",
+                start_to_close_timeout=timedelta(minutes=10),
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            ),
+        )
+
+
+@workflow.defn
 class ScheduledAgentTaskWorkflow:
     """Run one scheduled agent task through a host-side activity."""
 
@@ -24,6 +116,11 @@ class ScheduledAgentTaskWorkflow:
                 "run_scheduled_agent_task",
                 task_id,
                 start_to_close_timeout=timedelta(hours=12),
+                retry_policy=RetryPolicy(
+                    maximum_attempts=3,
+                    initial_interval=timedelta(seconds=5),
+                    backoff_coefficient=2.0,
+                ),
             ),
         )
 

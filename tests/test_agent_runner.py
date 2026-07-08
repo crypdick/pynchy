@@ -469,6 +469,32 @@ class TestBuildCoreConfig:
         config = build_core_config(ci)
         assert config.mcp_servers["pynchy"]["env"]["PYNCHY_IS_SCHEDULED_TASK"] == "1"
 
+    def test_direct_sse_mcp_server_uses_sse_endpoint(self):
+        ci = self._make_input(
+            mcp_direct_servers=[{"name": "docs", "url": "http://mcp-docs:8000", "transport": "sse"}]
+        )
+        config = build_core_config(ci)
+        assert config.mcp_servers["docs"] == {
+            "type": "sse",
+            "url": "http://mcp-docs:8000/sse",
+        }
+
+    def test_streamable_http_mcp_server_normalizes_to_http(self):
+        ci = self._make_input(
+            mcp_direct_servers=[
+                {
+                    "name": "search",
+                    "url": "http://mcp-search:8000",
+                    "transport": "streamable_http",
+                }
+            ]
+        )
+        config = build_core_config(ci)
+        assert config.mcp_servers["search"] == {
+            "type": "http",
+            "url": "http://mcp-search:8000/mcp",
+        }
+
     def test_system_notices_not_in_system_prompt(self):
         """System notices must NOT go in system_prompt_append — that would
         invalidate the KV cache on every session resume. They're prepended

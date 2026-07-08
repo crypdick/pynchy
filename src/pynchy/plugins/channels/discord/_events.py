@@ -33,6 +33,20 @@ else:
     DiscordChannel = object
 
 
+def _author_names(author: Any) -> frozenset[str]:
+    names = {
+        value
+        for value in (
+            getattr(author, "display_name", None),
+            getattr(author, "global_name", None),
+            getattr(author, "name", None),
+            str(author),
+        )
+        if isinstance(value, str) and value.strip()
+    }
+    return frozenset(names)
+
+
 def build_inbound_context(message: Any, bot_user_id: str) -> InboundContext:
     """Extract the access-relevant primitives from a discord.py message."""
     author = message.author
@@ -40,6 +54,7 @@ def build_inbound_context(message: Any, bot_user_id: str) -> InboundContext:
     channel = message.channel
     is_dm = guild is None
     parent_id = getattr(channel, "parent_id", None)
+    parent = getattr(channel, "parent", None)
     role_ids = frozenset(str(role.id) for role in getattr(author, "roles", []))
     mentions_bot = any(str(user.id) == bot_user_id for user in message.mentions)
     return InboundContext(
@@ -47,10 +62,14 @@ def build_inbound_context(message: Any, bot_user_id: str) -> InboundContext:
         author_id=str(author.id),
         author_is_bot=bool(getattr(author, "bot", False)),
         guild_id=None if is_dm else str(guild.id),
+        guild_name=None if is_dm else getattr(guild, "name", None),
         channel_id=str(channel.id),
+        channel_name=getattr(channel, "name", None),
         parent_channel_id=str(parent_id) if parent_id else None,
+        parent_channel_name=getattr(parent, "name", None) if parent is not None else None,
         author_role_ids=role_ids,
         mentions_bot=mentions_bot,
+        author_names=_author_names(author),
     )
 
 

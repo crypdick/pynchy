@@ -367,9 +367,9 @@ class TestDeployEdgeCases:
     async def test_deploy_without_chat_jid_uses_admin_group(self, deps: MockDeps):
         """Deploy request missing chatJid should fall back to admin group's JID."""
         with patch(
-            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy",
+            "pynchy.host.container_manager.ipc.handlers_deploy.start_deploy_workflow",
             new_callable=AsyncMock,
-        ) as mock_finalize:
+        ) as mock_start:
             await dispatch(
                 {
                     "type": "deploy",
@@ -382,9 +382,11 @@ class TestDeployEdgeCases:
                 True,
                 deps,
             )
-            mock_finalize.assert_called_once()
-            # Should have resolved the admin group's JID
-            assert mock_finalize.call_args.kwargs["chat_jid"] == "admin-1@g.us"
+            mock_start.assert_awaited_once()
+            request = mock_start.await_args.args[0]
+            assert request.chat_jid == "admin-1@g.us"
+            assert request.commit_sha == "abc123"
+            assert request.rebuild is False
 
     async def test_deploy_without_chat_jid_and_no_admin_group(self):
         """Deploy request with no chatJid and no admin group should not finalize."""
@@ -393,9 +395,9 @@ class TestDeployEdgeCases:
         no_admin_deps = MockDeps({"other@g.us": OTHER_GROUP})
 
         with patch(
-            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy",
+            "pynchy.host.container_manager.ipc.handlers_deploy.start_deploy_workflow",
             new_callable=AsyncMock,
-        ) as mock_finalize:
+        ) as mock_start:
             await dispatch(
                 {
                     "type": "deploy",
@@ -406,22 +408,14 @@ class TestDeployEdgeCases:
                 True,
                 no_admin_deps,
             )
-            mock_finalize.assert_not_called()
+            mock_start.assert_not_awaited()
 
     async def test_deploy_with_rebuild_but_no_build_script(self, deps: MockDeps, tmp_path: Path):
-        """Deploy requesting rebuild when build.sh doesn't exist should still finalize."""
-        from pynchy.host.orchestrator.deploy import BuildResult
-
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_deploy.build_container_image",
-                return_value=BuildResult(success=True, skipped=True),
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy",
-                new_callable=AsyncMock,
-            ) as mock_finalize,
-        ):
+        """Deploy rebuild is represented on the Temporal request, not run inline."""
+        with patch(
+            "pynchy.host.container_manager.ipc.handlers_deploy.start_deploy_workflow",
+            new_callable=AsyncMock,
+        ) as mock_start:
             await dispatch(
                 {
                     "type": "deploy",
@@ -434,15 +428,16 @@ class TestDeployEdgeCases:
                 True,
                 deps,
             )
-            # Should still finalize since build.sh not found is non-fatal (skipped)
-            mock_finalize.assert_called_once()
+            mock_start.assert_awaited_once()
+            request = mock_start.await_args.args[0]
+            assert request.rebuild is True
 
     async def test_deploy_uses_default_resume_prompt(self, deps: MockDeps):
         """Deploy with no resumePrompt should use the default."""
         with patch(
-            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy",
+            "pynchy.host.container_manager.ipc.handlers_deploy.start_deploy_workflow",
             new_callable=AsyncMock,
-        ) as mock_finalize:
+        ) as mock_start:
             await dispatch(
                 {
                     "type": "deploy",
@@ -455,8 +450,9 @@ class TestDeployEdgeCases:
                 True,
                 deps,
             )
-            mock_finalize.assert_called_once()
-            assert "Deploy complete" in mock_finalize.call_args.kwargs["resume_prompt"]
+            mock_start.assert_awaited_once()
+            request = mock_start.await_args.args[0]
+            assert "Deploy complete" in request.resume_prompt
 
 
 # ---------------------------------------------------------------------------

@@ -63,6 +63,18 @@ _NETWORK_MULTI: tuple[str, ...] = (
 )
 
 
+def _allow() -> dict[str, str]:
+    return {"decision": "allow"}
+
+
+def _deny(reason: str) -> dict[str, str]:
+    return {"decision": "deny", "reason": reason}
+
+
+def _needs_human(reason: str) -> dict[str, str]:
+    return {"decision": "needs_human", "reason": reason}
+
+
 def _is_network_command(command: str) -> bool:
     """Check if command matches network-capable blacklist patterns."""
     cmd_lower = command.lower().strip()
@@ -71,6 +83,26 @@ def _is_network_command(command: str) -> bool:
             return True
     first_token = cmd_lower.split()[0] if cmd_lower.split() else ""
     return first_token in _NETWORK_SINGLE
+
+
+async def _network_command_decision(command: str, both_tainted: bool) -> dict[str, str]:
+    if both_tainted:
+        return _needs_human(f"Network command while corruption+secret tainted: {command[:200]}")
+    return await _cop_review(command, escalate_on_flag=False)
+
+
+async def _grey_zone_decision(command: str, both_tainted: bool) -> dict[str, str]:
+    return await _cop_review(command, escalate_on_flag=both_tainted)
+
+
+async def _cop_review(command: str, *, escalate_on_flag: bool) -> dict[str, str]:
+    verdict = await inspect_bash(command)
+    if not verdict.flagged:
+        return _allow()
+    reason = verdict.reason or "Cop flagged command"
+    if escalate_on_flag:
+        return _needs_human(reason)
+    return _deny(reason)
 
 
 async def evaluate_bash_command(gate: SecurityGate, command: str) -> dict[str, str]:
@@ -90,35 +122,16 @@ async def evaluate_bash_command(gate: SecurityGate, command: str) -> dict[str, s
 
     # Tier 1: No taint -> allow unconditionally
     if not policy.corruption_tainted and not policy.secret_tainted:
-        return {"decision": "allow"}
+        return _allow()
 
     both_tainted = policy.corruption_tainted and policy.secret_tainted
 
     # Tier 2: Network blacklist
     if _is_network_command(command):
-        if both_tainted:
-            # Lethal trifecta: corruption + secret + network -> human
-            return {
-                "decision": "needs_human",
-                "reason": f"Network command while corruption+secret tainted: {command[:200]}",
-            }
-        # Single taint (corruption only) + network -> Cop review
-        verdict = await inspect_bash(command)
-        if verdict.flagged:
-            return {"decision": "deny", "reason": verdict.reason or "Cop flagged command"}
-        return {"decision": "allow"}
+        return await _network_command_decision(command, both_tainted)
 
     # Tier 3: Grey zone -> Cop review
-    verdict = await inspect_bash(command)
-    if verdict.flagged:
-        if both_tainted:
-            return {
-                "decision": "needs_human",
-                "reason": verdict.reason or "Cop flagged command",
-            }
-        return {"decision": "deny", "reason": verdict.reason or "Cop flagged command"}
-
-    return {"decision": "allow"}
+    return await _grey_zone_decision(command, both_tainted)
 
 
 async def _handle_bash_security_check(

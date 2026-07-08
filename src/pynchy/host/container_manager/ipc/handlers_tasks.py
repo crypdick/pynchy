@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal, cast
 
@@ -19,11 +20,31 @@ from pynchy.state import (
     update_host_job,
     update_task,
 )
+from pynchy.types import GroupFolder, WorkspaceProfile
 from pynchy.utils import compute_next_run
 
 
+@dataclass(frozen=True)
+class _ScheduledTaskRequest:
+    prompt: str
+    schedule_type: Literal["cron", "interval", "once"]
+    schedule_value: str
+    target_folder: GroupFolder
+    context_mode: Literal["group", "isolated"]
+
+
+@dataclass(frozen=True)
+class _HostJobRequest:
+    name: str
+    command: str
+    schedule_type: Literal["cron", "interval", "once"]
+    schedule_value: str
+    cwd: str | None
+    timeout_seconds: int
+
+
 def _compute_next_run_from_ipc(
-    schedule_type: str,
+    schedule_type: Literal["cron", "interval", "once"],
     schedule_value: str,
 ) -> str | None:
     """Compute next_run from IPC schedule data, returning None on invalid input.
@@ -38,7 +59,7 @@ def _compute_next_run_from_ipc(
     # 'once' handled above; remaining values are validated by compute_next_run,
     # which returns None for anything other than 'cron'/'interval'.
     return compute_next_run(
-        cast(Literal["cron", "interval", "once"], schedule_type),
+        schedule_type,
         schedule_value,
         get_settings().timezone,
     )
@@ -50,8 +71,6 @@ async def _handle_schedule_task(
     is_admin: bool,
     deps: IpcDeps,
 ) -> None:
-    workspaces = deps.workspaces()
-
     if not data.get("_cop_approved"):
         from pynchy.host.container_manager.security.cop_gate import cop_gate
 
@@ -67,50 +86,44 @@ async def _handle_schedule_task(
         if not allowed:
             return
 
-    prompt = data.get("prompt")
-    schedule_type = data.get("schedule_type")
-    schedule_value = data.get("schedule_value")
-    target_folder = data.get("targetGroup")
-
-    if not (prompt and schedule_type and schedule_value and target_folder):
+    request = _scheduled_task_request(data)
+    if request is None:
         return
 
-    # Resolve folder name → JID via reverse lookup
-    target_jid: str | None = None
-    for jid, profile in workspaces.items():
-        if profile.folder == target_folder:
-            target_jid = jid
-            break
-
+    target_jid = _target_jid_for_folder(deps.workspaces(), request.target_folder)
     if target_jid is None:
         logger.warning(
             "Cannot schedule task: target group not registered",
-            target_group=target_folder,
+            target_group=request.target_folder,
         )
         return
 
-    if not is_admin and target_folder != source_group:
+    if not is_admin and request.target_folder != source_group:
         logger.warning(
             "Unauthorized schedule_task attempt blocked",
             source_group=source_group,
-            target_folder=target_folder,
+            target_folder=request.target_folder,
         )
         return
 
     try:
-        next_run = _compute_next_run_from_ipc(schedule_type, schedule_value)
+        next_run = _compute_next_run_from_ipc(request.schedule_type, request.schedule_value)
     except (ValueError, TypeError, KeyError):
         logger.warning(
             "invalid schedule value",
-            schedule_type=schedule_type,
-            schedule_value=schedule_value,
+            schedule_type=request.schedule_type,
+            schedule_value=request.schedule_value,
+        )
+        return
+    if next_run is None:
+        logger.warning(
+            "invalid schedule value",
+            schedule_type=request.schedule_type,
+            schedule_value=request.schedule_value,
         )
         return
 
     task_id = f"task-{int(datetime.now(UTC).timestamp() * 1000)}-{uuid.uuid4().hex[:8]}"
-    context_mode = data.get("context_mode")
-    if context_mode not in ("group", "isolated"):
-        context_mode = "isolated"
 
     from pynchy.state import create_task
     from pynchy.types import ScheduledTask
@@ -118,12 +131,12 @@ async def _handle_schedule_task(
     await create_task(
         ScheduledTask(
             id=task_id,
-            group_folder=target_folder,
+            group_folder=request.target_folder,
             chat_jid=target_jid,
-            prompt=prompt,
-            schedule_type=cast('Literal["cron", "interval", "once"]', schedule_type),
-            schedule_value=schedule_value,
-            context_mode=cast('Literal["group", "isolated"]', context_mode),
+            prompt=request.prompt,
+            schedule_type=request.schedule_type,
+            schedule_value=request.schedule_value,
+            context_mode=request.context_mode,
             next_run=next_run,
             status="active",
             created_at=datetime.now(UTC).isoformat(),
@@ -133,9 +146,93 @@ async def _handle_schedule_task(
         "Task created via IPC",
         task_id=task_id,
         source_group=source_group,
-        target_folder=target_folder,
-        context_mode=context_mode,
+        target_folder=request.target_folder,
+        context_mode=request.context_mode,
     )
+
+
+def _scheduled_task_request(data: dict[str, Any]) -> _ScheduledTaskRequest | None:
+    prompt = _required_str(data.get("prompt"))
+    schedule_value = _required_str(data.get("schedule_value"))
+    target_folder = _group_folder(data.get("targetGroup"))
+    if prompt is None or schedule_value is None or target_folder is None:
+        return None
+
+    parsed_schedule_type = _schedule_type(data.get("schedule_type"))
+    if parsed_schedule_type is None:
+        return None
+
+    return _ScheduledTaskRequest(
+        prompt=prompt,
+        schedule_type=parsed_schedule_type,
+        schedule_value=schedule_value,
+        target_folder=target_folder,
+        context_mode=_context_mode(data.get("context_mode")),
+    )
+
+
+def _host_job_request(data: dict[str, Any]) -> _HostJobRequest | None:
+    name = _required_str(data.get("name"))
+    command = _required_str(data.get("command"))
+    schedule_value = _required_str(data.get("schedule_value"))
+    if name is None or command is None or schedule_value is None:
+        return None
+
+    schedule_type = _schedule_type(data.get("schedule_type"))
+    if schedule_type is None:
+        return None
+
+    timeout_seconds = data.get("timeout_seconds", 600)
+    if not isinstance(timeout_seconds, int):
+        return None
+
+    cwd = data.get("cwd")
+    if cwd is not None and not isinstance(cwd, str):
+        return None
+
+    return _HostJobRequest(
+        name=name,
+        command=command,
+        schedule_type=schedule_type,
+        schedule_value=schedule_value,
+        cwd=cwd,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def _required_str(value: Any) -> str | None:
+    if isinstance(value, str) and value:
+        return value
+    return None
+
+
+def _group_folder(value: Any) -> GroupFolder | None:
+    parsed = _required_str(value)
+    if parsed is None:
+        return None
+    return GroupFolder(parsed)
+
+
+def _schedule_type(value: Any) -> Literal["cron", "interval", "once"] | None:
+    if value in ("cron", "interval", "once"):
+        return cast(Literal["cron", "interval", "once"], value)
+    return None
+
+
+def _context_mode(value: Any) -> Literal["group", "isolated"]:
+    if value == "group":
+        return "group"
+    return "isolated"
+
+
+def _target_jid_for_folder(
+    workspaces: dict[str, WorkspaceProfile],
+    target_folder: GroupFolder,
+) -> str | None:
+    for jid, profile in workspaces.items():
+        if profile.folder == target_folder:
+            return jid
+    return None
 
 
 async def _handle_schedule_host_job(
@@ -162,22 +259,25 @@ async def _handle_schedule_host_job(
         if not allowed:
             return
 
-    name = data.get("name")
-    command = data.get("command")
-    schedule_type = data.get("schedule_type")
-    schedule_value = data.get("schedule_value")
-
-    if not (name and command and schedule_type and schedule_value):
+    request = _host_job_request(data)
+    if request is None:
         logger.warning("Missing required fields for schedule_host_job", data=data)
         return
 
     try:
-        next_run = _compute_next_run_from_ipc(schedule_type, schedule_value)
+        next_run = _compute_next_run_from_ipc(request.schedule_type, request.schedule_value)
     except (ValueError, TypeError, KeyError):
         logger.warning(
             "invalid schedule value for host job",
-            schedule_type=schedule_type,
-            schedule_value=schedule_value,
+            schedule_type=request.schedule_type,
+            schedule_value=request.schedule_value,
+        )
+        return
+    if next_run is None:
+        logger.warning(
+            "invalid schedule value for host job",
+            schedule_type=request.schedule_type,
+            schedule_value=request.schedule_value,
         )
         return
 
@@ -187,23 +287,23 @@ async def _handle_schedule_host_job(
     await create_host_job(
         {
             "id": job_id,
-            "name": name,
-            "command": command,
-            "schedule_type": schedule_type,
-            "schedule_value": schedule_value,
+            "name": request.name,
+            "command": request.command,
+            "schedule_type": request.schedule_type,
+            "schedule_value": request.schedule_value,
             "next_run": next_run,
             "status": "active",
             "created_at": datetime.now(UTC).isoformat(),
             "created_by": source_group,
-            "cwd": data.get("cwd"),
-            "timeout_seconds": data.get("timeout_seconds", 600),
+            "cwd": request.cwd,
+            "timeout_seconds": request.timeout_seconds,
             "enabled": True,
         }
     )
     logger.info(
         "Host job created via IPC",
         job_id=job_id,
-        name=name,
+        name=request.name,
         source_group=source_group,
     )
 

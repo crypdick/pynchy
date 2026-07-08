@@ -43,6 +43,61 @@ def _iter_plugin_runtimes() -> list[RuntimeProvider]:
     return collect_hook_results("pynchy_container_runtime", _is_valid_plugin_runtime, "runtime")
 
 
+def _runtime_candidates() -> dict[str, RuntimeProvider]:
+    candidates: dict[str, RuntimeProvider] = {}
+    for runtime in _iter_plugin_runtimes():
+        name = str(runtime.name).lower().strip()
+        if not name:
+            continue
+        if name in candidates:
+            logger.warning("Duplicate runtime provider ignored", runtime=name)
+            continue
+        candidates[name] = runtime
+    return candidates
+
+
+def _resolve_override(
+    override: str, candidates: dict[str, RuntimeProvider]
+) -> RuntimeProvider | None:
+    selected = candidates.get(override)
+    if selected is not None:
+        return selected
+    if override:
+        logger.warning("Unknown runtime override; falling back to auto-detection", runtime=override)
+    return None
+
+
+def _darwin_runtime(candidates: dict[str, RuntimeProvider]) -> RuntimeProvider | None:
+    apple = candidates.get("apple")
+    if apple and apple.is_available():
+        return apple
+
+    docker = candidates.get("docker")
+    if docker and docker.is_available():
+        if apple is None:
+            logger.info(
+                "Apple runtime plugin not installed, falling back to Docker. "
+                "Enable a plugin that implements pynchy_container_runtime for Apple support."
+            )
+        else:
+            logger.info("Apple runtime unavailable, falling back to Docker")
+        return docker
+
+    return apple
+
+
+def _fallback_runtime(candidates: dict[str, RuntimeProvider]) -> RuntimeProvider:
+    docker = candidates.get("docker")
+    if docker is not None:
+        return docker
+
+    available = next((runtime for runtime in candidates.values() if runtime.is_available()), None)
+    if available is not None:
+        return available
+
+    return next(iter(candidates.values()))
+
+
 def detect_runtime() -> RuntimeProvider:
     """Detect the container runtime to use.
 
@@ -54,57 +109,23 @@ def detect_runtime() -> RuntimeProvider:
     from pynchy.config import get_settings
 
     override = (get_settings().container.runtime or "").lower()
-    candidates: dict[str, RuntimeProvider] = {}
-    for runtime in _iter_plugin_runtimes():
-        name = str(runtime.name).lower().strip()
-        if not name:
-            continue
-        if name in candidates:
-            logger.warning("Duplicate runtime provider ignored", runtime=name)
-            continue
-        candidates[name] = runtime
-
+    candidates = _runtime_candidates()
     if not candidates:
         raise RuntimeError(
             "No container runtime plugins available. "
             "Ensure the Docker or Apple runtime plugin is enabled in config.toml."
         )
 
-    if override:
-        selected = candidates.get(override)
-        if selected is not None:
-            return selected
-        logger.warning("Unknown runtime override; falling back to auto-detection", runtime=override)
+    selected = _resolve_override(override, candidates)
+    if selected is not None:
+        return selected
 
     if sys.platform == "darwin":
-        apple = candidates.get("apple")
-        if apple and apple.is_available():
-            return apple
-        docker = candidates.get("docker")
-        if docker and docker.is_available():
-            if apple is None:
-                logger.info(
-                    "Apple runtime plugin not installed, falling back to Docker. "
-                    "Enable a plugin that implements pynchy_container_runtime for Apple support."
-                )
-            else:
-                logger.info("Apple runtime unavailable, falling back to Docker")
-            return docker
-        # Last resort on macOS: return apple if present, even if not available yet
-        if apple is not None:
-            return apple
+        selected = _darwin_runtime(candidates)
+        if selected is not None:
+            return selected
 
-    # Non-macOS or macOS fallthrough: prefer docker, then any available plugin
-    docker = candidates.get("docker")
-    if docker is not None:
-        return docker
-
-    for runtime in candidates.values():
-        if runtime.is_available():
-            return runtime
-
-    # Return first candidate even if not available (will fail at ensure_running)
-    return next(iter(candidates.values()))
+    return _fallback_runtime(candidates)
 
 
 _runtime: RuntimeProvider | None = None

@@ -68,6 +68,7 @@ def _make_deps(
     deps.workspaces = workspaces or {}
     deps.queue = MagicMock()
     deps._ingest_user_message = AsyncMock()
+    deps.start_interactive_turn = AsyncMock()
     return deps
 
 
@@ -127,7 +128,8 @@ class TestInboundReconciliation:
         deps._ingest_user_message.assert_awaited_once()
         ingested_msg = deps._ingest_user_message.call_args[0][0]
         assert ingested_msg.chat_jid == "group@g.us"  # remapped to canonical
-        deps.queue.enqueue_message_check.assert_called_once_with("group@g.us")
+        deps.start_interactive_turn.assert_awaited_once_with("group@g.us")
+        deps.queue.enqueue_message_check.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_advances_inbound_cursor(self):
@@ -310,11 +312,13 @@ ADMIN_GROUP = WorkspaceProfile(
 )
 
 
-def _owner_settings(*, workspace_folder: str = "test", **ws_overrides):
+def _owner_settings(
+    *, workspace_folder: str = "test", owner: OwnerConfig | None = None, **ws_overrides
+):
     """Settings with owner-only allowed_users for a workspace."""
     ws_kwargs = {"name": workspace_folder, "allowed_users": ["owner"], **ws_overrides}
     return make_settings(
-        owner=OwnerConfig(slack="U04OWNER"),
+        owner=owner or OwnerConfig(slack="U04OWNER"),
         workspaces={workspace_folder: WorkspaceConfig(**ws_kwargs)},
     )
 
@@ -364,6 +368,32 @@ class TestSenderFilter:
         )
         await set_channel_cursor("slack", "group@g.us", "inbound", "2024-01-01T00:00:00")
         monkeypatch.setattr("pynchy.config.settings._settings", _owner_settings())
+
+        await reconcile_all_channels(deps)
+
+        deps._ingest_user_message.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_allowed_sender_name_ingested(self, monkeypatch):
+        """Owner can be configured by Slack display name while messages keep raw IDs."""
+        msg = NewMessage(
+            id="msg-owner-name",
+            chat_jid="slack:C123",
+            sender="U04OWNER",
+            sender_name="Ricardo",
+            content="hello",
+            timestamp="2024-06-01T00:00:00",
+        )
+        ch = _make_channel(inbound=[msg])
+        deps = _make_deps(
+            channels=[ch],
+            workspaces={"group@g.us": TEST_GROUP},
+        )
+        await set_channel_cursor("slack", "group@g.us", "inbound", "2024-01-01T00:00:00")
+        monkeypatch.setattr(
+            "pynchy.config.settings._settings",
+            _owner_settings(owner=OwnerConfig(slack="ricardo")),
+        )
 
         await reconcile_all_channels(deps)
 

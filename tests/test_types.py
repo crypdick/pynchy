@@ -328,20 +328,23 @@ class TestContainerOutput:
 
     def test_defaults(self):
         out = ContainerOutput(status="success")
-        assert out.result is None
-        assert out.new_session_id is None
-        assert out.error is None
         assert out.type == "result"
-        assert out.thinking is None
-        assert out.tool_name is None
-        assert out.tool_input is None
-        assert out.text is None
-        assert out.system_subtype is None
-        assert out.system_data is None
-        assert out.tool_result_id is None
-        assert out.tool_result_content is None
-        assert out.tool_result_is_error is None
-        assert out.result_metadata is None
+        for field_name in (
+            "result",
+            "new_session_id",
+            "error",
+            "thinking",
+            "tool_name",
+            "tool_input",
+            "text",
+            "system_subtype",
+            "system_data",
+            "tool_result_id",
+            "tool_result_content",
+            "tool_result_is_error",
+            "result_metadata",
+        ):
+            assert getattr(out, field_name) is None
 
     def test_error_output(self):
         out = ContainerOutput(status="error", error="something went wrong")

@@ -342,6 +342,46 @@ class TestPrepareLiteLLMConfig:
 
 
 class TestLiteLLMGatewayStart:
+    @staticmethod
+    def _fake_docker_recorder(calls: list[list[str]]):
+        def fake_docker(*args: str, check: bool = True, timeout: int = 30):
+            calls.append(list(args))
+            result = MagicMock()
+            result.stdout = ""
+            result.returncode = 0
+            return result
+
+        return fake_docker
+
+    @staticmethod
+    def _joined_calls(calls: list[list[str]]) -> list[str]:
+        return [" ".join(command) for command in calls]
+
+    @staticmethod
+    def _litellm_run_command(flat_calls: list[str]) -> str:
+        return next(command for command in flat_calls if "LITELLM_MASTER_KEY" in command)
+
+    @classmethod
+    def _assert_start_calls(
+        cls,
+        calls: list[list[str]],
+        wait_healthy_mock: AsyncMock,
+    ) -> None:
+        flat_calls = cls._joined_calls(calls)
+        assert any("pynchy-litellm-db" in command and "run" in command for command in flat_calls)
+        assert any(
+            "pynchy-litellm" in command and "run" in command and "LITELLM_MASTER_KEY" in command
+            for command in flat_calls
+        )
+
+        litellm_run = cls._litellm_run_command(flat_calls)
+        assert "DATABASE_URL=" in litellm_run
+        assert "postgresql://" in litellm_run
+        assert "LITELLM_SALT_KEY=" in litellm_run
+        assert "--network pynchy-litellm-net" in litellm_run
+        assert wait_healthy_mock.await_args.args[1] == "http://localhost:4000/health/readiness"
+        assert isinstance(wait_healthy_mock.await_args.kwargs["timeout"], float)
+
     @pytest.fixture
     def litellm_config(self, tmp_path: Path) -> Path:
         cfg = tmp_path / "litellm_config.yaml"
@@ -387,17 +427,18 @@ class TestLiteLLMGatewayStart:
         """Verify start creates network, Postgres, then LiteLLM."""
         calls: list[list[str]] = []
 
-        def fake_docker(*args: str, check: bool = True, timeout: int = 30):
-            calls.append(list(args))
-            result = MagicMock()
-            result.stdout = ""
-            result.returncode = 0
-            return result
-
         with (
             patch(f"{_LITELLM_MOD}.docker_available", return_value=True),
-            patch(f"{_LITELLM_MOD}.run_docker", new_callable=AsyncMock, side_effect=fake_docker),
-            patch(f"{_DOCKER_MOD}.run_docker", new_callable=AsyncMock, side_effect=fake_docker),
+            patch(
+                f"{_LITELLM_MOD}.run_docker",
+                new_callable=AsyncMock,
+                side_effect=self._fake_docker_recorder(calls),
+            ),
+            patch(
+                f"{_DOCKER_MOD}.run_docker",
+                new_callable=AsyncMock,
+                side_effect=self._fake_docker_recorder(calls),
+            ),
             patch(f"{_LITELLM_MOD}.ensure_image", new_callable=AsyncMock),
             patch(f"{_LITELLM_MOD}.ensure_network", new_callable=AsyncMock),
             patch.object(gw, "_wait_postgres_healthy", new_callable=AsyncMock),
@@ -405,18 +446,7 @@ class TestLiteLLMGatewayStart:
         ):
             await gw.start()
 
-        flat = [" ".join(c) for c in calls]
-
-        assert any("pynchy-litellm-db" in c and "run" in c for c in flat)
-        assert any("pynchy-litellm" in c and "run" in c and "LITELLM_MASTER_KEY" in c for c in flat)
-
-        litellm_run = next(c for c in flat if "LITELLM_MASTER_KEY" in c)
-        assert "DATABASE_URL=" in litellm_run
-        assert "postgresql://" in litellm_run
-        assert "LITELLM_SALT_KEY=" in litellm_run
-        assert "--network pynchy-litellm-net" in litellm_run
-        assert wait_healthy_mock.await_args.args[1] == "http://localhost:4000/health/readiness"
-        assert isinstance(wait_healthy_mock.await_args.kwargs["timeout"], float)
+        self._assert_start_calls(calls, wait_healthy_mock)
 
     @pytest.mark.asyncio
     async def test_stop_removes_all_containers_and_network(self, gw: LiteLLMGateway):

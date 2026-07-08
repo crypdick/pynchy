@@ -26,15 +26,21 @@ class TestPluginManager:
         cores = pm.hook.pynchy_agent_core_info()
         assert len(cores) >= 2
 
-        claude_core = next((c for c in cores if c["name"] == "claude"), None)
-        assert claude_core is not None
-        assert claude_core["module"] == "agent_runner.cores.claude"
-        assert claude_core["class_name"] == "ClaudeAgentCore"
-
-        openai_core = next((c for c in cores if c["name"] == "openai"), None)
-        assert openai_core is not None
-        assert openai_core["module"] == "agent_runner.cores.openai"
-        assert openai_core["class_name"] == "OpenAIAgentCore"
+        expected_cores = {
+            "claude": {
+                "module": "agent_runner.cores.claude",
+                "class_name": "ClaudeAgentCore",
+            },
+            "openai": {
+                "module": "agent_runner.cores.openai",
+                "class_name": "OpenAIAgentCore",
+            },
+        }
+        for core_name, expected_fields in expected_cores.items():
+            core = next((candidate for candidate in cores if candidate["name"] == core_name), None)
+            assert core is not None
+            for field_name, expected_value in expected_fields.items():
+                assert core[field_name] == expected_value
 
     def test_plugin_manager_has_hookspecs(self):
         """Plugin manager has all expected hook specifications."""

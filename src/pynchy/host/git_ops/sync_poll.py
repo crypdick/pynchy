@@ -1,9 +1,4 @@
-"""Background polling loops for git sync.
-
-Polls for code and config changes, triggering deploys when needed.
-Pynchy's own repo gets full deploy logic; external repos just sync
-worktrees.
-"""
+"""Git sync drift helpers used by Temporal activities."""
 
 from __future__ import annotations
 
@@ -21,20 +16,10 @@ from pynchy.host.git_ops.utils import (
     detect_main_branch,
     files_changed_between,
     get_head_sha,
-    git_env_with_token,
     push_local_commits,
     run_git,
 )
 from pynchy.logger import logger
-
-# Authenticated GitHub API rate limit: 5000 req/hr (83/min).
-# git ls-remote every 5s = 720 req/hr — well within limits.
-HOST_GIT_SYNC_POLL_INTERVAL = 5.0
-
-
-# ---------------------------------------------------------------------------
-# Polling loop helpers
-# ---------------------------------------------------------------------------
 
 
 def get_local_head_sha(repo_root: Path | None = None) -> str:
@@ -164,11 +149,6 @@ def _hash_config_files() -> str:
     return h.hexdigest()
 
 
-# ---------------------------------------------------------------------------
-# Polling loops
-# ---------------------------------------------------------------------------
-
-
 def _find_pynchy_repo_ctx(s: Settings, pynchy_root: Path) -> RepoContext | None:
     """Resolve pynchy's own RepoContext (for worktree notifications), if configured."""
     from pynchy.host.git_ops.repo import get_repo_context
@@ -240,12 +220,7 @@ async def _check_origin_drift(
     if not current_origin or current_origin == state.last_origin_sha:
         return False
 
-    old_origin = state.last_origin_sha
-    logger.info(
-        "Origin/main changed, syncing",
-        old_sha=old_origin[:8] if old_origin else "none",
-        new_sha=current_origin[:8],
-    )
+    _log_origin_sync(state.last_origin_sha, current_origin)
 
     if state.local_head == current_origin:
         state.last_origin_sha = current_origin
@@ -257,89 +232,42 @@ async def _check_origin_drift(
         return False
     state.last_origin_sha = current_origin
 
-    new_head_after_pull = await asyncio.to_thread(get_local_head_sha, pynchy_root)
-    if pynchy_repo_ctx:
-        notified = last_notified_sha.get(str(pynchy_root), "")
-        if notified != new_head_after_pull:
-            await host_notify_worktree_updates(None, deps, pynchy_repo_ctx)
-
-    # Check deploy inline (avoid 5s delay for next tick)
     new_head = await asyncio.to_thread(get_local_head_sha, pynchy_root)
+    await _notify_origin_sync_if_needed(pynchy_root, pynchy_repo_ctx, deps, new_head)
+    return await _deploy_pulled_head_if_needed(state, deps, new_head)
+
+
+def _log_origin_sync(old_origin: str | None, current_origin: str) -> None:
+    logger.info(
+        "Origin/main changed, syncing",
+        old_sha=old_origin[:8] if old_origin else "none",
+        new_sha=current_origin[:8],
+    )
+
+
+async def _notify_origin_sync_if_needed(
+    pynchy_root: Path,
+    pynchy_repo_ctx: RepoContext | None,
+    deps: GitSyncDeps,
+    new_head: str,
+) -> None:
+    if pynchy_repo_ctx is None:
+        return
+    notified = last_notified_sha.get(str(pynchy_root), "")
+    if notified == new_head:
+        return
+    await host_notify_worktree_updates(None, deps, pynchy_repo_ctx)
+
+
+async def _deploy_pulled_head_if_needed(
+    state: _HostSyncState,
+    deps: GitSyncDeps,
+    new_head: str,
+) -> bool:
+    # Check deploy inline (avoid 5s delay for next tick)
     if state.deployed_sha and new_head and needs_deploy(state.deployed_sha, new_head):
         rebuild = needs_container_rebuild(state.deployed_sha, new_head)
         await deps.trigger_deploy(state.deployed_sha, rebuild=rebuild)
         return True
     state.deployed_sha = new_head
     return False
-
-
-async def start_host_git_sync_loop(deps: GitSyncDeps) -> None:
-    """Poll for code and config changes on pynchy's own repo.
-
-    Detects origin drift, local drift, and config drift. Deploy logic only
-    fires for pynchy — external repos use start_external_repo_sync_loop.
-    """
-    s = get_settings()
-    pynchy_root = s.project_root
-    pynchy_repo_ctx = _find_pynchy_repo_ctx(s, pynchy_root)
-
-    state = _HostSyncState(
-        last_origin_sha=await asyncio.to_thread(_host_get_origin_main_sha, pynchy_root),
-        deployed_sha=await asyncio.to_thread(get_local_head_sha, pynchy_root),
-        config_hash=_hash_config_files(),
-    )
-
-    while True:
-        await asyncio.sleep(HOST_GIT_SYNC_POLL_INTERVAL)
-
-        try:
-            if await _check_config_drift(state, deps):
-                return
-            if await _check_local_head_drift(pynchy_root, state, pynchy_repo_ctx, deps):
-                return
-            if await _check_origin_drift(pynchy_root, state, pynchy_repo_ctx, deps):
-                return
-        except Exception:
-            logger.exception("git_sync poll error")
-
-
-async def start_external_repo_sync_loop(repo_ctx: RepoContext, deps: GitSyncDeps) -> None:
-    """Poll for origin changes on an external (non-pynchy) repo.
-
-    Simplified loop: no deploy logic. Polls ls-remote, fetches + rebases main,
-    then notifies all worktrees for that repo. Shares HOST_GIT_SYNC_POLL_INTERVAL.
-    Uses per-repo token for all remote git operations.
-    """
-    repo_root = repo_ctx.root
-    env = git_env_with_token(repo_ctx.slug)
-    last_origin_sha = await asyncio.to_thread(_host_get_origin_main_sha, repo_root, env)
-
-    while True:
-        await asyncio.sleep(HOST_GIT_SYNC_POLL_INTERVAL)
-
-        try:
-            current_origin = await asyncio.to_thread(_host_get_origin_main_sha, repo_root, env)
-            if not current_origin or current_origin == last_origin_sha:
-                continue
-
-            old_origin = last_origin_sha
-
-            logger.info(
-                "External repo origin changed, syncing",
-                slug=repo_ctx.slug,
-                old_sha=old_origin[:8] if old_origin else "none",
-                new_sha=current_origin[:8],
-            )
-
-            updated = await asyncio.to_thread(host_update_main, repo_root, env)
-            if not updated:
-                continue
-            last_origin_sha = current_origin
-
-            new_head = await asyncio.to_thread(get_local_head_sha, repo_root)
-            notified = last_notified_sha.get(str(repo_root), "")
-            if notified != new_head:
-                await host_notify_worktree_updates(None, deps, repo_ctx)
-
-        except Exception:
-            logger.exception("external_repo_sync poll error", slug=repo_ctx.slug)

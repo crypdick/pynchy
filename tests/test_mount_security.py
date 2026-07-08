@@ -202,6 +202,42 @@ description = "Dev"
         ):
             assert load_mount_allowlist() is None
 
+    def test_invalid_allowed_root_entry_returns_none(self, tmp_path: Path):
+        allowlist = tmp_path / "mount-allowlist.toml"
+        _write_allowlist(
+            allowlist,
+            """
+non_admin_read_only = true
+blocked_patterns = []
+
+[[allowed_roots]]
+path = 123
+""".strip(),
+        )
+        with patch(
+            "pynchy.host.container_manager.security.mount_security.get_settings",
+            return_value=_test_settings(allowlist),
+        ):
+            assert load_mount_allowlist() is None
+
+    def test_invalid_blocked_pattern_entry_returns_none(self, tmp_path: Path):
+        allowlist = tmp_path / "mount-allowlist.toml"
+        _write_allowlist(
+            allowlist,
+            """
+non_admin_read_only = true
+blocked_patterns = ["ok", 123]
+
+[[allowed_roots]]
+path = "~/projects"
+""".strip(),
+        )
+        with patch(
+            "pynchy.host.container_manager.security.mount_security.get_settings",
+            return_value=_test_settings(allowlist),
+        ):
+            assert load_mount_allowlist() is None
+
 
 class TestValidateMount:
     def test_allows_mount_under_root(self, tmp_path: Path):

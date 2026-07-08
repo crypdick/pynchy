@@ -68,6 +68,70 @@ def build_sdk_messages(messages: list[dict[str, Any]]) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _built_in_mcp_server(container_input: ContainerInput) -> dict[str, Any]:
+    """Build the always-present Pynchy MCP server entry."""
+    return {
+        "command": "python",
+        "args": ["-m", "agent_runner.agent_tools"],
+        "env": {
+            "PYNCHY_CHAT_JID": container_input.chat_jid,
+            "PYNCHY_GROUP_FOLDER": container_input.group_folder,
+            "PYNCHY_IS_ADMIN": ("1" if container_input.is_admin else "0"),
+            "PYNCHY_SESSION_ID": (container_input.session_id or ""),
+            "PYNCHY_IS_SCHEDULED_TASK": ("1" if container_input.is_scheduled_task else "0"),
+        },
+    }
+
+
+def _direct_mcp_server_entry(server: dict[str, Any]) -> dict[str, Any]:
+    """Normalize a direct MCP server config for the agent core."""
+    transport = server.get("transport", "sse")
+    url = server["url"]
+    match transport:
+        case "sse":
+            normalized_url = f"{url}/sse"
+            normalized_transport = "sse"
+        case "http" | "streamable_http":
+            normalized_url = f"{url}/mcp"
+            normalized_transport = "http"
+        case _:
+            normalized_url = url
+            normalized_transport = transport
+
+    return {
+        "type": normalized_transport,
+        "url": normalized_url,
+    }
+
+
+def _build_mcp_servers(container_input: ContainerInput) -> dict[str, dict[str, Any]]:
+    """Build the MCP server map for the selected container input."""
+    mcp_servers: dict[str, dict[str, Any]] = {"pynchy": _built_in_mcp_server(container_input)}
+    direct_servers = container_input.mcp_direct_servers
+    if not direct_servers:
+        return mcp_servers
+
+    # Add remote MCP servers — connect directly to containers, bypassing
+    # LiteLLM's MCP proxy (which doesn't work with Claude SDK; see
+    # backlog/3-ready/mcp-gateway-transport.md).
+    log(f"Direct MCP servers received: {direct_servers}")
+    for server in direct_servers:
+        entry = _direct_mcp_server_entry(server)
+        log(f"Configuring MCP server '{server['name']}': {entry}")
+        mcp_servers[server["name"]] = entry
+
+    return mcp_servers
+
+
+def _agent_cwd(container_input: ContainerInput) -> str:
+    """Pick the container cwd based on project-repo availability."""
+    # Default cwd to the mounted project repo when available, so agents start
+    # in the codebase they're working on rather than the group metadata dir.
+    # Admin always has /workspace/project; non-admin gets it via repo_access.
+    has_repo_mount = container_input.is_admin or bool(container_input.repo_access)
+    return "/workspace/project" if has_repo_mount else "/workspace/group"
+
+
 def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
     """Build AgentCoreConfig from ContainerInput."""
     # Directives are resolved host-side and passed in via system_prompt_append.
@@ -79,63 +143,18 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
     # to reprocess the full conversation history — expensive in both tokens and
     # latency. System notices are prepended to the user prompt in main() instead.
 
-    # MCP server path for agent tools
-    mcp_server_command = "python"
-    mcp_server_args = ["-m", "agent_runner.agent_tools"]
-
-    # Build mcp_servers dict starting with built-in pynchy server
-    mcp_servers_dict = {
-        "pynchy": {
-            "command": mcp_server_command,
-            "args": mcp_server_args,
-            "env": {
-                "PYNCHY_CHAT_JID": container_input.chat_jid,
-                "PYNCHY_GROUP_FOLDER": container_input.group_folder,
-                "PYNCHY_IS_ADMIN": ("1" if container_input.is_admin else "0"),
-                "PYNCHY_SESSION_ID": (container_input.session_id or ""),
-                "PYNCHY_IS_SCHEDULED_TASK": ("1" if container_input.is_scheduled_task else "0"),
-            },
-        },
-    }
-
-    # Add remote MCP servers — connect directly to containers, bypassing
-    # LiteLLM's MCP proxy (which doesn't work with Claude SDK; see
-    # backlog/3-ready/mcp-gateway-transport.md).
-    if container_input.mcp_direct_servers:
-        log(f"Direct MCP servers received: {container_input.mcp_direct_servers}")
-        for server in container_input.mcp_direct_servers:
-            transport = server.get("transport", "sse")
-            url = server["url"]
-            # SSE servers expose /sse endpoint; streamable HTTP uses /mcp
-            if transport == "sse":
-                url = f"{url}/sse"
-            elif transport in ("http", "streamable_http"):
-                url = f"{url}/mcp"
-            entry = {
-                "type": transport if transport != "streamable_http" else "http",
-                "url": url,
-            }
-            log(f"Configuring MCP server '{server['name']}': {entry}")
-            mcp_servers_dict[server["name"]] = entry
-
-    # Default cwd to the mounted project repo when available, so agents start
-    # in the codebase they're working on rather than the group metadata dir.
-    # Admin always has /workspace/project; non-admin gets it via repo_access.
-    has_repo_mount = container_input.is_admin or bool(container_input.repo_access)
-    agent_cwd = "/workspace/project" if has_repo_mount else "/workspace/group"
-
     # Build extra config from agent_core_config
     extra = container_input.agent_core_config or {}
 
     return AgentCoreConfig(
-        cwd=agent_cwd,
+        cwd=_agent_cwd(container_input),
         session_id=container_input.session_id,
         group_folder=container_input.group_folder,
         chat_jid=container_input.chat_jid,
         is_admin=container_input.is_admin,
         is_scheduled_task=container_input.is_scheduled_task,
         system_prompt_append=system_prompt_append,
-        mcp_servers=mcp_servers_dict,
+        mcp_servers=_build_mcp_servers(container_input),
         # No plugin hooks are configured yet. Enforcement is fully wired: every
         # core (incl. CLI PreToolUse subprocesses) composes its gate via
         # before_tool_use_roster, so the moment this list is populated all cores
@@ -150,57 +169,56 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
 # ---------------------------------------------------------------------------
 
 
+def _success_output(output_type: str, **kwargs: Any) -> ContainerOutput:
+    """Build a successful non-result container output."""
+    return ContainerOutput(status="success", type=output_type, **kwargs)
+
+
+def _result_output(event: AgentEvent, session_id: str | None) -> ContainerOutput:
+    """Build the terminal result output, including error propagation."""
+    meta = event.data.get("result_metadata") or {}
+    is_error = meta.get("is_error", False)
+    result_text = event.data.get("result")
+    return ContainerOutput(
+        status="error" if is_error else "success",
+        result=result_text,
+        new_session_id=session_id,
+        error=result_text if is_error else None,
+        result_metadata=meta or None,
+    )
+
+
 def event_to_output(event: AgentEvent, session_id: str | None) -> ContainerOutput:
     """Convert AgentEvent to ContainerOutput."""
     match event.type:
         case "thinking":
-            return ContainerOutput(
-                status="success",
-                type="thinking",
-                thinking=event.data.get("thinking"),
-            )
+            return _success_output("thinking", thinking=event.data.get("thinking"))
         case "tool_use":
-            return ContainerOutput(
-                status="success",
-                type="tool_use",
+            return _success_output(
+                "tool_use",
                 tool_name=event.data.get("tool_name"),
                 tool_input=event.data.get("tool_input"),
             )
         case "tool_result":
-            return ContainerOutput(
-                status="success",
-                type="tool_result",
+            return _success_output(
+                "tool_result",
                 tool_result_id=event.data.get("tool_result_id"),
                 tool_result_content=event.data.get("tool_result_content"),
                 tool_result_is_error=event.data.get("tool_result_is_error"),
             )
         case "text":
-            return ContainerOutput(
-                status="success",
-                type="text",
-                text=event.data.get("text"),
-            )
+            return _success_output("text", text=event.data.get("text"))
         case "system":
-            return ContainerOutput(
-                status="success",
-                type="system",
+            return _success_output(
+                "system",
                 system_subtype=event.data.get("system_subtype"),
                 system_data=event.data.get("system_data", {}),
             )
         case "result":
-            meta = event.data.get("result_metadata") or {}
-            is_error = meta.get("is_error", False)
-            result_text = event.data.get("result")
-            return ContainerOutput(
-                status="error" if is_error else "success",
-                result=result_text,
-                new_session_id=session_id,
-                error=result_text if is_error else None,
-                result_metadata=meta or None,
-            )
+            return _result_output(event, session_id)
         case _:
             log(f"Unknown event type: {event.type}")
-            return ContainerOutput(status="success", type="text", text="")
+            return _success_output("text", text="")
 
 
 # ---------------------------------------------------------------------------

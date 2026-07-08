@@ -568,6 +568,86 @@ class TestNeedsDeploy:
 
 
 # ---------------------------------------------------------------------------
+# Origin drift helper tests
+# ---------------------------------------------------------------------------
+
+
+class _RecordingGitSyncDeps:
+    def __init__(self) -> None:
+        self.deploy_calls: list[tuple[str, bool]] = []
+
+    async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
+        self.deploy_calls.append((previous_sha, rebuild))
+
+    async def broadcast_host_message(self, jid: str, text: str) -> None:
+        return None
+
+    async def broadcast_system_notice(self, jid: str, text: str) -> None:
+        return None
+
+    def has_active_session(self, group_folder: str) -> bool:
+        return False
+
+    def workspaces(self) -> dict:
+        return {}
+
+
+class TestCheckOriginDrift:
+    @pytest.mark.asyncio
+    async def test_origin_change_updates_baseline_when_local_already_matches(self, tmp_path: Path):
+        deps = _RecordingGitSyncDeps()
+        state = sync_poll._HostSyncState(
+            last_origin_sha="old-origin",
+            deployed_sha="deployed",
+            config_hash="cfg",
+            local_head="new-origin",
+        )
+
+        with patch(
+            "pynchy.host.git_ops.sync_poll._host_get_origin_main_sha",
+            return_value="new-origin",
+        ):
+            changed = await sync_poll._check_origin_drift(tmp_path, state, None, deps)
+
+        assert changed is False
+        assert state.last_origin_sha == "new-origin"
+        assert deps.deploy_calls == []
+
+    @pytest.mark.asyncio
+    async def test_origin_change_pulls_notifies_and_deploys(self, tmp_path: Path):
+        deps = _RecordingGitSyncDeps()
+        repo_ctx = RepoContext(slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt")
+        state = sync_poll._HostSyncState(
+            last_origin_sha="old-origin",
+            deployed_sha="deployed-sha",
+            config_hash="cfg",
+            local_head="local-sha",
+        )
+
+        with (
+            patch(
+                "pynchy.host.git_ops.sync_poll._host_get_origin_main_sha",
+                return_value="origin-new",
+            ),
+            patch("pynchy.host.git_ops.sync_poll.host_update_main", return_value=True),
+            patch("pynchy.host.git_ops.sync_poll.get_local_head_sha", return_value="pulled-head"),
+            patch("pynchy.host.git_ops.sync_poll.needs_deploy", return_value=True),
+            patch("pynchy.host.git_ops.sync_poll.needs_container_rebuild", return_value=True),
+            patch(
+                "pynchy.host.git_ops.sync_poll.host_notify_worktree_updates",
+                new_callable=AsyncMock,
+            ) as notify,
+        ):
+            sync_poll.last_notified_sha.pop(str(tmp_path), None)
+            changed = await sync_poll._check_origin_drift(tmp_path, state, repo_ctx, deps)
+
+        assert changed is True
+        assert state.last_origin_sha == "origin-new"
+        assert deps.deploy_calls == [("deployed-sha", True)]
+        notify.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
 # Config file hashing tests
 # ---------------------------------------------------------------------------
 

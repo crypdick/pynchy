@@ -59,7 +59,14 @@ def test_start_writes_codex_config_with_hooks_and_mcp(tmp_path, monkeypatch):
     asyncio.run(core.start())
 
     config = tomllib.loads((tmp_path / "config.toml").read_text())
-    assert config["model_provider"] == "pynchy_litellm"
+    expected_top_level = {
+        "model_provider": "pynchy_litellm",
+        "approval_policy": "never",
+        "sandbox_mode": "danger-full-access",
+    }
+    for key, expected_value in expected_top_level.items():
+        assert config[key] == expected_value
+
     assert config["model_providers"]["pynchy_litellm"] == {
         "name": "Pynchy LiteLLM Gateway",
         "base_url": "http://gateway:4000/v1",
@@ -67,14 +74,22 @@ def test_start_writes_codex_config_with_hooks_and_mcp(tmp_path, monkeypatch):
         "env_key": "OPENAI_API_KEY",
     }
     assert config["features"]["hooks"] is True
-    assert config["approval_policy"] == "never"
-    assert config["sandbox_mode"] == "danger-full-access"
-    assert config["mcp_servers"]["pynchy"]["command"] == "python"
-    assert config["mcp_servers"]["pynchy"]["args"] == ["-m", "agent_runner.agent_tools"]
-    assert config["mcp_servers"]["pynchy"]["env"] == {"PYNCHY_CHAT_JID": "j"}
-    assert config["mcp_servers"]["browser"]["url"] == "http://browser:3000/mcp"
-    assert config["mcp_servers"]["remote-auth"]["bearer_token_env_var"] == "REMOTE_TOKEN"
-    assert config["mcp_servers"]["remote-auth"]["http_headers"] == {"X-Static": "yes"}
+
+    expected_mcp_servers = {
+        "pynchy": {
+            "command": "python",
+            "args": ["-m", "agent_runner.agent_tools"],
+            "env": {"PYNCHY_CHAT_JID": "j"},
+        },
+        "browser": {"url": "http://browser:3000/mcp"},
+        "remote-auth": {
+            "bearer_token_env_var": "REMOTE_TOKEN",
+            "http_headers": {"X-Static": "yes"},
+        },
+    }
+    for server_name, expected_fields in expected_mcp_servers.items():
+        for field_name, expected_value in expected_fields.items():
+            assert config["mcp_servers"][server_name][field_name] == expected_value
 
     hooks = config["hooks"]["PreToolUse"]
     assert hooks[0]["matcher"] == "*"
@@ -208,6 +223,7 @@ def test_thread_started_captures_session_id():
 
     assert [e.type for e in events] == ["system"]
     assert core.session_id == "codex:thread-1"
+    assert events[0].data["system_data"]["session_id"] == "codex:thread-1"
 
 
 def test_agent_message_maps_to_text_and_last_result():

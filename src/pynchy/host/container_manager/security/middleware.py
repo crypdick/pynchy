@@ -105,8 +105,30 @@ class SecurityPolicy:
         - Human: dangerous_writes=True OR (corruption + secret + public_sink)
         """
         trust = self._get_trust(service)
+        forbidden = self._forbidden_write_decision(service, trust)
+        if forbidden is not None:
+            return forbidden
 
-        # Forbidden checks
+        scan_result = scan_payload_for_secrets(data)
+        needs_cop, needs_human = self._write_gate_flags(trust, scan_result.secrets_found)
+        reason = self._write_reason(
+            needs_cop=needs_cop,
+            needs_human=needs_human,
+            detected_secrets=scan_result.detected,
+        )
+
+        return PolicyDecision(
+            allowed=True,
+            reason=reason,
+            needs_cop=needs_cop,
+            needs_human=needs_human,
+        )
+
+    def _forbidden_write_decision(
+        self,
+        service: str,
+        trust: ServiceTrustConfig,
+    ) -> PolicyDecision | None:
         if trust.public_sink == "forbidden":
             return PolicyDecision(
                 allowed=False,
@@ -117,36 +139,35 @@ class SecurityPolicy:
                 allowed=False,
                 reason=f"Writing to '{service}' is forbidden (dangerous_writes)",
             )
+        return None
 
-        # Derive gating from taint state + service properties
+    def _write_gate_flags(
+        self,
+        trust: ServiceTrustConfig,
+        payload_has_secrets: bool,
+    ) -> tuple[bool, bool]:
         needs_cop = self._corruption_tainted
-        needs_human = False
+        needs_human = bool(trust.dangerous_writes)
 
-        # dangerous_writes=True -> always needs human confirmation
-        if trust.dangerous_writes:
-            needs_human = True
-
-        # Full trifecta: corruption + secret + public_sink
         if self._corruption_tainted and self._secret_tainted and trust.public_sink:
             needs_human = True
-
-        # Payload secrets scan — escalate if secrets detected
-        scan_result = scan_payload_for_secrets(data)
-        if scan_result.secrets_found:
+        if payload_has_secrets:
             needs_human = True
 
+        return needs_cop, needs_human
+
+    def _write_reason(
+        self,
+        *,
+        needs_cop: bool,
+        needs_human: bool,
+        detected_secrets: list[str],
+    ) -> str | None:
         reason_parts = []
         if needs_cop:
             reason_parts.append("cop (corruption taint)")
         if needs_human:
             reason_parts.append("human confirmation")
-        if scan_result.secrets_found:
-            reason_parts.append(f"secrets detected in payload ({', '.join(scan_result.detected)})")
-        reason = "; ".join(reason_parts) if reason_parts else None
-
-        return PolicyDecision(
-            allowed=True,
-            reason=reason,
-            needs_cop=needs_cop,
-            needs_human=needs_human,
-        )
+        if detected_secrets:
+            reason_parts.append(f"secrets detected in payload ({', '.join(detected_secrets)})")
+        return "; ".join(reason_parts) if reason_parts else None

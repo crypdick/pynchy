@@ -12,6 +12,52 @@ from pathlib import Path
 from typing import Any
 
 
+def _truncate_text(text: str, *, max_text: int, suffix: str) -> str:
+    if len(text) <= max_text:
+        return text
+    return text[:max_text] + suffix
+
+
+def _stream_output_entry(out: dict[str, Any], *, max_text: int) -> dict[str, Any]:
+    text = str(out.get("text", ""))
+    return {
+        "type": "stream",
+        "name": out.get("name"),
+        "text": _truncate_text(
+            text,
+            max_text=max_text,
+            suffix=f"\n... (truncated, {len(text)} chars total)",
+        ),
+    }
+
+
+def _display_output_entry(out: dict[str, Any], *, max_text: int) -> dict[str, Any]:
+    data = out.get("data", {})
+    entry: dict[str, Any] = {
+        "type": "result" if out.get("output_type") == "execute_result" else "display"
+    }
+    text = data.get("text/plain")
+    if isinstance(text, str):
+        entry["text"] = _truncate_text(text, max_text=max_text, suffix="\n... (truncated)")
+    if "image/png" in data:
+        if "_image_path" in data:
+            entry["image_path"] = data["_image_path"]
+        else:
+            entry["has_image"] = True
+    return entry
+
+
+def _error_output_entry(out: dict[str, Any], *, max_text: int) -> dict[str, Any]:
+    traceback_lines = out.get("traceback", [])
+    tb_text = "\n".join(re.sub(r"\x1b\[[0-9;]*m", "", line) for line in traceback_lines)
+    return {
+        "type": "error",
+        "ename": out.get("ename"),
+        "evalue": out.get("evalue"),
+        "traceback": _truncate_text(tb_text, max_text=max_text, suffix="\n... (truncated)"),
+    }
+
+
 def outputs_for_agent(outputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Simplify outputs for agent consumption.
 
@@ -24,45 +70,13 @@ def outputs_for_agent(outputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for out in outputs:
         otype = out.get("output_type")
         if otype == "stream":
-            text = out.get("text", "")
-            if len(text) > MAX_TEXT:
-                text = text[:MAX_TEXT] + f"\n... (truncated, {len(out['text'])} chars total)"
-            result.append({"type": "stream", "name": out.get("name"), "text": text})
-
-        elif otype in ("execute_result", "display_data"):
-            data = out.get("data", {})
-            entry: dict[str, Any] = {"type": "result" if otype == "execute_result" else "display"}
-
-            # Prefer text/plain for agent readability
-            if "text/plain" in data:
-                text = data["text/plain"]
-                if len(text) > MAX_TEXT:
-                    text = text[:MAX_TEXT] + "\n... (truncated)"
-                entry["text"] = text
-
-            # Image: use saved file path if available, otherwise note presence
-            if "image/png" in data:
-                if "_image_path" in data:
-                    entry["image_path"] = data["_image_path"]
-                else:
-                    entry["has_image"] = True
-
-            result.append(entry)
-
-        elif otype == "error":
-            tb = out.get("traceback", [])
-            # ANSI-strip traceback for readability
-            tb_text = "\n".join(re.sub(r"\x1b\[[0-9;]*m", "", line) for line in tb)
-            if len(tb_text) > MAX_TEXT:
-                tb_text = tb_text[:MAX_TEXT] + "\n... (truncated)"
-            result.append(
-                {
-                    "type": "error",
-                    "ename": out.get("ename"),
-                    "evalue": out.get("evalue"),
-                    "traceback": tb_text,
-                }
-            )
+            result.append(_stream_output_entry(out, max_text=MAX_TEXT))
+            continue
+        if otype in ("execute_result", "display_data"):
+            result.append(_display_output_entry(out, max_text=MAX_TEXT))
+            continue
+        if otype == "error":
+            result.append(_error_output_entry(out, max_text=MAX_TEXT))
 
     return result
 

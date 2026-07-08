@@ -266,63 +266,99 @@ async def sweep_expired_approvals() -> list[dict[str, Any]]:
     now = datetime.now(UTC)
     expired: list[dict[str, Any]] = []
 
-    groups = [f.name for f in ipc_dir.iterdir() if f.is_dir() and f.name != "errors"]
-
-    for grp in groups:
-        pending_dir = ipc_dir / grp / "pending_approvals"
-        decisions_dir = ipc_dir / grp / "approval_decisions"
-
-        # Sweep expired pending approvals
-        if pending_dir.exists():
-            for filepath in list(pending_dir.glob("*.json")):
-                try:
-                    data = json.loads(filepath.read_text())
-                    ts = datetime.fromisoformat(data["timestamp"])
-                    age = (now - ts).total_seconds()
-
-                    if age > APPROVAL_TIMEOUT_SECONDS:
-                        # Auto-deny: write error response
-                        write_ipc_response(
-                            ipc_response_path(grp, data["request_id"]),
-                            {"error": "Approval expired (no response within timeout)"},
-                        )
-
-                        await record_security_event(
-                            chat_jid=data.get("chat_jid", "unknown"),
-                            workspace=grp,
-                            tool_name=data.get("tool_name", "unknown"),
-                            decision="approval_expired",
-                            request_id=data["request_id"],
-                        )
-
-                        filepath.unlink()
-                        expired.append(data)
-
-                        logger.info(
-                            "Expired pending approval auto-denied",
-                            request_id=data["request_id"],
-                            tool_name=data.get("tool_name"),
-                            age_seconds=round(age),
-                        )
-                except (json.JSONDecodeError, OSError, KeyError) as exc:
-                    logger.warning(
-                        "Failed to process pending approval",
-                        path=str(filepath),
-                        err=str(exc),
-                    )
-
-        # Clean orphaned decision files (decision exists but no matching pending)
-        if decisions_dir.exists():
-            pending_ids = set()
-            if pending_dir.exists():
-                pending_ids = {f.stem for f in pending_dir.glob("*.json")}
-
-            for filepath in list(decisions_dir.glob("*.json")):
-                if filepath.stem not in pending_ids:
-                    logger.info("Removing orphaned decision file", path=str(filepath))
-                    filepath.unlink(missing_ok=True)
+    for group in _ipc_groups(ipc_dir):
+        pending_dir = ipc_dir / group / "pending_approvals"
+        decisions_dir = ipc_dir / group / "approval_decisions"
+        expired.extend(await _expire_pending_approvals(group, pending_dir, now))
+        _remove_orphaned_decisions(decisions_dir, _pending_request_ids(pending_dir))
 
     return expired
+
+
+def _ipc_groups(ipc_dir: Path) -> list[str]:
+    return [entry.name for entry in ipc_dir.iterdir() if entry.is_dir() and entry.name != "errors"]
+
+
+async def _expire_pending_approvals(
+    group: str,
+    pending_dir: Path,
+    now: datetime,
+) -> list[dict[str, Any]]:
+    if not pending_dir.exists():
+        return []
+
+    expired: list[dict[str, Any]] = []
+    for filepath in list(pending_dir.glob("*.json")):
+        expired_approval = await _expired_pending_approval(group, filepath, now)
+        if expired_approval is not None:
+            expired.append(expired_approval)
+    return expired
+
+
+async def _expired_pending_approval(
+    group: str,
+    filepath: Path,
+    now: datetime,
+) -> dict[str, Any] | None:
+    try:
+        data = cast("dict[str, Any]", json.loads(filepath.read_text()))
+        timestamp = datetime.fromisoformat(data["timestamp"])
+        age_seconds = (now - timestamp).total_seconds()
+    except (json.JSONDecodeError, OSError, KeyError) as exc:
+        logger.warning(
+            "Failed to process pending approval",
+            path=str(filepath),
+            err=str(exc),
+        )
+        return None
+
+    if age_seconds <= APPROVAL_TIMEOUT_SECONDS:
+        return None
+
+    await _auto_deny_expired_approval(group, filepath, data, age_seconds)
+    return data
+
+
+async def _auto_deny_expired_approval(
+    group: str,
+    filepath: Path,
+    data: dict[str, Any],
+    age_seconds: float,
+) -> None:
+    write_ipc_response(
+        ipc_response_path(group, data["request_id"]),
+        {"error": "Approval expired (no response within timeout)"},
+    )
+    await record_security_event(
+        chat_jid=data.get("chat_jid", "unknown"),
+        workspace=group,
+        tool_name=data.get("tool_name", "unknown"),
+        decision="approval_expired",
+        request_id=data["request_id"],
+    )
+    filepath.unlink()
+    logger.info(
+        "Expired pending approval auto-denied",
+        request_id=data["request_id"],
+        tool_name=data.get("tool_name"),
+        age_seconds=round(age_seconds),
+    )
+
+
+def _pending_request_ids(pending_dir: Path) -> set[str]:
+    if not pending_dir.exists():
+        return set()
+    return {filepath.stem for filepath in pending_dir.glob("*.json")}
+
+
+def _remove_orphaned_decisions(decisions_dir: Path, pending_ids: set[str]) -> None:
+    if not decisions_dir.exists():
+        return
+    for filepath in list(decisions_dir.glob("*.json")):
+        if filepath.stem in pending_ids:
+            continue
+        logger.info("Removing orphaned decision file", path=str(filepath))
+        filepath.unlink(missing_ok=True)
 
 
 # -- Notification formatting ---------------------------------------------------

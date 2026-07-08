@@ -52,45 +52,19 @@ class TextFormatter:
 
         match event.type:
             case OutboundEventType.TEXT:
-                text = format_internal_tags(event.content)
-                if event.metadata.get("cursor"):
-                    text += " \u258c"
-                return RenderedMessage(text=text)
+                return self._render_text(event)
 
             case OutboundEventType.TOOL_TRACE:
-                tool_name = event.metadata.get("tool_name", "")
-                tool_input = event.metadata.get("tool_input", {})
-                preview = format_tool_preview(tool_name, tool_input)
-                return RenderedMessage(text=f"\U0001f527 {preview}")
+                return self._render_tool_trace(event)
 
             case OutboundEventType.TOOL_RESULT:
-                content = event.content
-                tool_name = event.metadata.get("tool_name", "")
-                verbose = event.metadata.get("verbose", False)
-                # Only verbose tools (e.g. ExitPlanMode) show their result
-                # content in the channel broadcast.  All others get a compact
-                # placeholder -- the full content is still persisted to the DB
-                # by the router layer.
-                if verbose and content:
-                    display = (
-                        _truncate_output(content) if len(content) > _MAX_TOOL_OUTPUT else content
-                    )
-                    return RenderedMessage(text=f"\U0001f4cb {tool_name}:\n{display}")
-                return RenderedMessage(text="\U0001f4cb tool result")
+                return self._render_tool_result(event)
 
             case OutboundEventType.THINKING:
-                content = event.content
-                if content:
-                    display = (
-                        _truncate_output(content) if len(content) > _MAX_TOOL_OUTPUT else content
-                    )
-                    return RenderedMessage(text=f"\U0001f4ad {display}")
-                return RenderedMessage(text="\U0001f4ad thinking...")
+                return self._render_thinking(event)
 
             case OutboundEventType.RESULT:
-                text = format_internal_tags(event.content)
-                prefix = "\U0001f99e " if event.metadata.get("prefix_assistant_name", True) else ""
-                return RenderedMessage(text=f"{prefix}{text}")
+                return self._render_result(event)
 
             case OutboundEventType.HOST:
                 return RenderedMessage(text=f"\U0001f3e0 {event.content}")
@@ -105,3 +79,36 @@ class TextFormatter:
         """Render multiple events as a single newline-joined message."""
         texts = [self.render(e).text for e in events]
         return RenderedMessage(text="\n".join(texts))
+
+    def _render_text(self, event: OutboundEvent) -> RenderedMessage:
+        text = format_internal_tags(event.content)
+        if event.metadata.get("cursor"):
+            text += " \u258c"
+        return RenderedMessage(text=text)
+
+    def _render_tool_trace(self, event: OutboundEvent) -> RenderedMessage:
+        tool_name = event.metadata.get("tool_name", "")
+        tool_input = event.metadata.get("tool_input", {})
+        preview = format_tool_preview(tool_name, tool_input)
+        return RenderedMessage(text=f"\U0001f527 {preview}")
+
+    def _render_tool_result(self, event: OutboundEvent) -> RenderedMessage:
+        content = event.content
+        if event.metadata.get("verbose") and content:
+            tool_name = event.metadata.get("tool_name", "")
+            return RenderedMessage(text=f"\U0001f4cb {tool_name}:\n{_display_content(content)}")
+        return RenderedMessage(text="\U0001f4cb tool result")
+
+    def _render_thinking(self, event: OutboundEvent) -> RenderedMessage:
+        if event.content:
+            return RenderedMessage(text=f"\U0001f4ad {_display_content(event.content)}")
+        return RenderedMessage(text="\U0001f4ad thinking...")
+
+    def _render_result(self, event: OutboundEvent) -> RenderedMessage:
+        text = format_internal_tags(event.content)
+        prefix = "\U0001f99e " if event.metadata.get("prefix_assistant_name", True) else ""
+        return RenderedMessage(text=f"{prefix}{text}")
+
+
+def _display_content(content: str) -> str:
+    return _truncate_output(content) if len(content) > _MAX_TOOL_OUTPUT else content

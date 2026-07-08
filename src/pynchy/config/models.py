@@ -205,6 +205,7 @@ class LearningConfig(_StrictModel):
 class OwnerConfig(_StrictModel):
     """Owner identity per platform — used for allowed_users = ["owner"] resolution."""
 
+    # Prefer human display/user names; Slack user IDs are accepted.
     slack: str | None = None
     # WhatsApp uses is_from_me, no config needed
 
@@ -251,6 +252,7 @@ class DiscordChannelConfig(_StrictModel):
     bool overrides it.
     """
 
+    name: str | None = None
     enabled: bool = True
     require_mention: bool | None = None
     users: list[str] = []
@@ -263,8 +265,9 @@ class DiscordChannelConfig(_StrictModel):
 class DiscordGuildConfig(_StrictModel):
     """Per-guild config for a Discord connection (a ``chat.<guild>`` section)."""
 
+    name: str | None = None
     require_mention: bool = True
-    users: list[str] = []  # guild-wide sender allowlist (ids)
+    users: list[str] = []  # guild-wide sender allowlist (names or ids)
     roles: list[str] = []  # guild-wide role-id allowlist
     channels: dict[str, DiscordChannelConfig] = {}
     security: ChannelOverrideConfig | None = None
@@ -282,7 +285,7 @@ class DiscordConnectionConfig(_StrictModel):
     application_id: str | None = None
     processing_ack_emoji: str | None = "🦞"
     dm_policy: Literal["open", "allowlist", "disabled"] = "allowlist"
-    allow_from: list[str] = []  # DM allowlist (user snowflakes); "*" = open
+    allow_from: list[str] = []  # DM allowlist (names or ids); "*" = open
     group_policy: Literal["open", "disabled", "allowlist"] = "allowlist"
     security: ChannelOverrideConfig | None = None
     chat: dict[str, DiscordGuildConfig] = {}

@@ -262,63 +262,76 @@ class ClaudeCLIAgentCore:
         below.
         """
         msg_type = obj.get("type")
-        events: list[AgentEvent] = []
-
         if msg_type == "system":
-            subtype = obj.get("subtype")
-            if subtype == "init":
-                sid = obj.get("session_id")
-                if sid:
-                    self._session_id = sid
-                    _log(f"session initialized: {sid}")
-            events.append(
-                AgentEvent(type="system", data={"system_subtype": subtype, "system_data": obj})
-            )
+            return self._map_system_line(obj)
 
-        elif msg_type in ("assistant", "user"):
-            # Assistant messages carry thinking/text/tool_use blocks; "user"
-            # messages on this stream carry only tool_result blocks (verified
-            # against claude CLI stream-json output -- the input prompt is *not*
-            # echoed back on stdout). Restrict user-message mapping to
-            # tool_result so a future CLI that echoes a text turn can't surface
-            # the human's own prompt as an agent "text" event.
-            content = (obj.get("message") or {}).get("content") or []
-            if isinstance(content, str):
-                content = [{"type": "text", "text": content}] if msg_type == "assistant" else []
-            for block in content:
-                if not isinstance(block, dict):
-                    continue
-                if msg_type == "user" and block.get("type") != "tool_result":
-                    continue
-                events.extend(self._map_block(block))
+        if msg_type in ("assistant", "user"):
+            return self._map_message_line(msg_type, obj)
 
-        elif msg_type == "result":
-            sid = obj.get("session_id")
-            if sid:
-                self._session_id = sid
-            events.append(
-                AgentEvent(
-                    type="result",
-                    data={
-                        "result": obj.get("result"),
-                        "result_metadata": {
-                            "subtype": obj.get("subtype"),
-                            "duration_ms": obj.get("duration_ms"),
-                            "duration_api_ms": obj.get("duration_api_ms"),
-                            "is_error": obj.get("is_error", False),
-                            "num_turns": obj.get("num_turns"),
-                            "session_id": sid,
-                            "total_cost_usd": obj.get("total_cost_usd"),
-                            "usage": obj.get("usage"),
-                        },
-                    },
-                )
-            )
+        if msg_type == "result":
+            return [self._result_event(obj)]
 
         # msg_type == "stream_event" (partial messages) is intentionally ignored
         # unless --include-partial-messages is enabled; extend here to surface
         # token deltas.
+        return []
+
+    def _map_system_line(self, obj: dict[str, Any]) -> list[AgentEvent]:
+        """Map a system stream line and update session state when needed."""
+        subtype = obj.get("subtype")
+        if subtype == "init":
+            sid = obj.get("session_id")
+            if sid:
+                self._session_id = sid
+                _log(f"session initialized: {sid}")
+        return [AgentEvent(type="system", data={"system_subtype": subtype, "system_data": obj})]
+
+    def _map_message_line(self, msg_type: str, obj: dict[str, Any]) -> list[AgentEvent]:
+        """Map assistant/user message content blocks into AgentEvents."""
+        content = self._message_blocks(msg_type, obj)
+        events: list[AgentEvent] = []
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if msg_type == "user" and block.get("type") != "tool_result":
+                continue
+            events.extend(self._map_block(block))
         return events
+
+    def _message_blocks(self, msg_type: str, obj: dict[str, Any]) -> list[Any]:
+        """Normalize message content into block dictionaries."""
+        # Assistant messages carry thinking/text/tool_use blocks; "user"
+        # messages on this stream carry only tool_result blocks (verified
+        # against claude CLI stream-json output -- the input prompt is *not*
+        # echoed back on stdout). Restrict user-message mapping to
+        # tool_result so a future CLI that echoes a text turn can't surface
+        # the human's own prompt as an agent "text" event.
+        content = (obj.get("message") or {}).get("content") or []
+        if isinstance(content, str):
+            return [{"type": "text", "text": content}] if msg_type == "assistant" else []
+        return content if isinstance(content, list) else []
+
+    def _result_event(self, obj: dict[str, Any]) -> AgentEvent:
+        """Build the terminal result event and update session state."""
+        sid = obj.get("session_id")
+        if sid:
+            self._session_id = sid
+        return AgentEvent(
+            type="result",
+            data={
+                "result": obj.get("result"),
+                "result_metadata": {
+                    "subtype": obj.get("subtype"),
+                    "duration_ms": obj.get("duration_ms"),
+                    "duration_api_ms": obj.get("duration_api_ms"),
+                    "is_error": obj.get("is_error", False),
+                    "num_turns": obj.get("num_turns"),
+                    "session_id": sid,
+                    "total_cost_usd": obj.get("total_cost_usd"),
+                    "usage": obj.get("usage"),
+                },
+            },
+        )
 
     def _map_block(self, block: dict[str, Any]) -> list[AgentEvent]:
         """Map one content block to an ``AgentEvent`` (mirrors cores/claude.py)."""

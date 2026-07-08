@@ -233,9 +233,9 @@ class TestIpcDeployEdgeCases:
         from pynchy.host.container_manager.ipc import dispatch
 
         with patch(
-            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy",
+            "pynchy.host.container_manager.ipc.handlers_deploy.start_deploy_workflow",
             new_callable=AsyncMock,
-        ) as mock_finalize:
+        ) as mock_start:
             await dispatch(
                 {
                     "type": "deploy",
@@ -248,9 +248,9 @@ class TestIpcDeployEdgeCases:
                 True,
                 deps,
             )
-            mock_finalize.assert_called_once()
-            # Should have resolved the admin group's JID
-            assert mock_finalize.call_args.kwargs["chat_jid"] == "admin-1@g.us"
+            mock_start.assert_awaited_once()
+            request = mock_start.await_args.args[0]
+            assert request.chat_jid == "admin-1@g.us"
 
     async def test_deploy_without_chat_jid_and_no_admin_group(self, deps):
         """Deploy request with no chatJid and no admin group should not finalize."""
@@ -265,9 +265,9 @@ class TestIpcDeployEdgeCases:
         await init_test_database()
 
         with patch(
-            "pynchy.host.container_manager.ipc.handlers_deploy.finalize_deploy",
+            "pynchy.host.container_manager.ipc.handlers_deploy.start_deploy_workflow",
             new_callable=AsyncMock,
-        ) as mock_finalize:
+        ) as mock_start:
             await dispatch(
                 {
                     "type": "deploy",
@@ -278,7 +278,7 @@ class TestIpcDeployEdgeCases:
                 True,
                 no_admin_deps,
             )
-            mock_finalize.assert_not_called()
+            mock_start.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

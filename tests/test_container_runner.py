@@ -7,6 +7,7 @@ import contextlib
 import json
 import logging
 import shutil
+import signal
 import subprocess
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -41,11 +42,14 @@ from pynchy.host.container_manager.snapshots import write_groups_snapshot, write
 from pynchy.host.git_ops.repo import RepoContext, get_repo_token
 from pynchy.host.learning.paths import LearningConfigError
 from pynchy.host.orchestrator.agent_runner import (
+    _build_admin_system_notices,  # allow: private-test-imports
     _build_container_input,  # allow: private-test-imports
     _PreContainerResult,  # allow: private-test-imports
+    _session_tracking_output_handler,  # allow: private-test-imports
 )
 from pynchy.types import (
     ContainerInput,
+    ContainerOutput,
     VolumeMount,
     WorkspaceProfile,
 )
@@ -122,20 +126,15 @@ _SETTINGS_MODULES = [
 ]
 
 
-@contextlib.contextmanager
-def _patch_settings(
-    tmp_path: Path | None = None,
+def _settings_overrides(
     *,
-    core: str | None = None,
-    container_timeout: float | None = None,
-    idle_timeout: float | None = None,
-    max_output_size: int | None = None,
-    learning: LearningConfig | None = None,
-    workspaces: dict[str, WorkspaceConfig] | None = None,
-    secret_overrides: dict[str, str] | None = None,
-):
-    """Patch get_settings() across all container_runner submodules."""
-    overrides: dict = {
+    tmp_path: Path | None,
+    learning: LearningConfig | None,
+    workspaces: dict[str, WorkspaceConfig] | None,
+    container_timeout: float | None,
+    idle_timeout: float | None,
+) -> dict[str, object]:
+    overrides: dict[str, object] = {
         "gateway": GatewayConfig(),
         "learning": learning or LearningConfig(),
         "workspaces": workspaces or {},
@@ -150,14 +149,45 @@ def _patch_settings(
         overrides["container_timeout"] = container_timeout
     if idle_timeout is not None:
         overrides["idle_timeout"] = idle_timeout
+    return overrides
+
+
+def _apply_secret_overrides(
+    settings,
+    secret_overrides: dict[str, str] | None,
+) -> None:
+    if not secret_overrides:
+        return
+    for key, value in secret_overrides.items():
+        setattr(settings.secrets, key, SecretStr(value))
+
+
+@contextlib.contextmanager
+def _patch_settings(
+    tmp_path: Path | None = None,
+    *,
+    core: str | None = None,
+    container_timeout: float | None = None,
+    idle_timeout: float | None = None,
+    max_output_size: int | None = None,
+    learning: LearningConfig | None = None,
+    workspaces: dict[str, WorkspaceConfig] | None = None,
+    secret_overrides: dict[str, str] | None = None,
+):
+    """Patch get_settings() across all container_runner submodules."""
+    overrides = _settings_overrides(
+        tmp_path=tmp_path,
+        learning=learning,
+        workspaces=workspaces,
+        container_timeout=container_timeout,
+        idle_timeout=idle_timeout,
+    )
     s = make_settings(**overrides)
     if core is not None:
         s.agent.core = core
     if max_output_size is not None:
         s.container.max_output_size = max_output_size
-    if secret_overrides:
-        for key, value in secret_overrides.items():
-            setattr(s.secrets, key, SecretStr(value))
+    _apply_secret_overrides(s, secret_overrides)
     with contextlib.ExitStack() as stack:
         for mod in _SETTINGS_MODULES:
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
@@ -204,9 +234,160 @@ class FakeProcess(asyncio.subprocess.Process):
         return self._returncode
 
 
+class HangingProcess:
+    """Minimal subprocess fake whose wait never completes unless killed."""
+
+    def __init__(self) -> None:
+        self.killed = False
+
+    async def wait(self) -> int:
+        await asyncio.Event().wait()
+        return 0
+
+    def kill(self) -> None:
+        self.killed = True
+
+
+class CompletedProcess:
+    """Minimal subprocess fake for commands that finish via communicate()."""
+
+    def __init__(self, stdout: bytes = b"") -> None:
+        self.stdout = stdout
+
+    async def communicate(self) -> tuple[bytes, bytes]:
+        return self.stdout, b""
+
+
 # ---------------------------------------------------------------------------
 # Unit tests — pure helpers
 # ---------------------------------------------------------------------------
+
+
+class TestContainerProcessHelpers:
+    async def test_reap_apple_runtime_orphans_signals_exact_runtime_match(self):
+        """Only the runtime process for the exact Apple container UUID is reaped."""
+        from pynchy.host.container_manager.process import (
+            _reap_apple_runtime_orphans,  # allow: private-test-imports - Apple runtime recovery
+        )
+
+        runtime = MagicMock(cli="container")
+        runtime.name = "apple"
+        ps_output = b"""
+        123 /opt/homebrew/bin/container-runtime-linux start --root /Users/me/Library/Application Support/com.apple.container/containers/pynchy-code-improver --uuid pynchy-code-improver
+        456 /opt/homebrew/bin/container-runtime-linux start --root /Users/me/Library/Application Support/com.apple.container/containers/pynchy-code-improver-old --uuid pynchy-code-improver-old
+        789 /usr/bin/other --uuid pynchy-code-improver
+        """
+        alive = {123}
+        signals: list[tuple[int, signal.Signals]] = []
+
+        def fake_kill(pid: int, sig: signal.Signals) -> None:
+            if sig == 0:
+                if pid in alive:
+                    return
+                raise ProcessLookupError
+            signals.append((pid, sig))
+            if sig == signal.SIGTERM:
+                alive.discard(pid)
+
+        with (
+            patch("pynchy.host.container_manager.process.sys.platform", "darwin"),
+            patch("pynchy.host.container_manager.process.get_runtime", return_value=runtime),
+            patch(
+                "pynchy.host.container_manager.process.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=CompletedProcess(ps_output)),
+            ),
+            patch("pynchy.host.container_manager.process.os.kill", side_effect=fake_kill),
+        ):
+            reaped = await _reap_apple_runtime_orphans("pynchy-code-improver")
+
+        assert reaped is True
+        assert signals == [(123, signal.SIGTERM)]
+
+    async def test_force_remove_times_out_and_kills_hung_runtime_cli(self):
+        """Apple Container cleanup can hang on stopped containers with orphaned runtimes."""
+        from pynchy.host.container_manager.process import (
+            _docker_rm_force,  # allow: private-test-imports - external cleanup side effect
+        )
+
+        proc = HangingProcess()
+
+        with (
+            patch(
+                "pynchy.host.container_manager.process.get_runtime",
+                return_value=MagicMock(cli="container"),
+            ),
+            patch(
+                "pynchy.host.container_manager.process.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=proc),
+            ) as create_proc,
+            patch("pynchy.host.container_manager.process._RM_FORCE_TIMEOUT_SECONDS", 0.01),
+            patch("pynchy.host.container_manager.process._RM_FORCE_KILL_WAIT_SECONDS", 0.01),
+        ):
+            await _docker_rm_force("pynchy-code-improver")
+
+        assert proc.killed is True
+        create_proc.assert_awaited_once_with(
+            "container",
+            "rm",
+            "-f",
+            "pynchy-code-improver",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+
+    async def test_force_remove_reaps_apple_runtime_orphan_after_quick_return(self):
+        """Apple delete can return while the stopped container runtime remains alive."""
+        from pynchy.host.container_manager.process import (
+            _docker_rm_force,  # allow: private-test-imports - external cleanup side effect
+        )
+
+        completed_delete = FakeProcess()
+        completed_delete.close(code=1)
+        retry_delete = FakeProcess()
+        retry_delete.close(code=1)
+
+        with (
+            patch(
+                "pynchy.host.container_manager.process.asyncio.create_subprocess_exec",
+                new=AsyncMock(side_effect=[completed_delete, retry_delete]),
+            ) as create_proc,
+            patch(
+                "pynchy.host.container_manager.process._reap_apple_runtime_orphans",
+                new=AsyncMock(return_value=True),
+            ) as reap_orphan,
+        ):
+            await _docker_rm_force("pynchy-code-improver")
+
+        reap_orphan.assert_awaited_once_with("pynchy-code-improver")
+        assert create_proc.await_count == 2
+
+    async def test_force_remove_retries_after_reaping_apple_runtime_orphan(self):
+        """If Apple delete hangs, reap the orphaned runtime and retry cleanup once."""
+        from pynchy.host.container_manager.process import (
+            _docker_rm_force,  # allow: private-test-imports - external cleanup side effect
+        )
+
+        hung_delete = HangingProcess()
+        completed_delete = FakeProcess()
+        completed_delete.close(code=1)
+
+        with (
+            patch(
+                "pynchy.host.container_manager.process.asyncio.create_subprocess_exec",
+                new=AsyncMock(side_effect=[hung_delete, completed_delete]),
+            ) as create_proc,
+            patch(
+                "pynchy.host.container_manager.process._reap_apple_runtime_orphans",
+                new=AsyncMock(return_value=True),
+            ) as reap_orphan,
+            patch("pynchy.host.container_manager.process._RM_FORCE_TIMEOUT_SECONDS", 0.01),
+            patch("pynchy.host.container_manager.process._RM_FORCE_KILL_WAIT_SECONDS", 0.01),
+        ):
+            await _docker_rm_force("pynchy-code-improver")
+
+        assert hung_delete.killed is True
+        reap_orphan.assert_awaited_once_with("pynchy-code-improver")
+        assert create_proc.await_count == 2
 
 
 class TestInputSerialization:
@@ -519,6 +700,31 @@ class TestMountBuilding:
 
         assert any(m.container_path == "/workspace/vault" for m in mounts)
 
+    def test_learning_mount_does_not_scan_skills_when_workspace_skills_is_empty(
+        self,
+        tmp_path: Path,
+    ):
+        vault = tmp_path / "vault"
+        vault.mkdir()
+        learning = LearningConfig(
+            enabled=True,
+            obsidian=ObsidianLearningConfig(vault_root=str(vault)),
+        )
+        workspaces = {"test-group": WorkspaceConfig(profile="Deep Work!!", skills=[])}
+
+        with (
+            _patch_settings(tmp_path, learning=learning, workspaces=workspaces),
+            patch(
+                "pynchy.host.container_manager.mounts.iter_learned_skill_dirs",
+                side_effect=AssertionError("unexpected scan"),
+            ),
+        ):
+            (tmp_path / "groups" / "test-group").mkdir(parents=True)
+
+            mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
+
+        assert any(m.container_path == "/workspace/vault" for m in mounts)
+
     def test_learning_mount_syncs_vault_profile_skill_when_learned_selected(
         self,
         tmp_path: Path,
@@ -542,6 +748,34 @@ class TestMountBuilding:
 
         skill_dst = tmp_path / "data/sessions/test-group/.claude/skills/remember-routing/SKILL.md"
         assert skill_dst.exists()
+
+    def test_codex_home_receives_selected_plugin_skills(self, tmp_path: Path):
+        plugin_skill = tmp_path / "vault-skills" / "calendar-caldav"
+        plugin_skill.mkdir(parents=True)
+        (plugin_skill / "SKILL.md").write_text(
+            "---\nname: calendar-caldav\ntier: community\n---\n# Calendar\n"
+        )
+
+        class FakeHook:
+            def pynchy_skill_paths(self):
+                return [[str(plugin_skill)]]
+
+        class FakePM(pluggy.PluginManager):
+            hook = FakeHook()
+
+            def __init__(self):
+                pass
+
+        workspaces = {"test-group": WorkspaceConfig(skills=["calendar-caldav"])}
+        with _patch_settings(tmp_path, workspaces=workspaces):
+            (tmp_path / "groups" / "test-group").mkdir(parents=True)
+
+            build_volume_mounts(TEST_GROUP, is_admin=False, plugin_manager=FakePM())
+
+        claude_skill = tmp_path / "data/sessions/test-group/.claude/skills/calendar-caldav/SKILL.md"
+        codex_skill = tmp_path / "data/sessions/test-group/.codex/skills/calendar-caldav/SKILL.md"
+        assert claude_skill.exists()
+        assert codex_skill.read_text() == claude_skill.read_text()
 
     @pytest.mark.parametrize("vault_state", ["missing", "file"])
     def test_learning_enabled_requires_existing_vault_directory(
@@ -1308,6 +1542,78 @@ class TestContainerInputAgentCoreConfig:
         assert result.agent_core_config == {"model": "gpt-5.5"}
 
 
+class TestAgentRunnerPreContainerHelpers:
+    @pytest.mark.asyncio
+    async def test_session_tracking_output_handler_records_session(self):
+        class _Deps:
+            def __init__(self) -> None:
+                self.sessions: dict[str, str] = {}
+                self._session_cleared: set[str] = set()
+                self.workspaces: dict[str, WorkspaceProfile] = {}
+                self.queue = MagicMock()
+                self.plugin_manager = None
+
+            async def get_available_groups(self) -> list[dict[str, object]]:
+                return []
+
+            async def broadcast_agent_input(
+                self,
+                chat_jid: str,
+                messages: list[dict[str, object]],
+                *,
+                source: str = "user",
+            ) -> None:
+                return None
+
+        deps = _Deps()
+        on_output = AsyncMock()
+        output = ContainerOutput(
+            status="success",
+            type="system",
+            system_subtype="thread.started",
+            system_data={"session_id": "codex:thread-1"},
+        )
+
+        with patch(
+            "pynchy.host.orchestrator._agent_runner_preflight.set_session",
+            new_callable=AsyncMock,
+        ) as persist:
+            handler = _session_tracking_output_handler(deps, "test-group", on_output)
+            await handler(output)
+
+        assert deps.sessions == {"test-group": "codex:thread-1"}
+        persist.assert_awaited_once()
+        on_output.assert_awaited_once_with(output)
+
+    def test_build_admin_system_notices_includes_repo_warnings_and_guidance(self):
+        repo_ctx = MagicMock()
+        repo_ctx.worktrees_dir = Path("/tmp/worktrees")
+
+        with (
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.get_repo_context",
+                return_value=repo_ctx,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.is_repo_dirty",
+                return_value=True,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.count_unpushed_commits",
+                return_value=2,
+            ),
+        ):
+            notices = _build_admin_system_notices(
+                "test-group",
+                is_admin=True,
+                repo_access="owner/repo",
+            )
+
+        assert any("uncommitted local changes" in notice for notice in notices)
+        assert any("haven't been pushed" in notice for notice in notices)
+        assert notices[-1].startswith("Consider whether to address")
+
+
 # ---------------------------------------------------------------------------
 # _sync_skills tests
 # ---------------------------------------------------------------------------
@@ -1346,6 +1652,19 @@ class TestSyncSkills:
         # skills/ directory should still be created (empty)
         assert (session_dir / "skills").exists()
 
+    def test_syncs_generated_onecli_gateway_skill(self, tmp_path: Path):
+        """Session skill sync delegates generated OneCLI gateway skill installation."""
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with (
+            _patch_settings(tmp_path),
+            patch("pynchy.host.container_manager.session_prep.sync_onecli_gateway_skill") as sync,
+        ):
+            _sync_skills(session_dir)
+
+        sync.assert_called_once_with(session_dir / "skills")
+
     def test_plugin_skills_are_synced(self, tmp_path: Path):
         """Plugin manager skill paths are copied to session dir."""
         plugin_skill = tmp_path / "plugins" / "ext-skill"
@@ -1371,6 +1690,37 @@ class TestSyncSkills:
         ext_dst = session_dir / "skills" / "ext-skill"
         assert ext_dst.exists()
         assert (ext_dst / "skill.md").read_text() == "# External Skill"
+
+    def test_bad_plugin_skill_path_does_not_block_later_plugin_skill(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ):
+        """One malformed plugin path should not prevent later plugin skills from syncing."""
+        plugin_skill = tmp_path / "plugins" / "ext-skill"
+        plugin_skill.mkdir(parents=True)
+        (plugin_skill / "skill.md").write_text("# External Skill")
+
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        class FakeHook:
+            def pynchy_skill_paths(self):
+                return [[None, str(plugin_skill)]]
+
+        class FakePM(pluggy.PluginManager):
+            hook = FakeHook()
+
+            def __init__(self):
+                pass
+
+        caplog.set_level(logging.ERROR)
+        with _patch_settings(tmp_path):
+            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+
+        ext_dst = session_dir / "skills" / "ext-skill"
+        assert ext_dst.exists()
+        assert "Failed to sync plugin skill" in caplog.text
 
     def test_plugin_skill_name_collision_raises(self, tmp_path: Path):
         """Plugin skill that shadows a built-in skill raises ValueError."""
@@ -2157,40 +2507,61 @@ class TestShellQuote:
 # ---------------------------------------------------------------------------
 
 
-class TestOutputParsingEdgeCases:
-    """Edge cases for parse_container_output."""
-
-    def test_parses_all_output_fields(self):
-        """Verify all ContainerOutput fields are correctly parsed."""
-        out = parse_container_output(
-            json.dumps(
-                {
-                    "status": "success",
-                    "result": "done",
-                    "new_session_id": "s1",
-                    "type": "tool_use",
-                    "thinking": "Let me think...",
-                    "tool_name": "Read",
-                    "tool_input": {"file_path": "/test.py"},
-                    "text": "some text",
-                    "system_subtype": "compact",
-                    "system_data": {"key": "val"},
-                    "tool_result_id": "tr-1",
-                    "tool_result_content": "file contents",
-                    "tool_result_is_error": False,
-                    "result_metadata": {"duration_ms": 1234},
-                }
-            )
+def _parsed_output_with_all_fields() -> ContainerOutput:
+    return parse_container_output(
+        json.dumps(
+            {
+                "status": "success",
+                "result": "done",
+                "new_session_id": "s1",
+                "type": "tool_use",
+                "thinking": "Let me think...",
+                "tool_name": "Read",
+                "tool_input": {"file_path": "/test.py"},
+                "text": "some text",
+                "system_subtype": "compact",
+                "system_data": {"key": "val"},
+                "tool_result_id": "tr-1",
+                "tool_result_content": "file contents",
+                "tool_result_is_error": False,
+                "result_metadata": {"duration_ms": 1234},
+            }
         )
-        assert out.status == "success"
-        assert out.type == "tool_use"
-        assert out.thinking == "Let me think..."
-        assert out.tool_name == "Read"
-        assert out.tool_input == {"file_path": "/test.py"}
-        assert out.system_subtype == "compact"
-        assert out.tool_result_id == "tr-1"
-        assert out.tool_result_is_error is False
-        assert out.result_metadata == {"duration_ms": 1234}
+    )
+
+
+def test_parse_container_output_reads_tool_use_fields() -> None:
+    out = _parsed_output_with_all_fields()
+
+    assert out.status == "success"
+    assert out.type == "tool_use"
+    assert out.thinking == "Let me think..."
+    assert out.tool_name == "Read"
+    assert out.tool_input == {"file_path": "/test.py"}
+
+
+def test_parse_container_output_reads_system_fields() -> None:
+    out = _parsed_output_with_all_fields()
+
+    assert out.system_subtype == "compact"
+    assert out.system_data == {"key": "val"}
+    assert out.text == "some text"
+
+
+def test_parse_container_output_reads_tool_result_fields() -> None:
+    out = _parsed_output_with_all_fields()
+
+    assert out.tool_result_id == "tr-1"
+    assert out.tool_result_content == "file contents"
+    assert out.tool_result_is_error is False
+
+
+def test_parse_container_output_reads_result_metadata() -> None:
+    out = _parsed_output_with_all_fields()
+
+    assert out.result == "done"
+    assert out.new_session_id == "s1"
+    assert out.result_metadata == {"duration_ms": 1234}
 
 
 # ---------------------------------------------------------------------------
@@ -2552,6 +2923,7 @@ class TestSessionStartOnlyStderr:
             return runtime_running
 
         with (
+            patch("pynchy.host.container_manager.session.sys.platform", "darwin"),
             patch(
                 "pynchy.host.container_manager.session._runtime_container_running",
                 side_effect=fake_runtime_running,
@@ -2575,4 +2947,79 @@ class TestSessionStartOnlyStderr:
 
         assert session._dead is True
         assert session._died_before_pulse is False
+        assert session._query_done.is_set()
+
+    async def test_runtime_container_stop_unblocks_query_when_cli_process_hangs(self):
+        """Apple Container can stop the container while the CLI process keeps hanging."""
+        from pynchy.host.container_manager.session import ContainerSession, SessionDiedError
+
+        session = ContainerSession("apple-runtime-stop-test", "pynchy-apple-runtime-stop-test")
+        proc = FakeProcess()
+        runtime_running = True
+
+        async def fake_runtime_running(_container_name: str) -> bool:
+            return runtime_running
+
+        with (
+            patch("pynchy.host.container_manager.session.sys.platform", "darwin"),
+            patch(
+                "pynchy.host.container_manager.session._runtime_container_running",
+                side_effect=fake_runtime_running,
+            ),
+            patch("pynchy.host.container_manager.session._RUNTIME_POLL_INTERVAL_SECONDS", 0.01),
+            patch("pynchy.host.container_manager.session._RUNTIME_CLI_KILL_WAIT_SECONDS", 0.01),
+            patch(
+                "pynchy.host.container_manager.session._reap_apple_runtime_orphans",
+                new=AsyncMock(return_value=True),
+            ) as reap_orphan,
+        ):
+            session.start(proc)  # type: ignore[arg-type]
+            session.set_output_handler(AsyncMock())
+
+            await asyncio.sleep(0.02)
+            runtime_running = False
+
+            with pytest.raises(SessionDiedError):
+                await session.wait_for_query_done(timeout=0.5)
+
+        assert proc._killed is True
+        reap_orphan.assert_awaited_once_with("pynchy-apple-runtime-stop-test")
+        assert session._dead is True
+        assert session._died_before_pulse is True
+        assert session._query_done.is_set()
+
+    async def test_runtime_container_never_starts_unblocks_query_when_cli_process_hangs(self):
+        """Apple Container can leave ``container run`` alive after startup failure."""
+        from pynchy.host.container_manager.session import ContainerSession, SessionDiedError
+
+        session = ContainerSession("apple-runtime-never-start-test", "pynchy-never-start")
+        proc = FakeProcess()
+
+        async def fake_runtime_running(_container_name: str) -> bool:
+            return False
+
+        with (
+            patch("pynchy.host.container_manager.session.sys.platform", "darwin"),
+            patch(
+                "pynchy.host.container_manager.session._runtime_container_running",
+                side_effect=fake_runtime_running,
+            ),
+            patch("pynchy.host.container_manager.session._RUNTIME_POLL_INTERVAL_SECONDS", 0.01),
+            patch("pynchy.host.container_manager.session._RUNTIME_START_GRACE_SECONDS", 0.02),
+            patch("pynchy.host.container_manager.session._RUNTIME_CLI_KILL_WAIT_SECONDS", 0.01),
+            patch(
+                "pynchy.host.container_manager.session._reap_apple_runtime_orphans",
+                new=AsyncMock(return_value=True),
+            ) as reap_orphan,
+        ):
+            session.start(proc)  # type: ignore[arg-type]
+            session.set_output_handler(AsyncMock())
+
+            with pytest.raises(SessionDiedError):
+                await session.wait_for_query_done(timeout=0.5)
+
+        assert proc._killed is True
+        reap_orphan.assert_awaited_once_with("pynchy-never-start")
+        assert session._dead is True
+        assert session._died_before_pulse is True
         assert session._query_done.is_set()

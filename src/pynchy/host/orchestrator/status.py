@@ -18,6 +18,7 @@ from temporalio.client import Client
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.docker import run_docker
+from pynchy.host.container_manager.onecli import collect_onecli_status
 from pynchy.host.git_ops.repo import RepoContext, get_repo_context
 from pynchy.host.git_ops.utils import (
     count_unpushed_commits,
@@ -27,14 +28,15 @@ from pynchy.host.git_ops.utils import (
     is_repo_dirty,
     run_git,
 )
-from pynchy.host.orchestrator.temporal.scheduler import get_temporal_scheduler_status
 from pynchy.logger import logger
 from pynchy.state import (
     get_all_host_jobs,
     get_all_tasks,
     get_messaging_stats,
     get_router_state,
+    get_task_run_logs,
 )
+from pynchy.types import TaskRunLog
 
 # Module-level wall-clock start time for uptime reporting.
 # Monotonic _start_time in http_server.py is for duration math only;
@@ -46,6 +48,15 @@ def record_start_time() -> None:
     """Called once at service startup to record the wall-clock start time."""
     global _started_at
     _started_at = datetime.now(UTC)
+
+
+def get_temporal_scheduler_status() -> dict[str, Any]:
+    """Return worker status lazily so status imports do not import the scheduler."""
+    from pynchy.host.orchestrator.temporal.scheduler import (
+        get_temporal_scheduler_status as _get_temporal_scheduler_status,
+    )
+
+    return _get_temporal_scheduler_status()
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +107,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         tasks,
         host_jobs,
         gateway,
+        onecli,
         temporal,
     ) = await asyncio.gather(
         _collect_deploy(),
@@ -104,6 +116,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         _collect_tasks(),
         _collect_host_jobs(),
         _collect_gateway(deps.get_gateway_info()),
+        asyncio.to_thread(collect_onecli_status),
         _collect_temporal(),
     )
 
@@ -112,6 +125,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         "deploy": deploy,
         "channels": channels,
         "gateway": gateway,
+        "onecli": onecli,
         "queue": queue,
         "repos": repos,
         "messages": messages,
@@ -239,6 +253,9 @@ async def _collect_messages() -> dict[str, Any]:
 async def _collect_tasks() -> list[dict[str, Any]]:
     """Scheduled task list — async DB."""
     tasks = await get_all_tasks()
+    task_logs = await asyncio.gather(
+        *(get_task_run_logs(t.id, limit=5) for t in tasks),
+    )
     return [
         {
             "id": t.id,
@@ -249,9 +266,29 @@ async def _collect_tasks() -> list[dict[str, Any]]:
             "next_run": t.next_run,
             "last_run": t.last_run,
             "last_result": t.last_result,
+            "run_health": _task_run_health(logs),
         }
-        for t in tasks
+        for t, logs in zip(tasks, task_logs, strict=True)
     ]
+
+
+def _task_run_health(logs: list[TaskRunLog]) -> dict[str, Any]:
+    """Summarize recent scheduled-task attempts for operator status."""
+    last = logs[0] if logs else None
+    consecutive_failures = 0
+    for log in logs:
+        if log.status != "error":
+            break
+        consecutive_failures += 1
+
+    return {
+        "last_status": last.status if last else None,
+        "consecutive_failures": consecutive_failures,
+        "last_error_signature": last.error_signature if last else None,
+        "last_temporal_workflow_id": last.temporal_workflow_id if last else None,
+        "last_temporal_attempt": last.temporal_attempt if last else None,
+        "escalation_reason": last.escalation_reason if last else None,
+    }
 
 
 async def _collect_host_jobs() -> list[dict[str, Any]]:

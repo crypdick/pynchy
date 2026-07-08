@@ -54,28 +54,27 @@ def _paths(tmp_path: Path) -> LearningPaths:
 def test_review_prompt_explains_memory_and_skill_placement(tmp_path: Path) -> None:
     prompt = build_review_prompt(_packet(), _paths(tmp_path))
 
-    assert "/workspace/vault" in prompt
-    assert "The mounted vault root is the global memory namespace." in prompt
-    assert "Use existing folder organization first." in prompt
-    assert (
-        "Use the profile fallback memory path only when no repo, machine, subject, "
-        "or other existing folder clearly fits."
-    ) in prompt
-    assert "Write learned skills only under the profile skill path." in prompt
-    assert "Do not invent semantic frontmatter requirements for memory notes." in prompt
-    assert (
-        "Keep notes small and factual; update existing notes when that is cleaner "
-        "than adding new ones."
-    ) in prompt
-    assert "If nothing durable was learned, make no filesystem changes." in prompt
-    assert (
-        "Profile fallback memory path: /workspace/vault/systems/pynchy/profiles/deep-work/memory"
-    ) in prompt
-    assert (
-        "Profile skill path: /workspace/vault/systems/pynchy/profiles/deep-work/skills"
-    ) in prompt
-    assert "folder-governed" in prompt
-    assert "Pynchy's existing `SKILL.md` skill format" in prompt
+    for snippet in (
+        "/workspace/vault",
+        "The mounted vault root is the global memory namespace.",
+        "Use existing folder organization first.",
+        (
+            "Use the profile fallback memory path only when no repo, machine, subject, "
+            "or other existing folder clearly fits."
+        ),
+        "Write learned skills only under the profile skill path.",
+        "Do not invent semantic frontmatter requirements for memory notes.",
+        (
+            "Keep notes small and factual; update existing notes when that is cleaner "
+            "than adding new ones."
+        ),
+        "If nothing durable was learned, make no filesystem changes.",
+        "Profile fallback memory path: /workspace/vault/systems/pynchy/profiles/deep-work/memory",
+        "Profile skill path: /workspace/vault/systems/pynchy/profiles/deep-work/skills",
+        "folder-governed",
+        "Pynchy's existing `SKILL.md` skill format",
+    ):
+        assert snippet in prompt
 
 
 def test_should_review_skips_short_casual_turn_without_learning_signal() -> None:

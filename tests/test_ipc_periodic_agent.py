@@ -93,11 +93,38 @@ class TestCreatePeriodicAgent:
             command_center=CommandCenterConfig(connection="connection.slack.main"),
         )
 
+    @staticmethod
+    def _channel(created_jid: str) -> AsyncMock:
+        mock_channel = AsyncMock()
+        mock_channel.create_group = AsyncMock(return_value=created_jid)
+        mock_channel.name = "connection.slack.main"
+        return mock_channel
+
+    async def _dispatch_create_periodic_agent(
+        self,
+        deps: MockDeps,
+        tmp_path,
+        payload: dict[str, str],
+    ):
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_groups.get_settings",
+                return_value=self._settings(tmp_path),
+            ),
+            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml") as add_ws,
+        ):
+            await dispatch(payload, "admin-1", True, deps)
+        return add_ws
+
+    @staticmethod
+    async def _single_task():
+        tasks = await get_all_tasks()
+        assert len(tasks) == 1
+        return tasks[0]
+
     async def test_creates_full_periodic_agent(self, deps, tmp_path, monkeypatch):
         """Should create folder, config, CLAUDE.md, chat group, and task."""
-        mock_channel = AsyncMock()
-        mock_channel.create_group = AsyncMock(return_value="agent@g.us")
-        mock_channel.name = "connection.slack.main"
+        mock_channel = self._channel("agent@g.us")
         deps._channels = [mock_channel]
 
         with (
@@ -140,39 +167,28 @@ class TestCreatePeriodicAgent:
         assert group.folder == "daily-briefing"
 
         # 6. Scheduled task created
-        tasks = await get_all_tasks()
-        assert len(tasks) == 1
-        assert tasks[0].group_folder == "daily-briefing"
-        assert tasks[0].schedule_value == "0 9 * * *"
-        assert tasks[0].prompt == "Compile a daily briefing"
-        assert tasks[0].status == "active"
+        task = await self._single_task()
+        assert task.group_folder == "daily-briefing"
+        assert task.schedule_value == "0 9 * * *"
+        assert task.prompt == "Compile a daily briefing"
+        assert task.status == "active"
 
     async def test_custom_claude_md(self, deps, tmp_path, monkeypatch):
         """Custom claude_md content should be written to CLAUDE.md."""
-        mock_channel = AsyncMock()
-        mock_channel.create_group = AsyncMock(return_value="custom@g.us")
-        mock_channel.name = "connection.slack.main"
+        mock_channel = self._channel("custom@g.us")
         deps._channels = [mock_channel]
 
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_groups.get_settings",
-                return_value=self._settings(tmp_path),
-            ),
-            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
-        ):
-            await dispatch(
-                {
-                    "type": "create_periodic_agent",
-                    "name": "custom-agent",
-                    "schedule": "0 8 * * 1",
-                    "prompt": "Weekly report",
-                    "claude_md": "# Custom Agent\nYou are a custom agent.",
-                },
-                "admin-1",
-                True,
-                deps,
-            )
+        await self._dispatch_create_periodic_agent(
+            deps,
+            tmp_path,
+            {
+                "type": "create_periodic_agent",
+                "name": "custom-agent",
+                "schedule": "0 8 * * 1",
+                "prompt": "Weekly report",
+                "claude_md": "# Custom Agent\nYou are a custom agent.",
+            },
+        )
 
         claude_md = tmp_path / "custom-agent" / "CLAUDE.md"
         assert claude_md.exists()
@@ -185,59 +201,39 @@ class TestCreatePeriodicAgent:
         agent_dir.mkdir(parents=True)
         (agent_dir / "CLAUDE.md").write_text("# Keep this content")
 
-        mock_channel = AsyncMock()
-        mock_channel.create_group = AsyncMock(return_value="existing@g.us")
-        mock_channel.name = "connection.slack.main"
+        mock_channel = self._channel("existing@g.us")
         deps._channels = [mock_channel]
 
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_groups.get_settings",
-                return_value=self._settings(tmp_path),
-            ),
-            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
-        ):
-            await dispatch(
-                {
-                    "type": "create_periodic_agent",
-                    "name": "existing-agent",
-                    "schedule": "0 9 * * *",
-                    "prompt": "Test",
-                },
-                "admin-1",
-                True,
-                deps,
-            )
+        await self._dispatch_create_periodic_agent(
+            deps,
+            tmp_path,
+            {
+                "type": "create_periodic_agent",
+                "name": "existing-agent",
+                "schedule": "0 9 * * *",
+                "prompt": "Test",
+            },
+        )
 
         # CLAUDE.md should be preserved
         assert (agent_dir / "CLAUDE.md").read_text() == "# Keep this content"
 
     async def test_respects_context_mode(self, deps, tmp_path, monkeypatch):
         """context_mode should be passed through to the task."""
-        mock_channel = AsyncMock()
-        mock_channel.create_group = AsyncMock(return_value="iso@g.us")
-        mock_channel.name = "connection.slack.main"
+        mock_channel = self._channel("iso@g.us")
         deps._channels = [mock_channel]
 
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_groups.get_settings",
-                return_value=self._settings(tmp_path),
-            ),
-            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
-        ):
-            await dispatch(
-                {
-                    "type": "create_periodic_agent",
-                    "name": "isolated-agent",
-                    "schedule": "0 9 * * *",
-                    "prompt": "Isolated task",
-                    "context_mode": "isolated",
-                },
-                "admin-1",
-                True,
-                deps,
-            )
+        await self._dispatch_create_periodic_agent(
+            deps,
+            tmp_path,
+            {
+                "type": "create_periodic_agent",
+                "name": "isolated-agent",
+                "schedule": "0 9 * * *",
+                "prompt": "Isolated task",
+                "context_mode": "isolated",
+            },
+        )
 
         tasks = await get_all_tasks()
         assert len(tasks) == 1
@@ -245,30 +241,20 @@ class TestCreatePeriodicAgent:
 
     async def test_invalid_context_mode_defaults_to_group(self, deps, tmp_path, monkeypatch):
         """Invalid context_mode should default to 'group'."""
-        mock_channel = AsyncMock()
-        mock_channel.create_group = AsyncMock(return_value="bad@g.us")
-        mock_channel.name = "connection.slack.main"
+        mock_channel = self._channel("bad@g.us")
         deps._channels = [mock_channel]
 
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_groups.get_settings",
-                return_value=self._settings(tmp_path),
-            ),
-            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
-        ):
-            await dispatch(
-                {
-                    "type": "create_periodic_agent",
-                    "name": "bad-context",
-                    "schedule": "0 9 * * *",
-                    "prompt": "Test",
-                    "context_mode": "invalid",
-                },
-                "admin-1",
-                True,
-                deps,
-            )
+        await self._dispatch_create_periodic_agent(
+            deps,
+            tmp_path,
+            {
+                "type": "create_periodic_agent",
+                "name": "bad-context",
+                "schedule": "0 9 * * *",
+                "prompt": "Test",
+                "context_mode": "invalid",
+            },
+        )
 
         tasks = await get_all_tasks()
         assert len(tasks) == 1
@@ -279,28 +265,40 @@ class TestCreatePeriodicAgent:
         # No channels at all
         deps._channels = []
 
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_groups.get_settings",
-                return_value=self._settings(tmp_path),
-            ),
-            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
-        ):
-            await dispatch(
-                {
-                    "type": "create_periodic_agent",
-                    "name": "no-channel-agent",
-                    "schedule": "0 9 * * *",
-                    "prompt": "Test",
-                },
-                "admin-1",
-                True,
-                deps,
-            )
+        await self._dispatch_create_periodic_agent(
+            deps,
+            tmp_path,
+            {
+                "type": "create_periodic_agent",
+                "name": "no-channel-agent",
+                "schedule": "0 9 * * *",
+                "prompt": "Test",
+            },
+        )
 
         # Folder should exist even without chat group creation
         assert (tmp_path / "no-channel-agent").exists()
         # But no task (since group wasn't created)
+        tasks = await get_all_tasks()
+        assert len(tasks) == 0
+
+    async def test_empty_created_jid_does_not_register_or_schedule(self, deps, tmp_path):
+        """An empty JID from create_group is invalid and must not create state."""
+        mock_channel = self._channel("")
+        deps._channels = [mock_channel]
+
+        await self._dispatch_create_periodic_agent(
+            deps,
+            tmp_path,
+            {
+                "type": "create_periodic_agent",
+                "name": "blank-jid-agent",
+                "schedule": "0 9 * * *",
+                "prompt": "Test",
+            },
+        )
+
+        assert "" not in deps.workspaces()
         tasks = await get_all_tasks()
         assert len(tasks) == 0
 

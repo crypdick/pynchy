@@ -20,10 +20,25 @@ from pynchy.plugins.channels.discord._events import (
 BOT_ID = "999"
 
 
-def _user(uid: str, *, bot: bool = False, roles: tuple[str, ...] = ()) -> SimpleNamespace:
+def _user(
+    uid: str,
+    *,
+    bot: bool = False,
+    roles: tuple[str, ...] = (),
+    display_name: str | None = None,
+    global_name: str | None = None,
+    name: str | None = None,
+) -> SimpleNamespace:
     # Real Discord ids are numeric snowflakes; the extraction only ever str()s
     # them, so string ids are fine for these pure-function tests.
-    return SimpleNamespace(id=uid, bot=bot, roles=[SimpleNamespace(id=r) for r in roles])
+    return SimpleNamespace(
+        id=uid,
+        bot=bot,
+        roles=[SimpleNamespace(id=r) for r in roles],
+        display_name=display_name,
+        global_name=global_name,
+        name=name,
+    )
 
 
 def _message(
@@ -31,15 +46,21 @@ def _message(
     author: SimpleNamespace,
     guild_id: str | None,
     channel_id: str,
+    guild_name: str | None = None,
+    channel_name: str | None = None,
     parent_id: str | None = None,
+    parent_name: str | None = None,
     mentions: tuple[str, ...] = (),
     content: str = "",
     attachments: tuple[SimpleNamespace, ...] = (),
     reference: SimpleNamespace | None = None,
     message_snapshots: tuple[SimpleNamespace, ...] = (),
 ) -> SimpleNamespace:
-    guild = None if guild_id is None else SimpleNamespace(id=guild_id)
-    channel = SimpleNamespace(id=channel_id)
+    guild = None if guild_id is None else SimpleNamespace(id=guild_id, name=guild_name)
+    parent = None
+    if parent_id is not None:
+        parent = SimpleNamespace(id=parent_id, name=parent_name)
+    channel = SimpleNamespace(id=channel_id, name=channel_name, parent=parent)
     if parent_id is not None:
         channel.parent_id = parent_id
     return SimpleNamespace(
@@ -95,11 +116,42 @@ def test_guild_context():
     assert ctx.parent_channel_id is None
 
 
+def test_guild_context_carries_names():
+    msg = _message(
+        author=_user("7"),
+        guild_id="g1",
+        guild_name="Synapse",
+        channel_id="c1",
+        channel_name="code-improver",
+    )
+    ctx = build_inbound_context(msg, BOT_ID)
+    assert ctx.guild_name == "Synapse"
+    assert ctx.channel_name == "code-improver"
+
+
+def test_context_carries_author_names():
+    msg = _message(
+        author=_user("7", display_name="Ricardo", global_name="rdecal", name="ricardo-local"),
+        guild_id="g1",
+        channel_id="c1",
+    )
+
+    assert {"Ricardo", "rdecal", "ricardo-local"} <= build_inbound_context(msg, BOT_ID).author_names
+
+
 def test_thread_context_carries_parent():
-    msg = _message(author=_user("7"), guild_id="g1", channel_id="t1", parent_id="c1")
+    msg = _message(
+        author=_user("7"),
+        guild_id="g1",
+        channel_id="t1",
+        channel_name="run-123",
+        parent_id="c1",
+        parent_name="code-improver",
+    )
     ctx = build_inbound_context(msg, BOT_ID)
     assert ctx.channel_id == "t1"
     assert ctx.parent_channel_id == "c1"
+    assert ctx.parent_channel_name == "code-improver"
 
 
 def test_bot_author_flagged():

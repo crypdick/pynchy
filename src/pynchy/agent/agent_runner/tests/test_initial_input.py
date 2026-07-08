@@ -153,17 +153,21 @@ class TestContainerInputFields:
         (input_dir / "initial.json").write_text(json.dumps(data))
 
         result = read_initial_input()
-        assert result.session_id is None
-        assert result.is_scheduled_task is False
-        assert result.system_notices is None
-        assert result.repo_access is None
-        assert result.agent_core_module == "agent_runner.cores.openai"
-        assert result.agent_core_class == "OpenAIAgentCore"
-        assert result.agent_core_config is None
-        assert result.system_prompt_append is None
-        assert result.mcp_gateway_url is None
-        assert result.mcp_gateway_key is None
-        assert result.mcp_direct_servers is None
+        expected_defaults = {
+            "session_id": None,
+            "is_scheduled_task": False,
+            "system_notices": None,
+            "repo_access": None,
+            "agent_core_module": "agent_runner.cores.openai",
+            "agent_core_class": "OpenAIAgentCore",
+            "agent_core_config": None,
+            "system_prompt_append": None,
+            "mcp_gateway_url": None,
+            "mcp_gateway_key": None,
+            "mcp_direct_servers": None,
+        }
+        for field_name, expected_value in expected_defaults.items():
+            assert getattr(result, field_name) == expected_value
 
     def test_ignores_unknown_keys(self, input_dir: Path) -> None:
         """Unknown keys in JSON are silently ignored (from_dict contract)."""

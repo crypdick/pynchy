@@ -243,6 +243,61 @@ def _extract_by_raw_type(
     return extractor(raw, raw_map, tool_name, tool_input)
 
 
+def _fallback_data_dump(raw: Any, raw_map: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Best-effort dict view of the raw SDK object for mapping-based scanning."""
+    if isinstance(raw_map, dict):
+        return raw_map
+    if hasattr(raw, "__dict__"):
+        data_dump = vars(raw)
+        if isinstance(data_dump, dict):
+            return data_dump
+    return None
+
+
+def _fallback_mappings(data_dump: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """Mappings to inspect during the final mapping scan."""
+    nested_data = data_dump.get("data")
+    return (data_dump, nested_data) if isinstance(nested_data, dict) else (data_dump,)
+
+
+def _fallback_tool_name(mapping: dict[str, Any], tool_name: str | None) -> str | None:
+    """Fill in the tool name from common mapping keys."""
+    if tool_name not in _UNKNOWN_NAMES:
+        return tool_name
+    for key in ("tool_name", "name", "tool", "type"):
+        value = mapping.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return tool_name
+
+
+def _fallback_tool_input(mapping: dict[str, Any], tool_input: Any) -> Any:
+    """Fill in the tool input from common mapping keys."""
+    if tool_input is not None:
+        return tool_input
+    return mapping.get("arguments") or mapping.get("input")
+
+
+def _fallback_action_data(
+    mapping: dict[str, Any], tool_name: str | None, tool_input: Any
+) -> tuple[str | None, Any]:
+    """Extract shell-shaped info from nested action payloads."""
+    action = mapping.get("action")
+    if not isinstance(action, dict):
+        return tool_name, tool_input
+
+    if tool_input is None:
+        commands = action.get("commands")
+        command = action.get("command")
+        if commands or command:
+            tool_input = {"commands": commands} if commands else {"command": command}
+
+    if tool_name in _UNKNOWN_NAMES and action.get("type") in ("exec", "shell", "shell_call"):
+        tool_name = "shell"
+
+    return tool_name, tool_input
+
+
 def _fallback_mapping_scan(
     raw: Any,
     raw_map: dict[str, Any] | None,
@@ -250,36 +305,14 @@ def _fallback_mapping_scan(
     tool_input: Any,
 ) -> tuple[str | None, Any]:
     """Scan the raw object's dict representation for tool name/input as a last resort."""
-    data_dump = raw_map
-    if data_dump is None and hasattr(raw, "__dict__"):
-        data_dump = vars(raw)
-    if not isinstance(data_dump, dict):
+    data_dump = _fallback_data_dump(raw, raw_map)
+    if data_dump is None:
         return tool_name, tool_input
 
-    for mapping in (data_dump, data_dump.get("data")):
-        if not isinstance(mapping, dict):
-            continue
-        if tool_name in _UNKNOWN_NAMES:
-            for key in ("tool_name", "name", "tool", "type"):
-                value = mapping.get(key)
-                if value:
-                    tool_name = value
-                    break
-        if tool_input is None:
-            tool_input = mapping.get("arguments") or mapping.get("input")
-        action = mapping.get("action")
-        if isinstance(action, dict):
-            if tool_input is None:
-                cmds = action.get("commands")
-                cmd = action.get("command")
-                if cmds or cmd:
-                    tool_input = {"commands": cmds} if cmds else {"command": cmd}
-            if tool_name in _UNKNOWN_NAMES and action.get("type") in (
-                "exec",
-                "shell",
-                "shell_call",
-            ):
-                tool_name = "shell"
+    for mapping in _fallback_mappings(data_dump):
+        tool_name = _fallback_tool_name(mapping, tool_name)
+        tool_input = _fallback_tool_input(mapping, tool_input)
+        tool_name, tool_input = _fallback_action_data(mapping, tool_name, tool_input)
 
     return tool_name, tool_input
 

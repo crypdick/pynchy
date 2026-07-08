@@ -13,25 +13,38 @@ from pynchy.config.models import DiscordConnectionConfig
 from pynchy.plugins.channels.discord._access import DiscordAccess, InboundContext
 
 
-def _dm(author_id: str = "1", *, is_bot: bool = False) -> InboundContext:
+def _dm(
+    author_id: str = "1",
+    *,
+    author_names: frozenset[str] = frozenset(),
+    is_bot: bool = False,
+) -> InboundContext:
     return InboundContext(
         is_dm=True,
         author_id=author_id,
         author_is_bot=is_bot,
         guild_id=None,
+        guild_name=None,
         channel_id="dm-chan",
+        channel_name=None,
         parent_channel_id=None,
+        parent_channel_name=None,
         author_role_ids=frozenset(),
         mentions_bot=False,
+        author_names=author_names,
     )
 
 
 def _guild(
     *,
     guild_id: str = "g1",
+    guild_name: str | None = None,
     channel_id: str = "c1",
+    channel_name: str | None = None,
     parent_channel_id: str | None = None,
+    parent_channel_name: str | None = None,
     author_id: str = "u1",
+    author_names: frozenset[str] = frozenset(),
     author_role_ids: frozenset[str] = frozenset(),
     mentions_bot: bool = False,
     is_bot: bool = False,
@@ -41,10 +54,14 @@ def _guild(
         author_id=author_id,
         author_is_bot=is_bot,
         guild_id=guild_id,
+        guild_name=guild_name,
         channel_id=channel_id,
+        channel_name=channel_name,
         parent_channel_id=parent_channel_id,
+        parent_channel_name=parent_channel_name,
         author_role_ids=author_role_ids,
         mentions_bot=mentions_bot,
+        author_names=author_names,
     )
 
 
@@ -89,6 +106,12 @@ def test_allow_from_accepts_bare_snowflake():
     assert _access(dm_policy="allowlist", allow_from=["1"]).decide(_dm("1")) == "allow"
 
 
+def test_dm_allowlist_accepts_human_user_name():
+    access = _access(dm_policy="allowlist", allow_from=["ricardo"])
+
+    assert access.decide(_dm("1", author_names=frozenset({"Ricardo", "rdecal"}))) == "allow"
+
+
 # --- guild / group policy ----------------------------------------------------
 
 
@@ -127,6 +150,37 @@ def test_channel_require_mention_false_overrides_guild():
         chat={"g1": {"require_mention": True, "channels": {"c1": {"require_mention": False}}}},
     )
     assert access.decide(_guild(channel_id="c1", mentions_bot=False)) == "allow"
+
+
+def test_name_configured_guild_channel_allows_message():
+    access = _access(
+        group_policy="allowlist",
+        chat={
+            "synapse": {
+                "name": "Synapse",
+                "require_mention": True,
+                "channels": {
+                    "code-improver": {
+                        "name": "code-improver",
+                        "require_mention": False,
+                    }
+                },
+            }
+        },
+    )
+
+    assert (
+        access.decide(
+            _guild(
+                guild_id="123",
+                guild_name="Synapse",
+                channel_id="456",
+                channel_name="code-improver",
+                mentions_bot=False,
+            )
+        )
+        == "allow"
+    )
 
 
 # --- channel enable / allowlist ----------------------------------------------
@@ -171,6 +225,15 @@ def test_member_users_allowlist_permits_listed_sender():
         chat={"g1": {"require_mention": False, "users": ["discord:u1"]}},
     )
     assert access.decide(_guild(author_id="u1")) == "allow"
+
+
+def test_member_users_allowlist_permits_human_user_name():
+    access = _access(
+        group_policy="allowlist",
+        chat={"g1": {"require_mention": False, "users": ["ricardo"]}},
+    )
+
+    assert access.decide(_guild(author_names=frozenset({"Ricardo"}))) == "allow"
 
 
 def test_member_users_allowlist_denies_unlisted_sender():

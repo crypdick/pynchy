@@ -87,6 +87,52 @@ def _serialized_reviewer_payload_chars(packet) -> int:
     return len(json.dumps(payload, sort_keys=True))
 
 
+def _pathological_messages(count: int = 30) -> list[NewMessage]:
+    return [
+        _message(
+            f"long content {index} {'m' * 400}",
+            id=f"message-{index}-{'i' * 400}",
+            sender_name=f"Sender {index} {'s' * 400}",
+            timestamp=f"2026-07-07T10:00:{index:02d}.000Z",
+        )
+        for index in range(count)
+    ]
+
+
+def _observe_pathological_tool_uses(
+    summary: LearningRunSummary,
+    *,
+    secret: str,
+    count: int = 30,
+) -> None:
+    for index in range(count):
+        observe_container_output(
+            summary,
+            ContainerOutput(
+                status="success",
+                type="tool_use",
+                tool_name=f"VeryLongToolName-{index}-{'t' * 400}",
+                tool_input={"command": f"echo {secret}"},
+            ),
+        )
+
+
+def _observe_pathological_tool_errors(
+    summary: LearningRunSummary,
+    count: int = 20,
+) -> None:
+    for index in range(count):
+        observe_container_output(
+            summary,
+            ContainerOutput(
+                status="success",
+                type="tool_result",
+                tool_result_is_error=True,
+                tool_result_content=f"tool failed {index} {'e' * 400}",
+            ),
+        )
+
+
 def test_observe_container_output_records_final_answer_and_tool_counts() -> None:
     summary = LearningRunSummary()
 
@@ -180,6 +226,22 @@ def test_observe_container_output_only_treats_marked_tool_results_as_errors() ->
     ]
 
 
+def test_observe_container_output_does_not_treat_error_results_as_final_answers() -> None:
+    summary = LearningRunSummary()
+
+    observe_container_output(
+        summary,
+        ContainerOutput(
+            status="error",
+            type="result",
+            result="command failed",
+        ),
+    )
+
+    assert summary.final_answer is None
+    assert summary.error_snippets == ["command failed"]
+
+
 def test_build_packet_bounds_user_messages_and_skips_non_user_visible_messages(
     tmp_path: Path,
 ) -> None:
@@ -218,39 +280,13 @@ def test_build_packet_bounds_full_reviewer_payload_with_pathological_fields(
     max_chars = 260
     long_profile = f"Research Profile {'p' * 900}"
     settings = _settings(tmp_path=tmp_path, packet_max_chars=max_chars, profile=long_profile)
-    messages = [
-        _message(
-            f"long content {index} {'m' * 400}",
-            id=f"message-{index}-{'i' * 400}",
-            sender_name=f"Sender {index} {'s' * 400}",
-            timestamp=f"2026-07-07T10:00:{index:02d}.000Z",
-        )
-        for index in range(30)
-    ]
+    messages = _pathological_messages()
     summary = LearningRunSummary(final_answer=f"final answer {'a' * 900}")
     secret = (
         "sk-live-never-serialize-tool-input"  # pragma: allowlist secret - fake regression value
     )
-    for index in range(30):
-        observe_container_output(
-            summary,
-            ContainerOutput(
-                status="success",
-                type="tool_use",
-                tool_name=f"VeryLongToolName-{index}-{'t' * 400}",
-                tool_input={"command": f"echo {secret}"},
-            ),
-        )
-    for index in range(20):
-        observe_container_output(
-            summary,
-            ContainerOutput(
-                status="success",
-                type="tool_result",
-                tool_result_is_error=True,
-                tool_result_content=f"tool failed {index} {'e' * 400}",
-            ),
-        )
+    _observe_pathological_tool_uses(summary, secret=secret)
+    _observe_pathological_tool_errors(summary)
 
     with _patch_learning_settings(settings):
         packet = build_learning_packet(

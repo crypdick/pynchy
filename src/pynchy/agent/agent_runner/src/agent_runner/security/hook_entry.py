@@ -66,23 +66,39 @@ async def _evaluate(
     return None
 
 
-def _extract_tool_call(data: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-    """Extract tool name/input from Claude- and Codex-shaped hook payloads."""
-    tool_name = data.get("tool_name") or data.get("toolName") or ""
-    tool_input = data.get("tool_input") or data.get("toolInput") or {}
-
+def _payload_tool(data: dict[str, Any]) -> dict[str, Any]:
     tool = data.get("tool")
-    if isinstance(tool, dict):
-        tool_name = tool_name or tool.get("name") or tool.get("toolName") or ""
-        tool_input = tool_input or tool.get("input") or tool.get("toolInput") or {}
+    return tool if isinstance(tool, dict) else {}
+
+
+def _extract_tool_name(data: dict[str, Any]) -> str:
+    """Extract the tool name from either flat or nested hook payloads."""
+    tool = _payload_tool(data)
+    tool_name = data.get("tool_name") or data.get("toolName") or ""
+    tool_name = tool_name or tool.get("name") or tool.get("toolName") or ""
+    return str(tool_name)
+
+
+def _extract_tool_input(data: dict[str, Any]) -> dict[str, Any]:
+    """Extract and normalize the tool input payload."""
+    tool = _payload_tool(data)
+    tool_input = data.get("tool_input") or data.get("toolInput") or {}
+    tool_input = tool_input or tool.get("input") or tool.get("toolInput") or {}
 
     if not isinstance(tool_input, dict):
-        tool_input = {"input": tool_input}
+        normalized_input: dict[str, Any] = {"input": tool_input}
+    else:
+        normalized_input = tool_input.copy()
 
-    if "command" in data and "command" not in tool_input:
-        tool_input["command"] = data["command"]
+    if "command" in data and "command" not in normalized_input:
+        normalized_input["command"] = data["command"]
 
-    return str(tool_name), tool_input
+    return normalized_input
+
+
+def _extract_tool_call(data: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """Extract tool name/input from Claude- and Codex-shaped hook payloads."""
+    return _extract_tool_name(data), _extract_tool_input(data)
 
 
 def main() -> None:

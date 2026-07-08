@@ -19,8 +19,16 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Literal, TypedDict
 
 CONVERSATIONS_DIR = Path("/workspace/group/conversations")
+
+
+class TranscriptMessage(TypedDict):
+    """Archived user/assistant turn extracted from a JSONL transcript."""
+
+    role: Literal["user", "assistant"]
+    content: str
 
 
 def _log(message: str) -> None:
@@ -37,36 +45,70 @@ def _generate_fallback_name() -> str:
     return f"conversation-{now.hour:02d}{now.minute:02d}"
 
 
-def _parse_transcript(content: str) -> list[dict[str, str]]:
-    """Parse JSONL transcript to messages."""
-    messages: list[dict[str, str]] = []
+def _extract_message_text(content: object, *, text_only: bool) -> str:
+    """Extract displayable text from a transcript content payload."""
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+
+    text_parts: list[str] = []
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        if text_only and block.get("type") != "text":
+            continue
+        text = block.get("text")
+        if isinstance(text, str):
+            text_parts.append(text)
+    return "".join(text_parts)
+
+
+def _parse_transcript_entry(entry: object) -> TranscriptMessage | None:
+    """Parse a single JSON transcript entry into an archived message."""
+    if not isinstance(entry, dict):
+        return None
+
+    message = entry.get("message")
+    if not isinstance(message, dict):
+        return None
+
+    match entry.get("type"):
+        case "user":
+            role: Literal["user", "assistant"] = "user"
+            text = _extract_message_text(message.get("content"), text_only=False)
+        case "assistant":
+            role = "assistant"
+            text = _extract_message_text(message.get("content"), text_only=True)
+        case _:
+            return None
+
+    if not text:
+        return None
+    return {"role": role, "content": text}
+
+
+def _parse_transcript(content: str) -> list[TranscriptMessage]:
+    """Parse JSONL transcript to archived user/assistant messages."""
+    messages: list[TranscriptMessage] = []
 
     for line in content.splitlines():
         if not line.strip():
             continue
         try:
             entry = json.loads(line)
-            if entry.get("type") == "user" and entry.get("message", {}).get("content"):
-                raw = entry["message"]["content"]
-                text = raw if isinstance(raw, str) else "".join(c.get("text", "") for c in raw)
-                if text:
-                    messages.append({"role": "user", "content": text})
-            elif entry.get("type") == "assistant" and entry.get("message", {}).get("content"):
-                text_parts = [
-                    c.get("text", "")
-                    for c in entry["message"]["content"]
-                    if c.get("type") == "text"
-                ]
-                text = "".join(text_parts)
-                if text:
-                    messages.append({"role": "assistant", "content": text})
-        except (json.JSONDecodeError, KeyError, TypeError):
+        except json.JSONDecodeError:
             pass
+            continue
+
+        parsed = _parse_transcript_entry(entry)
+        if parsed is not None:
+            messages.append(parsed)
 
     return messages
 
 
-def _format_transcript_markdown(messages: list[dict[str, str]], title: str | None = None) -> str:
+def _format_transcript_markdown(messages: list[TranscriptMessage], title: str | None = None) -> str:
     """Format parsed messages as markdown."""
     now = datetime.now()
     formatted_date = now.strftime("%b %d, %I:%M %p")

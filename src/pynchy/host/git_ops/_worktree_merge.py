@@ -81,7 +81,7 @@ def merge_and_push_worktree(group_folder: str, repo_ctx: RepoContext) -> None:
     Designed to run in a thread via asyncio.to_thread().
     """
     if merge_worktree(group_folder, repo_ctx):
-        env = git_env_with_token(repo_ctx.slug)
+        env = git_env_with_token(repo_ctx.slug, group_folder=group_folder)
         push_local_commits(cwd=repo_ctx.root, env=env)
 
 

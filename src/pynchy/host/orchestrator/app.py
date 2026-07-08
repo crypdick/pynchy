@@ -136,6 +136,14 @@ class PynchyApp:
     async def catch_up_channels(self) -> None:
         await self._catch_up_channel_history()
 
+    async def start_channel_reconciliation(self) -> None:
+        """Start durable Temporal reconciliation for channel history."""
+        from pynchy.host.orchestrator.temporal.scheduler import (
+            start_channel_reconciliation_workflow,
+        )
+
+        await start_channel_reconciliation_workflow()
+
     async def broadcast_agent_input(
         self, chat_jid: str, messages: list[dict[str, Any]], *, source: str = "user"
     ) -> None:
@@ -277,6 +285,14 @@ class PynchyApp:
         """Delegates group processing to the message handler module."""
         return await message_handler.process_group_messages(self, chat_jid)
 
+    async def start_interactive_turn(self, chat_jid: str) -> None:
+        """Start durable Temporal processing for pending messages in one chat."""
+        from pynchy.host.orchestrator.temporal.scheduler import (
+            start_interactive_message_workflow,
+        )
+
+        await start_interactive_message_workflow(chat_jid)
+
     # ------------------------------------------------------------------
     # Internal delegation for session_handler (used by dep_factory adapters)
     async def _ingest_user_message(
@@ -330,7 +346,7 @@ class PynchyApp:
         )
         await store_message(msg)
         await self.broadcast_host_message(chat_jid, "\U0001f60e Answer forwarded to agent")
-        self.queue.enqueue_message_check(chat_jid)
+        await self.start_interactive_turn(chat_jid)
 
     async def _send_clear_confirmation(self, chat_jid: str) -> None:
         await session_handler.send_clear_confirmation(self, chat_jid)
@@ -340,16 +356,19 @@ class PynchyApp:
     # ------------------------------------------------------------------
 
     async def _catch_up_channel_history(self) -> None:
-        """Reconcile channel history and retry pending outbound.
+        """Start Temporal-owned channel history reconciliation."""
+        from pynchy.host.orchestrator.temporal.scheduler import (
+            TemporalRuntimeUnavailableError,
+            temporal_scheduler_runtime_active,
+        )
 
-        Delegates to the unified reconciler which handles per-channel
-        bidirectional cursors, inbound catch-up, and outbound retry.
-
-        Runs at boot AND periodically from the message polling loop.
-        """
-        from pynchy.host.orchestrator.messaging.reconciler import reconcile_all_channels
-
-        await reconcile_all_channels(self)
+        if not temporal_scheduler_runtime_active():
+            logger.info("Channel reconciliation deferred until Temporal scheduler runtime starts")
+            return
+        try:
+            await self.start_channel_reconciliation()
+        except TemporalRuntimeUnavailableError:
+            logger.info("Channel reconciliation deferred until Temporal scheduler runtime starts")
 
     # ------------------------------------------------------------------
     # Lifecycle (delegated to _lifecycle module)

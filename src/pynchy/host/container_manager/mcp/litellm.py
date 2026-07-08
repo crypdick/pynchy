@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -72,6 +73,139 @@ async def api_request(
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class _EndpointRegistration:
+    server_id: str
+    url: str
+
+
+def _registered_endpoints(data: Any) -> dict[str, list[_EndpointRegistration]]:
+    endpoints: dict[str, list[_EndpointRegistration]] = {}
+    if not isinstance(data, list):
+        return endpoints
+
+    for raw_entry in data:
+        if not isinstance(raw_entry, dict):
+            continue
+        name = raw_entry.get("server_name")
+        if not isinstance(name, str) or not name:
+            continue
+        endpoints.setdefault(name, []).append(
+            _EndpointRegistration(
+                server_id=str(raw_entry.get("server_id", "")),
+                url=str(raw_entry.get("url", "")),
+            )
+        )
+    return endpoints
+
+
+def _sanitized_instance_id(instance_id: str) -> str:
+    return instance_id.replace(".", "_").replace("-", "_")
+
+
+def _registration_partition(
+    registrations: list[_EndpointRegistration],
+    desired_url: str,
+) -> tuple[_EndpointRegistration | None, list[str]]:
+    keep: _EndpointRegistration | None = None
+    to_delete: list[str] = []
+    for registration in registrations:
+        if keep is None and registration.url == desired_url:
+            keep = registration
+            continue
+        to_delete.append(registration.server_id)
+    return keep, to_delete
+
+
+async def _delete_registrations(
+    session: Any,
+    gateway: LiteLLMGateway,
+    *,
+    server_ids: list[str],
+    log_event: str,
+    **log_kwargs: str,
+) -> None:
+    for server_id in server_ids:
+        if not server_id:
+            continue
+        if await api_request(session, gateway, "DELETE", f"/v1/mcp/server/{server_id}"):
+            logger.info(log_event, server_id=server_id, **log_kwargs)
+
+
+def _registration_transport(instance: McpInstance) -> str:
+    transport = instance.server_config.transport
+    return "http" if transport == "streamable_http" else transport
+
+
+def _registration_payload(instance_id: str, instance: McpInstance) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "server_name": _sanitized_instance_id(instance_id),
+        "url": instance.endpoint_url,
+        "transport": _registration_transport(instance),
+        "allow_all_keys": True,
+    }
+
+    auth_env = instance.server_config.auth_value_env
+    if auth_env is None:
+        return payload
+
+    auth_value = os.environ.get(auth_env, "")
+    if auth_value:
+        payload["auth_value"] = auth_value
+    return payload
+
+
+async def _sync_instance_endpoint(
+    session: Any,
+    gateway: LiteLLMGateway,
+    *,
+    instance_id: str,
+    instance: McpInstance,
+    existing: dict[str, list[_EndpointRegistration]],
+) -> None:
+    sanitized_id = _sanitized_instance_id(instance_id)
+    registrations = existing.pop(sanitized_id, [])
+    keep, to_delete = _registration_partition(registrations, instance.endpoint_url)
+    await _delete_registrations(
+        session,
+        gateway,
+        server_ids=to_delete,
+        log_event="Deleted duplicate MCP registration",
+        instance_id=instance_id,
+    )
+
+    if keep is not None:
+        logger.debug("MCP endpoint already registered", instance_id=instance_id)
+        return
+
+    result = await api_request(
+        session,
+        gateway,
+        "POST",
+        "/v1/mcp/server",
+        json_data=_registration_payload(instance_id, instance),
+        log_event="Failed to register MCP endpoint",
+        instance_id=instance_id,
+    )
+    if result is not None:
+        logger.info("Registered MCP endpoint", instance_id=instance_id)
+
+
+async def _delete_stale_endpoints(
+    session: Any,
+    gateway: LiteLLMGateway,
+    existing: dict[str, list[_EndpointRegistration]],
+) -> None:
+    for name, registrations in existing.items():
+        await _delete_registrations(
+            session,
+            gateway,
+            server_ids=[registration.server_id for registration in registrations],
+            log_event="Deregistered stale MCP endpoint",
+            name=name,
+        )
+
+
 async def sync_mcp_endpoints(
     gateway: LiteLLMGateway,
     instances: dict[str, McpInstance],
@@ -88,103 +222,26 @@ async def sync_mcp_endpoints(
     it's the transport endpoint expecting SSE Accept headers.
     """
     async with aiohttp.ClientSession() as session:
-        # Get currently registered servers.
-        # NOTE: /v1/mcp/server returns a bare JSON array, not {"data": [...]}.
-        # Collect ALL entries per name -- there may be duplicates from earlier bugs.
-        existing: dict[str, list[dict[str, Any]]] = {}  # name -> [{server_id, url, ...}]
-        data = await api_request(
-            session,
-            gateway,
-            "GET",
-            "/v1/mcp/server",
-            log_event="Failed to list MCP servers from LiteLLM",
-        )
-        if isinstance(data, list):
-            for srv in data:
-                name = srv.get("server_name", "")
-                existing.setdefault(name, []).append(srv)
-
-        # ----------------------------------------------------------
-        # For each desired instance, ensure exactly one registration
-        # with the correct URL.  Delete extras and stale entries.
-        # ----------------------------------------------------------
-        # NOTE: LiteLLM field is "url", not "server_url".
-        # NOTE: LiteLLM rejects server_name values containing hyphens;
-        # dots from instance names (e.g. "gdrive.mycompany") may also
-        # cause issues.  Sanitize to underscores for registration.
-        for iid, instance in instances.items():
-            sanitized_iid = iid.replace(".", "_").replace("-", "_")
-            entries = existing.pop(sanitized_iid, [])
-            desired_url = instance.endpoint_url
-
-            # Find an entry that already matches the desired URL
-            keep: dict[str, Any] | None = None
-            to_delete: list[str] = []
-            for entry in entries:
-                if keep is None and entry.get("url") == desired_url:
-                    keep = entry
-                else:
-                    to_delete.append(entry.get("server_id", ""))
-
-            # Delete duplicates / stale-URL entries (best-effort, no log on failure)
-            for sid in to_delete:
-                if await api_request(session, gateway, "DELETE", f"/v1/mcp/server/{sid}"):
-                    logger.info(
-                        "Deleted duplicate MCP registration",
-                        instance_id=iid,
-                        server_id=sid,
-                    )
-
-            # Skip creation if we already have a matching entry
-            if keep is not None:
-                logger.debug("MCP endpoint already registered", instance_id=iid)
-                continue
-
-            # Register the instance.
-            # allow_all_keys=True: per-workspace isolation is enforced by the
-            # orchestrator (only workspaces that list this server in their
-            # mcp_servers config get the gateway URL injected).  LiteLLM's
-            # key->server ACL (allowed_mcp_servers on /key/generate) is not
-            # reliably stored, so we use allow_all_keys instead.
-            # LiteLLM accepts "sse" | "http" | "stdio"; map our config values.
-            transport = instance.server_config.transport
-            if transport == "streamable_http":
-                transport = "http"
-
-            payload: dict[str, Any] = {
-                "server_name": sanitized_iid,
-                "url": desired_url,
-                "transport": transport,
-                "allow_all_keys": True,
-            }
-
-            # Add auth if configured
-            if instance.server_config.auth_value_env:
-                auth_value = os.environ.get(instance.server_config.auth_value_env, "")
-                if auth_value:
-                    payload["auth_value"] = auth_value
-
-            result = await api_request(
+        existing = _registered_endpoints(
+            await api_request(
                 session,
                 gateway,
-                "POST",
+                "GET",
                 "/v1/mcp/server",
-                json_data=payload,
-                log_event="Failed to register MCP endpoint",
-                instance_id=iid,
+                log_event="Failed to list MCP servers from LiteLLM",
             )
-            if result is not None:
-                logger.info("Registered MCP endpoint", instance_id=iid)
+        )
 
-        # ----------------------------------------------------------
-        # Anything left in `existing` is not in instances --
-        # delete ALL entries for those names (stale, not in current config).
-        # ----------------------------------------------------------
-        for name, entries in existing.items():
-            for entry in entries:
-                sid = entry.get("server_id", "")
-                if await api_request(session, gateway, "DELETE", f"/v1/mcp/server/{sid}"):
-                    logger.info("Deregistered stale MCP endpoint", name=name)
+        for instance_id, instance in instances.items():
+            await _sync_instance_endpoint(
+                session,
+                gateway,
+                instance_id=instance_id,
+                instance=instance,
+                existing=existing,
+            )
+
+        await _delete_stale_endpoints(session, gateway, existing)
 
 
 # ---------------------------------------------------------------------------

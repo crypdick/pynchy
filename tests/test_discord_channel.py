@@ -17,6 +17,7 @@ import pytest
 import pynchy.plugins.channels.discord._channel as discord_channel_module
 from pynchy.config.models import DiscordConnectionConfig
 from pynchy.plugins.channels.discord import DiscordChannel, DiscordChannelPlugin
+from pynchy.state import init_test_database, store_chat_metadata
 from pynchy.types import Channel, OutboundEvent, OutboundEventType
 
 
@@ -86,6 +87,62 @@ class _FakeUser:
         return self.created_dm
 
 
+class _FakeDiscordTextChannel:
+    def __init__(self, channel_id: int, name: str) -> None:
+        self.id = channel_id
+        self.name = name
+
+
+class _FakeDiscordUser:
+    def __init__(self, user_id: int, name: str, *, display_name: str | None = None) -> None:
+        self.id = user_id
+        self.name = name
+        self.display_name = display_name or name
+        self.global_name = display_name
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class _FakeDiscordGuild:
+    def __init__(
+        self,
+        guild_id: int,
+        name: str,
+        channels: list[_FakeDiscordTextChannel],
+        members: list[_FakeDiscordUser] | None = None,
+    ) -> None:
+        self.id = guild_id
+        self.name = name
+        self.text_channels = channels
+        self.members = members or []
+        self.created: list[str] = []
+
+    async def create_text_channel(self, name: str, **kwargs) -> _FakeDiscordTextChannel:
+        self.created.append(name)
+        channel = _FakeDiscordTextChannel(789, name)
+        self.text_channels.append(channel)
+        return channel
+
+
+class _FakeDiscordClient:
+    def __init__(
+        self, guilds: list[_FakeDiscordGuild], users: list[_FakeDiscordUser] | None = None
+    ) -> None:
+        self.guilds = guilds
+        self.users = users or []
+
+    def get_guild(self, guild_id: int) -> _FakeDiscordGuild | None:
+        return next((guild for guild in self.guilds if guild.id == guild_id), None)
+
+    async def fetch_guild(self, guild_id: int) -> _FakeDiscordGuild | None:
+        return self.get_guild(guild_id)
+
+    def get_all_members(self):
+        for guild in self.guilds:
+            yield from guild.members
+
+
 def test_satisfies_channel_protocol():
     assert isinstance(_channel(), Channel)
 
@@ -134,6 +191,46 @@ async def test_resolve_chat_jid_maps_allowed_direct_ref():
 
 
 @pytest.mark.asyncio
+async def test_resolve_chat_jid_maps_allowed_direct_name_ref():
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env="X",
+            dm_policy="allowlist",
+            allow_from=["ricardo"],
+            group_policy="disabled",
+        ),
+        bot_token="token",
+        on_message=lambda jid, msg: None,
+        on_chat_metadata=lambda jid, ts, name: None,
+    )
+    user = _FakeDiscordUser(42, "rdecal", display_name="Ricardo")
+    ch.client = _FakeDiscordClient([], users=[user])
+
+    assert await ch.resolve_chat_jid("direct.ricardo") == "discord:direct:42"
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_jid_maps_allowed_direct_name_ref_from_chat_metadata():
+    await init_test_database()
+    await store_chat_metadata("discord:direct:42", "2026-07-08T00:00:00+00:00", "Ricardo")
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env="X",
+            dm_policy="allowlist",
+            allow_from=["ricardo"],
+            group_policy="disabled",
+        ),
+        bot_token="token",
+        on_message=lambda jid, msg: None,
+        on_chat_metadata=lambda jid, ts, name: None,
+    )
+
+    assert await ch.resolve_chat_jid("direct.ricardo") == "discord:direct:42"
+
+
+@pytest.mark.asyncio
 async def test_resolve_chat_jid_returns_none_for_unconfigured_channel_ref():
     ch = DiscordChannel(
         connection_name="connection.discord.test",
@@ -149,6 +246,58 @@ async def test_resolve_chat_jid_returns_none_for_unconfigured_channel_ref():
     )
 
     assert await ch.resolve_chat_jid("123.channels.456") is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_jid_maps_configured_name_ref_to_existing_channel():
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env="X",
+            dm_policy="allowlist",
+            group_policy="allowlist",
+            chat={
+                "synapse": {
+                    "name": "Synapse",
+                    "channels": {"code-improver": {"name": "code-improver"}},
+                }
+            },
+        ),
+        bot_token="token",
+        on_message=lambda jid, msg: None,
+        on_chat_metadata=lambda jid, ts, name: None,
+    )
+    ch.client = _FakeDiscordClient(
+        [_FakeDiscordGuild(123, "Synapse", [_FakeDiscordTextChannel(456, "code-improver")])]
+    )
+
+    assert await ch.resolve_chat_jid("synapse.channels.code-improver") == "discord:channel:456"
+
+
+@pytest.mark.asyncio
+async def test_create_group_creates_named_discord_channel():
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env="X",
+            dm_policy="allowlist",
+            group_policy="allowlist",
+            chat={
+                "synapse": {
+                    "name": "Synapse",
+                    "channels": {"code-improver": {"name": "code-improver"}},
+                }
+            },
+        ),
+        bot_token="token",
+        on_message=lambda jid, msg: None,
+        on_chat_metadata=lambda jid, ts, name: None,
+    )
+    guild = _FakeDiscordGuild(123, "Synapse", [])
+    ch.client = _FakeDiscordClient([guild])
+
+    assert await ch.create_group("synapse.channels.code-improver") == "discord:channel:789"
+    assert guild.created == ["code-improver"]
 
 
 @pytest.mark.asyncio

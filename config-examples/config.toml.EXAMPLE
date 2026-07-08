@@ -102,6 +102,9 @@
 # Preferred boundary for non-LLM agent credentials. When enabled, pynchy asks
 # OneCLI for proxy env vars, CA material, and onecli-managed credential stubs.
 # Raw service credentials stay in OneCLI and are injected at request time.
+# For GitHub, prefer a OneCLI GitHub App connection. OAuth is acceptable for a
+# personal migration path, but GitHub App installation tokens are repo-scoped and
+# short-lived, which matches pynchy's workspace isolation model.
 #
 # [onecli]
 # enabled = false
@@ -222,7 +225,7 @@
 # mode = "agent"         # "agent" or "chat"
 # trust = true
 # trigger = "mention"    # "mention" or "always"
-# allowed_users = ["owner"]  # user IDs, group refs, or "*"
+# allowed_users = ["owner"]  # owner, user names/IDs, group refs, or "*"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Sandboxes

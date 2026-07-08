@@ -67,6 +67,10 @@ CREATE TABLE IF NOT EXISTS task_run_logs (
     status TEXT NOT NULL,
     result TEXT,
     error TEXT,
+    temporal_workflow_id TEXT,
+    temporal_attempt INTEGER,
+    error_signature TEXT,
+    escalation_reason TEXT,
     FOREIGN KEY (task_id) REFERENCES scheduled_tasks(id)
 );
 CREATE INDEX IF NOT EXISTS idx_task_run_logs ON task_run_logs(task_id, run_at);

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pynchy.config import get_settings
@@ -21,21 +20,16 @@ from pynchy.host.container_manager import (
     create_session,
     destroy_session,
     get_session,
-    resolve_agent_core,
-    write_groups_snapshot,
-    write_tasks_snapshot,
 )
 from pynchy.host.container_manager.orchestrator import (
     _spawn_container,
     oneshot_container_name,
-    resolve_container_timeout,
     stable_container_name,
 )
-from pynchy.host.git_ops.repo import get_repo_context
-from pynchy.host.git_ops.utils import count_unpushed_commits, is_repo_dirty
+from pynchy.host.orchestrator import _agent_runner_preflight as _preflight
 from pynchy.logger import logger
-from pynchy.state import clear_session, get_all_host_jobs, get_all_tasks, set_session
-from pynchy.types import ContainerInput, ContainerOutput, GroupFolder, SessionId, WorkspaceProfile
+from pynchy.state import clear_session
+from pynchy.types import ContainerInput, GroupFolder, WorkspaceProfile
 
 if TYPE_CHECKING:
     import pluggy
@@ -43,20 +37,14 @@ if TYPE_CHECKING:
     from pynchy.host.orchestrator.concurrency import GroupQueue
 
 
-@dataclass
-class _PreContainerResult:
-    """Values produced by _pre_container_setup, consumed by warm/cold/scheduled paths."""
-
-    is_admin: bool
-    repo_access: str | None
-    system_prompt_append: str | None
-    session_id: str | None
-    system_notices: list[str]
-    agent_core_module: str
-    agent_core_class: str
-    wrapped_on_output: OnOutput
-    config_timeout: float
-    snapshot_ms: float
+_PreContainerResult = _preflight._PreContainerResult
+_pre_container_setup = _preflight._pre_container_setup
+_resolved_pre_container_context = _preflight._resolved_pre_container_context
+_write_container_snapshots = _preflight._write_container_snapshots
+_session_tracking_output_handler = _preflight._session_tracking_output_handler
+_build_admin_system_notices = _preflight._build_admin_system_notices
+_merged_system_notices = _preflight._merged_system_notices
+session_id_from_output = _preflight.session_id_from_output
 
 
 @runtime_checkable
@@ -123,11 +111,6 @@ def _format_messages_for_ipc(
     return "\n".join(parts)
 
 
-# ---------------------------------------------------------------------------
-# Shared setup
-# ---------------------------------------------------------------------------
-
-
 def _build_container_input(
     messages: list[dict[str, Any]],
     ctx: _PreContainerResult,
@@ -166,110 +149,6 @@ def _agent_core_config_from_settings() -> dict[str, str] | None:
     if s.agent.fallback_model:
         result["fallback_model"] = s.agent.fallback_model
     return result or None
-
-
-async def _pre_container_setup(
-    deps: AgentRunnerDeps,
-    group: WorkspaceProfile,
-    chat_jid: str,
-    messages: list[dict[str, Any]],
-    on_output: OnOutput | None,
-    extra_system_notices: list[str] | None,
-    input_source: str,
-    is_scheduled_task: bool,
-    repo_access_override: str | None,
-) -> _PreContainerResult:
-    """Common pre-container setup for both warm and cold paths."""
-    from pynchy.config.directives import read_directives
-    from pynchy.host.orchestrator.workspace_config import load_resolved_config
-
-    is_admin = group.is_admin
-    resolved = load_resolved_config(group.folder)
-    if repo_access_override is not None:
-        repo_access: str | None = repo_access_override
-    else:
-        repo_access = resolved.repo_access if resolved else None
-    system_prompt_append = read_directives(
-        resolved.directives if resolved else [],
-        get_settings().project_root,
-    )
-    session_id = deps.sessions.get(group.folder)
-
-    # Broadcast input messages to channels
-    await deps.broadcast_agent_input(chat_jid, messages, source=input_source)
-
-    # Update snapshots for container to read
-    snapshot_start = time.monotonic()
-    tasks = await get_all_tasks()
-    host_jobs = await get_all_host_jobs() if is_admin else []
-    write_tasks_snapshot(
-        group.folder,
-        is_admin,
-        [t.to_snapshot_dict() for t in tasks],
-        host_jobs=[j.to_snapshot_dict() for j in host_jobs],
-    )
-
-    available_groups = await deps.get_available_groups()
-    write_groups_snapshot(
-        group.folder,
-        is_admin,
-        available_groups,
-        set(deps.workspaces.keys()),
-    )
-    snapshot_ms = (time.monotonic() - snapshot_start) * 1000
-
-    # Wrap on_output to track session ID
-    async def wrapped_on_output(output: ContainerOutput) -> None:
-        if output.new_session_id and group.folder not in deps._session_cleared:
-            deps.sessions[group.folder] = output.new_session_id
-            await set_session(GroupFolder(group.folder), SessionId(output.new_session_id))
-        if on_output:
-            await on_output(output)
-
-    # Build system notices
-    system_notices: list[str] = []
-    if is_admin:
-        repo_ctx = get_repo_context(repo_access) if repo_access else None
-        check_cwd = repo_ctx.worktrees_dir / group.folder if repo_ctx else None
-        if is_repo_dirty(cwd=check_cwd):
-            system_notices.append(
-                "There are uncommitted local changes. Run `git status` and `git diff` "
-                "to review them. If they are good, commit and push. If not, discard them."
-            )
-        if count_unpushed_commits(cwd=check_cwd) > 0:
-            system_notices.append(
-                "There are local commits that haven't been pushed. "
-                "Run `git push` or `git rebase origin/main && git push` to sync them."
-            )
-        if system_notices:
-            system_notices.append(
-                "Consider whether to address these issues before or after handling the new message."
-            )
-
-    if extra_system_notices:
-        if system_notices:
-            system_notices.extend(extra_system_notices)
-        else:
-            system_notices = extra_system_notices[:]
-
-    deps._session_cleared.discard(group.folder)
-
-    agent_core_module, agent_core_class = resolve_agent_core(deps.plugin_manager)
-
-    config_timeout = resolve_container_timeout(group)
-
-    return _PreContainerResult(
-        is_admin=is_admin,
-        repo_access=repo_access,
-        system_prompt_append=system_prompt_append,
-        session_id=session_id,
-        system_notices=system_notices,
-        agent_core_module=agent_core_module,
-        agent_core_class=agent_core_class,
-        wrapped_on_output=wrapped_on_output,
-        config_timeout=config_timeout,
-        snapshot_ms=snapshot_ms,
-    )
 
 
 # ---------------------------------------------------------------------------

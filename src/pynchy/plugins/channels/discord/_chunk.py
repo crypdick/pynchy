@@ -44,6 +44,47 @@ def _hard_split(segment: str, max_size: int) -> list[str]:
     return pieces
 
 
+def _chunk_budget(limit: int, *, in_fence: bool) -> int:
+    return limit - (_FENCE_RESERVE if in_fence else 0)
+
+
+def _line_pieces(line: str, *, limit: int, in_fence: bool) -> list[str]:
+    budget = _chunk_budget(limit, in_fence=in_fence)
+    return _hard_split(line, budget) if len(line) > budget else [line]
+
+
+def _flush_chunk(
+    chunks: list[str],
+    parts: list[str],
+    *,
+    in_fence: bool,
+) -> bool:
+    if not parts:
+        return False
+    out = "".join(parts)
+    if in_fence:
+        if not out.endswith("\n"):
+            out += "\n"
+        out += _FENCE
+    chunks.append(out)
+    return in_fence
+
+
+def _append_piece(
+    parts: list[str],
+    piece: str,
+    *,
+    cur_len: int,
+    pending_reopen: bool,
+) -> tuple[int, bool]:
+    if not parts and pending_reopen:
+        parts.append(_FENCE + "\n")
+        cur_len += len(_FENCE) + 1
+        pending_reopen = False
+    parts.append(piece)
+    return cur_len + len(piece), pending_reopen
+
+
 def chunk_discord_text(text: str, *, limit: int = DISCORD_LIMIT) -> list[str]:
     """Split ``text`` into chunks that each fit within ``limit`` characters.
 
@@ -62,35 +103,22 @@ def chunk_discord_text(text: str, *, limit: int = DISCORD_LIMIT) -> list[str]:
     in_fence = False
     pending_reopen = False
 
-    def flush() -> None:
-        nonlocal cur_parts, cur_len, pending_reopen
-        if not cur_parts:
-            return
-        out = "".join(cur_parts)
-        if in_fence:
-            if not out.endswith("\n"):
-                out += "\n"
-            out += _FENCE
-        chunks.append(out)
-        cur_parts = []
-        cur_len = 0
-        pending_reopen = in_fence  # next chunk must reopen the fence
-
     for line in text.splitlines(keepends=True):
-        max_size = limit - (_FENCE_RESERVE if in_fence else 0)
-        pieces = _hard_split(line, max_size) if len(line) > max_size else [line]
+        pieces = _line_pieces(line, limit=limit, in_fence=in_fence)
         for piece in pieces:
-            budget = limit - (_FENCE_RESERVE if in_fence else 0)
+            budget = _chunk_budget(limit, in_fence=in_fence)
             if cur_parts and cur_len + len(piece) > budget:
-                flush()
-            if not cur_parts and pending_reopen:
-                cur_parts.append(_FENCE + "\n")
-                cur_len += len(_FENCE) + 1
-                pending_reopen = False
-            cur_parts.append(piece)
-            cur_len += len(piece)
+                pending_reopen = _flush_chunk(chunks, cur_parts, in_fence=in_fence)
+                cur_parts = []
+                cur_len = 0
+            cur_len, pending_reopen = _append_piece(
+                cur_parts,
+                piece,
+                cur_len=cur_len,
+                pending_reopen=pending_reopen,
+            )
             if _is_fence_line(piece):
                 in_fence = not in_fence
 
-    flush()
+    _flush_chunk(chunks, cur_parts, in_fence=in_fence)
     return chunks

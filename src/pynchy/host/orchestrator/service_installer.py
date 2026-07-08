@@ -103,6 +103,52 @@ def _launchd_path(home: Path, uv_path: str) -> str:
     return ":".join(path_values)
 
 
+def _launchd_paths(label: str, project_root: Path) -> tuple[Path, Path]:
+    src = project_root / "launchd" / f"{label}.plist"
+    dest = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
+    return src, dest
+
+
+def _render_launchd_plist(src: Path, *, project_root: Path, home: Path) -> str:
+    uv_path = shutil.which("uv") or str(home / ".local" / "bin" / "uv")
+    rendered = (
+        src.read_text()
+        .replace("$HOME/src/PERSONAL/pynchy", str(project_root))
+        .replace("$HOME/.local/bin/uv", uv_path)
+        .replace("$HOME", str(home))
+    )
+    return rendered.replace(
+        f"{home}/.local/bin:/usr/local/bin:/usr/bin:/bin",
+        _launchd_path(home, uv_path),
+    )
+
+
+def _launchd_file_changed(dest: Path, rendered: str) -> bool:
+    return not dest.exists() or dest.read_text() != rendered
+
+
+def _write_launchd_plist(
+    *,
+    dest: Path,
+    rendered: str,
+    already_loaded: bool,
+) -> None:
+    if already_loaded:
+        # Unload before overwriting so launchd picks up the updated version.
+        subprocess.run(
+            ["launchctl", "bootout", _launchd_domain(), str(dest)],
+            capture_output=True,
+        )
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(rendered)
+    _remove_launchd_extended_attrs(dest)
+    logger.info("Installed launchd plist", dest=str(dest))
+
+
+def _should_load_launchd_service(*, already_loaded: bool) -> bool:
+    return already_loaded or is_launchd_managed()
+
+
 def install_service() -> None:
     """Install the platform service file so the process auto-restarts on exit.
 
@@ -123,44 +169,24 @@ def _install_launchd_service() -> None:
     """Install macOS launchd service."""
     label = "com.pynchy"
     project_root = get_settings().project_root
-    src = project_root / "launchd" / f"{label}.plist"
-    dest = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
+    src, dest = _launchd_paths(label, project_root)
     if not src.exists():
         logger.warning("launchd plist not found in repo, skipping service install")
         return
     home = Path.home()
-    uv_path = shutil.which("uv") or str(home / ".local" / "bin" / "uv")
     # launchd does not expand $HOME (or any env var) inside plist strings, so
     # the template's placeholders must be substituted before writing.
-    rendered = (
-        src.read_text()
-        .replace("$HOME/src/PERSONAL/pynchy", str(project_root))
-        .replace("$HOME/.local/bin/uv", uv_path)
-        .replace("$HOME", str(home))
-    )
-    rendered = rendered.replace(
-        f"{home}/.local/bin:/usr/local/bin:/usr/bin:/bin",
-        _launchd_path(home, uv_path),
-    )
+    rendered = _render_launchd_plist(src, project_root=project_root, home=home)
     already_loaded = is_launchd_loaded(label)
-    file_changed = not dest.exists() or dest.read_text() != rendered
+    file_changed = _launchd_file_changed(dest, rendered)
     if not file_changed and already_loaded:
         return  # already up to date and loaded
     if file_changed:
-        # Unload before overwriting so launchd picks up the updated version.
-        if already_loaded:
-            subprocess.run(
-                ["launchctl", "bootout", _launchd_domain(), str(dest)],
-                capture_output=True,
-            )
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(rendered)
-        _remove_launchd_extended_attrs(dest)
-        logger.info("Installed launchd plist", dest=str(dest))
+        _write_launchd_plist(dest=dest, rendered=rendered, already_loaded=already_loaded)
     # Only load if we're already running under launchd (safe to reload).
     # When running manually, loading would spawn a competing instance
     # that fights over channel websockets and port binding.
-    if already_loaded or is_launchd_managed():
+    if _should_load_launchd_service(already_loaded=already_loaded):
         if _bootstrap_launchd_service(label, dest):
             logger.info("Loaded launchd service", label=label)
     elif not already_loaded:

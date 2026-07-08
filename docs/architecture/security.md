@@ -220,6 +220,11 @@ With OneCLI material present, Pynchy does not write `GH_TOKEN` into the agent en
 file. Native credential injection remains available only when OneCLI is disabled
 or explicitly configured with `fail_closed = false` for migration.
 
+For GitHub, the preferred OneCLI connection is a GitHub App installation rather
+than user OAuth. OAuth is useful for quick personal setup, but a GitHub App gives
+repo-scoped, short-lived installation tokens and maps more directly to Pynchy's
+per-workspace repo boundaries.
+
 Without OneCLI, **non-LLM credentials** get written directly to per-group env files (`data/env/{group}/env`):
 
 | Credential | Admin | Non-Admin | Rationale |

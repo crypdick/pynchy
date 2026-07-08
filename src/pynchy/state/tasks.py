@@ -27,6 +27,21 @@ def _row_to_task(row) -> ScheduledTask:
     )
 
 
+def _row_to_task_run_log(row) -> TaskRunLog:
+    return TaskRunLog(
+        task_id=row["task_id"],
+        run_at=row["run_at"],
+        duration_ms=row["duration_ms"],
+        status=row["status"],
+        result=row["result"],
+        error=row["error"],
+        temporal_workflow_id=row["temporal_workflow_id"],
+        temporal_attempt=row["temporal_attempt"],
+        error_signature=row["error_signature"],
+        escalation_reason=row["escalation_reason"],
+    )
+
+
 async def create_task(task: ScheduledTask) -> None:
     """Create a scheduled task."""
     db = _get_db()
@@ -140,9 +155,39 @@ async def log_task_run(log: TaskRunLog) -> None:
     db = _get_db()
     await db.execute(
         """
-        INSERT INTO task_run_logs (task_id, run_at, duration_ms, status, result, error)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO task_run_logs (
+            task_id, run_at, duration_ms, status, result, error,
+            temporal_workflow_id, temporal_attempt, error_signature, escalation_reason
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (log.task_id, log.run_at, log.duration_ms, log.status, log.result, log.error),
+        (
+            log.task_id,
+            log.run_at,
+            log.duration_ms,
+            log.status,
+            log.result,
+            log.error,
+            log.temporal_workflow_id,
+            log.temporal_attempt,
+            log.error_signature,
+            log.escalation_reason,
+        ),
     )
     await db.commit()
+
+
+async def get_task_run_logs(task_id: str, *, limit: int = 20) -> list[TaskRunLog]:
+    """Return recent run logs for a scheduled task, newest first."""
+    db = _get_db()
+    cursor = await db.execute(
+        """
+        SELECT * FROM task_run_logs
+        WHERE task_id = ?
+        ORDER BY run_at DESC, id DESC
+        LIMIT ?
+        """,
+        (task_id, limit),
+    )
+    rows = await cursor.fetchall()
+    return [_row_to_task_run_log(row) for row in rows]

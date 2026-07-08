@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from conftest import make_settings
@@ -56,7 +56,7 @@ class RecordingTemporalRuntime:
     async def __aenter__(self):
         return self
 
-    async def __aexit__(self, exc_type, exc, tb):
+    async def __aexit__(self, exc_type, exc, _tb):
         return None
 
     async def reconcile_schedules(self):
@@ -83,7 +83,16 @@ async def _run_due_task_via_scheduler(deps, task: ScheduledTask) -> None:
     """
     import pynchy.host.orchestrator.task_scheduler as ts_mod
 
-    await ts_mod._run_scheduled_agent(task, deps)
+    if isinstance(ts_mod.get_task_run_logs, Mock):
+        await ts_mod._run_scheduled_agent(task, deps)
+        return
+
+    with patch(
+        "pynchy.host.orchestrator.task_scheduler.get_task_run_logs",
+        new_callable=AsyncMock,
+        return_value=[],
+    ):
+        await ts_mod._run_scheduled_agent(task, deps)
 
 
 async def _run_scheduler_reconcile_once(deps) -> type[RecordingTemporalRuntime]:
@@ -201,6 +210,8 @@ class MockSchedulerDeps:
         self.groups: dict[str, WorkspaceProfile] = {}
         self.queue = GroupQueue()
         self.messages: list = []
+        self.host_messages: list = []
+        self.system_notices: list = []
         self.agent_runs: list = []
         self.streamed_outputs: list = []
         # Configurable return value for run_agent
@@ -213,6 +224,12 @@ class MockSchedulerDeps:
 
     async def broadcast_to_channels(self, jid: str, event) -> None:
         self.messages.append((jid, event))
+
+    async def broadcast_host_message(self, chat_jid: str, text: str) -> None:
+        self.host_messages.append((chat_jid, text))
+
+    async def broadcast_system_notice(self, chat_jid: str, text: str) -> None:
+        self.system_notices.append((chat_jid, text))
 
     async def run_agent(
         self,
@@ -386,7 +403,7 @@ class TestStartSchedulerLoop:
             async def __aenter__(self):
                 raise RuntimeError("temporal unavailable")
 
-            async def __aexit__(self, exc_type, exc, tb):
+            async def __aexit__(self, exc_type, exc, _tb):
                 return None
 
         async def stop_on_first_poll(delay):
@@ -489,6 +506,55 @@ class TestRunScheduledAgent:
     entry point), these tests verify that the scheduler correctly constructs
     messages, passes the right flags, handles return values, and logs runs.
     """
+
+    @pytest.mark.asyncio
+    async def test_pauses_task_before_execution_after_repeated_same_failure(
+        self, mock_deps, sample_task, sample_group, tmp_path
+    ):
+        """Repeated identical failures trip the scheduled-task circuit breaker."""
+        mock_deps.groups["test-jid"] = sample_group
+        previous = [
+            TaskRunLog(
+                task_id=sample_task.id,
+                run_at=f"2024-06-01T00:0{i}:00Z",
+                duration_ms=10,
+                status="error",
+                result=None,
+                error="API Error: 429 rate limit on request 123",
+                error_signature="API Error: # rate limit on request #",
+            )
+            for i in range(3)
+        ]
+        updates = []
+        logged_runs = []
+
+        async def mock_update(task_id, update):
+            updates.append((task_id, update))
+
+        async def mock_log_run(log: TaskRunLog):
+            logged_runs.append(log)
+
+        with patch(
+            "pynchy.host.orchestrator.task_scheduler.get_task_run_logs",
+            new_callable=AsyncMock,
+            return_value=previous,
+        ):
+            with patch(
+                "pynchy.host.orchestrator.task_scheduler.update_task", side_effect=mock_update
+            ):
+                with patch(
+                    "pynchy.host.orchestrator.task_scheduler.log_task_run",
+                    side_effect=mock_log_run,
+                ):
+                    with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
+                        await _run_due_task_via_scheduler(mock_deps, sample_task)
+
+        assert mock_deps.agent_runs == []
+        assert updates == [(sample_task.id, {"status": "paused"})]
+        assert len(logged_runs) == 1
+        assert logged_runs[0].status == "error"
+        assert logged_runs[0].escalation_reason == "stagnation"
+        assert "Same error repeated" in (logged_runs[0].error or "")
 
     @pytest.mark.asyncio
     async def test_logs_error_when_group_not_found(self, mock_deps, sample_task, tmp_path):

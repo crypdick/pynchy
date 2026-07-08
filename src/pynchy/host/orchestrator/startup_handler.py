@@ -39,6 +39,8 @@ class StartupDeps(Protocol):
 
     async def broadcast_system_notice(self, chat_jid: str, text: str) -> None: ...
 
+    async def start_interactive_turn(self, chat_jid: str) -> None: ...
+
     async def _register_workspace(self, profile: WorkspaceProfile) -> None: ...
 
 
@@ -113,7 +115,7 @@ async def recover_pending_messages(deps: StartupDeps) -> None:
                 group=group.name,
                 pending_count=len(pending),
             )
-            deps.queue.enqueue_message_check(chat_jid)
+            await deps.start_interactive_turn(chat_jid)
 
 
 async def auto_rollback(continuation_path: Path, exc: Exception) -> None:
@@ -212,7 +214,7 @@ async def check_deploy_continuation(deps: StartupDeps) -> None:
         # so they won't appear here. Only interrupted tasks need resuming.
         notice = f"Deploy complete -- {label}. {resume_prompt}"
         await deps.broadcast_system_notice(jid, notice)
-        deps.queue.enqueue_message_check(jid)
+        await deps.start_interactive_turn(jid)
         logger.info("Deploy resume notice sent", chat_jid=jid)
 
 

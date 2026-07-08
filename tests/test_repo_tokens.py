@@ -20,6 +20,7 @@ from pydantic import SecretStr
 
 from pynchy.config import RepoConfig, WorkspaceConfig
 from pynchy.host.container_manager import credentials
+from pynchy.host.container_manager.onecli import OneCliMaterial
 from pynchy.host.git_ops.repo import (
     RepoContext,
     check_token_expiry,
@@ -27,6 +28,7 @@ from pynchy.host.git_ops.repo import (
     get_repo_token,
 )
 from pynchy.host.git_ops.utils import git_env_with_token
+from pynchy.types import VolumeMount
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -175,7 +177,7 @@ class TestEnsureRepoCloned:
         assert ensure_repo_cloned(repo_ctx) is True
 
     def test_clone_with_token(self, tmp_path: Path):
-        """Clones with token in URL, then resets remote URL."""
+        """Clones with bare URL and env-based token auth, then resets remote URL."""
         from pynchy.host.git_ops.repo import ensure_repo_cloned
 
         repo_root = tmp_path / "repo"
@@ -193,10 +195,11 @@ class TestEnsureRepoCloned:
         ):
             assert ensure_repo_cloned(repo_ctx) is True
 
-        # First call: clone with token in URL
+        # First call: clone bare URL, authenticated by env so argv never contains tokens.
         clone_cmd = calls[0]
         assert "clone" in clone_cmd[1]
-        assert f"x-access-token:{SCOPED_TOKEN}@github.com" in clone_cmd[2]
+        assert clone_cmd[2] == f"https://github.com/{REPO_SLUG}"
+        assert SCOPED_TOKEN not in str(clone_cmd)
 
         # Second call: reset remote URL (no token)
         set_url_cmd = calls[1]
@@ -397,6 +400,44 @@ class TestGitEnvWithToken:
             assert env["GIT_CONFIG_COUNT"] == "2"
             assert "x-access-token" in env["GIT_CONFIG_VALUE_0"]
             assert SCOPED_TOKEN in env["GIT_CONFIG_VALUE_1"]
+
+    def test_onecli_enabled_uses_proxy_env_without_raw_token(self, tmp_path: Path):
+        """OneCLI enabled -> host git uses proxy/CA env and never resolves raw tokens."""
+        material = OneCliMaterial(
+            env_vars={
+                "HTTPS_PROXY": "http://onecli-proxy",
+                "SSL_CERT_FILE": "/tmp/onecli-ca.pem",
+            },
+            mounts=[
+                VolumeMount(
+                    host_path=str(tmp_path / "onecli-ca.pem"),
+                    container_path="/tmp/onecli-ca.pem",
+                    readonly=True,
+                )
+            ],
+            warnings=[],
+        )
+        s = make_settings()
+        s.onecli.enabled = True
+
+        with (
+            patch("pynchy.host.git_ops.utils.get_settings", return_value=s),
+            patch(
+                "pynchy.host.git_ops.utils.prepare_onecli_material",
+                return_value=material,
+                create=True,
+            ),
+            patch("pynchy.host.git_ops.repo.get_repo_token") as get_token,
+        ):
+            env = git_env_with_token(REPO_SLUG, group_folder="code-improver")
+
+        assert env is not None
+        assert env["HTTPS_PROXY"] == "http://onecli-proxy"
+        assert env["SSL_CERT_FILE"] == str(tmp_path / "onecli-ca.pem")
+        assert env["GIT_TERMINAL_PROMPT"] == "0"
+        assert "GH_TOKEN" not in env
+        assert "GIT_CONFIG_VALUE_1" not in env
+        get_token.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

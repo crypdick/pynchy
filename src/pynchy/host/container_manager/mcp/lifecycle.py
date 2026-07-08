@@ -55,87 +55,10 @@ async def ensure_docker_running(instance: McpInstance) -> None:
     # Remove stale container
     await remove_container(instance.container_name)
 
-    # Build container args — expand {key} placeholders (e.g. {workspace}, {port})
     placeholders = _build_placeholders(instance)
-    cmd_args = expand_arg_placeholders(list(instance.server_config.args), placeholders)
-    cmd_args.extend(kwargs_to_args(instance.kwargs))
-
-    # Publish port so the host can health-check the container.
-    # endpoint_url uses the Docker-internal container name (for LiteLLM),
-    # but the health check runs from the host which can't resolve those.
-    # Host-side port comes from instance.port (unique per workspace);
-    # container-internal port stays at cfg.port (no conflict inside container).
-    host_port = instance.port
-    container_port = instance.server_config.port
-    publish_args = ["-p", f"{host_port}:{container_port}"] if host_port else []
-    for extra_port in instance.server_config.extra_ports:
-        publish_args.extend(["-p", f"{extra_port}:{extra_port}"])
-
     onecli_material = _prepare_instance_onecli_material(instance)
-
-    # Build -e flags from static env and env_forward on the server definition
-    env_args = build_env_args(
-        instance.server_config,
-        extra_env=onecli_material.env_vars if onecli_material else None,
-    )
-
-    # Build -v flags from volumes, resolving relative host paths from project root.
-    # Docker named volumes (no "/" or "." in the name, e.g. "mcp-gdrive:/data")
-    # are passed through as-is; only host paths get resolved and mkdir'd.
-    # Expand {key} placeholders using instance kwargs (e.g.,
-    # "groups/{workspace}:/workspace" → "groups/research:/workspace").
-    volume_args: list[str] = []
-    for vol in instance.server_config.volumes:
-        for key, value in placeholders.items():
-            vol = vol.replace(f"{{{key}}}", value)
-        host_path, sep, container_path = vol.partition(":")
-        if sep and "/" not in host_path and not host_path.startswith("."):
-            # Docker named volume — pass through without resolution
-            volume_args.extend(["-v", vol])
-        elif sep and not Path(host_path).is_absolute():
-            from pynchy.config import get_settings
-
-            host_path = str(get_settings().project_root / host_path)
-            _ensure_mount_parent(host_path)
-            volume_args.extend(["-v", f"{host_path}:{container_path}"])
-        else:
-            if sep:
-                _ensure_mount_parent(host_path)
-            volume_args.extend(["-v", vol])
-
-    if onecli_material:
-        volume_args.extend(_mounts_to_docker_args(onecli_material.mounts))
-
-    await run_docker(
-        "run", "-d",
-        "--name", instance.container_name,
-        "--network", _NETWORK_NAME,
-        "--restart", "unless-stopped",
-        *publish_args,
-        *env_args,
-        *volume_args,
-        instance.server_config.image or "",
-        *cmd_args,
-    )  # fmt: skip
-
-    # Health-check via localhost (host-side), not the Docker-internal name
-    health_url = f"http://localhost:{host_port}" if host_port else instance.endpoint_url
-    try:
-        await wait_healthy(
-            instance.container_name,
-            health_url,
-            any_non_5xx=True,
-        )
-    except (TimeoutError, RuntimeError):
-        logger.error(
-            "MCP container failed health check",
-            instance_id=instance.instance_id,
-            container=instance.container_name,
-        )
-        # Clean up the failed container (matches script path which
-        # calls terminate_process before re-raising).
-        await stop_container(instance.container_name)
-        raise
+    await _start_docker_container(instance, placeholders, onecli_material)
+    await _wait_for_docker_health(instance)
 
     logger.info("MCP container ready", instance_id=instance.instance_id)
 
@@ -276,6 +199,105 @@ def _build_placeholders(instance: McpInstance) -> dict[str, str]:
     if instance.port is not None:
         placeholders["port"] = str(instance.port)
     return placeholders
+
+
+def _docker_command_args(instance: McpInstance, placeholders: dict[str, str]) -> list[str]:
+    args = expand_arg_placeholders(list(instance.server_config.args), placeholders)
+    args.extend(kwargs_to_args(instance.kwargs))
+    return args
+
+
+def _docker_publish_args(instance: McpInstance) -> list[str]:
+    # Publish port so the host can health-check the container.
+    # endpoint_url uses the Docker-internal container name (for LiteLLM),
+    # but the health check runs from the host which can't resolve those.
+    # Host-side port comes from instance.port (unique per workspace);
+    # container-internal port stays at cfg.port (no conflict inside container).
+    host_port = instance.port
+    container_port = instance.server_config.port
+    args = ["-p", f"{host_port}:{container_port}"] if host_port else []
+    for extra_port in instance.server_config.extra_ports:
+        args.extend(["-p", f"{extra_port}:{extra_port}"])
+    return args
+
+
+def _expanded_volume_spec(vol: str, placeholders: dict[str, str]) -> str:
+    for key, value in placeholders.items():
+        vol = vol.replace(f"{{{key}}}", value)
+    return vol
+
+
+def _resolved_volume_arg(vol: str) -> list[str]:
+    host_path, sep, container_path = vol.partition(":")
+    if sep and "/" not in host_path and not host_path.startswith("."):
+        # Docker named volume — pass through without resolution
+        return ["-v", vol]
+    if sep and not Path(host_path).is_absolute():
+        from pynchy.config import get_settings
+
+        host_path = str(get_settings().project_root / host_path)
+        _ensure_mount_parent(host_path)
+        return ["-v", f"{host_path}:{container_path}"]
+    if sep:
+        _ensure_mount_parent(host_path)
+    return ["-v", vol]
+
+
+def _docker_volume_args(
+    instance: McpInstance,
+    placeholders: dict[str, str],
+    onecli_material: OneCliMaterial | None,
+) -> list[str]:
+    args: list[str] = []
+    for vol in instance.server_config.volumes:
+        args.extend(_resolved_volume_arg(_expanded_volume_spec(vol, placeholders)))
+    if onecli_material:
+        args.extend(_mounts_to_docker_args(onecli_material.mounts))
+    return args
+
+
+async def _start_docker_container(
+    instance: McpInstance,
+    placeholders: dict[str, str],
+    onecli_material: OneCliMaterial | None,
+) -> None:
+    await run_docker(
+        "run", "-d",
+        "--name", instance.container_name,
+        "--network", _NETWORK_NAME,
+        "--restart", "unless-stopped",
+        *_docker_publish_args(instance),
+        *build_env_args(
+            instance.server_config,
+            extra_env=onecli_material.env_vars if onecli_material else None,
+        ),
+        *_docker_volume_args(instance, placeholders, onecli_material),
+        instance.server_config.image or "",
+        *_docker_command_args(instance, placeholders),
+    )  # fmt: skip
+
+
+def _docker_health_url(instance: McpInstance) -> str:
+    return f"http://localhost:{instance.port}" if instance.port else instance.endpoint_url
+
+
+async def _wait_for_docker_health(instance: McpInstance) -> None:
+    try:
+        await wait_healthy(
+            instance.container_name,
+            _docker_health_url(instance),
+            any_non_5xx=True,
+        )
+    except (TimeoutError, RuntimeError):
+        logger.error(
+            "MCP container failed health check",
+            instance_id=instance.instance_id,
+            container=instance.container_name,
+        )
+        # Clean up the failed container (matches script path which
+        # calls terminate_process before re-raising).
+        await stop_container(instance.container_name)
+        raise
 
 
 def kwargs_to_args(kwargs: dict[str, str]) -> list[str]:

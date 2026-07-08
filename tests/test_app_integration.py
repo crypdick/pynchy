@@ -254,6 +254,49 @@ async def _schedule_outputs_via_session(
     fake_proc._wait_event.set()
 
 
+def _trace_session_outputs() -> list[dict[str, Any]]:
+    return [
+        {"type": "thinking", "status": "success", "thinking": "Let me figure this out..."},
+        {
+            "type": "tool_use",
+            "status": "success",
+            "tool_name": "Bash",
+            "tool_input": {"command": "ls"},
+        },
+        {
+            "type": "result",
+            "status": "success",
+            "result": "Done!",
+            "new_session_id": "sess-trace",
+        },
+        {"status": "success", "result": None, "new_session_id": "sess-trace"},
+    ]
+
+
+def _sent_texts(channel: FakeChannel) -> list[str]:
+    return [text for _, text in channel.sent_messages]
+
+
+def _first_text_index(texts: list[str], needle: str) -> int:
+    return next(index for index, text in enumerate(texts) if needle in text)
+
+
+def _assert_trace_order(texts: list[str]) -> None:
+    assert any("Let me figure this out" in text for text in texts), (
+        f"Expected a thinking trace message, got: {texts}"
+    )
+    assert any("Bash" in text for text in texts), (
+        f"Expected a tool_use trace for 'Bash', got: {texts}"
+    )
+    assert any("Done!" in text for text in texts), f"Expected final result 'Done!', got: {texts}"
+
+    result_idx = _first_text_index(texts, "Done!")
+    assert _first_text_index(texts, "Let me figure this out") < result_idx, (
+        "Thinking trace should come before result"
+    )
+    assert _first_text_index(texts, "Bash") < result_idx, "Tool trace should come before result"
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -354,26 +397,12 @@ class TestProcessGroupMessages:
         # Simulate a realistic agent session: thinking -> tool_use -> result
         fake_proc = FakeProcess()
 
-        trace_outputs = [
-            {"type": "thinking", "status": "success", "thinking": "Let me figure this out..."},
-            {
-                "type": "tool_use",
-                "status": "success",
-                "tool_name": "Bash",
-                "tool_input": {"command": "ls"},
-            },
-            {
-                "type": "result",
-                "status": "success",
-                "result": "Done!",
-                "new_session_id": "sess-trace",
-            },
-            # Query-done pulse
-            {"status": "success", "result": None, "new_session_id": "sess-trace"},
-        ]
-
         driver = asyncio.create_task(
-            _schedule_outputs_via_session(fake_proc, trace_outputs, final_session_id="sess-trace")
+            _schedule_outputs_via_session(
+                fake_proc,
+                _trace_session_outputs(),
+                final_session_id="sess-trace",
+            )
         )
 
         async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
@@ -391,25 +420,7 @@ class TestProcessGroupMessages:
 
         await driver
         assert result is True
-
-        # Extract just the message texts
-        texts = [text for _, text in channel.sent_messages]
-
-        # Trace events should have been sent BEFORE the final result
-        assert any("Let me figure this out" in t for t in texts), (
-            f"Expected a thinking trace message, got: {texts}"
-        )
-        assert any("Bash" in t for t in texts), (
-            f"Expected a tool_use trace for 'Bash', got: {texts}"
-        )
-        # Final result should also be present
-        assert any("Done!" in t for t in texts), f"Expected final result 'Done!', got: {texts}"
-        # Thinking and tool traces should come before the result
-        thinking_idx = next(i for i, t in enumerate(texts) if "Let me figure this out" in t)
-        tool_idx = next(i for i, t in enumerate(texts) if "Bash" in t)
-        result_idx = next(i for i, t in enumerate(texts) if "Done!" in t)
-        assert thinking_idx < result_idx, "Thinking trace should come before result"
-        assert tool_idx < result_idx, "Tool trace should come before result"
+        _assert_trace_order(_sent_texts(channel))
 
     async def test_skips_messages_without_trigger(self, app: PynchyApp, tmp_path: Path):
         """Messages without @pynchy trigger should be skipped for non-main groups."""
@@ -562,21 +573,29 @@ class TestRecoverPendingMessages:
         msg = _make_message(content="missed message")
         await store_message(msg)
 
-        enqueued = []
-        app.queue.enqueue_message_check = lambda jid: enqueued.append(jid)  # type: ignore[assignment]
+        started = []
+
+        async def _start_turn(jid: str) -> None:
+            started.append(jid)
+
+        app.start_interactive_turn = _start_turn  # type: ignore[method-assign]
 
         await startup_handler.recover_pending_messages(app)
-        assert "group@g.us" in enqueued
+        assert "group@g.us" in started
 
     async def test_skips_groups_with_no_pending_messages(self, app: PynchyApp):
         from pynchy.host.orchestrator import startup_handler
 
         # No messages stored at all
-        enqueued = []
-        app.queue.enqueue_message_check = lambda jid: enqueued.append(jid)  # type: ignore[assignment]
+        started = []
+
+        async def _start_turn(jid: str) -> None:
+            started.append(jid)
+
+        app.start_interactive_turn = _start_turn  # type: ignore[method-assign]
 
         await startup_handler.recover_pending_messages(app)
-        assert len(enqueued) == 0
+        assert len(started) == 0
 
 
 class TestStatePersistence:
@@ -790,8 +809,12 @@ class TestDeployContinuationResume:
         }
         (data_dir / "deploy_continuation.json").write_text(json.dumps(continuation))
 
-        enqueued: list[str] = []
-        app.queue.enqueue_message_check = lambda jid: enqueued.append(jid)  # type: ignore[assignment]
+        started: list[str] = []
+
+        async def _start_turn(jid: str) -> None:
+            started.append(jid)
+
+        app.start_interactive_turn = _start_turn  # type: ignore[method-assign]
 
         with (
             patch("pynchy.host.orchestrator.startup_handler.get_settings") as mock_settings,
@@ -807,9 +830,9 @@ class TestDeployContinuationResume:
 
             await check_deploy_continuation(app)
 
-        # Both groups should have been enqueued for resume
-        assert "admin-1@g.us" in enqueued
-        assert "team@g.us" in enqueued
+        # Both groups should have durable turn starts for resume
+        assert "admin-1@g.us" in started
+        assert "team@g.us" in started
 
         # Both groups should have a deploy resume message in history
         admin_history = await get_chat_history("admin-1@g.us", limit=10)
@@ -836,8 +859,12 @@ class TestDeployContinuationResume:
         }
         (data_dir / "deploy_continuation.json").write_text(json.dumps(continuation))
 
-        enqueued: list[str] = []
-        app.queue.enqueue_message_check = lambda jid: enqueued.append(jid)  # type: ignore[assignment]
+        started: list[str] = []
+
+        async def _start_turn(jid: str) -> None:
+            started.append(jid)
+
+        app.start_interactive_turn = _start_turn  # type: ignore[method-assign]
 
         with patch("pynchy.host.orchestrator.startup_handler.get_settings") as mock_settings:
             s = MagicMock()
@@ -847,4 +874,4 @@ class TestDeployContinuationResume:
 
             await check_deploy_continuation(app)
 
-        assert len(enqueued) == 0
+        assert len(started) == 0

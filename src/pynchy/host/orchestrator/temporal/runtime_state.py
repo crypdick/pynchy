@@ -8,8 +8,6 @@ from typing import Any
 
 from temporalio import activity
 
-from pynchy.host.orchestrator.task_scheduler import SchedulerDependencies
-
 
 @dataclass(frozen=True)
 class TemporalSchedulerStatusSnapshot:
@@ -22,7 +20,7 @@ class TemporalSchedulerStatusSnapshot:
     last_error: str | None = None
 
 
-_scheduler_deps: SchedulerDependencies | None = None
+_scheduler_deps: Any | None = None
 _temporal_scheduler_status = TemporalSchedulerStatusSnapshot()
 
 
@@ -63,13 +61,13 @@ def _record_activity_result(task_id: str, result: str, error: str | None = None)
     )
 
 
-def bind_scheduler_deps(deps: SchedulerDependencies | None) -> None:
+def bind_scheduler_deps(deps: Any | None) -> None:
     """Bind app dependencies for Temporal activities running in this process."""
     global _scheduler_deps
     _scheduler_deps = deps
 
 
-def _require_scheduler_deps() -> SchedulerDependencies:
+def _require_scheduler_deps() -> Any:
     if _scheduler_deps is None:
         raise RuntimeError("Temporal scheduler dependencies are not bound")
     return _scheduler_deps

@@ -121,59 +121,32 @@ class IpcRequestEnvelope:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> IpcRequestEnvelope:
-        required = {
-            "schema_version",
-            "kind",
-            "request_id",
-            "source_group",
-            "created_at",
-            "reply_to",
-            "deadline",
-            "payload",
-        }
-        missing = sorted(required - set(data))
-        if missing:
-            raise ValueError(f"Missing IPC request envelope fields: {', '.join(missing)}")
-
-        schema_version = data["schema_version"]
-        if schema_version != IPC_SCHEMA_VERSION:
-            raise ValueError(f"Unsupported IPC request schema_version: {schema_version!r}")
-
-        kind = data["kind"]
-        if not isinstance(kind, str) or not kind:
-            raise ValueError("IPC request envelope kind must be a non-empty string")
-        if not _is_known_request_kind(kind):
-            raise ValueError(f"Unknown IPC request kind: {kind!r}")
-
-        request_id = data["request_id"]
-        if not isinstance(request_id, str) or not request_id:
-            raise ValueError("IPC request envelope request_id must be a non-empty string")
-
-        source_group = data["source_group"]
-        if not isinstance(source_group, str) or not source_group:
-            raise ValueError("IPC request envelope source_group must be a non-empty string")
-
-        created_at = data["created_at"]
-        if not isinstance(created_at, str) or not created_at:
-            raise ValueError("IPC request envelope created_at must be a non-empty string")
-
-        reply_to = data["reply_to"]
-        if reply_to is not None and not isinstance(reply_to, str):
-            raise ValueError("IPC request envelope reply_to must be a string or null")
-
-        deadline = data["deadline"]
-        if deadline is not None and not isinstance(deadline, str):
-            raise ValueError("IPC request envelope deadline must be a string or null")
-
-        payload = data["payload"]
-        if not isinstance(payload, dict):
-            raise ValueError("IPC request envelope payload must be an object")
+        _require_envelope_fields(data)
+        schema_version = _envelope_schema_version(data["schema_version"])
+        kind = _request_kind(data["kind"])
+        request_id = _required_string_field(
+            "IPC request envelope request_id",
+            data["request_id"],
+        )
+        source_group = GroupFolder(
+            _required_string_field(
+                "IPC request envelope source_group",
+                data["source_group"],
+            )
+        )
+        created_at = _required_string_field(
+            "IPC request envelope created_at",
+            data["created_at"],
+        )
+        reply_to = _optional_string_field("IPC request envelope reply_to", data["reply_to"])
+        deadline = _optional_string_field("IPC request envelope deadline", data["deadline"])
+        payload = _payload_object(data["payload"])
 
         return cls(
             schema_version=schema_version,
             kind=kind,
             request_id=request_id,
-            source_group=GroupFolder(source_group),
+            source_group=source_group,
             created_at=created_at,
             reply_to=reply_to,
             deadline=deadline,
@@ -216,6 +189,55 @@ def _is_known_request_kind(kind: str) -> bool:
         or kind in TIER2_TYPES
         or any(kind.startswith(prefix) for prefix in REQUEST_KIND_PREFIXES)
     )
+
+
+def _require_envelope_fields(data: dict[str, Any]) -> None:
+    required = {
+        "schema_version",
+        "kind",
+        "request_id",
+        "source_group",
+        "created_at",
+        "reply_to",
+        "deadline",
+        "payload",
+    }
+    missing = sorted(required - set(data))
+    if missing:
+        raise ValueError(f"Missing IPC request envelope fields: {', '.join(missing)}")
+
+
+def _envelope_schema_version(value: Any) -> int:
+    if value != IPC_SCHEMA_VERSION:
+        raise ValueError(f"Unsupported IPC request schema_version: {value!r}")
+    return IPC_SCHEMA_VERSION
+
+
+def _request_kind(value: Any) -> str:
+    kind = _required_string_field("IPC request envelope kind", value)
+    if not _is_known_request_kind(kind):
+        raise ValueError(f"Unknown IPC request kind: {kind!r}")
+    return kind
+
+
+def _required_string_field(label: str, value: Any) -> str:
+    if isinstance(value, str) and value:
+        return value
+    raise ValueError(f"{label} must be a non-empty string")
+
+
+def _optional_string_field(label: str, value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    raise ValueError(f"{label} must be a string or null")
+
+
+def _payload_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return cast("dict[str, Any]", value)
+    raise ValueError("IPC request envelope payload must be an object")
 
 
 def make_ipc_request(
