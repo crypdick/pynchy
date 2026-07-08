@@ -24,6 +24,27 @@ class ChannelDeps(Protocol):
     def channels(self) -> list[Channel]: ...
 
 
+def processing_ack_emoji(deps: ChannelDeps, chat_jid: str, default: str = "🦞") -> str | None:
+    """Return the preferred processing ack emoji for the owning channel.
+
+    Channels can optionally expose ``processing_ack_emoji()``. Returning
+    ``None`` explicitly disables the reaction for that channel; if no channel
+    has an opinion, the shared default is used.
+    """
+    for ch in deps.channels:
+        if not ch.is_connected():
+            continue
+        target_jid = resolve_target_jid(chat_jid, ch)
+        if not target_jid:
+            continue
+        emoji_getter = getattr(ch, "processing_ack_emoji", None)
+        if callable(emoji_getter):
+            emoji = emoji_getter()
+            if isinstance(emoji, str) or emoji is None:
+                return emoji
+    return default
+
+
 async def send_reaction_to_channels(
     deps: ChannelDeps, chat_jid: str, message_id: str, sender: str, emoji: str
 ) -> None:

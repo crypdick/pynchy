@@ -20,11 +20,12 @@ from pynchy.config import get_settings
 from pynchy.config.settings import Settings
 from pynchy.event_bus import AgentActivityEvent, MessageEvent
 from pynchy.host.container_manager import OnOutput
-from pynchy.host.git_ops.utils import is_repo_dirty
 from pynchy.host.learning import capture as learning_capture
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.messaging import approval_handler, commands
+from pynchy.host.orchestrator.messaging.cursor import advance_cursor
 from pynchy.host.orchestrator.messaging.router import pop_last_result_ids
+from pynchy.host.orchestrator.messaging.run_context import prepare_message_context
 from pynchy.logger import logger
 from pynchy.state import get_messages_since, store_message_direct
 from pynchy.utils import generate_message_id, run_shell_command
@@ -85,6 +86,8 @@ class MessageHandlerDeps(Protocol):
     async def send_reaction_to_outbound(
         self, chat_jid: str, per_channel_ids: dict[str, str], emoji: str
     ) -> None: ...
+
+    def processing_ack_emoji(self, chat_jid: str) -> str | None: ...
 
     async def set_typing_on_channels(self, chat_jid: str, is_typing: bool) -> None: ...
 
@@ -291,61 +294,6 @@ async def _handle_reset_handoff(
     return result != "error"
 
 
-def _check_dirty_repo(group_name: str, dirty_check_file: Path) -> list[str]:
-    """Check for uncommitted changes and return system notices if dirty.
-
-    Consumes the dirty_check_file marker. Returns a list of system notice
-    strings (empty if repo is clean or file doesn't exist).
-    """
-    notices: list[str] = []
-    if not dirty_check_file.exists():
-        return notices
-    try:
-        dirty_check_file.unlink()
-        if is_repo_dirty():
-            notices.append(
-                "WARNING: Uncommitted changes detected in the repository. "
-                "Please review and commit these changes so that you may work "
-                "with a clean slate. "
-                "Run `git status` and `git diff` to see what has changed."
-            )
-            logger.info("Added dirty repo warning after reset", group=group_name)
-    except OSError as exc:
-        logger.error("Error checking for dirty repo after reset", err=str(exc))
-        dirty_check_file.unlink(missing_ok=True)
-    return notices
-
-
-@runtime_checkable
-class CursorDeps(Protocol):
-    """Minimal dependencies for cursor persistence — the actual subset advance_cursor uses."""
-
-    @property
-    def last_agent_timestamp(self) -> dict[str, str]: ...
-
-    async def save_state(self) -> None: ...
-
-
-async def advance_cursor(
-    deps: CursorDeps,
-    chat_jid: str,
-    new_cursor: str,
-) -> None:
-    """Commit the agent timestamp cursor, rolling back on save failure.
-
-    The single place cursor writes are persisted — captures the pre-write value
-    so any ``save_state`` failure leaves the in-memory cursor consistent with
-    what's on disk (preventing message reprocessing / duplicate responses).
-    """
-    previous_cursor = deps.last_agent_timestamp.get(chat_jid, "")
-    deps.last_agent_timestamp[chat_jid] = new_cursor
-    try:
-        await deps.save_state()
-    except Exception:
-        deps.last_agent_timestamp[chat_jid] = previous_cursor
-        raise
-
-
 def _mark_dispatched(deps: MessageHandlerDeps, chat_jid: str, new_timestamp: str) -> None:
     """Record the furthest message timestamp dispatched to the active container.
 
@@ -395,23 +343,6 @@ async def _should_skip_batch(
     return resolved.access == "read"
 
 
-def _prepare_message_context(
-    s: Settings,
-    group: types.WorkspaceProfile,
-    missed_messages: list[types.NewMessage],
-    is_admin_group: bool,
-) -> tuple[list[dict[str, Any]], list[str]]:
-    """Format messages for the agent SDK and compute any dirty-repo system notices."""
-    from pynchy.host.orchestrator.messaging.formatter import format_messages_for_sdk
-
-    messages = format_messages_for_sdk(missed_messages)
-
-    # Check if we need to add dirty repo warning after context reset
-    dirty_check_file = s.data_dir / "ipc" / group.folder / "needs_dirty_check.json"
-    reset_system_notices = _check_dirty_repo(group.name, dirty_check_file) if is_admin_group else []
-    return messages, reset_system_notices
-
-
 async def _announce_processing_start(
     deps: MessageHandlerDeps,
     chat_jid: str,
@@ -431,9 +362,10 @@ async def _announce_processing_start(
         preview=missed_messages[-1].content[:200],
     )
 
-    # Send emoji reaction on the last message to indicate agent is reading
     last_msg = missed_messages[-1]
-    await deps.send_reaction_to_channels(chat_jid, last_msg.id, last_msg.sender, "🦞")
+    ack_emoji = deps.processing_ack_emoji(chat_jid)
+    if ack_emoji:
+        await deps.send_reaction_to_channels(chat_jid, last_msg.id, last_msg.sender, ack_emoji)
 
     # Set typing indicator on all channels that support it
     await deps.set_typing_on_channels(chat_jid, True)
@@ -553,7 +485,7 @@ async def process_group_messages(
     if await _should_skip_batch(deps, chat_jid, group, missed_messages, is_admin_group, s):
         return True
 
-    messages, reset_system_notices = _prepare_message_context(
+    messages, reset_system_notices = prepare_message_context(
         s, group, missed_messages, is_admin_group
     )
 

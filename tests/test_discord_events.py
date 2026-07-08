@@ -7,9 +7,15 @@ with duck-typed fakes so no gateway is needed.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from pynchy.plugins.channels.discord._events import build_inbound_context, jid_for
+from pynchy.plugins.channels.discord._events import (
+    build_inbound_context,
+    build_message_metadata,
+    jid_for,
+    normalized_message_content,
+)
 
 BOT_ID = "999"
 
@@ -27,16 +33,48 @@ def _message(
     channel_id: str,
     parent_id: str | None = None,
     mentions: tuple[str, ...] = (),
+    content: str = "",
+    attachments: tuple[SimpleNamespace, ...] = (),
+    reference: SimpleNamespace | None = None,
+    message_snapshots: tuple[SimpleNamespace, ...] = (),
 ) -> SimpleNamespace:
     guild = None if guild_id is None else SimpleNamespace(id=guild_id)
     channel = SimpleNamespace(id=channel_id)
     if parent_id is not None:
         channel.parent_id = parent_id
     return SimpleNamespace(
+        id="m1",
         author=author,
         guild=guild,
         channel=channel,
+        content=content,
+        attachments=list(attachments),
+        reference=reference,
+        message_snapshots=list(message_snapshots),
         mentions=[_user(m) for m in mentions],
+    )
+
+
+def _attachment(
+    *,
+    attachment_id: str,
+    filename: str,
+    url: str = "https://example.invalid/file.txt",
+    proxy_url: str = "https://cdn.example.invalid/file.txt",
+    content_type: str | None = "text/plain",
+    size: int = 12,
+    description: str | None = None,
+    spoiler: bool = False,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=attachment_id,
+        filename=filename,
+        url=url,
+        proxy_url=proxy_url,
+        content_type=content_type,
+        size=size,
+        description=description,
+        spoiler=spoiler,
     )
 
 
@@ -100,3 +138,101 @@ def test_jid_for_thread_uses_thread_snowflake():
     msg = _message(author=_user("5"), guild_id="g1", channel_id="t1", parent_id="c1")
     ctx = build_inbound_context(msg, BOT_ID)
     assert jid_for(ctx) == "discord:channel:t1"
+
+
+def test_build_message_metadata_extracts_reply_context():
+    replied_author = SimpleNamespace(id="42", display_name="Alice")
+    replied = SimpleNamespace(id="reply-1", author=replied_author, content="Original message")
+    reference = SimpleNamespace(message_id="reply-1", resolved=replied)
+    msg = _message(
+        author=_user("5"),
+        guild_id="g1",
+        channel_id="c1",
+        content="Following up",
+        reference=reference,
+    )
+
+    metadata = build_message_metadata(msg)
+
+    assert metadata["discord_message_id"] == "m1"
+    assert metadata["reply_to_message_id"] == "reply-1"
+    assert metadata["reply_to_sender"] == "Alice"
+    assert metadata["reply_to_text"] == "Original message"
+
+
+def test_build_message_metadata_preserves_attachments():
+    msg = _message(
+        author=_user("5"),
+        guild_id="g1",
+        channel_id="c1",
+        content="See attached",
+        attachments=(
+            _attachment(
+                attachment_id="a1",
+                filename="design.txt",
+                description="Architecture sketch",
+            ),
+        ),
+    )
+
+    metadata = build_message_metadata(msg)
+
+    assert metadata["attachments"] == [
+        {
+            "id": "a1",
+            "filename": "design.txt",
+            "url": "https://example.invalid/file.txt",
+            "proxy_url": "https://cdn.example.invalid/file.txt",
+            "content_type": "text/plain",
+            "size": 12,
+            "description": "Architecture sketch",
+            "spoiler": False,
+        }
+    ]
+
+
+def test_forwarded_snapshot_text_falls_back_when_message_content_missing():
+    snapshot = SimpleNamespace(
+        type="default",
+        content="Forwarded content",
+        created_at=datetime(2026, 7, 7, tzinfo=UTC),
+        attachments=[
+            _attachment(
+                attachment_id="forward-1",
+                filename="trace.json",
+                url="https://example.invalid/trace.json",
+                proxy_url="https://cdn.example.invalid/trace.json",
+                content_type="application/json",
+                size=64,
+            )
+        ],
+    )
+    msg = _message(
+        author=_user("5"),
+        guild_id="g1",
+        channel_id="c1",
+        message_snapshots=(snapshot,),
+    )
+
+    assert normalized_message_content(msg) == "Forwarded content"
+
+    metadata = build_message_metadata(msg)
+    assert metadata["forwarded_messages"] == [
+        {
+            "content": "Forwarded content",
+            "created_at": "2026-07-07T00:00:00+00:00",
+            "type": "default",
+            "attachments": [
+                {
+                    "id": "forward-1",
+                    "filename": "trace.json",
+                    "url": "https://example.invalid/trace.json",
+                    "proxy_url": "https://cdn.example.invalid/trace.json",
+                    "content_type": "application/json",
+                    "size": 64,
+                    "description": None,
+                    "spoiler": False,
+                }
+            ],
+        }
+    ]

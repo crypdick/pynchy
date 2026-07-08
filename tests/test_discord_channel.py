@@ -7,11 +7,14 @@ history catch-up filtering) rather than the gateway glue in _lifecycle.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
+import pynchy.plugins.channels.discord._channel as discord_channel_module
 from pynchy.config.models import DiscordConnectionConfig
 from pynchy.plugins.channels.discord import DiscordChannel, DiscordChannelPlugin
 from pynchy.types import Channel, OutboundEvent, OutboundEventType
@@ -61,6 +64,26 @@ class _FakeStreamChannel:
 
     async def fetch_message(self, message_id: int) -> _FakeMessage:
         return self.messages[message_id]
+
+
+class _FakeTypingChannel:
+    def __init__(self) -> None:
+        self.typing_calls = 0
+
+    async def typing(self) -> None:
+        self.typing_calls += 1
+
+
+class _FakeUser:
+    def __init__(self, dm_channel: object | None = None) -> None:
+        self.dm_channel = dm_channel
+        self.create_dm_calls = 0
+        self.created_dm = dm_channel or _FakeSendChannel()
+
+    async def create_dm(self) -> object:
+        self.create_dm_calls += 1
+        self.dm_channel = self.created_dm
+        return self.created_dm
 
 
 def test_satisfies_channel_protocol():
@@ -195,6 +218,80 @@ async def test_send_reaction_ignores_non_discord_message_id():
     ch._resolve_channel = _resolve  # type: ignore[method-assign]
     # slack-style id must be a no-op, not an error
     await ch.send_reaction("discord:channel:1", "slack-123", "u1", "👀")
+
+
+@pytest.mark.asyncio
+async def test_resolve_channel_caches_direct_message_channels():
+    ch = _channel()
+
+    user = _FakeUser()
+    fetch_user = AsyncMock(return_value=user)
+    ch.client = SimpleNamespace(get_user=lambda _snowflake: None, fetch_user=fetch_user)
+
+    first = await ch._resolve_channel("discord:direct:42")
+    second = await ch._resolve_channel("discord:direct:42")
+
+    assert first is second
+    assert fetch_user.await_count == 1
+    assert user.create_dm_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_disconnect_clears_direct_message_cache():
+    ch = _channel()
+    ch._dm_channels["42"] = _FakeSendChannel()
+    ch.lifecycle.disconnect = AsyncMock()
+
+    await ch.disconnect()
+
+    assert ch._dm_channels == {}
+
+
+@pytest.mark.asyncio
+async def test_set_typing_starts_background_refresh_and_stops_cleanly():
+    ch = _channel()
+    ch.client = object()
+    fake = _FakeTypingChannel()
+
+    async def _resolve(_jid: str) -> _FakeTypingChannel:
+        return fake
+
+    ch._resolve_channel = _resolve  # type: ignore[method-assign]
+    await ch.set_typing("discord:channel:1", True)
+    await asyncio.sleep(0)
+
+    assert fake.typing_calls >= 1
+    assert "discord:channel:1" in ch._typing_tasks
+
+    await ch.set_typing("discord:channel:1", False)
+
+    assert "discord:channel:1" not in ch._typing_tasks
+
+
+@pytest.mark.asyncio
+async def test_typing_loop_refreshes_until_cancelled(monkeypatch: pytest.MonkeyPatch):
+    ch = _channel()
+    ch.client = object()
+    fake = _FakeTypingChannel()
+
+    async def _resolve(_jid: str) -> _FakeTypingChannel:
+        return fake
+
+    sleep_calls = 0
+
+    async def _fake_sleep(_seconds: float) -> None:
+        nonlocal sleep_calls
+        sleep_calls += 1
+        if sleep_calls >= 2:
+            raise asyncio.CancelledError
+
+    ch._resolve_channel = _resolve  # type: ignore[method-assign]
+    monkeypatch.setattr(discord_channel_module.asyncio, "sleep", _fake_sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await ch._typing_loop("discord:channel:1")
+
+    assert fake.typing_calls == 2
 
 
 @pytest.mark.asyncio

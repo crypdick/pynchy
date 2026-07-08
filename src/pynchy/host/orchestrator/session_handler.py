@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from pynchy.event_bus import ChatClearedEvent, MessageEvent
 from pynchy.host.container_manager.session import destroy_session
 from pynchy.host.git_ops._worktree_merge import background_merge_worktree
-from pynchy.host.orchestrator.messaging.pipeline import advance_cursor
+from pynchy.host.orchestrator.messaging.cursor import advance_cursor
 from pynchy.host.orchestrator.messaging.sender import broadcast
 from pynchy.logger import logger
 from pynchy.state import clear_session, set_chat_cleared_at, store_message

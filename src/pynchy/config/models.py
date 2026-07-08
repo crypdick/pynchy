@@ -280,6 +280,7 @@ class DiscordConnectionConfig(_StrictModel):
 
     bot_token_env: str
     application_id: str | None = None
+    processing_ack_emoji: str | None = "🦞"
     dm_policy: Literal["open", "allowlist", "disabled"] = "allowlist"
     allow_from: list[str] = []  # DM allowlist (user snowflakes); "*" = open
     group_policy: Literal["open", "disabled", "allowlist"] = "allowlist"
