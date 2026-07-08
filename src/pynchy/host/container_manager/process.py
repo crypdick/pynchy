@@ -19,6 +19,9 @@ from pynchy.types import ContainerOutput
 
 OnOutput = Callable[[ContainerOutput], Awaitable[None]]
 
+_RM_FORCE_TIMEOUT_SECONDS = 15.0
+_RM_FORCE_KILL_WAIT_SECONDS = 2.0
+
 
 def is_query_done_pulse(output: ContainerOutput) -> bool:
     """Detect the session-update pulse emitted after each core.query() completes.
@@ -92,7 +95,17 @@ async def _docker_rm_force(container_name: str) -> None:
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
-        await proc.wait()
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=_RM_FORCE_TIMEOUT_SECONDS)
+        except TimeoutError:
+            logger.warning(
+                "Container force-remove timed out, killing cleanup CLI",
+                container=container_name,
+            )
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(proc.wait(), timeout=_RM_FORCE_KILL_WAIT_SECONDS)
     except OSError as exc:
         # OSError covers FileNotFoundError (CLI missing) and other
         # process-spawn failures — expected in degraded environments.

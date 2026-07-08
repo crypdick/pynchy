@@ -204,9 +204,57 @@ class FakeProcess(asyncio.subprocess.Process):
         return self._returncode
 
 
+class HangingProcess:
+    """Minimal subprocess fake whose wait never completes unless killed."""
+
+    def __init__(self) -> None:
+        self.killed = False
+
+    async def wait(self) -> int:
+        await asyncio.Event().wait()
+        return 0
+
+    def kill(self) -> None:
+        self.killed = True
+
+
 # ---------------------------------------------------------------------------
 # Unit tests — pure helpers
 # ---------------------------------------------------------------------------
+
+
+class TestContainerProcessHelpers:
+    async def test_force_remove_times_out_and_kills_hung_runtime_cli(self):
+        """Apple Container cleanup can hang on stopped containers with orphaned runtimes."""
+        from pynchy.host.container_manager.process import (
+            _docker_rm_force,  # allow: private-test-imports - external cleanup side effect
+        )
+
+        proc = HangingProcess()
+
+        with (
+            patch(
+                "pynchy.host.container_manager.process.get_runtime",
+                return_value=MagicMock(cli="container"),
+            ),
+            patch(
+                "pynchy.host.container_manager.process.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=proc),
+            ) as create_proc,
+            patch("pynchy.host.container_manager.process._RM_FORCE_TIMEOUT_SECONDS", 0.01),
+            patch("pynchy.host.container_manager.process._RM_FORCE_KILL_WAIT_SECONDS", 0.01),
+        ):
+            await _docker_rm_force("pynchy-code-improver")
+
+        assert proc.killed is True
+        create_proc.assert_awaited_once_with(
+            "container",
+            "rm",
+            "-f",
+            "pynchy-code-improver",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
 
 
 class TestInputSerialization:
