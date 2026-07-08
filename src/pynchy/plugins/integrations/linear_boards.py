@@ -11,6 +11,14 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
+from pynchy.plugins.integrations.linear_statuses import LINEAR_TODO_STATUSES
+from pynchy.plugins.integrations.linear_workspace_names import (
+    project_description,
+    project_matches_workspace,
+    todo_description,
+    workspace_project_name,
+)
+
 
 class LinearBoardError(RuntimeError):
     """Raised when Linear board reconciliation cannot continue."""
@@ -35,14 +43,6 @@ class WorkspaceLike(Protocol):
 
     @property
     def jid(self) -> str: ...
-
-
-@dataclass(frozen=True)
-class TodoStatusSpec:
-    name: str
-    type: str
-    position: float
-    color: str
 
 
 @dataclass(frozen=True)
@@ -88,15 +88,6 @@ class _VisibleLinearTeam:
     @property
     def choice_label(self) -> str:
         return self.key or self.name or self.team_id
-
-
-LINEAR_TODO_STATUSES: dict[str, TodoStatusSpec] = {
-    "backlog": TodoStatusSpec("Backlog", "backlog", 10.0, "#8A8F98"),
-    "planning": TodoStatusSpec("Planning", "unstarted", 20.0, "#F2C94C"),
-    "ready": TodoStatusSpec("Ready", "unstarted", 30.0, "#56CCF2"),
-    "in_progress": TodoStatusSpec("In Progress", "started", 40.0, "#2F80ED"),
-    "done": TodoStatusSpec("Done", "completed", 50.0, "#27AE60"),
-}
 
 
 def _visible_teams(raw_teams: Iterable[object]) -> list[_VisibleLinearTeam]:
@@ -217,7 +208,7 @@ async def create_workspace_todo(
         project_id=board.project["id"],
         state_id=state["id"],
         title=title,
-        description=_todo_description(workspace),
+        description=todo_description(workspace),
     )
     return _payload_entity(data, "issueCreate", "issue")
 
@@ -361,14 +352,19 @@ async def _ensure_project(
     existing_projects: list[dict[str, Any]],
 ) -> dict[str, Any]:
     project_name = workspace_project_name(workspace)
+    workspace_projects = await _rename_workspace_projects(
+        client,
+        existing_projects,
+        workspace,
+        project_name,
+    )
+    if workspace_projects:
+        return workspace_projects[0]
+
     by_name = {_norm_name(project.get("name")): project for project in existing_projects}
     existing = by_name.get(_norm_name(project_name))
     if existing is not None:
         return existing
-
-    existing_by_metadata = _project_for_workspace(existing_projects, workspace)
-    if existing_by_metadata is not None:
-        return await _update_project(client, existing_by_metadata, workspace)
 
     data = await client.query(
         """
@@ -389,9 +385,27 @@ async def _ensure_project(
         """,
         team_id=team_id,
         name=project_name,
-        description=_project_description(workspace),
+        description=project_description(workspace),
     )
     return _payload_entity(data, "projectCreate", "project")
+
+
+async def _rename_workspace_projects(
+    client: LinearQueryClient,
+    projects: list[dict[str, Any]],
+    workspace: WorkspaceLike,
+    project_name: str,
+) -> list[dict[str, Any]]:
+    workspace_projects = _projects_for_workspace(projects, workspace)
+    renamed: list[dict[str, Any]] = []
+    for project in workspace_projects:
+        if _norm_name(project.get("name")) == _norm_name(project_name):
+            renamed.append(project)
+            continue
+        renamed_project = await _update_project(client, project, workspace)
+        project.update(renamed_project)
+        renamed.append(project)
+    return renamed
 
 
 async def _update_project(
@@ -417,43 +431,20 @@ async def _update_project(
         """,
         project_id=project["id"],
         name=workspace_project_name(workspace),
-        description=_project_description(workspace),
+        description=project_description(workspace),
     )
     return _payload_entity(data, "projectUpdate", "project")
 
 
-def workspace_project_name(workspace: WorkspaceLike) -> str:
-    name = str(workspace.name or "").strip()
-    if name:
-        return name
-    return workspace.folder.replace("-", " ").replace("_", " ").title()
-
-
-def _project_for_workspace(
+def _projects_for_workspace(
     projects: list[dict[str, Any]],
     workspace: WorkspaceLike,
-) -> dict[str, Any] | None:
-    marker = _workspace_marker(workspace)
-    for project in projects:
-        if marker in str(project.get("description") or ""):
-            return project
-    return None
-
-
-def _project_description(workspace: WorkspaceLike) -> str:
-    return f"Managed by Pynchy.\n\n{_workspace_marker(workspace)}\npynchy.chat_jid={workspace.jid}"
-
-
-def _todo_description(workspace: WorkspaceLike) -> str:
-    return (
-        "Captured from a Pynchy workspace todo.\n\n"
-        f"{_workspace_marker(workspace)}\n"
-        f"pynchy.chat_jid={workspace.jid}"
-    )
-
-
-def _workspace_marker(workspace: WorkspaceLike) -> str:
-    return f"pynchy.workspace={workspace.folder}"
+) -> list[dict[str, Any]]:
+    return [
+        project
+        for project in projects
+        if project_matches_workspace(project.get("description"), workspace)
+    ]
 
 
 def _normalize_status(status: str) -> str:

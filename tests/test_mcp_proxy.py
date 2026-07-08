@@ -12,7 +12,7 @@ from pynchy.host.container_manager.security import approval, gate
 from pynchy.host.container_manager.security.approval import resolve_mcp_proxy_approval
 from pynchy.host.container_manager.security.cop import CopVerdict
 from pynchy.host.container_manager.security.gate import create_gate
-from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
+from pynchy.types import CapabilityRule, ServiceTrustConfig, WorkspaceSecurity
 
 # Fully safe trust config — passes outbound gating without triggering needs_human
 _SAFE_TRUST = ServiceTrustConfig(
@@ -334,6 +334,76 @@ class TestMcpProxyOutboundGating:
             data = await resp.json()
             assert "error" in data
             assert "denied" in data["error"].lower() or "forbidden" in data["error"].lower()
+        finally:
+            await client.close()
+
+    async def test_capability_deny_blocks_specific_tool_before_backend(self, mock_backend):
+        """A denied MCP capability should not reach the backend."""
+        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
+
+        security = WorkspaceSecurity(
+            services={"email": _SAFE_TRUST},
+            capabilities={"mcp.email.send": CapabilityRule(decision="deny")},
+        )
+        create_gate("test-ws", 1000.0, security)
+
+        backend_url = f"http://localhost:{mock_backend.port}/mcp"
+        app = create_proxy_app({"email": backend_url})
+        client = TestClient(TestServer(app))
+        await client.start_server()
+
+        try:
+            resp = await client.post(
+                "/mcp/test-ws/1000.0/email",
+                json={
+                    "jsonrpc": "2.0",
+                    "method": "tools/call",
+                    "id": 1,
+                    "params": {"name": "send", "arguments": {"to": "a@example.com"}},
+                },
+            )
+
+            assert resp.status == 403
+            data = await resp.json()
+            assert "capability" in data["error"].lower()
+            assert "mcp.email.send" in data["error"]
+        finally:
+            await client.close()
+
+    async def test_capability_wildcard_needs_human_can_be_approved(self, mock_backend):
+        """A wildcard MCP capability can require human approval."""
+        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
+
+        security = WorkspaceSecurity(
+            services={"email": _SAFE_TRUST},
+            capabilities={"mcp.email.*": CapabilityRule(decision="needs_human")},
+        )
+        create_gate("test-ws", 1000.0, security)
+
+        approval_calls: list[tuple[str, str, str]] = []
+
+        async def mock_approval_fn(group, tool_name, data, request_id):
+            approval_calls.append((group, tool_name, request_id))
+            resolve_mcp_proxy_approval(request_id, True)
+
+        backend_url = f"http://localhost:{mock_backend.port}/mcp"
+        app = create_proxy_app({"email": backend_url}, approval_fn=mock_approval_fn)
+        client = TestClient(TestServer(app))
+        await client.start_server()
+
+        try:
+            resp = await client.post(
+                "/mcp/test-ws/1000.0/email",
+                json={
+                    "jsonrpc": "2.0",
+                    "method": "tools/call",
+                    "id": 1,
+                    "params": {"name": "send", "arguments": {"to": "a@example.com"}},
+                },
+            )
+
+            assert resp.status == 200
+            assert approval_calls == [("test-ws", "send", approval_calls[0][2])]
         finally:
             await client.close()
 

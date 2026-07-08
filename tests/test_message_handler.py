@@ -35,7 +35,7 @@ _P_MSGS_SINCE = "pynchy.host.orchestrator.messaging.pipeline.get_messages_since"
 _P_INTERCEPT = "pynchy.host.orchestrator.messaging.pipeline.intercept_special_command"
 _P_FMT_SDK = "pynchy.host.orchestrator.messaging.formatter.format_messages_for_sdk"
 _P_STORE = "pynchy.host.orchestrator.messaging.pipeline.store_message_direct"
-_P_DIRTY = "pynchy.host.orchestrator.messaging.pipeline.is_repo_dirty"
+_P_DIRTY = "pynchy.host.orchestrator.messaging.run_context.is_repo_dirty"
 _P_GET_RA = "pynchy.host.orchestrator.workspace_config.get_repo_access"
 _P_MERGE = "pynchy.host.git_ops._worktree_merge.merge_and_push_worktree"
 
@@ -75,6 +75,7 @@ def _make_deps(
     deps.broadcast_host_message = AsyncMock()
     deps.send_reaction_to_channels = AsyncMock()
     deps.send_reaction_to_outbound = AsyncMock()
+    deps.processing_ack_emoji = MagicMock(return_value="🦞")
     deps.set_typing_on_channels = AsyncMock()
     deps.emit = MagicMock()
     deps.start_interactive_turn = AsyncMock()
@@ -687,6 +688,48 @@ class TestProcessGroupMessages:
         assert deps.set_typing_on_channels.await_count == 2
         deps.set_typing_on_channels.assert_any_await("g@g.us", True)
         deps.set_typing_on_channels.assert_any_await("g@g.us", False)
+
+    @pytest.mark.asyncio
+    async def test_custom_processing_ack_emoji_used_when_configured(self, tmp_path):
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
+        deps.handle_streamed_output = AsyncMock(return_value=False)
+        deps.processing_ack_emoji.return_value = "👀"
+        msg = _make_message("hello", timestamp="new-ts", id="msg-42")
+
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([msg]),
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+            patch(_P_GET_RA, return_value=None),
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            await process_group_messages(deps, "g@g.us")
+
+        deps.send_reaction_to_channels.assert_awaited_once_with(
+            "g@g.us", "msg-42", msg.sender, "👀"
+        )
+
+    @pytest.mark.asyncio
+    async def test_processing_ack_skipped_when_channel_disables_it(self, tmp_path):
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
+        deps.handle_streamed_output = AsyncMock(return_value=False)
+        deps.processing_ack_emoji.return_value = None
+        msg = _make_message("hello", timestamp="new-ts", id="msg-42")
+
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([msg]),
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+            patch(_P_GET_RA, return_value=None),
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            await process_group_messages(deps, "g@g.us")
+
+        deps.send_reaction_to_channels.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_system_notice_only_does_not_launch_agent(self, tmp_path):

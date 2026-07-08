@@ -100,9 +100,37 @@ Values are `false` (safe), `true` (risky — triggers gating), or `"forbidden"` 
 
 A payload secrets scanner (`detect-secrets`) also runs on outbound writes. If it detects credential patterns (API keys, tokens), the write escalates to human approval regardless of taint state.
 
-Admin workspaces bypass all policy gates. Admin workspaces are additionally protected by the clean room policy ([§5c](#5c-admin-clean-room)). See [Service Trust](../usage/security.md) for configuration.
+Admin workspaces bypass all policy gates. Admin workspaces are additionally protected by the clean room policy ([§5d](#5d-admin-clean-room)). See [Service Trust](../usage/security.md) for configuration.
 
-### 5a. Bash Security Gate
+### 5a. Capability Policy
+
+Pynchy is the source of truth for semantic capability permissions. Capability
+rules answer whether a workspace may invoke a named action at all, before the
+lower-level service trust policy evaluates taint and payload risk.
+
+Capability IDs use dotted names. MCP tool calls use:
+
+```text
+mcp.<server-or-instance>.<tool-name>
+```
+
+For example, a call to the `send` tool on an `email` MCP server maps to
+`mcp.email.send`. Rules support trailing wildcard segments such as
+`mcp.email.*`; exact rules take precedence over wildcard rules.
+
+Each rule decision is:
+
+| Decision | Effect |
+|----------|--------|
+| `allow` | Allow the capability and continue to service-trust evaluation |
+| `needs_human` | Require human approval before the call proceeds |
+| `deny` | Block the capability |
+
+Capability maps merge through the same sandbox cascade as profiles:
+`sandbox_universal` < `sandbox_profiles.<name>` < `sandbox.<name>`. More
+specific entries replace less specific entries with the same capability ID.
+
+### 5b. Bash Security Gate
 
 The service trust policy (above) gates MCP service tools, but agents also have a general-purpose Bash tool. Without extra controls, a corruption-tainted agent could run `curl`, `python`, or `ssh` to exfiltrate data — bypassing the service trust layer entirely.
 
@@ -128,7 +156,7 @@ The Cop is the same LLM-based inspector used for host-mutating operations. If th
 
 **Fail-open design.** If IPC fails (timeout, malformed response), the gate allows the command. Otherwise the security gate would break normal agent operation during transient failures.
 
-### 5b. Host-Mutating Operations (Cop Gate)
+### 5c. Host-Mutating Operations (Cop Gate)
 
 Some IPC operations change what code runs on the host machine. These are **host-mutating** and get an extra layer of inspection from the Cop — an LLM-based security inspector that reviews payloads for signs of manipulation.
 
@@ -157,7 +185,7 @@ Some IPC operations change what code runs on the host machine. These are **host-
 
 The Cop always inspects. Humans only get pulled in when the Cop detects something suspicious.
 
-### 5c. Admin Clean Room
+### 5d. Admin Clean Room
 
 Admin workspaces cannot have `public_source=true` MCP servers assigned. This is enforced at config validation (startup). If an admin workspace references an MCP with `public_source=true` (or an MCP not declared in `[services]`, which defaults to `public_source=true`), Pynchy refuses to start.
 
@@ -201,9 +229,11 @@ OPENAI_API_KEY=gw-<random>
 
 #### OneCLI Agent Vault
 
-When `[onecli].enabled = true`, Pynchy uses OneCLI as the preferred boundary for
-non-LLM service credentials. Pynchy does not read decrypted secret values from
-OneCLI. Instead, before spawning a container it asks OneCLI for:
+When `[onecli].enabled = true`, Pynchy uses OneCLI as the preferred
+credential and egress boundary for non-LLM service credentials. Pynchy remains
+the source of truth for semantic capability permissions. Pynchy does not read
+decrypted secret values from OneCLI. Instead, before spawning a container it
+asks OneCLI for:
 
 - proxy environment variables such as `HTTPS_PROXY`;
 - a gateway CA certificate and the container path where that certificate should
@@ -212,9 +242,11 @@ OneCLI. Instead, before spawning a container it asks OneCLI for:
   `onecli-managed`.
 
 Containers and opt-in MCP sidecars then call normal service URLs. OneCLI matches
-the outbound request, applies its agent/secret/app-connection/rule policy, and
-injects the real credential at request time. Pynchy maps each workspace to a
-stable OneCLI agent identifier so policy remains external to the container.
+the outbound request and injects the real credential at request time. OneCLI
+rules may provide low-level egress hardening, but Pynchy capability and service
+trust policy make the user-facing permission decision. Pynchy maps each
+workspace to a stable OneCLI agent identifier so OneCLI can keep credential
+access separate per workspace.
 
 With OneCLI material present, Pynchy does not write `GH_TOKEN` into the agent env
 file. Native credential injection remains available only when OneCLI is disabled
@@ -261,8 +293,8 @@ Channel messages can contain malicious instructions that attempt to manipulate C
 - Agents can only access their group's mounted directories
 - Additional directory mounts require explicit per-group configuration
 - Claude's built-in safety training helps resist manipulation
-- **Admin clean room** prevents the admin workspace from reading untrusted content ([§5c](#5c-admin-clean-room))
-- **Cop inspection** reviews host-mutating payloads for manipulation before execution ([§5b](#5b-host-mutating-operations-cop-gate))
+- **Admin clean room** prevents the admin workspace from reading untrusted content ([§5d](#5d-admin-clean-room))
+- **Cop inspection** reviews host-mutating payloads for manipulation before execution ([§5c](#5c-host-mutating-operations-cop-gate))
 
 **Recommendations:**
 

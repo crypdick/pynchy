@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from pynchy.host.orchestrator.messaging.channel_handler import (
+    processing_ack_emoji,
     send_reaction_to_channels,
     send_reaction_to_outbound,
     set_typing_on_channels,
@@ -151,6 +152,36 @@ class TestSendReactionToChannels:
         deps = _make_deps([ch])
 
         await send_reaction_to_channels(deps, "group@g.us", "msg-1", "user@s", "👀")
+
+
+# ---------------------------------------------------------------------------
+# processing_ack_emoji
+# ---------------------------------------------------------------------------
+
+
+class TestProcessingAckEmoji:
+    def test_uses_channel_specific_processing_ack(self):
+        ch = _make_channel(name="discord", connected=True)
+        ch.owns_jid.return_value = True
+        ch.processing_ack_emoji = MagicMock(return_value="👀")
+        deps = _make_deps([ch])
+
+        assert processing_ack_emoji(deps, "group@g.us") == "👀"
+
+    def test_none_disables_processing_ack(self):
+        ch = _make_channel(name="discord", connected=True)
+        ch.owns_jid.return_value = True
+        ch.processing_ack_emoji = MagicMock(return_value=None)
+        deps = _make_deps([ch])
+
+        assert processing_ack_emoji(deps, "group@g.us") is None
+
+    def test_default_used_when_channel_has_no_preference(self):
+        ch = _make_channel(name="slack", connected=True)
+        ch.owns_jid.return_value = True
+        deps = _make_deps([ch])
+
+        assert processing_ack_emoji(deps, "group@g.us") == "🦞"
 
 
 # ---------------------------------------------------------------------------

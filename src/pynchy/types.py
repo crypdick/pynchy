@@ -74,6 +74,14 @@ class ContainerConfig:
 
 # Tri-state: False (safe), True (risky/gated), "forbidden" (blocked)
 TrustLevel = Literal[False, True, "forbidden"]
+CapabilityDecision = Literal["allow", "deny", "needs_human"]
+
+
+@dataclass
+class CapabilityRule:
+    """Explicit policy for a semantic capability such as an MCP tool call."""
+
+    decision: CapabilityDecision
 
 
 # NOTE: Update docs/architecture/security.md § 5 (Service Trust Policy) and
@@ -109,6 +117,7 @@ class WorkspaceSecurity:
 
     services: dict[str, ServiceTrustConfig] = field(default_factory=dict)
     contains_secrets: bool = False
+    capabilities: dict[str, CapabilityRule] = field(default_factory=dict)
 
 
 @dataclass

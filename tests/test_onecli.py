@@ -98,7 +98,7 @@ def test_collect_onecli_status_disabled(tmp_path: Path) -> None:
         }
 
 
-def test_collect_onecli_status_reports_health_and_pending_approvals(
+def test_collect_onecli_status_reports_health_and_egress_approvals(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -128,7 +128,7 @@ def test_collect_onecli_status_reports_health_and_pending_approvals(
         "project_id_configured": False,
         "ready": True,
         "version": "1.2.3",
-        "pending_approvals": 2,
+        "egress_pending_approvals": 2,
     }
     assert requests[0].full_url == "http://localhost:10254/v1/health"
     assert requests[1].full_url == "http://localhost:10254/v1/approvals/pending"

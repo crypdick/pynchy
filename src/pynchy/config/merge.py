@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from pynchy.config.models import (
+    CapabilityTomlConfig,
     ProfileConfig,
     WorkspaceConfig,
     WorkspaceSecurityTomlConfig,
@@ -54,6 +55,7 @@ class ResolvedSandboxConfig:
     skills: list[str]
     mcp_servers: list[str]
     tags: list[str]
+    capabilities: dict[str, CapabilityTomlConfig]
 
     # Override fields
     context_mode: str
@@ -114,6 +116,31 @@ def _resolve_union(
 
     result = _deduplicate(parts)
     logger.debug("merge.union.resolved", field=field, result=result)
+    return result
+
+
+def _resolve_capabilities(
+    universal: ProfileConfig | None,
+    profile: ProfileConfig | None,
+    sandbox: WorkspaceConfig,
+) -> dict[str, CapabilityTomlConfig]:
+    """Merge capability maps with most-specific values winning per key."""
+    result: dict[str, CapabilityTomlConfig] = {}
+    for tier, label in (
+        (universal, "universal"),
+        (profile, "profile"),
+        (sandbox, "workspace"),
+    ):
+        if tier is None:
+            continue
+        capabilities = getattr(tier, "capabilities", None)
+        if capabilities is None:
+            logger.debug("merge.capabilities", tier=label, values="(none)")
+            continue
+        logger.debug("merge.capabilities", tier=label, values=list(capabilities))
+        result.update(capabilities)
+
+    logger.debug("merge.capabilities.resolved", result=list(result))
     return result
 
 
@@ -202,6 +229,7 @@ def merge_sandbox_config(
     union_results: dict[str, list[str]] = {}
     for field in _UNION_FIELDS:
         union_results[field] = _resolve_union(field, universal, profile, sandbox)
+    capabilities = _resolve_capabilities(universal, profile, sandbox)
 
     # Override fields
     override_results: dict[str, Any] = {}
@@ -214,6 +242,7 @@ def merge_sandbox_config(
         skills=union_results["skills"],
         mcp_servers=union_results["mcp_servers"],
         tags=union_results["tags"],
+        capabilities=capabilities,
         # Override
         context_mode=override_results["context_mode"],
         access=override_results["access"],

@@ -76,10 +76,9 @@ inherits its parent channel's access config.
 2. Invite the bot with the `bot` scope and at least *View Channels*, *Send
    Messages*, *Send Messages in Threads*, *Read Message History*, and *Add
    Reactions* permissions. Do not grant Administrator; Pynchy does not need it.
-3. For guild channels, choose stable config names for the server and each
-   channel. Pynchy looks up matching Discord names at startup and creates
-   missing configured channels. For DMs, copy the user ID from Discord
-   Developer Mode; Discord requires the user snowflake to address a DM.
+3. Choose stable config names for the server, channels, and users. Pynchy looks
+   up matching Discord names at startup, creates missing configured guild
+   channels, and stores Discord's raw IDs in runtime state.
 4. Put the bot token in an environment variable on the host that runs Pynchy.
    Never put the token value in `config.toml`; reference the variable name
    instead:
@@ -95,13 +94,13 @@ DISCORD_BOT_TOKEN=<bot token>
 [connection.discord.mybot]
 bot_token_env = "DISCORD_BOT_TOKEN"   # name of the env var holding the token
 dm_policy = "allowlist"               # open | allowlist | disabled
-allow_from = ["discord:<your-user-id>"]  # DM allowlist (user snowflakes); "*" = open
+allow_from = ["ricardo"]                 # DM allowlist by Discord display/user name; "*" = open
 group_policy = "allowlist"            # open | disabled | allowlist
 
 [connection.discord.mybot.chat.synapse]
 name = "Synapse"                       # Discord server name; omit when the table key matches
 require_mention = true                 # guild default; require an @mention to respond
-users = ["discord:<user-id>"]          # sender allowlist
+users = ["ricardo"]                    # sender allowlist by Discord display/user name
 roles = ["role:<role-id>"]             # optional role allowlist
 
 [connection.discord.mybot.chat.synapse.channels.code-improver]
@@ -116,15 +115,17 @@ is_admin = true
 
 [workspaces.discord-dm]
 profile = "pynchy-dev"
-chat = "connection.discord.mybot.chat.direct.<your-user-id>"
+chat = "connection.discord.mybot.chat.direct.ricardo"
 is_admin = true
 ```
 
 Set `profile` or `repo_access` on Discord workspaces the same way you set it on
 Slack or TUI workspaces. Repo-backed agent cores need the project worktree mount.
 After startup reconciliation, Pynchy stores the concrete Discord channel
-snowflake in workspace state as `discord:channel:<id>`. Keep config human-facing:
-use names for guild channels unless you intentionally need a legacy ID ref.
+snowflake in workspace state as `discord:channel:<id>` or `discord:direct:<id>`.
+Keep config human-facing: use names unless you intentionally need a legacy ID
+ref. Name-based DMs can resolve once the bot has seen that user through a DM,
+guild membership cache, or inbound message.
 Discord threads under a configured channel become dynamic isolated contexts and
 inherit the parent workspace profile.
 

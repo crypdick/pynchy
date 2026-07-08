@@ -2,9 +2,9 @@
 
 The built-in Linear integration gives every Pynchy workspace a durable Linear
 todo board. Each workspace maps to a Linear Project named from the workspace
-display name (`Code Improver` for `code-improver` by default), and todos move
-through shared Linear workflow states: Backlog, Planning,
-Ready, In Progress, and Done.
+label, using the folder title for repo-slug labels (`Code Improver` for
+`code-improver`), and todos move through shared Linear workflow states: Backlog,
+Planning, Ready, In Progress, and Done.
 
 ## Configure access
 
@@ -34,7 +34,7 @@ On boot, Pynchy reconciles Linear state for all registered workspaces:
 
 | Pynchy workspace | Linear object |
 |------------------|---------------|
-| Workspace display name | Project named from the workspace, such as `Code Improver` |
+| Workspace label | Project named from the workspace, such as `Code Improver` |
 | `todo ...` messages | Issues in that workspace project |
 | Todo status | Team workflow state |
 

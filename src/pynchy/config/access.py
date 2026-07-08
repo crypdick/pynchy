@@ -137,7 +137,7 @@ def resolve_allowed_users(
     Resolution rules:
     - "*" -> short-circuit, allow everyone (returns None)
     - "owner" -> resolved via OwnerConfig for the channel platform
-    - strings containing ":" -> literal user IDs (e.g., "slack:U04ABC")
+    - strings containing ":" -> literal user refs (e.g., "slack:ricardo")
     - everything else -> group name lookup (recursive, with cycle detection)
     """
     if "*" in raw_list:
@@ -234,7 +234,13 @@ def filter_allowed_messages(
 
     filtered = []
     for m in messages:
-        if is_user_allowed(m.sender, channel_plugin_name, allowed, m.is_from_me):
+        if is_user_allowed(
+            m.sender,
+            channel_plugin_name,
+            allowed,
+            m.is_from_me,
+            sender_name=m.sender_name,
+        ):
             filtered.append(m)
         else:
             logger.info(
@@ -251,6 +257,7 @@ def is_user_allowed(
     channel_plugin_name: str | None,
     resolved_users: set[str] | None,
     is_from_me: bool | None = None,
+    sender_name: str | None = None,
 ) -> bool:
     """Check if a sender is allowed by the resolved allowed_users set.
 
@@ -259,6 +266,7 @@ def is_user_allowed(
         channel_plugin_name: The channel plugin name (e.g., "whatsapp", "slack")
         resolved_users: The resolved set from resolve_allowed_users, or None for wildcard
         is_from_me: WhatsApp is_from_me flag for owner detection
+        sender_name: Human display name from the channel, when available
     """
     if resolved_users is None:
         return True  # Wildcard — everyone allowed
@@ -272,6 +280,10 @@ def is_user_allowed(
     if platform:
         qualified = f"{platform}:{sender}"
         if qualified in resolved_users:
+            return True
+        if sender_name and f"{platform}:{sender_name}".casefold() in {
+            user.casefold() for user in resolved_users
+        }:
             return True
 
     # Also check the raw sender (for pre-qualified IDs)

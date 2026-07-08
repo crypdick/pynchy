@@ -190,6 +190,9 @@ class PynchyApp:
     ) -> None:
         await channel_handler.send_reaction_to_channels(self, chat_jid, message_id, sender, emoji)
 
+    def processing_ack_emoji(self, chat_jid: str) -> str | None:
+        return channel_handler.processing_ack_emoji(self, chat_jid)
+
     async def send_reaction_to_outbound(
         self, chat_jid: str, per_channel_ids: dict[str, str], emoji: str
     ) -> None:

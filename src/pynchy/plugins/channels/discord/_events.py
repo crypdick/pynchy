@@ -33,6 +33,20 @@ else:
     DiscordChannel = object
 
 
+def _author_names(author: Any) -> frozenset[str]:
+    names = {
+        value
+        for value in (
+            getattr(author, "display_name", None),
+            getattr(author, "global_name", None),
+            getattr(author, "name", None),
+            str(author),
+        )
+        if isinstance(value, str) and value.strip()
+    }
+    return frozenset(names)
+
+
 def build_inbound_context(message: Any, bot_user_id: str) -> InboundContext:
     """Extract the access-relevant primitives from a discord.py message."""
     author = message.author
@@ -55,6 +69,7 @@ def build_inbound_context(message: Any, bot_user_id: str) -> InboundContext:
         parent_channel_name=getattr(parent, "name", None) if parent is not None else None,
         author_role_ids=role_ids,
         mentions_bot=mentions_bot,
+        author_names=_author_names(author),
     )
 
 
@@ -69,15 +84,88 @@ def jid_for(ctx: InboundContext) -> str:
     return channel_jid(ctx.channel_id)
 
 
-def metadata_for(ctx: InboundContext, *, message_id: str) -> dict[str, str]:
-    """Return stable Discord routing metadata for a stored message."""
-    metadata = {
-        "discord_message_id": message_id,
-        "discord_channel_name": ctx.channel_name or "",
+def _attachment_metadata(attachment: Any) -> dict[str, Any]:
+    """Normalize a Discord attachment into plain metadata."""
+    return {
+        "id": str(getattr(attachment, "id", "")),
+        "filename": getattr(attachment, "filename", ""),
+        "url": getattr(attachment, "url", ""),
+        "proxy_url": getattr(attachment, "proxy_url", ""),
+        "content_type": getattr(attachment, "content_type", None),
+        "size": getattr(attachment, "size", 0),
+        "description": getattr(attachment, "description", None),
+        "spoiler": bool(getattr(attachment, "spoiler", False)),
     }
-    if ctx.parent_channel_id is not None:
-        metadata["discord_parent_chat_jid"] = channel_jid(ctx.parent_channel_id)
-        metadata["discord_parent_channel_name"] = ctx.parent_channel_name or ""
+
+
+def _forwarded_snapshot_metadata(snapshot: Any) -> dict[str, Any]:
+    created = getattr(snapshot, "created_at", None)
+    return {
+        "content": getattr(snapshot, "content", ""),
+        "created_at": created.isoformat() if created else None,
+        "type": str(getattr(snapshot, "type", "")),
+        "attachments": [
+            _attachment_metadata(attachment) for attachment in getattr(snapshot, "attachments", [])
+        ],
+    }
+
+
+def normalized_message_content(message: Any) -> str:
+    """Return the best available human-readable text for an inbound message.
+
+    Forwarded Discord messages can arrive with an empty ``message.content`` and
+    only a ``message_snapshots`` payload. Fall back to the forwarded snapshot
+    text in that case so Pynchy doesn't ingest a blank message.
+    """
+    content = getattr(message, "content", "")
+    if content:
+        return content
+
+    snapshot_texts = [
+        getattr(snapshot, "content", "").strip()
+        for snapshot in getattr(message, "message_snapshots", [])
+        if getattr(snapshot, "content", "").strip()
+    ]
+    if snapshot_texts:
+        return "\n\n".join(snapshot_texts)
+    return content
+
+
+def build_message_metadata(message: Any, ctx: InboundContext | None = None) -> dict[str, Any]:
+    """Extract Discord-native structure that would otherwise be lost in text."""
+    metadata: dict[str, Any] = {"discord_message_id": str(message.id)}
+    if ctx is not None:
+        metadata["discord_channel_name"] = ctx.channel_name or ""
+        if ctx.parent_channel_id is not None:
+            metadata["discord_parent_chat_jid"] = channel_jid(ctx.parent_channel_id)
+            metadata["discord_parent_channel_name"] = ctx.parent_channel_name or ""
+
+    attachments = getattr(message, "attachments", [])
+    if attachments:
+        metadata["attachments"] = [_attachment_metadata(attachment) for attachment in attachments]
+
+    reference = getattr(message, "reference", None)
+    if reference is not None:
+        reference_message_id = getattr(reference, "message_id", None)
+        if reference_message_id is not None:
+            metadata["reply_to_message_id"] = str(reference_message_id)
+        resolved = getattr(reference, "resolved", None)
+        if resolved is not None:
+            author = getattr(resolved, "author", None)
+            if author is not None:
+                sender_name = getattr(author, "display_name", None) or str(author)
+                metadata["reply_to_sender"] = sender_name
+            resolved_content = getattr(resolved, "content", "")
+            if resolved_content:
+                metadata["reply_to_text"] = resolved_content
+
+    forwarded = [
+        _forwarded_snapshot_metadata(snapshot)
+        for snapshot in getattr(message, "message_snapshots", [])
+    ]
+    if forwarded:
+        metadata["forwarded_messages"] = forwarded
+
     return metadata
 
 
@@ -135,10 +223,10 @@ class DiscordEvents:
             chat_jid=jid,
             sender=ctx.author_id,
             sender_name=sender_name,
-            content=message.content,
+            content=normalized_message_content(message),
             timestamp=timestamp,
             is_from_me=False,
-            metadata=metadata_for(ctx, message_id=str(message.id)),
+            metadata=build_message_metadata(message, ctx),
         )
         logger.info("Discord inbound message", jid=jid, sender=ctx.author_id)
         ch.on_message(jid, msg)

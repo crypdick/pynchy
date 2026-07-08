@@ -894,7 +894,7 @@ class TestCollectStatus:
     @pytest.mark.asyncio
     async def test_includes_onecli_status(self):
         deps = MockStatusDeps()
-        onecli = {"enabled": True, "ready": True, "pending_approvals": 1}
+        onecli = {"enabled": True, "ready": True, "egress_pending_approvals": 1}
 
         with (
             _inert_status(),

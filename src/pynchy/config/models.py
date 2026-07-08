@@ -205,6 +205,7 @@ class LearningConfig(_StrictModel):
 class OwnerConfig(_StrictModel):
     """Owner identity per platform — used for allowed_users = ["owner"] resolution."""
 
+    # Prefer human display/user names; Slack user IDs are accepted.
     slack: str | None = None
     # WhatsApp uses is_from_me, no config needed
 
@@ -266,7 +267,7 @@ class DiscordGuildConfig(_StrictModel):
 
     name: str | None = None
     require_mention: bool = True
-    users: list[str] = []  # guild-wide sender allowlist (ids)
+    users: list[str] = []  # guild-wide sender allowlist (names or ids)
     roles: list[str] = []  # guild-wide role-id allowlist
     channels: dict[str, DiscordChannelConfig] = {}
     security: ChannelOverrideConfig | None = None
@@ -282,8 +283,9 @@ class DiscordConnectionConfig(_StrictModel):
 
     bot_token_env: str
     application_id: str | None = None
+    processing_ack_emoji: str | None = "🦞"
     dm_policy: Literal["open", "allowlist", "disabled"] = "allowlist"
-    allow_from: list[str] = []  # DM allowlist (user snowflakes); "*" = open
+    allow_from: list[str] = []  # DM allowlist (names or ids); "*" = open
     group_policy: Literal["open", "disabled", "allowlist"] = "allowlist"
     security: ChannelOverrideConfig | None = None
     chat: dict[str, DiscordGuildConfig] = {}
@@ -336,6 +338,7 @@ class ProfileConfig(_StrictModel):
     directives: list[str] | None = None
     skills: list[str] | None = None
     mcp_servers: list[str] | None = None
+    capabilities: dict[str, CapabilityTomlConfig] | None = None
 
     # Override fields (most-specific wins)
     context_mode: Literal["group", "isolated"] | None = None
@@ -364,6 +367,12 @@ class ServiceTrustTomlConfig(_StrictModel):
     secret_data: bool = True
     public_sink: bool | Literal["forbidden"] = True
     dangerous_writes: bool | Literal["forbidden"] = True
+
+
+class CapabilityTomlConfig(_StrictModel):
+    """Explicit allow/deny/approval policy for a semantic capability."""
+
+    decision: Literal["allow", "deny", "needs_human"]
 
 
 class WorkspaceServiceOverride(_StrictModel):
@@ -418,6 +427,7 @@ class WorkspaceConfig(_StrictModel):
     security: WorkspaceSecurityTomlConfig | None = None  # Trust-based security profile
     skills: list[str] | None = None  # tier names and/or skill names; None = core only
     mcp_servers: list[str] | None = None  # server names + group names, set-unioned
+    capabilities: dict[str, CapabilityTomlConfig] | None = None
     mcp: dict[str, dict[str, Any]] = {}  # {server_name: {key: value}} → per-MCP kwargs
     # Channel access modes (None → inherit from profile/universal)
     access: Literal["read", "write", "readwrite"] | None = None

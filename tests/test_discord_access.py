@@ -13,7 +13,12 @@ from pynchy.config.models import DiscordConnectionConfig
 from pynchy.plugins.channels.discord._access import DiscordAccess, InboundContext
 
 
-def _dm(author_id: str = "1", *, is_bot: bool = False) -> InboundContext:
+def _dm(
+    author_id: str = "1",
+    *,
+    author_names: frozenset[str] = frozenset(),
+    is_bot: bool = False,
+) -> InboundContext:
     return InboundContext(
         is_dm=True,
         author_id=author_id,
@@ -26,6 +31,7 @@ def _dm(author_id: str = "1", *, is_bot: bool = False) -> InboundContext:
         parent_channel_name=None,
         author_role_ids=frozenset(),
         mentions_bot=False,
+        author_names=author_names,
     )
 
 
@@ -38,6 +44,7 @@ def _guild(
     parent_channel_id: str | None = None,
     parent_channel_name: str | None = None,
     author_id: str = "u1",
+    author_names: frozenset[str] = frozenset(),
     author_role_ids: frozenset[str] = frozenset(),
     mentions_bot: bool = False,
     is_bot: bool = False,
@@ -54,6 +61,7 @@ def _guild(
         parent_channel_name=parent_channel_name,
         author_role_ids=author_role_ids,
         mentions_bot=mentions_bot,
+        author_names=author_names,
     )
 
 
@@ -96,6 +104,12 @@ def test_dm_allowlist_wildcard_allows_anyone():
 
 def test_allow_from_accepts_bare_snowflake():
     assert _access(dm_policy="allowlist", allow_from=["1"]).decide(_dm("1")) == "allow"
+
+
+def test_dm_allowlist_accepts_human_user_name():
+    access = _access(dm_policy="allowlist", allow_from=["ricardo"])
+
+    assert access.decide(_dm("1", author_names=frozenset({"Ricardo", "rdecal"}))) == "allow"
 
 
 # --- guild / group policy ----------------------------------------------------
@@ -211,6 +225,15 @@ def test_member_users_allowlist_permits_listed_sender():
         chat={"g1": {"require_mention": False, "users": ["discord:u1"]}},
     )
     assert access.decide(_guild(author_id="u1")) == "allow"
+
+
+def test_member_users_allowlist_permits_human_user_name():
+    access = _access(
+        group_policy="allowlist",
+        chat={"g1": {"require_mention": False, "users": ["ricardo"]}},
+    )
+
+    assert access.decide(_guild(author_names=frozenset({"Ricardo"}))) == "allow"
 
 
 def test_member_users_allowlist_denies_unlisted_sender():

@@ -13,8 +13,8 @@ natively in Discord) and split by :func:`chunk_discord_text` to respect the
 
 from __future__ import annotations
 
-import re
-from collections.abc import Callable
+import asyncio
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -23,27 +23,20 @@ import discord
 from pynchy.config.discord_refs import DiscordChatTarget, resolve_discord_chat_target
 from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
 from pynchy.logger import logger
+from pynchy.state import get_chat_jids_by_name
 from pynchy.types import InboundFetchResult, NewMessage, OutboundEvent, WorkspaceProfile
+from pynchy.utils import create_background_task
 
 from ._access import DiscordAccess
+from ._ask_user import DiscordAskUserView, build_ask_user_text, supports_interactive_ask_user
 from ._chunk import DISCORD_LIMIT, chunk_discord_text
-from ._events import DiscordEvents
+from ._events import DiscordEvents, build_message_metadata, normalized_message_content
 from ._ids import channel_jid, dm_jid, is_discord_jid, parse_jid
 from ._lifecycle import DiscordLifecycle
+from ._lookup import discord_user_names, normalize_discord_channel_name, same_name
 
 _MESSAGE_ID_PREFIX = "discord-"
-
-
-def _same_name(left: str | None, right: str | None) -> bool:
-    return bool(left and right and left.casefold() == right.casefold())
-
-
-def _normalize_discord_channel_name(name: str) -> str:
-    normalized = re.sub(r"[^a-z0-9_-]+", "-", name.strip().lower())
-    normalized = re.sub(r"-+", "-", normalized).strip("-_")
-    if not normalized:
-        raise ValueError("Discord channel name cannot be empty")
-    return normalized[:100]
+_TYPING_REFRESH_SECONDS = 8.0
 
 
 class DiscordChannel:
@@ -77,6 +70,9 @@ class DiscordChannel:
         self.client: discord.Client | None = None
         self._connected = False
         self._shutting_down = False
+        self._typing_tasks: dict[str, asyncio.Task[Any]] = {}
+        self._dm_channels: dict[str, Any] = {}
+        self._ask_user_views: dict[str, discord.ui.View] = {}
 
         self.access = DiscordAccess(config)
         self.events = DiscordEvents(self)
@@ -93,12 +89,17 @@ class DiscordChannel:
         return self.lifecycle.is_connected()
 
     async def disconnect(self) -> None:
+        self._cancel_all_typing_tasks()
+        self._dm_channels.clear()
         await self.lifecycle.disconnect()
 
     async def reconnect(self) -> None:
+        self._dm_channels.clear()
         await self.lifecycle.reconnect()
 
     def prepare_shutdown(self) -> None:
+        self._cancel_all_typing_tasks()
+        self._dm_channels.clear()
         self.lifecycle.prepare_shutdown()
 
     # ------------------------------------------------------------------
@@ -114,7 +115,12 @@ class DiscordChannel:
         if target is None:
             return None
         if target.kind == "direct":
-            return dm_jid(target.target_id)
+            if target.target_id.isdecimal():
+                return dm_jid(target.target_id)
+            user = self._find_configured_user(target.target_id)
+            if user is not None:
+                return dm_jid(str(user.id))
+            return await self._find_stored_direct_jid(target.target_id)
         if self.client is not None:
             channel = await self._find_configured_channel(target)
             if channel is not None:
@@ -122,6 +128,49 @@ class DiscordChannel:
         if not target.target_id.isdecimal():
             return None
         return channel_jid(target.target_id)
+
+    def _known_users(self) -> Iterable[Any]:
+        if self.client is None:
+            return ()
+        cached_users = tuple(getattr(self.client, "users", ()) or ())
+        members: list[Any] = []
+        get_all_members = getattr(self.client, "get_all_members", None)
+        if callable(get_all_members):
+            members.extend(get_all_members())
+        else:
+            for guild in getattr(self.client, "guilds", []) or []:
+                members.extend(getattr(guild, "members", []) or [])
+        return (*cached_users, *members)
+
+    def _find_configured_user(self, user_key: str) -> Any | None:
+        if self.client is None:
+            return None
+        if user_key.isdecimal():
+            return self.client.get_user(int(user_key))
+        return next(
+            (
+                user
+                for user in self._known_users()
+                if any(same_name(name, user_key) for name in discord_user_names(user))
+            ),
+            None,
+        )
+
+    async def _find_stored_direct_jid(self, user_key: str) -> str | None:
+        matches = [
+            jid
+            for jid in await get_chat_jids_by_name(user_key)
+            if jid.startswith("discord:direct:")
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            logger.warning(
+                "Multiple Discord DMs match user name; disambiguate",
+                user=user_key,
+                matches=matches,
+            )
+        return None
 
     async def create_group(self, name: str) -> str:
         """Create or reuse a configured Discord text channel and return its JID."""
@@ -168,7 +217,7 @@ class DiscordChannel:
         for channel in getattr(guild, "text_channels", []):
             if channel_key.isdecimal() and str(channel.id) == channel_key:
                 return channel
-            if _same_name(getattr(channel, "name", None), channel_name):
+            if same_name(getattr(channel, "name", None), channel_name):
                 return channel
         return None
 
@@ -186,7 +235,7 @@ class DiscordChannel:
             (
                 guild
                 for guild in getattr(self.client, "guilds", [])
-                if _same_name(getattr(guild, "name", None), guild_name)
+                if same_name(getattr(guild, "name", None), guild_name)
             ),
             None,
         )
@@ -200,7 +249,7 @@ class DiscordChannel:
         guild_cfg = self._config.chat.get(target.guild_id or "")
         channel_cfg = guild_cfg.channels.get(target.target_id) if guild_cfg else None
         raw = channel_cfg.name if channel_cfg and channel_cfg.name else target.target_id
-        return _normalize_discord_channel_name(raw)
+        return normalize_discord_channel_name(raw)
 
     async def _resolve_channel(self, jid: str) -> Any:
         """Resolve a jid to a sendable discord.py channel (creating a DM if needed)."""
@@ -208,8 +257,13 @@ class DiscordChannel:
         parsed = parse_jid(jid)
         snowflake = int(parsed.snowflake)
         if parsed.kind == "direct":
+            cached_dm = self._dm_channels.get(parsed.snowflake)
+            if cached_dm is not None:
+                return cached_dm
             user = self.client.get_user(snowflake) or await self.client.fetch_user(snowflake)
-            return user.dm_channel or await user.create_dm()
+            dm_channel = user.dm_channel or await user.create_dm()
+            self._dm_channels[parsed.snowflake] = dm_channel
+            return dm_channel
         channel = self.client.get_channel(snowflake)
         if channel is None:
             channel = await self.client.fetch_channel(snowflake)
@@ -296,22 +350,90 @@ class DiscordChannel:
         except discord.DiscordException as exc:
             logger.debug("Discord reaction failed", err=str(exc))
 
+    def processing_ack_emoji(self) -> str | None:
+        """Reaction to use when a message enters processing, or None to disable."""
+        emoji = self._config.processing_ack_emoji
+        return emoji if isinstance(emoji, str) or emoji is None else str(emoji)
+
     async def set_typing(self, jid: str, is_typing: bool) -> None:
-        """No-op for v1 (mirrors the Slack channel); Discord typing is transient."""
+        """Keep Discord's transient typing signal alive while work is active."""
+        if self.client is None or not self.owns_jid(jid):
+            return
+
+        if not is_typing:
+            self._cancel_typing_task(jid)
+            return
+
+        task = self._typing_tasks.get(jid)
+        if task is not None and not task.done():
+            return
+
+        self._typing_tasks[jid] = create_background_task(
+            self._typing_loop(jid),
+            name=f"discord-typing-{jid[-18:]}",
+        )
+
+    async def _typing_loop(self, jid: str) -> None:
+        """Refresh typing until cancelled.
+
+        Discord only shows typing for about 10 seconds per signal. This loop
+        re-sends the lease while the orchestrator keeps the conversation marked
+        active, and it resolves the channel on each pass so reconnects don't
+        leave us holding a stale channel object.
+        """
+        try:
+            while True:
+                channel = await self._resolve_channel(jid)
+                await channel.typing()
+                await asyncio.sleep(_TYPING_REFRESH_SECONDS)
+        except asyncio.CancelledError:
+            raise
+        except discord.DiscordException as exc:
+            logger.debug("Discord typing refresh failed", jid=jid, err=str(exc))
+        finally:
+            current = self._typing_tasks.get(jid)
+            if current is asyncio.current_task():
+                self._typing_tasks.pop(jid, None)
+
+    def _cancel_typing_task(self, jid: str) -> None:
+        task = self._typing_tasks.pop(jid, None)
+        if task is not None:
+            task.cancel()
+
+    def _cancel_all_typing_tasks(self) -> None:
+        for jid in list(self._typing_tasks):
+            self._cancel_typing_task(jid)
 
     async def send_ask_user(
         self, jid: str, request_id: str, questions: list[dict[str, Any]]
     ) -> str | None:
-        """Post questions as plain text; the user answers in chat (v1 has no widget)."""
+        """Post an ask_user prompt, using buttons when the prompt shape fits."""
         if self.client is None or not self.owns_jid(jid):
             return None
-        lines = ["**Question:**", *(f"- {q.get('question', '')}" for q in questions)]
+        text = build_ask_user_text(questions)
+        view: DiscordAskUserView | None = None
+        if supports_interactive_ask_user(questions):
+            view = DiscordAskUserView(
+                channel=self,
+                jid=jid,
+                request_id=request_id,
+                questions=questions,
+            )
         try:
             channel = await self._resolve_channel(jid)
-            await self._send_text(channel, "\n".join(lines))
+            message = await channel.send(
+                text,
+                view=view,
+                allowed_mentions=discord.AllowedMentions.none(),
+                suppress_embeds=True,
+            )
         except discord.DiscordException as exc:
             logger.warning("Discord ask_user failed", err=str(exc))
-        return None
+            return None
+        if view is not None:
+            view.bind_message_id(str(message.id))
+            self._ask_user_views[str(message.id)] = view
+        return f"{_MESSAGE_ID_PREFIX}{message.id}"
 
     @staticmethod
     def _history_after(since: str) -> discord.Object:
@@ -334,10 +456,10 @@ class DiscordChannel:
             chat_jid=channel_jid,
             sender=str(author.id),
             sender_name=getattr(author, "display_name", None) or str(author),
-            content=message.content,
+            content=normalized_message_content(message),
             timestamp=timestamp or datetime.now(UTC).isoformat(),
             is_from_me=False,
-            metadata={"discord_message_id": str(message.id)},
+            metadata=build_message_metadata(message),
         )
 
     async def fetch_inbound_since(self, channel_jid: str, since: str) -> InboundFetchResult:

@@ -216,14 +216,20 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Profiles, Workspaces, and Jobs
 # ─────────────────────────────────────────────────────────────────────────────
+# These values apply to every workspace. Workspace and profile values override.
+# List fields (tags, directives, skills, mcp_servers) are unioned across tiers.
+# Scalar fields use most-specific-wins semantics. Capability maps merge by
+# capability ID, with more-specific tiers replacing less-specific entries.
+#
 # [universal]
 # tags = ["base"]
+# directives = ["base", "idle-escape"]
 # context_mode = "group"
 # access = "readwrite"   # "read", "write", "readwrite"
 # mode = "agent"         # "agent" or "chat"
 # trust = true
 # trigger = "mention"    # "mention" or "always"
-# allowed_users = ["owner"]  # user IDs, group refs, or "*"
+# allowed_users = ["owner"]  # owner, user names/IDs, group refs, or "*"
 
 # [profiles.pynchy-admin]
 # tags = ["pynchy", "pynchy-admin", "browser"]
@@ -271,6 +277,10 @@
 # [workspaces.research.mcp.playwright]
 # presets = ["dev-research"]                   # expands + merges with explicit values
 # allowed-origins = "internal.example.com"     # merged with preset domains
+#
+# Per-workspace capability exception:
+# [sandbox.research.capabilities."mcp.email.send"]
+# decision = "deny"                            # "allow", "deny", or "needs_human"
 
 # Daily Pynchy operations triage. Replace the chat ref with the explicit
 # Pynchy channel/topic that should receive the memo.
@@ -517,6 +527,8 @@
 #
 # List fields (directives, skills, mcp_servers) are unioned across tiers.
 # Scalar fields use most-specific-wins semantics.
+# Capability maps merge by capability ID. MCP tool capability IDs use:
+# mcp.<server-or-instance>.<tool-name>, with trailing wildcards supported.
 #
 # Directives use convention-based resolution: name "base" → directives/base.md.
 
@@ -526,6 +538,12 @@
 # repo_access = "owner/repo"
 # idle_terminate = false
 # trigger = "always"
+#
+# [sandbox_profiles.pynchy-dev.capabilities."mcp.email.*"]
+# decision = "needs_human"
+#
+# [sandbox_profiles.pynchy-dev.capabilities."mcp.email.preview"]
+# decision = "allow"      # exact match overrides the wildcard above
 
 # [profiles.ray-bench]
 # directives = ["ray-bench"]

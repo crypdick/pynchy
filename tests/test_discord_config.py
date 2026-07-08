@@ -83,6 +83,16 @@ def test_connections_config_exposes_discord():
     assert conns.get_connection("discord", "mybot").bot_token_env == "DISCORD_BOT_TOKEN"
 
 
+def test_discord_connection_ack_emoji_defaults_to_lobster():
+    cfg = DiscordConnectionConfig(bot_token_env="DISCORD_BOT_TOKEN")
+    assert cfg.processing_ack_emoji == "🦞"
+
+
+def test_discord_connection_ack_emoji_can_be_disabled():
+    cfg = DiscordConnectionConfig(bot_token_env="DISCORD_BOT_TOKEN", processing_ack_emoji=None)
+    assert cfg.processing_ack_emoji is None
+
+
 def test_get_connection_returns_none_for_missing_discord():
     conns = ConnectionsConfig()
     assert conns.get_connection("discord", "nope") is None
@@ -178,6 +188,32 @@ def test_settings_accept_discord_workspace_direct_ref_when_user_allowed():
     )
 
     assert settings.workspaces["discord-dm"].chat == "connection.discord.mybot.chat.direct.42"
+
+
+def test_settings_accept_discord_workspace_direct_name_ref_when_user_allowed():
+    settings = Settings(
+        connection=ConnectionsConfig(
+            discord={
+                "mybot": DiscordConnectionConfig(
+                    bot_token_env="DISCORD_BOT_TOKEN",
+                    dm_policy="allowlist",
+                    allow_from=["ricardo"],
+                    group_policy="disabled",
+                )
+            }
+        ),
+        profiles=_profiles(),
+        workspaces={
+            "discord-dm": WorkspaceConfig(
+                profile="admin",
+                chat="connection.discord.mybot.chat.direct.ricardo",
+            )
+        },
+    )
+
+    assert settings.workspaces["discord-dm"].chat == (
+        "connection.discord.mybot.chat.direct.ricardo"
+    )
 
 
 def test_settings_reject_discord_workspace_channel_ref_missing_config():

@@ -24,10 +24,10 @@ def parse_discord_chat_target(chat: str) -> DiscordChatTarget | None:
 
     Supported concrete targets:
     - ``<guild-key>.channels.<channel-key>`` for guild text channels and threads
-    - ``direct.<user-id>`` for DMs keyed by the user snowflake
+    - ``direct.<user-key>`` for DMs keyed by a user snowflake or configured name
     """
     parts = chat.split(".")
-    if len(parts) == 2 and parts[0] == "direct" and parts[1].isdecimal():
+    if len(parts) == 2 and parts[0] == "direct" and parts[1]:
         return DiscordChatTarget(kind="direct", target_id=parts[1])
     if len(parts) == 3 and parts[0] and parts[1] == "channels" and parts[2]:
         return DiscordChatTarget(kind="channel", guild_id=parts[0], target_id=parts[2])
@@ -46,14 +46,17 @@ def _direct_user_allowed(config: DiscordConnectionConfig, user_id: str) -> bool:
         return True
     if config.dm_policy == "disabled":
         return False
-    return any(entry == "*" or _strip_user_prefix(entry) == user_id for entry in config.allow_from)
+    return any(
+        entry == "*" or _strip_user_prefix(entry).casefold() == user_id.casefold()
+        for entry in config.allow_from
+    )
 
 
 def discord_chat_ref_error(config: DiscordConnectionConfig, chat: str) -> str | None:
     """Return an explanatory error when a Discord workspace chat ref is invalid."""
     target = parse_discord_chat_target(chat)
     if target is None:
-        return "must target direct.<user-id> or <guild>.channels.<channel> for Discord"
+        return "must target direct.<user-key> or <guild>.channels.<channel> for Discord"
 
     if target.kind == "direct":
         if not _direct_user_allowed(config, target.target_id):

@@ -39,6 +39,10 @@ class SecurityGate:
         """Evaluate a write operation. Delegates to SecurityPolicy."""
         return self._policy.evaluate_write(service, data)
 
+    def evaluate_capability(self, capability: str) -> PolicyDecision:
+        """Evaluate an explicit semantic capability."""
+        return self._policy.evaluate_capability(capability)
+
     def notify_file_access(self) -> None:
         """Forward file-access notification to the policy."""
         self._policy.notify_file_access()
@@ -111,24 +115,42 @@ def resolve_security(source_group: str, *, is_admin: bool = False) -> WorkspaceS
     ws_config = s.workspaces.get(source_group)
     resolve_workspace = getattr(s, "resolved_workspace_config", None)
     resolved = resolve_workspace(source_group) if callable(resolve_workspace) else None
-    contains_secrets = resolved.contains_secrets if resolved is not None else False
 
-    if ws_config is None or ws_config.security is None:
+    if ws_config is None:
+        contains_secrets = resolved.contains_secrets if resolved is not None else False
         return WorkspaceSecurity(contains_secrets=contains_secrets)
 
-    sec = ws_config.security
+    if resolved is None:
+        from pynchy.config.merge import merge_sandbox_config
+
+        profiles = getattr(s, "profiles", getattr(s, "sandbox_profiles", {}))
+        universal = getattr(s, "universal", getattr(s, "sandbox_universal", None))
+        profile = profiles.get(ws_config.profile) if ws_config.profile else None
+        resolved = merge_sandbox_config(universal, profile, ws_config)
+
+    sec = resolved.security
+    contains_secrets = resolved.contains_secrets
 
     # Build per-service trust configs from TOML
     services: dict[str, ServiceTrustConfig] = {}
-    for svc_name, svc_cfg in sec.services.items():
-        services[svc_name] = ServiceTrustConfig(
-            public_source=svc_cfg.public_source,
-            secret_data=svc_cfg.secret_data,
-            public_sink=svc_cfg.public_sink,
-            dangerous_writes=svc_cfg.dangerous_writes,
-        )
+    if sec is not None:
+        for svc_name, svc_cfg in sec.services.items():
+            services[svc_name] = ServiceTrustConfig(
+                public_source=svc_cfg.public_source,
+                secret_data=svc_cfg.secret_data,
+                public_sink=svc_cfg.public_sink,
+                dangerous_writes=svc_cfg.dangerous_writes,
+            )
+
+    from pynchy.types import CapabilityRule
+
+    capabilities = {
+        capability: CapabilityRule(decision=cfg.decision)
+        for capability, cfg in resolved.capabilities.items()
+    }
 
     return WorkspaceSecurity(
         services=services,
         contains_secrets=contains_secrets,
+        capabilities=capabilities,
     )

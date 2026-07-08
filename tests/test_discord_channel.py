@@ -7,13 +7,17 @@ history catch-up filtering) rather than the gateway glue in _lifecycle.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
+import pynchy.plugins.channels.discord._channel as discord_channel_module
 from pynchy.config.models import DiscordConnectionConfig
 from pynchy.plugins.channels.discord import DiscordChannel, DiscordChannelPlugin
+from pynchy.state import init_test_database, store_chat_metadata
 from pynchy.types import Channel, OutboundEvent, OutboundEventType
 
 
@@ -63,17 +67,55 @@ class _FakeStreamChannel:
         return self.messages[message_id]
 
 
+class _FakeTypingChannel:
+    def __init__(self) -> None:
+        self.typing_calls = 0
+
+    async def typing(self) -> None:
+        self.typing_calls += 1
+
+
+class _FakeUser:
+    def __init__(self, dm_channel: object | None = None) -> None:
+        self.dm_channel = dm_channel
+        self.create_dm_calls = 0
+        self.created_dm = dm_channel or _FakeSendChannel()
+
+    async def create_dm(self) -> object:
+        self.create_dm_calls += 1
+        self.dm_channel = self.created_dm
+        return self.created_dm
+
+
 class _FakeDiscordTextChannel:
     def __init__(self, channel_id: int, name: str) -> None:
         self.id = channel_id
         self.name = name
 
 
+class _FakeDiscordUser:
+    def __init__(self, user_id: int, name: str, *, display_name: str | None = None) -> None:
+        self.id = user_id
+        self.name = name
+        self.display_name = display_name or name
+        self.global_name = display_name
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class _FakeDiscordGuild:
-    def __init__(self, guild_id: int, name: str, channels: list[_FakeDiscordTextChannel]) -> None:
+    def __init__(
+        self,
+        guild_id: int,
+        name: str,
+        channels: list[_FakeDiscordTextChannel],
+        members: list[_FakeDiscordUser] | None = None,
+    ) -> None:
         self.id = guild_id
         self.name = name
         self.text_channels = channels
+        self.members = members or []
         self.created: list[str] = []
 
     async def create_text_channel(self, name: str, **kwargs) -> _FakeDiscordTextChannel:
@@ -84,14 +126,21 @@ class _FakeDiscordGuild:
 
 
 class _FakeDiscordClient:
-    def __init__(self, guilds: list[_FakeDiscordGuild]) -> None:
+    def __init__(
+        self, guilds: list[_FakeDiscordGuild], users: list[_FakeDiscordUser] | None = None
+    ) -> None:
         self.guilds = guilds
+        self.users = users or []
 
     def get_guild(self, guild_id: int) -> _FakeDiscordGuild | None:
         return next((guild for guild in self.guilds if guild.id == guild_id), None)
 
     async def fetch_guild(self, guild_id: int) -> _FakeDiscordGuild | None:
         return self.get_guild(guild_id)
+
+    def get_all_members(self):
+        for guild in self.guilds:
+            yield from guild.members
 
 
 def test_satisfies_channel_protocol():
@@ -139,6 +188,46 @@ async def test_resolve_chat_jid_maps_allowed_direct_ref():
     )
 
     assert await ch.resolve_chat_jid("direct.42") == "discord:direct:42"
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_jid_maps_allowed_direct_name_ref():
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env="X",
+            dm_policy="allowlist",
+            allow_from=["ricardo"],
+            group_policy="disabled",
+        ),
+        bot_token="token",
+        on_message=lambda jid, msg: None,
+        on_chat_metadata=lambda jid, ts, name: None,
+    )
+    user = _FakeDiscordUser(42, "rdecal", display_name="Ricardo")
+    ch.client = _FakeDiscordClient([], users=[user])
+
+    assert await ch.resolve_chat_jid("direct.ricardo") == "discord:direct:42"
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_jid_maps_allowed_direct_name_ref_from_chat_metadata():
+    await init_test_database()
+    await store_chat_metadata("discord:direct:42", "2026-07-08T00:00:00+00:00", "Ricardo")
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env="X",
+            dm_policy="allowlist",
+            allow_from=["ricardo"],
+            group_policy="disabled",
+        ),
+        bot_token="token",
+        on_message=lambda jid, msg: None,
+        on_chat_metadata=lambda jid, ts, name: None,
+    )
+
+    assert await ch.resolve_chat_jid("direct.ricardo") == "discord:direct:42"
 
 
 @pytest.mark.asyncio
@@ -278,6 +367,80 @@ async def test_send_reaction_ignores_non_discord_message_id():
     ch._resolve_channel = _resolve  # type: ignore[method-assign]
     # slack-style id must be a no-op, not an error
     await ch.send_reaction("discord:channel:1", "slack-123", "u1", "👀")
+
+
+@pytest.mark.asyncio
+async def test_resolve_channel_caches_direct_message_channels():
+    ch = _channel()
+
+    user = _FakeUser()
+    fetch_user = AsyncMock(return_value=user)
+    ch.client = SimpleNamespace(get_user=lambda _snowflake: None, fetch_user=fetch_user)
+
+    first = await ch._resolve_channel("discord:direct:42")
+    second = await ch._resolve_channel("discord:direct:42")
+
+    assert first is second
+    assert fetch_user.await_count == 1
+    assert user.create_dm_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_disconnect_clears_direct_message_cache():
+    ch = _channel()
+    ch._dm_channels["42"] = _FakeSendChannel()
+    ch.lifecycle.disconnect = AsyncMock()
+
+    await ch.disconnect()
+
+    assert ch._dm_channels == {}
+
+
+@pytest.mark.asyncio
+async def test_set_typing_starts_background_refresh_and_stops_cleanly():
+    ch = _channel()
+    ch.client = object()
+    fake = _FakeTypingChannel()
+
+    async def _resolve(_jid: str) -> _FakeTypingChannel:
+        return fake
+
+    ch._resolve_channel = _resolve  # type: ignore[method-assign]
+    await ch.set_typing("discord:channel:1", True)
+    await asyncio.sleep(0)
+
+    assert fake.typing_calls >= 1
+    assert "discord:channel:1" in ch._typing_tasks
+
+    await ch.set_typing("discord:channel:1", False)
+
+    assert "discord:channel:1" not in ch._typing_tasks
+
+
+@pytest.mark.asyncio
+async def test_typing_loop_refreshes_until_cancelled(monkeypatch: pytest.MonkeyPatch):
+    ch = _channel()
+    ch.client = object()
+    fake = _FakeTypingChannel()
+
+    async def _resolve(_jid: str) -> _FakeTypingChannel:
+        return fake
+
+    sleep_calls = 0
+
+    async def _fake_sleep(_seconds: float) -> None:
+        nonlocal sleep_calls
+        sleep_calls += 1
+        if sleep_calls >= 2:
+            raise asyncio.CancelledError
+
+    ch._resolve_channel = _resolve  # type: ignore[method-assign]
+    monkeypatch.setattr(discord_channel_module.asyncio, "sleep", _fake_sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await ch._typing_loop("discord:channel:1")
+
+    assert fake.typing_calls == 2
 
 
 @pytest.mark.asyncio

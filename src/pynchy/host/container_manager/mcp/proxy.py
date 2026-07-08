@@ -70,7 +70,7 @@ def create_proxy_app(
     *,
     trust_map: dict[str, dict[str, Any]] | None = None,
     approval_fn: ApprovalRequestFn | None = None,
-) -> web.Application:
+) -> Any:
     """Create the aiohttp proxy application.
 
     Args:
@@ -97,18 +97,18 @@ def create_proxy_app(
     return app
 
 
-async def _start_http_session(app: web.Application) -> None:
+async def _start_http_session(app: Any) -> None:
     app[_STATE_KEY].http_session = aiohttp.ClientSession()
 
 
-async def _cleanup_http_session(app: web.Application) -> None:
+async def _cleanup_http_session(app: Any) -> None:
     session = app[_STATE_KEY].http_session
     if session:
         await session.close()
         app[_STATE_KEY].http_session = None
 
 
-def _proxy_request(request: web.Request) -> _ProxyRequest | web.Response:
+def _proxy_request(request: Any) -> Any:
     try:
         invocation_ts = float(request.match_info["invocation_ts"])
     except (ValueError, TypeError):
@@ -122,7 +122,7 @@ def _proxy_request(request: web.Request) -> _ProxyRequest | web.Response:
     )
 
 
-def _backend_url(state: _ProxyState, proxy_request: _ProxyRequest) -> str | web.Response:
+def _backend_url(state: _ProxyState, proxy_request: _ProxyRequest) -> Any:
     backend_url = state.instance_urls.get(proxy_request.instance_id)
     if backend_url is not None:
         return backend_url
@@ -132,7 +132,7 @@ def _backend_url(state: _ProxyState, proxy_request: _ProxyRequest) -> str | web.
     )
 
 
-def _session_gate(proxy_request: _ProxyRequest) -> SecurityGate | web.Response:
+def _session_gate(proxy_request: _ProxyRequest) -> Any:
     gate = get_gate(proxy_request.group_folder, proxy_request.invocation_ts)
     if gate is not None:
         return gate
@@ -157,9 +157,27 @@ async def _maybe_gate_outbound_call(
     proxy_request: _ProxyRequest,
     gate: SecurityGate,
     rpc: dict[str, Any],
-) -> web.Response | None:
+) -> Any:
     if rpc.get("method") != "tools/call":
         return None
+
+    capability = _mcp_capability_id(proxy_request.instance_id, rpc)
+    capability_decision = gate.evaluate_capability(capability)
+    if not capability_decision.allowed:
+        return web.json_response(
+            {"error": f"Policy denied: {capability_decision.reason}"},
+            status=403,
+        )
+    if capability_decision.needs_human:
+        approval_response = await _await_human_approval(
+            state,
+            proxy_request.group_folder,
+            proxy_request.instance_id,
+            rpc,
+            capability_decision.reason or "",
+        )
+        if approval_response is not None:
+            return approval_response
 
     decision = gate.evaluate_write(proxy_request.instance_id, rpc.get("params", {}))
     if not decision.allowed:
@@ -176,7 +194,14 @@ async def _maybe_gate_outbound_call(
     )
 
 
-def _forwarded_headers(request: web.Request) -> dict[str, str]:
+def _mcp_capability_id(instance_id: str, rpc: dict[str, Any]) -> str:
+    tool_name = rpc.get("params", {}).get("name")
+    if not isinstance(tool_name, str) or not tool_name.strip():
+        return f"mcp.{instance_id}"
+    return f"mcp.{instance_id}.{tool_name.strip()}"
+
+
+def _forwarded_headers(request: Any) -> dict[str, str]:
     return {
         key: value
         for key, value in request.headers.items()
@@ -187,7 +212,7 @@ def _forwarded_headers(request: web.Request) -> dict[str, str]:
 async def _forward_to_backend(
     *,
     session: aiohttp.ClientSession,
-    request: web.Request,
+    request: Any,
     backend_url: str,
     tail: str,
     body: bytes,
@@ -195,7 +220,7 @@ async def _forward_to_backend(
     instance_id: str,
     gate: SecurityGate,
     group_folder: str,
-) -> web.Response:
+) -> Any:
     try:
         async with session.request(
             request.method,
@@ -224,7 +249,7 @@ async def _forward_to_backend(
         return web.json_response({"error": "MCP backend unavailable"}, status=502)
 
 
-async def _proxy_handler(request: web.Request) -> web.Response:
+async def _proxy_handler(request: Any) -> Any:
     """Route an MCP request through SecurityGate to the backend."""
     proxy_request = _proxy_request(request)
     if isinstance(proxy_request, web.Response):
@@ -265,7 +290,7 @@ async def _await_human_approval(
     instance_id: str,
     rpc: dict[str, Any],
     reason: str,
-) -> web.Response | None:
+) -> Any:
     """Block the HTTP connection until the human approves or denies.
 
     Returns a web.Response to send back to the client if denied/timed out,
