@@ -1,4 +1,4 @@
-"""Rebase worktrees onto main and notify agents of changes.
+"""Rebase worktrees onto main and notify agents of active-session changes.
 
 Extracted from sync.py — this is the "pull main INTO worktrees" direction,
 while sync.py handles "push worktree changes INTO main."
@@ -136,7 +136,8 @@ async def _notify_dirty_worktree(
 
 async def _rebase_and_notify(
     *,
-    notify: _NotifyFn,
+    conflict_notify: _NotifyFn,
+    success_notify: _NotifyFn | None,
     jid: str,
     group_folder: str,
     entry: Path,
@@ -146,7 +147,7 @@ async def _rebase_and_notify(
     head_before = run_git("rev-parse", "HEAD", cwd=entry).stdout.strip()
     rebase = run_git("rebase", main_branch, cwd=entry)
     if rebase.returncode != 0:
-        await notify(jid, _conflicted_rebase_notice())
+        await conflict_notify(jid, _conflicted_rebase_notice())
         logger.warning(
             "Worktree rebase conflict during broadcast",
             group=group_folder,
@@ -154,7 +155,8 @@ async def _rebase_and_notify(
         )
         return
 
-    await notify(jid, build_rebase_notice(entry, head_before, behind_count))
+    if success_notify:
+        await success_notify(jid, build_rebase_notice(entry, head_before, behind_count))
     logger.info("Auto-rebased worktree", group=group_folder)
 
 
@@ -167,26 +169,24 @@ async def host_notify_worktree_updates(
 
     For each worktree (excluding source):
     - Up to date: no notification
-    - Clean + rebase succeeds: notify "auto-rebased, run git log to see changes"
+    - Clean + rebase succeeds: system_notice only when an active session exists
     - Clean + rebase fails: DON'T abort — notify "conflicts, run git status to fix"
     - Dirty (uncommitted): skip rebase, notify "commit or stash, then sync"
 
     Notification routing depends on session state:
     - Active conversation (has message history, regardless of whether the
       container is currently running): system_notice → LLM sees it on next
-      wake, so it can act on conflicts or review changes.
+      wake, so it can act on conflicts or review cleanly rebased changes.
     - No conversation (session was cleared or never started — no message
-      history): host_message → human sees it in the channel, but the LLM
-      never does.
+      history): host_message → human sees actionable notices in the channel,
+      but the LLM never does. Clean rebase FYIs are suppressed instead of
+      being sent as host messages.
 
     This distinction matters because system_notices persist in the DB and
     become part of the conversation history. If a workspace has no ongoing
-    conversation, rebase notices accumulate and pollute the start of the
-    next session with irrelevant "main was updated 5 times" spam. The agent
-    gets current worktree state from ephemeral system_notices in
-    agent_runner.py at container launch — those are always fresh. Persistent
-    system_notice messages should only be stored when the agent has an
-    active conversation that the notification is relevant to.
+    conversation, stale notices pollute the start of the next session. The
+    agent gets current worktree state from ephemeral system_notices in
+    agent_runner.py at container launch — those are always fresh.
     """
     if not repo_ctx.worktrees_dir.exists():
         return
@@ -219,8 +219,10 @@ async def host_notify_worktree_updates(
             )
             continue
 
+        clean_rebase_notify = notify if deps.has_active_session(group_folder) else None
         await _rebase_and_notify(
-            notify=notify,
+            conflict_notify=notify,
+            success_notify=clean_rebase_notify,
             jid=jid,
             group_folder=group_folder,
             entry=entry,

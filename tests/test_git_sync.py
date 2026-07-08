@@ -193,8 +193,8 @@ class TestHostNotifyWorktreeUpdates:
         return deps
 
     @pytest.mark.asyncio
-    async def test_notifies_behind_worktrees(self, git_env: dict):
-        """Worktrees behind main get rebased and notified."""
+    async def test_active_session_notifies_behind_worktrees(self, git_env: dict):
+        """Clean worktrees behind main get rebased and notify active sessions."""
         project = git_env["project"]
         repo_ctx = git_env["repo_ctx"]
 
@@ -222,8 +222,8 @@ class TestHostNotifyWorktreeUpdates:
 
         await host_notify_worktree_updates(exclude_group=None, deps=deps, repo_ctx=repo_ctx)
 
-        # Should have sent a notification via system_notice
         deps.broadcast_system_notice.assert_called_once()
+        deps.broadcast_host_message.assert_not_called()
         call_args = deps.broadcast_system_notice.call_args
         assert "jid-1@g.us" in call_args[0]
         msg = call_args[0][1]
@@ -231,10 +231,11 @@ class TestHostNotifyWorktreeUpdates:
         # Single commit: shows full commit message instead of --oneline hint
         assert "advance main" in msg
         assert "--oneline" not in msg
+        assert (git_env["worktrees_dir"] / "agent-1" / "new.txt").read_text() == "main update"
 
     @pytest.mark.asyncio
-    async def test_multi_commit_shows_oneline_hint(self, git_env: dict):
-        """Multiple commits show --oneline hint instead of commit message."""
+    async def test_multi_commit_active_session_shows_oneline_hint(self, git_env: dict):
+        """Multiple clean commits notify active sessions with an oneline hint."""
         project = git_env["project"]
         repo_ctx = git_env["repo_ctx"]
 
@@ -265,11 +266,14 @@ class TestHostNotifyWorktreeUpdates:
         await host_notify_worktree_updates(exclude_group=None, deps=deps, repo_ctx=repo_ctx)
 
         deps.broadcast_system_notice.assert_called_once()
+        deps.broadcast_host_message.assert_not_called()
         msg = deps.broadcast_system_notice.call_args[0][1]
         assert "Auto-rebased 2 commit(s)" in msg
         assert "--oneline" in msg
         # Should show file stats
         assert "file" in msg.lower()
+        assert (git_env["worktrees_dir"] / "agent-1" / "file1.txt").read_text() == "first"
+        assert (git_env["worktrees_dir"] / "agent-1" / "file2.txt").read_text() == "second"
 
     @pytest.mark.asyncio
     async def test_skips_excluded_group(self, git_env: dict):
@@ -397,8 +401,8 @@ class TestHostNotifyWorktreeUpdates:
         assert "Auto-rebased 1 commit(s)" in msg
 
     @pytest.mark.asyncio
-    async def test_no_conversation_uses_host_message(self, git_env: dict):
-        """Workspaces with no ongoing conversation get host_message — human sees it, LLM doesn't."""
+    async def test_no_conversation_clean_rebase_is_silent(self, git_env: dict):
+        """Clean rebase FYIs do not get turned into host-message DMs."""
         project = git_env["project"]
         repo_ctx = git_env["repo_ctx"]
 
@@ -425,10 +429,48 @@ class TestHostNotifyWorktreeUpdates:
 
         await host_notify_worktree_updates(exclude_group=None, deps=deps, repo_ctx=repo_ctx)
 
+        deps.broadcast_host_message.assert_not_called()
+        deps.broadcast_system_notice.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_conversation_conflict_still_uses_host_message(self, git_env: dict):
+        """Actionable rebase conflicts still notify humans when no session is active."""
+        project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
+
+        result = ensure_worktree("agent-1", repo_ctx)
+        wt_path = result.path
+        (wt_path / "README.md").write_text("agent version")
+        _git(wt_path, "add", "README.md")
+        _git(wt_path, "config", "user.email", "test@test.com")
+        _git(wt_path, "config", "user.name", "Test")
+        _git(wt_path, "commit", "-m", "agent edit README")
+
+        (project / "README.md").write_text("main version")
+        _git(project, "add", "README.md")
+        _git(project, "commit", "-m", "main edit README")
+
+        from pynchy.types import WorkspaceProfile
+
+        deps = self._make_deps(
+            {
+                "jid-1@g.us": WorkspaceProfile(
+                    jid="jid-1@g.us",
+                    name="Agent 1",
+                    folder="agent-1",
+                    trigger="@test",
+                    added_at="2024-01-01",
+                ),
+            },
+            active_sessions=set(),
+        )
+
+        await host_notify_worktree_updates(exclude_group=None, deps=deps, repo_ctx=repo_ctx)
+
         deps.broadcast_host_message.assert_called_once()
         deps.broadcast_system_notice.assert_not_called()
         msg = deps.broadcast_host_message.call_args[0][1]
-        assert "Auto-rebased 1 commit(s)" in msg
+        assert "rebase conflicts" in msg
 
     @pytest.mark.asyncio
     async def test_dirty_worktree_active_session_uses_system_notice(self, git_env: dict):
