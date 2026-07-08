@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -154,6 +155,49 @@ async def test_clean_successful_turn_starts_temporal_learning_review_after_curso
     assert args[5].final_answer == "Remembered."
     assert args[5].tool_counts == {"Bash": 1}
     assert deps.last_agent_timestamp["g@g.us"] == "new-ts"
+
+
+@pytest.mark.asyncio
+async def test_enabled_learning_logs_capture_attempt(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    group = _make_group()
+    deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
+    msg = _make_message("remember this", id="msg-42", timestamp="new-ts")
+    caplog.set_level(logging.INFO)
+
+    async def _run_agent(_group, _jid, _msgs, on_output=None, *_args, **_kwargs):
+        if on_output:
+            await on_output(ContainerOutput(status="success", type="result", result="Done."))
+        return "success"
+
+    deps.run_agent = AsyncMock(side_effect=_run_agent)
+
+    with (
+        patch(_P_SETTINGS) as settings,
+        patch(_P_MSGS_SINCE, new_callable=AsyncMock, return_value=[msg]),
+        _patch_intercept(),
+        _patch_fmt_sdk(),
+        patch(_P_LEARNING_SETTINGS) as learning_settings,
+        patch(_P_LEARNING_PATH_SETTINGS) as learning_path_settings,
+        patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock),
+        patch(_P_BG_MERGE),
+    ):
+        enabled_settings = _settings_mock(
+            tmp_path,
+            learning=LearningConfig(
+                enabled=True,
+                obsidian=ObsidianLearningConfig(vault_root=str(tmp_path / "vault")),
+            ),
+        )
+        settings.return_value = enabled_settings
+        learning_settings.return_value = enabled_settings
+        learning_path_settings.return_value = enabled_settings
+        result = await process_group_messages(deps, "g@g.us")
+
+    assert result is True
+    assert "Completed-turn learning capture finished" in caplog.text
+    assert "learning-" in caplog.text
 
 
 @pytest.mark.asyncio

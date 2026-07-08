@@ -85,6 +85,13 @@ async def start_completed_turn_learning_review(
         return None
 
     try:
+        logger.info(
+            "Starting completed-turn learning capture",
+            group=group.name,
+            chat_jid=chat_jid,
+            message_count=len(missed_messages),
+            final_cursor=final_cursor,
+        )
         learning_messages = await messages_for_learning_packet(
             chat_jid=chat_jid,
             group=group,
@@ -94,13 +101,20 @@ async def start_completed_turn_learning_review(
         )
         if learning_messages is None:
             return None
-        return await learning_packets.start_learning_review_workflow(
+        job_id = await learning_packets.start_learning_review_workflow(
             chat_jid=chat_jid,
             group=group,
             missed_messages=learning_messages,
             final_cursor=final_cursor,
             summary=summary,
         )
+        logger.info(
+            "Completed-turn learning capture finished",
+            group=group.name,
+            chat_jid=chat_jid,
+            job_id=job_id,
+        )
+        return job_id
     except Exception as exc:  # allow: exception-handling - learning must not fail user turns
         logger.exception(
             "Failed to capture completed turn learning packet",
