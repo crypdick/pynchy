@@ -110,60 +110,9 @@ def _sync_skills(
     skills_dst = session_dir / "skills"
     skills_dst.mkdir(parents=True, exist_ok=True)
 
-    # Copy built-in skills
     skills_src = s.project_root / "src" / "pynchy" / "agent" / "skills"
-    if skills_src.exists():
-        for skill_dir in skills_src.iterdir():
-            if not skill_dir.is_dir():
-                continue
-            name, tier = parse_skill_tier(skill_dir)
-            if not is_skill_selected(name, tier, workspace_skills):
-                logger.debug("Skipping skill (not selected)", skill=name, tier=tier)
-                continue
-            dst_dir = skills_dst / skill_dir.name
-            if _is_learned_skill_copy(dst_dir):
-                shutil.rmtree(dst_dir)
-            _copy_direct_skill_files(skill_dir, dst_dir)
-
-    # Copy plugin skills
-    if plugin_manager:
-        # Hook returns list of lists (one list per plugin)
-        skill_path_lists = plugin_manager.hook.pynchy_skill_paths()
-        for skill_paths in skill_path_lists:
-            try:
-                for skill_path_str in skill_paths:
-                    skill_path = Path(skill_path_str)
-                    if not skill_path.exists() or not skill_path.is_dir():
-                        logger.warning(
-                            "Plugin skill path does not exist or is not a directory",
-                            path=str(skill_path),
-                        )
-                        continue
-
-                    name, tier = parse_skill_tier(skill_path)
-                    if not is_skill_selected(name, tier, workspace_skills):
-                        logger.debug("Skipping plugin skill (not selected)", skill=name, tier=tier)
-                        continue
-
-                    dst_dir = skills_dst / skill_path.name
-                    if _is_learned_skill_copy(dst_dir):
-                        shutil.rmtree(dst_dir)
-                    if dst_dir.exists():
-                        raise ValueError(
-                            f"Skill name collision: skill '{skill_path.name}' conflicts with "
-                            f"an existing skill. Rename the plugin skill directory to "
-                            f"avoid shadowing built-in or other plugin skills."
-                        )
-
-                    shutil.copytree(skill_path, dst_dir)
-                    logger.info(
-                        "Synced plugin skill",
-                        skill=skill_path.name,
-                    )
-            except ValueError:
-                raise  # Re-raise name collisions — these must not be silenced
-            except (OSError, TypeError):
-                logger.exception("Failed to sync plugin skills")
+    _sync_builtin_skills(skills_src, skills_dst, workspace_skills)
+    _sync_plugin_skills(skills_dst, plugin_manager, workspace_skills)
 
     desired_learned_skill_names = _selected_learned_skill_names(
         learned_skill_paths,
@@ -175,6 +124,94 @@ def _sync_skills(
         _sync_learned_skills(skills_dst, learned_skill_paths, workspace_skills)
 
     sync_onecli_gateway_skill(skills_dst)
+
+
+def _sync_builtin_skills(
+    skills_src: Path,
+    skills_dst: Path,
+    workspace_skills: list[str] | None,
+) -> None:
+    if not skills_src.exists():
+        return
+
+    for skill_dir in skills_src.iterdir():
+        if not skill_dir.is_dir():
+            continue
+        _sync_builtin_skill_dir(skill_dir, skills_dst, workspace_skills)
+
+
+def _sync_builtin_skill_dir(
+    skill_dir: Path,
+    skills_dst: Path,
+    workspace_skills: list[str] | None,
+) -> None:
+    name, tier = parse_skill_tier(skill_dir)
+    if not is_skill_selected(name, tier, workspace_skills):
+        logger.debug("Skipping skill (not selected)", skill=name, tier=tier)
+        return
+
+    dst_dir = skills_dst / skill_dir.name
+    if _is_learned_skill_copy(dst_dir):
+        shutil.rmtree(dst_dir)
+    _copy_direct_skill_files(skill_dir, dst_dir)
+
+
+def _sync_plugin_skills(
+    skills_dst: Path,
+    plugin_manager: pluggy.PluginManager | None,
+    workspace_skills: list[str] | None,
+) -> None:
+    if plugin_manager is None:
+        return
+
+    for skill_paths in plugin_manager.hook.pynchy_skill_paths():
+        _sync_plugin_skill_paths(skills_dst, skill_paths, workspace_skills)
+
+
+def _sync_plugin_skill_paths(
+    skills_dst: Path,
+    skill_paths: list[Any],
+    workspace_skills: list[str] | None,
+) -> None:
+    for skill_path_str in skill_paths:
+        _sync_plugin_skill_path(skills_dst, skill_path_str, workspace_skills)
+
+
+def _sync_plugin_skill_path(
+    skills_dst: Path,
+    skill_path_str: Any,
+    workspace_skills: list[str] | None,
+) -> None:
+    try:
+        skill_path = Path(skill_path_str)
+        if not skill_path.exists() or not skill_path.is_dir():
+            logger.warning(
+                "Plugin skill path does not exist or is not a directory",
+                path=str(skill_path),
+            )
+            return
+
+        name, tier = parse_skill_tier(skill_path)
+        if not is_skill_selected(name, tier, workspace_skills):
+            logger.debug("Skipping plugin skill (not selected)", skill=name, tier=tier)
+            return
+
+        dst_dir = skills_dst / skill_path.name
+        if _is_learned_skill_copy(dst_dir):
+            shutil.rmtree(dst_dir)
+        if dst_dir.exists():
+            raise ValueError(
+                f"Skill name collision: skill '{skill_path.name}' conflicts with "
+                f"an existing skill. Rename the plugin skill directory to "
+                f"avoid shadowing built-in or other plugin skills."
+            )
+
+        shutil.copytree(skill_path, dst_dir)
+        logger.info("Synced plugin skill", skill=skill_path.name)
+    except ValueError:
+        raise
+    except (OSError, TypeError):
+        logger.exception("Failed to sync plugin skill", path=repr(skill_path_str))
 
 
 def _copy_direct_skill_files(skill_dir: Path, dst_dir: Path) -> None:

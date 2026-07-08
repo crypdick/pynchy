@@ -88,6 +88,68 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
 ]
 
 
+def _set_import_event_loop() -> asyncio.AbstractEventLoop | None:
+    """Install a temporary loop for import-time `get_event_loop()` calls."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            asyncio.set_event_loop(loop)
+        return loop
+    return None
+
+
+def _clear_import_event_loop(loop: asyncio.AbstractEventLoop | None) -> None:
+    """Close the temporary import loop if one was installed."""
+    if loop is None:
+        return
+    loop.close()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        asyncio.set_event_loop(None)
+
+
+def _register_builtin_plugins(pm: pluggy.PluginManager, settings: Any) -> None:
+    """Register built-in plugins from the static registry."""
+    for module_path, class_name, config_key in _BUILTIN_PLUGIN_SPECS:
+        plugin_cfg = settings.plugins.get(config_key)
+        if plugin_cfg is not None and not plugin_cfg.enabled:
+            logger.info("Plugin disabled via config", plugin=config_key)
+            continue
+        try:
+            mod = importlib.import_module(module_path)
+            cls = getattr(mod, class_name)
+            pm.register(cls(), name=f"builtin-{config_key}")
+            logger.info("Registered built-in plugin", name=config_key)
+        except ImportError:
+            logger.debug("Plugin skipped (optional dependency missing)", plugin=config_key)
+        except Exception:
+            logger.exception("Failed to load built-in plugin", plugin=config_key)
+
+
+def _unregister_class_plugins(pm: pluggy.PluginManager) -> None:
+    """Drop invalid entrypoint registrations that provide classes, not instances."""
+    for plugin in list(pm.get_plugins()):
+        if not isinstance(plugin, type):
+            continue
+        plugin_name = pm.get_name(plugin) or plugin.__name__
+        pm.unregister(plugin=plugin)
+        logger.warning(
+            "Unregistered invalid class-based plugin object",
+            plugin=plugin_name,
+        )
+
+
+def _log_plugin_summary(pm: pluggy.PluginManager, discovered: int) -> None:
+    """Emit discovery and final plugin inventory logs."""
+    if discovered:
+        logger.info("Discovered third-party plugins", count=discovered)
+    plugin_names = [pm.get_name(plugin) for plugin in pm.get_plugins()]
+    logger.info("Plugin manager ready", plugins=plugin_names)
+
+
 def get_plugin_manager() -> pluggy.PluginManager:
     """Create and configure the plugin manager.
 
@@ -100,83 +162,19 @@ def get_plugin_manager() -> pluggy.PluginManager:
     pm = pluggy.PluginManager("pynchy")
     pm.add_hookspecs(PynchySpec)
 
-    s = get_settings()
-
-    # Some plugins (e.g. neonize, used by the WhatsApp channel) call
-    # asyncio.get_event_loop() at import time.  Ensure a loop exists so the
-    # import succeeds even when called from a sync context or a pytest-xdist
-    # worker thread that hasn't set one up yet.  The temp loop wraps both
-    # built-in registration (which triggers imports) and entrypoint discovery.
-    #
-    # We always create and set our own temp loop (when no loop is running) so
-    # that any import-time get_event_loop() calls return it instead of
-    # auto-creating orphan loops that never get closed.
-    #
-    # Known neonize bug: neonize/aioze/events.py unconditionally creates a
-    # loop at import time via `event_global_loop = asyncio.new_event_loop()`.
-    # This loop is used internally for its Go→Python FFI bridge and is never
-    # closed.  It causes a ResourceWarning under `pytest -W all` but is
-    # harmless at runtime and cannot be fixed on our side without patching
-    # neonize.  The temp loop below does NOT address that loop — it only
-    # prevents the *second* orphan from neonize/aioze/client.py line 203
-    # (`loop = get_event_loop()`), which in Python 3.12+ would auto-create
-    # yet another loop if no default is set.
-    _tmp_loop = None
+    settings = get_settings()
+    # Some plugins call `asyncio.get_event_loop()` at import time. Install a
+    # temporary default loop so imports in sync/xdist contexts don't auto-create
+    # orphan loops we never close ourselves.
+    tmp_loop = _set_import_event_loop()
     try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        _tmp_loop = asyncio.new_event_loop()
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            asyncio.set_event_loop(_tmp_loop)
+        _register_builtin_plugins(pm, settings)
+        discovered = pm.load_setuptools_entrypoints("pynchy")
+    finally:
+        _clear_import_event_loop(tmp_loop)
 
-    # Register built-in plugins from the static registry.
-    for module_path, class_name, config_key in _BUILTIN_PLUGIN_SPECS:
-        # Check if plugin is disabled via config.toml [plugins.<key>]
-        plugin_cfg = s.plugins.get(config_key)
-        if plugin_cfg is not None and not plugin_cfg.enabled:
-            logger.info("Plugin disabled via config", plugin=config_key)
-            continue
-
-        try:
-            mod = importlib.import_module(module_path)
-            cls = getattr(mod, class_name)
-            pm.register(cls(), name=f"builtin-{config_key}")
-            logger.info("Registered built-in plugin", name=config_key)
-        except ImportError:
-            # Graceful skip for plugins with optional deps (whatsapp, slack, caldav)
-            logger.debug("Plugin skipped (optional dependency missing)", plugin=config_key)
-        except Exception:
-            logger.exception("Failed to load built-in plugin", plugin=config_key)
-
-    # Discover and register third-party plugins from entry points
-    # Plugins register via "pynchy" group in their pyproject.toml
-    discovered = pm.load_setuptools_entrypoints("pynchy")
-
-    # Close the temporary loop now that imports are done.  Leaving it open
-    # leaks a ResourceWarning and can block interpreter shutdown.
-    if _tmp_loop is not None:
-        _tmp_loop.close()
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            asyncio.set_event_loop(None)
-    if discovered:
-        logger.info("Discovered third-party plugins", count=discovered)
-
-    # Defensive cleanup: some entrypoint loaders can return plugin classes
-    # instead of instances, which then fail hook invocation with missing `self`.
-    for plugin in list(pm.get_plugins()):
-        if isinstance(plugin, type):
-            plugin_name = pm.get_name(plugin) or plugin.__name__
-            pm.unregister(plugin=plugin)
-            logger.warning(
-                "Unregistered invalid class-based plugin object",
-                plugin=plugin_name,
-            )
-
-    # Log plugin summary
-    plugin_names = [pm.get_name(p) for p in pm.get_plugins()]
-    logger.info("Plugin manager ready", plugins=plugin_names)
+    _unregister_class_plugins(pm)
+    _log_plugin_summary(pm, discovered)
 
     return pm
 

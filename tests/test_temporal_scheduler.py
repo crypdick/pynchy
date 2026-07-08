@@ -547,7 +547,7 @@ class TestTemporalSchedulerRuntime:
             async def __aenter__(self):
                 return self
 
-            async def __aexit__(self, exc_type, exc, tb):
+            async def __aexit__(self, exc_type, exc, _tb):
                 return None
 
         async def fake_connect(*args, **kwargs):
@@ -588,7 +588,7 @@ class TestTemporalSchedulerRuntime:
             async def __aenter__(self):
                 return self
 
-            async def __aexit__(self, exc_type, exc, tb):
+            async def __aexit__(self, exc_type, exc, _tb):
                 return None
 
         async def fake_connect(*args, **kwargs):

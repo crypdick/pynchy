@@ -313,6 +313,33 @@ class DiscordChannel:
             logger.warning("Discord ask_user failed", err=str(exc))
         return None
 
+    @staticmethod
+    def _history_after(since: str) -> discord.Object:
+        return discord.Object(id=discord.utils.time_snowflake(datetime.fromisoformat(since)))
+
+    @staticmethod
+    def _history_high_water_mark(message: Any, current: str) -> str:
+        timestamp = message.created_at.isoformat() if message.created_at else ""
+        if timestamp > current:
+            return timestamp
+        return current
+
+    def _history_message(self, channel_jid: str, message: Any) -> NewMessage | None:
+        author = message.author
+        if getattr(author, "bot", False) or str(author.id) == self.bot_user_id:
+            return None
+        timestamp = message.created_at.isoformat() if message.created_at else ""
+        return NewMessage(
+            id=f"{_MESSAGE_ID_PREFIX}{message.id}",
+            chat_jid=channel_jid,
+            sender=str(author.id),
+            sender_name=getattr(author, "display_name", None) or str(author),
+            content=message.content,
+            timestamp=timestamp or datetime.now(UTC).isoformat(),
+            is_from_me=False,
+            metadata={"discord_message_id": str(message.id)},
+        )
+
     async def fetch_inbound_since(self, channel_jid: str, since: str) -> InboundFetchResult:
         if self.client is None or not self.owns_jid(channel_jid) or not since:
             return InboundFetchResult(messages=[])
@@ -321,26 +348,12 @@ class DiscordChannel:
         except discord.DiscordException:
             return InboundFetchResult(messages=[])
 
-        after = discord.Object(id=discord.utils.time_snowflake(datetime.fromisoformat(since)))
+        after = self._history_after(since)
         messages: list[NewMessage] = []
         high_water_mark = ""
         async for message in channel.history(after=after, limit=1000, oldest_first=True):
-            timestamp = message.created_at.isoformat() if message.created_at else ""
-            if timestamp > high_water_mark:
-                high_water_mark = timestamp
-            author = message.author
-            if getattr(author, "bot", False) or str(author.id) == self.bot_user_id:
-                continue
-            messages.append(
-                NewMessage(
-                    id=f"{_MESSAGE_ID_PREFIX}{message.id}",
-                    chat_jid=channel_jid,
-                    sender=str(author.id),
-                    sender_name=getattr(author, "display_name", None) or str(author),
-                    content=message.content,
-                    timestamp=timestamp or datetime.now(UTC).isoformat(),
-                    is_from_me=False,
-                    metadata={"discord_message_id": str(message.id)},
-                )
-            )
+            high_water_mark = self._history_high_water_mark(message, high_water_mark)
+            inbound = self._history_message(channel_jid, message)
+            if inbound is not None:
+                messages.append(inbound)
         return InboundFetchResult(messages=messages, high_water_mark=high_water_mark)

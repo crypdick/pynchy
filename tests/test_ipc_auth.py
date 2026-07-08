@@ -11,6 +11,7 @@ from pynchy.host.container_manager.ipc import dispatch
 from pynchy.state import (
     create_host_job,
     create_task,
+    get_all_host_jobs,
     get_all_tasks,
     get_host_job_by_id,
     get_task_by_id,
@@ -527,6 +528,22 @@ class TestScheduleTaskTypes:
                 "prompt": "bad once",
                 "schedule_type": "once",
                 "schedule_value": "not-a-date",
+                "targetGroup": "other-group",
+            },
+            "admin-1",
+            True,
+            deps,
+        )
+
+        assert len(await get_all_tasks()) == 0
+
+    async def test_rejects_unknown_schedule_type(self, deps):
+        await dispatch(
+            {
+                "type": "schedule_task",
+                "prompt": "bad type",
+                "schedule_type": "weekly-ish",
+                "schedule_value": "every friday",
                 "targetGroup": "other-group",
             },
             "admin-1",
@@ -1264,8 +1281,6 @@ class TestScheduleHostJobMissingFields:
             True,
             deps,
         )
-        from pynchy.state import get_all_host_jobs
-
         assert len(await get_all_host_jobs()) == 0
 
     async def test_missing_command_creates_no_job(self, deps):
@@ -1280,6 +1295,20 @@ class TestScheduleHostJobMissingFields:
             True,
             deps,
         )
-        from pynchy.state import get_all_host_jobs
+        assert len(await get_all_host_jobs()) == 0
+
+    async def test_rejects_unknown_schedule_type(self, deps):
+        await dispatch(
+            {
+                "type": "schedule_host_job",
+                "name": "bad-type",
+                "command": "echo hi",
+                "schedule_type": "weekly-ish",
+                "schedule_value": "every friday",
+            },
+            "admin-1",
+            True,
+            deps,
+        )
 
         assert len(await get_all_host_jobs()) == 0

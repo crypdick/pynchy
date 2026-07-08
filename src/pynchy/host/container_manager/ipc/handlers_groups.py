@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from pathlib import Path
+from typing import Any, Protocol, cast
 
 from croniter import croniter
 
 from pynchy.config import get_settings
 from pynchy.config.models import ChatRefStr
+from pynchy.config.settings import Settings
 from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.host.container_manager.ipc.protocol import (
     CreatePeriodicAgentRequest,
@@ -20,6 +24,21 @@ from pynchy.logger import logger
 from pynchy.state import create_task
 from pynchy.types import ScheduledTask, WorkspaceProfile
 from pynchy.utils import compute_next_run
+
+
+class _CreateGroupChannel(Protocol):
+    name: str
+
+    async def create_group(self, name: str) -> str | None: ...
+
+
+@dataclass(frozen=True)
+class _PeriodicAgentSetup:
+    settings: Settings
+    command_center: str
+    group_dir: Path
+    chat_name: str
+    chat_ref: ChatRefStr
 
 
 async def _handle_register_group(
@@ -110,22 +129,13 @@ async def _handle_create_periodic_agent(
     from pynchy.config.models import WorkspaceConfig
     from pynchy.host.orchestrator.workspace_config import add_workspace_to_toml
 
-    s = get_settings()
-
-    group_dir = s.groups_dir / request.name
-    group_dir.mkdir(parents=True, exist_ok=True)
-
-    command_center = s.command_center.connection
-    if not command_center:
-        logger.warning("create_periodic_agent requires command_center.connection")
+    setup = _periodic_agent_setup(request)
+    if setup is None:
         return
-
-    chat_name = request.chat or request.name
-    chat_ref = ChatRefStr(f"{command_center}.chat.{chat_name}")
 
     config = WorkspaceConfig(
         name=request.name,
-        chat=chat_ref,
+        chat=setup.chat_ref,
         schedule=request.schedule,
         prompt=request.prompt,
         context_mode=request.context_mode,
@@ -133,19 +143,11 @@ async def _handle_create_periodic_agent(
     )
     add_workspace_to_toml(request.name, config)
 
-    claude_md_path = group_dir / "CLAUDE.md"
+    claude_md_path = setup.group_dir / "CLAUDE.md"
     if not claude_md_path.exists():
         claude_md_path.write_text(request.claude_md)
 
-    channels = deps.channels()
-    channel = next(
-        (
-            ch
-            for ch in channels
-            if getattr(ch, "name", None) == command_center and hasattr(ch, "create_group")
-        ),
-        None,
-    )
+    channel = _command_center_channel(deps.channels(), setup.command_center)
     if channel is None:
         logger.warning(
             "Command center does not support create_group, periodic agent created without chat"
@@ -153,18 +155,25 @@ async def _handle_create_periodic_agent(
         return
 
     agent_display_name = request.name.replace("-", " ").title()
-    jid = await channel.create_group(chat_name)
+    jid = _valid_jid(await channel.create_group(setup.chat_name))
+    if jid is None:
+        logger.warning(
+            "Command center returned invalid jid for periodic agent",
+            name=request.name,
+            chat=setup.chat_name,
+        )
+        return
 
     profile = WorkspaceProfile(
         jid=jid,
         name=agent_display_name,
         folder=request.name,
-        trigger=f"@{s.agent.name}",
+        trigger=f"@{setup.settings.agent.name}",
         added_at=datetime.now(UTC).isoformat(),
     )
     deps.register_workspace(profile)
 
-    next_run = compute_next_run("cron", request.schedule, s.timezone)
+    next_run = compute_next_run("cron", request.schedule, setup.settings.timezone)
     task_id = f"periodic-{request.name}-{uuid.uuid4().hex[:8]}"
 
     await create_task(
@@ -189,6 +198,48 @@ async def _handle_create_periodic_agent(
         task_id=task_id,
         jid=jid,
     )
+
+
+def _periodic_agent_setup(request: CreatePeriodicAgentRequest) -> _PeriodicAgentSetup | None:
+    settings = get_settings()
+    group_dir = settings.groups_dir / request.name
+    group_dir.mkdir(parents=True, exist_ok=True)
+
+    command_center = settings.command_center.connection
+    if not command_center:
+        logger.warning("create_periodic_agent requires command_center.connection")
+        return None
+
+    chat_name = request.chat or request.name
+    return _PeriodicAgentSetup(
+        settings=settings,
+        command_center=command_center,
+        group_dir=group_dir,
+        chat_name=chat_name,
+        chat_ref=ChatRefStr(f"{command_center}.chat.{chat_name}"),
+    )
+
+
+def _command_center_channel(
+    channels: Sequence[object], command_center: str
+) -> _CreateGroupChannel | None:
+    return next(
+        (
+            cast(_CreateGroupChannel, channel)
+            for channel in channels
+            if getattr(channel, "name", None) == command_center and hasattr(channel, "create_group")
+        ),
+        None,
+    )
+
+
+def _valid_jid(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    return stripped
 
 
 register("register_group", _handle_register_group)

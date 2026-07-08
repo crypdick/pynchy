@@ -19,13 +19,13 @@ from dataclasses import replace
 from typing import Any
 
 from pynchy.config.merge import ResolvedSandboxConfig, merge_sandbox_config
-from pynchy.config.models import OwnerConfig, WorkspaceConfig
+from pynchy.config.models import OwnerConfig, SandboxProfileConfig, WorkspaceConfig
 from pynchy.config.refs import (
     channel_platform_from_name,
     connection_ref_from_parts,
     parse_chat_ref,
 )
-from pynchy.config.settings import get_settings
+from pynchy.config.settings import Settings, get_settings
 from pynchy.types import NewMessage
 
 # The fields that participate in the connection/chat override cascade
@@ -59,6 +59,36 @@ def resolve_workspace_connection_name(workspace_name: str) -> str | None:
     return connection_ref_from_parts(chat_ref.platform, chat_ref.name)
 
 
+def _workspace_profile(
+    settings: Settings, workspace: WorkspaceConfig | None
+) -> SandboxProfileConfig | None:
+    if workspace is None or not workspace.profile:
+        return None
+    return settings.sandbox_profiles.get(workspace.profile)
+
+
+def _connection_and_chat_overrides(
+    settings: Settings, workspace: WorkspaceConfig | None
+) -> dict[str, Any]:
+    if workspace is None:
+        return {}
+    chat_ref = parse_chat_ref(workspace.chat)
+    if chat_ref is None:
+        return {}
+
+    conn_cfg = settings.connection.get_connection(chat_ref.platform, chat_ref.name)
+    if conn_cfg is None:
+        return {}
+
+    overrides: dict[str, Any] = {}
+    if conn_cfg.security:
+        _collect_overrides(overrides, conn_cfg.security)
+    chat_cfg = conn_cfg.chat.get(chat_ref.chat)
+    if chat_cfg and chat_cfg.security:
+        _collect_overrides(overrides, chat_cfg.security)
+    return overrides
+
+
 def resolve_channel_config(
     workspace_name: str,
     channel_jid: str | None = None,
@@ -79,31 +109,12 @@ def resolve_channel_config(
     """
     s = get_settings()
     ws = s.workspaces.get(workspace_name)
-
-    # Layers 3-5: merge universal + profile + per-sandbox
-    profile = None
-    if ws is not None and ws.profile:
-        profile = s.sandbox_profiles.get(ws.profile)
-
     merged = merge_sandbox_config(
         s.sandbox_universal,
-        profile,
+        _workspace_profile(s, ws),
         ws or WorkspaceConfig(),
     )
-
-    # Layers 1-2: connection- and chat-level overrides (most specific wins)
-    overrides: dict[str, Any] = {}
-    if ws is not None:
-        chat_ref = parse_chat_ref(ws.chat)
-        if chat_ref is not None:
-            conn_cfg = s.connection.get_connection(chat_ref.platform, chat_ref.name)
-            if conn_cfg and conn_cfg.security:
-                _collect_overrides(overrides, conn_cfg.security)
-            if conn_cfg:
-                chat_cfg = conn_cfg.chat.get(chat_ref.chat)
-                if chat_cfg and chat_cfg.security:
-                    _collect_overrides(overrides, chat_cfg.security)
-
+    overrides = _connection_and_chat_overrides(s, ws)
     return replace(merged, **overrides) if overrides else merged
 
 

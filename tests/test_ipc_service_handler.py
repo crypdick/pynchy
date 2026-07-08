@@ -276,6 +276,15 @@ async def test_missing_request_id():
 
 
 @pytest.mark.asyncio
+async def test_non_string_request_id_is_ignored():
+    """Service IPC payloads must parse request_id as a non-empty string."""
+    deps = FakeDeps({"test@g.us": TEST_GROUP})
+
+    data = {"type": "service:some_tool", "request_id": 123}
+    await registry.dispatch(data, "test-ws", False, deps)
+
+
+@pytest.mark.asyncio
 async def test_fallback_security_for_unconfigured_workspace(tmp_path):
     """Workspaces with no gate and no security config get maximally cautious defaults.
 

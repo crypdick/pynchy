@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, ClassVar, cast
 
@@ -14,6 +15,13 @@ from textual.binding import Binding, BindingType
 from textual.containers import Horizontal
 from textual.selection import Selection
 from textual.widgets import Footer, Header, Input, ListItem, ListView, RichLog, Static
+
+
+@dataclass(frozen=True)
+class _TuiMessageEvent:
+    sender_name: str
+    content: str
+    timestamp: str
 
 
 class PynchyTUI(App[None]):
@@ -204,39 +212,67 @@ class PynchyTUI(App[None]):
                 return
 
     def _handle_sse_event(self, event: dict[str, Any]) -> None:
-        if event.get("type") == "message":
-            if event.get("chat_jid") == self._active_jid:
-                # Skip messages from TUI user (already rendered locally)
-                if not event.get("is_bot") and event.get("sender_name") == "You":
-                    return
-                chat_log = self.query_one(ChatLog)
-                _render_message(
-                    chat_log,
-                    event["sender_name"],
-                    event["content"],
-                    event["timestamp"],
-                )
-        elif event.get("type") == "agent_trace" and event.get("chat_jid") == self._active_jid:
+        message = self._message_event(event)
+        if message is not None:
             chat_log = self.query_one(ChatLog)
-            trace_type = event.get("trace_type", "")
-            if trace_type == "thinking":
-                thinking = event.get("thinking", "")
-                display = thinking[:200] if thinking else "thinking..."
-                chat_log.write(f"[dim italic]\U0001f4ad {display}[/dim italic]")
-            elif trace_type == "tool_use":
-                name = event.get("tool_name", "tool")
-                tool_input = event.get("tool_input", {})
-                preview = str(tool_input)[:120]
-                chat_log.write(f"[dim]\U0001f527 {name}[/dim] [dim italic]{preview}[/dim italic]")
-            elif trace_type == "text":
-                text = event.get("text", "")
-                if text:
-                    chat_log.write(f"[dim]{text}[/dim]")
-        elif event.get("type") == "agent_activity" and event.get("chat_jid") == self._active_jid:
-            group = next((g for g in self._groups if g["jid"] == self._active_jid), None)
-            name = group["name"] if group else "?"
-            suffix = " [dim][thinking...][/dim]" if event.get("active") else ""
-            self.query_one("#chat-header", Static).update(f"Chat: {name}{suffix}")
+            _render_message(chat_log, message.sender_name, message.content, message.timestamp)
+            return
+
+        trace_line = self._trace_line(event)
+        if trace_line is not None:
+            self.query_one(ChatLog).write(trace_line)
+            return
+
+        activity_header = self._activity_header(event)
+        if activity_header is not None:
+            self.query_one("#chat-header", Static).update(activity_header)
+
+    def _is_active_chat_event(self, event: dict[str, Any], event_type: str) -> bool:
+        return event.get("type") == event_type and event.get("chat_jid") == self._active_jid
+
+    def _message_event(self, event: dict[str, Any]) -> _TuiMessageEvent | None:
+        if not self._is_active_chat_event(event, "message"):
+            return None
+
+        sender_name = event.get("sender_name")
+        content = event.get("content")
+        timestamp = event.get("timestamp")
+        if not isinstance(sender_name, str):
+            return None
+        if not isinstance(content, str) or not isinstance(timestamp, str):
+            return None
+        if not event.get("is_bot") and sender_name == "You":
+            return None
+        return _TuiMessageEvent(sender_name=sender_name, content=content, timestamp=timestamp)
+
+    def _trace_line(self, event: dict[str, Any]) -> str | None:
+        if not self._is_active_chat_event(event, "agent_trace"):
+            return None
+
+        trace_type = event.get("trace_type", "")
+        if trace_type == "thinking":
+            thinking = event.get("thinking", "")
+            display = thinking[:200] if thinking else "thinking..."
+            return f"[dim italic]\U0001f4ad {display}[/dim italic]"
+        if trace_type == "tool_use":
+            name = event.get("tool_name", "tool")
+            tool_input = event.get("tool_input", {})
+            preview = str(tool_input)[:120]
+            return f"[dim]\U0001f527 {name}[/dim] [dim italic]{preview}[/dim italic]"
+        if trace_type == "text":
+            text = event.get("text", "")
+            if text:
+                return f"[dim]{text}[/dim]"
+        return None
+
+    def _activity_header(self, event: dict[str, Any]) -> str | None:
+        if not self._is_active_chat_event(event, "agent_activity"):
+            return None
+
+        group = next((g for g in self._groups if g["jid"] == self._active_jid), None)
+        name = group["name"] if group else "?"
+        suffix = " [dim][thinking...][/dim]" if event.get("active") else ""
+        return f"Chat: {name}{suffix}"
 
     # ------------------------------------------------------------------
     # Keybindings

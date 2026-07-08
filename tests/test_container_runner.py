@@ -671,6 +671,31 @@ class TestMountBuilding:
 
         assert any(m.container_path == "/workspace/vault" for m in mounts)
 
+    def test_learning_mount_does_not_scan_skills_when_workspace_skills_is_empty(
+        self,
+        tmp_path: Path,
+    ):
+        vault = tmp_path / "vault"
+        vault.mkdir()
+        learning = LearningConfig(
+            enabled=True,
+            obsidian=ObsidianLearningConfig(vault_root=str(vault)),
+        )
+        workspaces = {"test-group": WorkspaceConfig(profile="Deep Work!!", skills=[])}
+
+        with (
+            _patch_settings(tmp_path, learning=learning, workspaces=workspaces),
+            patch(
+                "pynchy.host.container_manager.mounts.iter_learned_skill_dirs",
+                side_effect=AssertionError("unexpected scan"),
+            ),
+        ):
+            (tmp_path / "groups" / "test-group").mkdir(parents=True)
+
+            mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
+
+        assert any(m.container_path == "/workspace/vault" for m in mounts)
+
     def test_learning_mount_syncs_vault_profile_skill_when_learned_selected(
         self,
         tmp_path: Path,
@@ -1564,6 +1589,37 @@ class TestSyncSkills:
         ext_dst = session_dir / "skills" / "ext-skill"
         assert ext_dst.exists()
         assert (ext_dst / "skill.md").read_text() == "# External Skill"
+
+    def test_bad_plugin_skill_path_does_not_block_later_plugin_skill(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ):
+        """One malformed plugin path should not prevent later plugin skills from syncing."""
+        plugin_skill = tmp_path / "plugins" / "ext-skill"
+        plugin_skill.mkdir(parents=True)
+        (plugin_skill / "skill.md").write_text("# External Skill")
+
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        class FakeHook:
+            def pynchy_skill_paths(self):
+                return [[None, str(plugin_skill)]]
+
+        class FakePM(pluggy.PluginManager):
+            hook = FakeHook()
+
+            def __init__(self):
+                pass
+
+        caplog.set_level(logging.ERROR)
+        with _patch_settings(tmp_path):
+            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+
+        ext_dst = session_dir / "skills" / "ext-skill"
+        assert ext_dst.exists()
+        assert "Failed to sync plugin skill" in caplog.text
 
     def test_plugin_skill_name_collision_raises(self, tmp_path: Path):
         """Plugin skill that shadows a built-in skill raises ValueError."""

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,15 @@ from pynchy.plugins.integrations.google_setup._rest_api import (
     read_project_id,
     refresh_access_token,
 )
+
+
+@dataclass(frozen=True)
+class _GoogleInteractiveSetup:
+    profile_name: str
+    project_id: str
+    api_ids: list[str]
+    scopes: str
+    profile_dir: Path
 
 
 def _check_workspace_access(profile_name: str, source_group: str | None) -> dict[str, Any] | None:
@@ -147,19 +157,18 @@ async def _run_interactive_setup(
     from playwright.async_api import async_playwright
 
     steps_done: list[str] = []
-    project_id = data.get("project_id") or read_project_id(kp) or DEFAULT_PROJECT_ID
-    profile = profile_dir("google")
+    setup = _google_interactive_setup(profile_name, kp, api_ids, scopes, data)
     vnc_procs: list[subprocess.Popen[bytes]] = []
     original_display = os.environ.get("DISPLAY")
+    novnc_url: str | None = None
 
     try:
-        novnc_url: str | None = None
         if not has_display():
             vnc_procs, novnc_url = start_virtual_display()
 
         async with async_playwright() as pw:
             context = await pw.chromium.launch_persistent_context(
-                user_data_dir=str(profile),
+                user_data_dir=str(setup.profile_dir),
                 executable_path=chrome_path(),
                 headless=False,
                 accept_downloads=True,
@@ -177,37 +186,31 @@ async def _run_interactive_setup(
             await dismiss_modals(page)
 
             # 1. Ensure GCP project
-            await ensure_project(page, project_id)
-            steps_done.append(f"GCP project '{project_id}' ready")
+            await ensure_project(page, setup.project_id)
+            steps_done.append(f"GCP project '{setup.project_id}' ready")
 
             # 2. Enable required APIs
-            for api_id in api_ids:
-                await ensure_api(page, project_id, api_id)
+            for api_id in setup.api_ids:
+                await ensure_api(page, setup.project_id, api_id)
                 steps_done.append(f"API '{api_id}' enabled")
 
             # 3. Ensure OAuth consent + credentials
-            steps_done.append(await _ensure_oauth_credentials(page, project_id, kp, profile_name))
+            steps_done.append(
+                await _ensure_oauth_credentials(page, setup.project_id, kp, setup.profile_name)
+            )
 
             # 4. Run OAuth flow
-            tokens = await run_oauth_flow(page, keys_path(profile_name), scopes)
-            save_credentials_to_profile(tokens, profile_name)
+            tokens = await run_oauth_flow(page, keys_path(setup.profile_name), setup.scopes)
+            save_credentials_to_profile(tokens, setup.profile_name)
             steps_done.append("OAuth tokens obtained")
 
             await context.close()
 
-        result: dict[str, Any] = {
-            "status": "ok",
-            "message": f"Google setup complete for profile '{profile_name}'",
-            "steps": steps_done,
-            "keys_path": str(keys_path(profile_name)),
-        }
-        if novnc_url:
-            result["novnc_url"] = novnc_url
-        return {"result": result}
+        return {"result": _interactive_success_result(setup, steps_done, novnc_url)}
 
     except Exception as exc:
         logger.error("setup_google failed", profile=profile_name, error=str(exc))
-        return {"error": str(exc)}
+        return _interactive_error_result(str(exc), novnc_url)
 
     finally:
         stop_procs(vnc_procs)
@@ -215,6 +218,48 @@ async def _run_interactive_setup(
             os.environ["DISPLAY"] = original_display
         elif "DISPLAY" in os.environ and vnc_procs:
             del os.environ["DISPLAY"]
+
+
+def _google_interactive_setup(
+    profile_name: str,
+    kp: Path,
+    api_ids: list[str],
+    scopes: str,
+    data: dict[str, Any],
+) -> _GoogleInteractiveSetup:
+    return _GoogleInteractiveSetup(
+        profile_name=profile_name,
+        project_id=data.get("project_id") or read_project_id(kp) or DEFAULT_PROJECT_ID,
+        api_ids=api_ids,
+        scopes=scopes,
+        profile_dir=profile_dir("google"),
+    )
+
+
+def _interactive_success_result(
+    setup: _GoogleInteractiveSetup,
+    steps_done: list[str],
+    novnc_url: str | None,
+) -> dict[str, Any]:
+    return _with_optional_novnc_url(
+        {
+            "status": "ok",
+            "message": f"Google setup complete for profile '{setup.profile_name}'",
+            "steps": steps_done,
+            "keys_path": str(keys_path(setup.profile_name)),
+        },
+        novnc_url,
+    )
+
+
+def _interactive_error_result(error: str, novnc_url: str | None) -> dict[str, Any]:
+    return _with_optional_novnc_url({"error": error}, novnc_url)
+
+
+def _with_optional_novnc_url(payload: dict[str, Any], novnc_url: str | None) -> dict[str, Any]:
+    if novnc_url is None:
+        return payload
+    return {**payload, "novnc_url": novnc_url}
 
 
 async def handle_setup_google(data: dict[str, Any]) -> dict[str, Any]:

@@ -48,6 +48,16 @@ class _OutgoingMessage:
     text: str
 
 
+@dataclass(frozen=True)
+class _InboundMessageContext:
+    chat_jid: str
+    sender_jid: str
+    sender_name: str
+    timestamp: str
+    message_id: str
+    is_from_me: bool
+
+
 class WhatsAppChannel:
     """WhatsApp channel implemented via neonize (whatsmeow Go bindings)."""
 
@@ -341,67 +351,95 @@ class WhatsAppChannel:
         # Free-form text
         return {"answer": content}
 
-    async def _handle_message(self, message: MessageEv) -> None:
+    @staticmethod
+    def _message_content(message: Any) -> str:
+        return (
+            message.conversation
+            or message.extendedTextMessage.text
+            or message.imageMessage.caption
+            or message.videoMessage.caption
+            or ""
+        )
+
+    @staticmethod
+    def _message_timestamp(raw_timestamp: int | float) -> str:
+        if raw_timestamp > 1e10:
+            raw_timestamp = raw_timestamp / 1000
+        return datetime.fromtimestamp(raw_timestamp, tz=UTC).isoformat()
+
+    def _message_context(self, message: Any) -> _InboundMessageContext | None:
         info = message.Info
         source = info.MessageSource
         raw_jid = Jid2String(source.Chat)
         if not raw_jid or raw_jid == "status@broadcast":
-            return
+            return None
         chat_jid = self._translate_jid(raw_jid, source.Chat)
-        ts = info.Timestamp
-        if ts > 1e10:
-            ts = ts / 1000
-        timestamp = datetime.fromtimestamp(ts, tz=UTC).isoformat()
-        self._on_chat_metadata(chat_jid, timestamp, None)
-
-        groups = self._workspaces()
-        if chat_jid not in groups:
-            return
-
-        msg = message.Message
-        content = (
-            msg.conversation
-            or msg.extendedTextMessage.text
-            or msg.imageMessage.caption
-            or msg.videoMessage.caption
-            or ""
-        )
-        if source.IsFromMe and content.startswith(f"{get_settings().agent.name}:"):
-            return
-
-        # Intercept answers to pending ask_user questions before normal pipeline.
-        # Only intercept messages from other users, not our own echoes.
-        if not source.IsFromMe:
-            pending = find_pending_for_jid(chat_jid)
-            if pending is not None:
-                # Skip stale pending questions — let the sweep handle cleanup.
-                # A stale file from a crash should not silently swallow real messages.
-                from pynchy.host.orchestrator.messaging.pending_questions import (
-                    PENDING_QUESTION_TIMEOUT_SECONDS,
-                )
-
-                ts = datetime.fromisoformat(pending.get("timestamp", ""))
-                age = (datetime.now(UTC) - ts).total_seconds()
-                if age > PENDING_QUESTION_TIMEOUT_SECONDS:
-                    pending = None
-            if pending is not None:
-                answer = self._resolve_answer(content, pending)
-                if self._on_ask_user_answer:
-                    self._on_ask_user_answer(pending["request_id"], answer)
-                return  # Skip normal message pipeline
-
+        if chat_jid not in self._workspaces():
+            return None
         sender_jid = Jid2String(source.Sender)
         sender_name = info.Pushname or source.Sender.User or sender_jid.split("@")[0]
-        new_msg = NewMessage(
-            id=info.ID,
+        return _InboundMessageContext(
             chat_jid=chat_jid,
-            sender=sender_jid,
+            sender_jid=sender_jid,
             sender_name=sender_name,
-            content=content,
-            timestamp=timestamp,
+            timestamp=self._message_timestamp(info.Timestamp),
+            message_id=info.ID,
             is_from_me=source.IsFromMe,
         )
-        self._on_message(chat_jid, new_msg)
+
+    @staticmethod
+    def _is_stale_pending_question(pending: dict[str, Any]) -> bool:
+        # Skip stale pending questions — let the sweep handle cleanup.
+        # A stale file from a crash should not silently swallow real messages.
+        from pynchy.host.orchestrator.messaging.pending_questions import (
+            PENDING_QUESTION_TIMEOUT_SECONDS,
+        )
+
+        timestamp = datetime.fromisoformat(pending.get("timestamp", ""))
+        age = (datetime.now(UTC) - timestamp).total_seconds()
+        return age > PENDING_QUESTION_TIMEOUT_SECONDS
+
+    def _pending_answer(self, chat_jid: str, content: str) -> tuple[str, dict[str, Any]] | None:
+        pending = find_pending_for_jid(chat_jid)
+        if pending is None or self._is_stale_pending_question(pending):
+            return None
+        return pending["request_id"], self._resolve_answer(content, pending)
+
+    @staticmethod
+    def _is_own_agent_echo(context: _InboundMessageContext, content: str) -> bool:
+        return context.is_from_me and content.startswith(f"{get_settings().agent.name}:")
+
+    @staticmethod
+    def _new_message(context: _InboundMessageContext, content: str) -> NewMessage:
+        return NewMessage(
+            id=context.message_id,
+            chat_jid=context.chat_jid,
+            sender=context.sender_jid,
+            sender_name=context.sender_name,
+            content=content,
+            timestamp=context.timestamp,
+            is_from_me=context.is_from_me,
+        )
+
+    async def _handle_message(self, message: Any) -> None:
+        context = self._message_context(message)
+        if context is None:
+            return
+        self._on_chat_metadata(context.chat_jid, context.timestamp, None)
+
+        content = self._message_content(message.Message)
+        if self._is_own_agent_echo(context, content):
+            return
+
+        if not context.is_from_me:
+            pending_answer = self._pending_answer(context.chat_jid, content)
+            if pending_answer is not None:
+                request_id, answer = pending_answer
+                if self._on_ask_user_answer:
+                    self._on_ask_user_answer(request_id, answer)
+                return
+
+        self._on_message(context.chat_jid, self._new_message(context, content))
 
     def _translate_jid(self, jid_str: str, jid: JID) -> str:
         if jid.Server != "lid":

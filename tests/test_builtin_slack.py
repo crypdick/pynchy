@@ -556,6 +556,38 @@ class TestFetchMissedMessages:
         assert result == []
 
     @pytest.mark.asyncio
+    async def test_skips_bot_only_page_then_returns_next_user_message(self) -> None:
+        ch = _make_channel()
+        ch._app = MagicMock()
+        ch._resolve_user_name = AsyncMock(return_value="Alice")
+        ch._app.client.conversations_history = AsyncMock(
+            side_effect=[
+                {
+                    "messages": [
+                        {"user": "U2", "text": "bot", "ts": "1700000002.000000", "bot_id": "B1"},
+                    ],
+                    "has_more": True,
+                },
+                {
+                    "messages": [
+                        {"user": "U1", "text": "human", "ts": "1700000003.000000"},
+                    ],
+                    "has_more": False,
+                },
+            ]
+        )
+
+        result, high_water_mark = await ch._fetch_missed_messages_with_watermark(
+            "C12345", "1700000000.000000"
+        )
+
+        assert len(result) == 1
+        assert result[0].content == "human"
+        assert result[0].id == "slack-1700000003.000000"
+        assert high_water_mark.endswith("+00:00")
+        assert ch._app.client.conversations_history.await_count == 2
+
+    @pytest.mark.asyncio
     async def test_returns_empty_when_no_app(self) -> None:
         ch = _make_channel()
         ch._app = None

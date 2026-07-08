@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, ClassVar, cast
 
@@ -32,6 +33,12 @@ from ._ids import JID_PREFIX, _channel_id_from_jid, _jid
 from ._interactions import SlackInteractions
 from ._lifecycle import SlackLifecycle
 from ._ui import build_ask_user_blocks, normalize_chat_name, split_text
+
+
+@dataclass(frozen=True)
+class _SlackHistoryPage:
+    messages: list[dict[str, Any]]
+    has_more: bool
 
 
 class SlackChannel:
@@ -282,6 +289,80 @@ class SlackChannel:
     # History catch-up (reconnect recovery)
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _history_high_water_mark(
+        raw_messages: list[dict[str, Any]], current_high_water_mark: str
+    ) -> tuple[str, str]:
+        newest_ts = raw_messages[-1].get("ts", "")
+        if not newest_ts:
+            return current_high_water_mark, ""
+        hwm_iso = datetime.fromtimestamp(float(newest_ts), tz=UTC).isoformat()
+        if hwm_iso > current_high_water_mark:
+            return hwm_iso, newest_ts
+        return current_high_water_mark, newest_ts
+
+    @staticmethod
+    def _history_event_fields(event: dict[str, Any]) -> tuple[str, str, str] | None:
+        if event.get("bot_id") or event.get("subtype"):
+            return None
+        user_id = event.get("user")
+        text = event.get("text", "")
+        ts = event.get("ts", "")
+        if not user_id or not ts:
+            return None
+        return user_id, text, ts
+
+    async def _history_new_message(
+        self, channel_id: str, event: dict[str, Any]
+    ) -> NewMessage | None:
+        fields = self._history_event_fields(event)
+        if fields is None:
+            return None
+        user_id, text, ts = fields
+        sender_name = await self._resolve_user_name(user_id)
+        return NewMessage(
+            id=f"slack-{ts}",
+            chat_jid=_jid(channel_id),
+            sender=user_id,
+            sender_name=sender_name,
+            content=self._normalize_bot_mention(text),
+            timestamp=datetime.fromtimestamp(float(ts), tz=UTC).isoformat(),
+            is_from_me=False,
+            metadata={"slack_ts": ts},
+        )
+
+    async def _history_user_messages(
+        self, channel_id: str, raw_messages: list[dict[str, Any]]
+    ) -> list[NewMessage]:
+        results: list[NewMessage] = []
+        for event in raw_messages:
+            message = await self._history_new_message(channel_id, event)
+            if message is not None:
+                results.append(message)
+        return results
+
+    async def _history_page(
+        self, channel_id: str, oldest: str, *, limit: int
+    ) -> _SlackHistoryPage | None:
+        try:
+            resp = await self._app.client.conversations_history(
+                channel=channel_id, oldest=oldest, limit=limit
+            )
+        except Exception:
+            logger.warning("Failed to fetch Slack history for catch-up", channel=channel_id)
+            return None
+        raw_messages = list(cast("list[dict[str, Any]]", resp.get("messages", [])))
+        raw_messages.reverse()
+        return _SlackHistoryPage(messages=raw_messages, has_more=bool(resp.get("has_more")))
+
+    @staticmethod
+    def _should_continue_history_scan(
+        *, newest_ts: str, current_oldest: str, has_more: bool, results: list[NewMessage]
+    ) -> bool:
+        if results or not has_more:
+            return False
+        return bool(newest_ts) and newest_ts != current_oldest
+
     async def _fetch_missed_messages_with_watermark(
         self, channel_id: str, oldest: str, *, limit: int = 1000
     ) -> tuple[list[NewMessage], str]:
@@ -306,62 +387,26 @@ class SlackChannel:
         high_water_mark = ""
 
         for _page in range(_MAX_PAGES):
-            try:
-                resp = await self._app.client.conversations_history(
-                    channel=channel_id, oldest=current_oldest, limit=limit
-                )
-            except Exception:
-                logger.warning("Failed to fetch Slack history for catch-up", channel=channel_id)
+            page = await self._history_page(channel_id, current_oldest, limit=limit)
+            if page is None:
                 return [], high_water_mark
 
-            raw_messages: list[dict[str, Any]] = resp.get("messages", [])
-            if not raw_messages:
+            if not page.messages:
                 return [], high_water_mark
 
-            # Slack returns newest-first; reverse for chronological order.
-            raw_messages.reverse()
+            high_water_mark, newest_ts = self._history_high_water_mark(
+                page.messages, high_water_mark
+            )
+            results = await self._history_user_messages(channel_id, page.messages)
 
-            # Track the newest raw ts for the high-water mark.
-            newest_ts = raw_messages[-1].get("ts", "")
-            if newest_ts:
-                hwm_iso = datetime.fromtimestamp(float(newest_ts), tz=UTC).isoformat()
-                if hwm_iso > high_water_mark:
-                    high_water_mark = hwm_iso
-
-            results: list[NewMessage] = []
-            for event in raw_messages:
-                # Same filters as _on_slack_message
-                if event.get("bot_id") or event.get("subtype"):
-                    continue
-                user_id = event.get("user")
-                text = event.get("text", "")
-                ts = event.get("ts", "")
-                if not user_id or not ts:
-                    continue
-
-                text = self._normalize_bot_mention(text)
-                sender_name = await self._resolve_user_name(user_id)
-                timestamp = datetime.fromtimestamp(float(ts), tz=UTC).isoformat()
-
-                results.append(
-                    NewMessage(
-                        id=f"slack-{ts}",
-                        chat_jid=_jid(channel_id),
-                        sender=user_id,
-                        sender_name=sender_name,
-                        content=text,
-                        timestamp=timestamp,
-                        is_from_me=False,
-                        metadata={"slack_ts": ts},
-                    )
-                )
-
-            if results or not resp.get("has_more"):
+            if not self._should_continue_history_scan(
+                newest_ts=newest_ts,
+                current_oldest=current_oldest,
+                has_more=page.has_more,
+                results=results,
+            ):
                 return results, high_water_mark
 
-            # Page was all bot messages and there's more — skip ahead.
-            if not newest_ts or newest_ts == current_oldest:
-                return results, high_water_mark  # safety: avoid infinite loop
             logger.debug(
                 "Skipping bot-only page in catch-up",
                 channel=channel_id,

@@ -291,6 +291,49 @@ class TestReconcileWorkspaces:
         assert profile.folder == "new-agent"
         assert profile.trigger is not None  # trigger is the @mention string
 
+    async def test_empty_resolved_jid_falls_back_to_create_group(
+        self,
+        db,
+        monkeypatch,
+        tmp_path,
+    ):
+        """An empty resolved JID is invalid and should trigger create_group fallback."""
+        conn_ref = "connection.whatsapp.main"
+        chat_ref = f"{conn_ref}.chat.new-agent"
+        workspaces: dict[str, WorkspaceConfig] = {}
+        s = make_settings(
+            workspaces=workspaces,
+            groups_dir=tmp_path / "groups",
+            command_center=CommandCenterConfig(connection=conn_ref),
+        )
+        monkeypatch.setattr("pynchy.host.orchestrator.workspace_config.get_settings", lambda: s)
+
+        _write_workspace_yaml(
+            workspaces,
+            "new-agent",
+            {
+                "schedule": "0 8 * * 1",
+                "prompt": "Weekly report",
+                "trigger": "always",
+                "chat": chat_ref,
+            },
+        )
+
+        mock_channel = AsyncMock(spec=Channel)
+        mock_channel.name = conn_ref
+        mock_channel.resolve_chat_jid = AsyncMock(return_value="")
+        mock_channel.create_group = AsyncMock(return_value="new-agent@g.us")
+
+        registered: dict[str, WorkspaceProfile] = {}
+        register_fn = AsyncMock()
+
+        await reconcile_workspaces(registered, [mock_channel], register_fn)
+
+        mock_channel.create_group.assert_called_once_with("new-agent")
+        register_fn.assert_called_once()
+        profile = register_fn.call_args[0][0]
+        assert profile.jid == "new-agent@g.us"
+
     async def test_discord_workspace_can_auto_create_configured_channel(
         self, db, monkeypatch, tmp_path
     ):

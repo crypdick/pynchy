@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+from pathlib import Path
+from unittest.mock import Mock
+
+import pytest
+
+from pynchy.plugins.integrations import slack_token_extractor
+
+
+class _FakePage:
+    def __init__(self) -> None:
+        self.url = "https://app.slack.com/signin"
+
+    async def goto(self, _url: str, *, wait_until: str) -> None:
+        assert wait_until == "networkidle"
+
+    async def wait_for_url(self, _pattern, *, timeout: int) -> None:
+        assert timeout == 5_000
+        raise TimeoutError("timed out")
+
+
+class _FakeContext:
+    def __init__(self) -> None:
+        self.pages = [_FakePage()]
+        self.closed = False
+
+    async def new_page(self) -> _FakePage:
+        page = _FakePage()
+        self.pages.append(page)
+        return page
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class _FakeChromium:
+    def __init__(self, context: _FakeContext) -> None:
+        self._context = context
+
+    async def launch_persistent_context(self, **_kwargs) -> _FakeContext:
+        return self._context
+
+
+class _FakePlaywright:
+    def __init__(self, context: _FakeContext) -> None:
+        self.chromium = _FakeChromium(context)
+
+    async def __aenter__(self) -> _FakePlaywright:
+        return self
+
+    async def __aexit__(self, exc_type, exc, _tb) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+async def test_setup_slack_session_timeout_returns_novnc_url(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    context = _FakeContext()
+    stop_procs = Mock()
+
+    monkeypatch.setattr(slack_token_extractor, "has_display", lambda: False)
+    monkeypatch.setattr(
+        slack_token_extractor,
+        "start_virtual_display",
+        lambda: ([], "http://novnc.local/session"),
+    )
+    monkeypatch.setattr(slack_token_extractor, "stop_procs", stop_procs)
+    monkeypatch.setattr(slack_token_extractor, "profile_dir", lambda _name: tmp_path / "profile")
+    monkeypatch.setattr(slack_token_extractor, "chrome_path", lambda: "/usr/bin/google-chrome")
+
+    def fake_async_playwright() -> _FakePlaywright:
+        return _FakePlaywright(context)
+
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "playwright.async_api",
+        type("_PlaywrightModule", (), {"async_playwright": fake_async_playwright}),
+    )
+
+    response = await slack_token_extractor._handle_setup_slack_session(
+        {
+            "workspace_name": "acme",
+            "workspace_url": "https://app.slack.com/client",
+            "timeout_seconds": 5,
+        }
+    )
+
+    assert response == {
+        "error": "Login not completed within 5s. Try again with a longer timeout.",
+        "novnc_url": "http://novnc.local/session",
+    }
+    assert context.closed is True
+    stop_procs.assert_called_once_with([])

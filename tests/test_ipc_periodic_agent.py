@@ -304,6 +304,36 @@ class TestCreatePeriodicAgent:
         tasks = await get_all_tasks()
         assert len(tasks) == 0
 
+    async def test_empty_created_jid_does_not_register_or_schedule(self, deps, tmp_path):
+        """An empty JID from create_group is invalid and must not create state."""
+        mock_channel = AsyncMock()
+        mock_channel.create_group = AsyncMock(return_value="")
+        mock_channel.name = "connection.slack.main"
+        deps._channels = [mock_channel]
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_groups.get_settings",
+                return_value=self._settings(tmp_path),
+            ),
+            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
+        ):
+            await dispatch(
+                {
+                    "type": "create_periodic_agent",
+                    "name": "blank-jid-agent",
+                    "schedule": "0 9 * * *",
+                    "prompt": "Test",
+                },
+                "admin-1",
+                True,
+                deps,
+            )
+
+        assert "" not in deps.workspaces()
+        tasks = await get_all_tasks()
+        assert len(tasks) == 0
+
 
 class TestMoveToErrorDir:
     """Tests for the _move_to_error_dir helper."""

@@ -56,6 +56,31 @@ def _rich_text_preformatted_block(code: str) -> dict[str, Any]:
     }
 
 
+def _edit_tool_code(tool_name: str, tool_input: dict[str, Any]) -> str:
+    path = tool_input.get("file_path", "")
+    old = tool_input.get("old_string", "")
+    new = tool_input.get("new_string", "")
+    parts = []
+    if path:
+        parts.append(path)
+    if old:
+        parts.append(f"- {old}")
+    if new:
+        parts.append(f"+ {new}")
+    return "\n".join(parts) if parts else tool_name
+
+
+def _grep_tool_code(tool_name: str, tool_input: dict[str, Any]) -> str:
+    pattern = tool_input.get("pattern", "")
+    path = tool_input.get("path", "")
+    return f"/{pattern}/ {path}".strip() if pattern else tool_name
+
+
+def _default_tool_code(tool_name: str, tool_input: dict[str, Any]) -> str:
+    preview = str(tool_input)
+    return preview if tool_input else tool_name
+
+
 class SlackBlocksFormatter:
     """Slack Block Kit renderer for OutboundEvent objects.
 
@@ -265,31 +290,16 @@ class SlackBlocksFormatter:
     @staticmethod
     def _extract_tool_code(tool_name: str, tool_input: dict[str, Any]) -> str:
         """Extract the most relevant code/input string for preformatted display."""
-        if tool_name == "Bash":
-            return cast(str, tool_input.get("command", tool_name))
-        if tool_name == "Read":
-            return cast(str, tool_input.get("file_path", tool_name))
+        simple_fields = {
+            "Bash": "command",
+            "Read": "file_path",
+            "Write": "file_path",
+            "Glob": "pattern",
+        }
+        if tool_name in simple_fields:
+            return cast(str, tool_input.get(simple_fields[tool_name], tool_name))
         if tool_name == "Edit":
-            path = tool_input.get("file_path", "")
-            old = tool_input.get("old_string", "")
-            new = tool_input.get("new_string", "")
-            parts = []
-            if path:
-                parts.append(path)
-            if old:
-                parts.append(f"- {old}")
-            if new:
-                parts.append(f"+ {new}")
-            return "\n".join(parts) if parts else tool_name
-        if tool_name == "Write":
-            path = tool_input.get("file_path", "")
-            return path or tool_name
+            return _edit_tool_code(tool_name, tool_input)
         if tool_name == "Grep":
-            pattern = tool_input.get("pattern", "")
-            path = tool_input.get("path", "")
-            return f"/{pattern}/ {path}".strip() if pattern else tool_name
-        if tool_name == "Glob":
-            return cast(str, tool_input.get("pattern", tool_name))
-        # Default: stringify the input
-        preview = str(tool_input)
-        return preview if tool_input else tool_name
+            return _grep_tool_code(tool_name, tool_input)
+        return _default_tool_code(tool_name, tool_input)

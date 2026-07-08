@@ -180,6 +180,22 @@ def test_observe_container_output_only_treats_marked_tool_results_as_errors() ->
     ]
 
 
+def test_observe_container_output_does_not_treat_error_results_as_final_answers() -> None:
+    summary = LearningRunSummary()
+
+    observe_container_output(
+        summary,
+        ContainerOutput(
+            status="error",
+            type="result",
+            result="command failed",
+        ),
+    )
+
+    assert summary.final_answer is None
+    assert summary.error_snippets == ["command failed"]
+
+
 def test_build_packet_bounds_user_messages_and_skips_non_user_visible_messages(
     tmp_path: Path,
 ) -> None:

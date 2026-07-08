@@ -22,6 +22,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,14 @@ from pynchy.plugins.integrations.browser import (
 )
 
 hookimpl = pluggy.HookimplMarker("pynchy")
+
+
+@dataclass(frozen=True)
+class _SlackSetupRequest:
+    workspace_name: str
+    workspace_url: str
+    timeout_seconds: int
+    profile: Path
 
 
 # ---------------------------------------------------------------------------
@@ -184,77 +193,49 @@ async def _handle_setup_slack_session(data: dict[str, Any]) -> dict[str, Any]:
     """Launch a headed browser for manual Slack login. Saves the session."""
     from playwright.async_api import async_playwright
 
-    workspace_name = data.get("workspace_name", "")
-    if not workspace_name:
+    request = _parse_slack_setup_request(data)
+    if request is None:
         return {"error": "workspace_name is required"}
 
-    workspace_url = data.get("workspace_url", "https://app.slack.com")
-    timeout_seconds = data.get("timeout_seconds", 120)
-    profile = profile_dir(workspace_name)
     vnc_procs: list[subprocess.Popen[Any]] = []
     original_display = os.environ.get("DISPLAY")
+    novnc_url: str | None = None
 
     try:
-        novnc_url: str | None = None
         if not has_display():
             vnc_procs, novnc_url = start_virtual_display()
 
         async with async_playwright() as pw:
             context = await pw.chromium.launch_persistent_context(
-                **_launch_kwargs(profile, headless=False),
+                **_launch_kwargs(request.profile, headless=False),
             )
             page = context.pages[0] if context.pages else await context.new_page()
 
-            await page.goto(workspace_url, wait_until="networkidle")
+            await page.goto(request.workspace_url, wait_until="networkidle")
 
             # Already logged in?
             if re.search(r"/client/", page.url):
                 await context.close()
-                result: dict[str, Any] = {
-                    "status": "ok",
-                    "message": f"Already logged in. Profile saved at {profile}",
-                }
-                if novnc_url:
-                    result["novnc_url"] = novnc_url
-                return {"result": result}
+                return {"result": _already_logged_in_result(request.profile, novnc_url)}
 
             # Wait for the human to complete login
             try:
                 await page.wait_for_url(
                     re.compile(r"/client/"),
-                    timeout=timeout_seconds * 1000,
+                    timeout=request.timeout_seconds * 1000,
                 )
             except Exception as exc:
                 logger.warning(
                     "Slack login not completed before timeout",
-                    timeout_seconds=timeout_seconds,
+                    timeout_seconds=request.timeout_seconds,
                     error=str(exc),
                 )
                 await context.close()
-                result = {
-                    "status": "error",
-                    "error": (
-                        f"Login not completed within {timeout_seconds}s. "
-                        "Try again with a longer timeout."
-                    ),
-                }
-                if novnc_url:
-                    result["novnc_url"] = novnc_url
-                return {"error": result["error"]}
+                return _timeout_result(request.timeout_seconds, novnc_url)
 
             await context.close()
 
-        result = {
-            "status": "ok",
-            "profile_dir": str(profile),
-            "message": (
-                f"Session saved. Future refresh_slack_tokens calls with "
-                f'workspace_name="{workspace_name}" will use this session.'
-            ),
-        }
-        if novnc_url:
-            result["novnc_url"] = novnc_url
-        return {"result": result}
+        return {"result": _saved_session_result(request, novnc_url)}
 
     except Exception as exc:
         logger.error("Slack session setup failed", error=str(exc))
@@ -266,6 +247,59 @@ async def _handle_setup_slack_session(data: dict[str, Any]) -> dict[str, Any]:
             os.environ["DISPLAY"] = original_display
         elif "DISPLAY" in os.environ and vnc_procs:
             del os.environ["DISPLAY"]
+
+
+def _parse_slack_setup_request(data: dict[str, Any]) -> _SlackSetupRequest | None:
+    workspace_name = data.get("workspace_name", "")
+    if not workspace_name:
+        return None
+
+    return _SlackSetupRequest(
+        workspace_name=workspace_name,
+        workspace_url=data.get("workspace_url", "https://app.slack.com"),
+        timeout_seconds=data.get("timeout_seconds", 120),
+        profile=profile_dir(workspace_name),
+    )
+
+
+def _already_logged_in_result(profile: Path, novnc_url: str | None) -> dict[str, Any]:
+    return _with_optional_novnc_url(
+        {
+            "status": "ok",
+            "message": f"Already logged in. Profile saved at {profile}",
+        },
+        novnc_url,
+    )
+
+
+def _saved_session_result(
+    request: _SlackSetupRequest,
+    novnc_url: str | None,
+) -> dict[str, Any]:
+    return _with_optional_novnc_url(
+        {
+            "status": "ok",
+            "profile_dir": str(request.profile),
+            "message": (
+                "Session saved. Future refresh_slack_tokens calls with "
+                f'workspace_name="{request.workspace_name}" will use this session.'
+            ),
+        },
+        novnc_url,
+    )
+
+
+def _timeout_result(timeout_seconds: int, novnc_url: str | None) -> dict[str, Any]:
+    payload = {
+        "error": f"Login not completed within {timeout_seconds}s. Try again with a longer timeout."
+    }
+    return _with_optional_novnc_url(payload, novnc_url)
+
+
+def _with_optional_novnc_url(payload: dict[str, Any], novnc_url: str | None) -> dict[str, Any]:
+    if novnc_url is None:
+        return payload
+    return {**payload, "novnc_url": novnc_url}
 
 
 # ---------------------------------------------------------------------------

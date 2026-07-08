@@ -258,7 +258,7 @@ class TemporalSchedulerRuntime:
         )
         return self
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:
+    async def __aexit__(self, exc_type, exc, _tb) -> None:
         global _active_runtime
         await self._worker_stack.aclose()
         bind_scheduler_deps(None)

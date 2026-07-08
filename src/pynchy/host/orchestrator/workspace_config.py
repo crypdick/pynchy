@@ -106,45 +106,68 @@ async def _resolve_configured_jid(
         )
         return None
 
-    jid: str | None = None
-    if hasattr(channel, "resolve_chat_jid"):
-        try:
-            jid = await channel.resolve_chat_jid(chat_ref.chat)
-        except Exception as exc:
-            logger.warning(
-                "Failed to resolve chat JID",
-                connection=connection_name,
-                chat=chat_ref.chat,
-                err=str(exc),
-            )
-            jid = None
-
+    jid = await _resolved_chat_jid(channel, connection_name, chat_ref.chat)
     channel_allows_create = bool(
         allow_create or getattr(channel, "auto_provision_configured_chats", False)
     )
-    if jid is None and channel_allows_create and hasattr(channel, "create_group"):
-        try:
-            jid = await channel.create_group(chat_ref.chat)
-            logger.info(
-                "Created chat group for workspace",
-                connection=connection_name,
-                chat=chat_ref.chat,
-                jid=jid,
-            )
-        except Exception as exc:
-            logger.warning(
-                "Failed to create chat group for workspace",
-                connection=connection_name,
-                chat=chat_ref.chat,
-                err=str(exc),
-            )
-            jid = None
+    if jid is None and channel_allows_create:
+        jid = await _created_chat_jid(channel, connection_name, chat_ref.chat)
 
     if jid is None:
         logger.warning(
             "Chat not found for workspace",
             connection=connection_name,
             chat=chat_ref.chat,
+        )
+    return jid
+
+
+def _valid_jid(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    return stripped
+
+
+async def _resolved_chat_jid(channel: Channel, connection_name: str, chat_name: str) -> str | None:
+    if not hasattr(channel, "resolve_chat_jid"):
+        return None
+
+    try:
+        return _valid_jid(await channel.resolve_chat_jid(chat_name))
+    except Exception as exc:
+        logger.warning(
+            "Failed to resolve chat JID",
+            connection=connection_name,
+            chat=chat_name,
+            err=str(exc),
+        )
+        return None
+
+
+async def _created_chat_jid(channel: Channel, connection_name: str, chat_name: str) -> str | None:
+    if not hasattr(channel, "create_group"):
+        return None
+
+    try:
+        jid = _valid_jid(await channel.create_group(chat_name))
+    except Exception as exc:
+        logger.warning(
+            "Failed to create chat group for workspace",
+            connection=connection_name,
+            chat=chat_name,
+            err=str(exc),
+        )
+        return None
+
+    if jid is not None:
+        logger.info(
+            "Created chat group for workspace",
+            connection=connection_name,
+            chat=chat_name,
+            jid=jid,
         )
     return jid
 

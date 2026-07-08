@@ -56,7 +56,7 @@ class RecordingTemporalRuntime:
     async def __aenter__(self):
         return self
 
-    async def __aexit__(self, exc_type, exc, tb):
+    async def __aexit__(self, exc_type, exc, _tb):
         return None
 
     async def reconcile_schedules(self):
@@ -403,7 +403,7 @@ class TestStartSchedulerLoop:
             async def __aenter__(self):
                 raise RuntimeError("temporal unavailable")
 
-            async def __aexit__(self, exc_type, exc, tb):
+            async def __aexit__(self, exc_type, exc, _tb):
                 return None
 
         async def stop_on_first_poll(delay):

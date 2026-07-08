@@ -48,26 +48,25 @@ def packet_payload_char_limit(packet_max_chars: int) -> int:
 
 
 def observe_container_output(summary: LearningRunSummary, output: ContainerOutput) -> None:
-    if output.type == "result" and output.result is not None:
-        summary.final_answer = _sanitize_text(output.result)
+    if _is_successful_result(output):
+        result = output.result
+        assert result is not None
+        summary.final_answer = _sanitize_text(result)
 
     if output.type == "tool_use" and output.tool_name:
         _record_tool_count(summary, output.tool_name)
 
-    if output.status == "error":
-        error_text = output.error or output.result or output.text or output.tool_result_content
-        if error_text:
-            _append_error_snippet(summary, error_text)
+    error_text = _error_text(output)
+    if error_text is not None:
+        _append_error_snippet(summary, error_text)
         return
 
     # Cores must mark recovered tool failures with tool_result_is_error=True
     # or they are indistinguishable from successful tool output here.
-    if (
-        output.type == "tool_result"
-        and output.tool_result_is_error is True
-        and output.tool_result_content
-    ):
-        _append_error_snippet(summary, output.tool_result_content)
+    if _is_recovered_tool_error(output):
+        error_content = output.tool_result_content
+        assert error_content is not None
+        _append_error_snippet(summary, error_content)
 
 
 def build_learning_packet(
@@ -79,30 +78,16 @@ def build_learning_packet(
     summary: LearningRunSummary,
 ) -> LearningPacket | None:
     settings = get_settings()
-    if not settings.learning.enabled:
+    profile = _resolve_learning_profile(settings.learning.enabled, group.folder)
+    if profile is None:
         return None
-
-    try:
-        paths = resolve_learning_paths(group.folder)
-    except (LearningConfigError, ValueError):
-        return None
-    if paths is None:
-        return None
-
     max_chars = settings.learning.packet_max_chars
-    user_messages = [
-        message for message in missed_messages if _is_user_visible_user_message(message)
-    ]
-    if not user_messages:
-        return None
-    nonempty_error_snippets = [snippet for snippet in summary.error_snippets if snippet]
-    budgets = _packet_budgets(
-        max_chars,
-        has_final_answer=summary.final_answer is not None,
-        has_error_snippets=bool(nonempty_error_snippets),
+    prepared = _prepare_packet_content(
+        missed_messages=missed_messages,
+        summary=summary,
+        max_chars=max_chars,
     )
-    messages, captured_messages = _bounded_messages(user_messages, budgets.messages)
-    if not messages:
+    if prepared is None:
         return None
 
     now = datetime.now(UTC)
@@ -110,29 +95,26 @@ def build_learning_packet(
         job_id=_new_job_id(now),
         chat_jid=_bounded_metadata(chat_jid),
         group_folder=_bounded_metadata(group.folder),
-        profile=_bounded_metadata(paths.profile),
+        profile=_bounded_metadata(profile),
         created_at=now.isoformat(),
-        messages=messages,
-        final_answer=_cap_optional_text(summary.final_answer, budgets.final_answer),
+        messages=prepared.messages,
+        final_answer=_cap_optional_text(summary.final_answer, prepared.budgets.final_answer),
         tool_counts=_bounded_tool_counts(summary.tool_counts),
-        error_snippets=_bounded_error_snippets(nonempty_error_snippets, budgets.error_snippets),
+        error_snippets=_bounded_error_snippets(
+            prepared.error_snippets,
+            prepared.budgets.error_snippets,
+        ),
         loaded_skills=[],
         provenance={
             "chat_jid": _bounded_metadata(chat_jid),
             "group_folder": _bounded_metadata(group.folder),
             "final_cursor": _cap_text(_sanitize_text(final_cursor), _MAX_TIMESTAMP_CHARS),
             "source_message_ids": _bounded_source_message_ids(
-                captured_messages, budgets.source_ids
+                prepared.captured_messages, prepared.budgets.source_ids
             ),
         },
     )
-    if _serialized_payload_chars(packet) > packet_payload_char_limit(max_chars):
-        logger.warning(
-            "Skipped oversized learning packet after bounding",
-            group=group.name,
-            payload_chars=_serialized_payload_chars(packet),
-            limit=packet_payload_char_limit(max_chars),
-        )
+    if not _fits_packet_budget(packet, max_chars, group.name):
         return None
     return packet
 
@@ -192,6 +174,89 @@ class _TextBudget:
         capped = _cap_text(_sanitize_text(value), self.remaining)
         self.remaining -= len(capped)
         return capped
+
+
+@dataclass(frozen=True)
+class _PreparedPacketContent:
+    messages: list[dict[str, str]]
+    captured_messages: list[NewMessage]
+    error_snippets: list[str]
+    budgets: _PacketBudgets
+
+
+def _is_successful_result(output: ContainerOutput) -> bool:
+    return output.status != "error" and output.type == "result" and output.result is not None
+
+
+def _error_text(output: ContainerOutput) -> str | None:
+    if output.status != "error":
+        return None
+    return output.error or output.result or output.text or output.tool_result_content
+
+
+def _is_recovered_tool_error(output: ContainerOutput) -> bool:
+    return (
+        output.type == "tool_result"
+        and output.tool_result_is_error is True
+        and output.tool_result_content is not None
+    )
+
+
+def _resolve_learning_profile(enabled: bool, group_folder: str) -> str | None:
+    if not enabled:
+        return None
+
+    try:
+        paths = resolve_learning_paths(group_folder)
+    except (LearningConfigError, ValueError):
+        return None
+    if paths is None:
+        return None
+    return paths.profile
+
+
+def _prepare_packet_content(
+    *,
+    missed_messages: list[NewMessage],
+    summary: LearningRunSummary,
+    max_chars: int,
+) -> _PreparedPacketContent | None:
+    user_messages = [
+        message for message in missed_messages if _is_user_visible_user_message(message)
+    ]
+    if not user_messages:
+        return None
+
+    error_snippets = [snippet for snippet in summary.error_snippets if snippet]
+    budgets = _packet_budgets(
+        max_chars,
+        has_final_answer=summary.final_answer is not None,
+        has_error_snippets=bool(error_snippets),
+    )
+    messages, captured_messages = _bounded_messages(user_messages, budgets.messages)
+    if not messages:
+        return None
+    return _PreparedPacketContent(
+        messages=messages,
+        captured_messages=captured_messages,
+        error_snippets=error_snippets,
+        budgets=budgets,
+    )
+
+
+def _fits_packet_budget(packet: LearningPacket, max_chars: int, group_name: str) -> bool:
+    payload_chars = _serialized_payload_chars(packet)
+    limit = packet_payload_char_limit(max_chars)
+    if payload_chars <= limit:
+        return True
+
+    logger.warning(
+        "Skipped oversized learning packet after bounding",
+        group=group_name,
+        payload_chars=payload_chars,
+        limit=limit,
+    )
+    return False
 
 
 def _packet_budgets(

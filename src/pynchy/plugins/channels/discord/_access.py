@@ -68,6 +68,33 @@ def _same_name(left: str | None, right: str | None) -> bool:
     return bool(left and right and left.casefold() == right.casefold())
 
 
+def _member_allowlists(
+    guild: DiscordGuildConfig, channel: DiscordChannelConfig | None
+) -> tuple[list[str], list[str]]:
+    users = channel.users if channel and channel.users else guild.users
+    roles = channel.roles if channel and channel.roles else guild.roles
+    return users, roles
+
+
+def _is_member_allowed(
+    ctx: InboundContext,
+    *,
+    users: list[str],
+    roles: list[str],
+) -> bool:
+    if not users and not roles:
+        return True
+    return _matches_user(users, ctx.author_id) or _matches_role(roles, ctx.author_role_ids)
+
+
+def _requires_mention(
+    guild: DiscordGuildConfig, channel: DiscordChannelConfig | None
+) -> bool | None:
+    if channel is not None and channel.require_mention is not None:
+        return channel.require_mention
+    return guild.require_mention
+
+
 class DiscordAccess:
     """Decide whether an inbound message may reach the agent."""
 
@@ -151,19 +178,10 @@ class DiscordAccess:
         guild: DiscordGuildConfig,
         channel: DiscordChannelConfig | None,
     ) -> Decision:
-        # Member/role allowlist, channel-first then guild.
-        users = channel.users if channel and channel.users else guild.users
-        roles = channel.roles if channel and channel.roles else guild.roles
-        if (users or roles) and not (
-            _matches_user(users, ctx.author_id) or _matches_role(roles, ctx.author_role_ids)
-        ):
+        users, roles = _member_allowlists(guild, channel)
+        if not _is_member_allowed(ctx, users=users, roles=roles):
             return "deny"
-
-        require_mention = (
-            channel.require_mention
-            if channel is not None and channel.require_mention is not None
-            else guild.require_mention
-        )
+        require_mention = _requires_mention(guild, channel)
         if require_mention and not ctx.mentions_bot:
             return "deny"
         return "allow"
