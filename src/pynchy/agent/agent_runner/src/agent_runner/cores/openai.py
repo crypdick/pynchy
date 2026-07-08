@@ -253,6 +253,37 @@ def _handle_run_item_stream_event(event: Any) -> AgentEvent | None:
     return handler(event.item)
 
 
+def _stdio_server(name: str, spec: dict[str, Any]) -> MCPServerStdio:
+    """Build a stdio MCP server from a command-based spec."""
+    params: dict[str, Any] = {"command": spec["command"]}
+    if "args" in spec:
+        params["args"] = spec.get("args", [])
+    if "env" in spec and spec["env"] is not None:
+        params["env"] = spec["env"]
+    return MCPServerStdio(params=cast(MCPServerStdioParams, params), name=name)
+
+
+def _http_server_params(spec: dict[str, Any]) -> dict[str, Any]:
+    """Build shared HTTP-style MCP params from a URL-based spec."""
+    params: dict[str, Any] = {"url": spec["url"]}
+    if spec.get("headers"):
+        params["headers"] = spec["headers"]
+    return params
+
+
+def _sse_server(name: str, spec: dict[str, Any]) -> MCPServerSse:
+    """Build an SSE MCP server."""
+    return MCPServerSse(params=cast(MCPServerSseParams, _http_server_params(spec)), name=name)
+
+
+def _streamable_http_server(name: str, spec: dict[str, Any]) -> MCPServerStreamableHttp:
+    """Build a streamable-HTTP MCP server."""
+    return MCPServerStreamableHttp(
+        params=cast(MCPServerStreamableHttpParams, _http_server_params(spec)),
+        name=name,
+    )
+
+
 # ---------------------------------------------------------------------------
 # OpenAIAgentCore
 # ---------------------------------------------------------------------------
@@ -279,30 +310,17 @@ class OpenAIAgentCore:
     ) -> MCPServerStdio | MCPServerSse | MCPServerStreamableHttp | None:
         """Build an MCP server from a generic config dict."""
         if "command" in spec:
-            params: dict[str, Any] = {"command": spec["command"]}
-            if "args" in spec:
-                params["args"] = spec.get("args", [])
-            if "env" in spec and spec["env"] is not None:
-                params["env"] = spec["env"]
-            return MCPServerStdio(params=cast(MCPServerStdioParams, params), name=name)
+            return _stdio_server(name, spec)
 
         transport = spec.get("type") or spec.get("transport")
         if transport is None and "url" in spec:
             transport = "sse"
 
         if transport in ("sse",):
-            params = {"url": spec["url"]}
-            if spec.get("headers"):
-                params["headers"] = spec["headers"]
-            return MCPServerSse(params=cast(MCPServerSseParams, params), name=name)
+            return _sse_server(name, spec)
 
         if transport in ("streamable_http", "http"):
-            params = {"url": spec["url"]}
-            if spec.get("headers"):
-                params["headers"] = spec["headers"]
-            return MCPServerStreamableHttp(
-                params=cast(MCPServerStreamableHttpParams, params), name=name
-            )
+            return _streamable_http_server(name, spec)
 
         _log(f"Skipping MCP server '{name}': unsupported spec {spec}")
         return None

@@ -126,6 +126,24 @@ class TestOpenAICoreInstantiation:
 class TestMCPServerConversion:
     """Test that config.mcp_servers dict is converted to MCPServerStdio objects."""
 
+    def _make_core(self):
+        try:
+            from agent_runner.cores.openai import OpenAIAgentCore
+        except ImportError:
+            pytest.skip("openai-agents not installed")
+
+        return OpenAIAgentCore(
+            AgentCoreConfig(
+                cwd="/workspace/project",
+                session_id=None,
+                group_folder="admin-1",
+                chat_jid="test@g.us",
+                is_admin=True,
+                is_scheduled_task=False,
+                mcp_servers={},
+            )
+        )
+
     def test_mcp_servers_built_from_config(self):
         """start() converts mcp_servers dict to MCPServerStdio instances."""
         try:
@@ -156,6 +174,50 @@ class TestMCPServerConversion:
         core = OpenAIAgentCore(config)
         # Before start(), no servers are created
         assert len(core._mcp_servers) == 0
+
+    def test_build_mcp_server_stdio(self):
+        core = self._make_core()
+
+        built = core._build_mcp_server(
+            "pynchy",
+            {
+                "command": "python",
+                "args": ["-m", "agent_runner.agent_tools"],
+                "env": {"KEY": "val"},
+            },
+        )
+
+        assert built is not None
+        assert built.name == "pynchy"
+
+    def test_build_mcp_server_sse(self):
+        core = self._make_core()
+
+        built = core._build_mcp_server(
+            "browser",
+            {"type": "sse", "url": "http://browser:3000/mcp", "headers": {"X-Test": "1"}},
+        )
+
+        assert built is not None
+        assert built.name == "browser"
+
+    def test_build_mcp_server_streamable_http(self):
+        core = self._make_core()
+
+        built = core._build_mcp_server(
+            "remote",
+            {"type": "http", "url": "https://example.test/mcp", "headers": {"Auth": "token"}},
+        )
+
+        assert built is not None
+        assert built.name == "remote"
+
+    def test_build_mcp_server_rejects_unknown_transport(self):
+        core = self._make_core()
+
+        built = core._build_mcp_server("mystery", {"type": "udp", "url": "udp://example.test"})
+
+        assert built is None
 
 
 @pytest.mark.skipif(not AGENT_RUNNER_AVAILABLE, reason="agent_runner module not available")
