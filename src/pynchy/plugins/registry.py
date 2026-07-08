@@ -74,6 +74,11 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
         "playwright-browser",
     ),
     (
+        "pynchy.plugins.integrations.linear",
+        "LinearMcpPlugin",
+        "linear",
+    ),
+    (
         "pynchy.plugins.integrations.notebook_server",
         "NotebookServerPlugin",
         "notebook",
