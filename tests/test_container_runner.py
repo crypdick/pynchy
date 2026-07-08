@@ -7,6 +7,7 @@ import contextlib
 import json
 import logging
 import shutil
+import signal
 import subprocess
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -218,12 +219,61 @@ class HangingProcess:
         self.killed = True
 
 
+class CompletedProcess:
+    """Minimal subprocess fake for commands that finish via communicate()."""
+
+    def __init__(self, stdout: bytes = b"") -> None:
+        self.stdout = stdout
+
+    async def communicate(self) -> tuple[bytes, bytes]:
+        return self.stdout, b""
+
+
 # ---------------------------------------------------------------------------
 # Unit tests — pure helpers
 # ---------------------------------------------------------------------------
 
 
 class TestContainerProcessHelpers:
+    async def test_reap_apple_runtime_orphans_signals_exact_runtime_match(self):
+        """Only the runtime process for the exact Apple container UUID is reaped."""
+        from pynchy.host.container_manager.process import (
+            _reap_apple_runtime_orphans,  # allow: private-test-imports - Apple runtime recovery
+        )
+
+        runtime = MagicMock(cli="container")
+        runtime.name = "apple"
+        ps_output = b"""
+        123 /opt/homebrew/bin/container-runtime-linux start --root /Users/me/Library/Application Support/com.apple.container/containers/pynchy-code-improver --uuid pynchy-code-improver
+        456 /opt/homebrew/bin/container-runtime-linux start --root /Users/me/Library/Application Support/com.apple.container/containers/pynchy-code-improver-old --uuid pynchy-code-improver-old
+        789 /usr/bin/other --uuid pynchy-code-improver
+        """
+        alive = {123}
+        signals: list[tuple[int, signal.Signals]] = []
+
+        def fake_kill(pid: int, sig: signal.Signals) -> None:
+            if sig == 0:
+                if pid in alive:
+                    return
+                raise ProcessLookupError
+            signals.append((pid, sig))
+            if sig == signal.SIGTERM:
+                alive.discard(pid)
+
+        with (
+            patch("pynchy.host.container_manager.process.sys.platform", "darwin"),
+            patch("pynchy.host.container_manager.process.get_runtime", return_value=runtime),
+            patch(
+                "pynchy.host.container_manager.process.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=CompletedProcess(ps_output)),
+            ),
+            patch("pynchy.host.container_manager.process.os.kill", side_effect=fake_kill),
+        ):
+            reaped = await _reap_apple_runtime_orphans("pynchy-code-improver")
+
+        assert reaped is True
+        assert signals == [(123, signal.SIGTERM)]
+
     async def test_force_remove_times_out_and_kills_hung_runtime_cli(self):
         """Apple Container cleanup can hang on stopped containers with orphaned runtimes."""
         from pynchy.host.container_manager.process import (
@@ -255,6 +305,34 @@ class TestContainerProcessHelpers:
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
+
+    async def test_force_remove_retries_after_reaping_apple_runtime_orphan(self):
+        """If Apple delete hangs, reap the orphaned runtime and retry cleanup once."""
+        from pynchy.host.container_manager.process import (
+            _docker_rm_force,  # allow: private-test-imports - external cleanup side effect
+        )
+
+        hung_delete = HangingProcess()
+        completed_delete = FakeProcess()
+        completed_delete.close(code=1)
+
+        with (
+            patch(
+                "pynchy.host.container_manager.process.asyncio.create_subprocess_exec",
+                new=AsyncMock(side_effect=[hung_delete, completed_delete]),
+            ) as create_proc,
+            patch(
+                "pynchy.host.container_manager.process._reap_apple_runtime_orphans",
+                new=AsyncMock(return_value=True),
+            ) as reap_orphan,
+            patch("pynchy.host.container_manager.process._RM_FORCE_TIMEOUT_SECONDS", 0.01),
+            patch("pynchy.host.container_manager.process._RM_FORCE_KILL_WAIT_SECONDS", 0.01),
+        ):
+            await _docker_rm_force("pynchy-code-improver")
+
+        assert hung_delete.killed is True
+        reap_orphan.assert_awaited_once_with("pynchy-code-improver")
+        assert create_proc.await_count == 2
 
 
 class TestInputSerialization:
@@ -2644,6 +2722,11 @@ class TestSessionStartOnlyStderr:
                 side_effect=fake_runtime_running,
             ),
             patch("pynchy.host.container_manager.session._RUNTIME_POLL_INTERVAL_SECONDS", 0.01),
+            patch("pynchy.host.container_manager.session._RUNTIME_CLI_KILL_WAIT_SECONDS", 0.01),
+            patch(
+                "pynchy.host.container_manager.session._reap_apple_runtime_orphans",
+                new=AsyncMock(return_value=True),
+            ) as reap_orphan,
         ):
             session.start(proc)  # type: ignore[arg-type]
             session.set_output_handler(AsyncMock())
@@ -2655,6 +2738,7 @@ class TestSessionStartOnlyStderr:
                 await session.wait_for_query_done(timeout=0.5)
 
         assert proc._killed is True
+        reap_orphan.assert_awaited_once_with("pynchy-apple-runtime-stop-test")
         assert session._dead is True
         assert session._died_before_pulse is True
         assert session._query_done.is_set()
@@ -2677,6 +2761,11 @@ class TestSessionStartOnlyStderr:
             ),
             patch("pynchy.host.container_manager.session._RUNTIME_POLL_INTERVAL_SECONDS", 0.01),
             patch("pynchy.host.container_manager.session._RUNTIME_START_GRACE_SECONDS", 0.02),
+            patch("pynchy.host.container_manager.session._RUNTIME_CLI_KILL_WAIT_SECONDS", 0.01),
+            patch(
+                "pynchy.host.container_manager.session._reap_apple_runtime_orphans",
+                new=AsyncMock(return_value=True),
+            ) as reap_orphan,
         ):
             session.start(proc)  # type: ignore[arg-type]
             session.set_output_handler(AsyncMock())
@@ -2685,6 +2774,7 @@ class TestSessionStartOnlyStderr:
                 await session.wait_for_query_done(timeout=0.5)
 
         assert proc._killed is True
+        reap_orphan.assert_awaited_once_with("pynchy-never-start")
         assert session._dead is True
         assert session._died_before_pulse is True
         assert session._query_done.is_set()

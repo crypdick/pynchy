@@ -34,6 +34,7 @@ from pynchy.host.container_manager.ipc.write import (
 from pynchy.host.container_manager.process import (
     OnOutput,
     _docker_rm_force,
+    _reap_apple_runtime_orphans,
 )
 from pynchy.logger import logger
 from pynchy.types import GroupFolder
@@ -46,6 +47,7 @@ class SessionDiedError(Exception):
 
 _RUNTIME_POLL_INTERVAL_SECONDS = 0.5
 _RUNTIME_START_GRACE_SECONDS = 5.0
+_RUNTIME_CLI_KILL_WAIT_SECONDS = 2.0
 
 
 async def _runtime_container_running(container_name: str) -> bool:
@@ -296,9 +298,7 @@ class ContainerSession:
                     group=self.group_folder,
                     container=self.container_name,
                 )
-                with contextlib.suppress(ProcessLookupError):
-                    proc.kill()
-                await self._mark_container_exited(1)
+                await self._kill_stuck_runtime_cli(proc)
                 return
             elif loop.time() >= deadline:
                 logger.warning(
@@ -306,11 +306,17 @@ class ContainerSession:
                     group=self.group_folder,
                     container=self.container_name,
                 )
-                with contextlib.suppress(ProcessLookupError):
-                    proc.kill()
-                await self._mark_container_exited(1)
+                await self._kill_stuck_runtime_cli(proc)
                 return
             await asyncio.sleep(_RUNTIME_POLL_INTERVAL_SECONDS)
+
+    async def _kill_stuck_runtime_cli(self, proc: asyncio.subprocess.Process) -> None:
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(proc.wait(), timeout=_RUNTIME_CLI_KILL_WAIT_SECONDS)
+        await _reap_apple_runtime_orphans(self.container_name)
+        await self._mark_container_exited(1)
 
     async def _monitor_runtime_container(self, cli_exit_code: int) -> None:
         """Poll runtime state after the CLI client exits before the container."""
