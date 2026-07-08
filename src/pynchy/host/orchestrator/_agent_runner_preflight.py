@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager import (
@@ -36,6 +36,7 @@ class _PreContainerResult:
     snapshot_ms: float
 
 
+@runtime_checkable
 class _PreflightDeps(Protocol):
     @property
     def sessions(self) -> dict[str, str]: ...

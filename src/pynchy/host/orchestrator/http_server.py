@@ -84,7 +84,7 @@ class HttpDeps(Protocol):
 # ------------------------------------------------------------------
 
 
-async def _handle_health(request: web.Request) -> web.Response:
+async def _handle_health(request: Any) -> Any:
     deps: HttpDeps = request.app[deps_key]
     return web.json_response(
         {
@@ -98,7 +98,7 @@ async def _handle_health(request: web.Request) -> web.Response:
     )
 
 
-async def _handle_deploy(request: web.Request) -> web.Response:
+async def _handle_deploy(request: Any) -> Any:
     deps: HttpDeps = request.app[deps_key]
     old_sha = get_head_sha()
 
@@ -178,7 +178,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
     )
 
 
-async def _handle_status(request: web.Request) -> web.Response:
+async def _handle_status(request: Any) -> Any:
     """Comprehensive operational status from all subsystems."""
     status_deps: StatusDeps = request.app[status_deps_key]
     data = await collect_status(status_deps, _start_time)
@@ -190,13 +190,13 @@ async def _handle_status(request: web.Request) -> web.Response:
 # ------------------------------------------------------------------
 
 
-async def _handle_api_groups(request: web.Request) -> web.Response:
+async def _handle_api_groups(request: Any) -> Any:
     """Return registered groups."""
     deps: HttpDeps = request.app[deps_key]
     return web.json_response(deps.get_groups())
 
 
-async def _handle_api_messages(request: web.Request) -> web.Response:
+async def _handle_api_messages(request: Any) -> Any:
     """Return chat history for a group."""
     deps: HttpDeps = request.app[deps_key]
     jid = request.query.get("jid", "")
@@ -217,7 +217,7 @@ async def _handle_api_messages(request: web.Request) -> web.Response:
     )
 
 
-async def _handle_api_send(request: web.Request) -> web.Response:
+async def _handle_api_send(request: Any) -> Any:
     """Send a message from the TUI client."""
     deps: HttpDeps = request.app[deps_key]
     body = await request.json()
@@ -229,7 +229,7 @@ async def _handle_api_send(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok"})
 
 
-async def _handle_api_events(request: web.Request) -> web.StreamResponse:
+async def _handle_api_events(request: Any) -> Any:
     """SSE stream for real-time events (messages, agent activity)."""
     deps: HttpDeps = request.app[deps_key]
 
@@ -269,7 +269,7 @@ async def _handle_api_events(request: web.Request) -> web.StreamResponse:
     return response
 
 
-async def _handle_api_periodic(request: web.Request) -> web.Response:
+async def _handle_api_periodic(request: Any) -> Any:
     """Return periodic agent status."""
     deps: HttpDeps = request.app[deps_key]
     agents = await deps.get_periodic_agents()

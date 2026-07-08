@@ -24,7 +24,6 @@ from neonize.events import (
     MessageEv,
     PairStatusEv,
 )
-from neonize.proto.Neonize_pb2 import JID
 from neonize.utils.jid import Jid2String
 
 from pynchy.config import get_settings
@@ -441,7 +440,7 @@ class WhatsAppChannel:
 
         self._on_message(context.chat_jid, self._new_message(context, content))
 
-    def _translate_jid(self, jid_str: str, jid: JID) -> str:
+    def _translate_jid(self, jid_str: str, jid: Any) -> str:
         if jid.Server != "lid":
             return jid_str
         lid_user = jid.User.split(":")[0]
@@ -451,7 +450,7 @@ class WhatsAppChannel:
         return jid_str
 
     @staticmethod
-    def _parse_jid(jid_str: str) -> JID:
+    def _parse_jid(jid_str: str) -> Any:
         from neonize.utils.jid import build_jid
 
         if "@" not in jid_str:

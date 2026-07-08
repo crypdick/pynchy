@@ -232,11 +232,11 @@ def build_app(*, workspace: str | None = None) -> Any:
     return app
 
 
-async def _handle_health(request: web.Request) -> web.Response:
+async def _handle_health(request: Any) -> Any:
     return web.json_response({"status": "ok", "service": "pynchy-linear"})
 
 
-async def _handle_mcp(request: web.Request) -> web.Response:
+async def _handle_mcp(request: Any) -> Any:
     payload = await request.json()
     request_id = payload.get("id")
     method = payload.get("method")
@@ -413,11 +413,11 @@ def _text_result(text: str, *, is_error: bool = False) -> dict[str, Any]:
     return result
 
 
-def _jsonrpc_result(request_id: Any, result: dict[str, Any]) -> web.Response:
+def _jsonrpc_result(request_id: Any, result: dict[str, Any]) -> Any:
     return web.json_response({"jsonrpc": "2.0", "id": request_id, "result": result})
 
 
-def _jsonrpc_error(request_id: Any, code: int, message: str) -> web.Response:
+def _jsonrpc_error(request_id: Any, code: int, message: str) -> Any:
     return web.json_response(
         {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
     )
