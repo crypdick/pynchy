@@ -5,14 +5,15 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from pynchy.config import get_settings
-from pynchy.host.container_manager.onecli import (
-    OneCliError,
-    OneCliMaterial,
-    prepare_onecli_material,
-)
 from pynchy.logger import logger
+
+if TYPE_CHECKING:
+    from pynchy.host.container_manager.onecli import OneCliMaterial
+else:
+    OneCliMaterial = Any
 
 _SUBPROCESS_TIMEOUT = 30
 _DEFAULT_GIT_SSH_COMMAND = (
@@ -64,6 +65,14 @@ def _host_process_env(material: OneCliMaterial) -> dict[str, str]:
     }
 
 
+def prepare_onecli_material(group_folder: str) -> OneCliMaterial | None:
+    from pynchy.host.container_manager.onecli import (
+        prepare_onecli_material as _prepare_onecli_material,
+    )
+
+    return _prepare_onecli_material(group_folder)
+
+
 def _git_env_with_onecli(slug: str, *, group_folder: str | None) -> dict[str, str] | None:
     s = get_settings()
     if not s.onecli.enabled:
@@ -79,6 +88,8 @@ def _git_env_with_onecli(slug: str, *, group_folder: str | None) -> dict[str, st
         key in env for key in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy")
     )
     if not has_proxy:
+        from pynchy.host.container_manager.onecli import OneCliError
+
         reason = "OneCLI git material did not include proxy env"
         if s.onecli.fail_closed:
             raise OneCliError(reason)
