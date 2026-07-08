@@ -386,6 +386,21 @@ class OpenAIAgentCore:
         )
         self._agent = self._make_agent(self._model_primary)
 
+    def _query_models(self) -> tuple[str, ...]:
+        """Return the ordered model list for a query attempt."""
+        return tuple(
+            model for model in (self._model_primary, self._model_fallback) if isinstance(model, str)
+        )
+
+    def _should_retry_query(self, attempt: int, exc: Exception, emitted_any: bool) -> bool:
+        """Return whether query() should retry with the configured secondary model."""
+        return (
+            attempt == 1
+            and self._model_fallback is not None
+            and _is_model_not_found(exc)
+            and not emitted_any
+        )
+
     async def query(self, prompt: str) -> AsyncIterator[AgentEvent]:
         """Execute a query and yield AgentEvents."""
         if self._agent is None:
@@ -393,9 +408,7 @@ class OpenAIAgentCore:
 
         _log(f"Starting query (previous_response_id: {self._previous_response_id or 'none'})...")
 
-        for attempt, model in enumerate((self._model_primary, self._model_fallback), start=1):
-            if not model:
-                continue
+        for attempt, model in enumerate(self._query_models(), start=1):
             emitted_any = False
             try:
                 if attempt > 1:
@@ -405,12 +418,7 @@ class OpenAIAgentCore:
                     yield event
                 return
             except Exception as exc:
-                if (
-                    attempt == 1
-                    and self._model_fallback
-                    and _is_model_not_found(exc)
-                    and not emitted_any
-                ):
+                if self._should_retry_query(attempt, exc, emitted_any):
                     _log(f"Primary model failed ({exc}); trying fallback")
                     continue
                 raise

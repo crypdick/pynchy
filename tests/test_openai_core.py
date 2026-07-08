@@ -303,6 +303,73 @@ class TestOpenAIToolParsing:
         assert tool_input == {"command": "git status"}
 
 
+@pytest.mark.skipif(not AGENT_RUNNER_AVAILABLE, reason="agent_runner module not available")
+class TestOpenAIQueryFallback:
+    """Retry behavior for primary/fallback OpenAI models."""
+
+    def _make_core(self):
+        try:
+            from agent_runner.cores.openai import OpenAIAgentCore
+        except ImportError:
+            pytest.skip("openai-agents not installed")
+
+        core = OpenAIAgentCore(
+            AgentCoreConfig(
+                cwd="/workspace/project",
+                session_id=None,
+                group_folder="admin-1",
+                chat_jid="test@g.us",
+                is_admin=True,
+                is_scheduled_task=False,
+                mcp_servers={},
+                extra={"model": "primary-model", "fallback_model": "fallback-model"},
+            )
+        )
+        core._agent = object()
+        core._model_primary = "primary-model"
+        core._model_fallback = "fallback-model"
+        return core
+
+    @staticmethod
+    async def _collect_events(core, prompt: str):
+        return [event async for event in core.query(prompt)]
+
+    @pytest.mark.asyncio
+    async def test_retries_with_fallback_before_any_output(self, monkeypatch):
+        core = self._make_core()
+        calls: list[str] = []
+
+        async def fake_run_streamed(prompt: str, model: str):
+            calls.append(model)
+            if model == "primary-model":
+                raise RuntimeError("model_not_found")
+            yield AgentEvent(type="text", data={"text": prompt})
+
+        monkeypatch.setattr(core, "_run_streamed", fake_run_streamed)
+
+        events = await self._collect_events(core, "hello")
+
+        assert calls == ["primary-model", "fallback-model"]
+        assert [event.type for event in events] == ["text"]
+
+    @pytest.mark.asyncio
+    async def test_does_not_retry_after_emitting_primary_output(self, monkeypatch):
+        core = self._make_core()
+        calls: list[str] = []
+
+        async def fake_run_streamed(_prompt: str, model: str):
+            calls.append(model)
+            yield AgentEvent(type="thinking", data={"thinking": "partial"})
+            raise RuntimeError("model_not_found")
+
+        monkeypatch.setattr(core, "_run_streamed", fake_run_streamed)
+
+        with pytest.raises(RuntimeError, match="model_not_found"):
+            await self._collect_events(core, "hello")
+
+        assert calls == ["primary-model"]
+
+
 # ---------------------------------------------------------------------------
 # Config selection tests
 # ---------------------------------------------------------------------------
