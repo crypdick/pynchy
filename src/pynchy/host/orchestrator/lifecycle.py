@@ -40,6 +40,8 @@ if TYPE_CHECKING:
 # Shutdown
 # ---------------------------------------------------------------------------
 
+_SHUTDOWN_HARD_EXIT_SECONDS = 60
+
 
 async def shutdown_app(app: PynchyApp, sig_name: str) -> None:
     """Graceful shutdown handler.  Second signal force-exits."""
@@ -49,49 +51,54 @@ async def shutdown_app(app: PynchyApp, sig_name: str) -> None:
     app._shutting_down = True
     logger.info("Shutdown signal received", signal=sig_name)
 
-    # Hard-exit watchdog: if graceful shutdown hangs, force-exit after 12s.
-    watchdog = threading.Timer(12, lambda: os._exit(1))
+    # Hard-exit watchdog: if graceful shutdown hangs, force-exit within
+    # systemd's 90s stop timeout. Keep this larger than the container stop
+    # budget: one graceful Docker stop can consume roughly 12s by itself.
+    watchdog = threading.Timer(_SHUTDOWN_HARD_EXIT_SECONDS, lambda: os._exit(1))
     watchdog.daemon = True
     watchdog.start()
 
-    # Notify the admin group that the service is going down.
     try:
-        from pynchy.host.orchestrator.adapters import find_admin_jid
+        # Notify the admin group that the service is going down.
+        try:
+            from pynchy.host.orchestrator.adapters import find_admin_jid
 
-        admin_jid = find_admin_jid(app.workspaces) or None
-        if admin_jid and app.channels:
-            await app.broadcast_host_message(admin_jid, f"Shutting down ({sig_name})")
-    except Exception:
-        logger.debug("Shutdown notification failed", exc_info=True)
+            admin_jid = find_admin_jid(app.workspaces) or None
+            if admin_jid and app.channels:
+                await app.broadcast_host_message(admin_jid, f"Shutting down ({sig_name})")
+        except Exception:
+            logger.debug("Shutdown notification failed", exc_info=True)
 
-    # Cancel subsystem tasks first — prevents scheduler/IPC from creating
-    # more work while we're shutting down.
-    for task in app._subsystem_tasks:
-        task.cancel()
-    app._subsystem_tasks.clear()
+        # Cancel subsystem tasks first — prevents scheduler/IPC from creating
+        # more work while we're shutting down.
+        for task in app._subsystem_tasks:
+            task.cancel()
+        app._subsystem_tasks.clear()
 
-    # Suppress reconnect attempts before cleanup.
-    for ch in app.channels:
-        ch.prepare_shutdown()
+        # Suppress reconnect attempts before cleanup.
+        for ch in app.channels:
+            ch.prepare_shutdown()
 
-    if app._http_runner:
-        await asyncio.sleep(0.3)
-        await app._http_runner.cleanup()
+        if app._http_runner:
+            await asyncio.sleep(0.3)
+            await app._http_runner.cleanup()
 
-    await app.queue.shutdown()
+        await app.queue.shutdown()
 
-    from pynchy.host.container_manager.gateway import stop_gateway
+        from pynchy.host.container_manager.gateway import stop_gateway
 
-    await stop_gateway()
-    for obs in app._observers:
-        await obs.close()
-    if app._memory:
-        await app._memory.close()
-    batcher = output_handler.get_trace_batcher()
-    if batcher is not None:
-        await batcher.flush_all()
-    for ch in app.channels:
-        await ch.disconnect()
+        await stop_gateway()
+        for obs in app._observers:
+            await obs.close()
+        if app._memory:
+            await app._memory.close()
+        batcher = output_handler.get_trace_batcher()
+        if batcher is not None:
+            await batcher.flush_all()
+        for ch in app.channels:
+            await ch.disconnect()
+    finally:
+        watchdog.cancel()
 
 
 # ---------------------------------------------------------------------------
@@ -321,9 +328,15 @@ async def run_app(app: PynchyApp) -> None:
             await startup_handler.auto_rollback(continuation_path, exc)
         raise
 
+    shutdown_task: asyncio.Task[Any] | None = None
+
     def make_shutdown_handler(s: signal.Signals) -> Callable[[], None]:
         def handler() -> None:
-            create_background_task(shutdown_app(app, s.name), name=f"shutdown-{s.name}")
+            nonlocal shutdown_task
+            shutdown_task = create_background_task(
+                shutdown_app(app, s.name),
+                name=f"shutdown-{s.name}",
+            )
 
         return handler
 
@@ -354,4 +367,8 @@ async def run_app(app: PynchyApp) -> None:
         logger.debug("Message loop already running, skipping duplicate start")
         return
     app.message_loop_running = True
-    await start_message_loop(app, lambda: app._shutting_down)
+    try:
+        await start_message_loop(app, lambda: app._shutting_down)
+    finally:
+        if shutdown_task is not None and not shutdown_task.done():
+            await asyncio.shield(shutdown_task)

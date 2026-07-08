@@ -35,6 +35,111 @@ async def test_run_app_resolves_pynchyapp_runtime_annotation(monkeypatch):
         await lifecycle.run_app(PynchyApp())
 
 
+@pytest.mark.asyncio
+async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) -> None:
+    settings = make_settings(data_dir=tmp_path / "data")
+    app = PynchyApp()
+    app.workspaces = {
+        "slack:C123": WorkspaceProfile(
+            jid="slack:C123",
+            name="Test",
+            folder="test",
+            trigger="always",
+        )
+    }
+    signal_handlers: dict[object, Callable[[], None]] = {}
+    shutdown_started = asyncio.Event()
+    shutdown_can_finish = asyncio.Event()
+    shutdown_finished = asyncio.Event()
+
+    async def noop_phase(*_args: Any, **_kwargs: Any) -> dict[str, list[str]] | None:
+        return {}
+
+    async def fake_start_message_loop(
+        _deps: Any,
+        shutting_down: Callable[[], bool],
+    ) -> None:
+        signal_handlers[lifecycle.signal.SIGTERM]()
+        await shutdown_started.wait()
+        assert shutting_down()
+
+    async def fake_shutdown_app(received_app: PynchyApp, sig_name: str) -> None:
+        assert received_app is app
+        assert sig_name == "SIGTERM"
+        received_app._shutting_down = True
+        shutdown_started.set()
+        await shutdown_can_finish.wait()
+        shutdown_finished.set()
+
+    loop = asyncio.get_running_loop()
+
+    def fake_add_signal_handler(sig: object, callback: Callable[[], None]) -> None:
+        signal_handlers[sig] = callback
+
+    monkeypatch.setattr(lifecycle, "get_settings", lambda: settings)
+    monkeypatch.setattr(loop, "add_signal_handler", fake_add_signal_handler)
+    monkeypatch.setattr(lifecycle, "_initialize_core", noop_phase)
+    monkeypatch.setattr(lifecycle, "_setup_channels", noop_phase)
+    monkeypatch.setattr(lifecycle, "_reconcile_state", noop_phase)
+    monkeypatch.setattr(lifecycle, "_start_subsystems", noop_phase)
+    monkeypatch.setattr(lifecycle.startup_handler, "send_boot_notification", noop_phase)
+    monkeypatch.setattr(lifecycle.startup_handler, "recover_pending_messages", noop_phase)
+    monkeypatch.setattr(lifecycle.startup_handler, "check_deploy_continuation", noop_phase)
+    monkeypatch.setattr(lifecycle.startup_handler, "setup_admin_group", noop_phase)
+    monkeypatch.setattr(lifecycle, "start_message_loop", fake_start_message_loop)
+    monkeypatch.setattr(lifecycle, "shutdown_app", fake_shutdown_app)
+
+    run_task = asyncio.create_task(lifecycle.run_app(app))
+    await shutdown_started.wait()
+    await asyncio.sleep(0)
+
+    assert not run_task.done()
+    assert not shutdown_finished.is_set()
+
+    shutdown_can_finish.set()
+    await run_task
+    assert shutdown_finished.is_set()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_watchdog_outlasts_container_stop_budget_and_is_cancelled(
+    monkeypatch,
+) -> None:
+    app = PynchyApp()
+    app.queue = cast(Any, _RecordingQueue())
+    timers: list[Any] = []
+
+    class FakeTimer:
+        def __init__(self, interval: float, callback: Callable[[], None]) -> None:
+            self.interval = interval
+            self.callback = callback
+            self.daemon = False
+            self.started = False
+            self.cancelled = False
+            timers.append(self)
+
+        def start(self) -> None:
+            self.started = True
+
+        def cancel(self) -> None:
+            self.cancelled = True
+
+    async def fake_stop_gateway() -> None:
+        return None
+
+    monkeypatch.setattr(lifecycle.threading, "Timer", FakeTimer)
+    monkeypatch.setattr("pynchy.host.container_manager.gateway.stop_gateway", fake_stop_gateway)
+    monkeypatch.setattr(lifecycle.output_handler, "get_trace_batcher", lambda: None)
+
+    await lifecycle.shutdown_app(app, "SIGTERM")
+
+    assert len(timers) == 1
+    assert timers[0].started is True
+    assert timers[0].interval >= 30
+    assert timers[0].cancelled is True
+    assert app.queue.shutdown_called is True
+
+
 def test_make_learning_deps_uses_learning_queue(monkeypatch, tmp_path) -> None:
     settings = make_settings(data_dir=tmp_path / "data")
     monkeypatch.setattr("pynchy.host.learning.queue.get_settings", lambda: settings)
@@ -161,6 +266,14 @@ async def test_make_learning_deps_cancels_when_queue_rejects_reviewer_run(
 @dataclass(frozen=True)
 class _RecordedTask:
     name: str
+
+
+class _RecordingQueue:
+    def __init__(self) -> None:
+        self.shutdown_called = False
+
+    async def shutdown(self) -> None:
+        self.shutdown_called = True
 
 
 class _HttpRunner:
