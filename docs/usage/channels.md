@@ -106,13 +106,19 @@ enabled = true
 require_mention = false                # safe for a dedicated allowlisted channel
 
 [sandbox.discord-admin]
+profile = "pynchy-dev"                # use the same profile/repo access as the equivalent sandbox
 chat = "connection.discord.mybot.chat.<guild-id>.channels.<channel-id>"
 is_admin = true
 
 [sandbox.discord-dm]
+profile = "pynchy-dev"
 chat = "connection.discord.mybot.chat.direct.<your-user-id>"
 is_admin = true
 ```
+
+Set `profile` or `repo_access` on Discord sandboxes the same way you set it on
+Slack or TUI sandboxes. Repo-backed agent cores need the project worktree mount;
+omit the profile only for group-only assistants that do not work inside a repo.
 
 6. Install dependencies:
 ```bash
