@@ -79,8 +79,8 @@ def build_volume_mounts(
     _sync_skills(
         codex_home,
         plugin_manager,
-        workspace_skills=workspace_skills,
-        learned_skill_paths=learned_skill_paths,
+        workspace_skills=learning.workspace_skills,
+        learned_skill_paths=learning.learned_skill_paths,
     )
     mounts.append(VolumeMount(str(codex_home), "/home/agent/.codex", readonly=False))
 

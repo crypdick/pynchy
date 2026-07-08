@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,11 +20,105 @@ _cached_allowlist: MountAllowlist | None = None
 _allowlist_load_error: str | None = None
 
 
+@dataclass(frozen=True)
+class _ParsedAllowlist:
+    allowed_roots: list[AllowedRoot]
+    blocked_patterns: list[str]
+    non_admin_read_only: bool
+
+
 def _reset_cache() -> None:  # pyright: ignore[reportUnusedFunction]
     """Reset allowlist cache (for tests)."""
     global _cached_allowlist, _allowlist_load_error
     _cached_allowlist = None
     _allowlist_load_error = None
+
+
+def _required_list(table: Mapping[str, object], key: str) -> list[object]:
+    value = table.get(key)
+    if not isinstance(value, list):
+        raise ValueError(f"{key} must be an array")
+    return value
+
+
+def _required_bool(table: Mapping[str, object], key: str) -> bool:
+    value = table.get(key)
+    if not isinstance(value, bool):
+        raise ValueError(f"{key} must be a boolean")
+    return value
+
+
+def _string_value(value: object, *, field_name: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string")
+    return value
+
+
+def _optional_string_value(value: object, *, field_name: str) -> str | None:
+    if value is None:
+        return None
+    return _string_value(value, field_name=field_name)
+
+
+def _optional_bool_value(value: object, *, field_name: str, default: bool) -> bool:
+    if value is None:
+        return default
+    if not isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a boolean")
+    return value
+
+
+def _parse_allowed_root(raw_root: object, *, index: int) -> AllowedRoot:
+    if not isinstance(raw_root, Mapping):
+        raise ValueError(f"allowed_roots[{index}] must be a table")
+
+    return AllowedRoot(
+        path=_string_value(raw_root.get("path"), field_name=f"allowed_roots[{index}].path"),
+        allow_read_write=_optional_bool_value(
+            raw_root.get("allow_read_write"),
+            field_name=f"allowed_roots[{index}].allow_read_write",
+            default=False,
+        ),
+        description=_optional_string_value(
+            raw_root.get("description"),
+            field_name=f"allowed_roots[{index}].description",
+        ),
+    )
+
+
+def _parse_allowlist_table(raw_data: object) -> _ParsedAllowlist:
+    if not isinstance(raw_data, Mapping):
+        raise ValueError("Mount allowlist must decode to a TOML table")
+
+    allowed_roots = [
+        _parse_allowed_root(raw_root, index=index)
+        for index, raw_root in enumerate(_required_list(raw_data, "allowed_roots"))
+    ]
+
+    blocked_patterns = [
+        _string_value(pattern, field_name=f"blocked_patterns[{index}]")
+        for index, pattern in enumerate(_required_list(raw_data, "blocked_patterns"))
+    ]
+
+    return _ParsedAllowlist(
+        allowed_roots=allowed_roots,
+        blocked_patterns=blocked_patterns,
+        non_admin_read_only=_required_bool(raw_data, "non_admin_read_only"),
+    )
+
+
+def _parsed_allowlist(
+    raw_data: object,
+    *,
+    default_blocked_patterns: list[str],
+) -> MountAllowlist:
+    raw_allowlist = _parse_allowlist_table(raw_data)
+    merged_blocked = list(dict.fromkeys(default_blocked_patterns + raw_allowlist.blocked_patterns))
+    return MountAllowlist(
+        allowed_roots=raw_allowlist.allowed_roots,
+        blocked_patterns=merged_blocked,
+        non_admin_read_only=raw_allowlist.non_admin_read_only,
+    )
 
 
 def load_mount_allowlist() -> MountAllowlist | None:
@@ -54,32 +149,11 @@ def load_mount_allowlist() -> MountAllowlist | None:
             return None
 
         content = allowlist_path.read_text()
-        data = tomllib.loads(content)
-
-        if not isinstance(data.get("allowed_roots"), list):
-            raise ValueError("allowed_roots must be an array")
-        if not isinstance(data.get("blocked_patterns"), list):
-            raise ValueError("blocked_patterns must be an array")
-        if not isinstance(data.get("non_admin_read_only"), bool):
-            raise ValueError("non_admin_read_only must be a boolean")
-
-        allowed_roots = [
-            AllowedRoot(
-                path=r["path"],
-                allow_read_write=r.get("allow_read_write", False),
-                description=r.get("description"),
-            )
-            for r in data["allowed_roots"]
-        ]
-
-        # Merge with default blocked patterns from config
-        default_blocked = s.security.blocked_patterns
-        merged_blocked = list(dict.fromkeys(default_blocked + data["blocked_patterns"]))
-
-        allowlist = MountAllowlist(
-            allowed_roots=allowed_roots,
-            blocked_patterns=merged_blocked,
-            non_admin_read_only=data["non_admin_read_only"],
+        # NOTE: Update docs/architecture/security.md § 2 (Mount Security) if
+        # the allowlist format or protection semantics change here.
+        allowlist = _parsed_allowlist(
+            tomllib.loads(content),
+            default_blocked_patterns=s.security.blocked_patterns,
         )
 
         _cached_allowlist = allowlist
