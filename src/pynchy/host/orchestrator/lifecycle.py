@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 _SHUTDOWN_HARD_EXIT_SECONDS = 60
 
 
-async def shutdown_app(app: PynchyApp, sig_name: str) -> None:
+async def shutdown_app(app: PynchyApp, sig_name: str, *, exit_process: bool = False) -> None:
     """Graceful shutdown handler.  Second signal force-exits."""
     if app._shutting_down:
         logger.info("Force shutdown")
@@ -99,6 +99,9 @@ async def shutdown_app(app: PynchyApp, sig_name: str) -> None:
             await ch.disconnect()
     finally:
         watchdog.cancel()
+
+    if exit_process:
+        os._exit(0)
 
 
 # ---------------------------------------------------------------------------
@@ -334,7 +337,7 @@ async def run_app(app: PynchyApp) -> None:
         def handler() -> None:
             nonlocal shutdown_task
             shutdown_task = create_background_task(
-                shutdown_app(app, s.name),
+                shutdown_app(app, s.name, exit_process=True),
                 name=f"shutdown-{s.name}",
             )
 

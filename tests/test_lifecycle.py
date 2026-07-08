@@ -63,9 +63,15 @@ async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) 
         await shutdown_started.wait()
         assert shutting_down()
 
-    async def fake_shutdown_app(received_app: PynchyApp, sig_name: str) -> None:
+    async def fake_shutdown_app(
+        received_app: PynchyApp,
+        sig_name: str,
+        *,
+        exit_process: bool = False,
+    ) -> None:
         assert received_app is app
         assert sig_name == "SIGTERM"
+        assert exit_process is True
         received_app._shutting_down = True
         shutdown_started.set()
         await shutdown_can_finish.wait()
@@ -138,6 +144,39 @@ async def test_shutdown_watchdog_outlasts_container_stop_budget_and_is_cancelled
     assert timers[0].interval >= 30
     assert timers[0].cancelled is True
     assert app.queue.shutdown_called is True
+
+
+@pytest.mark.asyncio
+async def test_shutdown_app_exits_zero_after_cleanup_when_requested(monkeypatch) -> None:
+    app = PynchyApp()
+    app.queue = cast(Any, _RecordingQueue())
+    exit_codes: list[int] = []
+
+    class FakeTimer:
+        def __init__(self, _interval: float, _callback: Callable[[], None]) -> None:
+            self.daemon = False
+
+        def start(self) -> None:
+            return None
+
+        def cancel(self) -> None:
+            return None
+
+    async def fake_stop_gateway() -> None:
+        return None
+
+    def fake_exit(code: int) -> None:
+        exit_codes.append(code)
+
+    monkeypatch.setattr(lifecycle.threading, "Timer", FakeTimer)
+    monkeypatch.setattr(lifecycle.os, "_exit", fake_exit)
+    monkeypatch.setattr("pynchy.host.container_manager.gateway.stop_gateway", fake_stop_gateway)
+    monkeypatch.setattr(lifecycle.output_handler, "get_trace_batcher", lambda: None)
+
+    await lifecycle.shutdown_app(app, "SIGTERM", exit_process=True)
+
+    assert app.queue.shutdown_called is True
+    assert exit_codes == [0]
 
 
 def test_make_learning_deps_uses_learning_queue(monkeypatch, tmp_path) -> None:
