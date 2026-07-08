@@ -142,10 +142,14 @@ async def run_scheduled_agent_task(task_id: str) -> str:
         return "skipped"
 
     try:
-        await _run_scheduled_agent(task, _require_scheduler_deps())
+        completed = await _run_scheduled_agent(task, _require_scheduler_deps())
     except Exception as exc:  # allow: exception-handling - record activity failure
         _record_activity_result(task_id, "error", str(exc))
         raise
+    if completed is False:
+        err = "Scheduled agent task requested retry"
+        _record_activity_result(task_id, "error", err)
+        raise RuntimeError(err)
     _record_activity_result(task_id, "completed")
     return "completed"
 

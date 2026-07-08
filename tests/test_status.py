@@ -22,7 +22,7 @@ from aiohttp.test_utils import AioHTTPTestCase
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.orchestrator.http_server import status_deps_key
 from pynchy.host.orchestrator.status import collect_status, record_start_time
-from pynchy.types import HostJob, ScheduledTask
+from pynchy.types import HostJob, ScheduledTask, TaskRunLog
 
 _S = "pynchy.host.orchestrator.status"
 
@@ -71,6 +71,7 @@ def _inert_status():
         )
         p("get_messaging_stats", new_callable=AsyncMock, return_value=dict(_EMPTY_STATS))
         p("get_all_tasks", new_callable=AsyncMock, return_value=[])
+        p("get_task_run_logs", new_callable=AsyncMock, return_value=[])
         p("get_all_host_jobs", new_callable=AsyncMock, return_value=[])
         p("run_docker", new_callable=AsyncMock, return_value=Mock(returncode=1, stdout=""))
         p(
@@ -447,6 +448,66 @@ class TestCollectTasks:
         assert tasks[0]["schedule_type"] == "cron"
         assert tasks[0]["status"] == "active"
         assert tasks[0]["last_result"] == "ok"
+
+    @pytest.mark.asyncio
+    async def test_includes_run_health_from_task_attempt_ledger(self):
+        fake_tasks = [
+            ScheduledTask(
+                id="t1",
+                group_folder="admin",
+                chat_jid="admin@g.us",
+                prompt="check health",
+                schedule_type="cron",
+                schedule_value="0 9 * * *",
+                context_mode="group",
+                status="paused",
+            ),
+        ]
+        fake_logs = [
+            TaskRunLog(
+                task_id="t1",
+                run_at="2026-02-21T09:02:00+00:00",
+                duration_ms=100,
+                status="error",
+                error="Same error repeated 3 times in a row",
+                temporal_workflow_id="workflow-1",
+                temporal_attempt=3,
+                error_signature="RuntimeError: same failure",
+                escalation_reason="stagnation",
+            ),
+            TaskRunLog(
+                task_id="t1",
+                run_at="2026-02-21T09:01:00+00:00",
+                duration_ms=100,
+                status="error",
+                error="RuntimeError: same failure",
+                error_signature="RuntimeError: same failure",
+            ),
+            TaskRunLog(
+                task_id="t1",
+                run_at="2026-02-21T09:00:00+00:00",
+                duration_ms=100,
+                status="success",
+                result="ok",
+            ),
+        ]
+        deps = MockStatusDeps()
+        with (
+            _inert_status(),
+            patch(f"{_S}.get_all_tasks", new_callable=AsyncMock, return_value=fake_tasks),
+            patch(f"{_S}.get_task_run_logs", new_callable=AsyncMock, return_value=fake_logs),
+        ):
+            result = await collect_status(deps, time.monotonic())
+
+        run_health = result["tasks"][0]["run_health"]
+        assert run_health == {
+            "last_status": "error",
+            "consecutive_failures": 2,
+            "last_error_signature": "RuntimeError: same failure",
+            "last_temporal_workflow_id": "workflow-1",
+            "last_temporal_attempt": 3,
+            "escalation_reason": "stagnation",
+        }
 
 
 # ---------------------------------------------------------------------------

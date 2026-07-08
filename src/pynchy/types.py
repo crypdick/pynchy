@@ -220,6 +220,10 @@ class TaskRunLog:
     status: Literal["success", "error"]
     result: str | None = None
     error: str | None = None
+    temporal_workflow_id: str | None = None
+    temporal_attempt: int | None = None
+    error_signature: str | None = None
+    escalation_reason: str | None = None
 
 
 @dataclass

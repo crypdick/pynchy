@@ -34,7 +34,9 @@ from pynchy.state import (
     get_all_tasks,
     get_messaging_stats,
     get_router_state,
+    get_task_run_logs,
 )
+from pynchy.types import TaskRunLog
 
 # Module-level wall-clock start time for uptime reporting.
 # Monotonic _start_time in http_server.py is for duration math only;
@@ -239,6 +241,9 @@ async def _collect_messages() -> dict[str, Any]:
 async def _collect_tasks() -> list[dict[str, Any]]:
     """Scheduled task list — async DB."""
     tasks = await get_all_tasks()
+    task_logs = await asyncio.gather(
+        *(get_task_run_logs(t.id, limit=5) for t in tasks),
+    )
     return [
         {
             "id": t.id,
@@ -249,9 +254,29 @@ async def _collect_tasks() -> list[dict[str, Any]]:
             "next_run": t.next_run,
             "last_run": t.last_run,
             "last_result": t.last_result,
+            "run_health": _task_run_health(logs),
         }
-        for t in tasks
+        for t, logs in zip(tasks, task_logs, strict=True)
     ]
+
+
+def _task_run_health(logs: list[TaskRunLog]) -> dict[str, Any]:
+    """Summarize recent scheduled-task attempts for operator status."""
+    last = logs[0] if logs else None
+    consecutive_failures = 0
+    for log in logs:
+        if log.status != "error":
+            break
+        consecutive_failures += 1
+
+    return {
+        "last_status": last.status if last else None,
+        "consecutive_failures": consecutive_failures,
+        "last_error_signature": last.error_signature if last else None,
+        "last_temporal_workflow_id": last.temporal_workflow_id if last else None,
+        "last_temporal_attempt": last.temporal_attempt if last else None,
+        "escalation_reason": last.escalation_reason if last else None,
+    }
 
 
 async def _collect_host_jobs() -> list[dict[str, Any]]:

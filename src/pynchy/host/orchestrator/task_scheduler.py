@@ -15,6 +15,7 @@ from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.workspace_config import load_workspace_config
 from pynchy.logger import logger
 from pynchy.state import (
+    get_task_run_logs,
     log_task_run,
     update_task,
     update_task_after_run,
@@ -55,6 +56,8 @@ class SchedulerDependencies(Protocol):
 _scheduler_lock = asyncio.Lock()
 _scheduler_running = False
 TemporalSchedulerRuntime: Any | None = None
+_STAGNATION_THRESHOLD = 3
+_NO_PROGRESS_THRESHOLD = 5
 
 
 @runtime_checkable
@@ -122,7 +125,58 @@ def resolve_cron_job_cwd(cwd: str | None) -> str:
     return str((project_root / path).resolve())
 
 
-async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies) -> None:
+def error_signature(error: str) -> str:
+    """Normalize volatile details so repeated failures can be grouped."""
+    import re
+
+    first_line = next((line.strip() for line in error.splitlines() if line.strip()), "")
+    return re.sub(r"\s+", " ", re.sub(r"\b\d+\b", "#", first_line)).strip()
+
+
+def _temporal_attempt_metadata() -> tuple[str | None, int | None]:
+    try:
+        from temporalio import activity
+
+        info = activity.info()
+    except RuntimeError:
+        return None, None
+    return info.workflow_id, info.attempt
+
+
+async def _scheduled_task_circuit_breaker(task_id: str) -> tuple[str, str] | None:
+    logs = await get_task_run_logs(task_id, limit=_NO_PROGRESS_THRESHOLD)
+    failure_run: list[TaskRunLog] = []
+    for log in logs:
+        if log.status != "error":
+            break
+        failure_run.append(log)
+
+    if len(failure_run) >= _STAGNATION_THRESHOLD:
+        last_signature = failure_run[0].error_signature or error_signature(
+            failure_run[0].error or ""
+        )
+        same = 0
+        for log in failure_run:
+            signature = log.error_signature or error_signature(log.error or "")
+            if signature != last_signature:
+                break
+            same += 1
+        if same >= _STAGNATION_THRESHOLD:
+            return (
+                "stagnation",
+                f'Same error repeated {same} times in a row: "{last_signature}".',
+            )
+
+    if len(failure_run) >= _NO_PROGRESS_THRESHOLD:
+        return (
+            "no-progress",
+            f"{len(failure_run)} consecutive scheduled-task failures with no success.",
+        )
+
+    return None
+
+
+async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies) -> bool:
     """Execute a single scheduled agent task via the unified run_agent path."""
     start_time = datetime.now(UTC)
     s = get_settings()
@@ -133,13 +187,6 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
 
     groups = _workspace_map(deps)
     group = next((g for g in groups.values() if g.folder == task.group_folder), None)
-
-    # Advance next_run BEFORE execution so subsequent Temporal reconciliation
-    # does not start another one-shot workflow while this task is still running.
-    # The definitive next_run is recalculated AFTER execution based on actual
-    # completion time, which matters for long-running tasks.
-    next_run = compute_next_run(task.schedule_type, task.schedule_value, s.timezone)
-    await update_task(task.id, {"next_run": next_run})
 
     if not group:
         logger.error(
@@ -157,7 +204,35 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
                 error=f"Group not found: {task.group_folder}",
             )
         )
-        return
+        return False
+
+    circuit_decision = await _scheduled_task_circuit_breaker(task.id)
+    if circuit_decision is not None:
+        trigger, reason = circuit_decision
+        workflow_id, attempt = _temporal_attempt_metadata()
+        await update_task(task.id, {"status": "paused"})
+        await log_task_run(
+            TaskRunLog(
+                task_id=task.id,
+                run_at=datetime.now(UTC).isoformat(),
+                duration_ms=(datetime.now(UTC) - start_time).total_seconds() * 1000,
+                status="error",
+                result=None,
+                error=reason,
+                temporal_workflow_id=workflow_id,
+                temporal_attempt=attempt,
+                escalation_reason=trigger,
+            )
+        )
+        logger.warning("Scheduled task paused by circuit breaker", task_id=task.id, reason=reason)
+        return False
+
+    # Advance next_run BEFORE execution so subsequent Temporal reconciliation
+    # does not start another one-shot workflow while this task is still running.
+    # The definitive next_run is recalculated AFTER execution based on actual
+    # completion time, which matters for long-running tasks.
+    next_run = compute_next_run(task.schedule_type, task.schedule_value, s.timezone)
+    await update_task(task.id, {"next_run": next_run})
 
     from pynchy.types import OutboundEvent, OutboundEventType
 
@@ -248,6 +323,7 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
             idle_timer.cancel()
 
     duration_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
+    workflow_id, attempt = _temporal_attempt_metadata()
 
     await log_task_run(
         TaskRunLog(
@@ -257,6 +333,9 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
             status="error" if error else "success",
             result=result,
             error=error,
+            temporal_workflow_id=workflow_id,
+            temporal_attempt=attempt,
+            error_signature=error_signature(error) if error else None,
         )
     )
 
@@ -267,3 +346,4 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
 
     result_summary = f"Error: {error}" if error else (result[:200] if result else "Completed")
     await update_task_after_run(task.id, next_run, result_summary)
+    return error is None

@@ -19,6 +19,7 @@ Single source of truth for all pynchy work items.
 - migrate this planning / backlog system to Linear app.
 - **Deputy agent for worktree contributions** — Ephemeral agent that inspects commits from worktrees before they enter main. Reviews for malicious code, security issues, and project conventions. Spawned by `host_sync_worktree()` before the merge step.
 - **Automated repo token refresh via GitHub App** — Replace manually-created fine-grained PATs with a GitHub App that auto-generates short-lived, repo-scoped installation tokens. Eliminates manual rotation. Builds on repo-scoped tokens (Phase 1 complete).
+- [Scheduled agent autonomy and budgets](0-proposed/scheduled-agent-autonomy-budgets.md) — Add explicit autonomy levels and budget limits for periodic agents before enforcing budget-exhaustion circuit breakers.
 - [Reintroduce Teams with session isolation](0-proposed/reintroduce-teams-session-isolation.md) — Teams tools (`TeamCreate`/`SendMessage`) are unlisted to prevent transcript branching; re-enabling needs per-teammate session isolation first.
 
 ### 1 - Approved

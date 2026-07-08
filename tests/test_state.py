@@ -24,6 +24,7 @@ from pynchy.state import (
     get_router_state,
     get_session,
     get_task_by_id,
+    get_task_run_logs,
     get_tasks_for_group,
     get_workspace_profile,
     init_test_database,
@@ -792,6 +793,32 @@ class TestTaskAdvanced:
         # Verify logs exist by deleting the task (which also deletes logs)
         await delete_task("logged-task")
         assert await get_task_by_id("logged-task") is None
+
+    async def test_log_task_run_persists_temporal_attempt_metadata(self):
+        await create_task(replace(self._TASK_TEMPLATE, id="attempt-task", next_run=None))
+
+        await log_task_run(
+            TaskRunLog(
+                task_id="attempt-task",
+                run_at="2024-06-01T00:00:00Z",
+                duration_ms=500,
+                status="error",
+                result=None,
+                error="ValueError: failed on port 12345",
+                temporal_workflow_id="workflow-1",
+                temporal_attempt=2,
+                error_signature="ValueError: failed on port #",
+                escalation_reason="stagnation",
+            )
+        )
+
+        logs = await get_task_run_logs("attempt-task", limit=1)
+
+        assert len(logs) == 1
+        assert logs[0].temporal_workflow_id == "workflow-1"
+        assert logs[0].temporal_attempt == 2
+        assert logs[0].error_signature == "ValueError: failed on port #"
+        assert logs[0].escalation_reason == "stagnation"
 
     async def test_create_task_with_repo_access(self):
         await create_task(

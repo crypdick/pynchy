@@ -41,6 +41,24 @@ class TestGuardGitHook:
         assert d.allowed
 
     @pytest.mark.asyncio
+    async def test_raw_host_checkout_mount_blocked(self):
+        from agent_runner.security.guard_git import guard_git_hook
+
+        d = await guard_git_hook(
+            "Bash",
+            {"command": "cd /danger/raw-host-repo-mount-prefer-your-worktree && git status"},
+        )
+        assert not d.allowed
+        assert "/workspace/project" in d.reason
+
+    @pytest.mark.asyncio
+    async def test_worktree_checkout_allowed(self):
+        from agent_runner.security.guard_git import guard_git_hook
+
+        d = await guard_git_hook("Bash", {"command": "cd /workspace/project && git status"})
+        assert d.allowed
+
+    @pytest.mark.asyncio
     async def test_non_bash_tool_allowed(self):
         from agent_runner.security.guard_git import guard_git_hook
 

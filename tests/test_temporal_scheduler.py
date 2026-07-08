@@ -682,6 +682,30 @@ class TestTemporalSchedulerRuntime:
         assert status["last_workflow_id"] == "workflow-skipped"
         assert status["last_result"] == "skipped"
 
+    @pytest.mark.asyncio
+    async def test_run_scheduled_agent_activity_retries_failed_runner(
+        self, monkeypatch, temporal_task
+    ):
+        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
+
+        async def fake_get_task_by_id(task_id: str):
+            return temporal_task
+
+        async def fake_run_scheduled_agent(task, runner_deps):
+            return False
+
+        monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
+        monkeypatch.setattr(temporal_scheduler, "_run_scheduled_agent", fake_run_scheduled_agent)
+        monkeypatch.setattr(
+            temporal_scheduler.activity,
+            "info",
+            lambda: SimpleNamespace(workflow_id="workflow-failed"),
+        )
+        temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
+
+        with pytest.raises(RuntimeError, match="Scheduled agent task requested retry"):
+            await temporal_scheduler.run_scheduled_agent_task(temporal_task.id)
+
     @pytest.mark.live
     @pytest.mark.asyncio
     async def test_workflow_executes_activity_through_temporal_worker(
