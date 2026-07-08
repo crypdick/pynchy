@@ -1,34 +1,50 @@
 # Linear
 
-The built-in Linear integration provides task-tracking tools to agents through a
-script MCP server. It lets an agent list Linear teams, list recent issues, and
-create issues in a selected team.
+The built-in Linear integration gives every Pynchy workspace a durable Linear
+todo board. Each workspace maps to a Linear Project named from its stable folder
+(`Pynchy: Code Improver` for `code-improver`), and todos move through shared
+Linear workflow states: Backlog, Planning,
+Ready, In Progress, and Done.
 
 ## Configure access
 
 Create a Linear personal API key, then store it in the host environment as
-`LINEAR_API_KEY`. Pynchy forwards that variable into the Linear MCP server when a
-workspace enables the server.
+`LINEAR_API_KEY`. If that key can see exactly one Linear team, no other config is
+needed. Pynchy creates missing workspace projects and workflow states on boot.
 
-Enable the server for a sandbox profile or a single sandbox. For shared admin
-and Pynchy-development workspaces, prefer the profile-level grant:
+If the key can see multiple teams, set `LINEAR_TEAM_KEY` to the team key, team
+ID, or exact team name Pynchy should use:
 
-```toml
-[sandbox_profiles.pynchy-dev]
-mcp_servers = ["linear"]
+```bash
+LINEAR_API_KEY=lin_api_...
+LINEAR_TEAM_KEY=SYN
 ```
 
-For one sandbox only, add the server to that sandbox instead:
+The plugin supplies the `[mcp_servers.linear]` definition automatically. When
+`LINEAR_API_KEY` is present, Pynchy also attaches the Linear MCP server to every
+workspace by default, so individual sandbox config does not need
+`mcp_servers = ["linear"]`.
 
-```toml
-[sandbox.personal-tasks]
-mcp_servers = ["linear"]
-```
+Editing `.env` triggers the normal Pynchy auto-restart; do not restart the
+service manually unless the health check shows it is stuck.
 
-The plugin supplies the `[mcp_servers.linear]` definition automatically, so the
-host config only needs the sandbox or profile grant. Editing `config.toml` or
-`.env` triggers the normal Pynchy auto-restart; do not restart the service
-manually unless the health check shows it is stuck.
+## Workspace boards
+
+On boot, Pynchy reconciles Linear state for all registered workspaces:
+
+| Pynchy workspace | Linear object |
+|------------------|---------------|
+| Workspace folder | Project named from the folder, such as `Pynchy: Code Improver` |
+| `todo ...` messages | Issues in that workspace project |
+| Todo status | Team workflow state |
+
+Boot reconciliation is additive only. Pynchy creates missing projects and states,
+but it does not delete, archive, rename, assign, or otherwise clean up Linear
+objects automatically.
+
+When a user sends `todo ...` while a workspace task is running, Pynchy still
+writes the local todo cache and also creates a Linear issue in the workspace
+project when Linear is configured.
 
 ## Available tools
 
@@ -37,6 +53,9 @@ manually unless the health check shows it is stuck.
 | `linear_list_teams` | Lists Linear teams visible to the API key. Use this first to find the `team_id`. |
 | `linear_list_issues` | Lists recent issues, optionally scoped by `team_id`. |
 | `linear_create_issue` | Creates an issue with `team_id`, `title`, and optional `description`, `project_id`, `state_id`, and `label_ids`. |
+| `linear_list_todos` | Lists open Linear todo issues for the current Pynchy workspace. |
+| `linear_create_todo` | Creates a workspace todo issue, defaulting to Backlog. |
+| `linear_move_todo` | Moves a workspace todo through `backlog`, `planning`, `ready`, `in_progress`, or `done`. |
 
 The integration marks Linear as a public sink because issue creation sends data
 to Linear. Workspace security policy can still require approval before agents

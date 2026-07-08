@@ -226,6 +226,10 @@ async def _reconcile_state(app: PynchyApp) -> dict[str, list[str]]:
         unregister_fn=app._unregister_workspace,
     )
 
+    from pynchy.plugins.integrations.linear_boot import reconcile_linear_workspace_boards
+
+    await reconcile_linear_workspace_boards(app.workspaces.values())
+
     return repo_groups
 
 

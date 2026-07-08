@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 from dataclasses import dataclass, field
 from typing import Any
@@ -154,11 +155,15 @@ def resolve_workspace_servers(
 ) -> list[str]:
     """Expand workspace's mcp_servers list (groups + names) into concrete server names."""
     ws_config = _resolved_workspace_config(settings, group_folder)
-    if not ws_config or not ws_config.mcp_servers:
+    if not ws_config:
         return []
 
+    configured_servers = list(ws_config.mcp_servers or [])
+    if os.environ.get("LINEAR_API_KEY") and "linear" in all_servers:
+        configured_servers.append("linear")
+
     servers: set[str] = set()
-    for entry in ws_config.mcp_servers:
+    for entry in configured_servers:
         if entry == "all":
             servers.update(all_servers.keys())
         elif entry in settings.mcp_groups:

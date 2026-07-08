@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any, cast
 
 import aiohttp
@@ -19,15 +20,31 @@ import pluggy
 from aiohttp import web
 
 from pynchy.logger import logger
+from pynchy.plugins.integrations.linear_boards import (
+    create_workspace_todo,
+    list_workspace_todos,
+    move_workspace_todo,
+)
+from pynchy.plugins.integrations.linear_tools import tool_specs
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
 LINEAR_API_URL = "https://api.linear.app/graphql"
 DEFAULT_PORT = 8474
+WORKSPACE_APP_KEY = web.AppKey("workspace", object)
 
 
 class LinearError(RuntimeError):
     """Raised when Linear returns GraphQL errors or an unexpected payload."""
+
+
+@dataclass(frozen=True)
+class WorkspaceContext:
+    """Minimal workspace identity passed to Linear board helpers."""
+
+    folder: str
+    name: str
+    jid: str = ""
 
 
 class LinearClient:
@@ -190,10 +207,13 @@ class LinearMcpPlugin:
                 "pynchy.plugins.integrations.linear",
                 "--port",
                 "{port}",
+                "--workspace",
+                "{workspace}",
             ],
             "port": DEFAULT_PORT,
             "transport": "streamable_http",
             "idle_timeout": 600,
+            "inject_workspace": True,
             "env_forward": {"LINEAR_API_KEY": "LINEAR_API_KEY"},  # pragma: allowlist secret
             "trust": {
                 "public_source": False,
@@ -204,8 +224,9 @@ class LinearMcpPlugin:
         }
 
 
-def build_app() -> Any:
+def build_app(*, workspace: str | None = None) -> Any:
     app = web.Application()
+    app[WORKSPACE_APP_KEY] = workspace
     app.router.add_get("/", _handle_health)
     app.router.add_post("/mcp", _handle_mcp)
     return app
@@ -227,9 +248,14 @@ async def _handle_mcp(request: web.Request) -> web.Response:
         if method == "notifications/initialized":
             return web.Response(status=202)
         if method == "tools/list":
-            return _jsonrpc_result(request_id, {"tools": _tool_specs()})
+            return _jsonrpc_result(request_id, {"tools": tool_specs()})
         if method == "tools/call":
-            return _jsonrpc_result(request_id, await _call_tool(params))
+            return _jsonrpc_result(
+                request_id,
+                await _call_tool(
+                    params, workspace=cast("str | None", request.app[WORKSPACE_APP_KEY])
+                ),
+            )
         return _jsonrpc_error(request_id, -32601, f"Unknown MCP method: {method}")
     except Exception as exc:
         logger.exception("Linear MCP request failed", method=method)
@@ -246,7 +272,7 @@ def _initialize_result() -> dict[str, Any]:
     }
 
 
-async def _call_tool(params: dict[str, Any]) -> dict[str, Any]:
+async def _call_tool(params: dict[str, Any], *, workspace: str | None = None) -> dict[str, Any]:
     name = params.get("name")
     arguments = params.get("arguments") or {}
     if not isinstance(arguments, dict):
@@ -258,23 +284,37 @@ async def _call_tool(params: dict[str, Any]) -> dict[str, Any]:
 
     async with aiohttp.ClientSession() as session:
         client = LinearClient(api_key=token, session=session)
-        handlers: dict[str, Callable[[LinearClient, dict[str, Any]], Awaitable[Any]]] = {
+        handlers: dict[
+            str,
+            Callable[[LinearClient, dict[str, Any], str | None], Awaitable[Any]],
+        ] = {
             "linear_list_teams": _tool_list_teams,
             "linear_list_issues": _tool_list_issues,
             "linear_create_issue": _tool_create_issue,
+            "linear_list_todos": _tool_list_todos,
+            "linear_create_todo": _tool_create_todo,
+            "linear_move_todo": _tool_move_todo,
         }
         handler = handlers.get(str(name))
         if handler is None:
             return _text_result(f"Unknown Linear tool: {name}", is_error=True)
-        result = await handler(client, arguments)
+        result = await handler(client, arguments, workspace)
     return _json_result(result)
 
 
-async def _tool_list_teams(client: Any, arguments: dict[str, Any]) -> list[dict[str, Any]]:
+async def _tool_list_teams(
+    client: Any,
+    arguments: dict[str, Any],
+    workspace: str | None,
+) -> list[dict[str, Any]]:
     return cast("list[dict[str, Any]]", await client.list_teams())
 
 
-async def _tool_list_issues(client: Any, arguments: dict[str, Any]) -> list[dict[str, Any]]:
+async def _tool_list_issues(
+    client: Any,
+    arguments: dict[str, Any],
+    workspace: str | None,
+) -> list[dict[str, Any]]:
     first = arguments.get("first", 50)
     if not isinstance(first, int):
         first = int(first)
@@ -284,7 +324,11 @@ async def _tool_list_issues(client: Any, arguments: dict[str, Any]) -> list[dict
     )
 
 
-async def _tool_create_issue(client: Any, arguments: dict[str, Any]) -> dict[str, Any]:
+async def _tool_create_issue(
+    client: Any,
+    arguments: dict[str, Any],
+    workspace: str | None,
+) -> dict[str, Any]:
     team_id = _required_str(arguments, "team_id")
     title = _required_str(arguments, "title")
     label_ids = arguments.get("label_ids")
@@ -303,50 +347,59 @@ async def _tool_create_issue(client: Any, arguments: dict[str, Any]) -> dict[str
     )
 
 
+async def _tool_list_todos(
+    client: Any,
+    arguments: dict[str, Any],
+    workspace: str | None,
+) -> list[dict[str, Any]]:
+    return await list_workspace_todos(
+        client,
+        _workspace_context(workspace),
+        team_key=os.environ.get("LINEAR_TEAM_KEY"),
+        include_done=bool(arguments.get("include_done", False)),
+    )
+
+
+async def _tool_create_todo(
+    client: Any,
+    arguments: dict[str, Any],
+    workspace: str | None,
+) -> dict[str, Any]:
+    return await create_workspace_todo(
+        client,
+        _workspace_context(workspace),
+        _required_str(arguments, "title"),
+        team_key=os.environ.get("LINEAR_TEAM_KEY"),
+        status=str(arguments.get("status", "backlog")),
+    )
+
+
+async def _tool_move_todo(
+    client: Any,
+    arguments: dict[str, Any],
+    workspace: str | None,
+) -> dict[str, Any]:
+    return await move_workspace_todo(
+        client,
+        _workspace_context(workspace),
+        issue_id=_required_str(arguments, "issue_id"),
+        status=_required_str(arguments, "status"),
+        team_key=os.environ.get("LINEAR_TEAM_KEY"),
+    )
+
+
+def _workspace_context(workspace: str | None) -> WorkspaceContext:
+    if not workspace:
+        raise LinearError("Workspace-scoped Linear todo tools require an MCP workspace instance")
+    name = workspace.replace("-", " ").replace("_", " ").title()
+    return WorkspaceContext(folder=workspace, name=name)
+
+
 def _required_str(arguments: dict[str, Any], key: str) -> str:
     value = arguments.get(key)
     if not isinstance(value, str) or not value.strip():
         raise LinearError(f"{key} is required")
     return value
-
-
-def _tool_specs() -> list[dict[str, Any]]:
-    return [
-        {
-            "name": "linear_list_teams",
-            "description": "List Linear teams available to the configured API key.",
-            "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
-        },
-        {
-            "name": "linear_list_issues",
-            "description": "List recent Linear issues, optionally scoped to a team id.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "team_id": {"type": "string"},
-                    "first": {"type": "integer", "minimum": 1, "maximum": 100},
-                },
-                "additionalProperties": False,
-            },
-        },
-        {
-            "name": "linear_create_issue",
-            "description": "Create a Linear issue in a team.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "team_id": {"type": "string"},
-                    "title": {"type": "string"},
-                    "description": {"type": "string"},
-                    "project_id": {"type": "string"},
-                    "state_id": {"type": "string"},
-                    "label_ids": {"type": "array", "items": {"type": "string"}},
-                },
-                "required": ["team_id", "title"],
-                "additionalProperties": False,
-            },
-        },
-    ]
 
 
 def _json_result(value: Any) -> dict[str, Any]:
@@ -373,8 +426,9 @@ def _jsonrpc_error(request_id: Any, code: int, message: str) -> web.Response:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Run the Pynchy Linear MCP server")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", DEFAULT_PORT)))
+    parser.add_argument("--workspace")
     args = parser.parse_args(argv)
-    web.run_app(build_app(), host="0.0.0.0", port=args.port)
+    web.run_app(build_app(workspace=args.workspace), host="0.0.0.0", port=args.port)
 
 
 if __name__ == "__main__":

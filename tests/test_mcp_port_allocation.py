@@ -306,3 +306,38 @@ class TestResolveAllInstancesPortOffset:
 
         assert list(state.instances) == ["linear"]
         assert state.workspace_instances == {"code-improver": ["linear"]}
+
+    def test_linear_mcp_is_implicit_for_all_workspaces_with_api_key(self, monkeypatch):
+        monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+        settings = make_settings(
+            workspaces={
+                "alpha": WorkspaceConfig(),
+                "beta": WorkspaceConfig(),
+            },
+        )
+        all_servers = {
+            "linear": McpServerConfig(
+                type="script",
+                command="uv",
+                args=[
+                    "run",
+                    "python",
+                    "-m",
+                    "pynchy.plugins.integrations.linear",
+                    "--port",
+                    "{port}",
+                    "--workspace",
+                    "{workspace}",
+                ],
+                port=8474,
+                transport="streamable_http",
+                inject_workspace=True,
+                env_forward={"LINEAR_API_KEY": "LINEAR_API_KEY"},  # pragma: allowlist secret
+            )
+        }
+
+        state = resolve_all_instances(settings, all_servers)
+
+        assert set(state.workspace_instances) == {"alpha", "beta"}
+        assert len(state.instances) == 2
+        assert sorted(instance.port for instance in state.instances.values()) == [8474, 8475]

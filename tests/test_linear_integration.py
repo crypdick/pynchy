@@ -44,9 +44,12 @@ class TestLinearMcpPlugin:
             "pynchy.plugins.integrations.linear",
             "--port",
             "{port}",
+            "--workspace",
+            "{workspace}",
         ]
         assert spec["port"] == 8474
         assert spec["transport"] == "streamable_http"
+        assert spec["inject_workspace"] is True
         assert spec["env_forward"] == {
             "LINEAR_API_KEY": "LINEAR_API_KEY"  # pragma: allowlist secret
         }
@@ -172,7 +175,14 @@ class TestLinearMcpServer:
             assert response.status == 200
             payload = await response.json()
             names = {tool["name"] for tool in payload["result"]["tools"]}
-            assert names == {"linear_list_teams", "linear_list_issues", "linear_create_issue"}
+            assert names == {
+                "linear_list_teams",
+                "linear_list_issues",
+                "linear_create_issue",
+                "linear_list_todos",
+                "linear_create_todo",
+                "linear_move_todo",
+            }
         finally:
             await client.close()
 
@@ -241,6 +251,98 @@ class TestLinearMcpServer:
             state_id=None,
             label_ids=None,
         )
+
+    async def test_mcp_create_workspace_todo_uses_server_workspace(self, monkeypatch):
+        monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+        monkeypatch.delenv("LINEAR_TEAM_KEY", raising=False)
+        fake_client = AsyncMock()
+        with (
+            patch("pynchy.plugins.integrations.linear.LinearClient", return_value=fake_client),
+            patch(
+                "pynchy.plugins.integrations.linear.create_workspace_todo",
+                new=AsyncMock(
+                    return_value={
+                        "id": "issue-1",
+                        "identifier": "SYN-1",
+                        "title": "Review docs",
+                        "url": "https://linear.app/acme/issue/SYN-1",
+                    }
+                ),
+            ) as create_todo,
+        ):
+            client = TestClient(TestServer(build_app(workspace="code-improver")))
+            await client.start_server()
+            try:
+                response = await client.post(
+                    "/mcp",
+                    json={
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "linear_create_todo",
+                            "arguments": {"title": "Review docs"},
+                        },
+                    },
+                )
+                assert response.status == 200
+                payload = await response.json()
+            finally:
+                await client.close()
+
+        assert json.loads(payload["result"]["content"][0]["text"])["identifier"] == "SYN-1"
+        create_todo.assert_awaited_once()
+        _, args, kwargs = create_todo.mock_calls[0]
+        assert args[1].folder == "code-improver"
+        assert args[2] == "Review docs"
+        assert kwargs["team_key"] is None
+
+    async def test_mcp_move_workspace_todo_uses_status_name(self, monkeypatch):
+        monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+        monkeypatch.setenv("LINEAR_TEAM_KEY", "SYN")
+        fake_client = AsyncMock()
+        with (
+            patch("pynchy.plugins.integrations.linear.LinearClient", return_value=fake_client),
+            patch(
+                "pynchy.plugins.integrations.linear.move_workspace_todo",
+                new=AsyncMock(
+                    return_value={
+                        "id": "issue-1",
+                        "identifier": "SYN-1",
+                        "title": "Review docs",
+                        "url": "https://linear.app/acme/issue/SYN-1",
+                        "state": {"name": "In Progress"},
+                    }
+                ),
+            ) as move_todo,
+        ):
+            client = TestClient(TestServer(build_app(workspace="code-improver")))
+            await client.start_server()
+            try:
+                response = await client.post(
+                    "/mcp",
+                    json={
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "linear_move_todo",
+                            "arguments": {"issue_id": "SYN-1", "status": "in_progress"},
+                        },
+                    },
+                )
+                assert response.status == 200
+                payload = await response.json()
+            finally:
+                await client.close()
+
+        assert json.loads(payload["result"]["content"][0]["text"])["state"]["name"] == "In Progress"
+        move_todo.assert_awaited_once()
+        _, args, kwargs = move_todo.mock_calls[0]
+        assert args[1].folder == "code-improver"
+        assert kwargs["issue_id"] == "SYN-1"
+        assert kwargs["status"] == "in_progress"
+        assert kwargs["team_key"] == "SYN"
 
 
 class TestDocs:

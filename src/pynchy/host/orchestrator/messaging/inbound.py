@@ -203,9 +203,11 @@ async def _handle_message_during_task(
         # than a user request.  If the SDK adds external tool invocation
         # or system message injection, this workaround becomes unnecessary.
         from pynchy.host.orchestrator.todos import add_todo
+        from pynchy.plugins.integrations.linear_boot import create_linear_workspace_todo
 
         item = last_content[5:]  # strip "todo " prefix
         add_todo(group.folder, item)
+        await create_linear_workspace_todo(group, item)
         deps.queue.send_message(
             group_jid,
             "[System notice \u2014 no response needed] "
