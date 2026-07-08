@@ -695,6 +695,34 @@ class TestMountBuilding:
         skill_dst = tmp_path / "data/sessions/test-group/.claude/skills/remember-routing/SKILL.md"
         assert skill_dst.exists()
 
+    def test_codex_home_receives_selected_plugin_skills(self, tmp_path: Path):
+        plugin_skill = tmp_path / "vault-skills" / "calendar-caldav"
+        plugin_skill.mkdir(parents=True)
+        (plugin_skill / "SKILL.md").write_text(
+            "---\nname: calendar-caldav\ntier: community\n---\n# Calendar\n"
+        )
+
+        class FakeHook:
+            def pynchy_skill_paths(self):
+                return [[str(plugin_skill)]]
+
+        class FakePM(pluggy.PluginManager):
+            hook = FakeHook()
+
+            def __init__(self):
+                pass
+
+        workspaces = {"test-group": WorkspaceConfig(skills=["calendar-caldav"])}
+        with _patch_settings(tmp_path, workspaces=workspaces):
+            (tmp_path / "groups" / "test-group").mkdir(parents=True)
+
+            build_volume_mounts(TEST_GROUP, is_admin=False, plugin_manager=FakePM())
+
+        claude_skill = tmp_path / "data/sessions/test-group/.claude/skills/calendar-caldav/SKILL.md"
+        codex_skill = tmp_path / "data/sessions/test-group/.codex/skills/calendar-caldav/SKILL.md"
+        assert claude_skill.exists()
+        assert codex_skill.read_text() == claude_skill.read_text()
+
     @pytest.mark.parametrize("vault_state", ["missing", "file"])
     def test_learning_enabled_requires_existing_vault_directory(
         self,
