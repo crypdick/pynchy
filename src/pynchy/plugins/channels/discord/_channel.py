@@ -23,6 +23,7 @@ import discord
 from pynchy.config.discord_refs import DiscordChatTarget, resolve_discord_chat_target
 from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
 from pynchy.logger import logger
+from pynchy.state import get_chat_jids_by_name
 from pynchy.types import InboundFetchResult, NewMessage, OutboundEvent, WorkspaceProfile
 
 from ._access import DiscordAccess
@@ -130,9 +131,9 @@ class DiscordChannel:
             if target.target_id.isdecimal():
                 return dm_jid(target.target_id)
             user = self._find_configured_user(target.target_id)
-            if user is None:
-                return None
-            return dm_jid(str(user.id))
+            if user is not None:
+                return dm_jid(str(user.id))
+            return await self._find_stored_direct_jid(target.target_id)
         if self.client is not None:
             channel = await self._find_configured_channel(target)
             if channel is not None:
@@ -167,6 +168,22 @@ class DiscordChannel:
             ),
             None,
         )
+
+    async def _find_stored_direct_jid(self, user_key: str) -> str | None:
+        matches = [
+            jid
+            for jid in await get_chat_jids_by_name(user_key)
+            if jid.startswith("discord:direct:")
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            logger.warning(
+                "Multiple Discord DMs match user name; disambiguate",
+                user=user_key,
+                matches=matches,
+            )
+        return None
 
     async def create_group(self, name: str) -> str:
         """Create or reuse a configured Discord text channel and return its JID."""
