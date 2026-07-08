@@ -220,12 +220,7 @@ async def _check_origin_drift(
     if not current_origin or current_origin == state.last_origin_sha:
         return False
 
-    old_origin = state.last_origin_sha
-    logger.info(
-        "Origin/main changed, syncing",
-        old_sha=old_origin[:8] if old_origin else "none",
-        new_sha=current_origin[:8],
-    )
+    _log_origin_sync(state.last_origin_sha, current_origin)
 
     if state.local_head == current_origin:
         state.last_origin_sha = current_origin
@@ -237,14 +232,39 @@ async def _check_origin_drift(
         return False
     state.last_origin_sha = current_origin
 
-    new_head_after_pull = await asyncio.to_thread(get_local_head_sha, pynchy_root)
-    if pynchy_repo_ctx:
-        notified = last_notified_sha.get(str(pynchy_root), "")
-        if notified != new_head_after_pull:
-            await host_notify_worktree_updates(None, deps, pynchy_repo_ctx)
-
-    # Check deploy inline (avoid 5s delay for next tick)
     new_head = await asyncio.to_thread(get_local_head_sha, pynchy_root)
+    await _notify_origin_sync_if_needed(pynchy_root, pynchy_repo_ctx, deps, new_head)
+    return await _deploy_pulled_head_if_needed(state, deps, new_head)
+
+
+def _log_origin_sync(old_origin: str | None, current_origin: str) -> None:
+    logger.info(
+        "Origin/main changed, syncing",
+        old_sha=old_origin[:8] if old_origin else "none",
+        new_sha=current_origin[:8],
+    )
+
+
+async def _notify_origin_sync_if_needed(
+    pynchy_root: Path,
+    pynchy_repo_ctx: RepoContext | None,
+    deps: GitSyncDeps,
+    new_head: str,
+) -> None:
+    if pynchy_repo_ctx is None:
+        return
+    notified = last_notified_sha.get(str(pynchy_root), "")
+    if notified == new_head:
+        return
+    await host_notify_worktree_updates(None, deps, pynchy_repo_ctx)
+
+
+async def _deploy_pulled_head_if_needed(
+    state: _HostSyncState,
+    deps: GitSyncDeps,
+    new_head: str,
+) -> bool:
+    # Check deploy inline (avoid 5s delay for next tick)
     if state.deployed_sha and new_head and needs_deploy(state.deployed_sha, new_head):
         rebuild = needs_container_rebuild(state.deployed_sha, new_head)
         await deps.trigger_deploy(state.deployed_sha, rebuild=rebuild)

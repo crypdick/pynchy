@@ -19,7 +19,7 @@ class FakePostContext:
     async def __aenter__(self) -> MagicMock:
         return self.response
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:
+    async def __aexit__(self, exc_type, exc, _tb) -> None:
         return None
 
 
