@@ -81,6 +81,37 @@ HookFn = Callable[..., Any]
 BeforeToolUseHook = Callable[[str, dict[str, Any]], Awaitable[HookDecision]]
 
 
+def _hook_log(message: str) -> None:
+    """Write a hook-loader diagnostic to stderr."""
+    print(  # allow: print-statements — stderr diagnostic channel; no logger available
+        f"[agent-runner] {message}",
+        file=sys.stderr,
+    )
+
+
+def _load_hook_module(name: str, module_path: str) -> object | None:
+    """Load a hook module from disk, returning None on failure."""
+    spec_obj = importlib.util.spec_from_file_location(f"hook_{name}", module_path)
+    if spec_obj is None or spec_obj.loader is None:
+        _hook_log(f"Failed to load hook '{name}' from {module_path}")
+        return None
+
+    module = importlib.util.module_from_spec(spec_obj)
+    sys.modules[f"hook_{name}"] = module
+    spec_obj.loader.exec_module(module)
+    return module
+
+
+def _registered_hook_functions(module: object) -> dict[HookEvent, list[HookFn]]:
+    """Collect event handlers exported by a loaded hook module."""
+    hooks: dict[HookEvent, list[HookFn]] = {}
+    for event in HookEvent:
+        func = getattr(module, event.value, None)
+        if callable(func):
+            hooks.setdefault(event, []).append(func)
+    return hooks
+
+
 def load_hooks(plugin_hooks: list[dict[str, str]]) -> dict[HookEvent, list[HookFn]]:
     """Load hook functions from plugin module paths.
 
@@ -104,52 +135,26 @@ def load_hooks(plugin_hooks: list[dict[str, str]]) -> dict[HookEvent, list[HookF
         module_path = spec.get("module_path")
 
         if not module_path:
-            print(  # allow: print-statements — stderr diagnostic channel; no logger available
-                f"[agent-runner] Hook '{name}' missing module_path, skipping",
-                file=sys.stderr,
-            )
+            _hook_log(f"Hook '{name}' missing module_path, skipping")
             continue
 
         try:
-            # Load module from file path
-            spec_obj = importlib.util.spec_from_file_location(f"hook_{name}", module_path)
-            if spec_obj is None or spec_obj.loader is None:
-                print(  # allow: print-statements — stderr diagnostic channel; no logger available
-                    f"[agent-runner] Failed to load hook '{name}' from {module_path}",
-                    file=sys.stderr,
-                )
+            module = _load_hook_module(name, module_path)
+            if module is None:
                 continue
 
-            module = importlib.util.module_from_spec(spec_obj)
-            sys.modules[f"hook_{name}"] = module
-            spec_obj.loader.exec_module(module)
+            registered = _registered_hook_functions(module)
+            for event, funcs in registered.items():
+                hooks[event].extend(funcs)
 
-            # Look for hook functions matching event names
-            registered_events: list[str] = []
-            for event in HookEvent:
-                func_name = event.value  # e.g., "before_compact"
-                if hasattr(module, func_name):
-                    func = getattr(module, func_name)
-                    if callable(func):
-                        hooks[event].append(func)
-                        registered_events.append(func_name)
-
-            if registered_events:
-                print(  # allow: print-statements — stderr diagnostic channel; no logger available
-                    f"[agent-runner] Loaded hook '{name}': {', '.join(registered_events)}",
-                    file=sys.stderr,
-                )
+            if registered:
+                loaded_events = ", ".join(event.value for event in registered)
+                _hook_log(f"Loaded hook '{name}': {loaded_events}")
             else:
-                print(  # allow: print-statements — stderr diagnostic channel; no logger available
-                    f"[agent-runner] Hook '{name}' loaded but has no event handlers",
-                    file=sys.stderr,
-                )
+                _hook_log(f"Hook '{name}' loaded but has no event handlers")
 
         except Exception as exc:  # allow: exception-handling — one bad hook must not block others
-            print(  # allow: print-statements — stderr diagnostic channel; no logger available
-                f"[agent-runner] Failed to load hook '{name}': {exc}",
-                file=sys.stderr,
-            )
+            _hook_log(f"Failed to load hook '{name}': {exc}")
 
     return hooks
 
