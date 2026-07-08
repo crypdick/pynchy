@@ -43,6 +43,7 @@ class InboundContext:
     parent_channel_name: str | None
     author_role_ids: frozenset[str]
     mentions_bot: bool
+    author_names: frozenset[str] = frozenset()
 
 
 def _strip_user_prefix(entry: str) -> str:
@@ -56,8 +57,18 @@ def _strip_role_prefix(entry: str) -> str:
     return entry.removeprefix("role:")
 
 
-def _matches_user(allow: list[str], author_id: str) -> bool:
-    return any(entry == "*" or _strip_user_prefix(entry) == author_id for entry in allow)
+def _same_ref(left: str, right: str) -> bool:
+    return left.casefold() == right.casefold()
+
+
+def _matches_user(allow: list[str], author_id: str, author_names: frozenset[str]) -> bool:
+    for entry in allow:
+        stripped = _strip_user_prefix(entry)
+        if entry == "*" or stripped == author_id:
+            return True
+        if any(_same_ref(stripped, name) for name in author_names):
+            return True
+    return False
 
 
 def _matches_role(roles: list[str], author_role_ids: frozenset[str]) -> bool:
@@ -84,7 +95,9 @@ def _is_member_allowed(
 ) -> bool:
     if not users and not roles:
         return True
-    return _matches_user(users, ctx.author_id) or _matches_role(roles, ctx.author_role_ids)
+    return _matches_user(users, ctx.author_id, ctx.author_names) or _matches_role(
+        roles, ctx.author_role_ids
+    )
 
 
 def _requires_mention(
@@ -116,7 +129,11 @@ class DiscordAccess:
             return "allow"
         # allowlist: matched senders pass; unmatched are denied in v1 (a future
         # pairing collaborator would return "pairing" here instead).
-        return "allow" if _matches_user(self._cfg.allow_from, ctx.author_id) else "deny"
+        return (
+            "allow"
+            if _matches_user(self._cfg.allow_from, ctx.author_id, ctx.author_names)
+            else "deny"
+        )
 
     def _decide_guild(self, ctx: InboundContext) -> Decision:
         if self._cfg.group_policy == "disabled":

@@ -165,6 +165,30 @@ def test_settings_accept_discord_workspace_direct_ref_when_user_allowed():
     assert settings.workspaces["discord-dm"].chat == "connection.discord.mybot.chat.direct.42"
 
 
+def test_settings_accept_discord_workspace_direct_name_ref_when_user_allowed():
+    settings = Settings(
+        connection=ConnectionsConfig(
+            discord={
+                "mybot": DiscordConnectionConfig(
+                    bot_token_env="DISCORD_BOT_TOKEN",
+                    dm_policy="allowlist",
+                    allow_from=["ricardo"],
+                    group_policy="disabled",
+                )
+            }
+        ),
+        sandbox={
+            "discord-dm": WorkspaceConfig(
+                chat="connection.discord.mybot.chat.direct.ricardo",
+            )
+        },
+    )
+
+    assert settings.workspaces["discord-dm"].chat == (
+        "connection.discord.mybot.chat.direct.ricardo"
+    )
+
+
 def test_settings_reject_discord_workspace_channel_ref_missing_config():
     with pytest.raises(ValidationError, match="unknown Discord channel"):
         Settings(

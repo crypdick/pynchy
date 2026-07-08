@@ -14,7 +14,7 @@ natively in Discord) and split by :func:`chunk_discord_text` to respect the
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -36,6 +36,19 @@ _MESSAGE_ID_PREFIX = "discord-"
 
 def _same_name(left: str | None, right: str | None) -> bool:
     return bool(left and right and left.casefold() == right.casefold())
+
+
+def _discord_user_names(user: Any) -> set[str]:
+    return {
+        value
+        for value in (
+            getattr(user, "display_name", None),
+            getattr(user, "global_name", None),
+            getattr(user, "name", None),
+            str(user),
+        )
+        if isinstance(value, str) and value.strip()
+    }
 
 
 def _normalize_discord_channel_name(name: str) -> str:
@@ -114,7 +127,12 @@ class DiscordChannel:
         if target is None:
             return None
         if target.kind == "direct":
-            return dm_jid(target.target_id)
+            if target.target_id.isdecimal():
+                return dm_jid(target.target_id)
+            user = self._find_configured_user(target.target_id)
+            if user is None:
+                return None
+            return dm_jid(str(user.id))
         if self.client is not None:
             channel = await self._find_configured_channel(target)
             if channel is not None:
@@ -122,6 +140,33 @@ class DiscordChannel:
         if not target.target_id.isdecimal():
             return None
         return channel_jid(target.target_id)
+
+    def _known_users(self) -> Iterable[Any]:
+        if self.client is None:
+            return ()
+        cached_users = tuple(getattr(self.client, "users", ()) or ())
+        members: list[Any] = []
+        get_all_members = getattr(self.client, "get_all_members", None)
+        if callable(get_all_members):
+            members.extend(get_all_members())
+        else:
+            for guild in getattr(self.client, "guilds", []) or []:
+                members.extend(getattr(guild, "members", []) or [])
+        return (*cached_users, *members)
+
+    def _find_configured_user(self, user_key: str) -> Any | None:
+        if self.client is None:
+            return None
+        if user_key.isdecimal():
+            return self.client.get_user(int(user_key))
+        return next(
+            (
+                user
+                for user in self._known_users()
+                if any(_same_name(name, user_key) for name in _discord_user_names(user))
+            ),
+            None,
+        )
 
     async def create_group(self, name: str) -> str:
         """Create or reuse a configured Discord text channel and return its JID."""

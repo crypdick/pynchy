@@ -69,11 +69,29 @@ class _FakeDiscordTextChannel:
         self.name = name
 
 
+class _FakeDiscordUser:
+    def __init__(self, user_id: int, name: str, *, display_name: str | None = None) -> None:
+        self.id = user_id
+        self.name = name
+        self.display_name = display_name or name
+        self.global_name = display_name
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class _FakeDiscordGuild:
-    def __init__(self, guild_id: int, name: str, channels: list[_FakeDiscordTextChannel]) -> None:
+    def __init__(
+        self,
+        guild_id: int,
+        name: str,
+        channels: list[_FakeDiscordTextChannel],
+        members: list[_FakeDiscordUser] | None = None,
+    ) -> None:
         self.id = guild_id
         self.name = name
         self.text_channels = channels
+        self.members = members or []
         self.created: list[str] = []
 
     async def create_text_channel(self, name: str, **kwargs) -> _FakeDiscordTextChannel:
@@ -84,14 +102,21 @@ class _FakeDiscordGuild:
 
 
 class _FakeDiscordClient:
-    def __init__(self, guilds: list[_FakeDiscordGuild]) -> None:
+    def __init__(
+        self, guilds: list[_FakeDiscordGuild], users: list[_FakeDiscordUser] | None = None
+    ) -> None:
         self.guilds = guilds
+        self.users = users or []
 
     def get_guild(self, guild_id: int) -> _FakeDiscordGuild | None:
         return next((guild for guild in self.guilds if guild.id == guild_id), None)
 
     async def fetch_guild(self, guild_id: int) -> _FakeDiscordGuild | None:
         return self.get_guild(guild_id)
+
+    def get_all_members(self):
+        for guild in self.guilds:
+            yield from guild.members
 
 
 def test_satisfies_channel_protocol():
@@ -139,6 +164,26 @@ async def test_resolve_chat_jid_maps_allowed_direct_ref():
     )
 
     assert await ch.resolve_chat_jid("direct.42") == "discord:direct:42"
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_jid_maps_allowed_direct_name_ref():
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env="X",
+            dm_policy="allowlist",
+            allow_from=["ricardo"],
+            group_policy="disabled",
+        ),
+        bot_token="token",
+        on_message=lambda jid, msg: None,
+        on_chat_metadata=lambda jid, ts, name: None,
+    )
+    user = _FakeDiscordUser(42, "rdecal", display_name="Ricardo")
+    ch.client = _FakeDiscordClient([], users=[user])
+
+    assert await ch.resolve_chat_jid("direct.ricardo") == "discord:direct:42"
 
 
 @pytest.mark.asyncio

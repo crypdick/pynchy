@@ -266,7 +266,7 @@ class DiscordGuildConfig(_StrictModel):
 
     name: str | None = None
     require_mention: bool = True
-    users: list[str] = []  # guild-wide sender allowlist (ids)
+    users: list[str] = []  # guild-wide sender allowlist (names or ids)
     roles: list[str] = []  # guild-wide role-id allowlist
     channels: dict[str, DiscordChannelConfig] = {}
     security: ChannelOverrideConfig | None = None
@@ -283,7 +283,7 @@ class DiscordConnectionConfig(_StrictModel):
     bot_token_env: str
     application_id: str | None = None
     dm_policy: Literal["open", "allowlist", "disabled"] = "allowlist"
-    allow_from: list[str] = []  # DM allowlist (user snowflakes); "*" = open
+    allow_from: list[str] = []  # DM allowlist (names or ids); "*" = open
     group_policy: Literal["open", "disabled", "allowlist"] = "allowlist"
     security: ChannelOverrideConfig | None = None
     chat: dict[str, DiscordGuildConfig] = {}

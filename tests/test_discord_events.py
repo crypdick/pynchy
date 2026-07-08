@@ -14,10 +14,25 @@ from pynchy.plugins.channels.discord._events import build_inbound_context, jid_f
 BOT_ID = "999"
 
 
-def _user(uid: str, *, bot: bool = False, roles: tuple[str, ...] = ()) -> SimpleNamespace:
+def _user(
+    uid: str,
+    *,
+    bot: bool = False,
+    roles: tuple[str, ...] = (),
+    display_name: str | None = None,
+    global_name: str | None = None,
+    name: str | None = None,
+) -> SimpleNamespace:
     # Real Discord ids are numeric snowflakes; the extraction only ever str()s
     # them, so string ids are fine for these pure-function tests.
-    return SimpleNamespace(id=uid, bot=bot, roles=[SimpleNamespace(id=r) for r in roles])
+    return SimpleNamespace(
+        id=uid,
+        bot=bot,
+        roles=[SimpleNamespace(id=r) for r in roles],
+        display_name=display_name,
+        global_name=global_name,
+        name=name,
+    )
 
 
 def _message(
@@ -74,6 +89,16 @@ def test_guild_context_carries_names():
     ctx = build_inbound_context(msg, BOT_ID)
     assert ctx.guild_name == "Synapse"
     assert ctx.channel_name == "code-improver"
+
+
+def test_context_carries_author_names():
+    msg = _message(
+        author=_user("7", display_name="Ricardo", global_name="rdecal", name="ricardo-local"),
+        guild_id="g1",
+        channel_id="c1",
+    )
+
+    assert {"Ricardo", "rdecal", "ricardo-local"} <= build_inbound_context(msg, BOT_ID).author_names
 
 
 def test_thread_context_carries_parent():
