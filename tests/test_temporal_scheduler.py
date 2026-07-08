@@ -71,8 +71,11 @@ class FakeScheduleClient:
 
         return _iter()
 
-    async def start_workflow(self, workflow, *args, **kwargs):
-        self.started_workflows.append((workflow, args, kwargs))
+    async def start_workflow(self, workflow, *posargs, **kwargs):
+        assert len(posargs) <= 1
+        workflow_args = tuple(kwargs.pop("args", ()))
+        assert not (posargs and workflow_args)
+        self.started_workflows.append((workflow, posargs or workflow_args, kwargs))
 
 
 class AwaitableScheduleListClient(FakeScheduleClient):
@@ -175,11 +178,16 @@ class TestTemporalSchedulerRuntime:
             def __init__(self):
                 self.calls = []
 
-            async def start_workflow(self, workflow, *args, id, task_queue, id_reuse_policy):
+            async def start_workflow(
+                self, workflow, *posargs, id, task_queue, id_reuse_policy, args=()
+            ):
+                assert len(posargs) <= 1
+                workflow_args = tuple(args)
+                assert not (posargs and workflow_args)
                 self.calls.append(
                     {
                         "workflow": workflow,
-                        "args": args,
+                        "args": posargs or workflow_args,
                         "id": id,
                         "task_queue": task_queue,
                         "id_reuse_policy": id_reuse_policy,
@@ -208,7 +216,11 @@ class TestTemporalSchedulerRuntime:
         import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
         class FakeClient:
-            async def start_workflow(self, workflow, *args, id, task_queue, id_reuse_policy):
+            async def start_workflow(
+                self, workflow, *posargs, id, task_queue, id_reuse_policy, args=()
+            ):
+                assert len(posargs) <= 1
+                assert not (posargs and args)
                 return None
 
         temporal_scheduler.reset_temporal_scheduler_status()

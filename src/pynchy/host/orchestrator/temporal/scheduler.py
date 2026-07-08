@@ -327,24 +327,17 @@ class TemporalSchedulerRuntime:
         if self.client is None:
             raise RuntimeError("Temporal scheduler runtime has not been started")
 
+        start_kwargs: dict[str, Any] = {
+            "args": list(args),
+            "id": workflow_id,
+            "task_queue": self.scheduler_config.temporal_task_queue,
+            "id_reuse_policy": id_reuse_policy,
+        }
+        if start_delay is not None:
+            start_kwargs["start_delay"] = start_delay
+
         try:
-            if start_delay is None:
-                await self.client.start_workflow(
-                    workflow,
-                    *args,
-                    id=workflow_id,
-                    task_queue=self.scheduler_config.temporal_task_queue,
-                    id_reuse_policy=id_reuse_policy,
-                )
-            else:
-                await self.client.start_workflow(
-                    workflow,
-                    *args,
-                    id=workflow_id,
-                    task_queue=self.scheduler_config.temporal_task_queue,
-                    id_reuse_policy=id_reuse_policy,
-                    start_delay=start_delay,
-                )
+            await self.client.start_workflow(workflow, **start_kwargs)
         except WorkflowAlreadyStartedError:
             _update_temporal_scheduler_status(
                 last_workflow_id=workflow_id,
