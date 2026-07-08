@@ -205,6 +205,7 @@ class LearningConfig(_StrictModel):
 class OwnerConfig(_StrictModel):
     """Owner identity per platform — used for allowed_users = ["owner"] resolution."""
 
+    # Prefer human display/user names; Slack user IDs are accepted.
     slack: str | None = None
     # WhatsApp uses is_from_me, no config needed
 

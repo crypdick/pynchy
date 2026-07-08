@@ -225,7 +225,7 @@
 # mode = "agent"         # "agent" or "chat"
 # trust = true
 # trigger = "mention"    # "mention" or "always"
-# allowed_users = ["owner"]  # user IDs, group refs, or "*"
+# allowed_users = ["owner"]  # owner, user names/IDs, group refs, or "*"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Sandboxes
