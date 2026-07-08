@@ -43,6 +43,57 @@ if TYPE_CHECKING:
 _SHUTDOWN_HARD_EXIT_SECONDS = 60
 
 
+def _start_shutdown_watchdog() -> Any:
+    watchdog = threading.Timer(_SHUTDOWN_HARD_EXIT_SECONDS, lambda: os._exit(1))
+    watchdog.daemon = True
+    watchdog.start()
+    return watchdog
+
+
+async def _notify_admin_shutdown(app: PynchyApp, sig_name: str) -> None:
+    try:
+        from pynchy.host.orchestrator.adapters import find_admin_jid
+
+        admin_jid = find_admin_jid(app.workspaces) or None
+        if admin_jid and app.channels:
+            await app.broadcast_host_message(admin_jid, f"Shutting down ({sig_name})")
+    except Exception:
+        logger.debug("Shutdown notification failed", exc_info=True)
+
+
+def _cancel_subsystem_tasks(app: PynchyApp) -> None:
+    for task in app._subsystem_tasks:
+        task.cancel()
+    app._subsystem_tasks.clear()
+
+
+def _prepare_channels_for_shutdown(app: PynchyApp) -> None:
+    for channel in app.channels:
+        channel.prepare_shutdown()
+
+
+async def _cleanup_http_runner(app: PynchyApp) -> None:
+    if app._http_runner is None:
+        return
+    await asyncio.sleep(0.3)
+    await app._http_runner.cleanup()
+
+
+async def _close_runtime_resources(app: PynchyApp) -> None:
+    from pynchy.host.container_manager.gateway import stop_gateway
+
+    await stop_gateway()
+    for observer in app._observers:
+        await observer.close()
+    if app._memory:
+        await app._memory.close()
+    batcher = output_handler.get_trace_batcher()
+    if batcher is not None:
+        await batcher.flush_all()
+    for channel in app.channels:
+        await channel.disconnect()
+
+
 async def shutdown_app(app: PynchyApp, sig_name: str, *, exit_process: bool = False) -> None:
     """Graceful shutdown handler.  Second signal force-exits."""
     if app._shutting_down:
@@ -54,49 +105,16 @@ async def shutdown_app(app: PynchyApp, sig_name: str, *, exit_process: bool = Fa
     # Hard-exit watchdog: if graceful shutdown hangs, force-exit within
     # systemd's 90s stop timeout. Keep this larger than the container stop
     # budget: one graceful Docker stop can consume roughly 12s by itself.
-    watchdog = threading.Timer(_SHUTDOWN_HARD_EXIT_SECONDS, lambda: os._exit(1))
-    watchdog.daemon = True
-    watchdog.start()
+    watchdog = _start_shutdown_watchdog()
 
     try:
-        # Notify the admin group that the service is going down.
-        try:
-            from pynchy.host.orchestrator.adapters import find_admin_jid
-
-            admin_jid = find_admin_jid(app.workspaces) or None
-            if admin_jid and app.channels:
-                await app.broadcast_host_message(admin_jid, f"Shutting down ({sig_name})")
-        except Exception:
-            logger.debug("Shutdown notification failed", exc_info=True)
-
-        # Cancel subsystem tasks first — prevents scheduler/IPC from creating
-        # more work while we're shutting down.
-        for task in app._subsystem_tasks:
-            task.cancel()
-        app._subsystem_tasks.clear()
-
-        # Suppress reconnect attempts before cleanup.
-        for ch in app.channels:
-            ch.prepare_shutdown()
-
-        if app._http_runner:
-            await asyncio.sleep(0.3)
-            await app._http_runner.cleanup()
+        await _notify_admin_shutdown(app, sig_name)
+        _cancel_subsystem_tasks(app)
+        _prepare_channels_for_shutdown(app)
+        await _cleanup_http_runner(app)
 
         await app.queue.shutdown()
-
-        from pynchy.host.container_manager.gateway import stop_gateway
-
-        await stop_gateway()
-        for obs in app._observers:
-            await obs.close()
-        if app._memory:
-            await app._memory.close()
-        batcher = output_handler.get_trace_batcher()
-        if batcher is not None:
-            await batcher.flush_all()
-        for ch in app.channels:
-            await ch.disconnect()
+        await _close_runtime_resources(app)
     finally:
         watchdog.cancel()
 
