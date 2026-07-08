@@ -100,8 +100,119 @@ def _make_pm(*tool_names: str, handler_fn=None):
     return pm
 
 
+def _response_path(tmp_path: Path, request_id: str) -> Path:
+    return tmp_path / "ipc" / "mygroup" / "responses" / f"{request_id}.json"
+
+
+def _pending_path(tmp_path: Path, request_id: str) -> Path:
+    return tmp_path / "ipc" / "mygroup" / "pending_approvals" / f"{request_id}.json"
+
+
 class TestApprovalE2E:
     """Full round-trip: request → block → approve → execute → response."""
+
+    @staticmethod
+    def _assert_broadcast(deps: FakeDeps, index: int, *snippets: str) -> None:
+        message = deps.broadcast_messages[index][1]
+        for snippet in snippets:
+            assert snippet in message
+
+    @staticmethod
+    def _short_id_from_pending(pending_path: Path) -> str:
+        pending_data = json.loads(pending_path.read_text())
+        return pending_data["short_id"]
+
+    @staticmethod
+    def _approved_decision(tmp_path: Path) -> tuple[Path, dict[str, object]]:
+        decisions_dir = tmp_path / "ipc" / "mygroup" / "approval_decisions"
+        decision_files = list(decisions_dir.glob("*.json"))
+        assert len(decision_files) == 1
+        decision = json.loads(decision_files[0].read_text())
+        assert decision["approved"] is True
+        return decision_files[0], decision
+
+    @staticmethod
+    def _assert_approved_response(
+        *,
+        mock_handler: AsyncMock,
+        response_path: Path,
+        pending_path: Path,
+        decision_file: Path,
+    ) -> None:
+        mock_handler.assert_awaited_once()
+        call_data = mock_handler.call_args[0][0]
+        assert call_data["text"] == "Hello world"
+        assert response_path.exists()
+        response = json.loads(response_path.read_text())
+        assert response["result"]["status"] == "posted"
+        assert not pending_path.exists()
+        assert not decision_file.exists()
+
+    async def _dispatch_service_request(
+        self,
+        *,
+        deps: FakeDeps,
+        data: dict[str, str],
+        pm,
+        ws_settings,
+        approval_settings,
+    ) -> None:
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_service.get_settings",
+                return_value=ws_settings,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
+                return_value=pm,
+            ),
+            patch(
+                "pynchy.host.container_manager.security.approval.get_settings",
+                return_value=approval_settings,
+            ),
+        ):
+            await registry.dispatch(data, "mygroup", False, deps)
+
+    async def _approve_request(
+        self,
+        *,
+        deps: FakeDeps,
+        approval_settings,
+        short_id: str,
+    ) -> None:
+        from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command
+
+        with patch(
+            "pynchy.host.container_manager.security.approval.get_settings",
+            return_value=approval_settings,
+        ):
+            await handle_approval_command(deps, "chat@g.us", "approve", short_id, "testuser")
+
+    async def _process_approved_request(
+        self,
+        *,
+        decision_file: Path,
+        approval_settings,
+        mock_handler: AsyncMock,
+    ) -> None:
+        from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
+
+        clear_plugin_handler_cache()
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=approval_settings,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.write.get_settings",
+                return_value=approval_settings,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval._get_plugin_handlers",
+                return_value={"x_post": mock_handler},
+            ),
+        ):
+            await process_approval_decision(decision_file, "mygroup")
 
     @pytest.mark.asyncio
     async def test_approve_happy_path(self, tmp_path: Path):
@@ -123,101 +234,64 @@ class TestApprovalE2E:
         approval_settings = make_settings(data_dir=tmp_path)
 
         deps = FakeDeps({"chat@g.us": TEST_GROUP})
+        request_id = "aabb001122334455"
+        data = {
+            "type": "service:x_post",
+            "request_id": request_id,
+            "text": "Hello world",
+        }
+        response_path = _response_path(tmp_path, request_id)
+        pending_path = _pending_path(tmp_path, request_id)
 
         # Step 1: Service request hits needs_human — creates pending, broadcasts
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_service.get_settings",
-                return_value=ws_settings,
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
-                return_value=pm,
-            ),
-            patch(
-                "pynchy.host.container_manager.security.approval.get_settings",
-                return_value=approval_settings,
-            ),
-        ):
-            data = {
-                "type": "service:x_post",
-                "request_id": "aabb001122334455",
-                "text": "Hello world",
-            }
-            await registry.dispatch(data, "mygroup", False, deps)
+        await self._dispatch_service_request(
+            deps=deps,
+            data=data,
+            pm=pm,
+            ws_settings=ws_settings,
+            approval_settings=approval_settings,
+        )
 
         # Verify: no response file yet (container blocked)
-        response_path = tmp_path / "ipc" / "mygroup" / "responses" / "aabb001122334455.json"
         assert not response_path.exists()
 
         # Verify: pending file created
-        pending_path = tmp_path / "ipc" / "mygroup" / "pending_approvals" / "aabb001122334455.json"
         assert pending_path.exists()
 
         # Verify: notification broadcast
         assert len(deps.broadcast_messages) == 1
-        assert "Approval required" in deps.broadcast_messages[0][1]
-        assert "x_post" in deps.broadcast_messages[0][1]
+        self._assert_broadcast(deps, 0, "Approval required", "x_post")
 
         # Read the actual short_id from the pending file (now random 2-char)
-        pending_data = json.loads(pending_path.read_text())
-        short_id = pending_data["short_id"]
+        short_id = self._short_id_from_pending(pending_path)
 
         # Step 2: User sends "approve <short_id>" via chat
-        from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command
-
-        with patch(
-            "pynchy.host.container_manager.security.approval.get_settings",
-            return_value=approval_settings,
-        ):
-            await handle_approval_command(deps, "chat@g.us", "approve", short_id, "testuser")
+        await self._approve_request(
+            deps=deps,
+            approval_settings=approval_settings,
+            short_id=short_id,
+        )
 
         # Verify: decision file created
-        decisions_dir = tmp_path / "ipc" / "mygroup" / "approval_decisions"
-        decision_files = list(decisions_dir.glob("*.json"))
-        assert len(decision_files) == 1
-        decision = json.loads(decision_files[0].read_text())
-        assert decision["approved"] is True
+        decision_file, _ = self._approved_decision(tmp_path)
 
         # Verify: confirmation broadcast
         assert len(deps.broadcast_messages) == 2
-        assert "Approved" in deps.broadcast_messages[1][1]
+        self._assert_broadcast(deps, 1, "Approved")
 
         # Step 3: IPC watcher picks up the decision file → executes handler
-        from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
+        await self._process_approved_request(
+            decision_file=decision_file,
+            approval_settings=approval_settings,
+            mock_handler=mock_handler,
+        )
 
-        # Need to re-register the plugin handlers for the approval handler
-        clear_plugin_handler_cache()
-
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
-                return_value=approval_settings,
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.write.get_settings",
-                return_value=approval_settings,
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_approval._get_plugin_handlers",
-                return_value={"x_post": mock_handler},
-            ),
-        ):
-            await process_approval_decision(decision_files[0], "mygroup")
-
-        # Verify: handler was called with original request data
-        mock_handler.assert_awaited_once()
-        call_data = mock_handler.call_args[0][0]
-        assert call_data["text"] == "Hello world"
-
-        # Verify: response file now exists (container unblocked)
-        assert response_path.exists()
-        response = json.loads(response_path.read_text())
-        assert response["result"]["status"] == "posted"
-
-        # Verify: pending and decision files cleaned up
-        assert not pending_path.exists()
-        assert not decision_files[0].exists()
+        self._assert_approved_response(
+            mock_handler=mock_handler,
+            response_path=response_path,
+            pending_path=pending_path,
+            decision_file=decision_file,
+        )
 
     @pytest.mark.asyncio
     async def test_deny_writes_error_response(self, tmp_path: Path):
