@@ -6,6 +6,7 @@ processing, query-done pulse detection, and error handling.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -308,6 +309,61 @@ class TestOutputFileErrors:
 
         await _process_output_file(file_path, "test-group", ipc_dir)
 
+        assert not (ipc_dir / "errors").exists()
+
+    async def test_file_consumed_during_handler_is_idempotent(self, _db, tmp_path: Path):
+        """A competing output processor may delete the file after this processor read it."""
+        ipc_dir = tmp_path / "ipc"
+        file_path = _write_output_file(
+            ipc_dir,
+            "test-group",
+            {
+                "status": "success",
+                "type": "text",
+                "text": "already consumed",
+            },
+        )
+
+        async def consume_file(_output: ContainerOutput) -> None:
+            file_path.unlink()
+
+        handler = AsyncMock(side_effect=consume_file)
+        with patch(
+            "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler
+        ):
+            await _process_output_file(file_path, "test-group", ipc_dir)
+
+        handler.assert_called_once()
+        assert not file_path.exists()
+        assert not (ipc_dir / "errors").exists()
+
+    async def test_concurrent_duplicate_output_file_is_processed_once(self, _db, tmp_path: Path):
+        """Watchdog and runtime sweep can both discover the same output file."""
+        ipc_dir = tmp_path / "ipc"
+        file_path = _write_output_file(
+            ipc_dir,
+            "test-group",
+            {
+                "status": "success",
+                "type": "text",
+                "text": "single delivery",
+            },
+        )
+
+        async def slow_handler(_output: ContainerOutput) -> None:
+            await asyncio.sleep(0.01)
+
+        handler = AsyncMock(side_effect=slow_handler)
+        with patch(
+            "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler
+        ):
+            await asyncio.gather(
+                _process_output_file(file_path, "test-group", ipc_dir),
+                _process_output_file(file_path, "test-group", ipc_dir),
+            )
+
+        handler.assert_called_once()
+        assert not file_path.exists()
         assert not (ipc_dir / "errors").exists()
 
     async def test_malformed_json_moved_to_errors(self, _db, tmp_path: Path):

@@ -19,6 +19,7 @@ from pynchy.host.container_manager.ipc.handlers_signals import handle_signal as 
 from pynchy.host.container_manager.ipc.ledger import (
     claim_request_for_execution as _claim_request_for_execution,
 )
+from pynchy.host.container_manager.ipc.output_claims import claim_output_file
 from pynchy.host.container_manager.ipc.protocol import (
     InboundChatMessage,
     parse_ipc_file,
@@ -177,6 +178,19 @@ async def _process_output_file(
     is registered (e.g. a stale output file from a dead session), the file
     is left in place for the startup sweep to clean up.
     """
+    with claim_output_file(file_path) as claimed:
+        if not claimed:
+            return
+
+        await _process_claimed_output_file(file_path, source_group, ipc_base_dir)
+
+
+async def _process_claimed_output_file(
+    file_path: Path,
+    source_group: str,
+    ipc_base_dir: Path,
+) -> None:
+    """Process an output file after this task has claimed handler delivery."""
     try:
         try:
             json_str = file_path.read_text()
@@ -209,7 +223,8 @@ async def _process_output_file(
         # handler is set (e.g. stale file from a dead session), leave for
         # the startup sweep to clean up.
         if handler is not None:
-            file_path.unlink()
+            with contextlib.suppress(FileNotFoundError):
+                file_path.unlink()
     except Exception:
         logger.exception(
             "Error processing output file",
