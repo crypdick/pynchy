@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -284,6 +285,7 @@ def reconcile_worktrees_at_startup(
         check_token_expiry,
         ensure_repo_cloned,
         get_repo_context,
+        get_repo_token,
     )
 
     repo_groups = repo_groups or {}
@@ -293,84 +295,137 @@ def reconcile_worktrees_at_startup(
     old_base = s.home_dir / ".config" / "pynchy" / "worktrees"
 
     for slug, folders in repo_groups.items():
-        repo_ctx = get_repo_context(slug)
+        repo_ctx = _startup_repo_context(s, slug, get_repo_context)
         if repo_ctx is None:
-            logger.warning("Slug not configured in [repos], skipping", slug=slug)
             continue
-
-        # Validate token availability and expiry
-        repo_cfg = s.repos.get(slug)
-        if repo_cfg and repo_cfg.token:
-            check_token_expiry(slug, repo_cfg.token.get_secret_value())
-        elif not git_env_with_token(slug):
-            logger.warning(
-                "No git token for repo — private repos will fail to clone",
-                slug=slug,
-            )
-
-        # Clone auto-managed repos if they don't exist yet
-        if not ensure_repo_cloned(repo_ctx):
-            logger.warning("Repo not available, skipping worktree reconciliation", slug=slug)
+        _warn_if_repo_token_missing(s, slug, check_token_expiry, get_repo_token)
+        if not _prepare_repo_for_startup(
+            repo_ctx,
+            slug,
+            ensure_repo_cloned,
+            old_base,
+            s.project_root,
+        ):
             continue
+        _ensure_startup_worktrees(slug, folders, repo_ctx)
+        _rebase_diverged_worktrees(repo_ctx)
 
-        # Clean git's internal stale entries
-        run_git("worktree", "prune", cwd=repo_ctx.root)
 
-        # Install pre-commit hooks for this repo
-        install_pre_commit_hooks(repo_ctx.root)
+def _startup_repo_context(
+    settings,
+    slug: str,
+    get_repo_context: Callable[[str], RepoContext | None],
+) -> RepoContext | None:
+    repo_ctx = get_repo_context(slug)
+    if repo_ctx is None:
+        logger.warning("Slug not configured in [repos], skipping", slug=slug)
+    return repo_ctx
 
-        # Relocate pynchy's own worktrees out of the ~/.config/pynchy/worktrees/ path
-        if repo_ctx.root.resolve() == s.project_root.resolve():
-            _migrate_old_worktrees(repo_ctx, old_base)
 
-        # Create missing worktrees for known repo_access groups.
-        for folder in folders:
-            try:
-                ensure_worktree(folder, repo_ctx)
-            except WorktreeError:
-                logger.warning("Failed to create worktree at startup", group=folder, slug=slug)
+def _warn_if_repo_token_missing(
+    settings,
+    slug: str,
+    check_token_expiry,
+    get_repo_token,
+) -> None:
+    repo_cfg = settings.repos.get(slug)
+    if repo_cfg and repo_cfg.token:
+        check_token_expiry(slug, repo_cfg.token.get_secret_value())
+        return
+    if get_repo_token(slug):
+        return
+    logger.warning(
+        "No git token for repo — private repos will fail to clone",
+        slug=slug,
+    )
 
-        if not repo_ctx.worktrees_dir.exists():
+
+def _prepare_repo_for_startup(
+    repo_ctx: RepoContext,
+    slug: str,
+    ensure_repo_cloned,
+    old_base: Path,
+    project_root: Path,
+) -> bool:
+    if not ensure_repo_cloned(repo_ctx):
+        logger.warning("Repo not available, skipping worktree reconciliation", slug=slug)
+        return False
+
+    run_git("worktree", "prune", cwd=repo_ctx.root)
+    install_pre_commit_hooks(repo_ctx.root)
+    if repo_ctx.root.resolve() == project_root.resolve():
+        _migrate_old_worktrees(repo_ctx, old_base)
+    return True
+
+
+def _ensure_startup_worktrees(slug: str, folders: list[str], repo_ctx: RepoContext) -> None:
+    for folder in folders:
+        try:
+            ensure_worktree(folder, repo_ctx)
+        except WorktreeError:
+            logger.warning("Failed to create worktree at startup", group=folder, slug=slug)
+
+
+def _rebase_diverged_worktrees(repo_ctx: RepoContext) -> None:
+    if not repo_ctx.worktrees_dir.exists():
+        return
+
+    main_branch = detect_main_branch(cwd=repo_ctx.root)
+    for entry in sorted(repo_ctx.worktrees_dir.iterdir()):
+        if not entry.is_dir():
             continue
+        _rebase_diverged_worktree(repo_ctx, entry, main_branch)
 
-        main_branch = detect_main_branch(cwd=repo_ctx.root)
 
-        for entry in sorted(repo_ctx.worktrees_dir.iterdir()):
-            if not entry.is_dir():
-                continue
+def _rebase_diverged_worktree(
+    repo_ctx: RepoContext,
+    entry: Path,
+    main_branch: str,
+) -> None:
+    group_folder = entry.name
+    branch_name = f"worktree/{group_folder}"
 
-            group_folder = entry.name
-            branch_name = f"worktree/{group_folder}"
+    if not _branch_exists(repo_ctx.root, branch_name):
+        logger.debug("Worktree branch missing, skipping", group=group_folder)
+        return
 
-            # Check if branch exists
-            branch_check = run_git("rev-parse", "--verify", branch_name, cwd=repo_ctx.root)
-            if branch_check.returncode != 0:
-                logger.debug("Worktree branch missing, skipping", group=group_folder)
-                continue
+    divergence = _worktree_divergence(repo_ctx.root, main_branch, branch_name)
+    if divergence is None:
+        logger.warning("Failed to check worktree divergence", group=group_folder)
+        return
 
-            # Check divergence: commits ahead and behind main
-            ahead_count = count_commits(f"{main_branch}..{branch_name}", cwd=repo_ctx.root)
-            behind_count = count_commits(f"{branch_name}..{main_branch}", cwd=repo_ctx.root)
+    ahead_count, behind_count = divergence
+    if ahead_count == 0 or behind_count == 0:
+        return
 
-            if ahead_count is None or behind_count is None:
-                logger.warning("Failed to check worktree divergence", group=group_folder)
-                continue
+    logger.info(
+        "Worktree diverged from main, rebasing",
+        group=group_folder,
+        ahead=ahead_count,
+        behind=behind_count,
+    )
 
-            if ahead_count == 0 or behind_count == 0:
-                # Not diverged — either up to date or simply ahead (will ff-merge fine)
-                continue
+    if _safe_rebase(main_branch, cwd=entry):
+        logger.info("Worktree rebased onto main at startup", group=group_folder)
+    else:
+        logger.warning(
+            "Startup worktree rebase failed (needs manual resolution)",
+            group=group_folder,
+        )
 
-            logger.info(
-                "Worktree diverged from main, rebasing",
-                group=group_folder,
-                ahead=ahead_count,
-                behind=behind_count,
-            )
 
-            if _safe_rebase(main_branch, cwd=entry):
-                logger.info("Worktree rebased onto main at startup", group=group_folder)
-            else:
-                logger.warning(
-                    "Startup worktree rebase failed (needs manual resolution)",
-                    group=group_folder,
-                )
+def _branch_exists(repo_root: Path, branch_name: str) -> bool:
+    branch_check = run_git("rev-parse", "--verify", branch_name, cwd=repo_root)
+    return branch_check.returncode == 0
+
+
+def _worktree_divergence(
+    repo_root: Path,
+    main_branch: str,
+    branch_name: str,
+) -> tuple[int, int] | None:
+    ahead_count = count_commits(f"{main_branch}..{branch_name}", cwd=repo_root)
+    behind_count = count_commits(f"{branch_name}..{main_branch}", cwd=repo_root)
+    if ahead_count is None or behind_count is None:
+        return None
+    return ahead_count, behind_count

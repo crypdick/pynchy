@@ -9,15 +9,14 @@ ipc/_handlers_lifecycle.py (after a sync_worktree_to_main merge).
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.git_ops.utils import count_commits, detect_main_branch, get_head_sha, run_git
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    from pynchy.types import WorkspaceProfile
+from pynchy.types import WorkspaceProfile
 
 
 @runtime_checkable
@@ -42,6 +41,8 @@ class WorktreeNotifyDeps(Protocol):
 # This prevents the poll loop from re-notifying when the IPC handler
 # (sync_worktree_to_main) already notified for the same merge.
 last_notified_sha: dict[str, str] = {}
+
+type _NotifyFn = Callable[[str, str], Awaitable[None]]
 
 
 def build_rebase_notice(worktree_path: Path, old_head: str, commit_count: int) -> str:
@@ -69,6 +70,92 @@ def build_rebase_notice(worktree_path: Path, old_head: str, commit_count: int) -
         parts.append("Run `git log --oneline -5` to see what changed.")
 
     return "\n".join(parts)
+
+
+def _folder_to_jid_map(registered: dict[str, WorkspaceProfile]) -> dict[str, str]:
+    return {group.folder: jid for jid, group in registered.items()}
+
+
+def _notify_fn(
+    deps: WorktreeNotifyDeps,
+    group_folder: str,
+) -> _NotifyFn:
+    if deps.has_active_session(group_folder):
+        return deps.broadcast_system_notice
+    return deps.broadcast_host_message
+
+
+def _worktree_jid(
+    folder_to_jid: dict[str, str],
+    group_folder: str,
+    exclude_group: str | None,
+) -> str | None:
+    if group_folder == exclude_group:
+        return None
+    return folder_to_jid.get(group_folder)
+
+
+def _dirty_worktree_notice() -> str:
+    return (
+        "Main branch has been updated, but your worktree has "
+        "uncommitted changes. Commit or stash your work, then call "
+        "sync_worktree_to_main to get the latest changes."
+    )
+
+
+def _conflicted_rebase_notice() -> str:
+    return (
+        "Main branch was updated but your worktree has "
+        "rebase conflicts. Run `git status` to see conflicted files, "
+        "resolve them, then `git add` and `git rebase --continue`."
+    )
+
+
+def _behind_commit_count(
+    repo_ctx: RepoContext,
+    main_branch: str,
+    group_folder: str,
+) -> int:
+    branch_name = f"worktree/{group_folder}"
+    behind_n = count_commits(f"{branch_name}..{main_branch}", cwd=repo_ctx.root)
+    return behind_n or 0
+
+
+async def _notify_dirty_worktree(
+    *,
+    notify: _NotifyFn,
+    jid: str,
+    group_folder: str,
+) -> None:
+    await notify(jid, _dirty_worktree_notice())
+    logger.info(
+        "Skipped dirty worktree rebase, notified agent",
+        group=group_folder,
+    )
+
+
+async def _rebase_and_notify(
+    *,
+    notify: _NotifyFn,
+    jid: str,
+    group_folder: str,
+    entry: Path,
+    main_branch: str,
+    behind_count: int,
+) -> None:
+    head_before = run_git("rev-parse", "HEAD", cwd=entry).stdout.strip()
+    rebase = run_git("rebase", main_branch, cwd=entry)
+    if rebase.returncode != 0:
+        await notify(jid, _conflicted_rebase_notice())
+        logger.warning(
+            "Worktree rebase conflict during broadcast",
+            group=group_folder,
+            error=rebase.stderr.strip(),
+        )
+        return
+
+    await notify(jid, build_rebase_notice(entry, head_before, behind_count))
+    logger.info("Auto-rebased worktree", group=group_folder)
 
 
 async def host_notify_worktree_updates(
@@ -106,74 +193,40 @@ async def host_notify_worktree_updates(
 
     main_branch = detect_main_branch(cwd=repo_ctx.root)
     registered = deps.workspaces()
-
-    # Build folder->jid lookup
-    folder_to_jid: dict[str, str] = {g.folder: jid for jid, g in registered.items()}
+    folder_to_jid = _folder_to_jid_map(registered)
 
     for entry in sorted(repo_ctx.worktrees_dir.iterdir()):
         if not entry.is_dir():
             continue
 
         group_folder = entry.name
-        if group_folder == exclude_group:
-            continue
-
-        jid = folder_to_jid.get(group_folder)
+        jid = _worktree_jid(folder_to_jid, group_folder, exclude_group)
         if not jid:
             continue
 
-        # Check if behind main
-        branch_name = f"worktree/{group_folder}"
-        behind_n = count_commits(f"{branch_name}..{main_branch}", cwd=repo_ctx.root)
-        if not behind_n:
+        behind_count = _behind_commit_count(repo_ctx, main_branch, group_folder)
+        if behind_count == 0:
             continue  # up to date or can't check
 
-        # Route based on whether the workspace has an ongoing conversation.
-        # Active conversation → system_notice (LLM-visible).
-        # No conversation (cleared/never started) → host_message (human-only).
-        if deps.has_active_session(group_folder):
-            notify = deps.broadcast_system_notice
-        else:
-            notify = deps.broadcast_host_message
+        notify = _notify_fn(deps, group_folder)
 
-        # Check for uncommitted changes
         status = run_git("status", "--porcelain", cwd=entry)
         if status.returncode == 0 and status.stdout.strip():
-            notice = (
-                "Main branch has been updated, but your worktree has "
-                "uncommitted changes. Commit or stash your work, then call "
-                "sync_worktree_to_main to get the latest changes."
-            )
-            await notify(jid, notice)
-            logger.info(
-                "Skipped dirty worktree rebase, notified agent",
-                group=group_folder,
+            await _notify_dirty_worktree(
+                notify=notify,
+                jid=jid,
+                group_folder=group_folder,
             )
             continue
 
-        # Gather stats before rebase for the notification
-        behind_count = behind_n
-        head_before = run_git("rev-parse", "HEAD", cwd=entry).stdout.strip()
-
-        # Attempt rebase
-        rebase = run_git("rebase", main_branch, cwd=entry)
-        if rebase.returncode != 0:
-            # Leave conflict markers for agent to resolve
-            notice = (
-                "Main branch was updated but your worktree has "
-                "rebase conflicts. Run `git status` to see conflicted files, "
-                "resolve them, then `git add` and `git rebase --continue`."
-            )
-            await notify(jid, notice)
-            logger.warning(
-                "Worktree rebase conflict during broadcast",
-                group=group_folder,
-                error=rebase.stderr.strip(),
-            )
-        else:
-            notice = build_rebase_notice(entry, head_before, behind_count)
-            await notify(jid, notice)
-            logger.info("Auto-rebased worktree", group=group_folder)
+        await _rebase_and_notify(
+            notify=notify,
+            jid=jid,
+            group_folder=group_folder,
+            entry=entry,
+            main_branch=main_branch,
+            behind_count=behind_count,
+        )
 
     # Record current HEAD so the poll loop can skip duplicate notifications
     # for the same merge (e.g. IPC handler already notified, poll loop detects
