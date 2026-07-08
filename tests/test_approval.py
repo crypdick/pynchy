@@ -53,13 +53,17 @@ class TestCreatePendingApproval:
         assert files[0].name == "aabb001122334455.json"
 
         data = json.loads(files[0].read_text())
-        assert data["request_id"] == "aabb001122334455"
+        expected_fields = {
+            "request_id": "aabb001122334455",
+            "tool_name": "x_post",
+            "source_group": "personal",
+            "chat_jid": "group@g.us",
+        }
+        for field_name, expected_value in expected_fields.items():
+            assert data[field_name] == expected_value
         # short_id is a random 2-char [a-z0-9] string, no longer request_id[:8]
         assert len(data["short_id"]) == 2
         assert all(c in "abcdefghijklmnopqrstuvwxyz0123456789" for c in data["short_id"])
-        assert data["tool_name"] == "x_post"
-        assert data["source_group"] == "personal"
-        assert data["chat_jid"] == "group@g.us"
         assert data["request_data"]["text"] == "hello"
         assert "timestamp" in data
 
