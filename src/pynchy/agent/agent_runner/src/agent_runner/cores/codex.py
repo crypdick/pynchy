@@ -19,7 +19,11 @@ from pathlib import Path
 from typing import Any
 
 from ..core import AgentCoreConfig, AgentEvent
-from ._codex_config import gateway_base_url_from_env, write_codex_config
+from ._codex_config import (
+    DEFAULT_CODEX_SANDBOX_MODE,
+    gateway_base_url_from_env,
+    write_codex_config,
+)
 
 _STREAM_LINE_LIMIT = 32 * 1024 * 1024
 _CODEX_SESSION_PREFIX = "codex:"
@@ -140,7 +144,7 @@ class CodexCLIAgentCore:
 
     def _build_args(self) -> list[str]:
         """Assemble ``codex exec`` argv for one turn."""
-        sandbox = str(self.config.extra.get("sandbox_mode", "workspace-write"))
+        sandbox = str(self.config.extra.get("sandbox_mode", DEFAULT_CODEX_SANDBOX_MODE))
         approval = str(self.config.extra.get("approval_policy", "never"))
         thread_id = _codex_thread_id(self._session_id)
 

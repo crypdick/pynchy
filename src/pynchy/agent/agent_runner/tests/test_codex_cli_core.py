@@ -68,7 +68,7 @@ def test_start_writes_codex_config_with_hooks_and_mcp(tmp_path, monkeypatch):
     }
     assert config["features"]["hooks"] is True
     assert config["approval_policy"] == "never"
-    assert config["sandbox_mode"] == "workspace-write"
+    assert config["sandbox_mode"] == "danger-full-access"
     assert config["mcp_servers"]["pynchy"]["command"] == "python"
     assert config["mcp_servers"]["pynchy"]["args"] == ["-m", "agent_runner.agent_tools"]
     assert config["mcp_servers"]["pynchy"]["env"] == {"PYNCHY_CHAT_JID": "j"}
@@ -130,7 +130,7 @@ def test_build_args_for_new_session(tmp_path, monkeypatch):
     assert "--ask-for-approval" in args
     assert "never" in args
     assert "--sandbox" in args
-    assert "workspace-write" in args
+    assert "danger-full-access" in args
     assert "--dangerously-bypass-hook-trust" in args
     assert args[-6:] == ["exec", "--json", "--skip-git-repo-check", "--model", "gpt-5.2-codex", "-"]
 
