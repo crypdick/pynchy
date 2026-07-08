@@ -112,13 +112,21 @@ async def reconcile_workspace_boards(
     team_key: str | None,
 ) -> dict[str, LinearWorkspaceBoard]:
     """Ensure all currently registered workspaces have Linear boards."""
+    workspaces = list(workspaces)
+    if not workspaces:
+        return {}
+
+    team = await select_team(client, team_key=team_key)
+    resources = await _load_team_resources(client, str(team["id"]))
+    states = await _ensure_states(client, str(team["id"]), resources["states"])
+    projects = resources["projects"]
+
     boards: dict[str, LinearWorkspaceBoard] = {}
     for workspace in workspaces:
-        boards[workspace.folder] = await ensure_workspace_board(
-            client,
-            workspace,
-            team_key=team_key,
-        )
+        project = await _ensure_project(client, str(team["id"]), workspace, projects)
+        if project not in projects:
+            projects.append(project)
+        boards[workspace.folder] = LinearWorkspaceBoard(team=team, project=project, states=states)
     return boards
 
 

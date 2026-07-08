@@ -16,6 +16,8 @@ from pynchy.plugins.integrations.linear_boards import (
 )
 from pynchy.types import WorkspaceProfile
 
+LINEAR_BOOT_TIMEOUT_SECONDS = 30
+
 
 async def reconcile_linear_workspace_boards(
     workspaces: Iterable[WorkspaceProfile],
@@ -25,10 +27,11 @@ async def reconcile_linear_workspace_boards(
     if not api_key:
         return {}
 
-    async with aiohttp.ClientSession() as session:
+    timeout = aiohttp.ClientTimeout(total=LINEAR_BOOT_TIMEOUT_SECONDS)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         client = LinearClient(api_key=api_key, session=session)
         try:
-            return await reconcile_workspace_boards(
+            boards = await reconcile_workspace_boards(
                 client,
                 list(workspaces),
                 team_key=os.environ.get("LINEAR_TEAM_KEY"),
@@ -36,6 +39,8 @@ async def reconcile_linear_workspace_boards(
         except Exception as exc:  # allow: exception-handling - Linear is optional at boot
             logger.warning("Linear workspace board reconciliation failed", err=str(exc))
             return {}
+    logger.info("Linear workspace boards reconciled", count=len(boards))
+    return boards
 
 
 async def create_linear_workspace_todo(
@@ -47,7 +52,8 @@ async def create_linear_workspace_todo(
     if not api_key:
         return None
 
-    async with aiohttp.ClientSession() as session:
+    timeout = aiohttp.ClientTimeout(total=LINEAR_BOOT_TIMEOUT_SECONDS)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         client = LinearClient(api_key=api_key, session=session)
         try:
             issue = await create_workspace_todo(
