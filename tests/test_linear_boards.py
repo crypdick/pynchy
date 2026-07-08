@@ -31,6 +31,7 @@ class FakeLinearClient:
         self.states: list[dict[str, Any]] = [
             {"id": "state-backlog", "name": "Backlog", "type": "backlog", "position": 10.0},
         ]
+        self.updated_projects: list[dict[str, Any]] = []
         self.created_issues: list[dict[str, Any]] = []
         self.updated_issues: list[dict[str, Any]] = []
 
@@ -53,6 +54,14 @@ class FakeLinearClient:
             }
             self.projects.append(project)
             return {"projectCreate": {"success": True, "project": project}}
+        if "UpdateWorkspaceProject" in query:
+            project = next(
+                project for project in self.projects if project["id"] == variables["project_id"]
+            )
+            project["name"] = variables["name"]
+            project["description"] = variables["description"]
+            self.updated_projects.append(variables)
+            return {"projectUpdate": {"success": True, "project": project}}
         if "CreateWorkflowState" in query:
             state = {
                 "id": f"state-{variables['name'].lower().replace(' ', '-')}",
@@ -69,7 +78,7 @@ class FakeLinearClient:
                 "title": variables["title"],
                 "url": "https://linear.app/acme/issue/SYN-1",
                 "state": {"id": variables["state_id"], "name": "Backlog", "type": "backlog"},
-                "project": {"id": variables["project_id"], "name": "Pynchy: Code Improver"},
+                "project": {"id": variables["project_id"], "name": "Code Improver"},
             }
             self.created_issues.append(variables)
             return {"issueCreate": {"success": True, "issue": issue}}
@@ -140,7 +149,7 @@ class TestEnsureWorkspaceBoard:
 
         board = await ensure_workspace_board(client, workspace, team_key=None)
 
-        assert board.project["name"] == "Pynchy: Code Improver"
+        assert board.project["name"] == "Code Improver"
         assert board.states.keys() == LINEAR_TODO_STATUSES.keys()
         created_state_names = {state["name"] for state in client.states}
         assert {"Backlog", "Planning", "Ready", "In Progress", "Done"} <= created_state_names
@@ -150,7 +159,7 @@ class TestEnsureWorkspaceBoard:
         client.projects.append(
             {
                 "id": "project-existing",
-                "name": "Pynchy: Code Improver",
+                "name": "Code Improver",
                 "url": "https://linear.app/acme/project/existing",
             }
         )
@@ -161,13 +170,31 @@ class TestEnsureWorkspaceBoard:
         assert board.project["id"] == "project-existing"
         assert len(client.projects) == 1
 
-    async def test_project_name_uses_stable_workspace_folder(self):
+    async def test_project_name_uses_workspace_display_name(self):
         client = FakeLinearClient()
         workspace = WorkspaceStub(folder="code-improver", name="Custom Display Name")
 
         board = await ensure_workspace_board(client, workspace, team_key=None)
 
-        assert board.project["name"] == "Pynchy: Code Improver"
+        assert board.project["name"] == "Custom Display Name"
+
+    async def test_renames_existing_prefixed_project_by_workspace_metadata(self):
+        client = FakeLinearClient()
+        client.projects.append(
+            {
+                "id": "project-existing",
+                "name": "Pynchy: Topic 6011",
+                "url": "https://linear.app/acme/project/existing",
+                "description": "Managed by Pynchy.\n\npynchy.workspace=topic-6011\n",
+            }
+        )
+        workspace = WorkspaceStub(folder="topic-6011", name="DDDD Evening Review")
+
+        board = await ensure_workspace_board(client, workspace, team_key=None)
+
+        assert board.project["id"] == "project-existing"
+        assert board.project["name"] == "DDDD Evening Review"
+        assert client.updated_projects[0]["name"] == "DDDD Evening Review"
 
 
 class TestWorkspaceTodos:

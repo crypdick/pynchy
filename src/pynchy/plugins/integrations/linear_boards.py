@@ -292,7 +292,7 @@ async def _load_team_resources(
         query TeamLinearBoardResources($team_id: String!) {
           team(id: $team_id) {
             projects {
-              nodes { id name url }
+              nodes { id name url description }
             }
             states {
               nodes { id name type position }
@@ -366,6 +366,10 @@ async def _ensure_project(
     if existing is not None:
         return existing
 
+    existing_by_metadata = _project_for_workspace(existing_projects, workspace)
+    if existing_by_metadata is not None:
+        return await _update_project(client, existing_by_metadata, workspace)
+
     data = await client.query(
         """
         mutation CreateWorkspaceProject(
@@ -390,25 +394,66 @@ async def _ensure_project(
     return _payload_entity(data, "projectCreate", "project")
 
 
+async def _update_project(
+    client: LinearQueryClient,
+    project: dict[str, Any],
+    workspace: WorkspaceLike,
+) -> dict[str, Any]:
+    data = await client.query(
+        """
+        mutation UpdateWorkspaceProject(
+          $project_id: String!,
+          $name: String!,
+          $description: String
+        ) {
+          projectUpdate(
+            id: $project_id,
+            input: { name: $name, description: $description }
+          ) {
+            success
+            project { id name url description }
+          }
+        }
+        """,
+        project_id=project["id"],
+        name=workspace_project_name(workspace),
+        description=_project_description(workspace),
+    )
+    return _payload_entity(data, "projectUpdate", "project")
+
+
 def workspace_project_name(workspace: WorkspaceLike) -> str:
-    display_name = workspace.folder.replace("-", " ").replace("_", " ").title()
-    return f"Pynchy: {display_name}"
+    name = str(workspace.name or "").strip()
+    if name:
+        return name
+    return workspace.folder.replace("-", " ").replace("_", " ").title()
+
+
+def _project_for_workspace(
+    projects: list[dict[str, Any]],
+    workspace: WorkspaceLike,
+) -> dict[str, Any] | None:
+    marker = _workspace_marker(workspace)
+    for project in projects:
+        if marker in str(project.get("description") or ""):
+            return project
+    return None
 
 
 def _project_description(workspace: WorkspaceLike) -> str:
-    return (
-        "Managed by Pynchy.\n\n"
-        f"pynchy.workspace={workspace.folder}\n"
-        f"pynchy.chat_jid={workspace.jid}"
-    )
+    return f"Managed by Pynchy.\n\n{_workspace_marker(workspace)}\npynchy.chat_jid={workspace.jid}"
 
 
 def _todo_description(workspace: WorkspaceLike) -> str:
     return (
         "Captured from a Pynchy workspace todo.\n\n"
-        f"pynchy.workspace={workspace.folder}\n"
+        f"{_workspace_marker(workspace)}\n"
         f"pynchy.chat_jid={workspace.jid}"
     )
+
+
+def _workspace_marker(workspace: WorkspaceLike) -> str:
+    return f"pynchy.workspace={workspace.folder}"
 
 
 def _normalize_status(status: str) -> str:

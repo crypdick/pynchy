@@ -1,9 +1,9 @@
 # Linear
 
 The built-in Linear integration gives every Pynchy workspace a durable Linear
-todo board. Each workspace maps to a Linear Project named from its stable folder
-(`Pynchy: Code Improver` for `code-improver`), and todos move through shared
-Linear workflow states: Backlog, Planning,
+todo board. Each workspace maps to a Linear Project named from the workspace
+display name (`Code Improver` for `code-improver` by default), and todos move
+through shared Linear workflow states: Backlog, Planning,
 Ready, In Progress, and Done.
 
 ## Configure access
@@ -34,13 +34,14 @@ On boot, Pynchy reconciles Linear state for all registered workspaces:
 
 | Pynchy workspace | Linear object |
 |------------------|---------------|
-| Workspace folder | Project named from the folder, such as `Pynchy: Code Improver` |
+| Workspace display name | Project named from the workspace, such as `Code Improver` |
 | `todo ...` messages | Issues in that workspace project |
 | Todo status | Team workflow state |
 
 Boot reconciliation is additive only. Pynchy creates missing projects and states,
-but it does not delete, archive, rename, assign, or otherwise clean up Linear
-objects automatically.
+and renames older Pynchy-managed projects when their description contains the
+matching `pynchy.workspace=...` marker. It does not delete, archive, assign, or
+otherwise clean up Linear objects automatically.
 
 When a user sends `todo ...` while a workspace task is running, Pynchy still
 writes the local todo cache and also creates a Linear issue in the workspace
