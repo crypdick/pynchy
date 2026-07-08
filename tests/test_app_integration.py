@@ -254,6 +254,49 @@ async def _schedule_outputs_via_session(
     fake_proc._wait_event.set()
 
 
+def _trace_session_outputs() -> list[dict[str, Any]]:
+    return [
+        {"type": "thinking", "status": "success", "thinking": "Let me figure this out..."},
+        {
+            "type": "tool_use",
+            "status": "success",
+            "tool_name": "Bash",
+            "tool_input": {"command": "ls"},
+        },
+        {
+            "type": "result",
+            "status": "success",
+            "result": "Done!",
+            "new_session_id": "sess-trace",
+        },
+        {"status": "success", "result": None, "new_session_id": "sess-trace"},
+    ]
+
+
+def _sent_texts(channel: FakeChannel) -> list[str]:
+    return [text for _, text in channel.sent_messages]
+
+
+def _first_text_index(texts: list[str], needle: str) -> int:
+    return next(index for index, text in enumerate(texts) if needle in text)
+
+
+def _assert_trace_order(texts: list[str]) -> None:
+    assert any("Let me figure this out" in text for text in texts), (
+        f"Expected a thinking trace message, got: {texts}"
+    )
+    assert any("Bash" in text for text in texts), (
+        f"Expected a tool_use trace for 'Bash', got: {texts}"
+    )
+    assert any("Done!" in text for text in texts), f"Expected final result 'Done!', got: {texts}"
+
+    result_idx = _first_text_index(texts, "Done!")
+    assert _first_text_index(texts, "Let me figure this out") < result_idx, (
+        "Thinking trace should come before result"
+    )
+    assert _first_text_index(texts, "Bash") < result_idx, "Tool trace should come before result"
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -354,26 +397,12 @@ class TestProcessGroupMessages:
         # Simulate a realistic agent session: thinking -> tool_use -> result
         fake_proc = FakeProcess()
 
-        trace_outputs = [
-            {"type": "thinking", "status": "success", "thinking": "Let me figure this out..."},
-            {
-                "type": "tool_use",
-                "status": "success",
-                "tool_name": "Bash",
-                "tool_input": {"command": "ls"},
-            },
-            {
-                "type": "result",
-                "status": "success",
-                "result": "Done!",
-                "new_session_id": "sess-trace",
-            },
-            # Query-done pulse
-            {"status": "success", "result": None, "new_session_id": "sess-trace"},
-        ]
-
         driver = asyncio.create_task(
-            _schedule_outputs_via_session(fake_proc, trace_outputs, final_session_id="sess-trace")
+            _schedule_outputs_via_session(
+                fake_proc,
+                _trace_session_outputs(),
+                final_session_id="sess-trace",
+            )
         )
 
         async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
@@ -391,25 +420,7 @@ class TestProcessGroupMessages:
 
         await driver
         assert result is True
-
-        # Extract just the message texts
-        texts = [text for _, text in channel.sent_messages]
-
-        # Trace events should have been sent BEFORE the final result
-        assert any("Let me figure this out" in t for t in texts), (
-            f"Expected a thinking trace message, got: {texts}"
-        )
-        assert any("Bash" in t for t in texts), (
-            f"Expected a tool_use trace for 'Bash', got: {texts}"
-        )
-        # Final result should also be present
-        assert any("Done!" in t for t in texts), f"Expected final result 'Done!', got: {texts}"
-        # Thinking and tool traces should come before the result
-        thinking_idx = next(i for i, t in enumerate(texts) if "Let me figure this out" in t)
-        tool_idx = next(i for i, t in enumerate(texts) if "Bash" in t)
-        result_idx = next(i for i, t in enumerate(texts) if "Done!" in t)
-        assert thinking_idx < result_idx, "Thinking trace should come before result"
-        assert tool_idx < result_idx, "Tool trace should come before result"
+        _assert_trace_order(_sent_texts(channel))
 
     async def test_skips_messages_without_trigger(self, app: PynchyApp, tmp_path: Path):
         """Messages without @pynchy trigger should be skipped for non-main groups."""
