@@ -230,6 +230,79 @@ class ClaudeAgentCore:
         self._client = ClaudeSDKClient(options)
         await self._client.__aenter__()
 
+    def _system_event(self, message: SystemMessage) -> AgentEvent:
+        """Map a system message and update the session when initialized."""
+        if message.subtype == "init" and hasattr(message, "data"):
+            sid = message.data.get("session_id")
+            if sid:
+                self._session_id = sid
+                _log(f"Session initialized: {sid}")
+        return AgentEvent(
+            type="system",
+            data={
+                "system_subtype": message.subtype,
+                "system_data": message.data if hasattr(message, "data") else {},
+            },
+        )
+
+    @staticmethod
+    def _tool_result_content(block: ToolResultBlock) -> str:
+        """Flatten a Claude tool-result block into stored text content."""
+        if isinstance(block.content, str):
+            return block.content
+        if isinstance(block.content, list):
+            return json.dumps(block.content)
+        return ""
+
+    def _assistant_events(self, message: AssistantMessage) -> list[AgentEvent]:
+        """Map assistant content blocks to AgentEvents."""
+        events: list[AgentEvent] = []
+        for block in message.content:
+            if isinstance(block, ThinkingBlock):
+                events.append(AgentEvent(type="thinking", data={"thinking": block.thinking}))
+            elif isinstance(block, ToolUseBlock):
+                events.append(
+                    AgentEvent(
+                        type="tool_use",
+                        data={"tool_name": block.name, "tool_input": block.input},
+                    )
+                )
+            elif isinstance(block, ToolResultBlock):
+                events.append(
+                    AgentEvent(
+                        type="tool_result",
+                        data={
+                            "tool_result_id": block.tool_use_id,
+                            "tool_result_content": self._tool_result_content(block),
+                            "tool_result_is_error": block.is_error,
+                        },
+                    )
+                )
+            elif isinstance(block, TextBlock):
+                events.append(AgentEvent(type="text", data={"text": block.text}))
+        return events
+
+    def _result_event(self, message: ResultMessage) -> AgentEvent:
+        """Map the terminal Claude SDK result message and update the session."""
+        self._session_id = message.session_id or self._session_id
+        result_meta = {
+            "subtype": message.subtype,
+            "duration_ms": message.duration_ms,
+            "duration_api_ms": message.duration_api_ms,
+            "is_error": message.is_error,
+            "num_turns": message.num_turns,
+            "session_id": message.session_id,
+            "total_cost_usd": message.total_cost_usd,
+            "usage": message.usage,
+        }
+        return AgentEvent(
+            type="result",
+            data={
+                "result": getattr(message, "result", None),
+                "result_metadata": result_meta,
+            },
+        )
+
     async def query(self, prompt: str) -> AsyncIterator[AgentEvent]:
         """Execute a query using Claude SDK."""
         if self._client is None:
@@ -241,67 +314,15 @@ class ClaudeAgentCore:
 
         message_count = 0
         result_count = 0
-        new_session_id: str | None = None
 
         async for message in self._client.receive_response():
             message_count += 1
 
-            # System messages
             if isinstance(message, SystemMessage):
-                if message.subtype == "init" and hasattr(message, "data"):
-                    sid = message.data.get("session_id")
-                    if sid:
-                        new_session_id = sid
-                        _log(f"Session initialized: {new_session_id}")
-
-                yield AgentEvent(
-                    type="system",
-                    data={
-                        "system_subtype": message.subtype,
-                        "system_data": message.data if hasattr(message, "data") else {},
-                    },
-                )
-
-            # Assistant messages (thinking, tool use, tool results, text)
+                yield self._system_event(message)
             elif isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, ThinkingBlock):
-                        yield AgentEvent(
-                            type="thinking",
-                            data={"thinking": block.thinking},
-                        )
-                    elif isinstance(block, ToolUseBlock):
-                        yield AgentEvent(
-                            type="tool_use",
-                            data={
-                                "tool_name": block.name,
-                                "tool_input": block.input,
-                            },
-                        )
-                    elif isinstance(block, ToolResultBlock):
-                        # Flatten content to string for storage
-                        if isinstance(block.content, str):
-                            content_str = block.content
-                        elif isinstance(block.content, list):
-                            content_str = json.dumps(block.content)
-                        else:
-                            content_str = ""
-
-                        yield AgentEvent(
-                            type="tool_result",
-                            data={
-                                "tool_result_id": block.tool_use_id,
-                                "tool_result_content": content_str,
-                                "tool_result_is_error": block.is_error,
-                            },
-                        )
-                    elif isinstance(block, TextBlock):
-                        yield AgentEvent(
-                            type="text",
-                            data={"text": block.text},
-                        )
-
-            # Result messages
+                for event in self._assistant_events(message):
+                    yield event
             elif isinstance(message, ResultMessage):
                 result_count += 1
                 text_result = getattr(message, "result", None)
@@ -311,28 +332,7 @@ class ClaudeAgentCore:
                     f"{f' text={text_result[:200]}' if text_result else ''}"
                 )
 
-                result_meta = {
-                    "subtype": message.subtype,
-                    "duration_ms": message.duration_ms,
-                    "duration_api_ms": message.duration_api_ms,
-                    "is_error": message.is_error,
-                    "num_turns": message.num_turns,
-                    "session_id": message.session_id,
-                    "total_cost_usd": message.total_cost_usd,
-                    "usage": message.usage,
-                }
-
-                yield AgentEvent(
-                    type="result",
-                    data={
-                        "result": text_result,
-                        "result_metadata": result_meta,
-                    },
-                )
-
-        # Update session ID if one was issued
-        if new_session_id:
-            self._session_id = new_session_id
+                yield self._result_event(message)
 
         _log(f"Query done. Messages: {message_count}, results: {result_count}")
 
