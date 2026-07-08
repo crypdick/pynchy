@@ -36,8 +36,11 @@ class InboundContext:
     author_id: str
     author_is_bot: bool
     guild_id: str | None
+    guild_name: str | None
     channel_id: str  # for a thread, the thread's own snowflake
+    channel_name: str | None
     parent_channel_id: str | None  # for a thread, its parent channel; else None
+    parent_channel_name: str | None
     author_role_ids: frozenset[str]
     mentions_bot: bool
 
@@ -59,6 +62,10 @@ def _matches_user(allow: list[str], author_id: str) -> bool:
 
 def _matches_role(roles: list[str], author_role_ids: frozenset[str]) -> bool:
     return any(_strip_role_prefix(role) in author_role_ids for role in roles)
+
+
+def _same_name(left: str | None, right: str | None) -> bool:
+    return bool(left and right and left.casefold() == right.casefold())
 
 
 class DiscordAccess:
@@ -88,13 +95,12 @@ class DiscordAccess:
         if self._cfg.group_policy == "disabled":
             return "deny"
 
-        guild = self._cfg.chat.get(ctx.guild_id or "")
+        guild = self._lookup_guild(ctx)
         if guild is None:
             return self._decide_unconfigured_guild(ctx)
 
         # Threads inherit their parent channel's config.
-        channel_key = ctx.parent_channel_id or ctx.channel_id
-        channel = guild.channels.get(channel_key)
+        channel = self._lookup_channel(guild, ctx)
 
         # If the guild pins a channel allowlist, a message elsewhere is denied.
         if guild.channels and channel is None:
@@ -102,6 +108,36 @@ class DiscordAccess:
         if channel is not None and not channel.enabled:
             return "deny"
         return self._decide_member(ctx, guild, channel)
+
+    def _lookup_guild(self, ctx: InboundContext) -> DiscordGuildConfig | None:
+        for key in (ctx.guild_id, ctx.guild_name):
+            if key and key in self._cfg.chat:
+                return self._cfg.chat[key]
+        return next(
+            (guild for guild in self._cfg.chat.values() if _same_name(guild.name, ctx.guild_name)),
+            None,
+        )
+
+    def _lookup_channel(
+        self, guild: DiscordGuildConfig, ctx: InboundContext
+    ) -> DiscordChannelConfig | None:
+        for key in (
+            ctx.parent_channel_id,
+            ctx.channel_id,
+            ctx.parent_channel_name,
+            ctx.channel_name,
+        ):
+            if key and key in guild.channels:
+                return guild.channels[key]
+        lookup_name = ctx.parent_channel_name or ctx.channel_name
+        return next(
+            (
+                channel
+                for channel in guild.channels.values()
+                if _same_name(channel.name, lookup_name)
+            ),
+            None,
+        )
 
     def _decide_unconfigured_guild(self, ctx: InboundContext) -> Decision:
         # Open policy still permits mention-gated messages; allowlist rejects.

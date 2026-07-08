@@ -119,7 +119,10 @@ async def _resolve_configured_jid(
             )
             jid = None
 
-    if jid is None and allow_create and hasattr(channel, "create_group"):
+    channel_allows_create = bool(
+        allow_create or getattr(channel, "auto_provision_configured_chats", False)
+    )
+    if jid is None and channel_allows_create and hasattr(channel, "create_group"):
         try:
             jid = await channel.create_group(chat_ref.chat)
             logger.info(

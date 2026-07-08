@@ -23,13 +23,13 @@ def parse_discord_chat_target(chat: str) -> DiscordChatTarget | None:
     """Parse the suffix after ``connection.discord.<name>.chat.``.
 
     Supported concrete targets:
-    - ``<guild-id>.channels.<channel-id>`` for guild text channels and threads
+    - ``<guild-key>.channels.<channel-key>`` for guild text channels and threads
     - ``direct.<user-id>`` for DMs keyed by the user snowflake
     """
     parts = chat.split(".")
     if len(parts) == 2 and parts[0] == "direct" and parts[1].isdecimal():
         return DiscordChatTarget(kind="direct", target_id=parts[1])
-    if len(parts) == 3 and parts[0].isdecimal() and parts[1] == "channels" and parts[2].isdecimal():
+    if len(parts) == 3 and parts[0] and parts[1] == "channels" and parts[2]:
         return DiscordChatTarget(kind="channel", guild_id=parts[0], target_id=parts[2])
     return None
 
@@ -53,7 +53,7 @@ def discord_chat_ref_error(config: DiscordConnectionConfig, chat: str) -> str | 
     """Return an explanatory error when a Discord workspace chat ref is invalid."""
     target = parse_discord_chat_target(chat)
     if target is None:
-        return "must target direct.<user-id> or <guild-id>.channels.<channel-id> for Discord"
+        return "must target direct.<user-id> or <guild>.channels.<channel> for Discord"
 
     if target.kind == "direct":
         if not _direct_user_allowed(config, target.target_id):

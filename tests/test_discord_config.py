@@ -108,6 +108,41 @@ def test_settings_accept_discord_workspace_channel_ref():
     )
 
 
+def test_settings_accept_discord_workspace_name_ref():
+    settings = Settings(
+        connection=ConnectionsConfig(
+            discord={
+                "mybot": DiscordConnectionConfig(
+                    bot_token_env="DISCORD_BOT_TOKEN",
+                    dm_policy="allowlist",
+                    group_policy="allowlist",
+                    chat={
+                        "synapse": {
+                            "name": "Synapse",
+                            "require_mention": False,
+                            "channels": {
+                                "code-improver": {
+                                    "name": "code-improver",
+                                    "enabled": True,
+                                }
+                            },
+                        }
+                    },
+                )
+            }
+        ),
+        sandbox={
+            "discord-admin": WorkspaceConfig(
+                chat="connection.discord.mybot.chat.synapse.channels.code-improver",
+            )
+        },
+    )
+
+    assert settings.workspaces["discord-admin"].chat == (
+        "connection.discord.mybot.chat.synapse.channels.code-improver"
+    )
+
+
 def test_settings_accept_discord_workspace_direct_ref_when_user_allowed():
     settings = Settings(
         connection=ConnectionsConfig(

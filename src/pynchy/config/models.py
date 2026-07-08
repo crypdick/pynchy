@@ -251,6 +251,7 @@ class DiscordChannelConfig(_StrictModel):
     bool overrides it.
     """
 
+    name: str | None = None
     enabled: bool = True
     require_mention: bool | None = None
     users: list[str] = []
@@ -263,6 +264,7 @@ class DiscordChannelConfig(_StrictModel):
 class DiscordGuildConfig(_StrictModel):
     """Per-guild config for a Discord connection (a ``chat.<guild>`` section)."""
 
+    name: str | None = None
     require_mention: bool = True
     users: list[str] = []  # guild-wide sender allowlist (ids)
     roles: list[str] = []  # guild-wide role-id allowlist

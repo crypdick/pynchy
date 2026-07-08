@@ -291,6 +291,47 @@ class TestReconcileWorkspaces:
         assert profile.folder == "new-agent"
         assert profile.trigger is not None  # trigger is the @mention string
 
+    async def test_discord_workspace_can_auto_create_configured_channel(
+        self, db, monkeypatch, tmp_path
+    ):
+        """Discord config owns channel provisioning even when it is not command center."""
+        conn_ref = "connection.discord.main"
+        chat_ref = f"{conn_ref}.chat.synapse.channels.code-improver"
+        workspaces: dict[str, WorkspaceConfig] = {}
+        s = make_settings(
+            workspaces=workspaces,
+            groups_dir=tmp_path / "groups",
+            command_center=CommandCenterConfig(connection="connection.tui.default"),
+        )
+        monkeypatch.setattr("pynchy.host.orchestrator.workspace_config.get_settings", lambda: s)
+
+        _write_workspace_yaml(
+            workspaces,
+            "code-improver",
+            {
+                "schedule": "0 8 * * 1",
+                "prompt": "Weekly report",
+                "trigger": "always",
+                "chat": chat_ref,
+            },
+        )
+
+        mock_channel = AsyncMock(spec=Channel)
+        mock_channel.name = conn_ref
+        mock_channel.auto_provision_configured_chats = True
+        mock_channel.resolve_chat_jid = AsyncMock(return_value=None)
+        mock_channel.create_group = AsyncMock(return_value="discord:channel:789")
+
+        registered: dict[str, WorkspaceProfile] = {}
+        register_fn = AsyncMock()
+
+        await reconcile_workspaces(registered, [mock_channel], register_fn)
+
+        mock_channel.create_group.assert_called_once_with("synapse.channels.code-improver")
+        register_fn.assert_called_once()
+        profile = register_fn.call_args[0][0]
+        assert profile.jid == "discord:channel:789"
+
     async def test_skips_when_no_channel_supports_create_group(self, db, monkeypatch, tmp_path):
         """Workspace needing new group should be skipped if no channel supports it."""
         conn_ref = "connection.whatsapp.main"

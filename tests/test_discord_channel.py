@@ -63,6 +63,37 @@ class _FakeStreamChannel:
         return self.messages[message_id]
 
 
+class _FakeDiscordTextChannel:
+    def __init__(self, channel_id: int, name: str) -> None:
+        self.id = channel_id
+        self.name = name
+
+
+class _FakeDiscordGuild:
+    def __init__(self, guild_id: int, name: str, channels: list[_FakeDiscordTextChannel]) -> None:
+        self.id = guild_id
+        self.name = name
+        self.text_channels = channels
+        self.created: list[str] = []
+
+    async def create_text_channel(self, name: str, **kwargs) -> _FakeDiscordTextChannel:
+        self.created.append(name)
+        channel = _FakeDiscordTextChannel(789, name)
+        self.text_channels.append(channel)
+        return channel
+
+
+class _FakeDiscordClient:
+    def __init__(self, guilds: list[_FakeDiscordGuild]) -> None:
+        self.guilds = guilds
+
+    def get_guild(self, guild_id: int) -> _FakeDiscordGuild | None:
+        return next((guild for guild in self.guilds if guild.id == guild_id), None)
+
+    async def fetch_guild(self, guild_id: int) -> _FakeDiscordGuild | None:
+        return self.get_guild(guild_id)
+
+
 def test_satisfies_channel_protocol():
     assert isinstance(_channel(), Channel)
 
@@ -126,6 +157,58 @@ async def test_resolve_chat_jid_returns_none_for_unconfigured_channel_ref():
     )
 
     assert await ch.resolve_chat_jid("123.channels.456") is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_jid_maps_configured_name_ref_to_existing_channel():
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env="X",
+            dm_policy="allowlist",
+            group_policy="allowlist",
+            chat={
+                "synapse": {
+                    "name": "Synapse",
+                    "channels": {"code-improver": {"name": "code-improver"}},
+                }
+            },
+        ),
+        bot_token="token",
+        on_message=lambda jid, msg: None,
+        on_chat_metadata=lambda jid, ts, name: None,
+    )
+    ch.client = _FakeDiscordClient(
+        [_FakeDiscordGuild(123, "Synapse", [_FakeDiscordTextChannel(456, "code-improver")])]
+    )
+
+    assert await ch.resolve_chat_jid("synapse.channels.code-improver") == "discord:channel:456"
+
+
+@pytest.mark.asyncio
+async def test_create_group_creates_named_discord_channel():
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env="X",
+            dm_policy="allowlist",
+            group_policy="allowlist",
+            chat={
+                "synapse": {
+                    "name": "Synapse",
+                    "channels": {"code-improver": {"name": "code-improver"}},
+                }
+            },
+        ),
+        bot_token="token",
+        on_message=lambda jid, msg: None,
+        on_chat_metadata=lambda jid, ts, name: None,
+    )
+    guild = _FakeDiscordGuild(123, "Synapse", [])
+    ch.client = _FakeDiscordClient([guild])
+
+    assert await ch.create_group("synapse.channels.code-improver") == "discord:channel:789"
+    assert guild.created == ["code-improver"]
 
 
 @pytest.mark.asyncio

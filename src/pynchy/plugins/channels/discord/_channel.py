@@ -13,13 +13,14 @@ natively in Discord) and split by :func:`chunk_discord_text` to respect the
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
 import discord
 
-from pynchy.config.discord_refs import resolve_discord_chat_target
+from pynchy.config.discord_refs import DiscordChatTarget, resolve_discord_chat_target
 from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
 from pynchy.logger import logger
 from pynchy.types import InboundFetchResult, NewMessage, OutboundEvent, WorkspaceProfile
@@ -33,10 +34,23 @@ from ._lifecycle import DiscordLifecycle
 _MESSAGE_ID_PREFIX = "discord-"
 
 
+def _same_name(left: str | None, right: str | None) -> bool:
+    return bool(left and right and left.casefold() == right.casefold())
+
+
+def _normalize_discord_channel_name(name: str) -> str:
+    normalized = re.sub(r"[^a-z0-9_-]+", "-", name.strip().lower())
+    normalized = re.sub(r"-+", "-", normalized).strip("-_")
+    if not normalized:
+        raise ValueError("Discord channel name cannot be empty")
+    return normalized[:100]
+
+
 class DiscordChannel:
     """Pynchy ``Channel`` protocol implementation backed by discord.py."""
 
     prefix_assistant_name: bool = False  # Discord shows the bot's own username
+    auto_provision_configured_chats: bool = True
 
     def __init__(
         self,
@@ -101,7 +115,92 @@ class DiscordChannel:
             return None
         if target.kind == "direct":
             return dm_jid(target.target_id)
+        if self.client is not None:
+            channel = await self._find_configured_channel(target)
+            if channel is not None:
+                return channel_jid(str(channel.id))
+        if not target.target_id.isdecimal():
+            return None
         return channel_jid(target.target_id)
+
+    async def create_group(self, name: str) -> str:
+        """Create or reuse a configured Discord text channel and return its JID."""
+        if self.client is None:
+            raise RuntimeError("Discord client is not connected")
+        target = resolve_discord_chat_target(self._config, name)
+        if target is None or target.kind != "channel":
+            raise ValueError(f"Discord chat ref is not a configured guild channel: {name}")
+
+        existing = await self._find_configured_channel(target)
+        if existing is not None:
+            return channel_jid(str(existing.id))
+
+        guild = await self._find_configured_guild(target)
+        if guild is None:
+            raise RuntimeError(f"Discord guild not found for configured chat: {name}")
+
+        channel_name = self._configured_channel_name(target)
+        channel = await guild.create_text_channel(
+            channel_name,
+            reason="Pynchy configured workspace channel",
+        )
+        logger.info(
+            "Created Discord channel",
+            connection=self.name,
+            guild=getattr(guild, "name", None),
+            channel=channel_name,
+            channel_id=str(channel.id),
+        )
+        return channel_jid(str(channel.id))
+
+    async def _find_configured_channel(self, target: DiscordChatTarget) -> Any | None:
+        guild = await self._find_configured_guild(target)
+        if guild is None:
+            return None
+        channel_key = target.target_id
+        if channel_key.isdecimal():
+            existing = (
+                self.client.get_channel(int(channel_key)) if self.client is not None else None
+            )
+            if existing is not None:
+                return existing
+        channel_name = self._configured_channel_name(target)
+        for channel in getattr(guild, "text_channels", []):
+            if channel_key.isdecimal() and str(channel.id) == channel_key:
+                return channel
+            if _same_name(getattr(channel, "name", None), channel_name):
+                return channel
+        return None
+
+    async def _find_configured_guild(self, target: DiscordChatTarget) -> Any | None:
+        assert self.client is not None
+        guild_key = target.guild_id or ""
+        if guild_key.isdecimal():
+            guild = self.client.get_guild(int(guild_key))
+            if guild is not None:
+                return guild
+            return await self.client.fetch_guild(int(guild_key))
+
+        guild_name = self._configured_guild_name(target)
+        return next(
+            (
+                guild
+                for guild in getattr(self.client, "guilds", [])
+                if _same_name(getattr(guild, "name", None), guild_name)
+            ),
+            None,
+        )
+
+    def _configured_guild_name(self, target: DiscordChatTarget) -> str:
+        guild_key = target.guild_id or ""
+        guild_cfg = self._config.chat.get(guild_key)
+        return (guild_cfg.name if guild_cfg and guild_cfg.name else guild_key).strip()
+
+    def _configured_channel_name(self, target: DiscordChatTarget) -> str:
+        guild_cfg = self._config.chat.get(target.guild_id or "")
+        channel_cfg = guild_cfg.channels.get(target.target_id) if guild_cfg else None
+        raw = channel_cfg.name if channel_cfg and channel_cfg.name else target.target_id
+        return _normalize_discord_channel_name(raw)
 
     async def _resolve_channel(self, jid: str) -> Any:
         """Resolve a jid to a sendable discord.py channel (creating a DM if needed)."""
