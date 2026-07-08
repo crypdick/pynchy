@@ -61,6 +61,22 @@ LINEAR_TODO_STATUSES: dict[str, TodoStatusSpec] = {
 }
 
 
+def _matching_team(teams: list[dict[str, Any]], team_key: str) -> dict[str, Any] | None:
+    normalized = team_key.lower()
+    for team in teams:
+        if str(team.get("key", "")).lower() == normalized:
+            return team
+        if str(team.get("id", "")).lower() == normalized:
+            return team
+        if str(team.get("name", "")).lower() == normalized:
+            return team
+    return None
+
+
+def _visible_team_choices(teams: list[dict[str, Any]]) -> str:
+    return ", ".join(str(team.get("key") or team.get("name") or team.get("id")) for team in teams)
+
+
 async def select_team(
     client: LinearQueryClient,
     *,
@@ -69,25 +85,18 @@ async def select_team(
     """Select the Linear team to use, defaulting only when unambiguous."""
     teams = await client.list_teams()
     if team_key:
-        normalized = team_key.lower()
-        for team in teams:
-            if str(team.get("key", "")).lower() == normalized:
-                return team
-            if str(team.get("id", "")).lower() == normalized:
-                return team
-            if str(team.get("name", "")).lower() == normalized:
-                return team
+        team = _matching_team(teams, team_key)
+        if team is not None:
+            return team
         raise LinearBoardError(f"LINEAR_TEAM_KEY did not match a visible Linear team: {team_key}")
 
     if len(teams) == 1:
         return teams[0]
     if not teams:
         raise LinearBoardError("Linear API key cannot see any teams")
-    visible = ", ".join(
-        str(team.get("key") or team.get("name") or team.get("id")) for team in teams
-    )
     raise LinearBoardError(
-        "Multiple Linear teams are visible; set LINEAR_TEAM_KEY to one of: " + visible
+        "Multiple Linear teams are visible; set LINEAR_TEAM_KEY to one of: "
+        + _visible_team_choices(teams)
     )
 
 

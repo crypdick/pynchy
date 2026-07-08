@@ -109,6 +109,22 @@ class TestSelectTeam:
 
         assert team["id"] == "team-2"
 
+    async def test_team_key_can_match_team_id(self):
+        client = FakeLinearClient()
+        client.teams.append({"id": "team-2", "key": "OPS", "name": "Ops"})
+
+        team = await select_team(client, team_key="team-2")
+
+        assert team["key"] == "OPS"
+
+    async def test_team_key_can_match_team_name_case_insensitively(self):
+        client = FakeLinearClient()
+        client.teams.append({"id": "team-2", "key": "OPS", "name": "Ops"})
+
+        team = await select_team(client, team_key="ops")
+
+        assert team["id"] == "team-2"
+
 
 class TestEnsureWorkspaceBoard:
     async def test_creates_missing_project_and_workflow_states(self):
