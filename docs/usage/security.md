@@ -61,6 +61,44 @@ Write to service
 
 A payload scanner also runs on every outbound write. If it spots credential patterns (API keys, tokens, passwords), the write escalates to human approval regardless of taint state.
 
+## Capability Policy
+
+Use capability rules for semantic tool permissions: block or approve a specific
+tool action before it executes. Service trust still handles taint and exfiltration
+risk after the capability gate passes.
+
+MCP tool calls use capability IDs in this form:
+
+```text
+mcp.<server-or-instance>.<tool-name>
+```
+
+For example, a `send` tool on an `email` MCP server maps to `mcp.email.send`.
+Rules accept these decisions:
+
+| Decision | Meaning |
+|----------|---------|
+| `allow` | Allow the capability and continue to service trust checks |
+| `needs_human` | Ask for human approval before executing |
+| `deny` | Block the capability |
+
+Rules support trailing wildcards. Exact rules win over wildcard rules:
+
+```toml
+[sandbox_profiles.research.capabilities."mcp.email.*"]
+decision = "needs_human"
+
+[sandbox_profiles.research.capabilities."mcp.email.preview"]
+decision = "allow"
+
+[sandbox_profiles.readonly.capabilities."mcp.email.send"]
+decision = "deny"
+```
+
+Capability maps resolve through the same cascade as other sandbox settings:
+`sandbox_universal` < `sandbox_profiles.<name>` < `sandbox.<name>`. Use profiles
+for reusable policy and per-sandbox entries for narrow exceptions.
+
 ## Configuration Examples
 
 ### Personal calendar (fully trusted)
@@ -160,7 +198,7 @@ Agents have a general-purpose Bash tool. The bash security gate inspects every c
 
 **Unknown commands get Cop review.** Commands not on either list go to the Cop for inspection. If the Cop flags the command and both taint flags are set, the decision escalates to human approval.
 
-No config needed — the bash security gate is always active. For technical details, see [Bash Security Gate](../architecture/security.md#5a-bash-security-gate).
+No config needed — the bash security gate is always active. For technical details, see [Bash Security Gate](../architecture/security.md#5b-bash-security-gate).
 
 ## Host-Mutating Operations
 

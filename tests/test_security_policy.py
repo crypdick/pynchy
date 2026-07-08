@@ -1,7 +1,7 @@
 """Tests for SecurityPolicy — the trust-based gating engine."""
 
 from pynchy.host.container_manager.security.middleware import PolicyDecision, SecurityPolicy
-from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
+from pynchy.types import CapabilityRule, ServiceTrustConfig, WorkspaceSecurity
 
 # --- Helpers ---
 
@@ -24,6 +24,44 @@ def test_policy_decision_defaults():
     assert d.reason is None
     assert d.needs_cop is False
     assert d.needs_human is False
+
+
+def test_capability_deny_blocks_exact_match():
+    policy = SecurityPolicy(
+        WorkspaceSecurity(capabilities={"mcp.email.send": CapabilityRule(decision="deny")})
+    )
+
+    decision = policy.evaluate_capability("mcp.email.send")
+
+    assert not decision.allowed
+    assert "mcp.email.send" in decision.reason
+
+
+def test_capability_needs_human_matches_wildcard():
+    policy = SecurityPolicy(
+        WorkspaceSecurity(capabilities={"mcp.email.*": CapabilityRule(decision="needs_human")})
+    )
+
+    decision = policy.evaluate_capability("mcp.email.send")
+
+    assert decision.allowed
+    assert decision.needs_human
+
+
+def test_capability_exact_rule_beats_wildcard():
+    policy = SecurityPolicy(
+        WorkspaceSecurity(
+            capabilities={
+                "mcp.email.*": CapabilityRule(decision="deny"),
+                "mcp.email.preview": CapabilityRule(decision="allow"),
+            }
+        )
+    )
+
+    decision = policy.evaluate_capability("mcp.email.preview")
+
+    assert decision.allowed
+    assert not decision.needs_human
 
 
 # --- Forbidden blocks unconditionally ---

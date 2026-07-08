@@ -3,7 +3,10 @@
 import pytest
 from pydantic import ValidationError
 
+from pynchy.config.merge import merge_sandbox_config
 from pynchy.config.models import (
+    CapabilityTomlConfig,
+    SandboxProfileConfig,
     ServiceTrustTomlConfig,
     WorkspaceConfig,
     WorkspaceSecurityTomlConfig,
@@ -77,3 +80,28 @@ def test_workspace_config_has_security():
     assert cfg.security is not None
     assert "email" in cfg.security.services
     assert cfg.security.contains_secrets is True
+
+
+def test_capability_config_accepts_decisions():
+    cfg = CapabilityTomlConfig(decision="needs_human")
+    assert cfg.decision == "needs_human"
+
+
+def test_sandbox_capabilities_merge_by_name_with_workspace_winning():
+    universal = SandboxProfileConfig(
+        capabilities={
+            "mcp.email.send": CapabilityTomlConfig(decision="needs_human"),
+            "mcp.browser.*": CapabilityTomlConfig(decision="deny"),
+        }
+    )
+    profile = SandboxProfileConfig(
+        capabilities={"mcp.email.send": CapabilityTomlConfig(decision="deny")}
+    )
+    sandbox = WorkspaceConfig(
+        capabilities={"mcp.email.send": CapabilityTomlConfig(decision="allow")}
+    )
+
+    resolved = merge_sandbox_config(universal, profile, sandbox)
+
+    assert resolved.capabilities["mcp.email.send"].decision == "allow"
+    assert resolved.capabilities["mcp.browser.*"].decision == "deny"

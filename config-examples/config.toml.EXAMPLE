@@ -216,7 +216,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # These values apply to every sandbox. Per-sandbox and profile values override.
 # List fields (directives, skills, mcp_servers) are unioned across tiers.
-# Scalar fields use most-specific-wins semantics.
+# Scalar fields use most-specific-wins semantics. Capability maps merge by
+# capability ID, with more-specific tiers replacing less-specific entries.
 
 # [sandbox_universal]
 # directives = ["base", "idle-escape"]
@@ -265,6 +266,10 @@
 # [sandbox.research.mcp.playwright]
 # presets = ["dev-research"]                   # expands + merges with explicit values
 # allowed-origins = "internal.example.com"     # merged with preset domains
+#
+# Per-workspace capability exception:
+# [sandbox.research.capabilities."mcp.email.send"]
+# decision = "deny"                            # "allow", "deny", or "needs_human"
 
 # Example workspace with Slack MCP (references a named server entry):
 # [sandbox.acme-1]
@@ -498,6 +503,8 @@
 #
 # List fields (directives, skills, mcp_servers) are unioned across tiers.
 # Scalar fields use most-specific-wins semantics.
+# Capability maps merge by capability ID. MCP tool capability IDs use:
+# mcp.<server-or-instance>.<tool-name>, with trailing wildcards supported.
 #
 # Directives use convention-based resolution: name "base" → directives/base.md.
 
@@ -507,6 +514,12 @@
 # repo_access = "owner/repo"
 # idle_terminate = false
 # trigger = "always"
+#
+# [sandbox_profiles.pynchy-dev.capabilities."mcp.email.*"]
+# decision = "needs_human"
+#
+# [sandbox_profiles.pynchy-dev.capabilities."mcp.email.preview"]
+# decision = "allow"      # exact match overrides the wildcard above
 
 # [sandbox_profiles.ray-bench]
 # directives = ["ray-bench"]

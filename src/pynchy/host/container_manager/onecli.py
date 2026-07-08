@@ -256,10 +256,10 @@ def collect_onecli_status() -> dict[str, Any]:
     try:
         approvals = client.list_pending_approvals()
         requests = approvals.get("requests", [])
-        result["pending_approvals"] = len(requests) if isinstance(requests, list) else None
+        result["egress_pending_approvals"] = len(requests) if isinstance(requests, list) else None
     except (HTTPError, URLError, OSError, TimeoutError, OneCliError) as exc:
-        result["pending_approvals"] = None
-        result["approvals_error"] = str(exc)
+        result["egress_pending_approvals"] = None
+        result["egress_approvals_error"] = str(exc)
 
     return result
 

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from pynchy.host.container_manager.security.secrets_scanner import scan_payload_for_secrets
-from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
+from pynchy.types import CapabilityRule, ServiceTrustConfig, WorkspaceSecurity
 
 # Default trust for unknown services — maximally cautious
 _UNKNOWN_SERVICE = ServiceTrustConfig()
@@ -44,6 +44,7 @@ class SecurityPolicy:
 
     def __init__(self, security: WorkspaceSecurity) -> None:
         self._services = security.services
+        self._capabilities = security.capabilities
         self._workspace_contains_secrets = security.contains_secrets
         self._corruption_tainted = False
         self._secret_tainted = False
@@ -97,6 +98,27 @@ class SecurityPolicy:
 
         return PolicyDecision(allowed=True)
 
+    def evaluate_capability(self, capability: str) -> PolicyDecision:
+        """Evaluate an explicit semantic capability rule.
+
+        Capability IDs use dotted segments and support trailing ``.*``
+        wildcards, for example ``mcp.email.send`` and ``mcp.email.*``.
+        Missing rules are neutral: the service-trust policy still applies.
+        """
+        rule = self._matching_capability_rule(capability)
+        if rule is None or rule.decision == "allow":
+            return PolicyDecision(allowed=True)
+        if rule.decision == "deny":
+            return PolicyDecision(
+                allowed=False,
+                reason=f"Capability '{capability}' denied by policy",
+            )
+        return PolicyDecision(
+            allowed=True,
+            reason=f"Capability '{capability}' requires human approval",
+            needs_human=True,
+        )
+
     def evaluate_write(self, service: str, data: dict[str, Any]) -> PolicyDecision:
         """Evaluate a write operation on a service.
 
@@ -123,6 +145,12 @@ class SecurityPolicy:
             needs_cop=needs_cop,
             needs_human=needs_human,
         )
+
+    def _matching_capability_rule(self, capability: str) -> CapabilityRule | None:
+        for candidate in _capability_candidates(capability):
+            if candidate in self._capabilities:
+                return self._capabilities[candidate]
+        return None
 
     def _forbidden_write_decision(
         self,
@@ -171,3 +199,14 @@ class SecurityPolicy:
         if detected_secrets:
             reason_parts.append(f"secrets detected in payload ({', '.join(detected_secrets)})")
         return "; ".join(reason_parts) if reason_parts else None
+
+
+def _capability_candidates(capability: str) -> list[str]:
+    parts = [part for part in capability.split(".") if part]
+    if not parts:
+        return []
+
+    candidates = [".".join(parts)]
+    for index in range(len(parts) - 1, 0, -1):
+        candidates.append(".".join([*parts[:index], "*"]))
+    return candidates

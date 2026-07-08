@@ -39,6 +39,10 @@ class SecurityGate:
         """Evaluate a write operation. Delegates to SecurityPolicy."""
         return self._policy.evaluate_write(service, data)
 
+    def evaluate_capability(self, capability: str) -> PolicyDecision:
+        """Evaluate an explicit semantic capability."""
+        return self._policy.evaluate_capability(capability)
+
     def notify_file_access(self) -> None:
         """Forward file-access notification to the policy."""
         self._policy.notify_file_access()
@@ -110,22 +114,37 @@ def resolve_security(source_group: str, *, is_admin: bool = False) -> WorkspaceS
     s = get_settings()
     ws_config = s.workspaces.get(source_group)
 
-    if ws_config is None or ws_config.security is None:
+    if ws_config is None:
         return WorkspaceSecurity()
 
-    sec = ws_config.security
+    from pynchy.config.merge import merge_sandbox_config
+
+    profile = s.sandbox_profiles.get(ws_config.profile) if ws_config.profile else None
+    resolved = merge_sandbox_config(s.sandbox_universal, profile, ws_config)
+    sec = resolved.security
 
     # Build per-service trust configs from TOML
     services: dict[str, ServiceTrustConfig] = {}
-    for svc_name, svc_cfg in sec.services.items():
-        services[svc_name] = ServiceTrustConfig(
-            public_source=svc_cfg.public_source,
-            secret_data=svc_cfg.secret_data,
-            public_sink=svc_cfg.public_sink,
-            dangerous_writes=svc_cfg.dangerous_writes,
-        )
+    contains_secrets = False
+    if sec is not None:
+        contains_secrets = sec.contains_secrets
+        for svc_name, svc_cfg in sec.services.items():
+            services[svc_name] = ServiceTrustConfig(
+                public_source=svc_cfg.public_source,
+                secret_data=svc_cfg.secret_data,
+                public_sink=svc_cfg.public_sink,
+                dangerous_writes=svc_cfg.dangerous_writes,
+            )
+
+    from pynchy.types import CapabilityRule
+
+    capabilities = {
+        capability: CapabilityRule(decision=cfg.decision)
+        for capability, cfg in resolved.capabilities.items()
+    }
 
     return WorkspaceSecurity(
         services=services,
-        contains_secrets=sec.contains_secrets,
+        contains_secrets=contains_secrets,
+        capabilities=capabilities,
     )

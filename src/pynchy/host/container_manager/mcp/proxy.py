@@ -161,6 +161,24 @@ async def _maybe_gate_outbound_call(
     if rpc.get("method") != "tools/call":
         return None
 
+    capability = _mcp_capability_id(proxy_request.instance_id, rpc)
+    capability_decision = gate.evaluate_capability(capability)
+    if not capability_decision.allowed:
+        return web.json_response(
+            {"error": f"Policy denied: {capability_decision.reason}"},
+            status=403,
+        )
+    if capability_decision.needs_human:
+        approval_response = await _await_human_approval(
+            state,
+            proxy_request.group_folder,
+            proxy_request.instance_id,
+            rpc,
+            capability_decision.reason or "",
+        )
+        if approval_response is not None:
+            return approval_response
+
     decision = gate.evaluate_write(proxy_request.instance_id, rpc.get("params", {}))
     if not decision.allowed:
         return web.json_response({"error": f"Policy denied: {decision.reason}"}, status=403)
@@ -174,6 +192,13 @@ async def _maybe_gate_outbound_call(
         rpc,
         decision.reason or "",
     )
+
+
+def _mcp_capability_id(instance_id: str, rpc: dict[str, Any]) -> str:
+    tool_name = rpc.get("params", {}).get("name")
+    if not isinstance(tool_name, str) or not tool_name.strip():
+        return f"mcp.{instance_id}"
+    return f"mcp.{instance_id}.{tool_name.strip()}"
 
 
 def _forwarded_headers(request: web.Request) -> dict[str, str]:
