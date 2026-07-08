@@ -10,15 +10,25 @@ Create a Linear personal API key, then store it in the host environment as
 `LINEAR_API_KEY`. Pynchy forwards that variable into the Linear MCP server when a
 workspace enables the server.
 
-Enable the server for a workspace:
+Enable the server for a sandbox profile or a single sandbox. For shared admin
+and Pynchy-development workspaces, prefer the profile-level grant:
 
 ```toml
-[workspaces.pynchy-dev]
+[sandbox_profiles.pynchy-dev]
+mcp_servers = ["linear"]
+```
+
+For one sandbox only, add the server to that sandbox instead:
+
+```toml
+[sandbox.personal-tasks]
 mcp_servers = ["linear"]
 ```
 
 The plugin supplies the `[mcp_servers.linear]` definition automatically, so the
-host config only needs the workspace grant.
+host config only needs the sandbox or profile grant. Editing `config.toml` or
+`.env` triggers the normal Pynchy auto-restart; do not restart the service
+manually unless the health check shows it is stuck.
 
 ## Available tools
 
