@@ -52,11 +52,13 @@ def test_codex_plugin_registered_via_static_registry() -> None:
 def test_agent_dockerfile_installs_codex_as_agent_executable() -> None:
     """The image must not leave codex as an agent-inaccessible /root symlink."""
     dockerfile = Path("src/pynchy/agent/Dockerfile").read_text(encoding="utf-8")
+    install_script = Path("src/pynchy/agent/install_codex.sh").read_text(encoding="utf-8")
 
-    assert "https://chatgpt.com/codex/install.sh -o /tmp/codex-install.sh" in dockerfile
-    assert "sh /tmp/codex-install.sh" in dockerfile
-    assert "readlink -f /usr/local/bin/codex" in dockerfile
-    assert "chmod 0755 /usr/local/bin/codex" in dockerfile
+    assert "COPY install_codex.sh /tmp/install_codex.sh" in dockerfile
+    assert 'codex_home="${CODEX_HOME:-/opt/codex}"' in install_script
+    assert 'ln -sfn "$standalone_root/current/bin/codex" "$install_dir/codex"' in install_script
+    assert 'chmod -R a+rX "$codex_home"' in install_script
+    assert "readlink -f /usr/local/bin/codex" not in dockerfile
 
 
 def test_build_volume_mounts_creates_per_group_codex_home(tmp_path: Path) -> None:
