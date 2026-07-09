@@ -40,30 +40,37 @@ class SlackEvents:
 
     _channel: SlackChannel
 
+    def _require_app(self) -> Any:
+        ch = self._channel
+        app = ch._app
+        if app is None:
+            raise RuntimeError("Slack app is not initialized")
+        return app
+
     def _register_handlers(self) -> None:
         ch = self._channel
-        assert ch._app is not None
+        app = self._require_app()
 
         # slack_bolt is untyped to mypy (ignore_missing_imports), so ``ch._app``
         # is ``Any`` and its ``.event()``/``.action()`` decorators register as
         # untyped — hence the per-handler ``untyped-decorator`` ignores below.
 
-        @ch._app.event("message")  # type: ignore[untyped-decorator]
+        @app.event("message")  # type: ignore[untyped-decorator]
         async def _handle_message(event: dict[str, Any], say: Any) -> None:
             _ = say  # Slack Bolt supplies this callback argument.
             await self._on_slack_message(event)
 
-        @ch._app.event("app_mention")  # type: ignore[untyped-decorator]
+        @app.event("app_mention")  # type: ignore[untyped-decorator]
         async def _handle_mention(event: dict[str, Any], say: Any) -> None:
             _ = say  # Slack Bolt supplies this callback argument.
             await self._on_slack_message(event)
 
-        @ch._app.event("reaction_added")  # type: ignore[untyped-decorator]
+        @app.event("reaction_added")  # type: ignore[untyped-decorator]
         async def _handle_reaction(event: dict[str, Any]) -> None:
             await self._on_slack_reaction(event)
 
         # --- ask_user interaction handlers (Block Kit buttons & text submit) ---
-        @ch._app.action(ASK_USER_ACTION_RE)  # type: ignore[untyped-decorator]
+        @app.action(ASK_USER_ACTION_RE)  # type: ignore[untyped-decorator]
         async def _handle_ask_user_action(
             ack: Any, body: dict[str, Any], action: dict[str, Any]
         ) -> None:
@@ -71,7 +78,7 @@ class SlackEvents:
             await ch.interactions._on_ask_user_interaction(body, action)
 
         # --- Approval button handlers (Approve/Deny from approval gate) ---
-        @ch._app.action(COP_APPROVAL_ACTION_RE)  # type: ignore[untyped-decorator]
+        @app.action(COP_APPROVAL_ACTION_RE)  # type: ignore[untyped-decorator]
         async def _handle_approval_action(
             ack: Any, body: dict[str, Any], action: dict[str, Any]
         ) -> None:
@@ -79,7 +86,7 @@ class SlackEvents:
             await ch.interactions._on_approval_interaction(body, action)
 
         # --- Agent stop button handler ---
-        @ch._app.action(AGENT_STOP_ACTION_RE)  # type: ignore[untyped-decorator]
+        @app.action(AGENT_STOP_ACTION_RE)  # type: ignore[untyped-decorator]
         async def _handle_agent_stop(
             ack: Any, body: dict[str, Any], action: dict[str, Any]
         ) -> None:
@@ -148,7 +155,8 @@ class SlackEvents:
             logger.info("Slack assistant message", user=user_id, text_len=len(text))
             ch._on_message(jid, msg)
 
-        ch._app.use(assistant)
+        app = self._require_app()
+        app.use(assistant)
 
     def _normalize_bot_mention(self, text: str) -> str:
         """Rewrite the bot's ``<@BOT_ID>`` mention as the canonical trigger.

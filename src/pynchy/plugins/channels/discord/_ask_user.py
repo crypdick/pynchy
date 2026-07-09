@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import discord
 
@@ -19,6 +19,12 @@ _MAX_BUTTONS_PER_ROW = 5
 _MAX_BUTTONS_TOTAL = 25
 _TEXT_MODAL_CUSTOM_ID = f"{_ASK_USER_PREFIX}:text"
 _SELECT_CUSTOM_ID = f"{_ASK_USER_PREFIX}:select"
+
+
+def _require_ask_user_view(view: discord.ui.View | None) -> DiscordAskUserView:
+    if view is None:
+        raise RuntimeError("Discord ask_user callback called before the view was attached")
+    return cast("DiscordAskUserView", view)
 
 
 def build_ask_user_text(questions: list[dict[str, Any]]) -> str:
@@ -84,8 +90,8 @@ class AskUserButton(discord.ui.Button["DiscordAskUserView"]):
         self._answer = label
 
     async def callback(self, interaction: Any) -> None:
-        assert self.view is not None
-        await self.view.finalize_answer(interaction, self._answer)
+        view = _require_ask_user_view(self.view)
+        await view.finalize_answer(interaction, self._answer)
 
 
 class AskUserSelect(discord.ui.Select["DiscordAskUserView"]):
@@ -110,14 +116,14 @@ class AskUserSelect(discord.ui.Select["DiscordAskUserView"]):
         )
 
     async def callback(self, interaction: Any) -> None:
-        assert self.view is not None
-        if not self.view._interaction_allowed(interaction):
+        view = _require_ask_user_view(self.view)
+        if not view._interaction_allowed(interaction):
             await interaction.response.send_message(
                 "You are not allowed to answer this prompt.",
                 ephemeral=True,
             )
             return
-        self.view._selected_answers = list(self.values)
+        view._selected_answers = list(self.values)
         await interaction.response.send_message(
             "Selection recorded. Press Submit to finish.",
             ephemeral=True,
@@ -131,8 +137,8 @@ class AskUserSubmitButton(discord.ui.Button["DiscordAskUserView"]):
         super().__init__(label="Submit", style=discord.ButtonStyle.primary, row=1)
 
     async def callback(self, interaction: Any) -> None:
-        assert self.view is not None
-        await self.view.submit_selected_answers(interaction)
+        view = _require_ask_user_view(self.view)
+        await view.submit_selected_answers(interaction)
 
 
 class AskUserTextButton(discord.ui.Button["DiscordAskUserView"]):
@@ -146,14 +152,14 @@ class AskUserTextButton(discord.ui.Button["DiscordAskUserView"]):
         )
 
     async def callback(self, interaction: Any) -> None:
-        assert self.view is not None
-        if not self.view._interaction_allowed(interaction):
+        view = _require_ask_user_view(self.view)
+        if not view._interaction_allowed(interaction):
             await interaction.response.send_message(
                 "You are not allowed to answer this prompt.",
                 ephemeral=True,
             )
             return
-        await interaction.response.send_modal(AskUserTextModal(self.view))
+        await interaction.response.send_modal(AskUserTextModal(view))
 
 
 class AskUserTextModal(discord.ui.Modal):

@@ -32,6 +32,13 @@ class SlackAllowlist:
     def __init__(self, channel: SlackChannel) -> None:
         self._channel = channel
 
+    def _require_app(self) -> Any:
+        ch = self._channel
+        app = ch._app
+        if app is None:
+            raise RuntimeError("Slack app is not initialized")
+        return app
+
     def _register_allowed_channel(self, name: str, channel_id: str) -> None:
         ch = self._channel
         normalized = normalize_chat_name(name)
@@ -45,11 +52,9 @@ class SlackAllowlist:
         return channel_id in ch._allowed_channel_ids
 
     async def _ensure_joined(self, channel_id: str, name: str) -> None:
-        ch = self._channel
-        if not ch._app:
-            return
+        app = self._require_app()
         try:
-            await ch._app.client.conversations_join(channel=channel_id)
+            await app.client.conversations_join(channel=channel_id)
         except Exception as exc:
             logger.debug(
                 "Failed to join Slack channel (may be private)",
@@ -112,11 +117,11 @@ class SlackAllowlist:
         (private) OAuth scope on the bot token.
         """
         ch = self._channel
-        assert ch._app is not None
+        app = self._require_app()
         # Slack channel names: lowercase, no spaces, max 80 chars.
         slack_name = normalize_chat_name(name)[:80]
         try:
-            resp = await ch._app.client.conversations_create(name=slack_name, is_private=False)
+            resp = await app.client.conversations_create(name=slack_name, is_private=False)
             channel_id = resp["channel"]["id"]
             logger.info("Created Slack channel", name=slack_name, channel_id=channel_id)
         except Exception as exc:
@@ -131,7 +136,7 @@ class SlackAllowlist:
             # Ensure the bot is a member so it receives events.
             # conversations.join is a no-op if already a member.
             try:
-                await ch._app.client.conversations_join(channel=channel_id)
+                await app.client.conversations_join(channel=channel_id)
             except Exception as join_exc:
                 logger.warning(
                     "Failed to join existing Slack channel (events may not be received)",
@@ -145,14 +150,13 @@ class SlackAllowlist:
 
     async def _find_channel_by_name(self, name: str) -> str | None:
         """Find a Slack channel by name, returning its ID or None."""
-        ch = self._channel
-        assert ch._app is not None
+        app = self._require_app()
         cursor = None
         while True:
             kwargs: dict[str, Any] = {"types": "public_channel,private_channel", "limit": 200}
             if cursor:
                 kwargs["cursor"] = cursor
-            resp = await ch._app.client.conversations_list(**kwargs)
+            resp = await app.client.conversations_list(**kwargs)
             for chan in resp.get("channels", []):
                 if chan.get("name") == name:
                     return cast("str", chan["id"])

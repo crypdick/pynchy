@@ -39,6 +39,12 @@ _MESSAGE_ID_PREFIX = "discord-"
 _TYPING_REFRESH_SECONDS = 8.0
 
 
+def _require_client(client: Any) -> Any:
+    if client is None:
+        raise RuntimeError("Discord client is not connected")
+    return client
+
+
 class DiscordChannel:
     """Pynchy ``Channel`` protocol implementation backed by discord.py."""
 
@@ -228,19 +234,19 @@ class DiscordChannel:
         return None
 
     async def _find_configured_guild(self, target: DiscordChatTarget) -> Any | None:
-        assert self.client is not None
+        client = _require_client(self.client)
         guild_key = target.guild_id or ""
         if guild_key.isdecimal():
-            guild = self.client.get_guild(int(guild_key))
+            guild = client.get_guild(int(guild_key))
             if guild is not None:
                 return guild
-            return await self.client.fetch_guild(int(guild_key))
+            return await client.fetch_guild(int(guild_key))
 
         guild_name = self._configured_guild_name(target)
         return next(
             (
                 guild
-                for guild in getattr(self.client, "guilds", [])
+                for guild in getattr(client, "guilds", [])
                 if same_name(getattr(guild, "name", None), guild_name)
             ),
             None,
@@ -259,20 +265,20 @@ class DiscordChannel:
 
     async def _resolve_channel(self, jid: str) -> Any:
         """Resolve a jid to a sendable discord.py channel (creating a DM if needed)."""
-        assert self.client is not None
+        client = _require_client(self.client)
         parsed = parse_jid(jid)
         snowflake = int(parsed.snowflake)
         if parsed.kind == "direct":
             cached_dm = self._dm_channels.get(parsed.snowflake)
             if cached_dm is not None:
                 return cached_dm
-            user = self.client.get_user(snowflake) or await self.client.fetch_user(snowflake)
+            user = client.get_user(snowflake) or await client.fetch_user(snowflake)
             dm_channel = user.dm_channel or await user.create_dm()
             self._dm_channels[parsed.snowflake] = dm_channel
             return dm_channel
-        channel = self.client.get_channel(snowflake)
+        channel = client.get_channel(snowflake)
         if channel is None:
-            channel = await self.client.fetch_channel(snowflake)
+            channel = await client.fetch_channel(snowflake)
         return channel
 
     async def _send_text(self, channel: Any, text: str) -> None:
