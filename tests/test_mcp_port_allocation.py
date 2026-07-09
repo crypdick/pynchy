@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
+import pytest
 from conftest import make_settings
 
 from pynchy.config.mcp import McpServerConfig
@@ -11,11 +12,8 @@ from pynchy.config.models import ProfileConfig, WorkspaceConfig
 from pynchy.config.settings import validate_settings_mapping
 from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
 from pynchy.host.container_manager.mcp.lifecycle import (
-    _build_placeholders,  # allow: private-test-imports
-    _docker_health_url,  # allow: private-test-imports
-    _docker_publish_args,  # allow: private-test-imports
-    _docker_volume_args,  # allow: private-test-imports
     build_env_args,
+    ensure_docker_running,
     expand_arg_placeholders,
 )
 from pynchy.host.container_manager.mcp.manager import McpManager
@@ -61,40 +59,6 @@ class TestExpandArgPlaceholders:
         assert expand_arg_placeholders(args, {}) == ["--port", "{port}"]
 
 
-# ---------------------------------------------------------------------------
-# _build_placeholders
-# ---------------------------------------------------------------------------
-
-
-class TestBuildPlaceholders:
-    def _make_instance(self, *, port=None, kwargs=None):
-        cfg = McpServerConfig(type="script", command="npx", port=port or 9100)
-        return McpInstance(
-            server_name="browser",
-            server_config=cfg,
-            kwargs=kwargs or {},
-            instance_id="browser",
-            container_name="pynchy-mcp-browser",
-            port=port,
-        )
-
-    def test_includes_port(self):
-        inst = self._make_instance(port=9101)
-        placeholders = _build_placeholders(inst)
-        assert placeholders["port"] == "9101"
-
-    def test_includes_kwargs(self):
-        inst = self._make_instance(port=9100, kwargs={"workspace": "sandbox1"})
-        placeholders = _build_placeholders(inst)
-        assert placeholders["workspace"] == "sandbox1"
-        assert placeholders["port"] == "9100"
-
-    def test_no_port_when_none(self):
-        inst = self._make_instance(port=None)
-        placeholders = _build_placeholders(inst)
-        assert "port" not in placeholders
-
-
 class TestMcpOneCliConfig:
     def test_mcp_server_accepts_onecli_opt_in(self):
         cfg = McpServerConfig(type="docker", image="img", port=8000, onecli=True)
@@ -118,12 +82,42 @@ class TestMcpOneCliConfig:
 
 
 class TestDockerLifecycleHelpers:
+    def _stub_docker_lifecycle(self, monkeypatch) -> tuple[AsyncMock, AsyncMock]:
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle.is_container_running",
+            AsyncMock(return_value=False),
+        )
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle._ensure_mcp_image",
+            AsyncMock(),
+        )
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle.ensure_network",
+            AsyncMock(),
+        )
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle.remove_container",
+            AsyncMock(),
+        )
+        run_docker_mock = AsyncMock(return_value=Mock(returncode=0))
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle.run_docker",
+            run_docker_mock,
+        )
+        wait_healthy_mock = AsyncMock()
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle.wait_healthy",
+            wait_healthy_mock,
+        )
+        return run_docker_mock, wait_healthy_mock
+
     def _make_instance(
         self,
         *,
         port: int | None = 9100,
         extra_ports: list[int] | None = None,
         volumes: list[str] | None = None,
+        args: list[str] | None = None,
         kwargs: dict[str, str] | None = None,
     ) -> McpInstance:
         cfg = McpServerConfig(
@@ -131,6 +125,7 @@ class TestDockerLifecycleHelpers:
             image="img",
             port=8000,
             extra_ports=extra_ports or [],
+            args=args or [],
             volumes=volumes or [],
         )
         return McpInstance(
@@ -142,53 +137,86 @@ class TestDockerLifecycleHelpers:
             port=port,
         )
 
-    def test_docker_publish_args_include_primary_and_extra_ports(self):
-        instance = self._make_instance(port=9100, extra_ports=[9222, 9333])
+    @pytest.mark.asyncio
+    async def test_ensure_docker_running_builds_expanded_docker_run_and_localhost_health_check(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        instance = self._make_instance(
+            port=9100,
+            extra_ports=[9222, 9333],
+            volumes=["groups/{workspace}:/workspace", "mcp-cache:/cache"],
+            args=["--workspace-dir", "{workspace}", "--port", "{port}"],
+            kwargs={"workspace": "research"},
+        )
+        settings = make_settings(project_root=tmp_path)
+        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
 
-        assert _docker_publish_args(instance) == [
+        run_docker_mock, wait_healthy_mock = self._stub_docker_lifecycle(monkeypatch)
+
+        await ensure_docker_running(instance)
+
+        assert run_docker_mock.await_count == 1
+        assert run_docker_mock.await_args.args == (
+            "run",
+            "-d",
+            "--name",
+            "pynchy-mcp-browser",
+            "--network",
+            "pynchy-litellm-net",
+            "--restart",
+            "unless-stopped",
             "-p",
             "9100:8000",
             "-p",
             "9222:9222",
             "-p",
             "9333:9333",
-        ]
-
-    def test_docker_publish_args_omit_primary_when_instance_port_missing(self):
-        instance = self._make_instance(port=None, extra_ports=[9222])
-
-        assert _docker_publish_args(instance) == ["-p", "9222:9222"]
-
-    def test_docker_health_url_prefers_localhost_for_published_port(self):
-        instance = self._make_instance(port=9100)
-
-        assert _docker_health_url(instance) == "http://localhost:9100"
-
-    def test_docker_health_url_falls_back_to_endpoint_url_without_host_port(self):
-        instance = self._make_instance(port=None)
-
-        assert _docker_health_url(instance) == "http://pynchy-mcp-browser:8000"
-
-    def test_docker_volume_args_expand_workspace_relative_paths(self, tmp_path, monkeypatch):
-        instance = self._make_instance(
-            volumes=["groups/{workspace}:/workspace", "mcp-cache:/cache"],
-            kwargs={"workspace": "research"},
-        )
-        settings = make_settings(project_root=tmp_path)
-        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
-
-        args = _docker_volume_args(
-            instance,
-            _build_placeholders(instance),
-            onecli_material=None,
-        )
-
-        assert args == [
             "-v",
             f"{tmp_path / 'groups' / 'research'}:/workspace",
             "-v",
             "mcp-cache:/cache",
-        ]
+            "img",
+            "--workspace-dir",
+            "research",
+            "--port",
+            "9100",
+            "--workspace",
+            "research",
+        )
+        assert wait_healthy_mock.await_args.args == ("pynchy-mcp-browser", "http://localhost:9100")
+        assert wait_healthy_mock.await_args.kwargs == {"any_non_5xx": True}
+
+    @pytest.mark.asyncio
+    async def test_ensure_docker_running_omits_primary_publish_and_falls_back_to_container_url(
+        self,
+        monkeypatch,
+    ):
+        instance = self._make_instance(port=None, extra_ports=[9222])
+
+        run_docker_mock, wait_healthy_mock = self._stub_docker_lifecycle(monkeypatch)
+
+        await ensure_docker_running(instance)
+
+        assert run_docker_mock.await_args.args == (
+            "run",
+            "-d",
+            "--name",
+            "pynchy-mcp-browser",
+            "--network",
+            "pynchy-litellm-net",
+            "--restart",
+            "unless-stopped",
+            "-p",
+            "9222:9222",
+            "img",
+        )
+        assert wait_healthy_mock.await_args.args == (
+            "pynchy-mcp-browser",
+            "http://pynchy-mcp-browser:8000",
+        )
+        assert wait_healthy_mock.await_args.kwargs == {"any_non_5xx": True}
 
 
 # ---------------------------------------------------------------------------

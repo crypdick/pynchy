@@ -15,16 +15,17 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
 
 from pynchy.host.git_ops.repo import RepoContext
-from pynchy.host.orchestrator.http_server import status_deps_key
+from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.status import collect_status, record_start_time
 from pynchy.types import HostJob, ScheduledTask, TaskRunLog
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from aiohttp import web
 
 _S = "pynchy.host.orchestrator.status"
 
@@ -146,6 +147,40 @@ class MockStatusDeps:
 
     def get_workspace_count(self) -> int:
         return self._workspace_count
+
+
+class MockHttpDeps:
+    """Inert HTTP dependencies for exercising route registration."""
+
+    async def broadcast_host_message(self, _jid: str, _text: str) -> None:
+        return None
+
+    def admin_chat_jid(self) -> str:
+        return "admin@g.us"
+
+    def channels_connected(self) -> bool:
+        return True
+
+    def get_groups(self) -> list[dict[str, Any]]:
+        return []
+
+    async def get_messages(self, _jid: str, _limit: int) -> list[Any]:
+        return []
+
+    async def send_user_message(self, _jid: str, _content: str) -> None:
+        return None
+
+    def subscribe_events(self, _callback: Any) -> Any:
+        return lambda: None
+
+    async def get_periodic_agents(self) -> list[dict[str, Any]]:
+        return []
+
+    def get_active_sessions(self) -> dict[str, str]:
+        return {}
+
+    def is_shutting_down(self) -> bool:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -911,22 +946,12 @@ class TestStatusEndpoint(AioHTTPTestCase):
     """Tests for GET /status endpoint."""
 
     async def get_application(self) -> web.Application:
-        # The aiohttp route handler has no public accessor and the only public
-        # server builder (start_http_server) binds a fixed port unusable under
-        # pytest-xdist, so the handler is registered directly here.
-        from pynchy.host.orchestrator.http_server import (
-            _handle_status,  # allow: private-test-imports
-        )
-
-        app = web.Application()
         self.mock_deps = MockStatusDeps(
             channels={"whatsapp": True},
             workspace_count=3,
             active_sessions=1,
         )
-        app[status_deps_key] = self.mock_deps
-        app.router.add_get("/status", _handle_status)
-        return app
+        return create_http_app(MockHttpDeps(), status_deps=self.mock_deps)
 
     async def test_status_returns_200(self):
         """GET /status returns 200 with structured JSON."""

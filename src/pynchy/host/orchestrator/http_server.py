@@ -14,7 +14,7 @@ from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves HTTP dependency annotations at runtime.
     Coroutine,  # noqa: TC003, RUF100 - beartype resolves HTTP dependency annotations at runtime.
 )
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from aiohttp import web
 
@@ -34,6 +34,11 @@ from pynchy.logger import logger
 from pynchy.types import (
     NewMessage,  # noqa: TC001, RUF100 - beartype resolves HTTP dependency annotations at runtime.
 )
+
+if TYPE_CHECKING:
+    from aiohttp.web_app import Application as AiohttpApplication
+else:
+    AiohttpApplication = Any
 
 _start_time = time.monotonic()
 REMOTE_HTTP_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - documented Tailscale/firewall-gated API listener for remote clients.
@@ -300,6 +305,19 @@ async def start_http_server(
     deps: HttpDeps, *, status_deps: StatusDeps | None = None
 ) -> web.AppRunner:
     """Create, start, and return the HTTP server runner."""
+    app = create_http_app(deps, status_deps=status_deps)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = get_settings().server.port
+    site = web.TCPSite(runner, REMOTE_HTTP_BIND_HOST, port)
+    await site.start()
+    logger.info("HTTP server listening", port=port)
+    return runner
+
+
+def create_http_app(deps: HttpDeps, *, status_deps: StatusDeps | None = None) -> AiohttpApplication:
+    """Build the aiohttp app with all HTTP routes registered."""
     app = web.Application()
     app[deps_key] = deps
     if status_deps is not None:
@@ -312,11 +330,4 @@ async def start_http_server(
     app.router.add_post("/api/send", _handle_api_send)
     app.router.add_get("/api/events", _handle_api_events)
     app.router.add_get("/api/periodic", _handle_api_periodic)
-
-    runner = web.AppRunner(app)
-    await runner.setup()
-    port = get_settings().server.port
-    site = web.TCPSite(runner, REMOTE_HTTP_BIND_HOST, port)
-    await site.start()
-    logger.info("HTTP server listening", port=port)
-    return runner
+    return app
