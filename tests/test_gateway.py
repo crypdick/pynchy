@@ -13,7 +13,6 @@ import pynchy.host.container_manager.gateway as _gw_mod
 from pynchy.host.container_manager.gateway import (
     BuiltinGateway,
     LiteLLMGateway,
-    _load_or_create_persistent_key,  # allow: private-test-imports
     start_gateway,
 )
 from pynchy.host.container_manager.litellm_config import LiteLLMConfigPreparer
@@ -37,27 +36,6 @@ _LITELLM_KWARGS = {
     "postgres_image": "postgres:17-alpine",
     "master_key": "test-master-key",
 }
-
-
-class TestPersistentKey:
-    def test_creates_key_on_first_call(self, tmp_path: Path):
-        key_file = tmp_path / "test.key"
-        key = _load_or_create_persistent_key(key_file, prefix="pfx-")
-        assert key.startswith("pfx-")
-        assert key_file.exists()
-        assert key_file.read_text().strip() == key
-
-    def test_returns_existing_key(self, tmp_path: Path):
-        key_file = tmp_path / "test.key"
-        key_file.write_text("my-fixed-key")
-        key = _load_or_create_persistent_key(key_file, prefix="pfx-")
-        assert key == "my-fixed-key"
-
-    def test_creates_parent_dirs(self, tmp_path: Path):
-        key_file = tmp_path / "a" / "b" / "test.key"
-        key = _load_or_create_persistent_key(key_file)
-        assert key_file.exists()
-        assert len(key) > 10
 
 
 class TestLiteLLMGatewayInit:

@@ -7,7 +7,9 @@ where a bug could leak messages across groups or silently drop data.
 
 from __future__ import annotations
 
+import asyncio
 import json
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
@@ -15,7 +17,7 @@ import pytest
 from conftest import NullIpcDeps, make_settings
 
 from pynchy.host.container_manager.ipc.watcher import (
-    _move_to_error_dir,  # allow: private-test-imports
+    start_ipc_watcher,
 )
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.state import init_test_database
@@ -96,48 +98,83 @@ async def deps():
 
 
 # ---------------------------------------------------------------------------
-# _move_to_error_dir — already tested in test_ipc_periodic_agent.py but
-# we add the watcher-context tests here for completeness
+# Startup recovery moves unreadable IPC files into errors/
 # ---------------------------------------------------------------------------
 
 
-class TestMoveToErrorDirInWatcherContext:
-    """Tests that _move_to_error_dir correctly handles watcher error scenarios."""
+class _NoopObserver:
+    daemon = False
 
-    def test_preserves_file_content_on_move(self, tmp_path: Path):
+    def schedule(self, *_args, **_kwargs):
+        return None
+
+    def start(self):
+        return None
+
+
+class TestStartupSweepErrorFiles:
+    """Tests that startup recovery preserves failed IPC files for debugging."""
+
+    async def _run_startup_sweep(self, deps, tmp_path: Path):
+        settings = _test_settings(data_dir=tmp_path)
+
+        async def stop_after_startup_sweep(*_args, **_kwargs) -> None:
+            await asyncio.sleep(0)
+
+        with (
+            patch("pynchy.host.container_manager.ipc.watcher.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.watcher.Observer",
+                return_value=_NoopObserver(),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.watcher._state",
+                SimpleNamespace(running=False, runtime_sweep_task=None),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.watcher._process_queue",
+                stop_after_startup_sweep,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.watcher._runtime_sweep_loop",
+                stop_after_startup_sweep,
+            ),
+        ):
+            await start_ipc_watcher(deps)
+
+    async def test_preserves_file_content_on_startup_parse_error(self, deps, tmp_path: Path):
         """Error files should retain their original content for debugging."""
         ipc_dir = tmp_path / "ipc"
-        ipc_dir.mkdir()
-        source = ipc_dir / "my-group" / "messages" / "broken.json"
+        source = ipc_dir / "admin-1" / "messages" / "broken.json"
         source.parent.mkdir(parents=True)
         content = '{"type": "message", "chatJid": "test@g.us", "text": '
         source.write_text(content)  # Truncated JSON — triggers parse error
 
-        _move_to_error_dir(ipc_dir, "my-group", source)
+        await self._run_startup_sweep(deps, tmp_path)
 
-        error_file = ipc_dir / "errors" / "my-group-broken.json"
+        error_file = ipc_dir / "errors" / "admin-1-broken.json"
         assert error_file.read_text() == content
+        assert not source.exists()
 
-    def test_does_not_overwrite_existing_error_file(self, tmp_path: Path):
-        """If an error file with the same name already exists, rename overwrites it.
-
-        This is acceptable behavior — the latest error is preserved.
-        """
+    async def test_startup_parse_error_overwrites_existing_error_file(
+        self,
+        deps,
+        tmp_path: Path,
+    ):
+        """The latest error for a group/file name is preserved."""
         ipc_dir = tmp_path / "ipc"
         error_dir = ipc_dir / "errors"
         error_dir.mkdir(parents=True)
+        (error_dir / "admin-1-msg.json").write_text("old error")
 
-        # Pre-existing error file
-        (error_dir / "grp-msg.json").write_text("old error")
-
-        # New file with same group-name combo
-        source = ipc_dir / "grp" / "messages" / "msg.json"
+        source = ipc_dir / "admin-1" / "messages" / "msg.json"
         source.parent.mkdir(parents=True)
         source.write_text("new error")
 
-        _move_to_error_dir(ipc_dir, "grp", source)
+        await self._run_startup_sweep(deps, tmp_path)
 
-        assert (error_dir / "grp-msg.json").read_text() == "new error"
+        assert (error_dir / "admin-1-msg.json").read_text() == "new error"
+        assert not source.exists()
 
 
 # ---------------------------------------------------------------------------

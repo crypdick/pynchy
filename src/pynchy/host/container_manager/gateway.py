@@ -42,7 +42,6 @@ if TYPE_CHECKING:
 from pynchy.host.container_manager.gateway_builtin import BuiltinGateway
 from pynchy.host.container_manager.gateway_litellm import (
     LiteLLMGateway,
-    _load_or_create_persistent_key,
 )
 from pynchy.logger import logger
 from pynchy.types import ServiceTrustConfig
@@ -52,7 +51,6 @@ __all__ = [
     "BuiltinGateway",
     "GatewayProto",
     "LiteLLMGateway",
-    "_load_or_create_persistent_key",
     "get_gateway",
     "resolve_container_host",
     "start_gateway",

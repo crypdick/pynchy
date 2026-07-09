@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
-    from pathlib import Path
+from collections.abc import (
+    Iterator,  # noqa: TC003, RUF100 - beartype resolves this contextmanager annotation at runtime.
+)
+from pathlib import (
+    Path,  # noqa: TC003, RUF100 - beartype resolves this contextmanager annotation at runtime.
+)
 
 _output_files_in_progress: set[Path] = set()
 

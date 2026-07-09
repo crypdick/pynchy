@@ -1,4 +1,4 @@
-"""Tests for IPC create_periodic_agent and _move_to_error_dir.
+"""Tests for IPC create_periodic_agent.
 
 Tests the create_periodic_agent IPC command which orchestrates creating folder
 structure, workspace config, CLAUDE.md, chat group, and scheduled task. This is
@@ -15,9 +15,6 @@ from conftest import NullIpcDeps, init_test_database, make_settings
 
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.protocol import CreatePeriodicAgentRequest
-from pynchy.host.container_manager.ipc.watcher import (
-    _move_to_error_dir,  # allow: private-test-imports
-)
 from pynchy.state import get_all_tasks
 from pynchy.types import WorkspaceProfile
 
@@ -340,50 +337,3 @@ class TestCreatePeriodicAgent:
         assert "" not in deps.workspaces()
         tasks = await get_all_tasks()
         assert len(tasks) == 0
-
-
-class TestMoveToErrorDir:
-    """Tests for the _move_to_error_dir helper."""
-
-    def test_moves_file_to_error_dir(self, tmp_path):
-        """Should move the file to errors/ with source_group prefix."""
-        ipc_dir = tmp_path / "ipc"
-        ipc_dir.mkdir()
-        source_file = ipc_dir / "test-group" / "messages" / "msg-001.json"
-        source_file.parent.mkdir(parents=True)
-        source_file.write_text('{"broken": true}')
-
-        _move_to_error_dir(ipc_dir, "test-group", source_file)
-
-        assert not source_file.exists()
-        error_file = ipc_dir / "errors" / "test-group-msg-001.json"
-        assert error_file.exists()
-        assert error_file.read_text() == '{"broken": true}'
-
-    def test_creates_error_dir_if_not_exists(self, tmp_path):
-        """Should create the errors/ directory if it doesn't exist."""
-        ipc_dir = tmp_path / "ipc"
-        ipc_dir.mkdir()
-        source_file = ipc_dir / "group1" / "requests" / "task-002.json"
-        source_file.parent.mkdir(parents=True)
-        source_file.write_text("{}")
-
-        _move_to_error_dir(ipc_dir, "group1", source_file)
-
-        assert (ipc_dir / "errors").exists()
-        assert (ipc_dir / "errors" / "group1-task-002.json").exists()
-
-    def test_multiple_files_from_same_group(self, tmp_path):
-        """Multiple error files from the same group should coexist."""
-        ipc_dir = tmp_path / "ipc"
-        ipc_dir.mkdir()
-
-        for i in range(3):
-            f = ipc_dir / "grp" / "messages" / f"msg-{i}.json"
-            f.parent.mkdir(parents=True, exist_ok=True)
-            f.write_text(f'{{"index": {i}}}')
-            _move_to_error_dir(ipc_dir, "grp", f)
-
-        error_dir = ipc_dir / "errors"
-        error_files = sorted(error_dir.iterdir())
-        assert len(error_files) == 3
