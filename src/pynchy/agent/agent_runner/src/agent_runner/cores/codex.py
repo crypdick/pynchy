@@ -14,9 +14,8 @@ import os
 import shutil
 import signal
 import sys
-from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from agent_runner.core import AgentCoreConfig, AgentEvent
 from agent_runner.cores._codex_config import (
@@ -24,6 +23,9 @@ from agent_runner.cores._codex_config import (
     gateway_base_url_from_env,
     write_codex_config,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 _STREAM_LINE_LIMIT = 32 * 1024 * 1024
 _CODEX_SESSION_PREFIX = "codex:"

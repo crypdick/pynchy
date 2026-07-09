@@ -5,9 +5,8 @@ from __future__ import annotations
 import contextlib
 import json
 import sys
-from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -34,6 +33,9 @@ from agent_runner.hooks import (
     load_hooks,
 )
 from agent_runner.transcript_archive import archive_transcript
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Awaitable, Callable
 
 
 def _log(message: str) -> None:

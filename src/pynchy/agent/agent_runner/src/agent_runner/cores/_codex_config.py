@@ -6,8 +6,10 @@ import json
 import os
 import re
 import sys
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _SAFE_TOML_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
 _PYNCHY_LITELLM_PROVIDER = "pynchy_litellm"

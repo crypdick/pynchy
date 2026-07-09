@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pynchy.config.models import ProfileConfig
+from pynchy.config.models import (
+    ProfileConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
+)
 
 
 def _deduplicate(items: list[str]) -> list[str]:

@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import json
 from itertools import pairwise
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
 
 from agent_runner.ipc import write_output
 from agent_runner.models import ContainerOutput
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture

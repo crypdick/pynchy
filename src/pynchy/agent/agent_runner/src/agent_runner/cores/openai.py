@@ -5,9 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import sys
-from collections.abc import AsyncIterator, Awaitable, Callable
-from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from agents import Agent, ApplyPatchTool, Runner, ShellTool, WebSearchTool
 from agents.editor import ApplyPatchEditor, ApplyPatchOperation, ApplyPatchResult
@@ -20,7 +18,12 @@ from agents.mcp import (
 
 from agent_runner.core import AgentCoreConfig, AgentEvent
 from agent_runner.cores._openai_tool_parsing import extract_tool_call, extract_tool_result
-from agent_runner.hooks import BeforeToolUseHook
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Awaitable, Callable
+    from pathlib import Path
+
+    from agent_runner.hooks import BeforeToolUseHook
 
 
 def _log(message: str) -> None:

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
 
 from agent_runner.agent_tools._tools_ask_user import _ask_user_handle
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture

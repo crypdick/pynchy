@@ -28,12 +28,14 @@ import os
 import shutil
 import signal
 import sys
-from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from agent_runner.core import AgentCoreConfig, AgentEvent
 from agent_runner.cores._tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 # stream-json lines can carry large tool results; lift the asyncio reader limit
 # well above the 64 KiB default to avoid "chunk exceeded the limit" on big lines.

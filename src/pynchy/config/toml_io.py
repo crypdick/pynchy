@@ -8,8 +8,10 @@ keeps comment-preserving edits from drifting away from the typed config schema.
 from __future__ import annotations
 
 import tomllib
-from collections.abc import Callable
-from pathlib import Path
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves annotations at runtime.
+)
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves annotations at runtime.
 from typing import Any
 
 import tomlkit

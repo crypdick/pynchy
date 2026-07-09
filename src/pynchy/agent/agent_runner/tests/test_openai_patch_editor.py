@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 import pytest
 
 # allow: private-test-imports — private helper for async agent core
 from agent_runner.cores.openai import _ContainerPatchEditor
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.mark.asyncio

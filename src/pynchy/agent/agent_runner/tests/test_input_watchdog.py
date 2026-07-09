@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
 
 from agent_runner.ipc import wait_for_ipc_message
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture

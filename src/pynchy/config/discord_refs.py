@@ -5,7 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from pynchy.config.models import DiscordConnectionConfig
+from pynchy.config.models import (
+    DiscordConnectionConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
+)
 
 DiscordChatKind = Literal["channel", "direct"]
 

@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
 
 from agent_runner.ipc import read_initial_input
 from agent_runner.models import ContainerInput
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture

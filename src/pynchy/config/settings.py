@@ -21,7 +21,10 @@ from __future__ import annotations
 import os
 import re
 import warnings
-from collections.abc import Iterable, Sequence
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves annotations at runtime.
+    Iterable,
+    Sequence,
+)
 from contextvars import ContextVar
 from functools import cached_property
 from pathlib import Path
@@ -35,7 +38,9 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
-from pynchy.config.jobs import JobConfig
+from pynchy.config.jobs import (
+    JobConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
+)
 from pynchy.config.merge import ResolvedWorkspaceConfig, merge_workspace_profiles
 from pynchy.config.models import (
     AgentConfig,
@@ -53,7 +58,7 @@ from pynchy.config.models import (
     McpToolConfig,
     OneCliConfig,
     PluginConfig,
-    ProfileConfig,
+    ProfileConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
     QueueConfig,
     ReposConfig,
     SchedulerConfig,
