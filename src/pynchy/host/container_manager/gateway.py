@@ -34,6 +34,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pynchy.config import get_settings
+from pynchy.config.models import McpTool
 
 if TYPE_CHECKING:
     import pluggy
@@ -218,7 +219,11 @@ async def start_gateway(
     # Sync MCP state to LiteLLM after gateway is ready (LiteLLM mode only).
     # Collect plugin-provided MCP server specs and merge with config.toml.
     plugin_mcp_servers, plugin_trust_defaults = collect_plugin_mcp_servers(plugin_manager)
-    has_servers = s.mcp_servers or s.mcp_server_instances or plugin_mcp_servers
+    has_servers = (
+        any(isinstance(tool, McpTool) for tool in s.tools.values())
+        or getattr(s, "mcp_server_instances", {})
+        or plugin_mcp_servers
+    )
     if isinstance(_gateway, LiteLLMGateway) and has_servers:
         from pynchy.host.container_manager.mcp.manager import McpManager, set_mcp_manager
 

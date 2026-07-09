@@ -8,6 +8,7 @@ from conftest import make_settings
 
 from pynchy.config.mcp import McpServerConfig
 from pynchy.config.models import ProfileConfig, WorkspaceConfig
+from pynchy.config.settings import validate_settings_mapping
 from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
 from pynchy.host.container_manager.mcp.lifecycle import (
     _build_placeholders,  # allow: private-test-imports
@@ -205,19 +206,24 @@ class TestMergedMcpServers:
                 env={"GDRIVE_OAUTH_PATH": "/home/chrome/gcp-oauth.keys.json"},
             )
         }
-        settings = make_settings(
-            mcp_servers={
-                "gdrive": McpServerConfig(
-                    type="docker",
-                    image="pynchy-mcp-gdrive:latest",
-                    port=3000,
-                    transport="streamable_http",
-                    env={"GDRIVE_CREDENTIALS_PATH": "/gdrive-server/credentials.json"},
-                    volumes=[
-                        "mcp-gdrive:/gdrive-server",
-                        "data/gcp-oauth.keys.json:/app/gcp-oauth.keys.json:ro",
-                    ],
-                )
+        settings = validate_settings_mapping(
+            {
+                "tools": {
+                    "gdrive": {
+                        "type": "mcp",
+                        "mcp": {
+                            "runtime": "docker",
+                            "image": "pynchy-mcp-gdrive:latest",
+                            "port": 3000,
+                            "transport": "streamable_http",
+                            "env": {"GDRIVE_CREDENTIALS_PATH": "/gdrive-server/credentials.json"},
+                            "volumes": [
+                                "mcp-gdrive:/gdrive-server",
+                                "data/gcp-oauth.keys.json:/app/gcp-oauth.keys.json:ro",
+                            ],
+                        },
+                    }
+                }
             }
         )
 
@@ -247,7 +253,7 @@ class TestResolveAllInstancesPortOffset:
     two workspaces sharing the same server share one instance.
     """
 
-    def _make_manager(self, workspaces: dict, mcp_servers: dict):
+    def _make_manager(self, workspaces: dict, tool_mcp_configs: dict):
         ws_configs = {}
         profiles = {}
         for name, servers in workspaces.items():
@@ -255,10 +261,20 @@ class TestResolveAllInstancesPortOffset:
             profiles[profile_name] = ProfileConfig(tools=servers)
             ws_configs[name] = WorkspaceConfig(profiles=[profile_name])
 
-        settings = make_settings(
-            profiles=profiles,
-            workspaces=ws_configs,
-            mcp_servers={name: McpServerConfig(**spec) for name, spec in mcp_servers.items()},
+        settings = validate_settings_mapping(
+            {
+                "profiles": {
+                    name: profile.model_dump(exclude_defaults=True)
+                    for name, profile in profiles.items()
+                },
+                "workspaces": {
+                    name: workspace.model_dump(exclude_defaults=True)
+                    for name, workspace in ws_configs.items()
+                },
+                "tools": {
+                    name: {"type": "mcp", "mcp": spec} for name, spec in tool_mcp_configs.items()
+                },
+            }
         )
         gateway = MagicMock(spec=LiteLLMGateway)
         return McpManager(settings, gateway)
@@ -269,9 +285,9 @@ class TestResolveAllInstancesPortOffset:
                 "ws1": ["browser"],
                 "ws2": ["browser"],
             },
-            mcp_servers={
+            tool_mcp_configs={
                 "browser": {
-                    "type": "script",
+                    "runtime": "script",
                     "command": "npx",
                     "port": 9100,
                     "inject_workspace": True,
@@ -285,9 +301,9 @@ class TestResolveAllInstancesPortOffset:
     def test_single_workspace_gets_base_port(self):
         mgr = self._make_manager(
             workspaces={"ws1": ["browser"]},
-            mcp_servers={
+            tool_mcp_configs={
                 "browser": {
-                    "type": "script",
+                    "runtime": "script",
                     "command": "npx",
                     "port": 9100,
                 },
@@ -303,15 +319,15 @@ class TestResolveAllInstancesPortOffset:
                 "ws1": ["browser", "notebook"],
                 "ws2": ["browser", "notebook"],
             },
-            mcp_servers={
+            tool_mcp_configs={
                 "browser": {
-                    "type": "script",
+                    "runtime": "script",
                     "command": "npx",
                     "port": 9100,
                     "inject_workspace": True,
                 },
                 "notebook": {
-                    "type": "script",
+                    "runtime": "script",
                     "command": "uv",
                     "port": 8888,
                     "inject_workspace": True,
@@ -335,9 +351,9 @@ class TestResolveAllInstancesPortOffset:
                 "ws1": ["search"],
                 "ws2": ["search"],
             },
-            mcp_servers={
+            tool_mcp_configs={
                 "search": {
-                    "type": "script",
+                    "runtime": "script",
                     "command": "node",
                     "port": 7000,
                 },
@@ -352,9 +368,9 @@ class TestResolveAllInstancesPortOffset:
     def test_url_type_gets_none_port(self):
         mgr = self._make_manager(
             workspaces={"ws1": ["remote"]},
-            mcp_servers={
+            tool_mcp_configs={
                 "remote": {
-                    "type": "url",
+                    "runtime": "url",
                     "url": "https://example.com/mcp",
                 },
             },
@@ -363,22 +379,23 @@ class TestResolveAllInstancesPortOffset:
         inst = next(iter(state.instances.values()))
         assert inst.port is None
 
-    def test_profile_mcp_servers_are_resolved_for_workspace(self):
-        settings = make_settings(
-            profiles={
-                "dev": ProfileConfig(tools=["linear"]),
-            },
-            workspaces={
-                "code-improver": WorkspaceConfig(profiles=["dev"]),
-            },
-            mcp_servers={
-                "linear": McpServerConfig(
-                    type="script",
-                    command="uv",
-                    port=8474,
-                    transport="streamable_http",
-                ),
-            },
+    def test_profile_tools_are_resolved_for_workspace(self):
+        settings = validate_settings_mapping(
+            {
+                "profiles": {"dev": {"tools": ["linear"]}},
+                "workspaces": {"code-improver": {"profiles": ["dev"]}},
+                "tools": {
+                    "linear": {
+                        "type": "mcp",
+                        "mcp": {
+                            "runtime": "script",
+                            "command": "uv",
+                            "port": 8474,
+                            "transport": "streamable_http",
+                        },
+                    }
+                },
+            }
         )
 
         state = resolve_all_instances(settings, merged_mcp_servers(settings, {}))

@@ -154,8 +154,10 @@ async def _maybe_require_cop_approval(
     from pynchy.host.container_manager.security.cop_gate import cop_gate
 
     settings = get_settings()
-    mcp_config = getattr(settings, "mcp_servers", {}).get(request.tool_name)
-    if mcp_config is None or mcp_config.type != "script":
+    from pynchy.config.models import McpTool
+
+    tool = settings.tools.get(request.tool_name)
+    if not isinstance(tool, McpTool) or tool.mcp.runtime != "script":
         return True
 
     import json as json_mod

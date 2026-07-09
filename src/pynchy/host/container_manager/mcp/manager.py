@@ -5,9 +5,9 @@ pushes MCP state to LiteLLM via its HTTP API.  Docker-based MCP containers and
 script-based MCP subprocesses start on-demand when an agent first needs them
 and stop after an idle timeout.
 
-Adding an MCP is as simple as adding a ``[mcp_servers.<name>]`` section to
-``config.toml`` — no policy files, no editing ``litellm_config.yaml``.  Plugins
-can also provide MCP servers via the ``pynchy_mcp_server_spec()`` hook.
+Adding an MCP is done through a ``[tools.<name>]`` declaration with
+``type = "mcp"``. Plugins can also provide MCP runtime specs via the
+``pynchy_mcp_server_spec()`` hook.
 
 Instance resolution (config expansion, kwargs, trust map) lives in
 :mod:`_mcp_resolution`.  LiteLLM endpoint registration and team management
@@ -127,7 +127,11 @@ class McpManager:
                 instance_urls[iid] = cfg.url or ""
             elif inst.port is not None:
                 instance_urls[iid] = f"http://localhost:{inst.port}"
-        trust_map = build_trust_map(self._instances, self._plugin_trust_defaults)
+        trust_map = build_trust_map(
+            self._instances,
+            self._plugin_trust_defaults,
+            settings=self._settings,
+        )
         if instance_urls:
             self._proxy_port = await self._proxy.start(instance_urls, trust_map=trust_map)
 

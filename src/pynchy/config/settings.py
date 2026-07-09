@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 import re
 import warnings
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from contextvars import ContextVar
 from functools import cached_property
 from pathlib import Path
@@ -36,7 +36,6 @@ from pydantic_settings import (
 )
 
 from pynchy.config.jobs import JobConfig
-from pynchy.config.mcp import McpServerConfig
 from pynchy.config.merge import ResolvedWorkspaceConfig, merge_workspace_profiles
 from pynchy.config.models import (
     AgentConfig,
@@ -51,6 +50,8 @@ from pynchy.config.models import (
     IntervalsConfig,
     LearningConfig,
     LoggingConfig,
+    McpTool,
+    McpToolConfig,
     OneCliConfig,
     OwnerConfig,
     PluginConfig,
@@ -61,7 +62,6 @@ from pynchy.config.models import (
     SecretsConfig,
     SecurityConfig,
     ServerConfig,
-    ServiceTrustTomlConfig,
     ToolConfig,
     WorkspaceConfig,
 )
@@ -116,8 +116,6 @@ class Settings(BaseSettings):
     gateway: GatewayConfig = GatewayConfig()
     onecli: OneCliConfig = OneCliConfig()
     learning: LearningConfig = LearningConfig()
-    universal: ProfileConfig = ProfileConfig()
-    services: dict[str, ServiceTrustTomlConfig] = {}  # [services.<name>]
     repos: ReposConfig = ReposConfig()
     profiles: dict[str, ProfileConfig] = {}
     workspaces: dict[str, WorkspaceConfig] = Field(default_factory=dict)
@@ -141,15 +139,6 @@ class Settings(BaseSettings):
     # Each profile maps to a host directory at data/chrome-profiles/{name}/.
     chrome_profiles: list[str] = []
 
-    # MCP management (imported from config_mcp)
-    mcp_servers: dict[str, McpServerConfig] = Field(default_factory=dict, validation_alias="mcp")
-    mcp_groups: dict[str, list[str]] = {}  # {group_name: [server_names]}
-    mcp_presets: dict[str, dict[str, str]] = {}  # {preset_name: {key: value}}
-
-    # Extracted by _separate_mcp_instances validator from nested [mcp.*] sub-tables.
-    # {template_name: {instance_name: {chrome_profile: "...", ...}}}
-    mcp_server_instances: dict[str, dict[str, dict[str, Any]]] = {}
-
     @model_validator(mode="before")
     @classmethod
     def _reject_legacy_sections(cls, data: dict[str, Any]) -> dict[str, Any]:
@@ -170,6 +159,7 @@ class Settings(BaseSettings):
                     "mcp_servers",
                     "mcp_groups",
                     "mcp_presets",
+                    "mcp_server_instances",
                     "connection",
                     "owner",
                     "caldav",
@@ -183,54 +173,6 @@ class Settings(BaseSettings):
                     f"{legacy}. Use [workspaces], [profiles], [tools], "
                     "[connections.*], and [command_center] instead."
                 )
-        return data
-
-    @model_validator(mode="before")
-    @classmethod
-    def _separate_mcp_instances(cls, data: dict[str, Any]) -> dict[str, Any]:
-        """Detect nested sub-tables in mcp and separate them.
-
-        TOML input like ``[mcp.gdrive.personal]`` with
-        ``chrome_profile = "personal"`` gets parsed as a nested dict under
-        ``mcp.gdrive``.  This validator splits those into:
-        - ``mcp_servers`` — flat server definitions (base overrides)
-        - ``mcp_server_instances`` — ``{template: {instance: {overrides}}}``
-
-        A sub-key is treated as an instance (not a config field) when its
-        value is a dict and the key is NOT a known McpServerConfig field.
-        """
-        raw = data.get("mcp_servers")
-        if not isinstance(raw, dict):
-            raw = data.get("mcp")
-        if not isinstance(raw, dict):
-            return data
-
-        config_fields = set(McpServerConfig.model_fields)
-        flat: dict[str, Any] = {}
-        instanced: dict[str, dict[str, dict[str, Any]]] = {}
-
-        for name, spec in raw.items():
-            if not isinstance(spec, dict):
-                flat[name] = spec
-                continue
-
-            base: dict[str, Any] = {}
-            instances: dict[str, dict[str, Any]] = {}
-            for k, v in spec.items():
-                if isinstance(v, dict) and k not in config_fields:
-                    instances[k] = v
-                else:
-                    base[k] = v
-
-            if instances:
-                if base:
-                    flat[name] = base  # user-provided base overrides
-                instanced[name] = instances
-            else:
-                flat[name] = spec
-
-        data["mcp"] = flat
-        data["mcp_server_instances"] = instanced
         return data
 
     @model_validator(mode="after")
@@ -312,6 +254,17 @@ class Settings(BaseSettings):
             return None
         profile_names = self._expanded_selected_profile_names(workspace.profiles)
         return merge_workspace_profiles([self.profiles[name] for name in profile_names])
+
+    def mcp_tools_for_names(self, names: Iterable[str]) -> dict[str, McpToolConfig]:
+        """Return strict MCP provider configs for selected MCP-backed tools."""
+        result: dict[str, McpToolConfig] = {}
+        for name in names:
+            tool = self.tools.get(name)
+            if tool is None:
+                raise ValueError(f"unknown tool: {name}")
+            if isinstance(tool, McpTool):
+                result[name] = tool.mcp
+        return result
 
     def _expanded_selected_profile_names(self, profile_names: Sequence[str]) -> list[str]:
         ordered: list[str] = []

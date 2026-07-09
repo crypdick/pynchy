@@ -367,38 +367,10 @@ class ProfileConfig(_StrictModel):
         return v
 
 
-class ServiceTrustTomlConfig(_StrictModel):
-    """Per-service trust config in config.toml [services.<name>]."""
-
-    public_source: bool | Literal["forbidden"] = True
-    secret_data: bool = True
-    public_sink: bool | Literal["forbidden"] = True
-    dangerous_writes: bool | Literal["forbidden"] = True
-
-
 class CapabilityTomlConfig(_StrictModel):
     """Explicit allow/deny/approval policy for a semantic capability."""
 
     decision: Literal["allow", "deny", "needs_human"]
-
-
-class WorkspaceServiceOverride(_StrictModel):
-    """Per-workspace service override — only 'forbidden' is allowed.
-
-    All fields are optional (None = no override). Any non-None value
-    must be 'forbidden'. This prevents accidentally relaxing security.
-    """
-
-    public_source: Literal["forbidden"] | None = None
-    secret_data: None = None  # secret_data cannot be overridden
-    public_sink: Literal["forbidden"] | None = None
-    dangerous_writes: Literal["forbidden"] | None = None
-
-
-class WorkspaceSecurityTomlConfig(_StrictModel):
-    """Security profile in config.toml [workspaces.<name>.security]."""
-
-    services: dict[str, ServiceTrustTomlConfig] = {}
 
 
 class RepoConfig(_StrictModel):
@@ -446,34 +418,61 @@ class ReposConfig(_StrictModel):
         return v
 
 
-class BuiltinToolConfig(_StrictModel):
-    type: Literal["builtin"]
-    name: str
+class _ToolTrustConfig(_StrictModel):
+    enabled: bool = True
     public_source: bool | Literal["forbidden"] = True
     secret_data: bool = True
     public_sink: bool | Literal["forbidden"] = True
     dangerous_writes: bool | Literal["forbidden"] = True
 
 
-class LinearToolConfig(_StrictModel):
+class BuiltinTool(_ToolTrustConfig):
+    type: Literal["builtin"]
+    name: str | None = None
+
+
+class LinearTool(_ToolTrustConfig):
     type: Literal["linear"]
     workspace: str | None = None
-    public_source: bool | Literal["forbidden"] = True
-    secret_data: bool = True
-    public_sink: bool | Literal["forbidden"] = True
-    dangerous_writes: bool | Literal["forbidden"] = True
+    api_key_env: str | None = None
+    project_per_workspace: bool | None = None
+    project_name_template: str | None = None
 
 
 class McpToolConfig(_StrictModel):
+    """MCP provider/runtime config nested under ``[tools.<name>.mcp]``."""
+
+    runtime: Literal["docker", "url", "script"] = "docker"
+    image: str | None = None
+    dockerfile: str | None = None
+    extra_ports: list[int] = []
+    command: str | None = None
+    args: list[str] = []
+    port: int | None = None
+    idle_timeout: int = 600
+    env: dict[str, str] = {}
+    env_forward: dict[str, str] = {}
+    onecli: bool = False
+    onecli_agent: str = "workspace"
+    volumes: list[str] = []
+    inject_workspace: bool = False
+    url: str | None = None
+    transport: Literal["sse", "http", "streamable_http"] = "sse"
+    auth_value_env: str | None = None
+    credentials_path: str | None = None
+
+
+class McpTool(_ToolTrustConfig):
     type: Literal["mcp"]
-    public_source: bool | Literal["forbidden"] = True
-    secret_data: bool = True
-    public_sink: bool | Literal["forbidden"] = True
-    dangerous_writes: bool | Literal["forbidden"] = True
+    mcp: McpToolConfig = Field(default_factory=McpToolConfig)
+
+
+BuiltinToolConfig = BuiltinTool
+LinearToolConfig = LinearTool
 
 
 ToolConfig = Annotated[
-    BuiltinToolConfig | LinearToolConfig | McpToolConfig,
+    BuiltinTool | LinearTool | McpTool,
     Field(discriminator="type"),
 ]
 

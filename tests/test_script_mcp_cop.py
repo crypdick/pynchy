@@ -6,11 +6,13 @@ them is implicitly host-mutating and must go through the Cop gate.
 
 from __future__ import annotations
 
+from typing import Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from conftest import NullIpcDeps
 
+from pynchy.config.models import McpTool, McpToolConfig
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
@@ -75,20 +77,19 @@ def _register_safe_gate(tool_name: str) -> None:
 
 def _make_settings_with_mcp(
     tool_name: str,
-    mcp_type: str = "script",
+    mcp_type: Literal["script", "docker", "url"] = "script",
     *,
     tmp_path=None,
 ) -> MagicMock:
-    """Create fake Settings with an MCP server entry.
+    """Create fake Settings with a typed MCP tool entry.
 
     Security is now resolved via SecurityGate (registered separately),
-    so this only needs to provide mcp_servers config for the cop gate check.
+    so this only needs to provide tool provider config for the cop gate check.
     """
     mock_s = MagicMock()
-    mcp_mock = MagicMock()
-    mcp_mock.type = mcp_type
-    mock_s.mcp_servers = {tool_name: mcp_mock}
-    mock_s.services = {}
+    mock_s.tools = {
+        tool_name: McpTool(type="mcp", mcp=McpToolConfig(runtime=mcp_type)),
+    }
     mock_s.workspaces = {}
     if tmp_path is not None:
         mock_s.data_dir = tmp_path

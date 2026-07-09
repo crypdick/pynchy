@@ -94,6 +94,7 @@ def test_new_schema_parses_minimal_config() -> None:
         "mcp_servers",
         "mcp_groups",
         "mcp_presets",
+        "mcp_server_instances",
         "connection",
         "owner",
         "caldav",

@@ -1,68 +1,91 @@
 """Tests for trust-model config parsing."""
 
 import pytest
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from pynchy.config.models import (
-    ServiceTrustTomlConfig,
-    WorkspaceSecurityTomlConfig,
-    WorkspaceServiceOverride,
+    BuiltinTool,
+    McpTool,
+    ToolConfig,
 )
 from pynchy.config.settings import validate_settings_mapping
 
 
-def test_service_trust_toml_defaults():
-    """Unpopulated service trust config is maximally cautious."""
-    cfg = ServiceTrustTomlConfig()
+def test_tool_trust_defaults_are_maximally_cautious():
+    """Unpopulated tool trust config is maximally cautious."""
+    cfg = TypeAdapter(ToolConfig).validate_python({"type": "builtin"})
+    assert isinstance(cfg, BuiltinTool)
     assert cfg.public_source is True
     assert cfg.secret_data is True
     assert cfg.public_sink is True
     assert cfg.dangerous_writes is True
 
 
-def test_service_trust_toml_all_false():
-    """All-false config parses correctly."""
-    cfg = ServiceTrustTomlConfig(
-        public_source=False,
-        secret_data=False,
-        public_sink=False,
-        dangerous_writes=False,
+def test_tool_trust_all_false():
+    """All-false tool trust config parses correctly."""
+    cfg = TypeAdapter(ToolConfig).validate_python(
+        {
+            "type": "builtin",
+            "public_source": False,
+            "secret_data": False,
+            "public_sink": False,
+            "dangerous_writes": False,
+        }
     )
     assert cfg.public_source is False
     assert cfg.dangerous_writes is False
 
 
-def test_service_trust_toml_forbidden():
+def test_tool_trust_forbidden():
     """Forbidden string value parses correctly."""
-    cfg = ServiceTrustTomlConfig(
-        public_source="forbidden",
-        public_sink="forbidden",
-        dangerous_writes="forbidden",
+    cfg = TypeAdapter(ToolConfig).validate_python(
+        {
+            "type": "builtin",
+            "public_source": "forbidden",
+            "public_sink": "forbidden",
+            "dangerous_writes": "forbidden",
+        }
     )
     assert cfg.public_source == "forbidden"
 
 
-def test_service_trust_toml_invalid_value():
+def test_tool_trust_invalid_value():
     """Invalid value raises ValidationError."""
     with pytest.raises(ValidationError):
-        ServiceTrustTomlConfig(public_source="maybe")
+        TypeAdapter(ToolConfig).validate_python({"type": "builtin", "public_source": "maybe"})
 
 
-def test_workspace_security_toml_defaults():
-    cfg = WorkspaceSecurityTomlConfig()
-    assert cfg.services == {}
+def test_mcp_tool_provider_config_parses_credentials_path():
+    cfg = TypeAdapter(ToolConfig).validate_python(
+        {
+            "type": "mcp",
+            "public_source": False,
+            "secret_data": True,
+            "public_sink": False,
+            "dangerous_writes": False,
+            "mcp": {"credentials_path": "/gdrive-server/credentials.json"},
+        }
+    )
+
+    assert isinstance(cfg, McpTool)
+    assert cfg.mcp.credentials_path == "/gdrive-server/credentials.json"
 
 
-def test_workspace_service_override_only_forbidden():
-    """Workspace overrides only accept 'forbidden' values."""
-    override = WorkspaceServiceOverride(public_sink="forbidden")
-    assert override.public_sink == "forbidden"
+def test_profile_selecting_unknown_tool_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="unknown tool"):
+        validate_settings_mapping(
+            {
+                "profiles": {"worker": {"tools": ["missing"]}},
+                "workspaces": {"research": {"profiles": ["worker"]}},
+                "tools": {},
+            }
+        )
 
 
-def test_workspace_service_override_rejects_non_forbidden():
-    """Workspace overrides reject values other than 'forbidden' or None."""
-    with pytest.raises(ValidationError):
-        WorkspaceServiceOverride(public_sink=True)
+def test_legacy_service_trust_toml_is_not_user_facing_config():
+    """The old [services] trust shape is rejected at the Settings boundary."""
+    with pytest.raises(ValidationError, match="Legacy config sections"):
+        validate_settings_mapping({"services": {"browser": {"public_source": True}}})
 
 
 def test_admin_profile_with_public_source_tool_is_rejected() -> None:
