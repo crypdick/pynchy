@@ -85,13 +85,13 @@ def test_x_display_uses_resolved_executables(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(x_display, "has_display", lambda: False)
     monkeypatch.setattr(x_display.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(x_display.time, "sleep", lambda _seconds: None)
-    x_display._xvfb_proc = None
+    x_display._state.xvfb_proc = None
 
     try:
         x_display.ensure_xvfb()
         x_display.start_vnc_layer()
     finally:
-        x_display._xvfb_proc = None
+        x_display._state.xvfb_proc = None
 
     assert [command[0] for command in commands] == [
         "/opt/bin/Xvfb",

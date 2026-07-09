@@ -273,11 +273,11 @@ def _close_test_database():
     yield
     import pynchy.state.connection as db_conn
 
-    if db_conn._db is not None:
-        db_conn._db.stop()
-        if db_conn._db._thread is not None and db_conn._db._thread.is_alive():
-            db_conn._db._thread.join(timeout=2)
-        db_conn._db = None
+    if db_conn._state.db is not None:
+        db_conn._state.db.stop()
+        if db_conn._state.db._thread is not None and db_conn._state.db._thread.is_alive():
+            db_conn._state.db._thread.join(timeout=2)
+        db_conn._state.db = None
 
 
 # ---------------------------------------------------------------------------

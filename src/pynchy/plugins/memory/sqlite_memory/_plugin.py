@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import cache
 from typing import Any
 
 import pluggy
@@ -14,15 +15,10 @@ __all__ = ["SqliteMemoryPlugin"]
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
-# Singleton backend instance shared between both hooks.
-_backend: SqliteMemoryBackend | None = None
 
-
+@cache
 def _get_backend() -> SqliteMemoryBackend:
-    global _backend
-    if _backend is None:
-        _backend = SqliteMemoryBackend()
-    return _backend
+    return SqliteMemoryBackend()
 
 
 # ---------------------------------------------------------------------------

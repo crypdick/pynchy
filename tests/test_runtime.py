@@ -179,8 +179,13 @@ class TestAppleRuntime:
 
 
 class TestGetRuntime:
+    @pytest.fixture(autouse=True)
+    def _clear_runtime_cache(self):
+        runtime_mod.get_runtime.cache_clear()
+        yield
+        runtime_mod.get_runtime.cache_clear()
+
     def test_caches_result(self):
-        runtime_mod._runtime = None
         try:
             with patch("pynchy.plugins.runtimes.detection.detect_runtime") as mock_detect:
                 mock_detect.return_value = DockerContainerRuntime()
@@ -189,4 +194,4 @@ class TestGetRuntime:
             assert r1 is r2
             mock_detect.assert_called_once()
         finally:
-            runtime_mod._runtime = None
+            runtime_mod.get_runtime.cache_clear()

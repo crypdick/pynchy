@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess  # noqa: S404, RUF100 - fixed argv process helpers; never uses shell=True.
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from pynchy.plugins.integrations.browser import has_display, stop_procs
@@ -20,9 +21,13 @@ _VNC_PORT = 5999
 _NOVNC_PORT = 6080
 _NOVNC_WEB_DIR = "/usr/share/novnc"
 
-# Module-level Xvfb process.  X tools use headed mode to avoid bot detection,
-# so Xvfb persists for the lifetime of this plugin on headless hosts.
-_xvfb_proc: subprocess.Popen[bytes] | None = None
+
+@dataclass(slots=True)
+class _DisplayState:
+    xvfb_proc: subprocess.Popen[bytes] | None = None
+
+
+_state = _DisplayState()
 
 
 def _resolve_executable(name: str) -> str:
@@ -55,10 +60,9 @@ def ensure_xvfb() -> None:
     Safe to call multiple times — subsequent calls are no-ops if Xvfb is
     already running or a native display is available.
     """
-    global _xvfb_proc
     if has_display():
         return
-    if _xvfb_proc is not None and _xvfb_proc.poll() is None:
+    if _state.xvfb_proc is not None and _state.xvfb_proc.poll() is None:
         os.environ["DISPLAY"] = XVFB_DISPLAY
         return
     try:
@@ -68,15 +72,15 @@ def ensure_xvfb() -> None:
             "No display available and Xvfb not installed. X automation requires "
             "headed mode to avoid bot detection. Install with: apt install xvfb"
         ) from exc
-    _xvfb_proc = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved Xvfb path.
+    _state.xvfb_proc = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved Xvfb path.
         [xvfb_path, XVFB_DISPLAY, "-screen", "0", "1280x720x24"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
     time.sleep(0.5)
-    if _xvfb_proc.poll() is not None:
-        code = _xvfb_proc.returncode
-        _xvfb_proc = None
+    if _state.xvfb_proc.poll() is not None:
+        code = _state.xvfb_proc.returncode
+        _state.xvfb_proc = None
         raise RuntimeError(f"Xvfb exited immediately (code {code})")
     os.environ["DISPLAY"] = XVFB_DISPLAY
 
@@ -134,14 +138,13 @@ def start_vnc_layer() -> tuple[list[subprocess.Popen[bytes]], str]:
 
 
 def cleanup_xvfb() -> None:
-    global _xvfb_proc
-    if _xvfb_proc and _xvfb_proc.poll() is None:
-        _xvfb_proc.terminate()
+    if _state.xvfb_proc and _state.xvfb_proc.poll() is None:
+        _state.xvfb_proc.terminate()
         try:
-            _xvfb_proc.wait(timeout=5)
+            _state.xvfb_proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
-            _xvfb_proc.kill()
-    _xvfb_proc = None
+            _state.xvfb_proc.kill()
+    _state.xvfb_proc = None
 
 
 atexit.register(cleanup_xvfb)

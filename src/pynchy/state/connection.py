@@ -12,6 +12,7 @@ from collections.abc import (
     AsyncIterator,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from typing import Any
 
 import aiosqlite
@@ -19,20 +20,14 @@ import aiosqlite
 from pynchy.config import get_settings
 from pynchy.state.schema import create_schema
 
-_db: aiosqlite.Connection | None = None
 
-# Shared write lock for multi-statement DB transactions — see atomic_write().
-#
-# pynchy uses a single aiosqlite connection shared across many concurrent
-# asyncio coroutines.  Python's sqlite3 manages transactions implicitly:
-# the first DML statement auto-opens a transaction
-# on the *connection*, not per-coroutine.  Two coroutines whose DML
-# interleaves at await points share the same implicit transaction — a
-# rollback() from one silently undoes the other's uncommitted work.
-#
-# Any write path that spans multiple DML statements MUST use atomic_write()
-# so no concurrent coroutine can interleave.
-_write_lock: asyncio.Lock | None = None
+@dataclass(slots=True)
+class _ConnectionState:
+    db: aiosqlite.Connection | None = None
+    write_lock: asyncio.Lock | None = None
+
+
+_state = _ConnectionState()
 
 _SQL_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _UPDATE_TABLES = frozenset({"scheduled_tasks", "host_jobs"})
@@ -54,12 +49,11 @@ async def atomic_write() -> AsyncIterator[aiosqlite.Connection]:
     multiple DML statements (first execute → commit) MUST use this
     so no concurrent coroutine can interleave.
     """
-    global _write_lock
-    if _write_lock is None:
-        _write_lock = asyncio.Lock()
+    if _state.write_lock is None:
+        _state.write_lock = asyncio.Lock()
 
     db = _get_db()
-    async with _write_lock:
+    async with _state.write_lock:
         try:
             yield db
             await db.commit()
@@ -69,9 +63,9 @@ async def atomic_write() -> AsyncIterator[aiosqlite.Connection]:
 
 
 def _get_db() -> aiosqlite.Connection:
-    if _db is None:
+    if _state.db is None:
         raise RuntimeError("Database not initialized. Call init_database() first.")
-    return _db
+    return _state.db
 
 
 async def _update_by_id(
@@ -113,13 +107,13 @@ async def _update_by_id(
 
 async def init_database() -> None:
     """Initialize the database connection and schema."""
-    global _db
     db_path = get_settings().data_dir / "messages.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    _db = await aiosqlite.connect(str(db_path))
-    _db.row_factory = aiosqlite.Row
-    await create_schema(_db)
+    db = await aiosqlite.connect(str(db_path))
+    db.row_factory = aiosqlite.Row
+    _state.db = db
+    await create_schema(db)
 
 
 async def init_test_database() -> None:
@@ -132,11 +126,11 @@ async def init_test_database() -> None:
     ``stop()`` bypasses the loop entirely — it puts the close command
     directly on the worker queue and lets the thread exit on its own.
     """
-    global _db
-    if _db is not None:
-        _db.stop()
-        if _db._thread is not None and _db._thread.is_alive():
-            _db._thread.join(timeout=2)
-    _db = await aiosqlite.connect(":memory:")
-    _db.row_factory = aiosqlite.Row
-    await create_schema(_db)
+    if _state.db is not None:
+        _state.db.stop()
+        if _state.db._thread is not None and _state.db._thread.is_alive():
+            _state.db._thread.join(timeout=2)
+    db = await aiosqlite.connect(":memory:")
+    db.row_factory = aiosqlite.Row
+    _state.db = db
+    await create_schema(db)

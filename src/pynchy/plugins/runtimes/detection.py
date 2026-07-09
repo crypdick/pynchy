@@ -8,6 +8,7 @@ runtime based on config overrides and platform heuristics.
 from __future__ import annotations
 
 import sys
+from functools import cache
 from typing import Any, Protocol, runtime_checkable
 
 from pynchy.logger import logger
@@ -128,13 +129,9 @@ def detect_runtime() -> RuntimeProvider:
     return _fallback_runtime(candidates)
 
 
-_runtime: RuntimeProvider | None = None
-
-
+@cache
 def get_runtime() -> RuntimeProvider:
     """Lazy singleton — caches the result of detect_runtime()."""
-    global _runtime
-    if _runtime is None:
-        _runtime = detect_runtime()
-        logger.info("Container runtime detected", name=_runtime.name, cli=_runtime.cli)
-    return _runtime
+    runtime = detect_runtime()
+    logger.info("Container runtime detected", name=runtime.name, cli=runtime.cli)
+    return runtime

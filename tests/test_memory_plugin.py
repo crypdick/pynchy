@@ -52,7 +52,7 @@ class TestMcpHandlers:
         """
         mock = AsyncMock(spec=SqliteMemoryBackend)
         mock.name = "sqlite"
-        with patch("pynchy.plugins.memory.sqlite_memory._plugin._backend", mock):
+        with patch("pynchy.plugins.memory.sqlite_memory._plugin._get_backend", return_value=mock):
             self.mock_backend = mock
             self.tools = SqliteMemoryPlugin().pynchy_service_handler()["tools"]
             yield

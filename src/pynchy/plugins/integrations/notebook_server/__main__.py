@@ -25,6 +25,7 @@ import os
 import subprocess  # noqa: S404, RUF100 - launches JupyterLab with fixed argv and sys.executable.
 import sys
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -416,13 +417,18 @@ async def shutdown_kernel(kernel_id: str) -> dict[str, Any]:  # noqa: RUF029, RU
 # JupyterLab subprocess
 # ---------------------------------------------------------------------------
 
-_lab_process = None
+
+@dataclass(slots=True)
+class _NotebookServerState:
+    lab_process: subprocess.Popen[bytes] | None = None
+
+
+_state = _NotebookServerState()
 
 
 def _start_jupyterlab() -> None:
     """Start JupyterLab as a viewing frontend."""
-    global _lab_process
-    _lab_process = subprocess.Popen(  # noqa: S603, RUF100 - fixed python -m jupyterlab argv; no shell.
+    _state.lab_process = subprocess.Popen(  # noqa: S603, RUF100 - fixed python -m jupyterlab argv; no shell.
         [
             sys.executable,
             "-m",
