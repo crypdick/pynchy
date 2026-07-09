@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -97,8 +98,10 @@ def _make_settings(**kwargs):
 def _make_fake_plugin_manager(*tool_names: str, handler_fn=None):
     """Create a fake plugin manager that provides handlers for the given tool names."""
 
-    async def _stub_handler(data: dict) -> dict:
-        return {"error": f"Service '{data.get('type', '')}' is not implemented yet."}
+    def _stub_handler(data: dict):
+        return asyncio.sleep(
+            0, result={"error": f"Service '{data.get('type', '')}' is not implemented yet."}
+        )
 
     fn = handler_fn or _stub_handler
     fake_pm = MagicMock()

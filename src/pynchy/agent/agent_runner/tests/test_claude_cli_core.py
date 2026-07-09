@@ -196,7 +196,7 @@ def test_stop_escalates_to_kill_on_timeout(monkeypatch):
     proc = _FakeProc(returncode=None)
     core._proc = proc
 
-    async def _raise_timeout(awaitable=None, *_args, **_kwargs):
+    def _raise_timeout(awaitable=None, *_args, **_kwargs):
         # Close the proc.wait() coroutine we're bypassing so it isn't reported
         # as "never awaited".
         if hasattr(awaitable, "close"):

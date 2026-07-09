@@ -389,8 +389,8 @@ def _isolated_archive(tmp_path, monkeypatch):
     out_dir = tmp_path / "conversations"
     monkeypatch.setattr(ta, "CONVERSATIONS_DIR", out_dir)
 
-    async def _noop(*_args, **_kwargs):
-        return None
+    def _noop(*_args, **_kwargs):
+        return asyncio.sleep(0)
 
     monkeypatch.setattr(
         "agent_runner.agent_tools._ipc_request.ipc_service_request", _noop, raising=False

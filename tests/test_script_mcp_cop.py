@@ -6,6 +6,7 @@ them is implicitly host-mutating and must go through the Cop gate.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -104,8 +105,8 @@ def _make_settings_with_mcp(
 def _make_fake_plugin_manager(*tool_names: str, handler_fn=None):
     """Create a fake plugin manager that provides handlers for the given tools."""
 
-    async def _stub_handler(data: dict) -> dict:
-        return {"result": "ok"}
+    def _stub_handler(data: dict):
+        return asyncio.sleep(0, result={"result": "ok"})
 
     fn = handler_fn or _stub_handler
     fake_pm = MagicMock()

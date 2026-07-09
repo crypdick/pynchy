@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -361,10 +362,15 @@ class TestOpenAIQueryModel:
         core = self._make_core()
         calls: list[str] = []
 
-        async def fake_run_streamed(_prompt: str, model: str):
+        def fake_run_streamed(_prompt: str, model: str):
             calls.append(model)
-            yield AgentEvent(type="thinking", data={"thinking": "partial"})
-            raise RuntimeError("model_not_found")
+
+            async def _stream():
+                await asyncio.sleep(0)
+                yield AgentEvent(type="thinking", data={"thinking": "partial"})
+                raise RuntimeError("model_not_found")
+
+            return _stream()
 
         monkeypatch.setattr(core, "_run_streamed", fake_run_streamed)
 

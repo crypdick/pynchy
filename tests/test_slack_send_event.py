@@ -193,8 +193,7 @@ async def test_update_event_includes_blocks_from_blocks_formatter(slack_channel)
     assert any(b["type"] == "markdown" for b in call_kwargs["blocks"])
 
 
-@pytest.mark.asyncio
-async def test_formatter_is_slack_blocks_formatter(slack_channel):
+def test_formatter_is_slack_blocks_formatter(slack_channel):
     """SlackChannel should use SlackBlocksFormatter."""
     from pynchy.plugins.channels.slack._blocks import SlackBlocksFormatter
 

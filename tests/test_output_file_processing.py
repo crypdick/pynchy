@@ -328,7 +328,7 @@ class TestOutputFileErrors:
             },
         )
 
-        async def consume_file(_output: ContainerOutput) -> None:
+        def consume_file(_output: ContainerOutput) -> None:
             file_path.unlink()
 
         handler = AsyncMock(side_effect=consume_file)

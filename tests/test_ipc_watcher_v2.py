@@ -511,9 +511,10 @@ class TestRequestFileProcessing:
         ledger_file = ipc_dir / "admin-1" / "request_ledger" / "req-mutate.json"
         dispatch_calls: list[str] = []
 
-        async def fake_dispatch(envelope, source_group, is_admin, deps):
+        def fake_dispatch(envelope, source_group, is_admin, deps):
             assert ledger_file.exists()
             dispatch_calls.append(envelope.request_id)
+            return asyncio.sleep(0)
 
         with patch("pynchy.host.container_manager.ipc.watcher.dispatch", fake_dispatch):
             await watcher._process_request_file(first, "admin-1", True, ipc_dir, deps)

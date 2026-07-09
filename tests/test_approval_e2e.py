@@ -8,6 +8,7 @@ Exercises the full flow:
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -90,8 +91,8 @@ def _make_ws_settings(tmp_path: Path):
 def _make_pm(*tool_names: str, handler_fn=None):
     """Create a fake plugin manager providing handlers for given tools."""
 
-    async def _default(data: dict) -> dict:
-        return {"result": {"status": "done", "tool": data.get("type")}}
+    def _default(data: dict):
+        return asyncio.sleep(0, result={"result": {"status": "done", "tool": data.get("type")}})
 
     fn = handler_fn or _default
     pm = MagicMock()
