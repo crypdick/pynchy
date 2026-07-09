@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 import subprocess
@@ -133,7 +134,7 @@ def _try_fast_path(
 
 async def _ensure_oauth_credentials(page: Any, project_id: str, kp: Path, profile_name: str) -> str:
     """Ensure OAuth client credentials exist for profile_name, creating them if missing."""
-    if kp.exists():
+    if await asyncio.to_thread(kp.exists):
         return "OAuth credentials already exist"
 
     await ensure_consent_screen(page, project_id)
@@ -144,8 +145,8 @@ async def _ensure_oauth_credentials(page: Any, project_id: str, kp: Path, profil
     shutil.copy2(creds_path, dest)
 
     dl = download_dir()
-    if dl.exists():
-        shutil.rmtree(dl, ignore_errors=True)
+    if await asyncio.to_thread(dl.exists):
+        await asyncio.to_thread(shutil.rmtree, dl, ignore_errors=True)
 
     return "OAuth credentials created"
 

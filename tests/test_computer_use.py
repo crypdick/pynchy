@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -93,7 +94,7 @@ async def test_capture_runs_get_window_state_with_screenshot_artifact(tmp_path: 
         nonlocal captured_args
         captured_args = args
         screenshot_path = Path(args[-1])
-        screenshot_path.write_bytes(b"png bytes")
+        await asyncio.to_thread(screenshot_path.write_bytes, b"png bytes")
         return _FakeProcess(stdout=b"window state")
 
     with (
@@ -159,7 +160,7 @@ async def test_click_maps_element_index_and_capture_after(tmp_path: Path) -> Non
     async def fake_exec(*args: str, **kwargs: object) -> _FakeProcess:
         captured_calls.append(args)
         if "--screenshot-out-file" in args:
-            Path(args[-1]).write_bytes(b"after png")
+            await asyncio.to_thread(Path(args[-1]).write_bytes, b"after png")
             return _FakeProcess(stdout=b"after state")
         return _FakeProcess(stdout=b"clicked")
 

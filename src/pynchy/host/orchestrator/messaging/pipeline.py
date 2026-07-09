@@ -9,6 +9,7 @@ Message routing and the polling loop live in :mod:`_message_routing`.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from datetime import UTC, datetime
@@ -242,13 +243,14 @@ async def _handle_reset_handoff(
     Returns True/False if the reset was handled (success/failure),
     or None if there was no reset to process.
     """
-    if not reset_file.exists():
+    if not await asyncio.to_thread(reset_file.exists):
         return None
 
     s = get_settings()
     try:
-        reset_data = json.loads(reset_file.read_text(encoding="utf-8"))
-        reset_file.unlink()
+        reset_text = await asyncio.to_thread(reset_file.read_text, encoding="utf-8")
+        reset_data = json.loads(reset_text)
+        await asyncio.to_thread(reset_file.unlink)
     except (json.JSONDecodeError, OSError) as exc:
         logger.warning(
             "Failed to read reset prompt file",
@@ -256,7 +258,7 @@ async def _handle_reset_handoff(
             path=str(reset_file),
             err=str(exc),
         )
-        reset_file.unlink(missing_ok=True)
+        await asyncio.to_thread(reset_file.unlink, missing_ok=True)
         # Return None (not True) so the caller falls through to normal
         # message processing instead of silently skipping this cycle.
         return None

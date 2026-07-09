@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -59,7 +60,7 @@ async def test_take_screenshot_runs_screencapture_into_workspace_ipc(tmp_path: P
     async def fake_exec(*args: str, **kwargs: object) -> _FakeProcess:
         nonlocal captured_args
         captured_args = args
-        Path(args[-1]).write_bytes(b"png bytes")
+        await asyncio.to_thread(Path(args[-1]).write_bytes, b"png bytes")
         return _FakeProcess()
 
     with (
@@ -100,7 +101,7 @@ async def test_take_screenshot_supports_window_selection_and_display_id(tmp_path
     async def fake_exec(*args: str, **kwargs: object) -> _FakeProcess:
         nonlocal captured_args
         captured_args = args
-        Path(args[-1]).write_bytes(b"png bytes")
+        await asyncio.to_thread(Path(args[-1]).write_bytes, b"png bytes")
         return _FakeProcess()
 
     with (

@@ -200,13 +200,14 @@ async def _run_cua(
         "output": output,
     }
     if screenshot_path is not None:
-        if not screenshot_path.exists():
+        if not await asyncio.to_thread(screenshot_path.exists):
             raise RuntimeError(f"cua-driver {action} did not create the screenshot file")
+        screenshot_stat = await asyncio.to_thread(screenshot_path.stat)
         result["screenshot"] = {
             "host_path": str(screenshot_path),
             "container_path": f"{_CONTAINER_ARTIFACT_DIR}/{screenshot_path.name}",
             "format": "png",
-            "bytes": screenshot_path.stat().st_size,
+            "bytes": screenshot_stat.st_size,
         }
     return result
 

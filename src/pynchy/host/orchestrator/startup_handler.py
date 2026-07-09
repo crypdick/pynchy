@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
@@ -71,10 +72,11 @@ async def send_boot_notification(deps: StartupDeps) -> None:
 
     # Check for boot warnings left by the deploy step
     boot_warnings_path = s.data_dir / "boot_warnings.json"
-    if boot_warnings_path.exists():
+    if await asyncio.to_thread(boot_warnings_path.exists):
         try:
-            warnings = json.loads(boot_warnings_path.read_text(encoding="utf-8"))
-            boot_warnings_path.unlink()
+            warnings_text = await asyncio.to_thread(boot_warnings_path.read_text, encoding="utf-8")
+            warnings = json.loads(warnings_text)
+            await asyncio.to_thread(boot_warnings_path.unlink)
             parts.extend(f"WARNING: {warning}" for warning in warnings)
         except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Failed to read boot warnings", err=str(exc))
@@ -117,7 +119,8 @@ async def recover_pending_messages(deps: StartupDeps) -> None:
 async def auto_rollback(continuation_path: Path, exc: Exception) -> None:
     """Roll back to the pre-deploy commit if startup fails after a deploy."""
     try:
-        continuation = json.loads(continuation_path.read_text(encoding="utf-8"))
+        continuation_text = await asyncio.to_thread(continuation_path.read_text, encoding="utf-8")
+        continuation = json.loads(continuation_text)
     except (json.JSONDecodeError, OSError) as read_exc:
         logger.exception(
             "Failed to read continuation for rollback",
