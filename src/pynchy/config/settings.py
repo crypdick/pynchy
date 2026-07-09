@@ -103,11 +103,12 @@ def _assert_admin_clean_room(
     for tool_name in resolved.tools:
         tool = settings.tools[tool_name]
         if tool.public_source is not False:
-            raise ValueError(
+            message = (
                 f"Admin workspace '{workspace_name}' has tool '{tool_name}' "
                 f"with public_source={tool.public_source!r}. Admin workspaces "
                 "cannot use public-source tools."
             )
+            raise ValueError(message)
 
 
 def _validated_command_center_connection(settings: Settings) -> None:
@@ -115,7 +116,8 @@ def _validated_command_center_connection(settings: Settings) -> None:
     if not connection:
         return
     if connection not in settings.connections:
-        raise ValueError(f"command_center.connection references unknown connection: {connection}")
+        message = f"command_center.connection references unknown connection: {connection}"
+        raise ValueError(message)
 
 
 def _validate_owner_aliases(settings: Settings) -> None:
@@ -148,9 +150,10 @@ def _validate_owner_alias(
         return
     if platform == "whatsapp":
         return
-    raise ValueError(
+    message = (
         f"{scope} uses allowed_users=['owner']; owner aliases are only supported for WhatsApp"
     )
+    raise ValueError(message)
 
 
 # ---------------------------------------------------------------------------
@@ -231,15 +234,17 @@ class Settings(BaseSettings):
                 if k in data
             ]
             if legacy:
-                raise ValueError(
+                message = (
                     "Legacy config sections are no longer supported: "
                     f"{legacy}. Use [workspaces], [profiles], [tools], "
                     "[connections.*], and [command_center] instead."
                 )
+                raise ValueError(message)
             allowed = set(cls.model_fields)
             unknown = sorted(set(data) - allowed)
             if unknown:
-                raise ValueError(f"Unknown config sections are not supported: {unknown}")
+                message = f"Unknown config sections are not supported: {unknown}"
+                raise ValueError(message)
         return data
 
     @model_validator(mode="after")
@@ -255,27 +260,27 @@ class Settings(BaseSettings):
     def _validate_profile_refs(self) -> Settings:
         """Validate that workspace profile references exist."""
         if "host" in self.workspaces:
-            raise ValueError("'host' is reserved and cannot be a workspace name")
+            message = "'host' is reserved and cannot be a workspace name"
+            raise ValueError(message)
         for profile_name in self.profiles:
             self._expanded_profile_names(profile_name)
         for profile_name, profile in self.profiles.items():
             for tool_name in profile.tools:
                 if tool_name not in self.tools:
-                    raise ValueError(
-                        f"profiles.{profile_name}.tools references unknown tool: {tool_name}"
-                    )
+                    message = f"profiles.{profile_name}.tools references unknown tool: {tool_name}"
+                    raise ValueError(message)
         for folder, ws in self.workspaces.items():
             for profile_name in ws.profiles:
                 if profile_name not in self.profiles:
-                    raise ValueError(
+                    message = (
                         f"workspaces.{folder}.profiles references unknown profile: "
                         f"'{profile_name}'. Available: {list(self.profiles.keys())}"
                     )
+                    raise ValueError(message)
         for job_name, job in self.jobs.items():
             if job.workspace != "host" and job.workspace not in self.workspaces:
-                raise ValueError(
-                    f"jobs.{job_name}.workspace references unknown workspace: {job.workspace}"
-                )
+                message = f"jobs.{job_name}.workspace references unknown workspace: {job.workspace}"
+                raise ValueError(message)
         return self
 
     @model_validator(mode="after")
@@ -288,9 +293,11 @@ class Settings(BaseSettings):
             schedule = job.schedule
             command = job.command
             if schedule is None:
-                raise ValueError(f"host job {job_name!r} requires schedule")
+                message = f"host job {job_name!r} requires schedule"
+                raise ValueError(message)
             if command is None:
-                raise ValueError(f"host job {job_name!r} requires command")
+                message = f"host job {job_name!r} requires command"
+                raise ValueError(message)
             derived[job_name] = CronJobConfig(
                 enabled=job.enabled,
                 schedule=schedule,
@@ -333,7 +340,8 @@ class Settings(BaseSettings):
         for name in names:
             tool = self.tools.get(name)
             if tool is None:
-                raise ValueError(f"unknown tool: {name}")
+                message = f"unknown tool: {name}"
+                raise ValueError(message)
             if isinstance(tool, McpTool):
                 result[name] = tool.mcp
         return result
@@ -345,10 +353,12 @@ class Settings(BaseSettings):
 
         def visit(name: str) -> None:
             if name not in self.profiles:
-                raise ValueError(f"unknown profile reference: {name}")
+                message = f"unknown profile reference: {name}"
+                raise ValueError(message)
             if name in visiting:
                 cycle = " -> ".join([*visiting, name])
-                raise ValueError(f"profile cycle detected: {cycle}")
+                message = f"profile cycle detected: {cycle}"
+                raise ValueError(message)
             if name in visited:
                 return
             visiting.append(name)
