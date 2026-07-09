@@ -207,6 +207,5 @@ def _capability_candidates(capability: str) -> list[str]:
         return []
 
     candidates = [".".join(parts)]
-    for index in range(len(parts) - 1, 0, -1):
-        candidates.append(".".join([*parts[:index], "*"]))
+    candidates.extend(".".join([*parts[:index], "*"]) for index in range(len(parts) - 1, 0, -1))
     return candidates

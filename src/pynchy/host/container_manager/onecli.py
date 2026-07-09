@@ -32,7 +32,7 @@ class OneCliError(RuntimeError):
     """Base class for OneCLI integration failures."""
 
 
-class OneCliAgentNotFound(OneCliError):
+class OneCliAgentNotFoundError(OneCliError):
     """Raised when OneCLI has no agent for the requested identifier."""
 
 
@@ -79,7 +79,7 @@ class OneCliClient:
             return self._request_json("GET", f"/v1/container-config?{query}")
         except HTTPError as exc:
             if exc.code == 404:
-                raise OneCliAgentNotFound(agent) from exc
+                raise OneCliAgentNotFoundError(agent) from exc
             raise OneCliError(f"OneCLI container config failed with HTTP {exc.code}") from exc
 
     def create_agent(self, *, name: str, identifier: str) -> None:
@@ -164,7 +164,7 @@ def prepare_onecli_material(group_folder: str) -> OneCliMaterial | None:
     try:
         try:
             container_config = client.get_container_config(agent=agent)
-        except OneCliAgentNotFound:
+        except OneCliAgentNotFoundError:
             client.create_agent(name=group_folder, identifier=agent)
             container_config = client.get_container_config(agent=agent)
     except (HTTPError, URLError, OSError, TimeoutError, OneCliError) as exc:
@@ -268,7 +268,6 @@ def _handle_unavailable(config: OneCliConfig, reason: str) -> None:
     if config.fail_closed:
         raise OneCliError(f"OneCLI is enabled but unavailable: {reason}")
     logger.warning("OneCLI unavailable; falling back to native credentials", reason=reason)
-    return
 
 
 def _materialize_container_config(

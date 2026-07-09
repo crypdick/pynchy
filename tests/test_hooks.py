@@ -112,9 +112,7 @@ class TestLoadHooks:
 
     def test_all_event_types_discoverable(self, tmp_path: Path):
         """A module can register handlers for all event types."""
-        lines = []
-        for event in HookEvent:
-            lines.append(f"def {event.value}(*args): return {{}}")
+        lines = [f"def {event.value}(*args): return {{}}" for event in HookEvent]
         hook_file = tmp_path / "all_hooks.py"
         hook_file.write_text("\n".join(lines) + "\n")
         hooks = load_hooks([{"name": "all", "module_path": str(hook_file)}])

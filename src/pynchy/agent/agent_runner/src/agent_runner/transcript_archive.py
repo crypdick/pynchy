@@ -17,7 +17,7 @@ import asyncio
 import json
 import re
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, TypedDict
 
@@ -41,7 +41,7 @@ def _sanitize_filename(summary: str) -> str:
 
 
 def _generate_fallback_name() -> str:
-    now = datetime.now()
+    now = datetime.now(UTC)
     return f"conversation-{now.hour:02d}{now.minute:02d}"
 
 
@@ -109,7 +109,7 @@ def _parse_transcript(content: str) -> list[TranscriptMessage]:
 
 def _format_transcript_markdown(messages: list[TranscriptMessage], title: str | None = None) -> str:
     """Format parsed messages as markdown."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     formatted_date = now.strftime("%b %d, %I:%M %p")
 
     lines = [
@@ -174,7 +174,7 @@ async def archive_transcript(transcript_path: str, session_id: str) -> Path | No
 
         CONVERSATIONS_DIR.mkdir(parents=True, exist_ok=True)
 
-        date = datetime.now().strftime("%Y-%m-%d")
+        date = datetime.now(UTC).strftime("%Y-%m-%d")
         filename = f"{date}-{name}.md"
         file_path = CONVERSATIONS_DIR / filename
 

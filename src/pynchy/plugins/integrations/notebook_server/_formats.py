@@ -19,7 +19,7 @@ def generate_name() -> str:
     """Generate a notebook name: YYYY-MM-DD-adjective-animal."""
     from ubuntu_namer import generate
 
-    today = datetime.date.today().isoformat()
+    today = datetime.datetime.now(datetime.UTC).date().isoformat()
     slug = generate()  # e.g. "ailing-amoeba"
     return f"{today}-{slug}"
 

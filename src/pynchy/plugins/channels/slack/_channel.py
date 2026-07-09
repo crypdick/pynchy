@@ -382,11 +382,11 @@ class SlackChannel:
         if not self._is_allowed_channel(channel_id):
             return [], ""
 
-        _MAX_PAGES = 10
+        max_pages = 10
         current_oldest = oldest
         high_water_mark = ""
 
-        for _page in range(_MAX_PAGES):
+        for _page in range(max_pages):
             page = await self._history_page(channel_id, current_oldest, limit=limit)
             if page is None:
                 return [], high_water_mark

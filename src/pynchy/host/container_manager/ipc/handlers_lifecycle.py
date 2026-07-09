@@ -36,10 +36,8 @@ def _sync_merge_and_check_deploy(
     deploy_info: bool | None = None
     if result.get("success"):
         post_merge_sha = get_head_sha(cwd=repo_ctx.root)
-        if (
-            pre_merge_sha != "unknown"
-            and pre_merge_sha != post_merge_sha
-            and needs_deploy(pre_merge_sha, post_merge_sha)
+        if pre_merge_sha not in {"unknown", post_merge_sha} and needs_deploy(
+            pre_merge_sha, post_merge_sha
         ):
             deploy_info = needs_container_rebuild(pre_merge_sha, post_merge_sha)
 

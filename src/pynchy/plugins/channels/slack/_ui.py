@@ -176,7 +176,7 @@ def extract_checkbox_values(body: dict[str, Any], request_id: str) -> str:
     for block_id, actions in values.items():
         if not block_id.startswith(f"ask_user_actions_{request_id}"):
             continue
-        for _action_id, payload in actions.items():
+        for payload in actions.values():
             for opt in payload.get("selected_options", []):
                 label = opt.get("value", "")
                 if label:

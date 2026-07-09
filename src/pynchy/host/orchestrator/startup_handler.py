@@ -75,8 +75,7 @@ async def send_boot_notification(deps: StartupDeps) -> None:
         try:
             warnings = json.loads(boot_warnings_path.read_text())
             boot_warnings_path.unlink()
-            for warning in warnings:
-                parts.append(f"WARNING: {warning}")
+            parts.extend(f"WARNING: {warning}" for warning in warnings)
         except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Failed to read boot warnings", err=str(exc))
             boot_warnings_path.unlink(missing_ok=True)
@@ -203,7 +202,7 @@ async def check_deploy_continuation(deps: StartupDeps) -> None:
     commit_msg = get_head_commit_message(50)
     label = f"{sha_short} {commit_msg}".strip() if commit_msg else sha_short
 
-    for jid, _session_id in active_sessions.items():
+    for jid in active_sessions:
         # Active session existed before deploy → send as system notice
         # (visible to both user and LLM). broadcast_system_notice stores
         # the message, broadcasts to channels, and enqueues a message check.

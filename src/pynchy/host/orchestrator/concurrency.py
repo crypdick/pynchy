@@ -446,7 +446,7 @@ class GroupQueue:
 
         # Stop any remaining one-shot containers
         active: list[tuple[asyncio.subprocess.Process, str]] = []
-        for _jid, state in self._groups.items():
+        for state in self._groups.values():
             proc_alive = getattr(state.process, "returncode", None) is None
             if state.process and state.container_name and proc_alive:
                 active.append((state.process, state.container_name))

@@ -83,9 +83,9 @@ async def handle_pending_query(deps: ApprovalDeps, chat_jid: str) -> None:
         return
 
     lines = ["Pending approvals:\n"]
-    for p in pending:
-        lines.append(
-            f"  \u2022 {p['tool_name']} ({p['short_id']}) \u2014 {p.get('source_group', '?')}"
-        )
+    lines.extend(
+        f"  \u2022 {p['tool_name']} ({p['short_id']}) \u2014 {p.get('source_group', '?')}"
+        for p in pending
+    )
 
     await deps.broadcast_host_message(chat_jid, "\n".join(lines))

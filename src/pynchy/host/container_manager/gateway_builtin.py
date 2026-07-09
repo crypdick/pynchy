@@ -113,10 +113,11 @@ class BuiltinGateway:
     def _build_upstream_headers(
         self, headers_in: Mapping[str, str], provider: str
     ) -> dict[str, str]:
-        headers: dict[str, str] = {}
-        for key, value in headers_in.items():
-            if key.lower() not in _STRIP_REQUEST_HEADERS:
-                headers[key] = value
+        headers = {
+            key: value
+            for key, value in headers_in.items()
+            if key.lower() not in _STRIP_REQUEST_HEADERS
+        }
 
         creds = self._credentials[provider]
         if provider == "anthropic":
@@ -157,10 +158,11 @@ class BuiltinGateway:
                 headers=headers,
                 data=body,
             ) as upstream:
-                resp_headers: dict[str, str] = {}
-                for key, value in upstream.headers.items():
-                    if key.lower() not in _STRIP_RESPONSE_HEADERS:
-                        resp_headers[key] = value
+                resp_headers = {
+                    key: value
+                    for key, value in upstream.headers.items()
+                    if key.lower() not in _STRIP_RESPONSE_HEADERS
+                }
 
                 response = web.StreamResponse(
                     status=upstream.status,

@@ -74,8 +74,7 @@ def scan_payload_for_secrets(payload: str | dict[str, Any] | None) -> ScanResult
     detected_types: list[str] = []
     with transient_settings(_SCANNER_CONFIG):
         for line in text.splitlines():
-            for secret in scan_line(line):
-                detected_types.append(secret.type)
+            detected_types.extend(secret.type for secret in scan_line(line))
 
     if not detected_types:
         return ScanResult()

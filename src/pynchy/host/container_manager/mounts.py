@@ -232,14 +232,16 @@ def _add_validated_additional_mounts(
     validated = validate_additional_mounts(
         group.container_config.additional_mounts, group.name, is_admin
     )
-    for mount in validated:
-        mounts.append(
+    mounts.extend(
+        [
             VolumeMount(
                 host_path=str(mount["hostPath"]),
                 container_path=str(mount["containerPath"]),
                 readonly=bool(mount["readonly"]),
             )
-        )
+            for mount in validated
+        ]
+    )
 
 
 def build_container_args(mounts: list[VolumeMount], container_name: str) -> list[str]:

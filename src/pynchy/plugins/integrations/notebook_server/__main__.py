@@ -176,9 +176,11 @@ async def start_kernel(name: str | None = None) -> dict[str, Any]:
                 code_count += 1
                 outputs = await execute_code(session, cell.source)
                 cell.outputs = outputs
-                for out in outputs:
-                    if out.get("output_type") == "error":
-                        errors.append(f"Cell {code_count}: {out.get('ename')}: {out.get('evalue')}")
+                errors.extend(
+                    f"Cell {code_count}: {out.get('ename')}: {out.get('evalue')}"
+                    for out in outputs
+                    if out.get("output_type") == "error"
+                )
 
         result["rehydrated"] = True
         result["cells_total"] = len(existing_nb.cells)
@@ -341,7 +343,9 @@ async def list_notebooks() -> dict[str, Any]:
                 {
                     "name": path.name,
                     "size_kb": round(stat.st_size / 1024, 1),
-                    "modified": datetime.datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    "modified": datetime.datetime.fromtimestamp(
+                        stat.st_mtime, tz=datetime.UTC
+                    ).isoformat(),
                 }
             )
 

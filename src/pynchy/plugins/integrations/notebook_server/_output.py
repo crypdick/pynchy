@@ -64,19 +64,19 @@ def outputs_for_agent(outputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     Truncates large text, converts image data to summaries (the agent doesn't
     need raw base64), and flattens stream outputs.
     """
-    MAX_TEXT = 8000
+    max_text = 8000
     result: list[dict[str, Any]] = []
 
     for out in outputs:
         otype = out.get("output_type")
         if otype == "stream":
-            result.append(_stream_output_entry(out, max_text=MAX_TEXT))
+            result.append(_stream_output_entry(out, max_text=max_text))
             continue
         if otype in ("execute_result", "display_data"):
-            result.append(_display_output_entry(out, max_text=MAX_TEXT))
+            result.append(_display_output_entry(out, max_text=max_text))
             continue
         if otype == "error":
-            result.append(_error_output_entry(out, max_text=MAX_TEXT))
+            result.append(_error_output_entry(out, max_text=max_text))
 
     return result
 

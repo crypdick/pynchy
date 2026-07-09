@@ -53,7 +53,7 @@ def generate_requirements(output_path: Path, config_path: Path) -> int:
         data = tomllib.loads(config_path.read_text())
         plugins = data.get("plugins", {})
         if isinstance(plugins, dict):
-            for _plugin_name, plugin_cfg in plugins.items():
+            for plugin_cfg in plugins.values():
                 if not isinstance(plugin_cfg, dict):
                     continue
                 if plugin_cfg.get("enabled", True) is False:

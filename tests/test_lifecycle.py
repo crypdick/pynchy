@@ -18,18 +18,18 @@ from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.types import WorkspaceProfile
 
 
-class StopAfterArgumentValidation(Exception):
+class StopAfterArgumentValidationError(Exception):
     """Sentinel raised once run_app reaches its first startup phase."""
 
 
 @pytest.mark.asyncio
 async def test_run_app_resolves_pynchyapp_runtime_annotation(monkeypatch):
     async def stop_before_startup(app: PynchyApp) -> None:
-        raise StopAfterArgumentValidation
+        raise StopAfterArgumentValidationError
 
     monkeypatch.setattr(lifecycle, "_initialize_core", stop_before_startup)
 
-    with pytest.raises(StopAfterArgumentValidation):
+    with pytest.raises(StopAfterArgumentValidationError):
         await lifecycle.run_app(PynchyApp())
 
 

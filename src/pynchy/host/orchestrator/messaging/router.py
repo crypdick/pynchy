@@ -123,7 +123,7 @@ async def broadcast_agent_input(
     forwards) broadcast the full prompt to channels so observers understand
     what triggered the agent.
     """
-    _SOURCE_LABELS = {
+    _source_labels = {
         "scheduled_task": "Scheduled Task",
         "reset_handoff": "Context Handoff",
         "ipc_forward": "Forwarded",
@@ -152,7 +152,7 @@ async def broadcast_agent_input(
         return
 
     # Synthetic messages: broadcast to channels so users see what triggered the agent
-    label = _SOURCE_LABELS.get(source, source)
+    label = _source_labels.get(source, source)
     for msg in messages:
         if not isinstance(msg, dict):
             continue
