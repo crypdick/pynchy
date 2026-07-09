@@ -16,6 +16,8 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runt
     ChatJid,
 )
 
+_OUTBOUND_LEDGER_ID_MISSING_ERROR = "INSERT INTO outbound_ledger did not return a row id"
+
 
 @dataclass
 class PendingDelivery:
@@ -47,7 +49,7 @@ async def record_outbound(
         )
         ledger_id = cursor.lastrowid
         if ledger_id is None:
-            raise RuntimeError("INSERT INTO outbound_ledger did not return a row id")
+            raise RuntimeError(_OUTBOUND_LEDGER_ID_MISSING_ERROR)
         for ch_name in channel_names:
             await db.execute(
                 "INSERT INTO outbound_deliveries (ledger_id, channel_name) VALUES (?, ?)",

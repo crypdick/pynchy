@@ -17,6 +17,8 @@ import aiosqlite
 
 from pynchy.logger import logger
 
+_CHANNEL_CURSORS_COUNT_MISSING_ERROR = "COUNT(*) query on channel_cursors returned no row"
+
 _SCHEMA = """\
 CREATE TABLE IF NOT EXISTS chats (
     jid TEXT PRIMARY KEY,
@@ -274,7 +276,7 @@ async def _seed_channel_cursors(database: aiosqlite.Connection) -> None:
     cursor = await database.execute("SELECT COUNT(*) FROM channel_cursors")
     row = await cursor.fetchone()
     if row is None:
-        raise RuntimeError("COUNT(*) query on channel_cursors returned no row")
+        raise RuntimeError(_CHANNEL_CURSORS_COUNT_MISSING_ERROR)
     count = row[0]
     if count > 0:
         return  # already seeded

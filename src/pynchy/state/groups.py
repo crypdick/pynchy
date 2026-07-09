@@ -19,6 +19,12 @@ from pynchy.types import (
     WorkspaceSecurity,
 )
 
+_CORRUPT_SECURITY_PROFILE_ERROR = (
+    "Corrupt security_profile for workspace {folder!r}; "
+    "refusing to load rather than silently defaulting to permissive trust"
+)
+_INVALID_WORKSPACE_PROFILE_ERROR = "Invalid workspace profile: {errors}"
+
 
 def _row_to_workspace_profile(row: Row) -> WorkspaceProfile:
     """Convert database row to WorkspaceProfile."""
@@ -45,8 +51,7 @@ def _row_to_workspace_profile(row: Row) -> WorkspaceProfile:
             )
         except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as exc:
             raise ValueError(
-                f"Corrupt security_profile for workspace {row['folder']!r}; "
-                "refusing to load rather than silently defaulting to permissive trust"
+                _CORRUPT_SECURITY_PROFILE_ERROR.format(folder=row["folder"])
             ) from exc
 
     return WorkspaceProfile(
@@ -78,7 +83,7 @@ async def set_workspace_profile(profile: WorkspaceProfile) -> None:
     """
     errors = profile.validate()
     if errors:
-        raise ValueError(f"Invalid workspace profile: {'; '.join(errors)}")
+        raise ValueError(_INVALID_WORKSPACE_PROFILE_ERROR.format(errors="; ".join(errors)))
 
     db = _get_db()
 
