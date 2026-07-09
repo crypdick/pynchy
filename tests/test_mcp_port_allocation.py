@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 from conftest import make_settings
 
 from pynchy.config.mcp import McpServerConfig
-from pynchy.config.models import SandboxProfileConfig, WorkspaceConfig
+from pynchy.config.models import ProfileConfig, WorkspaceConfig
 from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
 from pynchy.host.container_manager.mcp.lifecycle import (
     _build_placeholders,  # allow: private-test-imports
@@ -248,13 +248,15 @@ class TestResolveAllInstancesPortOffset:
     """
 
     def _make_manager(self, workspaces: dict, mcp_servers: dict):
-        from pynchy.config.models import WorkspaceConfig
-
         ws_configs = {}
+        profiles = {}
         for name, servers in workspaces.items():
-            ws_configs[name] = WorkspaceConfig(mcp_servers=servers)
+            profile_name = f"{name}-mcp"
+            profiles[profile_name] = ProfileConfig(tools=servers)
+            ws_configs[name] = WorkspaceConfig(profiles=[profile_name])
 
         settings = make_settings(
+            profiles=profiles,
             workspaces=ws_configs,
             mcp_servers={name: McpServerConfig(**spec) for name, spec in mcp_servers.items()},
         )
@@ -363,11 +365,11 @@ class TestResolveAllInstancesPortOffset:
 
     def test_profile_mcp_servers_are_resolved_for_workspace(self):
         settings = make_settings(
-            sandbox_profiles={
-                "dev": SandboxProfileConfig(mcp_servers=["linear"]),
+            profiles={
+                "dev": ProfileConfig(tools=["linear"]),
             },
             workspaces={
-                "code-improver": WorkspaceConfig(profile="dev"),
+                "code-improver": WorkspaceConfig(profiles=["dev"]),
             },
             mcp_servers={
                 "linear": McpServerConfig(

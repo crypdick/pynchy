@@ -11,7 +11,12 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.config.models import LearningConfig, ObsidianLearningConfig, WorkspaceConfig
+from pynchy.config.models import (
+    LearningConfig,
+    ObsidianLearningConfig,
+    ProfileConfig,
+    WorkspaceConfig,
+)
 from pynchy.host.learning.packet_codec import packet_to_payload
 from pynchy.host.learning.packets import (
     LearningRunSummary,
@@ -40,7 +45,8 @@ def _settings(
             packet_max_chars=packet_max_chars,
             obsidian=ObsidianLearningConfig(vault_root=str(vault)),
         ),
-        workspaces={"deep-work": WorkspaceConfig(profile=profile)},
+        profiles={profile: ProfileConfig()},
+        workspaces={"deep-work": WorkspaceConfig(profiles=[profile])},
     )
 
 

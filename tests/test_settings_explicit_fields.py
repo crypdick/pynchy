@@ -1,31 +1,40 @@
-"""Tests for explicit-fields validation in Settings."""
+"""Tests for explicit field handling in Settings."""
 
 from __future__ import annotations
 
-import pytest
-from pydantic import ValidationError
-
-from pynchy.config import Settings
 from pynchy.config.jobs import JobConfig
 from pynchy.config.models import AgentConfig
+from pynchy.config.settings import validate_settings_mapping
 
 
 class TestExplicitFieldValidation:
-    def test_rejects_partial_direct_submodel(self) -> None:
-        with pytest.raises(ValidationError, match=r"agent: missing \['name', 'trigger_aliases'\]"):
-            Settings(agent=AgentConfig(core="openai"))
+    def test_accepts_defaulted_direct_submodel(self) -> None:
+        settings = validate_settings_mapping(
+            {"agent": AgentConfig(default_core="codex")},
+        )
 
-    def test_rejects_partial_dict_entry_submodel(self) -> None:
-        with pytest.raises(
-            ValidationError,
-            match=r"jobs\.nightly: missing \['enabled'\]",
-        ):
-            Settings(
-                jobs={
+        assert settings.agent.default_core == "codex"
+        assert settings.agent.model is None
+
+    def test_accepts_defaulted_dict_entry_submodel(self) -> None:
+        settings = validate_settings_mapping(
+            {
+                "jobs": {
                     "nightly": JobConfig(
                         schedule="0 0 * * *",
                         workspace="host",
                         command="echo hi",
                     )
                 }
-            )
+            }
+        )
+
+        assert settings.jobs["nightly"].enabled is True
+        assert settings.cron_jobs["nightly"].enabled is True
+
+    def test_accepts_defaulted_agent_mapping(self) -> None:
+        settings = validate_settings_mapping(
+            {"agent": {"default_core": "openai"}},
+        )
+
+        assert settings.agent == AgentConfig(default_core="openai")

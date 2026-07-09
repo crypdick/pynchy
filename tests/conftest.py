@@ -85,10 +85,6 @@ def make_settings(**overrides):
         "cron_jobs": {},
         "jobs": {},
     }
-    if "sandbox_universal" in overrides:
-        defaults["universal"] = overrides.pop("sandbox_universal")
-    if "sandbox_profiles" in overrides:
-        defaults["profiles"] = overrides.pop("sandbox_profiles")
     defaults.update(overrides)
     s = Settings.model_construct(**defaults)
 

@@ -15,10 +15,10 @@ from __future__ import annotations
 
 import posixpath
 from pathlib import Path
-from typing import Annotated, Any, Literal, NewType
+from typing import Annotated, Literal, NewType
 
 from croniter import croniter
-from pydantic import AfterValidator, BaseModel, SecretStr, field_validator
+from pydantic import AfterValidator, BaseModel, Field, SecretStr, field_validator, model_validator
 
 from pynchy.config.refs import parse_chat_ref, parse_connection_ref
 
@@ -29,6 +29,12 @@ from pynchy.config.refs import parse_chat_ref, parse_connection_ref
 # plain str ref is expected (string interpolation, config round-trip, cascade merge).
 ConnectionRefStr = NewType("ConnectionRefStr", str)
 ChatRefStr = NewType("ChatRefStr", str)
+ProfileName = NewType("ProfileName", str)
+ToolName = NewType("ToolName", str)
+WorkspaceName = NewType("WorkspaceName", str)
+RepoSlug = NewType("RepoSlug", str)
+# TODO(config-schema-cutover): propagate these semantic names through host/runtime
+# call sites as the remaining config plumbing adopts workspace/tool identity types.
 
 
 def _validated_connection_ref(v: str) -> ConnectionRefStr:
@@ -37,17 +43,39 @@ def _validated_connection_ref(v: str) -> ConnectionRefStr:
     return ConnectionRefStr(v)
 
 
+def _validated_connection_name(v: str) -> str:
+    if v.startswith("connection.") or "." in v:
+        raise ValueError("command_center.connection must be a [connections.<name>] name")
+    return _validated_name(v)
+
+
 def _validated_chat_ref(v: str) -> ChatRefStr:
     if parse_chat_ref(v) is None:
         raise ValueError("chat must be connection.<platform>.<name>.chat.<chat>")
     return ChatRefStr(v)
 
 
+def _validated_name(v: str) -> str:
+    if not v.strip():
+        raise ValueError("config names must not be empty")
+    return v
+
+
+def _validated_repo_slug(v: str) -> RepoSlug:
+    if v.count("/") != 1 or any(not part for part in v.split("/")):
+        raise ValueError("repo must be an owner/repo slug")
+    return RepoSlug(v)
+
+
 # AfterValidator runs after Pydantic coerces the input to str; for Optional fields it
 # is skipped on None. The validator returns the NewType so the field's static type
 # carries the parse result — no downstream re-validation.
 ValidatedConnectionRef = Annotated[ConnectionRefStr, AfterValidator(_validated_connection_ref)]
+ValidatedConnectionName = Annotated[str, AfterValidator(_validated_connection_name)]
 ValidatedChatRef = Annotated[ChatRefStr, AfterValidator(_validated_chat_ref)]
+ValidatedProfileName = Annotated[ProfileName, AfterValidator(_validated_name)]
+ValidatedToolName = Annotated[ToolName, AfterValidator(_validated_name)]
+ValidatedRepoSlug = Annotated[RepoSlug, AfterValidator(_validated_repo_slug)]
 
 
 class _StrictModel(BaseModel):
@@ -57,14 +85,8 @@ class _StrictModel(BaseModel):
 
 
 class AgentConfig(_StrictModel):
-    name: str = "pynchy"
-    # NOTE: Update docs/architecture/message-routing.md § Trigger Pattern if you change this
-    trigger_aliases: list[str] = ["ghost"]
-    core: str = "openai"  # built-in: "openai", "claude", "claude-cli", or "codex"
-    # Passed through to the selected core. For LiteLLM routes, use the model_name
-    # from litellm_config.yaml, e.g. "chatgpt/gpt-5.3-codex".
-    model: str | None = "gpt-5.5"
-    fallback_model: str | None = None
+    default_core: str = "openai"  # built-in: "openai", "claude", "claude-cli", or "codex"
+    model: str | None = None
 
 
 class ContainerConfig(_StrictModel):
@@ -320,44 +342,29 @@ class ConnectionsConfig(_StrictModel):
 class CommandCenterConfig(_StrictModel):
     """Which connection is the dedicated command center."""
 
-    connection: ValidatedConnectionRef | None = None
+    connection: ValidatedConnectionName | None = None
 
 
 class ProfileConfig(_StrictModel):
-    """Reusable workspace profile config.
+    """Composable workspace profile config."""
 
-    All fields default to None ("no opinion at this tier, inherit from next").
-    Use model_fields_set to distinguish "explicitly set" from "defaulted to None".
-
-    List fields (directives, skills, mcp_servers): unioned across tiers.
-    Override fields (all others): most-specific explicitly-set value wins.
-    """
-
-    # Union fields (merged across tiers, deduplicated)
-    tags: list[str] | None = None
-    directives: list[str] | None = None
-    skills: list[str] | None = None
-    mcp_servers: list[str] | None = None
-    capabilities: dict[str, CapabilityTomlConfig] | None = None
-
-    # Override fields (most-specific wins)
-    context_mode: Literal["group", "isolated"] | None = None
-    access: Literal["read", "write", "readwrite"] | None = None
-    mode: Literal["agent", "chat"] | None = None
-    trust: bool | None = None
-    trigger: Literal["mention", "always"] | None = None
-    allowed_users: list[str] | None = None  # override semantics, not union
-    idle_terminate: bool | None = None
-    git_policy: Literal["merge-to-main", "pull-request"] | None = None
-    security: WorkspaceSecurityTomlConfig | None = None
-    repo_access: str | None = None
+    includes: list[ValidatedProfileName] = Field(default_factory=list)
+    prompts: list[str] = Field(default_factory=list)
+    skills: list[str] = Field(default_factory=list)
+    tools: list[ValidatedToolName] = Field(default_factory=list)
+    repo: list[ValidatedRepoSlug] = Field(default_factory=list)
     model: str | None = None
-    fallback_model: str | None = None
-    is_admin: bool | None = None
-    contains_secrets: bool | None = None
+    is_admin: bool = False
+    contains_secrets: bool = False
 
-
-SandboxProfileConfig = ProfileConfig
+    @field_validator("repo", mode="before")
+    @classmethod
+    def normalize_repo(cls, v: str | list[str] | None) -> list[str]:
+        if v is None:
+            return []
+        if isinstance(v, str):
+            return [v]
+        return v
 
 
 class ServiceTrustTomlConfig(_StrictModel):
@@ -414,46 +421,70 @@ class RepoConfig(_StrictModel):
 
 
 class WorkspaceConfig(_StrictModel):
-    name: str | None = None  # display name — optional, derived when omitted
-    profile: str | None = None  # profiles.<name> reference
-    directives: list[str] | None = None  # plugin/runtime directive names
-    # TODO: Allow binding to a whole connection (not just a chat).
-    chat: ValidatedChatRef | None = None  # connection.<platform>.<name>.chat.<chat>
-    is_admin: bool | None = None  # None → not admin
-    repo_access: str | None = None  # GitHub slug (owner/repo) from [repos.*]; None = no worktree
-    schedule: str | None = None  # cron expression
-    prompt: str | None = None  # prompt for scheduled tasks
-    context_mode: str | None = None  # None → inherit from profile/universal
-    security: WorkspaceSecurityTomlConfig | None = None  # Trust-based security profile
-    skills: list[str] | None = None  # tier names and/or skill names; None = core only
-    mcp_servers: list[str] | None = None  # server names + group names, set-unioned
-    capabilities: dict[str, CapabilityTomlConfig] | None = None
-    mcp: dict[str, dict[str, Any]] = {}  # {server_name: {key: value}} → per-MCP kwargs
-    # Channel access modes (None → inherit from profile/universal)
-    access: Literal["read", "write", "readwrite"] | None = None
-    mode: Literal["agent", "chat"] | None = None
-    trust: bool | None = None
-    trigger: Literal["mention", "always"] | None = None
-    allowed_users: list[str] | None = None
-    git_policy: Literal["merge-to-main", "pull-request"] | None = None  # None → merge-to-main
-    idle_terminate: bool | None = None  # None → inherit from profile/universal (default: True)
-    model: str | None = None  # None → use [agent].model
-    fallback_model: str | None = None  # None → use [agent].fallback_model
+    profiles: list[ValidatedProfileName] = Field(default_factory=list)
 
-    # A cron expression has no distinct parsed type worth carrying: croniter.is_valid
-    # is cheap and compute_next_run re-instantiates croniter from the string anyway, so
-    # this stays a str-returning check rather than a NewType parse.
-    @field_validator("schedule")
+
+class ReposConfig(_StrictModel):
+    root: Path = Path("/Users/ricardo/src/PERSONAL")
+    overrides: dict[str, RepoConfig] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
     @classmethod
-    def validate_cron(cls, v: str | None) -> str | None:
-        if v is not None and not croniter.is_valid(v):
-            msg = f"Invalid cron expression: {v}"
-            raise ValueError(msg)
+    def reject_inline_repo_overrides(cls, data: dict[str, object]) -> dict[str, object]:
+        if not isinstance(data, dict):
+            return data
+        unknown = sorted(set(data) - {"root", "overrides"})
+        if unknown:
+            raise ValueError(f"repo overrides must be nested under repos.overrides: {unknown}")
+        return data
+
+    @field_validator("overrides")
+    @classmethod
+    def validate_override_slugs(cls, v: dict[str, RepoConfig]) -> dict[str, RepoConfig]:
+        for slug in v:
+            _validated_repo_slug(slug)
         return v
 
-    @property
-    def is_periodic(self) -> bool:
-        return self.schedule is not None and self.prompt is not None
+
+class BuiltinToolConfig(_StrictModel):
+    type: Literal["builtin"]
+    name: str
+    public_source: bool | Literal["forbidden"] = True
+    secret_data: bool = True
+    public_sink: bool | Literal["forbidden"] = True
+    dangerous_writes: bool | Literal["forbidden"] = True
+
+
+class LinearToolConfig(_StrictModel):
+    type: Literal["linear"]
+    workspace: str | None = None
+    public_source: bool | Literal["forbidden"] = True
+    secret_data: bool = True
+    public_sink: bool | Literal["forbidden"] = True
+    dangerous_writes: bool | Literal["forbidden"] = True
+
+
+class McpToolConfig(_StrictModel):
+    type: Literal["mcp"]
+    public_source: bool | Literal["forbidden"] = True
+    secret_data: bool = True
+    public_sink: bool | Literal["forbidden"] = True
+    dangerous_writes: bool | Literal["forbidden"] = True
+
+
+ToolConfig = Annotated[
+    BuiltinToolConfig | LinearToolConfig | McpToolConfig,
+    Field(discriminator="type"),
+]
+
+
+class DiscordConnectionTomlConfig(_StrictModel):
+    type: Literal["discord"]
+    bot_token_env: str
+    application_id: str | None = None
+
+
+ConnectionConfig = DiscordConnectionTomlConfig
 
 
 class _ResetWords(_StrictModel):

@@ -16,7 +16,7 @@ from typing import Any
 
 from pynchy.config import Settings
 from pynchy.config.mcp import McpServerConfig
-from pynchy.config.merge import ResolvedSandboxConfig, merge_sandbox_config
+from pynchy.config.merge import ResolvedWorkspaceConfig
 from pynchy.logger import logger
 from pynchy.types import ServiceTrustConfig
 
@@ -86,14 +86,9 @@ class _SyncState:
 def _resolved_workspace_config(
     settings: Settings,
     group_folder: str,
-) -> ResolvedSandboxConfig | None:
-    """Resolve workspace config before reading MCP server declarations."""
-    ws_config = settings.workspaces.get(group_folder)
-    if ws_config is None:
-        return None
-
-    profile = settings.profiles.get(ws_config.profile) if ws_config.profile else None
-    return merge_sandbox_config(settings.universal, profile, ws_config)
+) -> ResolvedWorkspaceConfig | None:
+    """Resolve workspace config before reading selected MCP tool declarations."""
+    return settings.resolved_workspace_config(group_folder)
 
 
 def merged_mcp_servers(
@@ -153,12 +148,12 @@ def resolve_workspace_servers(
     all_servers: dict[str, McpServerConfig],
     group_folder: str,
 ) -> list[str]:
-    """Expand workspace's mcp_servers list (groups + names) into concrete server names."""
+    """Expand resolved MCP tool names into concrete server names."""
     ws_config = _resolved_workspace_config(settings, group_folder)
     if not ws_config:
         return []
 
-    configured_servers = list(ws_config.mcp_servers or [])
+    configured_servers = [name for name in ws_config.tools if name in all_servers]
     if os.environ.get("LINEAR_API_KEY") and "linear" in all_servers:
         configured_servers.append("linear")
 
@@ -184,11 +179,11 @@ def resolve_kwargs(settings: Settings, group_folder: str, server_name: str) -> d
 
     Expands presets and merges with explicit values.
     """
-    ws_config = settings.workspaces.get(group_folder)
-    if not ws_config:
+    if group_folder not in settings.workspaces:
         return {}
+    assert server_name
 
-    raw_kwargs: dict[str, Any] = dict(ws_config.mcp.get(server_name, {}))
+    raw_kwargs: dict[str, Any] = {}
 
     # Extract and expand presets
     preset_names: list[str] = raw_kwargs.pop("presets", [])

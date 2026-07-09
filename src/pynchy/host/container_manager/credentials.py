@@ -137,12 +137,12 @@ def _gh_token_env_var(s: Settings, *, is_admin: bool, group_folder: str) -> dict
             return {"GH_TOKEN": gh_token}
         return {}
 
-    # Non-admin: inject repo-scoped token if this workspace has repo_access
+    # Non-admin: inject repo-scoped token if this workspace has a configured repo.
     from pynchy.host.orchestrator.workspace_config import load_resolved_config
 
     resolved = load_resolved_config(group_folder)
-    if resolved and resolved.repo_access:
-        repo_cfg = s.repos.get(resolved.repo_access)
+    if resolved and resolved.repo:
+        repo_cfg = s.repos.overrides.get(resolved.repo[0])
         if repo_cfg and repo_cfg.token:
             return {"GH_TOKEN": repo_cfg.token.get_secret_value()}
     return {}
@@ -161,25 +161,23 @@ def _git_identity_env_vars() -> dict[str, str]:
 
 
 def _chrome_profiles_env_var(s: Settings, *, is_admin: bool, group_folder: str) -> dict[str, str]:
-    """Chrome profiles — extract from workspace's mcp_servers list.
+    """Chrome profiles selected by resolved MCP tool names.
 
-    If a workspace has mcp_servers = ["gdrive.mycompany", "gcal.work"], the
-    profiles are {"mycompany", "work"} (extracted from instance names
-    matching templates that have declared instances). Admin gets all
-    chrome_profiles; non-admin gets only its attached ones.
+    Admin gets every configured chrome profile; non-admin workspaces get the
+    chrome profile suffixes from selected MCP tools such as ``gdrive.personal``.
     """
     if is_admin:
         chrome_profiles = s.chrome_profiles
     else:
-        ws_cfg = s.workspaces.get(group_folder)
         chrome_profiles_set: set[str] = set()
-        if ws_cfg and ws_cfg.mcp_servers:
-            for entry in ws_cfg.mcp_servers:
-                if "." in entry:
-                    # "gdrive.mycompany" → check if "mycompany" is a chrome profile
-                    _, inst_name = entry.split(".", 1)
-                    if inst_name in s.chrome_profiles:
-                        chrome_profiles_set.add(inst_name)
+        resolved = s.resolved_workspace_config(group_folder)
+        for tool_name in resolved.tools if resolved else []:
+            tool = s.tools.get(tool_name)
+            if tool is None or tool.type != "mcp" or "." not in tool_name:
+                continue
+            _, inst_name = tool_name.split(".", 1)
+            if inst_name in s.chrome_profiles:
+                chrome_profiles_set.add(inst_name)
         chrome_profiles = sorted(chrome_profiles_set)
 
     if chrome_profiles:

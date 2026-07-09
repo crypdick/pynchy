@@ -309,7 +309,7 @@ Channel messages can contain malicious instructions that attempt to manipulate C
 |------------|------------|----------------|
 | Project root access | `/workspace/project` (rw) | Via `repo_access` (worktree, rw) |
 | Group folder | `/workspace/group` (rw) | `/workspace/group` (rw) |
-| System prompt directives | Scoped via config | Scoped via config |
+| System prompts | Scoped via config | Scoped via config |
 | `config.toml` | Mounted read-write | Not mounted |
 | Additional mounts | Configurable | Read-only unless allowed |
 | Network access | Unrestricted | Unrestricted |

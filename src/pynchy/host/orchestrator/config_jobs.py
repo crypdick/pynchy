@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
-from pynchy.config.merge import ResolvedSandboxConfig
+from pynchy.config.merge import ResolvedWorkspaceConfig
 from pynchy.config.settings import Settings
 from pynchy.logger import logger
 from pynchy.state import create_task, get_task_by_id, update_task
@@ -40,7 +40,7 @@ def _job_schedule(
 async def reconcile_agent_jobs(
     workspaces: dict[str, WorkspaceProfile],
     settings: Settings,
-    resolve_config: Callable[[str], ResolvedSandboxConfig | None],
+    resolve_config: Callable[[str], ResolvedWorkspaceConfig | None],
 ) -> set[str]:
     """Create or update scheduled tasks declared under [jobs.*]."""
     desired_task_ids: set[str] = set()
@@ -76,7 +76,8 @@ async def reconcile_agent_jobs(
 
         schedule_type, schedule_value, next_run = _job_schedule(job_name, settings)
         prompt = _job_prompt(job_name, settings)
-        context_mode = job.context_mode or resolved.context_mode
+        context_mode: Literal["group", "isolated"] = job.context_mode or "group"
+        repo_access = resolved.repo[0] if resolved.repo else None
         desired_task_ids.add(task_id)
         existing = await get_task_by_id(task_id)
 
@@ -89,8 +90,8 @@ async def reconcile_agent_jobs(
                     prompt=prompt,
                     schedule_type=schedule_type,
                     schedule_value=schedule_value,
-                    context_mode=cast('Literal["group", "isolated"]', context_mode),
-                    repo_access=resolved.repo_access,
+                    context_mode=context_mode,
+                    repo_access=repo_access,
                     next_run=next_run,
                     status="active",
                     created_at=datetime.now(UTC).isoformat(),
@@ -111,8 +112,8 @@ async def reconcile_agent_jobs(
             updates["next_run"] = next_run
         if existing.context_mode != context_mode:
             updates["context_mode"] = context_mode
-        if existing.repo_access != resolved.repo_access:
-            updates["repo_access"] = resolved.repo_access
+        if existing.repo_access != repo_access:
+            updates["repo_access"] = repo_access
         if existing.status != "active":
             updates["status"] = "active"
         if updates:

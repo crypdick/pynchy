@@ -124,17 +124,14 @@ def _resolved_pre_container_context(
     *,
     repo_access_override: str | None,
 ) -> tuple[bool, str | None, str | None, str | None]:
-    from pynchy.config.directives import read_directives
+    from pynchy.config.prompts import read_prompts
     from pynchy.host.orchestrator.workspace_config import load_resolved_config
 
     resolved = load_resolved_config(group_folder)
-    repo_access = (
-        repo_access_override
-        if repo_access_override is not None
-        else (resolved.repo_access if resolved else None)
-    )
-    system_prompt_append = read_directives(
-        resolved.directives if resolved else [],
+    resolved_repo = resolved.repo[0] if resolved and resolved.repo else None
+    repo_access = repo_access_override if repo_access_override is not None else resolved_repo
+    system_prompt_append = read_prompts(
+        resolved.prompts if resolved else [],
         get_settings().project_root,
     )
     session_id = deps.sessions.get(group_folder)

@@ -36,9 +36,9 @@ def profile_name_for_group(group_folder: str) -> str:
 
 def _profile_name_for_group(settings: Settings, group_folder: str) -> str:
     workspace = settings.workspaces.get(group_folder)
-    if workspace is None or workspace.profile is None:
+    if workspace is None or not workspace.profiles:
         return "default"
-    return workspace.profile
+    return workspace.profiles[0]
 
 
 def resolve_learning_paths(

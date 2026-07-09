@@ -40,7 +40,7 @@ The default runtime on macOS. Uses Apple's native container framework for lower 
 
 - Groups with `repo_access` receive a worktree mount at `/workspace/project` (see [Worktrees](../usage/worktrees.md))
 - Automatic learning mounts the configured Obsidian vault root at `/workspace/vault` by default. That vault root acts as the global memory namespace.
-- Shared agent instructions are delivered via [directives](../usage/directives.md), not filesystem mounts
+- Shared agent instructions are delivered via [prompts](../usage/prompts.md), not filesystem mounts
 - Apple Container requires `--mount "type=bind,source=...,target=...,readonly"` syntax for readonly mounts (the `:ro` suffix does not work)
 
 ## Container Configuration

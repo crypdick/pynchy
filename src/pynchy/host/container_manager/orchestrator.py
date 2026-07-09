@@ -76,7 +76,10 @@ def resolve_agent_core(plugin_manager: pluggy.PluginManager | None) -> tuple[str
     class_name = "OpenAIAgentCore"
     if plugin_manager:
         cores = plugin_manager.hook.pynchy_agent_core_info()
-        core_info = next((c for c in cores if c["name"] == get_settings().agent.core), None)
+        core_info = next(
+            (c for c in cores if c["name"] == get_settings().agent.default_core),
+            None,
+        )
         if core_info is None and cores:
             core_info = cores[0]
         if core_info:

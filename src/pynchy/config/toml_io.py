@@ -14,13 +14,13 @@ from typing import Any
 
 import tomlkit
 
-from pynchy.config.settings import Settings
+from pynchy.config.settings import Settings, validate_settings_mapping
 
 
 def parse_settings_toml(text: str) -> Settings:
-    """Parse TOML text through the typed Settings model."""
+    """Parse TOML text without reading env, dotenv, or config.toml sources."""
     data = tomllib.loads(text) if text.strip() else {}
-    return Settings.model_validate(data)
+    return validate_settings_mapping(data)
 
 
 def mutate_config_toml(path: Path, mutate: Callable[[Any], None]) -> Settings:

@@ -7,19 +7,14 @@ Runtime creation (e.g. via IPC) writes sections using add_workspace_to_toml().
 from __future__ import annotations
 
 import re
-import uuid
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any
 
 from pynchy.config import get_settings, reset_settings
-from pynchy.config.discord_refs import parse_discord_chat_target
-from pynchy.config.merge import ResolvedSandboxConfig
+from pynchy.config.merge import ResolvedWorkspaceConfig
 from pynchy.config.models import WorkspaceConfig
-from pynchy.config.refs import connection_ref_from_parts, parse_chat_ref
-from pynchy.config.settings import Settings
 from pynchy.config.toml_io import mutate_config_toml
 from pynchy.host.orchestrator.config_jobs import reconcile_agent_jobs
 from pynchy.host.orchestrator.workspace_registration import (
@@ -29,13 +24,10 @@ from pynchy.host.orchestrator.workspace_registration import (
 )
 from pynchy.logger import logger
 from pynchy.state import (
-    create_task,
-    get_active_task_for_group,
     get_all_tasks,
     update_task,
 )
-from pynchy.types import Channel, ScheduledTask, WorkspaceProfile
-from pynchy.utils import compute_next_run
+from pynchy.types import Channel, WorkspaceProfile
 
 if TYPE_CHECKING:
     import pluggy
@@ -130,40 +122,37 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
     logger.debug(
         "Loaded workspace config",
         folder=group_folder,
-        is_admin=config.is_admin or False,
-        repo_access=config.repo_access,
-        is_periodic=config.is_periodic,
+        profiles=list(config.profiles),
     )
     return config
 
 
-def load_resolved_config(group_folder: str) -> ResolvedSandboxConfig | None:
-    """Load and merge the full config cascade for a workspace.
+def load_resolved_config(group_folder: str) -> ResolvedWorkspaceConfig | None:
+    """Load and merge the composable profiles for a workspace.
 
     Returns None if the group has no config.
     """
-    from pynchy.config.merge import merge_sandbox_config
-
-    ws = load_workspace_config(group_folder)
-    if ws is None:
+    if load_workspace_config(group_folder) is None:
         return None
 
-    s = get_settings()
-    profile = None
-    if ws.profile:
-        profile = s.profiles.get(ws.profile)
+    return get_settings().resolved_workspace_config(group_folder)
 
-    return merge_sandbox_config(s.universal, profile, ws)
+
+def _first_repo(resolved: ResolvedWorkspaceConfig | None) -> str | None:
+    if resolved is None:
+        return None
+    return resolved.repo[0] if resolved.repo else None
 
 
 def get_repo_access(group_folder: str) -> str | None:
-    """Return the repo_access slug for a group folder, or None if not configured.
+    """Return the first resolved repo slug for a group folder, if configured.
 
-    Uses the three-tier merge cascade so that repo_access inherited from a
-    profile is correctly resolved.
+    Existing runtime call sites still accept one slug. The active schema resolves
+    ``repo`` as an ordered list; repo mount/runtime code should consume the
+    full list directly.
     """
     resolved = load_resolved_config(group_folder)
-    slug = resolved.repo_access if resolved else None
+    slug = _first_repo(resolved)
     logger.debug(
         "Checked repo access",
         folder=group_folder,
@@ -173,83 +162,20 @@ def get_repo_access(group_folder: str) -> str | None:
 
 
 def get_repo_access_groups(folders: Iterable[str]) -> dict[str, list[str]]:
-    """Return a mapping of slug → list of group folder names with repo_access.
-
-    Uses the three-tier merge cascade so that repo_access inherited from a
-    profile is correctly resolved.
-    """
+    """Return a mapping of resolved repo slug → list of group folder names."""
     result: dict[str, list[str]] = {}
     for folder in folders:
-        slug = get_repo_access(folder)
-        if slug:
+        resolved = load_resolved_config(folder)
+        for slug in resolved.repo if resolved else []:
             result.setdefault(slug, []).append(folder)
     return result
-
-
-async def _reconcile_periodic_task(
-    folder: str,
-    config: WorkspaceConfig,
-    jid: str | None,
-    resolved_repo_access: str | None,
-    context_mode: str,
-    s: Settings,
-) -> None:
-    """Create or update the scheduled task backing a periodic-agent workspace."""
-    assert config.schedule is not None, "caller must guard with config.is_periodic"
-    assert config.prompt is not None, "caller must guard with config.is_periodic"
-    assert jid is not None, "caller guards jid is not None before _reconcile_periodic_task"
-    existing_task = await get_active_task_for_group(folder)
-
-    if existing_task is None:
-        next_run = compute_next_run("cron", config.schedule, s.timezone)
-        task_id = f"periodic-{folder}-{uuid.uuid4().hex[:8]}"
-        await create_task(
-            ScheduledTask(
-                id=task_id,
-                group_folder=folder,
-                chat_jid=jid,
-                prompt=config.prompt,
-                schedule_type="cron",
-                schedule_value=config.schedule,
-                context_mode=cast('Literal["group", "isolated"]', context_mode),
-                repo_access=resolved_repo_access,
-                next_run=next_run,
-                status="active",
-                created_at=datetime.now(UTC).isoformat(),
-            )
-        )
-        logger.info(
-            "Created scheduled task for periodic agent",
-            task_id=task_id,
-            folder=folder,
-            schedule=config.schedule,
-        )
-        return
-
-    updates: dict[str, Any] = {}
-    if existing_task.schedule_value != config.schedule:
-        updates["schedule_value"] = config.schedule
-        updates["next_run"] = compute_next_run("cron", config.schedule, s.timezone)
-    if existing_task.prompt != config.prompt:
-        updates["prompt"] = config.prompt
-    if existing_task.repo_access != resolved_repo_access:
-        updates["repo_access"] = resolved_repo_access
-    if not updates:
-        return
-    await update_task(existing_task.id, updates)
-    logger.info(
-        "Updated periodic agent task",
-        task_id=existing_task.id,
-        folder=folder,
-        changed=list(updates.keys()),
-    )
 
 
 async def _pause_orphaned_tasks(
     specs: dict[str, WorkspaceSpec], desired_job_task_ids: set[str]
 ) -> None:
     """Pause active scheduled tasks whose workspace is not periodic/configured."""
-    periodic_folders = {f for f, sp in specs.items() if sp.config.is_periodic}
+    periodic_folders: set[str] = set()
     all_tasks = await get_all_tasks()
     for task in all_tasks:
         if task.status != "active":
@@ -305,8 +231,7 @@ async def reconcile_workspaces(
         resolved = load_resolved_config(folder)
         if resolved is None:
             continue
-        context_mode = resolved.context_mode
-        resolved_repo_access = resolved.repo_access
+        resolved_repo_access = _first_repo(resolved)
         display_name = resolve_display_name(folder, config, resolved_repo_access)
 
         jid = await ensure_workspace_registered(
@@ -325,11 +250,6 @@ async def reconcile_workspaces(
 
         await sync_workspace_profile(jid, workspaces, folder, display_name, config, resolved)
 
-        if not config.is_periodic:
-            reconciled += 1
-            continue
-
-        await _reconcile_periodic_task(folder, config, jid, resolved_repo_access, context_mode, s)
         reconciled += 1
 
     if reconciled:
@@ -352,7 +272,6 @@ def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
     section. Resets the settings cache so next get_settings() picks it up.
     """
     import tomlkit
-    from tomlkit.items import Table
 
     toml_path = Path("config.toml")
 
@@ -367,72 +286,7 @@ def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
 
         doc["workspaces"][folder] = ws_table
 
-        # Ensure the referenced chat exists under [connection.*] if possible.
-        chat_ref = parse_chat_ref(config.chat)
-        if chat_ref is None:
-            return
-        if "connection" not in doc:
-            logger.warning("Config missing [connection] section; chat not added", chat=config.chat)
-            return
-        connection_tbl = cast(Table, doc["connection"])
-        if chat_ref.platform not in connection_tbl:
-            logger.warning(
-                "Config missing connection platform; chat not added",
-                platform=chat_ref.platform,
-            )
-            return
-        platform_tbl = cast(Table, connection_tbl[chat_ref.platform])
-        if chat_ref.name not in platform_tbl:
-            logger.warning(
-                "Config missing connection; chat not added",
-                connection=connection_ref_from_parts(chat_ref.platform, chat_ref.name),
-            )
-            return
-        conn_tbl = cast(Table, platform_tbl[chat_ref.name])
-        _ensure_chat_table(conn_tbl, chat_ref.platform, chat_ref.chat)
-
     mutate_config_toml(toml_path, _mutate)
 
     # Reset so next get_settings() re-reads the file
     reset_settings()
-
-
-def _ensure_toml_table(parent: Any, key: str, *, super_table: bool = False) -> Any:
-    """Return the TOML table at key, creating it when absent."""
-    import tomlkit
-    from tomlkit.items import Table
-
-    if key not in parent:
-        parent.add(key, tomlkit.table(is_super_table=super_table))
-    value = parent[key]
-    if not isinstance(value, Table):
-        raise ValueError(f"Expected TOML table at {key!r}")
-    return value
-
-
-def _ensure_chat_table(conn_tbl: Any, platform: str, chat: str) -> None:
-    chat_tbl = _ensure_toml_table(conn_tbl, "chat", super_table=True)
-    if platform == "discord":
-        _ensure_discord_chat_table(chat_tbl, chat)
-        return
-    if chat not in chat_tbl:
-        import tomlkit
-
-        chat_tbl.add(chat, tomlkit.table())
-
-
-def _ensure_discord_chat_table(chat_tbl: Any, chat: str) -> None:
-    import tomlkit
-
-    target = parse_discord_chat_target(chat)
-    if target is None or target.kind == "direct":
-        return
-
-    guild_tbl = _ensure_toml_table(chat_tbl, target.guild_id or "")
-    if "require_mention" not in guild_tbl:
-        guild_tbl.add("require_mention", True)
-    channels_tbl = _ensure_toml_table(guild_tbl, "channels", super_table=True)
-    if target.target_id not in channels_tbl:
-        channel_tbl = tomlkit.table()
-        channel_tbl.add("enabled", True)
-        channels_tbl.add(target.target_id, channel_tbl)

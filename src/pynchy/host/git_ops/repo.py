@@ -52,15 +52,12 @@ def get_repo_context(slug: str) -> RepoContext | None:
     from pynchy.config import get_settings
 
     s = get_settings()
-    repo_cfg = s.repos.get(slug)
+    repo_cfg = s.repos.overrides.get(slug)
     if repo_cfg is None:
         return None
 
     owner, repo_name = _slug_to_parts(slug)
-    if repo_cfg.path is not None:
-        root = Path(repo_cfg.path)  # already resolved by RepoConfig validator
-    else:
-        root = s.data_dir / "repos" / owner / repo_name
+    root = Path(repo_cfg.path) if repo_cfg.path is not None else s.repos.root / owner / repo_name
     worktrees_dir = s.worktrees_dir / owner / repo_name
     return RepoContext(slug=slug, root=root, worktrees_dir=worktrees_dir)
 
@@ -77,7 +74,7 @@ def get_repo_token(slug: str) -> str | None:
     from pynchy.host.container_manager.credentials import _read_gh_token
 
     s = get_settings()
-    repo_cfg = s.repos.get(slug)
+    repo_cfg = s.repos.overrides.get(slug)
     if repo_cfg and repo_cfg.token:
         return repo_cfg.token.get_secret_value()
     if s.secrets.gh_token:
@@ -136,18 +133,13 @@ def ensure_repo_cloned(repo_ctx: RepoContext) -> bool:
 
 
 def resolve_repo_for_group(group_folder: str) -> RepoContext | None:
-    """Look up the merged sandbox config's repo_access and return the resolved RepoContext.
-
-    Uses the three-tier merge cascade (universal < profile < per-sandbox) so that
-    ``repo_access`` inherited from a sandbox profile is correctly resolved.
-    Returns None if the group has no repo_access or the slug is not configured.
-    """
+    """Return the first resolved repo context for a workspace, if configured."""
     from pynchy.host.orchestrator.workspace_config import load_resolved_config
 
     resolved = load_resolved_config(group_folder)
-    if resolved is None or not resolved.repo_access:
+    if resolved is None or not resolved.repo:
         return None
-    return get_repo_context(resolved.repo_access)
+    return get_repo_context(resolved.repo[0])
 
 
 def check_token_expiry(slug: str, token: str) -> None:

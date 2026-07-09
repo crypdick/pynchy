@@ -7,100 +7,67 @@ from pydantic import ValidationError
 
 from pynchy.config import Settings
 from pynchy.config.jobs import JobConfig
-from pynchy.config.models import (
-    ConnectionsConfig,
-    ProfileConfig,
-    SlackConnectionConfig,
-    WorkspaceConfig,
-)
+from pynchy.config.models import ProfileConfig, WorkspaceConfig
+from pynchy.config.settings import validate_settings_mapping
 
 
-def _settings_with_slack(**overrides) -> Settings:
+def _settings(**overrides) -> Settings:
     defaults = {
-        "connection": ConnectionsConfig(
-            slack={
-                "synapse": SlackConnectionConfig(
-                    bot_token_env="SLACK_BOT_TOKEN",
-                    app_token_env="SLACK_APP_TOKEN",
-                    chat={"admin": {}, "pynchy": {}},
-                )
-            }
-        ),
         "profiles": {"admin": ProfileConfig(is_admin=True)},
-        "workspaces": {
-            "admin": WorkspaceConfig(
-                profile="admin",
-                chat="connection.slack.synapse.chat.admin",
-            )
-        },
+        "workspaces": {"admin": WorkspaceConfig(profiles=["admin"])},
     }
     defaults.update(overrides)
-    return Settings(**defaults)
+    return validate_settings_mapping(defaults)
 
 
 def test_settings_use_profiles_and_workspaces_as_public_config_names() -> None:
-    settings = _settings_with_slack(
-        universal=ProfileConfig(tags=["base"]),
+    settings = _settings(
         profiles={
             "admin": ProfileConfig(
-                tags=["pynchy", "browser"],
+                prompts=["base"],
+                skills=["pynchy", "browser"],
+                tools=["shell"],
+                repo="crypdick/pynchy",
                 is_admin=True,
                 contains_secrets=True,
-                repo_access="crypdick/pynchy",
                 model="chatgpt/gpt-5.3-codex-spark",
             )
         },
+        tools={"shell": {"type": "builtin", "name": "shell", "public_source": False}},
     )
 
-    assert settings.universal.tags == ["base"]
     assert settings.profiles["admin"].contains_secrets is True
-    assert settings.profiles["admin"].repo_access == "crypdick/pynchy"
-    assert settings.workspaces["admin"].profile == "admin"
+    assert settings.profiles["admin"].repo == ["crypdick/pynchy"]
+    assert settings.workspaces["admin"].profiles == ["admin"]
 
 
 def test_legacy_sandbox_sections_are_rejected() -> None:
     with pytest.raises(ValidationError, match="Legacy config sections"):
-        Settings(
-            connection=_settings_with_slack().connection,
-            profiles={"admin": ProfileConfig(is_admin=True)},
-            sandbox={
-                "admin": WorkspaceConfig(
-                    profile="admin",
-                    chat="connection.slack.synapse.chat.admin",
-                )
-            },
+        validate_settings_mapping(
+            {
+                "profiles": {"admin": ProfileConfig(is_admin=True)},
+                "sandbox": {"admin": {"profiles": ["admin"]}},
+            }
         )
 
 
 def test_host_is_reserved_and_cannot_be_a_workspace_name() -> None:
     with pytest.raises(ValidationError, match="'host' is reserved"):
-        _settings_with_slack(
-            workspaces={
-                "host": WorkspaceConfig(
-                    profile="admin",
-                    chat="connection.slack.synapse.chat.admin",
-                )
-            }
-        )
+        _settings(workspaces={"host": WorkspaceConfig(profiles=["admin"])})
 
 
 def test_workspace_profile_reference_must_exist() -> None:
     with pytest.raises(
-        ValidationError, match=r"workspaces\.admin\.profile references unknown profile"
+        ValidationError, match=r"workspaces\.admin\.profiles references unknown profile"
     ):
-        _settings_with_slack(
+        _settings(
             profiles={},
-            workspaces={
-                "admin": WorkspaceConfig(
-                    profile="missing",
-                    chat="connection.slack.synapse.chat.admin",
-                )
-            },
+            workspaces={"admin": WorkspaceConfig(profiles=["missing"])},
         )
 
 
 def test_agent_job_targets_configured_workspace() -> None:
-    settings = _settings_with_slack(
+    settings = _settings(
         jobs={
             "daily-triage": JobConfig(
                 enabled=True,
@@ -141,7 +108,7 @@ def test_job_requires_exactly_one_schedule_shape() -> None:
 
 
 def test_host_job_is_selected_by_workspace_magic_word() -> None:
-    settings = _settings_with_slack(
+    settings = _settings(
         jobs={
             "backup-runtime-dbs": JobConfig(
                 enabled=True,

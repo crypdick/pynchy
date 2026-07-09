@@ -25,7 +25,7 @@ def _core(session_id: str | None = None) -> CodexCLIAgentCore:
             chat_jid="j",
             is_admin=False,
             is_scheduled_task=False,
-            system_prompt_append="Follow the local Pynchy directives.",
+            system_prompt_append="Follow the local Pynchy prompts.",
             mcp_servers={
                 "pynchy": {
                     "command": "python",
@@ -212,7 +212,7 @@ def test_build_args_ignores_foreign_session_id(tmp_path, monkeypatch):
 
 def test_build_stdin_includes_system_prompt():
     assert _core()._build_stdin("hello").decode() == (
-        "Follow the local Pynchy directives.\n\nUser message:\nhello\n"
+        "Follow the local Pynchy prompts.\n\nUser message:\nhello\n"
     )
 
 

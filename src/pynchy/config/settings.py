@@ -12,7 +12,7 @@ Usage::
     from pynchy.config import get_settings
 
     s = get_settings()
-    print(s.agent.name)
+    print(s.agent.default_core)
     print(s.container.image)
 """
 
@@ -20,12 +20,14 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Iterator
+import warnings
+from collections.abc import Sequence
+from contextvars import ContextVar
 from functools import cached_property
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -33,18 +35,18 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
-from pynchy.config.discord_refs import discord_chat_ref_error
 from pynchy.config.jobs import JobConfig
 from pynchy.config.mcp import McpServerConfig
+from pynchy.config.merge import ResolvedWorkspaceConfig, merge_workspace_profiles
 from pynchy.config.models import (
     AgentConfig,
     CalDAVConfig,
     CommandCenterConfig,
     CommandWordsConfig,
+    ConnectionConfig,
     ConnectionsConfig,
     ContainerConfig,
     CronJobConfig,
-    DiscordConnectionConfig,
     GatewayConfig,
     IntervalsConfig,
     LearningConfig,
@@ -54,111 +56,19 @@ from pynchy.config.models import (
     PluginConfig,
     ProfileConfig,
     QueueConfig,
-    RepoConfig,
+    ReposConfig,
     SchedulerConfig,
     SecretsConfig,
     SecurityConfig,
     ServerConfig,
     ServiceTrustTomlConfig,
+    ToolConfig,
     WorkspaceConfig,
-    _StrictModel,
 )
-from pynchy.config.refs import connection_ref_from_parts, parse_chat_ref, parse_connection_ref
 
-# ---------------------------------------------------------------------------
-# Explicit-fields validation
-# ---------------------------------------------------------------------------
-
-
-def _is_exempt_field(model_cls: type[BaseModel], field_name: str) -> bool:
-    """Check if a field is exempt from the explicit-ness requirement.
-
-    Exempt fields:
-    - X | None: "inherit from parent" sentinel — TOML has no null type.
-    - dict/list with empty default: container types where {} / [] means "none configured."
-    """
-    import types
-    import typing
-
-    field_info = model_cls.model_fields[field_name]
-    annotation = field_info.annotation
-
-    # Optional (X | None) — TOML can't express null
-    if isinstance(annotation, types.UnionType) and type(None) in annotation.__args__:
-        return True
-    origin = getattr(annotation, "__origin__", None)
-    if origin is typing.Union and type(None) in annotation.__args__:
-        return True
-    if annotation is type(None):
-        return True
-
-    # dict/list with empty default — forgetting {} or [] doesn't cause bugs
-    return field_info.default in ([], {})
-
-
-def _collect_implicit_fields(model: BaseModel, path: str) -> list[str]:
-    """Recursively find _StrictModel fields that were not explicitly set.
-
-    Only descends into sub-models that were present in the parsed input
-    (via model_fields_set). This means:
-    - Entire sections omitted from config.toml → not checked (known defaults).
-    - Sections present in config.toml → every field must be spelled out.
-    - Dict-of-models (e.g., workspaces) → each entry is checked individually.
-    - Optional fields (X | None) are skipped — TOML has no null type, so these
-      use None as "inherit from parent" and can't be made explicit.
-    """
-    errors: list[str] = []
-    for child_path, child in _strict_model_children(model, path):
-        child_missing = _missing_explicit_fields(child)
-        if child_missing:
-            errors.append(f"{child_path}: missing {child_missing}")
-        errors.extend(_collect_implicit_fields(child, child_path))
-    return errors
-
-
-def _strict_model_children(model: BaseModel, path: str) -> Iterator[tuple[str, _StrictModel]]:
-    cls = type(model)
-    for field_name in cls.model_fields:
-        value = getattr(model, field_name)
-        if isinstance(value, dict):
-            yield from _strict_dict_children(path, field_name, value)
-            continue
-        if isinstance(value, _StrictModel) and field_name in model.model_fields_set:
-            yield _join_path(path, field_name), value
-
-
-def _strict_dict_children(
-    path: str, field_name: str, value: dict[Any, Any]
-) -> Iterator[tuple[str, _StrictModel]]:
-    field_path = _join_path(path, field_name)
-    for key, item in value.items():
-        if isinstance(item, _StrictModel):
-            yield _join_path(field_path, str(key)), item
-
-
-def _missing_explicit_fields(model: _StrictModel) -> list[str]:
-    model_cls = type(model)
-    return sorted(
-        field_name
-        for field_name in model_cls.model_fields
-        if field_name not in model.model_fields_set and not _is_exempt_field(model_cls, field_name)
-    )
-
-
-def _join_path(path: str, child: str) -> str:
-    return f"{path}.{child}" if path else child
-
-
-def _resolved_workspace_mcp_servers(settings: Settings, workspace: WorkspaceConfig) -> set[str]:
-    resolved: set[str] = set()
-    for entry in workspace.mcp_servers or []:
-        if entry == "*":
-            resolved.update(settings.mcp_servers.keys())
-        elif entry in settings.mcp_groups:
-            resolved.update(settings.mcp_groups[entry])
-        elif entry in settings.mcp_servers:
-            resolved.add(entry)
-    return resolved
+_HERMETIC_SETTINGS_SOURCES: ContextVar[bool] = ContextVar(
+    "pynchy_hermetic_settings_sources", default=False
+)
 
 
 def _assert_admin_clean_room(
@@ -167,25 +77,13 @@ def _assert_admin_clean_room(
     resolved = settings.resolved_workspace_config(workspace_name)
     if resolved is None:
         return
-    server_names: set[str] = set()
-    for entry in resolved.mcp_servers:
-        if entry == "*":
-            server_names.update(settings.mcp_servers.keys())
-        elif entry in settings.mcp_groups:
-            server_names.update(settings.mcp_groups[entry])
-        elif entry in settings.mcp_servers:
-            server_names.add(entry)
-        else:
-            server_names.add(entry)
-
-    for server_name in server_names:
-        svc = settings.services.get(server_name)
-        public_source = svc.public_source if svc else True
-        if public_source is not False:
+    for tool_name in resolved.tools:
+        tool = settings.tools[tool_name]
+        if tool.public_source is not False:
             raise ValueError(
-                f"Admin workspace '{workspace_name}' has MCP server '{server_name}' "
-                f"with public_source={public_source!r}. Admin workspaces cannot "
-                f"have public_source MCPs (clean room policy)."
+                f"Admin workspace '{workspace_name}' has tool '{tool_name}' "
+                f"with public_source={tool.public_source!r}. Admin workspaces "
+                "cannot use public-source tools."
             )
 
 
@@ -193,37 +91,8 @@ def _validated_command_center_connection(settings: Settings) -> None:
     connection = settings.command_center.connection
     if not connection:
         return
-    ref = parse_connection_ref(connection)
-    assert ref is not None  # guaranteed by ValidatedConnectionRef
-    if settings.connection.get_connection(ref.platform, ref.name) is None:
-        raise ValueError(
-            f"command_center.connection references unknown connection: "
-            f"{connection_ref_from_parts(ref.platform, ref.name)}"
-        )
-
-
-def _validate_workspace_chat_ref(
-    settings: Settings, *, folder: str, workspace: WorkspaceConfig
-) -> None:
-    if workspace.chat is None:
-        raise ValueError(
-            f"workspaces.{folder}.chat must be connection.<platform>.<name>.chat.<chat>"
-        )
-    chat_ref = parse_chat_ref(workspace.chat)
-    assert chat_ref is not None  # guaranteed by ValidatedChatRef
-    conn = settings.connection.get_connection(chat_ref.platform, chat_ref.name)
-    if conn is None:
-        raise ValueError(
-            f"workspaces.{folder}.chat references unknown connection: "
-            f"{connection_ref_from_parts(chat_ref.platform, chat_ref.name)}"
-        )
-    if isinstance(conn, DiscordConnectionConfig):
-        error = discord_chat_ref_error(conn, chat_ref.chat)
-        if error is not None:
-            raise ValueError(f"workspaces.{folder}.chat {error}: {workspace.chat}")
-        return
-    if chat_ref.chat not in conn.chat:
-        raise ValueError(f"workspaces.{folder}.chat references unknown chat: {workspace.chat}")
+    if connection not in settings.connections:
+        raise ValueError(f"command_center.connection references unknown connection: {connection}")
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +118,7 @@ class Settings(BaseSettings):
     learning: LearningConfig = LearningConfig()
     universal: ProfileConfig = ProfileConfig()
     services: dict[str, ServiceTrustTomlConfig] = {}  # [services.<name>]
-    repos: dict[str, RepoConfig] = {}  # [repos."owner/repo"]
+    repos: ReposConfig = ReposConfig()
     profiles: dict[str, ProfileConfig] = {}
     workspaces: dict[str, WorkspaceConfig] = Field(default_factory=dict)
     owner: OwnerConfig = OwnerConfig()
@@ -262,6 +131,8 @@ class Settings(BaseSettings):
     queue: QueueConfig = QueueConfig()
     command_center: CommandCenterConfig = CommandCenterConfig()
     connection: ConnectionsConfig = ConnectionsConfig()
+    connections: dict[str, ConnectionConfig] = {}
+    tools: dict[str, ToolConfig] = {}
     plugins: dict[str, PluginConfig] = {}
     security: SecurityConfig = SecurityConfig()
     caldav: CalDAVConfig = CalDAVConfig()
@@ -287,13 +158,21 @@ class Settings(BaseSettings):
                 k
                 for k in (
                     "sandbox",
+                    "universal",
                     "sandbox_universal",
                     "sandbox_profiles",
+                    "services",
                     "channels",
                     "slack",
                     "workspace_defaults",
                     "directives",
+                    "mcp",
                     "mcp_servers",
+                    "mcp_groups",
+                    "mcp_presets",
+                    "connection",
+                    "owner",
+                    "caldav",
                     "cron_jobs",
                 )
                 if k in data
@@ -301,8 +180,8 @@ class Settings(BaseSettings):
             if legacy:
                 raise ValueError(
                     "Legacy config sections are no longer supported: "
-                    f"{legacy}. Use [workspaces], [profiles], [jobs], [mcp], "
-                    "[connection.*], and [command_center] instead."
+                    f"{legacy}. Use [workspaces], [profiles], [tools], "
+                    "[connections.*], and [command_center] instead."
                 )
         return data
 
@@ -356,18 +235,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _require_explicit_fields(self) -> Settings:
-        """Validate that all fields in config-file sections are explicitly set.
+        """Keep defaulted fields valid for the composable schema.
 
-        Only checks sub-models that were actually present in the config source
-        (i.e., in self.model_fields_set). Sub-models that defaulted entirely
-        (section absent from config.toml) are not checked — they're using
-        known-good defaults. But if you include a section, spell out every field.
+        Omitted profile fields use defaults, while strictness comes from
+        ``extra='forbid'`` on each model.
         """
-        errors = _collect_implicit_fields(self, "")
-        if errors:
-            msg = "Config fields must be explicitly set (even if null):\n"
-            msg += "\n".join(f"  - {e}" for e in errors)
-            raise ValueError(msg)
         return self
 
     @model_validator(mode="after")
@@ -375,14 +247,21 @@ class Settings(BaseSettings):
         """Validate that workspace profile references exist."""
         if "host" in self.workspaces:
             raise ValueError("'host' is reserved and cannot be a workspace name")
+        for profile_name in self.profiles:
+            self._expanded_profile_names(profile_name)
+        for profile_name, profile in self.profiles.items():
+            for tool_name in profile.tools:
+                if tool_name not in self.tools:
+                    raise ValueError(
+                        f"profiles.{profile_name}.tools references unknown tool: {tool_name}"
+                    )
         for folder, ws in self.workspaces.items():
-            if ws.profile is None:
-                raise ValueError(f"workspaces.{folder}.profile is required")
-            if ws.profile not in self.profiles:
-                raise ValueError(
-                    f"workspaces.{folder}.profile references unknown profile: "
-                    f"'{ws.profile}'. Available: {list(self.profiles.keys())}"
-                )
+            for profile_name in ws.profiles:
+                if profile_name not in self.profiles:
+                    raise ValueError(
+                        f"workspaces.{folder}.profiles references unknown profile: "
+                        f"'{profile_name}'. Available: {list(self.profiles.keys())}"
+                    )
         for job_name, job in self.jobs.items():
             if job.workspace != "host" and job.workspace not in self.workspaces:
                 raise ValueError(
@@ -412,52 +291,54 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_connections(self) -> Settings:
-        """Validate that connection refs point to configured connections/chats.
-
-        Uses ConnectionsConfig.get_connection() for platform-generic lookups
-        so this validator doesn't need to hardcode platform names.
-        """
+        """Validate command_center.connection against [connections.<name>]."""
         _validated_command_center_connection(self)
-        for folder, ws in self.workspaces.items():
-            _validate_workspace_chat_ref(self, folder=folder, workspace=ws)
         return self
 
     @model_validator(mode="after")
     def _validate_admin_clean_room(self) -> Settings:
-        """Reject admin workspaces that reference public_source MCPs.
-
-        Admin workspaces are the most privileged — they must never be
-        corruption-tainted by MCP servers that pull from public/untrusted
-        sources.  An MCP not declared in ``[services]`` is treated as
-        ``public_source=True`` (maximally cautious default), so it is also
-        blocked.
-        """
+        """Reject admin workspaces that resolve to public-source tools."""
         for ws_name, ws in self.workspaces.items():
             resolved = self.resolved_workspace_config(ws_name)
-            if resolved is None or not resolved.is_admin or not resolved.mcp_servers:
+            if resolved is None or not resolved.is_admin:
                 continue
             _assert_admin_clean_room(self, workspace_name=ws_name, workspace=ws)
         return self
 
-    @property
-    def sandbox_universal(self) -> ProfileConfig:
-        """Internal alias for modules that use the profile cascade."""
-        return self.universal
-
-    @property
-    def sandbox_profiles(self) -> dict[str, ProfileConfig]:
-        """Internal alias for modules that use the profile cascade."""
-        return self.profiles
-
-    def resolved_workspace_config(self, workspace_name: str):
+    def resolved_workspace_config(self, workspace_name: str) -> ResolvedWorkspaceConfig | None:
         """Return the merged config for a configured workspace."""
-        from pynchy.config.merge import merge_sandbox_config
-
         workspace = self.workspaces.get(workspace_name)
         if workspace is None:
             return None
-        profile = self.profiles.get(workspace.profile or "")
-        return merge_sandbox_config(self.universal, profile, workspace)
+        profile_names = self._expanded_selected_profile_names(workspace.profiles)
+        return merge_workspace_profiles([self.profiles[name] for name in profile_names])
+
+    def _expanded_selected_profile_names(self, profile_names: Sequence[str]) -> list[str]:
+        ordered: list[str] = []
+        visiting: list[str] = []
+        visited: set[str] = set()
+
+        def visit(name: str) -> None:
+            if name not in self.profiles:
+                raise ValueError(f"unknown profile reference: {name}")
+            if name in visiting:
+                cycle = " -> ".join([*visiting, name])
+                raise ValueError(f"profile cycle detected: {cycle}")
+            if name in visited:
+                return
+            visiting.append(name)
+            for included in self.profiles[name].includes:
+                visit(included)
+            visiting.pop()
+            visited.add(name)
+            ordered.append(name)
+
+        for name in profile_names:
+            visit(name)
+        return ordered
+
+    def _expanded_profile_names(self, profile_name: str) -> list[str]:
+        return self._expanded_selected_profile_names([profile_name])
 
     @classmethod
     def settings_customise_sources(
@@ -469,6 +350,8 @@ class Settings(BaseSettings):
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         """Priority: init > env vars > .env > config.toml > file secrets."""
+        if _HERMETIC_SETTINGS_SOURCES.get():
+            return (init_settings,)
         return (
             init_settings,
             env_settings,
@@ -489,9 +372,7 @@ class Settings(BaseSettings):
 
     @cached_property
     def trigger_pattern(self) -> re.Pattern[str]:
-        names = [re.escape(self.agent.name)] + [
-            re.escape(a.strip()) for a in self.agent.trigger_aliases
-        ]
+        names = [re.escape("pynchy"), re.escape("ghost")]
         return re.compile(rf"^@({'|'.join(names)})\b", re.IGNORECASE)
 
     @cached_property
@@ -524,6 +405,21 @@ class Settings(BaseSettings):
     def worktrees_dir(self) -> Path:
         """Base directory for all worktrees: data/worktrees/<owner>/<repo>/."""
         return self.data_dir / "worktrees"
+
+
+def validate_settings_mapping(data: dict[str, Any]) -> Settings:
+    """Validate explicit settings data without reading env, dotenv, or config.toml."""
+    token = _HERMETIC_SETTINGS_SOURCES.set(True)
+    try:
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=r"Config key `toml_file` is set in model_config",
+                category=UserWarning,
+            )
+            return Settings(**data)
+    finally:
+        _HERMETIC_SETTINGS_SOURCES.reset(token)
 
 
 # ---------------------------------------------------------------------------

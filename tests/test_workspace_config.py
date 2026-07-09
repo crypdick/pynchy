@@ -1,4 +1,4 @@
-"""Tests for workspace configuration helpers backed by Settings."""
+"""Tests for workspace configuration helpers backed by composable Settings."""
 
 from __future__ import annotations
 
@@ -9,18 +9,20 @@ from unittest.mock import AsyncMock, patch
 import pluggy
 import pytest
 from conftest import make_settings
+from pydantic import ValidationError
 
 from pynchy.config import WorkspaceConfig
-from pynchy.config.models import ProfileConfig, SandboxProfileConfig
+from pynchy.config.models import ProfileConfig
 from pynchy.host.orchestrator.workspace_config import (
     add_workspace_to_toml,
     configure_plugin_workspaces,
     get_repo_access,
     get_repo_access_groups,
+    load_resolved_config,
     load_workspace_config,
     reconcile_workspaces,
 )
-from pynchy.types import InboundFetchResult, OutboundEvent
+from pynchy.types import InboundFetchResult, OutboundEvent, WorkspaceProfile, WorkspaceSecurity
 
 
 class _FakePM(pluggy.PluginManager):
@@ -31,11 +33,8 @@ class _FakePM(pluggy.PluginManager):
 
 
 class _FakeChannel:
-    name = "connection.slack.main"
+    name = "connections.synapse"
     formatter = object()
-
-    def __init__(self, jid: str) -> None:
-        self.jid = jid
 
     async def connect(self) -> None: ...
 
@@ -45,7 +44,7 @@ class _FakeChannel:
         return True
 
     def owns_jid(self, jid: str) -> bool:
-        return jid == self.jid
+        return False
 
     async def disconnect(self) -> None: ...
 
@@ -56,18 +55,15 @@ class _FakeChannel:
     async def fetch_inbound_since(self, channel_jid: str, since: str) -> InboundFetchResult:
         return InboundFetchResult(messages=[])
 
-    async def resolve_chat_jid(self, chat_name: str) -> str:
-        return self.jid
-
 
 def _settings_with_workspaces(
     *,
+    profiles: dict[str, ProfileConfig] | None = None,
     workspaces: dict[str, WorkspaceConfig] | None = None,
-    defaults: SandboxProfileConfig | None = None,
 ):
     return make_settings(
+        profiles=profiles or {},
         workspaces=workspaces or {},
-        sandbox_universal=defaults or SandboxProfileConfig(),
     )
 
 
@@ -80,41 +76,16 @@ class TestLoadWorkspaceConfig:
         with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
             assert load_workspace_config("missing") is None
 
-    def test_load_workspace_config_does_not_apply_inherited_defaults(self):
+    def test_keeps_selected_profiles_only(self):
         s = _settings_with_workspaces(
-            workspaces={"team": WorkspaceConfig(name="test", is_admin=False)},
-            defaults=SandboxProfileConfig(trigger="always", context_mode="isolated"),
+            profiles={"base": ProfileConfig(), "admin": ProfileConfig(is_admin=True)},
+            workspaces={"team": WorkspaceConfig(profiles=["base", "admin"])},
         )
         with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
             cfg = load_workspace_config("team")
 
         assert cfg is not None
-        assert cfg.trigger is None  # trigger cascaded in resolve_channel_config, not here
-        assert cfg.context_mode is None
-        assert cfg.is_periodic is False
-
-    def test_keeps_explicit_workspace_fields(self):
-        s = _settings_with_workspaces(
-            workspaces={
-                "daily": WorkspaceConfig(
-                    is_admin=True,
-                    trigger="mention",
-                    repo_access="owner/pynchy",
-                    name="Daily Agent",
-                    schedule="0 9 * * *",
-                    prompt="Run checks",
-                    context_mode="group",
-                )
-            }
-        )
-        with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
-            cfg = load_workspace_config("daily")
-
-        assert cfg is not None
-        assert cfg.is_admin is True
-        assert cfg.repo_access == "owner/pynchy"
-        assert cfg.name == "Daily Agent"
-        assert cfg.is_periodic is True
+        assert cfg.profiles == ["base", "admin"]
 
     def test_loads_workspace_from_plugin_spec(self):
         s = _settings_with_workspaces(workspaces={})
@@ -123,13 +94,7 @@ class TestLoadWorkspaceConfig:
                 pynchy_workspace_spec=lambda: [
                     {
                         "folder": "code-improver",
-                        "config": {
-                            "name": "test",
-                            "repo_access": "owner/repo",
-                            "schedule": "0 4 * * *",
-                            "prompt": "Improve code",
-                            "context_mode": "isolated",
-                        },
+                        "config": {"profiles": ["worker"]},
                     }
                 ]
             )
@@ -140,22 +105,35 @@ class TestLoadWorkspaceConfig:
             cfg = load_workspace_config("code-improver")
 
         assert cfg is not None
-        assert cfg.repo_access == "owner/repo"
-        assert cfg.is_periodic is True
+        assert cfg.profiles == ["worker"]
+
+
+class TestLoadResolvedConfig:
+    def test_resolves_selected_profiles(self):
+        s = _settings_with_workspaces(
+            profiles={
+                "base": ProfileConfig(repo=["owner/base"], prompts=["base"]),
+                "dev": ProfileConfig(includes=["base"], repo=["owner/dev"], is_admin=True),
+            },
+            workspaces={"dev": WorkspaceConfig(profiles=["dev"])},
+        )
+        with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
+            resolved = load_resolved_config("dev")
+
+        assert resolved is not None
+        assert resolved.prompts == ["base"]
+        assert resolved.repo == ["owner/base", "owner/dev"]
+        assert resolved.is_admin is True
 
 
 class TestWorkspaceConfigModel:
     def test_defaults(self):
-        cfg = WorkspaceConfig(name="test")
-        assert cfg.is_admin is None
-        assert cfg.trigger is None
-        assert cfg.repo_access is None
-        assert cfg.context_mode is None
-        assert cfg.is_periodic is False
+        cfg = WorkspaceConfig()
+        assert cfg.profiles == []
 
-    def test_is_periodic(self):
-        assert WorkspaceConfig(name="test", schedule="0 9 * * *", prompt="x").is_periodic is True
-        assert WorkspaceConfig(name="test", schedule="0 9 * * *").is_periodic is False
+    def test_rejects_deleted_workspace_fields(self):
+        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+            WorkspaceConfig(profile="old")
 
 
 class TestAddWorkspaceToToml:
@@ -167,56 +145,28 @@ class TestAddWorkspaceToToml:
         toml_path.write_text(
             """
 [profiles.worker]
-
-[connection.slack.synapse]
-bot_token_env = "SLACK_BOT_TOKEN"
-app_token_env = "SLACK_APP_TOKEN"
-
-[connection.slack.synapse.chat.daily]
 """
         )
 
-        with pytest.raises(ValueError, match=r"workspaces\.daily\.profile is required"):
-            add_workspace_to_toml(
-                "daily",
-                WorkspaceConfig(chat="connection.slack.synapse.chat.daily"),
-            )
+        with pytest.raises(ValueError, match="unknown profile"):
+            add_workspace_to_toml("daily", WorkspaceConfig(profiles=["missing"]))
 
         assert "workspaces.daily" not in toml_path.read_text()
 
-    def test_writes_discord_workspace_as_typed_nested_chat_config(self, tmp_path, monkeypatch):
+    def test_writes_workspace_profiles(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         toml_path = tmp_path / "config.toml"
         toml_path.write_text(
             """
 [profiles.pynchy-dev]
 is_admin = true
-
-[connection.discord.mybot]
-bot_token_env = "DISCORD_BOT_TOKEN"
-dm_policy = "allowlist"
-allow_from = ["ricardo"]
-group_policy = "allowlist"
 """
         )
 
-        add_workspace_to_toml(
-            "discord-admin",
-            WorkspaceConfig(
-                profile="pynchy-dev",
-                chat="connection.discord.mybot.chat.synapse.channels.code-improver",
-            ),
-        )
+        add_workspace_to_toml("discord-admin", WorkspaceConfig(profiles=["pynchy-dev"]))
 
         data = tomllib.loads(toml_path.read_text())
-        channel = data["connection"]["discord"]["mybot"]["chat"]["synapse"]["channels"][
-            "code-improver"
-        ]
-        assert channel["enabled"] is True
-        assert data["workspaces"]["discord-admin"]["profile"] == "pynchy-dev"
-        assert data["workspaces"]["discord-admin"]["chat"] == (
-            "connection.discord.mybot.chat.synapse.channels.code-improver"
-        )
+        assert data["workspaces"]["discord-admin"]["profiles"] == ["pynchy-dev"]
 
 
 class TestGetRepoAccess:
@@ -225,51 +175,64 @@ class TestGetRepoAccess:
         with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
             assert get_repo_access("dev") is None
 
-    def test_returns_slug_from_config(self):
+    def test_returns_first_resolved_repo_slug(self):
         s = _settings_with_workspaces(
-            workspaces={"dev": WorkspaceConfig(name="test", repo_access="owner/myrepo")}
+            profiles={
+                "base": ProfileConfig(repo=["owner/base"]),
+                "dev": ProfileConfig(includes=["base"], repo=["owner/dev"]),
+            },
+            workspaces={"dev": WorkspaceConfig(profiles=["dev"])},
         )
         with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
-            assert get_repo_access("dev") == "owner/myrepo"
+            assert get_repo_access("dev") == "owner/base"
 
-    def test_admin_without_explicit_repo_access_returns_none(self):
-        """Admin groups no longer get implicit repo access."""
+    def test_admin_without_repo_returns_none(self):
         s = _settings_with_workspaces(
-            workspaces={"admin-1": WorkspaceConfig(name="test", is_admin=True)}
+            profiles={"admin": ProfileConfig(is_admin=True)},
+            workspaces={"admin-1": WorkspaceConfig(profiles=["admin"])},
         )
         with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
             assert get_repo_access("admin-1") is None
 
 
 class TestGetRepoAccessGroups:
-    def test_maps_slug_to_folders(self):
+    def test_maps_each_resolved_slug_to_folders(self):
         s = _settings_with_workspaces(
+            profiles={
+                "shared": ProfileConfig(repo=["owner/shared"]),
+                "code": ProfileConfig(includes=["shared"], repo=["owner/pynchy"]),
+                "other": ProfileConfig(repo=["owner/pynchy"]),
+                "plain": ProfileConfig(),
+            },
             workspaces={
-                "code-improver": WorkspaceConfig(name="test", repo_access="owner/pynchy"),
-                "plain": WorkspaceConfig(name="test", repo_access=None),
-                "other-project": WorkspaceConfig(name="test", repo_access="owner/pynchy"),
-            }
+                "code-improver": WorkspaceConfig(profiles=["code"]),
+                "plain": WorkspaceConfig(profiles=["plain"]),
+                "other-project": WorkspaceConfig(profiles=["other"]),
+            },
         )
         with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
             result = get_repo_access_groups(["code-improver", "plain", "other-project"])
 
-        assert "owner/pynchy" in result
+        assert result["owner/shared"] == ["code-improver"]
         assert set(result["owner/pynchy"]) == {"code-improver", "other-project"}
         assert "plain" not in str(result)
 
 
 @pytest.mark.asyncio
-async def test_reconcile_registers_profile_admin_and_contains_secrets():
+async def test_reconcile_syncs_existing_profile_admin_and_contains_secrets():
     s = make_settings(
         profiles={"admin": ProfileConfig(is_admin=True, contains_secrets=True)},
-        workspaces={
-            "admin": WorkspaceConfig(
-                profile="admin",
-                chat="connection.slack.main.chat.admin",
-            )
-        },
+        workspaces={"admin": WorkspaceConfig(profiles=["admin"])},
     )
-    channel = _FakeChannel("slack:CADMIN")
+    existing = WorkspaceProfile(
+        jid="slack:CADMIN",
+        name="Admin",
+        folder="admin",
+        trigger="@pynchy",
+        is_admin=False,
+        security=WorkspaceSecurity(contains_secrets=False),
+    )
+    workspaces = {existing.jid: existing}
     register = AsyncMock()
 
     with (
@@ -279,9 +242,14 @@ async def test_reconcile_registers_profile_admin_and_contains_secrets():
             new_callable=AsyncMock,
             return_value=[],
         ),
+        patch(
+            "pynchy.host.orchestrator.workspace_registration.set_workspace_profile",
+            new_callable=AsyncMock,
+        ),
     ):
-        await reconcile_workspaces({}, [channel], register)
+        await reconcile_workspaces(workspaces, [_FakeChannel()], register)
 
-    profile = register.await_args.args[0]
+    register.assert_not_called()
+    profile = workspaces["slack:CADMIN"]
     assert profile.is_admin is True
     assert profile.security.contains_secrets is True
