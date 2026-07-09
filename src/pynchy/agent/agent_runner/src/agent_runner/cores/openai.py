@@ -47,16 +47,6 @@ def _disable_tracing() -> None:
         _log(f"Tracing disable skipped: {exc}")
 
 
-def _is_model_not_found(exc: Exception) -> bool:
-    """Return True if the error indicates the model is unavailable."""
-    message = str(exc).lower()
-    return (
-        "model_not_found" in message
-        or "does not exist" in message
-        or "no healthy deployments for this model" in message
-    )
-
-
 # ---------------------------------------------------------------------------
 # Shell executor — runs commands directly in the container
 # ---------------------------------------------------------------------------
@@ -297,7 +287,6 @@ class OpenAIAgentCore:
         self._agent: Agent | None = None
         self._instructions: str | None = None
         self._model_primary: str | None = None
-        self._model_fallback: str | None = None
         self._before_tool_hooks: list[BeforeToolUseHook] = []
         self._mcp_servers: list[MCPServer] = []
         self._mcp_contexts: list[Any] = []
@@ -369,7 +358,6 @@ class OpenAIAgentCore:
 
         model = self.config.extra.get("model", "openai/gpt-5.5")
         self._model_primary = model
-        self._model_fallback = self.config.extra.get("fallback_model")
         self._instructions = instructions
 
         # Build security hooks list via the shared single-source roster so this
@@ -380,26 +368,10 @@ class OpenAIAgentCore:
 
         _log(
             f"Creating agent with model={self._model_primary}, "
-            f"fallback={self._model_fallback}, "
             f"mcp_servers={len(self._mcp_servers)}, "
             f"security_hooks={len(self._before_tool_hooks)}"
         )
         self._agent = self._make_agent(self._model_primary)
-
-    def _query_models(self) -> tuple[str, ...]:
-        """Return the ordered model list for a query attempt."""
-        return tuple(
-            model for model in (self._model_primary, self._model_fallback) if isinstance(model, str)
-        )
-
-    def _should_retry_query(self, attempt: int, exc: Exception, emitted_any: bool) -> bool:
-        """Return whether query() should retry with the configured secondary model."""
-        return (
-            attempt == 1
-            and self._model_fallback is not None
-            and _is_model_not_found(exc)
-            and not emitted_any
-        )
 
     async def query(self, prompt: str) -> AsyncIterator[AgentEvent]:
         """Execute a query and yield AgentEvents."""
@@ -407,21 +379,10 @@ class OpenAIAgentCore:
             raise RuntimeError("OpenAIAgentCore not started (call start() first)")
 
         _log(f"Starting query (previous_response_id: {self._previous_response_id or 'none'})...")
-
-        for attempt, model in enumerate(self._query_models(), start=1):
-            emitted_any = False
-            try:
-                if attempt > 1:
-                    _log(f"Retrying with fallback model={model}")
-                async for event in self._run_streamed(prompt, model):
-                    emitted_any = True
-                    yield event
-                return
-            except Exception as exc:
-                if self._should_retry_query(attempt, exc, emitted_any):
-                    _log(f"Primary model failed ({exc}); trying fallback")
-                    continue
-                raise
+        if not isinstance(self._model_primary, str):
+            raise RuntimeError("OpenAIAgentCore not started (missing model)")
+        async for event in self._run_streamed(prompt, self._model_primary):
+            yield event
 
     async def _run_streamed(self, prompt: str, model: str) -> AsyncIterator[AgentEvent]:
         """Run a single streamed request for the given model."""

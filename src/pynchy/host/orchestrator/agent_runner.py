@@ -144,23 +144,16 @@ def _build_container_input(
 def _agent_core_config_from_settings(group_folder: str | None = None) -> dict[str, str] | None:
     s = get_settings()
     resolved_model = s.agent.model
-    resolved_fallback_model = s.agent.fallback_model
     if group_folder is not None:
         from pynchy.host.orchestrator.workspace_config import load_resolved_config
 
-        sandbox_config = load_resolved_config(group_folder)
-        if sandbox_config is not None:
-            if sandbox_config.model:
-                resolved_model = sandbox_config.model
-                resolved_fallback_model = sandbox_config.fallback_model
-            elif sandbox_config.fallback_model:
-                resolved_fallback_model = sandbox_config.fallback_model
+        workspace_config = load_resolved_config(group_folder)
+        if workspace_config is not None and workspace_config.model:
+            resolved_model = workspace_config.model
 
     result: dict[str, str] = {}
     if resolved_model:
         result["model"] = resolved_model
-    if resolved_fallback_model:
-        result["fallback_model"] = resolved_fallback_model
     return result or None
 
 

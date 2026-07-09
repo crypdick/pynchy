@@ -328,7 +328,7 @@ def _warn_if_repo_token_missing(
     check_token_expiry,
     get_repo_token,
 ) -> None:
-    repo_cfg = settings.repos.get(slug)
+    repo_cfg = settings.repos.overrides.get(slug)
     if repo_cfg and repo_cfg.token:
         check_token_expiry(slug, repo_cfg.token.get_secret_value())
         return

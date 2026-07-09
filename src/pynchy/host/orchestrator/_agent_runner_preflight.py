@@ -128,11 +128,8 @@ def _resolved_pre_container_context(
     from pynchy.host.orchestrator.workspace_config import load_resolved_config
 
     resolved = load_resolved_config(group_folder)
-    repo_access = (
-        repo_access_override
-        if repo_access_override is not None
-        else (resolved.repo_access if resolved else None)
-    )
+    resolved_repo = resolved.repo[0] if resolved and resolved.repo else None
+    repo_access = repo_access_override if repo_access_override is not None else resolved_repo
     system_prompt_append = read_prompts(
         resolved.prompts if resolved else [],
         get_settings().project_root,

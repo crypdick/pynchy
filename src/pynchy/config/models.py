@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Annotated, Literal, NewType
 
 from croniter import croniter
-from pydantic import AfterValidator, BaseModel, Field, SecretStr, field_validator
+from pydantic import AfterValidator, BaseModel, Field, SecretStr, field_validator, model_validator
 
 from pynchy.config.refs import parse_chat_ref, parse_connection_ref
 
@@ -86,6 +86,7 @@ class _StrictModel(BaseModel):
 
 class AgentConfig(_StrictModel):
     default_core: str = "openai"  # built-in: "openai", "claude", "claude-cli", or "codex"
+    model: str | None = None
 
 
 class ContainerConfig(_StrictModel):
@@ -425,6 +426,24 @@ class WorkspaceConfig(_StrictModel):
 
 class ReposConfig(_StrictModel):
     root: Path = Path("/Users/ricardo/src/PERSONAL")
+    overrides: dict[str, RepoConfig] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_inline_repo_overrides(cls, data: dict[str, object]) -> dict[str, object]:
+        if not isinstance(data, dict):
+            return data
+        unknown = sorted(set(data) - {"root", "overrides"})
+        if unknown:
+            raise ValueError(f"repo overrides must be nested under repos.overrides: {unknown}")
+        return data
+
+    @field_validator("overrides")
+    @classmethod
+    def validate_override_slugs(cls, v: dict[str, RepoConfig]) -> dict[str, RepoConfig]:
+        for slug in v:
+            _validated_repo_slug(slug)
+        return v
 
 
 class BuiltinToolConfig(_StrictModel):

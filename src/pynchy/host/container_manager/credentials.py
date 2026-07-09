@@ -137,12 +137,12 @@ def _gh_token_env_var(s: Settings, *, is_admin: bool, group_folder: str) -> dict
             return {"GH_TOKEN": gh_token}
         return {}
 
-    # Non-admin: inject repo-scoped token if this workspace has repo_access
+    # Non-admin: inject repo-scoped token if this workspace has a configured repo.
     from pynchy.host.orchestrator.workspace_config import load_resolved_config
 
     resolved = load_resolved_config(group_folder)
-    if resolved and resolved.repo_access:
-        repo_cfg = s.repos.get(resolved.repo_access)
+    if resolved and resolved.repo:
+        repo_cfg = s.repos.overrides.get(resolved.repo[0])
         if repo_cfg and repo_cfg.token:
             return {"GH_TOKEN": repo_cfg.token.get_secret_value()}
     return {}

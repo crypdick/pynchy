@@ -113,13 +113,10 @@ def _required_litellm_models(
     *,
     agent_core: str,
     model: str | None,
-    fallback_model: str | None,
 ) -> tuple[str, ...]:
     """Return LiteLLM model aliases that the active core can request directly."""
-    if agent_core == "codex":
+    if agent_core in {"codex", "openai"}:
         return (model,) if model else ()
-    if agent_core == "openai":
-        return tuple(m for m in (model, fallback_model) if m)
     return ()
 
 
@@ -204,9 +201,8 @@ async def start_gateway(
             data_dir=s.data_dir,
             master_key=s.gateway.master_key.get_secret_value(),
             required_models=_required_litellm_models(
-                agent_core=s.agent.core,
+                agent_core=s.agent.default_core,
                 model=s.agent.model,
-                fallback_model=s.agent.fallback_model,
             ),
         )
     else:

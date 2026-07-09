@@ -201,7 +201,7 @@ async def _delete_stale_schedules(client: Any, desired_schedule_ids: set[str]) -
 
 
 def _repo_root_for_slug(settings: Any, repo_slug: str) -> Path | None:
-    repo_cfg = settings.repos.get(repo_slug)
+    repo_cfg = settings.repos.overrides.get(repo_slug)
     if repo_cfg is None:
         return None
     if repo_cfg.path:
@@ -210,15 +210,11 @@ def _repo_root_for_slug(settings: Any, repo_slug: str) -> Path | None:
         owner, repo_name = repo_slug.split("/", 1)
     except ValueError:
         return None
-    return Path(settings.data_dir) / "repos" / owner / repo_name
+    return Path(settings.repos.root) / owner / repo_name
 
 
 def _external_repo_sync_slugs(settings: Any) -> list[str]:
     slugs: set[str] = set()
-    for config in settings.workspaces.values():
-        repo_access = getattr(config, "repo_access", None)
-        if repo_access:
-            slugs.add(repo_access)
     slugs.update(get_repo_access_groups(settings.workspaces.keys()).keys())
 
     external: list[str] = []

@@ -18,7 +18,12 @@ from conftest import make_settings
 from pydantic import SecretStr
 
 from pynchy.config import GatewayConfig
-from pynchy.config.models import LearningConfig, ObsidianLearningConfig, WorkspaceConfig
+from pynchy.config.models import (
+    LearningConfig,
+    ObsidianLearningConfig,
+    ProfileConfig,
+    WorkspaceConfig,
+)
 from pynchy.host.container_manager.credentials import (
     _write_env_file,  # allow: private-test-imports
     shell_quote,
@@ -162,6 +167,16 @@ def _apply_secret_overrides(
         setattr(settings.secrets, key, SecretStr(value))
 
 
+def _profile_workspace(
+    profile_name: str = "test-profile",
+    *,
+    skills: list[str] | None = None,
+    model: str | None = None,
+):
+    profile = ProfileConfig(skills=skills or [], model=model)
+    return {profile_name: profile}, WorkspaceConfig(profiles=[profile_name])
+
+
 @contextlib.contextmanager
 def _patch_settings(
     tmp_path: Path | None = None,
@@ -184,14 +199,14 @@ def _patch_settings(
     )
     s = make_settings(**overrides)
     if core is not None:
-        s.agent.core = core
+        s.agent.default_core = core
     if max_output_size is not None:
         s.container.max_output_size = max_output_size
     _apply_secret_overrides(s, secret_overrides)
     with contextlib.ExitStack() as stack:
         for mod in _SETTINGS_MODULES:
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
-        yield
+        yield s
 
 
 class FakeProcess(asyncio.subprocess.Process):
@@ -665,9 +680,15 @@ class TestMountBuilding:
             enabled=True,
             obsidian=ObsidianLearningConfig(vault_root=str(vault)),
         )
-        workspaces = {"test-group": WorkspaceConfig(profile="Deep Work!!")}
+        profiles, workspace = _profile_workspace("Deep Work!!")
+        workspaces = {"test-group": workspace}
 
-        with _patch_settings(tmp_path, learning=learning, workspaces=workspaces):
+        with _patch_settings(
+            tmp_path,
+            learning=learning,
+            workspaces=workspaces,
+        ) as settings:
+            settings.profiles.update(profiles)
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
 
             build_volume_mounts(TEST_GROUP, is_admin=False)
@@ -710,15 +731,17 @@ class TestMountBuilding:
             enabled=True,
             obsidian=ObsidianLearningConfig(vault_root=str(vault)),
         )
-        workspaces = {"test-group": WorkspaceConfig(profile="Deep Work!!", skills=[])}
+        profiles, workspace = _profile_workspace("Deep Work!!", skills=[])
+        workspaces = {"test-group": workspace}
 
         with (
-            _patch_settings(tmp_path, learning=learning, workspaces=workspaces),
+            _patch_settings(tmp_path, learning=learning, workspaces=workspaces) as settings,
             patch(
                 "pynchy.host.container_manager.mounts.iter_learned_skill_dirs",
                 side_effect=AssertionError("unexpected scan"),
             ),
         ):
+            settings.profiles.update(profiles)
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
 
             mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
@@ -739,9 +762,15 @@ class TestMountBuilding:
             enabled=True,
             obsidian=ObsidianLearningConfig(vault_root=str(vault)),
         )
-        workspaces = {"test-group": WorkspaceConfig(profile="Deep Work!!", skills=["learned"])}
+        profiles, workspace = _profile_workspace("Deep Work!!", skills=["learned"])
+        workspaces = {"test-group": workspace}
 
-        with _patch_settings(tmp_path, learning=learning, workspaces=workspaces):
+        with _patch_settings(
+            tmp_path,
+            learning=learning,
+            workspaces=workspaces,
+        ) as settings:
+            settings.profiles.update(profiles)
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
 
             build_volume_mounts(TEST_GROUP, is_admin=False)
@@ -766,8 +795,10 @@ class TestMountBuilding:
             def __init__(self):
                 pass
 
-        workspaces = {"test-group": WorkspaceConfig(skills=["calendar-caldav"])}
-        with _patch_settings(tmp_path, workspaces=workspaces):
+        profiles, workspace = _profile_workspace(skills=["calendar-caldav"])
+        workspaces = {"test-group": workspace}
+        with _patch_settings(tmp_path, workspaces=workspaces) as settings:
+            settings.profiles.update(profiles)
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
 
             build_volume_mounts(TEST_GROUP, is_admin=False, plugin_manager=FakePM())
@@ -1521,17 +1552,13 @@ class TestContainerInputAgentCoreConfig:
         settings = make_settings(
             agent=AgentConfig(
                 model="chatgpt/gpt-5.3-codex",
-                fallback_model="chatgpt/gpt-5.3-codex-spark",
             )
         )
 
         with patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings):
             result = _build_container_input([], self._ctx(), "chat", TEST_GROUP)
 
-        assert result.agent_core_config == {
-            "model": "chatgpt/gpt-5.3-codex",
-            "fallback_model": "chatgpt/gpt-5.3-codex-spark",
-        }
+        assert result.agent_core_config == {"model": "chatgpt/gpt-5.3-codex"}
 
     def test_default_agent_model_flows_to_core_config(self):
         settings = make_settings()
@@ -1539,20 +1566,19 @@ class TestContainerInputAgentCoreConfig:
         with patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings):
             result = _build_container_input([], self._ctx(), "chat", TEST_GROUP)
 
-        assert result.agent_core_config == {"model": "gpt-5.5"}
+        assert result.agent_core_config is None
 
     def test_workspace_model_overrides_global_agent_model(self):
         from pynchy.config import AgentConfig
-        from pynchy.config.models import WorkspaceConfig
 
+        profiles, workspace = _profile_workspace(
+            "codex-workspace",
+            model="chatgpt/gpt-5.3-codex-spark",
+        )
         settings = make_settings(
             agent=AgentConfig(model="chatgpt/gpt-5.3-codex"),
-            workspaces={
-                TEST_GROUP.folder: WorkspaceConfig(
-                    model="chatgpt/gpt-5.3-codex-spark",
-                    fallback_model="chatgpt/gpt-5.3-codex-mini",
-                )
-            },
+            profiles=profiles,
+            workspaces={TEST_GROUP.folder: workspace},
         )
 
         with (
@@ -1564,21 +1590,19 @@ class TestContainerInputAgentCoreConfig:
         ):
             result = _build_container_input([], self._ctx(), "chat", TEST_GROUP)
 
-        assert result.agent_core_config == {
-            "model": "chatgpt/gpt-5.3-codex-spark",
-            "fallback_model": "chatgpt/gpt-5.3-codex-mini",
-        }
+        assert result.agent_core_config == {"model": "chatgpt/gpt-5.3-codex-spark"}
 
-    def test_workspace_model_override_does_not_inherit_global_fallback(self):
+    def test_workspace_model_override_replaces_global_model(self):
         from pynchy.config import AgentConfig
-        from pynchy.config.models import WorkspaceConfig
 
+        profiles, workspace = _profile_workspace(
+            "codex-workspace",
+            model="chatgpt/gpt-5.3-codex-spark",
+        )
         settings = make_settings(
-            agent=AgentConfig(
-                model="chatgpt/gpt-5.3-codex",
-                fallback_model="chatgpt/gpt-5.3-codex",
-            ),
-            workspaces={TEST_GROUP.folder: WorkspaceConfig(model="chatgpt/gpt-5.3-codex-spark")},
+            agent=AgentConfig(model="chatgpt/gpt-5.3-codex"),
+            profiles=profiles,
+            workspaces={TEST_GROUP.folder: workspace},
         )
 
         with (
