@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import time
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from pynchy.logger import logger
 from pynchy.types import NewMessage
@@ -33,30 +33,32 @@ else:
     DiscordChannel = object
 
 
-def _author_names(author: Any) -> frozenset[str]:
+def _author_names(author: object) -> frozenset[str]:
+    author_like = cast("Any", author)
     names = {
         value
         for value in (
-            getattr(author, "display_name", None),
-            getattr(author, "global_name", None),
-            getattr(author, "name", None),
-            str(author),
+            getattr(author_like, "display_name", None),
+            getattr(author_like, "global_name", None),
+            getattr(author_like, "name", None),
+            str(author_like),
         )
         if isinstance(value, str) and value.strip()
     }
     return frozenset(names)
 
 
-def build_inbound_context(message: Any, bot_user_id: str) -> InboundContext:
+def build_inbound_context(message: object, bot_user_id: str) -> InboundContext:
     """Extract the access-relevant primitives from a discord.py message."""
-    author = message.author
-    guild = message.guild
-    channel = message.channel
+    message_like = cast("Any", message)
+    author = message_like.author
+    guild = message_like.guild
+    channel = message_like.channel
     is_dm = guild is None
     parent_id = getattr(channel, "parent_id", None)
     parent = getattr(channel, "parent", None)
     role_ids = frozenset(str(role.id) for role in getattr(author, "roles", []))
-    mentions_bot = any(str(user.id) == bot_user_id for user in message.mentions)
+    mentions_bot = any(str(user.id) == bot_user_id for user in message_like.mentions)
     return InboundContext(
         is_dm=is_dm,
         author_id=str(author.id),
@@ -84,46 +86,50 @@ def jid_for(ctx: InboundContext) -> str:
     return channel_jid(ctx.channel_id)
 
 
-def _attachment_metadata(attachment: Any) -> dict[str, Any]:
+def _attachment_metadata(attachment: object) -> dict[str, Any]:
     """Normalize a Discord attachment into plain metadata."""
+    attachment_like = cast("Any", attachment)
     return {
-        "id": str(getattr(attachment, "id", "")),
-        "filename": getattr(attachment, "filename", ""),
-        "url": getattr(attachment, "url", ""),
-        "proxy_url": getattr(attachment, "proxy_url", ""),
-        "content_type": getattr(attachment, "content_type", None),
-        "size": getattr(attachment, "size", 0),
-        "description": getattr(attachment, "description", None),
-        "spoiler": bool(getattr(attachment, "spoiler", False)),
+        "id": str(getattr(attachment_like, "id", "")),
+        "filename": getattr(attachment_like, "filename", ""),
+        "url": getattr(attachment_like, "url", ""),
+        "proxy_url": getattr(attachment_like, "proxy_url", ""),
+        "content_type": getattr(attachment_like, "content_type", None),
+        "size": getattr(attachment_like, "size", 0),
+        "description": getattr(attachment_like, "description", None),
+        "spoiler": bool(getattr(attachment_like, "spoiler", False)),
     }
 
 
-def _forwarded_snapshot_metadata(snapshot: Any) -> dict[str, Any]:
-    created = getattr(snapshot, "created_at", None)
+def _forwarded_snapshot_metadata(snapshot: object) -> dict[str, Any]:
+    snapshot_like = cast("Any", snapshot)
+    created = getattr(snapshot_like, "created_at", None)
     return {
-        "content": getattr(snapshot, "content", ""),
+        "content": getattr(snapshot_like, "content", ""),
         "created_at": created.isoformat() if created else None,
-        "type": str(getattr(snapshot, "type", "")),
+        "type": str(getattr(snapshot_like, "type", "")),
         "attachments": [
-            _attachment_metadata(attachment) for attachment in getattr(snapshot, "attachments", [])
+            _attachment_metadata(attachment)
+            for attachment in getattr(snapshot_like, "attachments", [])
         ],
     }
 
 
-def normalized_message_content(message: Any) -> str:
+def normalized_message_content(message: object) -> str:
     """Return the best available human-readable text for an inbound message.
 
     Forwarded Discord messages can arrive with an empty ``message.content`` and
     only a ``message_snapshots`` payload. Fall back to the forwarded snapshot
     text in that case so Pynchy doesn't ingest a blank message.
     """
-    content = getattr(message, "content", "")
+    message_like = cast("Any", message)
+    content = getattr(message_like, "content", "")
     if content:
         return content
 
     snapshot_texts = [
         getattr(snapshot, "content", "").strip()
-        for snapshot in getattr(message, "message_snapshots", [])
+        for snapshot in getattr(message_like, "message_snapshots", [])
         if getattr(snapshot, "content", "").strip()
     ]
     if snapshot_texts:
@@ -131,37 +137,39 @@ def normalized_message_content(message: Any) -> str:
     return content
 
 
-def build_message_metadata(message: Any, ctx: InboundContext | None = None) -> dict[str, Any]:
+def build_message_metadata(message: object, ctx: InboundContext | None = None) -> dict[str, Any]:
     """Extract Discord-native structure that would otherwise be lost in text."""
-    metadata: dict[str, Any] = {"discord_message_id": str(message.id)}
+    message_like = cast("Any", message)
+    metadata: dict[str, Any] = {"discord_message_id": str(message_like.id)}
     if ctx is not None:
         metadata["discord_channel_name"] = ctx.channel_name or ""
         if ctx.parent_channel_id is not None:
             metadata["discord_parent_chat_jid"] = channel_jid(ctx.parent_channel_id)
             metadata["discord_parent_channel_name"] = ctx.parent_channel_name or ""
 
-    attachments = getattr(message, "attachments", [])
+    attachments = getattr(message_like, "attachments", [])
     if attachments:
         metadata["attachments"] = [_attachment_metadata(attachment) for attachment in attachments]
 
-    reference = getattr(message, "reference", None)
+    reference = getattr(message_like, "reference", None)
     if reference is not None:
         reference_message_id = getattr(reference, "message_id", None)
         if reference_message_id is not None:
             metadata["reply_to_message_id"] = str(reference_message_id)
         resolved = getattr(reference, "resolved", None)
         if resolved is not None:
-            author = getattr(resolved, "author", None)
+            resolved_like = cast("Any", resolved)
+            author = getattr(resolved_like, "author", None)
             if author is not None:
                 sender_name = getattr(author, "display_name", None) or str(author)
                 metadata["reply_to_sender"] = sender_name
-            resolved_content = getattr(resolved, "content", "")
+            resolved_content = getattr(resolved_like, "content", "")
             if resolved_content:
                 metadata["reply_to_text"] = resolved_content
 
     forwarded = [
         _forwarded_snapshot_metadata(snapshot)
-        for snapshot in getattr(message, "message_snapshots", [])
+        for snapshot in getattr(message_like, "message_snapshots", [])
     ]
     if forwarded:
         metadata["forwarded_messages"] = forwarded
@@ -194,19 +202,20 @@ class DiscordEvents:
         # discord.py's event decorator is untyped to mypy (discord is
         # ignore_missing_imports), hence the per-handler untyped-decorator ignores.
         @client.event  # type: ignore[untyped-decorator]
-        async def on_message(message: Any) -> None:
+        async def on_message(message: object) -> None:
             await self.handle_message(message)
 
         @client.event  # type: ignore[untyped-decorator]
-        async def on_raw_reaction_add(payload: Any) -> None:
+        async def on_raw_reaction_add(payload: object) -> None:
             await self.handle_reaction(payload)
 
-    async def handle_message(self, message: Any) -> None:
+    async def handle_message(self, message: object) -> None:
         ch = self._channel
-        if str(message.author.id) == ch.bot_user_id:
+        message_like = cast("Any", message)
+        if str(message_like.author.id) == ch.bot_user_id:
             return  # our own message
-        ctx = build_inbound_context(message, ch.bot_user_id)
-        if self._dedup(str(message.id)):
+        ctx = build_inbound_context(message_like, ch.bot_user_id)
+        if self._dedup(str(message_like.id)):
             return
         jid = jid_for(ctx)
         if ch.access.decide(ctx) != "allow" and not ch.allows_registered_workspace_jid(
@@ -214,18 +223,20 @@ class DiscordEvents:
         ):
             return
 
-        sender_name = getattr(message.author, "display_name", None) or str(message.author)
-        created = getattr(message, "created_at", None)
+        sender_name = getattr(message_like.author, "display_name", None) or str(
+            message_like.author
+        )
+        created = getattr(message_like, "created_at", None)
         timestamp = created.isoformat() if created else datetime.now(UTC).isoformat()
-        chat_name = getattr(message.channel, "name", None) or sender_name
+        chat_name = getattr(message_like.channel, "name", None) or sender_name
 
         ch.on_chat_metadata(jid, timestamp, chat_name)
         msg = NewMessage(
-            id=f"discord-{message.id}",
+            id=f"discord-{message_like.id}",
             chat_jid=jid,
             sender=ctx.author_id,
             sender_name=sender_name,
-            content=normalized_message_content(message),
+            content=normalized_message_content(message_like),
             timestamp=timestamp,
             is_from_me=False,
             metadata=build_message_metadata(message, ctx),
@@ -233,14 +244,15 @@ class DiscordEvents:
         logger.info("Discord inbound message", jid=jid, sender=ctx.author_id)
         ch.on_message(jid, msg)
 
-    async def handle_reaction(self, payload: Any) -> None:
+    async def handle_reaction(self, payload: object) -> None:
         ch = self._channel
+        payload_like = cast("Any", payload)
         if ch.on_reaction is None:
             return
-        if str(payload.user_id) == ch.bot_user_id:
+        if str(payload_like.user_id) == ch.bot_user_id:
             return
-        if payload.guild_id is None:
+        if payload_like.guild_id is None:
             return  # DM reactions unsupported in v1 (raw payload lacks the peer id)
-        jid = channel_jid(payload.channel_id)
-        emoji = str(payload.emoji)
-        ch.on_reaction(jid, str(payload.message_id), str(payload.user_id), emoji)
+        jid = channel_jid(payload_like.channel_id)
+        emoji = str(payload_like.emoji)
+        ch.on_reaction(jid, str(payload_like.message_id), str(payload_like.user_id), emoji)
