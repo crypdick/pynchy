@@ -148,12 +148,15 @@ class BuiltinGateway:
                 text=f"No credentials configured for {provider}",
             )
 
+        session = self._session
+        if session is None:
+            raise RuntimeError("Builtin gateway ClientSession not initialized")
+
         headers = self._build_upstream_headers(request.headers, provider)
         body = await request.read()
 
-        assert self._session is not None
         try:
-            async with self._session.request(
+            async with session.request(
                 method=request.method,
                 url=upstream_url,
                 headers=headers,

@@ -50,7 +50,8 @@ def packet_payload_char_limit(packet_max_chars: int) -> int:
 def observe_container_output(summary: LearningRunSummary, output: ContainerOutput) -> None:
     if _is_successful_result(output):
         result = output.result
-        assert result is not None
+        if result is None:
+            raise RuntimeError("Successful learning output is missing result text")
         summary.final_answer = _sanitize_text(result)
 
     if output.type == "tool_use" and output.tool_name:
@@ -65,7 +66,8 @@ def observe_container_output(summary: LearningRunSummary, output: ContainerOutpu
     # or they are indistinguishable from successful tool output here.
     if _is_recovered_tool_error(output):
         error_content = output.tool_result_content
-        assert error_content is not None
+        if error_content is None:
+            raise RuntimeError("Recovered tool error output is missing tool_result_content")
         _append_error_snippet(summary, error_content)
 
 

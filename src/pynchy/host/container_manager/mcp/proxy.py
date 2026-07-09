@@ -270,7 +270,8 @@ async def _proxy_handler(request: Any) -> Any:
         return outbound_decision
 
     session = state.http_session
-    assert session is not None, "Proxy ClientSession not initialized"
+    if session is None:
+        raise RuntimeError("MCP proxy ClientSession not initialized")
     return await _forward_to_backend(
         session=session,
         request=request,

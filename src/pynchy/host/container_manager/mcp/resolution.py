@@ -199,7 +199,8 @@ def resolve_kwargs(settings: Settings, group_folder: str, server_name: str) -> d
     """
     if group_folder not in settings.workspaces:
         return {}
-    assert server_name
+    if not server_name:
+        raise ValueError("server_name must be a non-empty string")
 
     raw_kwargs: dict[str, Any] = {}
 

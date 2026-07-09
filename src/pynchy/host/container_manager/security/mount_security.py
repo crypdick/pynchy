@@ -349,9 +349,10 @@ def validate_additional_mounts(
         result = validate_mount(mount, is_admin)
 
         if result.allowed:
-            # An allowed result always populates these fields (see validate_mount).
-            assert result.real_host_path is not None
-            assert result.effective_readonly is not None
+            if result.real_host_path is None:
+                raise RuntimeError("Allowed mount validation result is missing real_host_path")
+            if result.effective_readonly is None:
+                raise RuntimeError("Allowed mount validation result is missing effective_readonly")
             validated.append(
                 {
                     "hostPath": result.real_host_path,
