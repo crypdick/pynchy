@@ -46,6 +46,10 @@ from pynchy.host.container_manager.gateway_litellm import (
 from pynchy.logger import logger
 from pynchy.types import ServiceTrustConfig
 
+_GATEWAY_MASTER_KEY_REQUIRED_ERROR = (
+    "GATEWAY__MASTER_KEY is required when using LiteLLM mode. Set it in .env."
+)
+
 # Public gateway API re-exported from this module
 __all__ = [
     "BuiltinGateway",
@@ -198,9 +202,7 @@ async def start_gateway(
     if s.gateway.litellm_config:
         logger.info("Using LiteLLM gateway mode", config=s.gateway.litellm_config)
         if not s.gateway.master_key:
-            raise ValueError(
-                "GATEWAY__MASTER_KEY is required when using LiteLLM mode. Set it in .env."
-            )
+            raise ValueError(_GATEWAY_MASTER_KEY_REQUIRED_ERROR)
         gateway: LiteLLMGateway | BuiltinGateway = LiteLLMGateway(
             config_path=s.gateway.litellm_config,
             port=s.gateway.port,

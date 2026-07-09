@@ -20,6 +20,10 @@ from pynchy.host.learning.skills import iter_learned_skill_dirs
 from pynchy.host.orchestrator.workspace_config import load_resolved_config
 from pynchy.types import VolumeMount, WorkspaceProfile
 
+_LEARNING_VAULT_DIRECTORY_REQUIRED_ERROR = (
+    "learning.obsidian.vault_root must be an existing directory"
+)
+
 
 @dataclass(frozen=True)
 class _LearningMountContext:
@@ -170,7 +174,7 @@ def _add_learning_mounts(mounts: list[VolumeMount], group_folder: str) -> _Learn
 def _validate_learning_vault(vault_root: Path) -> None:
     if vault_root.exists() and vault_root.is_dir():
         return
-    raise LearningConfigError("learning.obsidian.vault_root must be an existing directory")
+    raise LearningConfigError(_LEARNING_VAULT_DIRECTORY_REQUIRED_ERROR)
 
 
 def _should_scan_learned_skills(workspace_skills: list[str] | None) -> bool:

@@ -31,6 +31,7 @@ _STRIP_REQUEST_HEADERS = frozenset({"authorization", "x-api-key", "host", "conte
 _STRIP_RESPONSE_HEADERS = frozenset(
     {"transfer-encoding", "content-encoding", "connection", "keep-alive"}
 )
+_SESSION_NOT_INITIALIZED_ERROR = "Builtin gateway ClientSession not initialized"
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +186,7 @@ class BuiltinGateway:
 
         session = self._session
         if session is None:
-            raise RuntimeError("Builtin gateway ClientSession not initialized")
+            raise RuntimeError(_SESSION_NOT_INITIALIZED_ERROR)
 
         headers = self._build_upstream_headers(request.headers, provider)
         body = await request.read()
