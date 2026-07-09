@@ -238,10 +238,16 @@ def reset_settings(monkeypatch):
 
     Uses ``make_settings()`` to build from pure defaults — no config.toml,
     no .env, no file I/O. Tests are fully isolated from production config.
+    Direct ``Settings()`` calls still read real environment variables, but not
+    repo-local config files or dotenv files.
 
     Tests that mock ``get_settings()`` at the call site are unaffected — their
     mock takes precedence over the cached singleton.
     """
+    from pynchy.config import Settings
+
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
+    monkeypatch.setitem(Settings.model_config, "toml_file", None)
     safe = make_settings()
     monkeypatch.setattr("pynchy.config.settings._settings", safe)
 
