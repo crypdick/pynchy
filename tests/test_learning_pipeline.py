@@ -43,6 +43,14 @@ def _make_deps(
     deps._dispatched_through = {}
     deps.channels = []
     deps.last_timestamp = ""
+    deps.routing_cursor = MagicMock(
+        side_effect=lambda jid: max(
+            deps.last_agent_timestamp.get(jid, ""),
+            deps._dispatched_through.get(jid, ""),
+        )
+    )
+    deps.mark_dispatched = MagicMock(side_effect=deps._dispatched_through.__setitem__)
+    deps.pop_dispatched = MagicMock(side_effect=deps._dispatched_through.pop)
 
     deps.save_state = AsyncMock()
     deps.handle_context_reset = AsyncMock()

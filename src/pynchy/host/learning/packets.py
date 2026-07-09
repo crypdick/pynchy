@@ -148,7 +148,7 @@ async def start_learning_review_workflow(
         )
         if packet is None:
             return None
-        from pynchy.host.orchestrator.temporal.scheduler import (
+        from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415, RUF100 - lazy import keeps packet building light.
             start_learning_review_workflow as _start_temporal_learning_review,
         )
 
