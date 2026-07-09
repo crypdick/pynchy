@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess
+import subprocess  # noqa: S404, RUF100 - installer invokes fixed system managers with argv and no shell.
 import sys
 from pathlib import Path
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
+
+_LAUNCHCTL = "/bin/launchctl"
+_XATTR = "/usr/bin/xattr"
+_SYSTEMCTL = "/usr/bin/systemctl"
+_SUDO = "/usr/bin/sudo"
+_LOGINCTL = "/usr/bin/loginctl"
 
 
 def is_launchd_managed() -> bool:
@@ -21,8 +27,8 @@ def is_launchd_managed() -> bool:
 
 def is_launchd_loaded(label: str) -> bool:
     """Check if a launchd job is loaded."""
-    result = subprocess.run(
-        ["launchctl", "print", f"{_launchd_domain()}/{label}"],
+    result = subprocess.run(  # noqa: S603, RUF100 - fixed absolute launchctl argv; no shell.
+        [_LAUNCHCTL, "print", f"{_launchd_domain()}/{label}"],
         capture_output=True,
         check=False,
     )
@@ -37,8 +43,8 @@ def _launchd_domain() -> str:
 def _bootstrap_launchd_service(label: str, plist_path: Path) -> bool:
     """Bootstrap a LaunchAgent and verify launchd registered the label."""
     domain = _launchd_domain()
-    result = subprocess.run(
-        ["launchctl", "bootstrap", domain, str(plist_path)],
+    result = subprocess.run(  # noqa: S603, RUF100 - fixed absolute launchctl argv; no shell.
+        [_LAUNCHCTL, "bootstrap", domain, str(plist_path)],
         capture_output=True,
         text=True,
         check=False,
@@ -53,11 +59,17 @@ def _bootstrap_launchd_service(label: str, plist_path: Path) -> bool:
         stderr=result.stderr.strip() or None,
     )
     label_target = f"{domain}/{label}"
-    subprocess.run(["launchctl", "bootout", label_target], capture_output=True, check=False)
-    subprocess.run(["launchctl", "disable", label_target], capture_output=True, check=False)
-    subprocess.run(["launchctl", "enable", label_target], capture_output=True, check=False)
-    result = subprocess.run(
-        ["launchctl", "bootstrap", domain, str(plist_path)],
+    subprocess.run(  # noqa: S603, RUF100 - fixed absolute launchctl argv; no shell.
+        [_LAUNCHCTL, "bootout", label_target], capture_output=True, check=False
+    )
+    subprocess.run(  # noqa: S603, RUF100 - fixed absolute launchctl argv; no shell.
+        [_LAUNCHCTL, "disable", label_target], capture_output=True, check=False
+    )
+    subprocess.run(  # noqa: S603, RUF100 - fixed absolute launchctl argv; no shell.
+        [_LAUNCHCTL, "enable", label_target], capture_output=True, check=False
+    )
+    result = subprocess.run(  # noqa: S603, RUF100 - fixed absolute launchctl argv; no shell.
+        [_LAUNCHCTL, "bootstrap", domain, str(plist_path)],
         capture_output=True,
         text=True,
         check=False,
@@ -82,7 +94,9 @@ def _remove_launchd_extended_attrs(path: Path) -> None:
     config, so the installer strips them from the rendered service definition.
     """
     for attr in ("com.apple.quarantine", "com.apple.provenance"):
-        subprocess.run(["xattr", "-d", attr, str(path)], capture_output=True, check=False)
+        subprocess.run(  # noqa: S603, RUF100 - fixed absolute xattr argv; no shell.
+            [_XATTR, "-d", attr, str(path)], capture_output=True, check=False
+        )
 
 
 def _launchd_path(home: Path, uv_path: str) -> str:
@@ -138,8 +152,8 @@ def _write_launchd_plist(
 ) -> None:
     if already_loaded:
         # Unload before overwriting so launchd picks up the updated version.
-        subprocess.run(
-            ["launchctl", "bootout", _launchd_domain(), str(dest)],
+        subprocess.run(  # noqa: S603, RUF100 - fixed absolute launchctl argv; no shell.
+            [_LAUNCHCTL, "bootout", _launchd_domain(), str(dest)],
             capture_output=True,
             check=False,
         )
@@ -239,19 +253,19 @@ WantedBy=default.target
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(unit, encoding="utf-8")
     logger.info("Installed systemd user service", dest=str(dest))
-    subprocess.run(
-        ["systemctl", "--user", "daemon-reload"],
+    subprocess.run(  # noqa: S603, RUF100 - fixed absolute systemctl argv; no shell.
+        [_SYSTEMCTL, "--user", "daemon-reload"],
         capture_output=True,
         check=False,
     )
-    subprocess.run(
-        ["systemctl", "--user", "enable", "pynchy.service"],
+    subprocess.run(  # noqa: S603, RUF100 - fixed absolute systemctl argv; no shell.
+        [_SYSTEMCTL, "--user", "enable", "pynchy.service"],
         capture_output=True,
         check=False,
     )
     # Enable lingering so the user service runs without an active login session
-    subprocess.run(
-        ["sudo", "loginctl", "enable-linger", home.name],
+    subprocess.run(  # noqa: S603, RUF100 - fixed absolute sudo argv; no shell.
+        [_SUDO, _LOGINCTL, "enable-linger", home.name],
         capture_output=True,
         check=False,
     )

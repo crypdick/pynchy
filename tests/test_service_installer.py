@@ -57,7 +57,7 @@ class TestIsLaunchdLoaded:
             mock_run.return_value = Mock(returncode=0)
             assert is_launchd_loaded("com.pynchy") is True
             mock_run.assert_called_once_with(
-                ["launchctl", "print", "gui/501/com.pynchy"],
+                ["/bin/launchctl", "print", "gui/501/com.pynchy"],
                 capture_output=True,
                 check=False,
             )
@@ -163,7 +163,7 @@ class TestInstallLaunchdService:
         assert dest_file.read_text() == plist_content
         # Should NOT have bootstrapped launchd (not managed, not previously loaded).
         bootstrap_calls = [
-            c for c in mock_run.call_args_list if c.args[0][:2] == ["launchctl", "bootstrap"]
+            c for c in mock_run.call_args_list if c.args[0][:2] == ["/bin/launchctl", "bootstrap"]
         ]
         assert not bootstrap_calls
 
@@ -223,8 +223,8 @@ class TestInstallLaunchdService:
         # Should have booted out the old definition, then bootstrapped the new one.
         calls = mock_run.call_args_list
         cmds = [c.args[0] for c in calls]
-        bootout_cmds = [c for c in cmds if c[:2] == ["launchctl", "bootout"]]
-        bootstrap_cmds = [c for c in cmds if c[:2] == ["launchctl", "bootstrap"]]
+        bootout_cmds = [c for c in cmds if c[:2] == ["/bin/launchctl", "bootout"]]
+        bootstrap_cmds = [c for c in cmds if c[:2] == ["/bin/launchctl", "bootstrap"]]
         assert len(bootout_cmds) == 1
         assert len(bootstrap_cmds) == 1
 
@@ -290,7 +290,7 @@ class TestInstallLaunchdService:
             install_service()
 
         bootstrap_calls = [
-            c for c in mock_run.call_args_list if c.args[0][:2] == ["launchctl", "bootstrap"]
+            c for c in mock_run.call_args_list if c.args[0][:2] == ["/bin/launchctl", "bootstrap"]
         ]
         assert len(bootstrap_calls) == 1
 
@@ -327,10 +327,10 @@ class TestInstallLaunchdService:
             install_service()
 
         cmds = [c.args[0] for c in mock_run.call_args_list]
-        bootstrap_cmds = [c for c in cmds if c[:2] == ["launchctl", "bootstrap"]]
+        bootstrap_cmds = [c for c in cmds if c[:2] == ["/bin/launchctl", "bootstrap"]]
         assert len(bootstrap_cmds) == 2
-        assert ["launchctl", "disable", "gui/501/com.pynchy"] in cmds
-        assert ["launchctl", "enable", "gui/501/com.pynchy"] in cmds
+        assert ["/bin/launchctl", "disable", "gui/501/com.pynchy"] in cmds
+        assert ["/bin/launchctl", "enable", "gui/501/com.pynchy"] in cmds
 
 
 # ---------------------------------------------------------------------------
