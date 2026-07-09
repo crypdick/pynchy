@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from conftest import NullChannel
 
@@ -418,9 +418,7 @@ class TestSessionManager:
         cleared: set[str] = set()
         manager = SessionManager(sessions, cleared)
 
-        from unittest.mock import patch as _patch
-
-        with _patch("pynchy.host.orchestrator.adapters.clear_session", new_callable=AsyncMock):
+        with patch("pynchy.host.orchestrator.adapters.clear_session", new_callable=AsyncMock):
             await manager.clear_session("test-group")
 
         assert "test-group" not in sessions
@@ -431,9 +429,7 @@ class TestSessionManager:
         cleared: set[str] = set()
         manager = SessionManager(sessions, cleared)
 
-        from unittest.mock import patch as _patch
-
-        with _patch("pynchy.host.orchestrator.adapters.clear_session", new_callable=AsyncMock):
+        with patch("pynchy.host.orchestrator.adapters.clear_session", new_callable=AsyncMock):
             # Clearing a non-existent session should not raise
             await manager.clear_session("nonexistent")
 
