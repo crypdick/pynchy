@@ -71,13 +71,9 @@ def _make_deps(
             dispatched_through.get(jid, ""),
         )
     )
-    deps.mark_dispatched = MagicMock(
-        side_effect=lambda jid, timestamp: dispatched_through.__setitem__(jid, timestamp)
-    )
-    deps.pop_dispatched = MagicMock(
-        side_effect=lambda jid, default: dispatched_through.pop(jid, default)
-    )
-    deps.dispatched_timestamp = MagicMock(side_effect=lambda jid: dispatched_through.get(jid))
+    deps.mark_dispatched = MagicMock(side_effect=dispatched_through.__setitem__)
+    deps.pop_dispatched = MagicMock(side_effect=dispatched_through.pop)
+    deps.dispatched_timestamp = MagicMock(side_effect=dispatched_through.get)
 
     # Async helpers
     deps.save_state = AsyncMock()

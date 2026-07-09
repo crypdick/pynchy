@@ -19,7 +19,6 @@ sys.path.insert(
 from agent_runner.core import AgentCore, AgentCoreConfig
 from agent_runner.registry import create_agent_core
 
-
 CONSTRUCTOR_EXPLODED_MESSAGE = "constructor exploded"
 BAD_CONFIG_VALUE_MESSAGE = "bad config value"
 

@@ -12,7 +12,6 @@ import importlib
 
 from .core import AgentCore, AgentCoreConfig
 
-
 _IMPORT_ERROR = "Failed to import agent core module '{module_path}': {exc}"
 _MISSING_CLASS_ERROR = "Module '{module_path}' has no class '{class_name}'"
 _INSTANTIATION_ERROR = "Failed to instantiate {module_path}.{class_name}: {exc}"

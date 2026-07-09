@@ -31,7 +31,6 @@ from pynchy.types import (
     WorkspaceProfile,
 )
 
-
 TEMPORAL_UNAVAILABLE_MESSAGE = "temporal unavailable"
 TEST_ERROR_MESSAGE = "Test error"
 AGENT_FAILED_MESSAGE = "Agent failed"

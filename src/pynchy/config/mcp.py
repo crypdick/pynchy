@@ -55,7 +55,6 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator, model_validator
 
-
 _DOCKER_IMAGE_REQUIRED = "Docker MCP servers require 'image'"
 _DOCKER_PORT_REQUIRED = "Docker MCP servers require 'port'"
 _SCRIPT_COMMAND_REQUIRED = "Script MCP servers require 'command'"

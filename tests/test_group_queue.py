@@ -13,7 +13,6 @@ from conftest import make_settings
 from pynchy.config import ContainerConfig, QueueConfig
 from pynchy.host.orchestrator.concurrency import GroupQueue
 
-
 TASK_EXPLODED_MESSAGE = "task exploded"
 REJECTED_TASK_MESSAGE = "rejected task should not run"
 
