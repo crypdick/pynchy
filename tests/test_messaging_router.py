@@ -138,7 +138,6 @@ class TestInitTraceBatcher:
     def test_init_creates_batcher(self):
         deps = _make_deps()
         init_trace_batcher(deps, cooldown=999.0)
-        from pynchy.host.orchestrator.messaging import streaming
 
         batcher = streaming.get_trace_batcher()
         assert batcher is not None
@@ -469,8 +468,6 @@ class TestHandleStreamedOutput:
         ):
             await handle_streamed_output(deps, "g@g.us", group, output)
 
-        from pynchy.types import OutboundEventType
-
         event = _get_send_event(deps)
         assert event.type == OutboundEventType.HOST
         assert "Restarting" in event.content
@@ -486,8 +483,6 @@ class TestHandleStreamedOutput:
             "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
         ):
             await handle_streamed_output(deps, "g@g.us", group, output)
-
-        from pynchy.types import OutboundEventType
 
         event = _get_send_event(deps)
         assert event.type == OutboundEventType.RESULT
