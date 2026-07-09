@@ -1,204 +1,132 @@
-"""Tests for config sub-models (SandboxProfileConfig, WorkspaceConfig fields)."""
+"""Tests for config sub-models (ProfileConfig, WorkspaceConfig fields)."""
 
 from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
 
-from pynchy.config.models import (
-    SandboxProfileConfig,
-    ServiceTrustTomlConfig,
-    WorkspaceConfig,
-    WorkspaceSecurityTomlConfig,
-)
+from pynchy.config.models import ProfileConfig, WorkspaceConfig
 
 
-class TestSandboxProfileConfigDefaults:
-    """All fields default to None — the model expresses 'no opinion' by default."""
+class TestProfileConfigDefaults:
+    """Default profiles contribute no capabilities unless explicitly configured."""
 
-    def test_all_fields_default_to_none(self):
-        cfg = SandboxProfileConfig()
-        for field_name in (
-            "prompts",
-            "skills",
-            "mcp_servers",
-            "context_mode",
-            "access",
-            "mode",
-            "trust",
-            "trigger",
-            "allowed_users",
-            "idle_terminate",
-            "git_policy",
-            "security",
-            "repo_access",
-            "model",
-            "fallback_model",
-        ):
-            assert getattr(cfg, field_name) is None
+    def test_default_fields(self):
+        cfg = ProfileConfig()
+        assert cfg.includes == []
+        assert cfg.prompts == []
+        assert cfg.skills == []
+        assert cfg.tools == []
+        assert cfg.repo == []
+        assert cfg.model is None
+        assert cfg.is_admin is False
+        assert cfg.contains_secrets is False
 
     def test_default_instance_has_empty_fields_set(self):
-        cfg = SandboxProfileConfig()
+        cfg = ProfileConfig()
         assert cfg.model_fields_set == set()
 
 
-class TestSandboxProfileConfigFieldsSet:
+class TestProfileConfigFieldsSet:
     """model_fields_set tracks only explicitly provided fields."""
 
     def test_single_field_tracked(self):
-        cfg = SandboxProfileConfig(trust=True)
-        assert cfg.model_fields_set == {"trust"}
+        cfg = ProfileConfig(is_admin=True)
+        assert cfg.model_fields_set == {"is_admin"}
 
     def test_none_explicit_is_tracked(self):
-        """Explicitly passing None is still 'set' — distinguishable from default."""
-        cfg = SandboxProfileConfig(access=None)
-        assert "access" in cfg.model_fields_set
+        cfg = ProfileConfig(model=None)
+        assert "model" in cfg.model_fields_set
 
     def test_multiple_fields_tracked(self):
-        cfg = SandboxProfileConfig(
-            context_mode="isolated",
+        cfg = ProfileConfig(
+            prompts=["base"],
             skills=["code"],
-            idle_terminate=False,
+            contains_secrets=True,
         )
-        assert cfg.model_fields_set == {"context_mode", "skills", "idle_terminate"}
+        assert cfg.model_fields_set == {"prompts", "skills", "contains_secrets"}
 
 
-class TestSandboxProfileConfigListFields:
-    """Union list fields accept values."""
+class TestProfileConfigListFields:
+    """Union list fields accept current schema values."""
 
     def test_prompts_accepts_list(self):
-        cfg = SandboxProfileConfig(prompts=["safety", "code-style"])
+        cfg = ProfileConfig(prompts=["safety", "code-style"])
         assert cfg.prompts == ["safety", "code-style"]
 
+    def test_includes_accepts_list(self):
+        cfg = ProfileConfig(includes=["base", "dev"])
+        assert cfg.includes == ["base", "dev"]
+
     def test_skills_accepts_list(self):
-        cfg = SandboxProfileConfig(skills=["core", "web"])
+        cfg = ProfileConfig(skills=["core", "web"])
         assert cfg.skills == ["core", "web"]
 
-    def test_mcp_servers_accepts_list(self):
-        cfg = SandboxProfileConfig(mcp_servers=["github", "memory"])
-        assert cfg.mcp_servers == ["github", "memory"]
+    def test_tools_accepts_list(self):
+        cfg = ProfileConfig(tools=["github", "memory"])
+        assert cfg.tools == ["github", "memory"]
 
-    def test_allowed_users_accepts_list(self):
-        cfg = SandboxProfileConfig(allowed_users=["owner"])
-        assert cfg.allowed_users == ["owner"]
+    def test_repo_accepts_list(self):
+        cfg = ProfileConfig(repo=["owner/repo"])
+        assert cfg.repo == ["owner/repo"]
+
+    def test_repo_accepts_string(self):
+        cfg = ProfileConfig(repo="owner/repo")
+        assert cfg.repo == ["owner/repo"]
 
 
-class TestSandboxProfileConfigScalarFields:
-    """Override scalar fields accept valid values."""
+class TestProfileConfigScalarFields:
+    """Scalar fields accept current schema values."""
 
-    def test_context_mode_group(self):
-        cfg = SandboxProfileConfig(context_mode="group")
-        assert cfg.context_mode == "group"
-
-    def test_context_mode_isolated(self):
-        cfg = SandboxProfileConfig(context_mode="isolated")
-        assert cfg.context_mode == "isolated"
-
-    def test_access_literals(self):
-        for val in ("read", "write", "readwrite"):
-            cfg = SandboxProfileConfig(access=val)
-            assert cfg.access == val
-
-    def test_mode_literals(self):
-        for val in ("agent", "chat"):
-            cfg = SandboxProfileConfig(mode=val)
-            assert cfg.mode == val
-
-    def test_trust_bool(self):
-        cfg = SandboxProfileConfig(trust=False)
-        assert cfg.trust is False
-
-    def test_trigger_literals(self):
-        for val in ("mention", "always"):
-            cfg = SandboxProfileConfig(trigger=val)
-            assert cfg.trigger == val
-
-    def test_idle_terminate_bool(self):
-        cfg = SandboxProfileConfig(idle_terminate=True)
-        assert cfg.idle_terminate is True
-
-    def test_git_policy_literals(self):
-        for val in ("merge-to-main", "pull-request"):
-            cfg = SandboxProfileConfig(git_policy=val)
-            assert cfg.git_policy == val
-
-    def test_security_nested(self):
-        sec = WorkspaceSecurityTomlConfig(
-            services={"email": ServiceTrustTomlConfig(public_source=True)}
-        )
-        cfg = SandboxProfileConfig(security=sec)
-        assert cfg.security is not None
-        assert "email" in cfg.security.services
-
-    def test_repo_access_string(self):
-        cfg = SandboxProfileConfig(repo_access="owner/repo")
-        assert cfg.repo_access == "owner/repo"
-
-    def test_model_strings(self):
-        cfg = SandboxProfileConfig(
-            model="chatgpt/gpt-5.3-codex-spark",
-            fallback_model="chatgpt/gpt-5.3-codex-mini",
-        )
+    def test_model_string(self):
+        cfg = ProfileConfig(model="chatgpt/gpt-5.3-codex-spark")
         assert cfg.model == "chatgpt/gpt-5.3-codex-spark"
-        assert cfg.fallback_model == "chatgpt/gpt-5.3-codex-mini"
+
+    def test_boolean_flags(self):
+        cfg = ProfileConfig(is_admin=True, contains_secrets=True)
+        assert cfg.is_admin is True
+        assert cfg.contains_secrets is True
 
 
-class TestSandboxProfileConfigValidation:
+class TestProfileConfigValidation:
     """extra='forbid' rejects unknown fields."""
 
     def test_rejects_unknown_field(self):
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-            SandboxProfileConfig(bogus="nope")
+            ProfileConfig(bogus="nope")
 
-    def test_rejects_invalid_context_mode(self):
+    def test_rejects_empty_include_name(self):
         with pytest.raises(ValidationError):
-            SandboxProfileConfig(context_mode="invalid")
+            ProfileConfig(includes=[""])
 
-    def test_rejects_invalid_access(self):
+    def test_rejects_empty_tool_name(self):
         with pytest.raises(ValidationError):
-            SandboxProfileConfig(access="admin")
+            ProfileConfig(tools=[""])
 
-    def test_rejects_invalid_git_policy(self):
+    def test_rejects_invalid_repo_slug(self):
         with pytest.raises(ValidationError):
-            SandboxProfileConfig(git_policy="yolo")
+            ProfileConfig(repo="owner")
 
 
-class TestWorkspaceConfigNewFields:
-    """New profile and prompts fields on WorkspaceConfig."""
+class TestWorkspaceConfigFields:
+    """Workspace config selects profiles by name."""
 
-    def test_profile_defaults_to_none(self):
+    def test_profiles_defaults_to_empty_list(self):
         cfg = WorkspaceConfig()
-        assert cfg.profile is None
+        assert cfg.profiles == []
 
-    def test_prompts_defaults_to_none(self):
+    def test_profiles_accepts_list(self):
+        cfg = WorkspaceConfig(profiles=["dev", "admin"])
+        assert cfg.profiles == ["dev", "admin"]
+
+    def test_profiles_in_fields_set(self):
+        cfg = WorkspaceConfig(profiles=["prod"])
+        assert "profiles" in cfg.model_fields_set
+
+    def test_profiles_absent_from_fields_set_by_default(self):
         cfg = WorkspaceConfig()
-        assert cfg.prompts is None
+        assert "profiles" not in cfg.model_fields_set
 
-    def test_profile_accepts_string(self):
-        cfg = WorkspaceConfig(profile="dev")
-        assert cfg.profile == "dev"
-
-    def test_prompts_accepts_list(self):
-        cfg = WorkspaceConfig(prompts=["code-style", "safety"])
-        assert cfg.prompts == ["code-style", "safety"]
-
-    def test_profile_in_fields_set(self):
-        cfg = WorkspaceConfig(profile="prod")
-        assert "profile" in cfg.model_fields_set
-
-    def test_prompts_in_fields_set(self):
-        cfg = WorkspaceConfig(prompts=["a"])
-        assert "prompts" in cfg.model_fields_set
-
-    def test_both_absent_from_fields_set_by_default(self):
-        cfg = WorkspaceConfig()
-        assert "profile" not in cfg.model_fields_set
-        assert "prompts" not in cfg.model_fields_set
-
-    def test_model_fields_accept_strings(self):
-        cfg = WorkspaceConfig(
-            model="chatgpt/gpt-5.3-codex-spark",
-            fallback_model="chatgpt/gpt-5.3-codex-mini",
-        )
-        assert cfg.model == "chatgpt/gpt-5.3-codex-spark"
-        assert cfg.fallback_model == "chatgpt/gpt-5.3-codex-mini"
+    def test_rejects_empty_profile_name(self):
+        with pytest.raises(ValidationError):
+            WorkspaceConfig(profiles=[""])
