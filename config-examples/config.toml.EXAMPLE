@@ -217,13 +217,13 @@
 # Profiles, Workspaces, and Jobs
 # ─────────────────────────────────────────────────────────────────────────────
 # These values apply to every workspace. Workspace and profile values override.
-# List fields (tags, directives, skills, mcp_servers) are unioned across tiers.
+# List fields (tags, prompts, skills, mcp_servers) are unioned across tiers.
 # Scalar fields use most-specific-wins semantics. Capability maps merge by
 # capability ID, with more-specific tiers replacing less-specific entries.
 #
 # [universal]
 # tags = ["base"]
-# directives = ["base", "idle-escape"]
+# prompts = ["base", "idle-escape"]
 # context_mode = "group"
 # access = "readwrite"   # "read", "write", "readwrite"
 # mode = "agent"         # "agent" or "chat"
@@ -521,19 +521,19 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Profiles (reusable workspace config bundles)
 # ─────────────────────────────────────────────────────────────────────────────
-# Profiles bundle directives, skills, MCP servers, and other config.
+# Profiles bundle prompts, skills, MCP servers, and other config.
 # Workspaces reference a profile via `profile = "<name>"`.
 # Effective config = universal ∪ profile ∪ workspace.
 #
-# List fields (directives, skills, mcp_servers) are unioned across tiers.
+# List fields (prompts, skills, mcp_servers) are unioned across tiers.
 # Scalar fields use most-specific-wins semantics.
 # Capability maps merge by capability ID. MCP tool capability IDs use:
 # mcp.<server-or-instance>.<tool-name>, with trailing wildcards supported.
 #
-# Directives use convention-based resolution: name "base" → directives/base.md.
+# Prompts use convention-based resolution: name "base" -> prompts/base.md.
 
 # [profiles.pynchy-dev]
-# directives = ["pynchy-admin-ops", "pynchy-code-improver"]
+# prompts = ["pynchy-admin-ops", "pynchy-code-improver"]
 # skills = ["core", "ops"]
 # repo_access = "owner/repo"
 # idle_terminate = false
@@ -546,6 +546,6 @@
 # decision = "allow"      # exact match overrides the wildcard above
 
 # [profiles.ray-bench]
-# directives = ["ray-bench"]
+# prompts = ["ray-bench"]
 # repo_access = "owner/ray-bench"
 # mcp_servers = ["notebook"]
