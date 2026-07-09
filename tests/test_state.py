@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import aiosqlite
 import pytest
 
 from pynchy.state import (
@@ -18,6 +19,7 @@ from pynchy.state import (
     get_all_workspace_profiles,
     get_chat_history,
     get_host_job_by_id,
+    get_last_group_sync,
     get_messages_since,
     get_messaging_stats,
     get_new_messages,
@@ -29,7 +31,10 @@ from pynchy.state import (
     get_workspace_profile,
     init_test_database,
     log_task_run,
+    mark_delivered,
+    record_outbound,
     set_chat_cleared_at,
+    set_last_group_sync,
     set_router_state,
     set_session,
     set_workspace_profile,
@@ -42,6 +47,7 @@ from pynchy.state import (
     update_task_after_run,
 )
 from pynchy.state.connection import atomic_write
+from pynchy.state.schema import create_schema
 from pynchy.types import (
     NewMessage,
     ScheduledTask,
@@ -1106,14 +1112,10 @@ class TestGetTaskById:
 
 class TestGroupSync:
     async def test_get_returns_none_initially(self):
-        from pynchy.state import get_last_group_sync
-
         result = await get_last_group_sync()
         assert result is None
 
     async def test_set_and_get_group_sync(self):
-        from pynchy.state import get_last_group_sync, set_last_group_sync
-
         await set_last_group_sync()
         result = await get_last_group_sync()
         assert result is not None
@@ -1250,10 +1252,6 @@ class TestEnsureColumns:
 
     async def test_adds_missing_column_to_existing_table(self):
         """Simulate an old DB missing a column, then run create_schema."""
-        import aiosqlite
-
-        from pynchy.state.schema import create_schema
-
         db = await aiosqlite.connect(":memory:")
         # Create registered_groups WITHOUT is_admin column (old schema)
         await db.executescript("""
@@ -1285,10 +1283,6 @@ class TestEnsureColumns:
 
     async def test_noop_when_all_columns_present(self):
         """create_schema is idempotent when the schema is already up to date."""
-        import aiosqlite
-
-        from pynchy.state.schema import create_schema
-
         db = await aiosqlite.connect(":memory:")
         # First application builds the full schema; the second must not raise.
         await create_schema(db)
@@ -1335,8 +1329,6 @@ class TestMessagingStats:
             )
         )
 
-        from pynchy.state import record_outbound
-
         await record_outbound("g@g.us", "hi back", "test", ["whatsapp"])
 
         result = await get_messaging_stats()
@@ -1348,8 +1340,6 @@ class TestMessagingStats:
 
     async def test_pending_deliveries_excludes_delivered(self):
         await store_chat_metadata("g@g.us", "2026-01-01T00:00:00", "Test")
-
-        from pynchy.state import mark_delivered, record_outbound
 
         ledger_id = await record_outbound("g@g.us", "msg", "test", ["whatsapp", "slack"])
 
