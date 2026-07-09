@@ -27,6 +27,11 @@ if TYPE_CHECKING:
     from agent_runner.hooks import BeforeToolUseHook
 
 
+_NOT_STARTED_MISSING_INSTRUCTIONS = "OpenAIAgentCore not started (missing instructions)"
+_NOT_STARTED_CALL_START_FIRST = "OpenAIAgentCore not started (call start() first)"
+_NOT_STARTED_MISSING_MODEL = "OpenAIAgentCore not started (missing model)"
+
+
 def _log(message: str) -> None:
     """Log to stderr (captured by host container runner)."""
     sys.stderr.write(f"[openai-core] {message}\n")
@@ -359,7 +364,7 @@ class OpenAIAgentCore:
 
     def _make_agent(self, model: str) -> Agent:
         if self._instructions is None:
-            raise RuntimeError("OpenAIAgentCore not started (missing instructions)")
+            raise RuntimeError(_NOT_STARTED_MISSING_INSTRUCTIONS)
         return Agent(
             name="pynchy",
             instructions=self._instructions,
@@ -425,11 +430,11 @@ class OpenAIAgentCore:
     async def query(self, prompt: str) -> AsyncIterator[AgentEvent]:
         """Execute a query and yield AgentEvents."""
         if self._agent is None:
-            raise RuntimeError("OpenAIAgentCore not started (call start() first)")
+            raise RuntimeError(_NOT_STARTED_CALL_START_FIRST)
 
         _log(f"Starting query (previous_response_id: {self._previous_response_id or 'none'})...")
         if not isinstance(self._model_primary, str):
-            raise TypeError("OpenAIAgentCore not started (missing model)")
+            raise TypeError(_NOT_STARTED_MISSING_MODEL)
         async for event in self._run_streamed(prompt, self._model_primary):
             yield event
 
