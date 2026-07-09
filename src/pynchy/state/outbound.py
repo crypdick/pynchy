@@ -43,7 +43,8 @@ async def record_outbound(
             (chat_jid, content, now, source),
         )
         ledger_id = cursor.lastrowid
-        assert ledger_id is not None
+        if ledger_id is None:
+            raise RuntimeError("INSERT INTO outbound_ledger did not return a row id")
         for ch_name in channel_names:
             await db.execute(
                 "INSERT INTO outbound_deliveries (ledger_id, channel_name) VALUES (?, ?)",

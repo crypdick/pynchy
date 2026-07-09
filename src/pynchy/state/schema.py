@@ -273,8 +273,9 @@ async def _seed_channel_cursors(database: aiosqlite.Connection) -> None:
     """
     cursor = await database.execute("SELECT COUNT(*) FROM channel_cursors")
     row = await cursor.fetchone()
-    assert row is not None  # COUNT(*) always returns exactly one row
-    (count,) = row
+    if row is None:
+        raise RuntimeError("COUNT(*) query on channel_cursors returned no row")
+    count = row[0]
     if count > 0:
         return  # already seeded
 
