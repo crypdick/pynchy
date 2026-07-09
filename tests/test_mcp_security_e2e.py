@@ -15,6 +15,7 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
+from pynchy.host.container_manager.mcp.proxy import create_proxy_app
 from pynchy.host.container_manager.security import gate as _gate_module
 from pynchy.host.container_manager.security.cop import CopVerdict
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate, get_gate
@@ -41,8 +42,6 @@ def _mock_cop():
 
 async def test_full_mcp_security_flow():
     """End-to-end: gate -> proxy -> fencing -> taint tracking -> cleanup."""
-    from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
     # 1. Set up mock MCP backend
     async def backend_handler(request: web.Request) -> web.Response:
         await asyncio.sleep(0)
@@ -114,8 +113,6 @@ async def test_full_mcp_security_flow():
 
 async def test_no_fencing_without_public_source():
     """Non-public-source servers should pass through unfenced."""
-    from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
     async def backend_handler(request: web.Request) -> web.Response:
         await asyncio.sleep(0)
         return web.json_response(
