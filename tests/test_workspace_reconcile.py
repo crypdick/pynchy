@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, call
 
 import pluggy
 import pytest
@@ -314,6 +314,48 @@ class TestReconcileWorkspaces:
         assert registered_profile.folder == "new-agent"
         tasks = await get_all_tasks()
         assert [task.id for task in tasks] == ["job-new-agent"]
+
+    async def test_workspace_display_name_uses_folder_not_repo_access(
+        self,
+        db,
+        monkeypatch,
+        tmp_path,
+    ):
+        """Workspace channels are named by workspace, even when repos match."""
+        conn_ref = "main"
+        workspaces = _WorkspaceHarness()
+        s = make_settings(
+            workspaces=workspaces,
+            profiles=workspaces.profiles,
+            jobs=workspaces.jobs,
+            groups_dir=tmp_path / "groups",
+            command_center=CommandCenterConfig(connection=conn_ref),
+        )
+        monkeypatch.setattr("pynchy.host.orchestrator.workspace_config.get_settings", lambda: s)
+
+        shared_repo = "get-synapse-ai/gantt-believe-it"
+        _write_workspace_yaml(workspaces, "project-managing", {"repo_access": shared_repo})
+        _write_workspace_yaml(workspaces, "dddd-evening-review", {"repo_access": shared_repo})
+
+        mock_channel = AsyncMock(spec=Channel)
+        mock_channel.name = conn_ref
+        mock_channel.create_group = AsyncMock(
+            side_effect=["project-managing@g.us", "dddd-evening-review@g.us"]
+        )
+
+        registered: dict[str, WorkspaceProfile] = {}
+        register_fn = AsyncMock()
+
+        await reconcile_workspaces(registered, [mock_channel], register_fn)
+
+        mock_channel.create_group.assert_has_awaits(
+            [call("Project Managing"), call("Dddd Evening Review")]
+        )
+        assert register_fn.await_count == 2
+        assert {profile.folder for profile in registered.values()} == {
+            "project-managing",
+            "dddd-evening-review",
+        }
 
     async def test_create_group_empty_jid_skips_workspace(
         self,

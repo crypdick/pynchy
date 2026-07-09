@@ -259,8 +259,7 @@ async def reconcile_workspaces(
         resolved = load_resolved_config(folder)
         if resolved is None:
             continue
-        resolved_repo_access = _first_repo(resolved)
-        display_name = resolve_display_name(folder, config, resolved_repo_access)
+        display_name = resolve_display_name(folder)
 
         jid = await ensure_workspace_registered(
             folder,

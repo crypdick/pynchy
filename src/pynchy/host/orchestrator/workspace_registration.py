@@ -29,13 +29,7 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves workspace 
 )
 
 
-def resolve_display_name(
-    folder: str, config: WorkspaceConfig, resolved_repo_access: str | None
-) -> str:
-    del config
-    if resolved_repo_access:
-        # Slack channel names can't contain slashes; use double-dash convention.
-        return resolved_repo_access.replace("/", "--")
+def resolve_display_name(folder: str) -> str:
     return folder.replace("-", " ").title()
 
 
