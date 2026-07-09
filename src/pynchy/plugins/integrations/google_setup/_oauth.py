@@ -86,12 +86,12 @@ def exchange_code_for_tokens(code: str, client_id: str, client_secret: str) -> d
         }
     ).encode()
 
-    req = urllib.request.Request(
+    req = urllib.request.Request(  # noqa: S310, RUF100 - opened only through the HTTPS-gated helper.
         GOOGLE_OAUTH_ENDPOINT_URL,
         data=data,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
-    with urllib.request.urlopen(req) as resp:
+    with urlopen_https_request(req) as resp:
         tokens: dict[str, Any] = json.loads(resp.read())
 
     if "error" in tokens:
@@ -102,6 +102,13 @@ def exchange_code_for_tokens(code: str, client_id: str, client_secret: str) -> d
         tokens["expiry_date"] = int(time.time() * 1000) + tokens["expires_in"] * 1000
 
     return tokens
+
+
+def urlopen_https_request(req: urllib.request.Request) -> Any:
+    scheme = urllib.parse.urlsplit(req.full_url).scheme.lower()
+    if scheme != "https":
+        raise RuntimeError("Google API URL must use https")
+    return urllib.request.urlopen(req)  # noqa: S310, RUF100 - scheme is constrained above.
 
 
 def save_credentials_to_profile(tokens: dict[str, Any], profile_name: str) -> Path:

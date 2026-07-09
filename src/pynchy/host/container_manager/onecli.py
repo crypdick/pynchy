@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 from pynchy.config import get_settings
@@ -114,13 +114,13 @@ class OneCliClient:
         if self._project_id:
             headers["X-Project-Id"] = self._project_id
 
-        request = Request(
+        request = Request(  # noqa: S310, RUF100 - opened only through the HTTP(S)-gated helper.
             f"{self._base_url}{path}",
             data=body,
             headers=headers,
             method=method,
         )
-        with urlopen(request, timeout=self._timeout) as response:
+        with _urlopen_http_request(request, timeout=self._timeout) as response:
             raw = response.read()
         try:
             data = json.loads(raw.decode() if raw else "{}")
@@ -135,14 +135,21 @@ class OneCliClient:
         if self._project_id:
             headers["X-Project-Id"] = self._project_id
 
-        request = Request(
+        request = Request(  # noqa: S310, RUF100 - opened only through the HTTP(S)-gated helper.
             f"{self._base_url}{path}",
             headers=headers,
             method=method,
         )
-        with urlopen(request, timeout=self._timeout) as response:
+        with _urlopen_http_request(request, timeout=self._timeout) as response:
             raw: bytes = response.read()
             return raw.decode()
+
+
+def _urlopen_http_request(request: Request, *, timeout: int | float) -> Any:
+    scheme = urlsplit(request.full_url).scheme.lower()
+    if scheme not in {"http", "https"}:
+        raise OneCliError("OneCLI URL must use http or https")
+    return urlopen(request, timeout=timeout)  # noqa: S310, RUF100 - scheme is constrained above.
 
 
 def prepare_onecli_material(group_folder: str) -> OneCliMaterial | None:

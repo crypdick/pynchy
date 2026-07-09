@@ -406,7 +406,7 @@ def _ensure_toml_table(parent: Any, key: str, *, super_table: bool = False) -> A
         parent.add(key, tomlkit.table(is_super_table=super_table))
     value = parent[key]
     if not isinstance(value, Table):
-        raise ValueError(f"Expected TOML table at {key!r}")
+        raise TypeError(f"Expected TOML table at {key!r}")
     return value
 
 

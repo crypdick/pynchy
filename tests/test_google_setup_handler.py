@@ -8,6 +8,12 @@ import pytest
 from pynchy.plugins.integrations.google_setup import (
     _handler as google_handler,  # allow: private-test-imports -- _run_interactive_setup only exposes browser-side effects; handle_setup_google does not surface the internal novnc_url path we need to pin here.
 )
+from pynchy.plugins.integrations.google_setup import (
+    _oauth as google_oauth,  # allow: private-test-imports -- URL safety is enforced inside the integration module, not surfaced through the plugin API.
+)
+from pynchy.plugins.integrations.google_setup import (
+    _rest_api as google_rest_api,  # allow: private-test-imports -- URL safety is enforced inside the integration module, not surfaced through the plugin API.
+)
 
 
 class _FakePage:
@@ -104,5 +110,38 @@ async def test_interactive_setup_error_returns_novnc_url(
     stop_procs.assert_called_once_with([])
 
 
+def test_oauth_exchange_rejects_non_https_endpoint_before_opening(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(google_oauth, "GOOGLE_OAUTH_ENDPOINT_URL", "file:///tmp/token")
+    monkeypatch.setattr(google_oauth.urllib.request, "urlopen", _fail_urlopen)
+
+    with pytest.raises(RuntimeError, match="must use https"):
+        google_oauth.exchange_code_for_tokens("code", "client-id", "client-secret")
+
+
+def test_rest_token_refresh_rejects_non_https_endpoint_before_opening(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    keys_file = tmp_path / "gcp-oauth.keys.json"
+    keys_file.write_text(
+        '{"installed":{"client_id":"123.apps.googleusercontent.com","client_secret":"secret"}}'
+    )
+    credentials_file = tmp_path / "credentials.json"
+    credentials_file.write_text('{"refresh_token":"refresh-token"}')
+
+    monkeypatch.setattr(google_rest_api, "keys_path", lambda _profile: keys_file)
+    monkeypatch.setattr(google_rest_api, "credentials_path", lambda _profile: credentials_file)
+    monkeypatch.setattr(google_rest_api, "GOOGLE_OAUTH_ENDPOINT_URL", "file:///tmp/token")
+    monkeypatch.setattr(google_rest_api.urllib.request, "urlopen", _fail_urlopen)
+
+    assert google_rest_api.refresh_access_token("profile") is None
+
+
 async def _raise_login_failed(_page) -> None:
     raise RuntimeError("login failed")
+
+
+def _fail_urlopen(*_args, **_kwargs):
+    raise AssertionError("urlopen should not be called for unsafe URLs")

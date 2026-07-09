@@ -7,11 +7,13 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
 
+import pytest
 from conftest import make_settings
 
 from pynchy.config.models import OneCliConfig
 from pynchy.host.container_manager.onecli import (
     OneCliClient,
+    OneCliError,
     collect_onecli_status,
     normalize_agent_identifier,
     prepare_onecli_material,
@@ -150,6 +152,19 @@ def test_client_fetches_gateway_skill_with_framework() -> None:
     assert skill == "# OneCLI Gateway\n"
     assert requests[0].full_url == "http://onecli.local/v1/skill/gateway?agent_framework=claude"
     assert requests[0].get_header("Authorization") == "Bearer oc_test_key"
+
+
+def test_client_rejects_non_http_base_url_before_opening() -> None:
+    settings = make_settings(onecli=OneCliConfig(url="file:///tmp/onecli.sock"))
+    client = OneCliClient(config=settings.onecli, api_key="oc_test_key", project_id=None)
+
+    with (
+        patch("pynchy.host.container_manager.onecli.urlopen") as opener,
+        pytest.raises(OneCliError, match="must use http or https"),
+    ):
+        client.health()
+
+    opener.assert_not_called()
 
 
 def test_sync_onecli_gateway_skill_writes_generated_skill(

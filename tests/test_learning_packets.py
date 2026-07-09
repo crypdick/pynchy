@@ -12,7 +12,7 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config.models import LearningConfig, ObsidianLearningConfig, WorkspaceConfig
-from pynchy.host.learning.packet_codec import packet_to_payload
+from pynchy.host.learning.packet_codec import packet_from_payload, packet_to_payload
 from pynchy.host.learning.packets import (
     LearningRunSummary,
     build_learning_packet,
@@ -417,6 +417,63 @@ def test_tool_inputs_are_not_serialized_into_learning_packets(tmp_path: Path) ->
     assert redacted_value not in serialized_payload
     assert "tool_input" not in serialized_payload
     assert packet.tool_counts == {"Bash": 1}
+
+
+def _valid_packet_payload() -> dict[str, object]:
+    return {
+        "job_id": "job-1",
+        "chat_jid": "slack:C123",
+        "group_folder": "deep-work",
+        "profile": "Deep Work",
+        "created_at": "2026-07-07T10:00:00Z",
+        "messages": [{"role": "user", "content": "remember this"}],
+        "final_answer": "Done",
+        "tool_counts": {"Bash": 1},
+        "error_snippets": ["short error"],
+        "loaded_skills": ["learning"],
+        "provenance": {"source": "test"},
+    }
+
+
+class TestPacketCodecTypeChecks:
+    @pytest.mark.parametrize(
+        ("field", "value", "match"),
+        [
+            ("chat_jid", 123, "must be a string"),
+            ("final_answer", 123, "must be a string or null"),
+            ("error_snippets", "nope", "must be a list"),
+            ("messages", "nope", "must be a list"),
+            ("provenance", "nope", "must be an object"),
+            ("tool_counts", "nope", "must be an object"),
+        ],
+    )
+    def test_top_level_type_checks_raise_typeerror(self, field, value, match):
+        payload = _valid_packet_payload()
+        payload[field] = value
+
+        with pytest.raises(TypeError, match=match):
+            packet_from_payload(payload)
+
+    def test_required_int_dict_rejects_non_integer_values(self):
+        payload = _valid_packet_payload()
+        payload["tool_counts"] = {"count": "one"}
+
+        with pytest.raises(TypeError, match="values must be integers"):
+            packet_from_payload(payload)
+
+    def test_required_int_dict_rejects_boolean_values(self):
+        payload = _valid_packet_payload()
+        payload["tool_counts"] = {"count": True}
+
+        with pytest.raises(TypeError, match="values must be integers"):
+            packet_from_payload(payload)
+
+    def test_str_dict_from_mapping_rejects_non_string_items(self):
+        payload = _valid_packet_payload()
+        payload["provenance"] = {1: "one"}
+
+        with pytest.raises(TypeError, match="keys must be strings"):
+            packet_from_payload(payload)
 
 
 def test_packet_provenance_and_profile_come_from_group_configuration(tmp_path: Path) -> None:

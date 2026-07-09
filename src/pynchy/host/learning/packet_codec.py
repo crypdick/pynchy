@@ -43,7 +43,7 @@ def _required_job_id(payload: Mapping[str, Any], key: str) -> str:
 def _required_str(payload: Mapping[str, Any], key: str) -> str:
     value = payload[key]
     if not isinstance(value, str):
-        raise ValueError(f"{key} must be a string")
+        raise TypeError(f"{key} must be a string")
     return value
 
 
@@ -51,17 +51,17 @@ def _optional_str(payload: Mapping[str, Any], key: str) -> str | None:
     value = payload[key]
     if value is None or isinstance(value, str):
         return value
-    raise ValueError(f"{key} must be a string or null")
+    raise TypeError(f"{key} must be a string or null")
 
 
 def _required_str_list(payload: Mapping[str, Any], key: str) -> list[str]:
     value = payload[key]
     if not isinstance(value, list):
-        raise ValueError(f"{key} must be a list")
+        raise TypeError(f"{key} must be a list")
     result: list[str] = []
     for item in value:
         if not isinstance(item, str):
-            raise ValueError(f"{key} items must be strings")
+            raise TypeError(f"{key} items must be strings")
         result.append(item)
     return result
 
@@ -69,11 +69,11 @@ def _required_str_list(payload: Mapping[str, Any], key: str) -> list[str]:
 def _required_message_list(payload: Mapping[str, Any], key: str) -> list[dict[str, str]]:
     value = payload[key]
     if not isinstance(value, list):
-        raise ValueError(f"{key} must be a list")
+        raise TypeError(f"{key} must be a list")
     result: list[dict[str, str]] = []
     for item in value:
         if not isinstance(item, dict):
-            raise ValueError(f"{key} items must be objects")
+            raise TypeError(f"{key} items must be objects")
         result.append(_str_dict_from_mapping(item, f"{key} item"))
     return result
 
@@ -81,20 +81,20 @@ def _required_message_list(payload: Mapping[str, Any], key: str) -> list[dict[st
 def _required_str_dict(payload: Mapping[str, Any], key: str) -> dict[str, str]:
     value = payload[key]
     if not isinstance(value, dict):
-        raise ValueError(f"{key} must be an object")
+        raise TypeError(f"{key} must be an object")
     return _str_dict_from_mapping(value, key)
 
 
 def _required_int_dict(payload: Mapping[str, Any], key: str) -> dict[str, int]:
     value = payload[key]
     if not isinstance(value, dict):
-        raise ValueError(f"{key} must be an object")
+        raise TypeError(f"{key} must be an object")
     result: dict[str, int] = {}
     for item_key, item_value in value.items():
         if not isinstance(item_key, str):
-            raise ValueError(f"{key} keys must be strings")
+            raise TypeError(f"{key} keys must be strings")
         if not isinstance(item_value, int) or isinstance(item_value, bool):
-            raise ValueError(f"{key} values must be integers")
+            raise TypeError(f"{key} values must be integers")
         result[item_key] = item_value
     return result
 
@@ -103,8 +103,8 @@ def _str_dict_from_mapping(value: Mapping[Any, Any], field_name: str) -> dict[st
     result: dict[str, str] = {}
     for item_key, item_value in value.items():
         if not isinstance(item_key, str):
-            raise ValueError(f"{field_name} keys must be strings")
+            raise TypeError(f"{field_name} keys must be strings")
         if not isinstance(item_value, str):
-            raise ValueError(f"{field_name} values must be strings")
+            raise TypeError(f"{field_name} values must be strings")
         result[item_key] = item_value
     return result

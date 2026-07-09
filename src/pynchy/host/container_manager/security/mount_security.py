@@ -36,20 +36,20 @@ def _reset_cache() -> None:  # pyright: ignore[reportUnusedFunction]
 def _required_list(table: Mapping[str, object], key: str) -> list[object]:
     value = table.get(key)
     if not isinstance(value, list):
-        raise ValueError(f"{key} must be an array")
+        raise TypeError(f"{key} must be an array")
     return value
 
 
 def _required_bool(table: Mapping[str, object], key: str) -> bool:
     value = table.get(key)
     if not isinstance(value, bool):
-        raise ValueError(f"{key} must be a boolean")
+        raise TypeError(f"{key} must be a boolean")
     return value
 
 
 def _string_value(value: object, *, field_name: str) -> str:
     if not isinstance(value, str):
-        raise ValueError(f"{field_name} must be a string")
+        raise TypeError(f"{field_name} must be a string")
     return value
 
 
@@ -63,13 +63,13 @@ def _optional_bool_value(value: object, *, field_name: str, default: bool) -> bo
     if value is None:
         return default
     if not isinstance(value, bool):
-        raise ValueError(f"{field_name} must be a boolean")
+        raise TypeError(f"{field_name} must be a boolean")
     return value
 
 
 def _parse_allowed_root(raw_root: object, *, index: int) -> AllowedRoot:
     if not isinstance(raw_root, Mapping):
-        raise ValueError(f"allowed_roots[{index}] must be a table")
+        raise TypeError(f"allowed_roots[{index}] must be a table")
 
     return AllowedRoot(
         path=_string_value(raw_root.get("path"), field_name=f"allowed_roots[{index}].path"),
@@ -87,7 +87,7 @@ def _parse_allowed_root(raw_root: object, *, index: int) -> AllowedRoot:
 
 def _parse_allowlist_table(raw_data: object) -> _ParsedAllowlist:
     if not isinstance(raw_data, Mapping):
-        raise ValueError("Mount allowlist must decode to a TOML table")
+        raise TypeError("Mount allowlist must decode to a TOML table")
 
     allowed_roots = [
         _parse_allowed_root(raw_root, index=index)

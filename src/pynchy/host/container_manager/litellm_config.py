@@ -66,9 +66,9 @@ def _copy_unvalidated_config(
 def _model_list(config: dict[str, Any]) -> list[dict[str, Any]]:
     model_list = config["model_list"]
     if not isinstance(model_list, list):
-        raise RuntimeError("LiteLLM config model_list must be a list")
+        raise TypeError("LiteLLM config model_list must be a list")
     if not all(isinstance(entry, dict) for entry in model_list):
-        raise RuntimeError("LiteLLM config model_list entries must be mappings")
+        raise TypeError("LiteLLM config model_list entries must be mappings")
     return model_list
 
 

@@ -301,6 +301,20 @@ class TestCollectYamlEnvRefs:
 
 
 class TestPrepareLiteLLMConfig:
+    def test_raises_typeerror_when_model_list_is_not_a_list(self, tmp_path: Path):
+        cfg = tmp_path / "litellm_config.yaml"
+        cfg.write_text("model_list: not-a-list\n")
+
+        with pytest.raises(TypeError, match="model_list must be a list"):
+            LiteLLMConfigPreparer().prepare(cfg, tmp_path, env={})
+
+    def test_raises_typeerror_when_model_list_entries_are_not_mappings(self, tmp_path: Path):
+        cfg = tmp_path / "litellm_config.yaml"
+        cfg.write_text("model_list:\n  - model_name: gpt-5.5\n  - not-a-mapping\n")
+
+        with pytest.raises(TypeError, match="model_list entries must be mappings"):
+            LiteLLMConfigPreparer().prepare(cfg, tmp_path, env={})
+
     def test_raises_when_all_model_routes_are_filtered(self, tmp_path: Path):
         cfg = tmp_path / "litellm_config.yaml"
         cfg.write_text(

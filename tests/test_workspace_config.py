@@ -8,11 +8,13 @@ from unittest.mock import AsyncMock, patch
 
 import pluggy
 import pytest
+import tomlkit
 from conftest import make_settings
 
 from pynchy.config import WorkspaceConfig
 from pynchy.config.models import ProfileConfig, SandboxProfileConfig
 from pynchy.host.orchestrator.workspace_config import (
+    _ensure_toml_table,  # allow: private-test-imports - direct type contract
     add_workspace_to_toml,
     configure_plugin_workspaces,
     get_repo_access,
@@ -217,6 +219,15 @@ group_policy = "allowlist"
         assert data["workspaces"]["discord-admin"]["chat"] == (
             "connection.discord.mybot.chat.synapse.channels.code-improver"
         )
+
+
+class TestEnsureTomlTable:
+    def test_rejects_existing_non_table_value(self):
+        doc = tomlkit.document()
+        doc.add("section", "not-a-table")
+
+        with pytest.raises(TypeError, match="Expected TOML table at 'section'"):
+            _ensure_toml_table(doc, "section")
 
 
 class TestGetRepoAccess:

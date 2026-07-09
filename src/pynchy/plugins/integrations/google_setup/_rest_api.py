@@ -13,8 +13,12 @@ import urllib.request
 from pathlib import Path
 
 from pynchy.logger import logger
-from pynchy.plugins.integrations.google_setup._oauth import parse_client_credentials
+from pynchy.plugins.integrations.google_setup._oauth import (
+    parse_client_credentials,
+    urlopen_https_request,
+)
 from pynchy.plugins.integrations.google_setup._paths import (
+    GOOGLE_OAUTH_ENDPOINT_URL,
     SERVICE_USAGE_URL,
     credentials_path,
     keys_path,
@@ -87,17 +91,17 @@ def refresh_access_token(profile_name: str) -> str | None:
             "grant_type": "refresh_token",
         }
     ).encode()
-    req = urllib.request.Request(
-        "https://oauth2.googleapis.com/token",
+    req = urllib.request.Request(  # noqa: S310, RUF100 - opened only through the HTTPS-gated helper.
+        GOOGLE_OAUTH_ENDPOINT_URL,
         data=data,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urlopen_https_request(req) as resp:
             tokens = json.loads(resp.read())
         access_token = tokens.get("access_token")
         return access_token if isinstance(access_token, str) else None
-    except (urllib.error.URLError, ValueError) as exc:
+    except (RuntimeError, urllib.error.URLError, ValueError) as exc:
         logger.debug("Access token refresh failed", error=str(exc))
         return None
 
@@ -105,7 +109,7 @@ def refresh_access_token(profile_name: str) -> str | None:
 def enable_api_via_rest(project_number: str, access_token: str, api_id: str) -> bool:
     """Enable a Google API via the Service Usage REST API."""
     url = f"{SERVICE_USAGE_URL}/projects/{project_number}/services/{api_id}:enable"
-    req = urllib.request.Request(
+    req = urllib.request.Request(  # noqa: S310, RUF100 - opened only through the HTTPS-gated helper.
         url,
         data=b"{}",
         headers={
@@ -115,7 +119,7 @@ def enable_api_via_rest(project_number: str, access_token: str, api_id: str) -> 
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urlopen_https_request(req) as resp:
             result = json.loads(resp.read())
         logger.info("API enabled via REST", api=api_id, result_name=result.get("name", ""))
         return True
@@ -126,6 +130,6 @@ def enable_api_via_rest(project_number: str, access_token: str, api_id: str) -> 
         else:
             logger.warning("REST enable failed", api=api_id, status=exc.code, body=body[:200])
         return False
-    except urllib.error.URLError as exc:
+    except (RuntimeError, urllib.error.URLError) as exc:
         logger.warning("REST enable failed", api=api_id, error=str(exc))
         return False
