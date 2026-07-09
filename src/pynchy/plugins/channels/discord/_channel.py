@@ -46,11 +46,13 @@ from ._provisioning import create_discord_group
 
 _MESSAGE_ID_PREFIX = "discord-"
 _TYPING_REFRESH_SECONDS = 8.0
+_DISCORD_CLIENT_NOT_CONNECTED = "Discord client is not connected"
+_DISCORD_MESSAGE_TOO_LONG = "Discord message exceeds 2000 chars; falling back to chunked send"
 
 
 def _require_client(client: Any) -> Any:
     if client is None:
-        raise RuntimeError("Discord client is not connected")
+        raise RuntimeError(_DISCORD_CLIENT_NOT_CONNECTED)
     return client
 
 
@@ -359,7 +361,7 @@ class DiscordChannel:
             return
         text = self.formatter.render(event).text
         if len(text) > DISCORD_LIMIT:
-            raise ValueError("Discord message exceeds 2000 chars; falling back to chunked send")
+            raise ValueError(_DISCORD_MESSAGE_TOO_LONG)
         raw_id = message_id.removeprefix(_MESSAGE_ID_PREFIX)
         channel = await self._resolve_channel(jid)
         message = await channel.fetch_message(int(raw_id))

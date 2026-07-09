@@ -41,6 +41,8 @@ from ._interactions import SlackInteractions
 from ._lifecycle import SlackLifecycle
 from ._ui import build_ask_user_blocks, normalize_chat_name, split_text
 
+_SLACK_APP_NOT_INITIALIZED = "Slack app is not initialized"
+
 
 @dataclass(frozen=True)
 class _SlackHistoryPage:
@@ -160,7 +162,7 @@ class SlackChannel:
 
     def require_slack_app(self) -> Any:
         if self._app is None:
-            raise RuntimeError("Slack app is not initialized")
+            raise RuntimeError(_SLACK_APP_NOT_INITIALIZED)
         return self._app
 
     @property
