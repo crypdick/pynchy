@@ -210,6 +210,44 @@ class TestResolveSecurity:
         assert security.contains_secrets is True
         assert security.services == {}
 
+    def test_dynamic_thread_uses_parent_workspace_security(self, monkeypatch):
+        from pynchy.config.settings import validate_settings_mapping
+        from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
+
+        settings = validate_settings_mapping(
+            {
+                "profiles": {
+                    "worker": {
+                        "contains_secrets": True,
+                        "tools": ["linear"],
+                    }
+                },
+                "workspaces": {"research": {"profiles": ["worker"]}},
+                "tools": {
+                    "linear": {
+                        "type": "linear",
+                        "public_source": False,
+                        "secret_data": False,
+                        "public_sink": False,
+                        "dangerous_writes": False,
+                    }
+                },
+            }
+        )
+        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
+
+        security = resolve_security(dynamic_thread_folder("research", "thread:123"))
+
+        assert security.contains_secrets is True
+        assert security.services == {
+            "linear": ServiceTrustConfig(
+                public_source=False,
+                secret_data=False,
+                public_sink=False,
+                dangerous_writes=False,
+            )
+        }
+
     def test_admin_resolution_preserves_contains_secrets(self, monkeypatch):
         from pynchy.config.settings import validate_settings_mapping
 

@@ -119,6 +119,12 @@ def test_new_schema_parses_minimal_config() -> None:
         "directives",
         "cron_jobs",
         "git_policy",
+        "context_mode",
+        "idle_terminate",
+        "access",
+        "mode",
+        "trust",
+        "trigger",
     ],
 )
 def test_legacy_schema_keys_are_rejected(legacy_key: str) -> None:

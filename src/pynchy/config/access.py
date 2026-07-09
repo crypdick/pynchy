@@ -151,7 +151,7 @@ def filter_allowed_messages(
     resolved_users = resolve_allowed_users(
         security.allowed_users,
         settings.user_groups,
-        settings.owner,
+        OwnerConfig(),
         policy_channel_name,
     )
     return [

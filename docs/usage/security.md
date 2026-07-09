@@ -62,43 +62,6 @@ Write to tool
 
 A payload scanner also runs on every outbound write. If it spots credential patterns (API keys, tokens, passwords), the write escalates to human approval regardless of taint state.
 
-## Capability Policy
-
-Use capability rules for semantic tool permissions: block or approve a specific
-tool action before it executes. Tool trust still handles taint and exfiltration
-risk after the capability gate passes.
-
-MCP tool calls use capability IDs in this form:
-
-```text
-mcp.<server-or-instance>.<tool-name>
-```
-
-For example, a `send` tool on an `email` MCP server maps to `mcp.email.send`.
-Rules accept these decisions:
-
-| Decision | Meaning |
-|----------|---------|
-| `allow` | Allow the capability and continue to tool trust checks |
-| `needs_human` | Ask for human approval before executing |
-| `deny` | Block the capability |
-
-Rules support trailing wildcards. Exact rules win over wildcard rules:
-
-```toml
-[profiles.research.capabilities."mcp.email.*"]
-decision = "needs_human"
-
-[profiles.research.capabilities."mcp.email.preview"]
-decision = "allow"
-
-[profiles.readonly.capabilities."mcp.email.send"]
-decision = "deny"
-```
-
-Capability maps live on reusable profiles. Compose profiles into workspaces to
-share policy across related workspaces.
-
 ## Configuration Examples
 
 ### Personal calendar (fully trusted)

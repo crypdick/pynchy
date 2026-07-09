@@ -1568,6 +1568,7 @@ class TestContainerInputAgentCoreConfig:
         return _PreContainerResult(
             is_admin=False,
             repo_access=None,
+            repo_accesses=[],
             system_prompt_append=None,
             session_id=None,
             system_notices=[],

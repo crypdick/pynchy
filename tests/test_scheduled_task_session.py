@@ -60,6 +60,7 @@ def _make_pre_container_result():
     return agent_runner._PreContainerResult(
         is_admin=False,
         repo_access=None,
+        repo_accesses=[],
         system_prompt_append=None,
         session_id=None,
         system_notices=[],
@@ -135,9 +136,8 @@ class TestScheduledTaskUsesSession:
         )
 
     @pytest.mark.asyncio
-    async def test_creates_session_with_zero_idle_timeout(self):
-        """One-shot tasks should create session with idle_timeout_override=0.0
-        so the container isn't killed by idle timeout during a long run."""
+    async def test_creates_session_with_configured_idle_timeout(self):
+        """One-shot tasks use the same idle termination policy as other containers."""
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
             patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
@@ -149,9 +149,7 @@ class TestScheduledTaskUsesSession:
 
         mock_cs.assert_awaited_once()
         _, kwargs = mock_cs.call_args
-        assert kwargs.get("idle_timeout_override") == 0.0, (
-            "create_session must be called with idle_timeout_override=0.0"
-        )
+        assert kwargs.get("idle_timeout_override") > 0
 
     @pytest.mark.asyncio
     async def test_sets_output_handler_on_session(self):

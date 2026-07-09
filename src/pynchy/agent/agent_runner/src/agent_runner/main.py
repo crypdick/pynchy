@@ -125,8 +125,9 @@ def _build_mcp_servers(container_input: ContainerInput) -> dict[str, dict[str, A
 
 def _agent_cwd(container_input: ContainerInput) -> str:
     """Pick the container cwd based on mounted repo availability."""
-    if container_input.repo_access:
-        owner, repo_name = container_input.repo_access.split("/", 1)
+    primary_repo = (container_input.repo_accesses or [container_input.repo_access or ""])[0]
+    if primary_repo:
+        owner, repo_name = primary_repo.split("/", 1)
         return f"/workspace/repos/{owner}/{repo_name}"
     return "/workspace/group"
 

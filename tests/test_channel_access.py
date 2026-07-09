@@ -407,8 +407,8 @@ class TestConnectionsConfigGetConnection:
         assert cfg.security is not None
         assert cfg.security.access == "read"
 
-    def test_slack_owner_alias_requires_owner_config(self):
-        with pytest.raises(ValueError, match="no owner is configured"):
+    def test_slack_owner_alias_is_rejected(self):
+        with pytest.raises(ValueError, match="owner aliases are only supported for WhatsApp"):
             Settings(
                 connections={
                     "synapse": SlackConnectionConfig(

@@ -114,14 +114,6 @@ def _schedule_task_definition() -> Tool:
                         '"2026-02-01T15:30:00" (no Z suffix!)'
                     ),
                 },
-                "context_mode": {
-                    "type": "string",
-                    "enum": ["group", "isolated"],
-                    "default": "group",
-                    "description": (
-                        "Agent tasks only: group=runs with chat history, isolated=fresh session"
-                    ),
-                },
                 "target_group": {
                     "type": "string",
                     "description": (
@@ -237,7 +229,6 @@ def _agent_task_payload(
         "prompt": arguments["prompt"],
         "schedule_type": schedule_type,
         "schedule_value": schedule_value,
-        "context_mode": arguments.get("context_mode", "group"),
         "targetGroup": _agent_target_group(arguments),
         "createdBy": _ipc.group_folder,
     }

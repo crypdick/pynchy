@@ -41,12 +41,13 @@ Connects via Slack's Socket Mode using the Bolt library. Maps Slack channels and
 **Setup:**
 
 1. Create a Slack app with Socket Mode enabled
-2. Add bot token and app token to `config.toml`:
+2. Add bot token and app token environment variable names to `config.toml`:
 
 ```toml
-[slack]
-bot_token = "xoxb-..."
-app_token = "xapp-..."
+[connections.synapse]
+type = "slack"
+bot_token_env = "SLACK__BOT_TOKEN"
+app_token_env = "SLACK__APP_TOKEN"
 ```
 
 3. Install dependencies:

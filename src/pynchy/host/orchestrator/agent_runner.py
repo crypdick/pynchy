@@ -134,6 +134,7 @@ def _build_container_input(
         system_notices=ctx.system_notices or None,
         is_scheduled_task=is_scheduled_task,
         repo_access=ctx.repo_access,
+        repo_accesses=ctx.repo_accesses,
         system_prompt_append=ctx.system_prompt_append,
         agent_core_module=ctx.agent_core_module,
         agent_core_class=ctx.agent_core_class,
@@ -416,7 +417,7 @@ async def _run_scheduled_task(
             input_data,
             container_name,
             ctx,
-            idle_timeout=0.0,
+            idle_timeout=get_settings().idle_timeout,
             label="scheduled task",
         )
     except asyncio.CancelledError:

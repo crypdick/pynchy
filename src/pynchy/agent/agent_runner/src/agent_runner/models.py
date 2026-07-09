@@ -76,6 +76,7 @@ class ContainerInput:
     is_scheduled_task: bool = False
     system_notices: list[str] | None = None
     repo_access: str | None = None
+    repo_accesses: list[str] | None = None
     agent_core_module: str = "agent_runner.cores.openai"
     agent_core_class: str = "OpenAIAgentCore"
     agent_core_config: dict[str, Any] | None = None
@@ -89,6 +90,8 @@ class ContainerInput:
         # missing-vs-empty in TOML, and the host may send "" for unset).
         if self.repo_access == "":
             self.repo_access = None
+        if self.repo_accesses is None:
+            self.repo_accesses = [self.repo_access] if self.repo_access else []
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ContainerInput:

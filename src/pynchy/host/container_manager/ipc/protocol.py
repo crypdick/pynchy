@@ -15,7 +15,7 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 from pynchy.types import ChatJid, ContainerConfig, GroupFolder
 
@@ -337,7 +337,6 @@ class CreatePeriodicAgentRequest:
     profile: str
     schedule: str
     prompt: str
-    context_mode: Literal["group", "isolated"]
     claude_md: str
     chat: str | None
 
@@ -349,15 +348,11 @@ class CreatePeriodicAgentRequest:
         prompt = data.get("prompt")
         if not name or not profile or not schedule or not prompt:
             return None
-        context_mode = data.get("context_mode", "group")
-        if context_mode not in ("group", "isolated"):
-            context_mode = "group"
         return cls(
             name=name,
             profile=profile,
             schedule=schedule,
             prompt=prompt,
-            context_mode=cast('Literal["group", "isolated"]', context_mode),
             claude_md=data.get("claude_md", f"You are the {name} periodic agent."),
             chat=data.get("chat"),
         )

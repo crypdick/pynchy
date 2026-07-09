@@ -26,6 +26,7 @@ class _PreContainerResult:
 
     is_admin: bool
     repo_access: str | None
+    repo_accesses: list[str]
     system_prompt_append: str | None
     session_id: str | None
     system_notices: list[str]
@@ -81,11 +82,13 @@ async def _pre_container_setup(
     """Common pre-container setup for both warm and cold paths."""
     del is_scheduled_task  # preflight behavior is identical for scheduled/interactive paths
 
-    is_admin, repo_access, system_prompt_append, session_id = _resolved_pre_container_context(
-        deps,
-        group.folder,
-        group.is_admin,
-        repo_access_override=repo_access_override,
+    is_admin, repo_access, repo_accesses, system_prompt_append, session_id = (
+        _resolved_pre_container_context(
+            deps,
+            group.folder,
+            group.is_admin,
+            repo_access_override=repo_access_override,
+        )
     )
     await deps.broadcast_agent_input(chat_jid, messages, source=input_source)
     snapshot_ms = await _write_container_snapshots(
@@ -106,6 +109,7 @@ async def _pre_container_setup(
     return _PreContainerResult(
         is_admin=is_admin,
         repo_access=repo_access,
+        repo_accesses=repo_accesses,
         system_prompt_append=system_prompt_append,
         session_id=session_id,
         system_notices=system_notices,
@@ -123,19 +127,20 @@ def _resolved_pre_container_context(
     is_admin: bool,
     *,
     repo_access_override: str | None,
-) -> tuple[bool, str | None, str | None, str | None]:
+) -> tuple[bool, str | None, list[str], str | None, str | None]:
     from pynchy.config.prompts import read_prompts
     from pynchy.host.orchestrator.workspace_config import load_resolved_config
 
     resolved = load_resolved_config(group_folder)
-    resolved_repo = resolved.repo[0] if resolved and resolved.repo else None
-    repo_access = repo_access_override if repo_access_override is not None else resolved_repo
+    resolved_repos = list(resolved.repo) if resolved else []
+    repo_accesses = [repo_access_override] if repo_access_override is not None else resolved_repos
+    repo_access = repo_accesses[0] if repo_accesses else None
     system_prompt_append = read_prompts(
         resolved.prompts if resolved else [],
         get_settings().project_root,
     )
     session_id = deps.sessions.get(group_folder)
-    return is_admin, repo_access, system_prompt_append, session_id
+    return is_admin, repo_access, repo_accesses, system_prompt_append, session_id
 
 
 async def _write_container_snapshots(

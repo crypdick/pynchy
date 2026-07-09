@@ -142,9 +142,13 @@ def _gh_token_env_var(s: Settings, *, is_admin: bool, group_folder: str) -> dict
 
     resolved = load_resolved_config(group_folder)
     if resolved and resolved.repo:
-        repo_cfg = s.repos.overrides.get(resolved.repo[0])
-        if repo_cfg and repo_cfg.token:
-            return {"GH_TOKEN": repo_cfg.token.get_secret_value()}
+        tokens = {
+            repo_cfg.token.get_secret_value()
+            for slug in resolved.repo
+            if (repo_cfg := s.repos.overrides.get(slug)) and repo_cfg.token
+        }
+        if len(tokens) == 1:
+            return {"GH_TOKEN": next(iter(tokens))}
     return {}
 
 

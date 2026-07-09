@@ -176,16 +176,33 @@ def _collect_repos() -> dict[str, Any]:
 
     Called inside asyncio.to_thread() by the orchestrator.
     """
-    s = get_settings()
     result: dict[str, Any] = {}
 
-    for slug in s.repos.overrides:
+    for slug in _configured_repo_slugs():
         repo_ctx = get_repo_context(slug)
         if repo_ctx is None or not repo_ctx.root.exists():
             continue
         result[slug] = _repo_status(repo_ctx)
 
     return result
+
+
+def _configured_repo_slugs() -> list[str]:
+    s = get_settings()
+    slugs: list[str] = []
+    seen: set[str] = set()
+
+    def add(slug: str) -> None:
+        if slug not in seen:
+            seen.add(slug)
+            slugs.append(slug)
+
+    for slug in getattr(s.repos, "overrides", {}):
+        add(slug)
+    for profile in getattr(s, "profiles", {}).values():
+        for slug in profile.repo:
+            add(slug)
+    return slugs
 
 
 def _repo_status(repo_ctx: RepoContext) -> dict[str, Any]:

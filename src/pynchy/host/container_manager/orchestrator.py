@@ -142,14 +142,17 @@ async def _spawn_container(
     # --- Resolve worktree ---
     phase_start = time.monotonic()
     repo_mounts: list[tuple[RepoContext, Path]] = []
-    if input_data.repo_access:
+    if input_data.repo_accesses:
         from pynchy.host.git_ops.repo import get_repo_context, resolve_repos_for_group
         from pynchy.host.git_ops.worktree import ensure_worktree
 
         repo_contexts = resolve_repos_for_group(group.folder)
         if not repo_contexts:
-            repo_ctx = get_repo_context(input_data.repo_access)
-            repo_contexts = [repo_ctx] if repo_ctx else []
+            repo_contexts = [
+                repo_ctx
+                for slug in input_data.repo_accesses
+                if (repo_ctx := get_repo_context(slug)) is not None
+            ]
         for repo_ctx in repo_contexts:
             wt_result = ensure_worktree(group.folder, repo_ctx)
             repo_mounts.append((repo_ctx, wt_result.path))

@@ -52,7 +52,6 @@ from pynchy.config.models import (
     McpTool,
     McpToolConfig,
     OneCliConfig,
-    OwnerConfig,
     PluginConfig,
     ProfileConfig,
     QueueConfig,
@@ -119,13 +118,14 @@ def _validate_owner_alias(
     allowed_users: list[str] | None,
     settings: Settings,
 ) -> None:
+    del settings
     if not allowed_users or "owner" not in allowed_users:
         return
     if platform == "whatsapp":
         return
-    if platform == "slack" and settings.owner.slack:
-        return
-    raise ValueError(f"{scope} uses allowed_users=['owner'] but no owner is configured")
+    raise ValueError(
+        f"{scope} uses allowed_users=['owner']; owner aliases are only supported for WhatsApp"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -152,7 +152,6 @@ class Settings(BaseSettings):
     repos: ReposConfig = ReposConfig()
     profiles: dict[str, ProfileConfig] = {}
     workspaces: dict[str, WorkspaceConfig] = Field(default_factory=dict)
-    owner: OwnerConfig = OwnerConfig()
     user_groups: dict[str, list[str]] = {}  # group_name → [user IDs or group refs]
     commands: CommandWordsConfig = CommandWordsConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
@@ -197,6 +196,12 @@ class Settings(BaseSettings):
                     "caldav",
                     "cron_jobs",
                     "git_policy",
+                    "context_mode",
+                    "idle_terminate",
+                    "access",
+                    "mode",
+                    "trust",
+                    "trigger",
                 )
                 if k in data
             ]

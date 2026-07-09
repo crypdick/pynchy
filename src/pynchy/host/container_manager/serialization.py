@@ -25,11 +25,13 @@ def input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
     missing keys, so omitting None values is safe and keeps the wire
     format compact.
     """
-    return {
-        f.name: getattr(input_data, f.name)
-        for f in dataclasses.fields(input_data)
-        if getattr(input_data, f.name) is not None
-    }
+    result: dict[str, Any] = {}
+    for f in dataclasses.fields(input_data):
+        value = getattr(input_data, f.name)
+        if value is None or value == []:
+            continue
+        result[f.name] = value
+    return result
 
 
 def parse_container_output(json_str: str) -> ContainerOutput:

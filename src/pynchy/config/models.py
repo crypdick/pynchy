@@ -373,12 +373,6 @@ class ProfileConfig(_StrictModel):
         return v
 
 
-class CapabilityTomlConfig(_StrictModel):
-    """Explicit allow/deny/approval policy for a semantic capability."""
-
-    decision: Literal["allow", "deny", "needs_human"]
-
-
 class RepoConfig(_StrictModel):
     """Config for a single tracked git repo under [repos."owner/repo"]."""
 
