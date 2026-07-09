@@ -100,7 +100,7 @@ Values are `false` (safe), `true` (risky — triggers gating), or `"forbidden"` 
 
 A payload secrets scanner (`detect-secrets`) also runs on outbound writes. If it detects credential patterns (API keys, tokens), the write escalates to human approval regardless of taint state.
 
-Admin workspaces bypass all policy gates. Admin workspaces are additionally protected by the clean room policy ([§5d](#5d-admin-clean-room)). See [Service Trust](../usage/security.md) for configuration.
+Admin workspaces bypass all policy gates. Admin workspaces are additionally protected by the clean room policy ([§5d](#5d-admin-clean-room)). See [Tool Trust](../usage/security.md) for configuration.
 
 ### 5a. Capability Policy
 
@@ -187,7 +187,7 @@ The Cop always inspects. Humans only get pulled in when the Cop detects somethin
 
 ### 5d. Admin Clean Room
 
-Admin workspaces cannot have `public_source=true` MCP servers assigned. This is enforced at config validation (startup). If an admin workspace references an MCP with `public_source=true` (or an MCP not declared in `[services]`, which defaults to `public_source=true`), Pynchy refuses to start.
+Admin workspaces cannot select tools with `public_source=true`. This is enforced at config validation (startup). Tools default to `public_source=true`, so admin profiles must select only tools explicitly marked `public_source = false`.
 
 This prevents the most privileged workspace from ever being corruption-tainted, eliminating prompt injection as a threat vector for admin operations.
 

@@ -78,7 +78,7 @@ allow_from = ["crypdick"]
 group_policy = "allowlist"
 ```
 
-Legacy keys such as `directives`, `universal`, `sandbox_*`, `services`, `mcp`, `mcp_servers`, `chat`, `context_mode`, `idle_terminate`, `access`, `mode`, `trust`, `trigger`, `allowed_users`, `fallback_model`, and `[owner]` must fail validation.
+Deprecated keys such as `directives`, `universal`, `sandbox_*`, the old service section, root MCP sections, `chat`, `context_mode`, `idle_terminate`, `access`, `mode`, `trust`, `trigger`, `allowed_users`, `fallback_model`, and `[owner]` must fail validation.
 
 ## File Structure
 
@@ -184,8 +184,8 @@ def test_new_schema_parses_minimal_config():
         "[workspaces.dev]\\nallowed_users = ['*']\\n",
         "[profiles.dev]\\nfallback_model = 'gpt-5-mini'\\n",
         "[owner]\\nslack = 'Ricardo'\\n",
-        "[services.browser]\\npublic_source = true\\n",
-        "[mcp.browser]\\ntype = 'docker'\\n",
+        "[tools.browser]\\ntype = 'mcp'\\npublic_source = true\\n",
+        "[tools.browser.mcp]\\nruntime = 'docker'\\n",
     ],
 )
 def test_legacy_schema_keys_are_rejected(legacy: str):
@@ -340,7 +340,7 @@ tools: dict[ToolName, ToolConfig] = {}
 connections: dict[str, ConnectionConfig] = {}
 ```
 
-Remove root fields for `universal`, `services`, `mcp_servers`, `mcp_groups`, `mcp_presets`, `mcp_server_instances`, `connection`, `caldav`, and `owner`.
+Remove root fields for `universal`, the old service section, root MCP server lists/groups/presets/instances, `connection`, `caldav`, and `owner`.
 
 - [ ] **Step 4: Reject old keys explicitly**
 
@@ -354,7 +354,7 @@ legacy_root_keys = {
     "sandbox_profiles",
     "services",
     "mcp",
-    "mcp_servers",
+    "root_mcp_server_list",
     "mcp_groups",
     "mcp_presets",
     "connection",
@@ -640,7 +640,7 @@ public_source = tool.public_source if tool else True
 
 Run: `uv run pytest tests/test_config_trust.py tests/test_trust_config.py tests/test_mcp_port_allocation.py -q`
 
-Expected: PASS after fixtures move from `mcp_servers`/`services` to `tools`.
+Expected: PASS after fixtures move from root MCP/service config to `tools`.
 
 ---
 
@@ -925,7 +925,7 @@ Expected: PASS after old Discord tests are updated to the new namespace.
 
 - [ ] **Step 1: Search for old vocabulary**
 
-Run: `rg -n "directive|directives|services\\.|\\[services|\\[mcp|mcp_servers|repo_access|sandbox|universal|context_mode|idle_terminate|allowed_users|fallback_model|/workspace/project" README.md docs config-examples src tests`
+Run: `rg -n "directive|directives|old-service-config|root-mcp-config|repo_access|sandbox|universal|context_mode|idle_terminate|allowed_users|fallback_model|/workspace/project" README.md docs config-examples src tests`
 
 Expected: output identifies all old references.
 
@@ -936,7 +936,7 @@ Replace:
 ```text
 directives -> prompts
 services -> tools
-mcp/mcp_servers -> tools / tools.<name>.mcp
+root MCP config -> tools / tools.<name>.mcp
 repo_access -> repo
 /workspace/project -> /workspace/repos/<owner>/<repo>
 universal -> profiles.base
@@ -948,7 +948,7 @@ Create or update an example config using the target schema. Do not include old k
 
 - [ ] **Step 4: Run documentation search again**
 
-Run: `rg -n "directive|directives|services\\.|\\[services|\\[mcp|mcp_servers|repo_access|sandbox|universal|context_mode|idle_terminate|allowed_users|fallback_model|/workspace/project" README.md docs config-examples`
+Run: `rg -n "directive|directives|old-service-config|root-mcp-config|repo_access|sandbox|universal|context_mode|idle_terminate|allowed_users|fallback_model|/workspace/project" README.md docs config-examples`
 
 Expected: no hits except deliberate migration error text or historical notes saying the key was removed.
 
@@ -996,7 +996,7 @@ Expected: PASS.
 
 - [ ] **Step 6: Final old-vocabulary audit**
 
-Run: `rg -n "sandbox|sandbox_universal|sandbox_profiles|directives|read_directives|services\\.|\\[services|\\[mcp|mcp_servers|repo_access|context_mode|idle_terminate|allowed_users|fallback_model|/workspace/project" src tests docs README.md config-examples`
+Run: `rg -n "sandbox|sandbox_universal|sandbox_profiles|directives|read_directives|old-service-config|root-mcp-config|repo_access|context_mode|idle_terminate|allowed_users|fallback_model|/workspace/project" src tests docs README.md config-examples`
 
 Expected: no unintended hits. Any remaining hit must be deliberate migration error text or historical note.
 

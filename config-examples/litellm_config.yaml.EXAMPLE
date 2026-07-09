@@ -174,7 +174,7 @@ general_settings:
 # ---------------------------------------------------------------------------
 # MCP gateway
 # ---------------------------------------------------------------------------
-# LiteLLM acts as the MCP gateway when mcp_servers are defined in config.toml.
+# LiteLLM acts as the MCP gateway when MCP-backed tools are selected by profiles.
 # Pynchy registers MCP endpoints and creates per-workspace teams via the
 # LiteLLM HTTP API at boot. No additional configuration needed here —
 # just ensure LiteLLM supports MCP routing (v1.55+).

@@ -21,7 +21,7 @@ These ship with pynchy and are always available. Some require optional dependenc
 | `google-setup` | Service Handler + MCP Server | Google Drive and Calendar setup — GCP project creation, API enablement, OAuth authorization. Provides base MCP server specs for `gdrive` and `gcal`. | Always active | [Google Drive](../usage/gdrive.md) |
 | `slack-token-extractor` | Service Handler | Extracts fresh Slack browser tokens (xoxc/xoxd) from persistent browser sessions. | Always active | — |
 | `x-integration` | Service Handler | Post tweets, like, reply, retweet, and quote on X (Twitter) via browser automation. | Always active | — |
-| `linear` | MCP Server | Linear task-tracking tools for listing teams/issues and creating issues. | `LINEAR_API_KEY` + workspace `mcp_servers = ["linear"]` | [Linear](../usage/linear.md) |
+| `linear` | MCP Server | Linear task-tracking tools for listing teams/issues and creating issues. | `LINEAR_API_KEY` | [Linear](../usage/linear.md) |
 | `notebook-server` | MCP Server | JupyterLab notebook execution server for running Python notebooks in agent containers. | Always active | [Notebooks](../usage/notebooks.md) |
 | `sqlite-observer` | Observer | Persists operational EventBus summaries to a dedicated `events` table. | Always active | [Observers](../architecture/observers.md) |
 | `tailscale` | Tunnel | Tailscale connectivity detection. Warns at startup if tunnel is down. | Always active (requires `tailscale` CLI) | [Tunnels](../architecture/tunnels.md) |

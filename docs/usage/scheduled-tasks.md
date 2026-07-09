@@ -41,7 +41,7 @@ Produce the daily Pynchy triage memo.
 Review recent scheduled task health, failed runs, Temporal scheduler status,
 stale PR/branch/CI signals if available, and recent Pynchy/operator notes.
 Keep the run read-only except for writing a dated memo/report note if useful.
-Do not edit config, cron jobs, branches, PRs, or external services.
+Do not edit config, cron jobs, branches, PRs, or external systems.
 
 Send a concise memo to this Pynchy channel every run:
 - Top 3 findings or "no urgent findings".

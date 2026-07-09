@@ -344,7 +344,7 @@ def pynchy_mcp_server_spec(self) -> list[dict[str, Any]]:
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `name` | `str` | Server identifier (used as the `mcp_servers` key) |
+| `name` | `str` | Server identifier matched by MCP-backed tool names |
 | `type` | `str` | `"docker"`, `"script"`, or `"url"` (default `"script"`) |
 | `image` | `str` | Docker image name (required for `type="docker"`) |
 | `dockerfile` | `str \| None` | Relative path to a local Dockerfile — auto-built by the MCP manager |
@@ -361,8 +361,12 @@ def pynchy_mcp_server_spec(self) -> list[dict[str, Any]]:
 **Instance expansion:** Users don't configure the base spec. They declare *instances* in `config.toml` that reference the plugin-provided template:
 
 ```toml
-[mcp.gdrive.anyscale]
-chrome_profile = "anyscale"
+[tools."gdrive.anyscale"]
+type = "mcp"
+
+[tools."gdrive.anyscale".mcp]
+runtime = "docker"
+volumes = ["data/chrome-profiles/anyscale:/home/chrome"]
 ```
 
 The MCP manager merges this with the plugin-provided base spec, auto-assigns ports, and mounts chrome profile directories. See [MCP Servers](../usage/mcp.md) for user-facing config details.

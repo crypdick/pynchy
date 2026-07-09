@@ -20,10 +20,10 @@ LINEAR_API_KEY=lin_api_...
 LINEAR_TEAM_KEY=SYN
 ```
 
-The plugin supplies the `[mcp.linear]` definition automatically. When
-`LINEAR_API_KEY` is present, Pynchy also attaches the Linear MCP server to every
-workspace by default, so individual workspace config does not need
-`mcp_servers = ["linear"]`.
+The plugin supplies the Linear MCP runtime automatically. When
+`LINEAR_API_KEY` is present, Pynchy also attaches the Linear MCP tool to every
+workspace by default, so individual workspace config does not need to select
+`linear` explicitly.
 
 Editing `.env` triggers the normal Pynchy auto-restart; do not restart the
 service manually unless the health check shows it is stuck.

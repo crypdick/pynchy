@@ -64,4 +64,4 @@ No config files to learn. Just tell Pynchy what you want:
 | [Notebooks](notebooks.md) | Jupyter/Quarto notebook execution via MCP tools |
 | [Google Drive](gdrive.md) | Google Drive file access via OAuth2 MCP server |
 | [Slack MCP](slack-mcp.md) | Slack read access via browser tokens (no admin required) |
-| [Service Trust](security.md) | Configure trust declarations for services — control when agents need human approval |
+| [Tool Trust](security.md) | Configure tool trust declarations — control when agents need human approval |
