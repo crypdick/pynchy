@@ -9,15 +9,13 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves Path annotations at runtime.
+from typing import Any
 
 import aiosqlite
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 _SCHEMA = """\
 CREATE TABLE IF NOT EXISTS memories (
