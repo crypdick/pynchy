@@ -15,6 +15,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import make_settings
 
+from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -58,8 +60,6 @@ class TestPathAContainerAlive:
     @pytest.mark.asyncio
     async def test_writes_ipc_response_when_alive(self, settings, pending_question, tmp_path):
         """When the container is alive, write the answer as an IPC response file."""
-        from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
-
         alive_session = MagicMock()
         alive_session.is_alive = True
 
@@ -98,8 +98,6 @@ class TestPathAContainerAlive:
     @pytest.mark.asyncio
     async def test_resolves_pending_question_when_alive(self, settings, pending_question, tmp_path):
         """After writing IPC response, the pending question file should be resolved."""
-        from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
-
         alive_session = MagicMock()
         alive_session.is_alive = True
         deps = MagicMock()
@@ -137,8 +135,6 @@ class TestPathBContainerDead:
     @pytest.mark.asyncio
     async def test_enqueues_message_when_dead(self, settings, pending_question):
         """When the container is dead, enqueue the answer as a synthetic message."""
-        from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
-
         deps = MagicMock()
         deps.enqueue_message = AsyncMock()
 
@@ -167,8 +163,6 @@ class TestPathBContainerDead:
     @pytest.mark.asyncio
     async def test_enqueues_message_when_session_not_alive(self, settings, pending_question):
         """A session that exists but is_alive=False should trigger cold-start path."""
-        from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
-
         dead_session = MagicMock()
         dead_session.is_alive = False
         deps = MagicMock()
@@ -192,8 +186,6 @@ class TestPathBContainerDead:
     @pytest.mark.asyncio
     async def test_resolves_pending_question_when_dead(self, settings, pending_question):
         """The pending question should be resolved even in the cold-start path."""
-        from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
-
         deps = MagicMock()
         deps.enqueue_message = AsyncMock()
 
@@ -224,8 +216,6 @@ class TestUnknownQuestion:
     @pytest.mark.asyncio
     async def test_unknown_question_returns_early(self, settings):
         """If the question doesn't exist, log a warning and don't crash."""
-        from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
-
         deps = MagicMock()
         deps.enqueue_message = AsyncMock()
 
@@ -258,8 +248,6 @@ async def _cold_start_text(pending: dict, answer: dict) -> str:
     it as a synthetic message — so the enqueued text is the observable output
     of the answer-context formatting.
     """
-    from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
-
     deps = MagicMock()
     deps.enqueue_message = AsyncMock()
     with (
