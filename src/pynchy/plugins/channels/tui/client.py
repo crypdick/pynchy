@@ -5,21 +5,29 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from collections.abc import Iterable
+from collections.abc import (
+    Iterable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+)
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, ClassVar, cast
+from typing import Any, ClassVar, cast
 
 import aiohttp
 from textual.app import App
-from textual.binding import Binding
+from textual.binding import (
+    Binding,
+    BindingType,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+)
 from textual.containers import Horizontal
+from textual.selection import (
+    Selection,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+)
+from textual.widget import (
+    Widget,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+)
 from textual.widgets import Footer, Header, Input, ListItem, ListView, RichLog, Static
 
-if TYPE_CHECKING:
-    from textual.binding import BindingType
-    from textual.selection import Selection
-    from textual.widget import Widget
+_ = (Selection, Widget)
 
 
 @dataclass(frozen=True)

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Awaitable, Callable
-from pathlib import Path
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+    Awaitable,
+    Callable,
+)
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 from typing import TYPE_CHECKING, Any, cast
 
 from pynchy.plugins.integrations.browser import chrome_path, cleanup_lock_files, profile_dir

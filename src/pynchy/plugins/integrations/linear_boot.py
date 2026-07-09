@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterable
+from collections.abc import (
+    Iterable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+)
 
 import aiohttp
 
@@ -16,7 +18,9 @@ from pynchy.plugins.integrations.linear_boards import (
     create_workspace_todo,
     reconcile_workspace_boards,
 )
-from pynchy.types import WorkspaceProfile
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    WorkspaceProfile,
+)
 
 LINEAR_BOOT_TIMEOUT_SECONDS = 30
 

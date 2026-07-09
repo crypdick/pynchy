@@ -11,7 +11,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from pynchy.state.connection import _get_db, atomic_write
-from pynchy.types import ChannelName, ChatJid
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+    ChannelName,
+    ChatJid,
+)
 
 
 @dataclass

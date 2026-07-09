@@ -5,10 +5,14 @@ Schema lives in ``db/_schema.py``; storage is delegated to ``db.store_event()``.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+)
 from typing import Any
 
-from pynchy.event_bus import EventBus
+from pynchy.event_bus import (
+    EventBus,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+)
 from pynchy.logger import logger
 
 

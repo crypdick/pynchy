@@ -6,9 +6,11 @@ scope registry mapping MCP server template names to OAuth scopes + API IDs.
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 
-from pynchy.config.settings import Settings
+from pynchy.config.settings import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    Settings,
+)
 from pynchy.plugins.integrations.browser import project_root
 
 # ---------------------------------------------------------------------------

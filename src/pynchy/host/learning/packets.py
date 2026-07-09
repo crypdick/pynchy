@@ -16,7 +16,11 @@ from pynchy.host.learning.paths import (
     resolve_learning_paths,
 )
 from pynchy.logger import logger
-from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+    ContainerOutput,
+    NewMessage,
+    WorkspaceProfile,
+)
 
 _MAX_PACKET_MESSAGES = 8
 _MAX_ERROR_SNIPPETS = 5

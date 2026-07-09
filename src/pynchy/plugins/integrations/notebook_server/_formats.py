@@ -7,14 +7,16 @@ Functions that need a notebook directory accept it as an explicit parameter.
 from __future__ import annotations
 
 import datetime
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from typing import Any, cast
 
 import nbformat
+from nbformat.notebooknode import (  # noqa: TC001, RUF100 - beartype resolves notebook node annotations at runtime.
+    NotebookNode,
+)
 from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
 
-if TYPE_CHECKING:
-    from nbformat.notebooknode import NotebookNode
+_ = NotebookNode
 
 
 def generate_name() -> str:

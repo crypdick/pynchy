@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-import subprocess  # noqa: S404, RUF100 - tracks trusted display helper Popen handles only.
+import subprocess  # noqa: S404, TC003, RUF100 - trusted display helper handles and beartype runtime annotation binding.
 from typing import TYPE_CHECKING, Any
 
 from pynchy.logger import logger

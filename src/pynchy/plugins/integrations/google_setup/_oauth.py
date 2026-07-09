@@ -9,7 +9,7 @@ import time
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from pathlib import Path
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 from typing import TYPE_CHECKING, Any
 
 from pynchy.logger import logger

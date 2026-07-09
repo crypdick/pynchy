@@ -9,13 +9,15 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _SCHEMA = """\
 CREATE TABLE IF NOT EXISTS memories (

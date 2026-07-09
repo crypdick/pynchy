@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 
-from pynchy.config.settings import Settings
+from pynchy.config.settings import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    Settings,
+)
 from pynchy.host.learning import packets as learning_packets
 from pynchy.logger import logger
 from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile

@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from pynchy.event_bus import EventBus
+from pynchy.event_bus import (
+    EventBus,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+)
 from pynchy.logger import logger
 
 

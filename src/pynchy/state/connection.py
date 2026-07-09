@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import asyncio
 import re
-from collections.abc import AsyncIterator
+from collections.abc import (
+    AsyncIterator,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+)
 from contextlib import asynccontextmanager
 from typing import Any
 

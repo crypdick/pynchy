@@ -7,7 +7,10 @@ import contextlib
 import re
 import sys
 from collections import deque
-from collections.abc import Callable, Coroutine
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+    Callable,
+    Coroutine,
+)
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -36,7 +39,12 @@ from pynchy.state import (
     set_last_group_sync,
     update_chat_name,
 )
-from pynchy.types import InboundFetchResult, NewMessage, OutboundEvent, WorkspaceProfile
+from pynchy.types import (
+    InboundFetchResult,
+    NewMessage,
+    OutboundEvent,
+    WorkspaceProfile,
+)
 
 GROUP_SYNC_INTERVAL: float = 24 * 60 * 60  # 24 hours in seconds
 

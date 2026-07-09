@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import stat
-from pathlib import Path
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 
 from pynchy.config import get_settings
 from pynchy.host.learning.paths import resolve_learning_paths

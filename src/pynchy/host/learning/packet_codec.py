@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import (
+    Mapping,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+)
 from dataclasses import asdict
 from typing import Any
 

@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from pynchy.config.models import (
+from pynchy.config.models import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     DiscordChannelConfig,
     DiscordConnectionConfig,
     DiscordGuildConfig,

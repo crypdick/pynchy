@@ -11,7 +11,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+    Awaitable,
+    Callable,
+)
 from dataclasses import dataclass
 from typing import Any, cast
 

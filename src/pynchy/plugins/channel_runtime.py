@@ -5,16 +5,21 @@ Loads and validates host-side channel plugins and resolves the default channel.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+)
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
+
+import pluggy  # noqa: TC002, RUF100 - beartype resolves the plugin-manager annotation at runtime.
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
-from pynchy.types import Channel, NewMessage, WorkspaceProfile
-
-if TYPE_CHECKING:
-    import pluggy
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+    Channel,
+    NewMessage,
+    WorkspaceProfile,
+)
 
 
 @dataclass(frozen=True)

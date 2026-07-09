@@ -21,10 +21,9 @@ from __future__ import annotations
 
 import os
 import re
-import subprocess  # noqa: S404, RUF100 - tracks trusted display helper Popen handles only.
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from typing import TYPE_CHECKING, Any
 
 import pluggy
 
@@ -38,6 +37,9 @@ from pynchy.plugins.integrations.browser import (
     start_virtual_display,
     stop_procs,
 )
+
+if TYPE_CHECKING:
+    import subprocess
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 

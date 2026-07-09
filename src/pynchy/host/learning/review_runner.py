@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from pynchy.host.learning.packet_models import LearningPacket
+from pynchy.host.learning.packet_models import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    LearningPacket,
+)
 from pynchy.host.learning.paths import resolve_learning_paths
 from pynchy.host.learning.reviewer import build_review_prompt, should_review
 from pynchy.types import WorkspaceProfile

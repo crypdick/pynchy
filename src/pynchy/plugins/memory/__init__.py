@@ -9,7 +9,9 @@ from __future__ import annotations
 from typing import Any, Protocol, cast, runtime_checkable
 
 from pynchy.logger import logger
-from pynchy.types import GroupFolder
+from pynchy.types import (
+    GroupFolder,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+)
 
 
 @runtime_checkable

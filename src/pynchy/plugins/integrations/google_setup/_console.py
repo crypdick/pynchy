@@ -11,7 +11,10 @@ import json
 import re
 import tempfile
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+    Awaitable,
+    Callable,
+)
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 

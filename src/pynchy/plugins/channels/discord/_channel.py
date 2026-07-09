@@ -14,7 +14,10 @@ natively in Discord) and split by :func:`chunk_discord_text` to respect the
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Iterable
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+    Callable,
+    Iterable,
+)
 from datetime import UTC, datetime
 from typing import Any
 
@@ -24,7 +27,12 @@ from pynchy.config.discord_refs import DiscordChatTarget, resolve_discord_chat_t
 from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
 from pynchy.logger import logger
 from pynchy.state import get_chat_jids_by_name
-from pynchy.types import InboundFetchResult, NewMessage, OutboundEvent, WorkspaceProfile
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+    InboundFetchResult,
+    NewMessage,
+    OutboundEvent,
+    WorkspaceProfile,
+)
 from pynchy.utils import create_background_task
 
 from ._access import DiscordAccess
@@ -238,9 +246,7 @@ class DiscordChannel:
         guild_key = target.guild_id or ""
         if guild_key.isdecimal():
             guild = client.get_guild(int(guild_key))
-            if guild is not None:
-                return guild
-            return await client.fetch_guild(int(guild_key))
+            return guild if guild is not None else await client.fetch_guild(int(guild_key))
 
         guild_name = self._configured_guild_name(target)
         return next(

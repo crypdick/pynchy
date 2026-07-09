@@ -5,10 +5,9 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
-import subprocess  # noqa: S404, RUF100 - tracks trusted display helper Popen handles only.
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from typing import TYPE_CHECKING, Any
 
 from pynchy.logger import logger
 from pynchy.plugins.integrations.browser import (
@@ -46,6 +45,9 @@ from pynchy.plugins.integrations.google_setup._rest_api import (
     read_project_id,
     refresh_access_token,
 )
+
+if TYPE_CHECKING:
+    import subprocess
 
 
 @dataclass(frozen=True)

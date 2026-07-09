@@ -18,7 +18,9 @@ from __future__ import annotations
 import asyncio
 import importlib
 import warnings
-from collections.abc import Callable
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+)
 from typing import Any
 
 import pluggy
